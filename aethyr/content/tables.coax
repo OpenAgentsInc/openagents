@@ -1,0 +1,462 @@
+// Content tables (#13294, AAA P4.5; docs/protocol/aethyr-content-v1.md): a game's data as versioned
+// tables of rows, in one text document a room and a page load at start and Aethyrforge edits
+// (aethyr/forge/content-edit.coax). This file is the document's one codec and its validator; a game
+// names the tables it needs (Everglade: everglade/model/content.coax).
+//
+//   aethyr.content.v1 NAME REV          the document's name and revision (1 and up)
+//   reach N                             how far from the middle, in centimetres, a place may be
+//   table NAME id COL:KIND ...          a table; its first column is always the row's ID
+//   sum COL by COL N                    a rule of the table above: for each value of the second
+//                                       column, the first column's cells add up to N
+//   ID|CELL|CELL...                     a row of the table above
+//
+// A column's kind: int (0 and up), text (one line, no bar), cm (a place, within the reach either
+// way), ref.TABLE (the ID of a row of TABLE) and opt.TABLE (the same, or 0 for none).
+// The document has one form: tables ascending by name, rows ascending by ID, numbers without
+// leading zeros, one newline after every line. ct_read refuses any other bytes (it writes what it
+// read and compares), so a document that reads is the document a writer would write.
+// It also refuses a dangling ID (a ref or opt cell naming no row), a place out of reach and a sum
+// that is not its table's.
+//   coax/bin/coax test aethyr/content/tables.coax --library
+//   coax/bin/coax mutate aethyr/content/tables.coax --library --root-only
+#authority;
+#load "tables-checks.coax";   // the checks' fixture and helpers
+
+CT_MAGIC :: "aethyr.content.v1";
+CT_BODY :: 65536;         // the longest document, in bytes
+CT_TABLES :: 16;
+CT_COLS :: 8;             // columns in a table, its ID among them
+CT_ROWS :: 1024;          // rows in a document
+CT_NAME :: 15;            // bytes in a name: the document's, a table's, a column's
+CT_TEXT :: 32768;         // bytes of text cells in a document
+CT_SUMS :: 4;             // sum rules in a table
+CT_REACH_MAX :: 10000000; // centimetres: 100 km
+CT_INT_MAX :: 2147483647;
+CT_SPAN :: 65536;         // a text cell: its place in the text times this, plus its length
+
+CT_INT :: 0; CT_STR :: 1; CT_CM :: 2; CT_REF :: 3; CT_OPT :: 4;
+
+CtTable :: struct {
+  name: [CT_NAME] u8; name_n: int;
+  cols: int;                                        // with the ID
+  col: [CT_COLS][CT_NAME] u8; col_n: [CT_COLS] int; kind: [CT_COLS] int;
+  ref: [CT_COLS][CT_NAME] u8; ref_n: [CT_COLS] int; // a ref or opt column's table
+  row0: int; rows: int;                             // its rows in the document's cells
+  sum_col: [CT_SUMS] int; sum_by: [CT_SUMS] int; sum_is: [CT_SUMS] int; sums: int;
+}
+ContentDoc :: struct {
+  ok: bool;
+  name: [CT_NAME] u8; name_n: int; rev: int; reach: int;
+  t: [CT_TABLES] CtTable; t_n: int;
+  cell: [CT_ROWS * CT_COLS] int; row_n: int;
+  text: [CT_TEXT] u8; text_n: int;
+}
+CtNum :: struct { ok: bool; v: int; }
+
+// ---- words
+
+// A name: a lowercase letter, then lowercase letters, digits and underscores, CT_NAME bytes at most.
+ct_name_ok :: (s: string) -> bool #effects(all) {
+  if s.count < 1 || s.count > CT_NAME || s[0] < 'a' { return false; }   // a digit and an underscore sort before 'a'
+  for b: s { if !((b >= 'a' && b <= 'z') || (b >= '0' && b <= '9') || b == '_') { return false; } }
+  return true;
+}
+// Whether a sorts before b, byte by byte (a shorter name before a longer one it starts).
+ct_before :: (a: string, b: string) -> bool #effects(all) {
+  for i: 0..<a.count {
+    if i >= b.count || a[i] > b[i] { return false; }
+    if a[i] < b[i] { return true; }
+  }
+  return a.count < b.count;
+}
+// The k-th part of line between `sep` bytes ("" past the last), and how many parts it has.
+ct_part :: (line: string, sep: u8, k: int) -> string #effects(all) {
+  a := 0; n := 0;
+  for i: 0..<line.count + 1 {
+    if i < line.count && line[i] != sep { continue; }
+    if n == k { return line[a..<i]; }
+    n += 1; a = i + 1;
+  }
+  return "";
+}
+ct_parts :: (line: string, sep: u8) -> int #effects(all) {
+  n := 1;
+  for b: line { if b == sep { n += 1; } }
+  return n;
+}
+// A whole number, with a minus sign or not, CT_INT_MAX at most either way.
+ct_num :: (s: string) -> CtNum #effects(all) {
+  if s.count == 0 { return CtNum.{}; }
+  a := 0;
+  if s[0] == '-' { a = 1; }
+  if s.count == a { return CtNum.{}; }
+  v := 0;
+  for i: a..<s.count {
+    if s[i] < '0' || s[i] > '9' { return CtNum.{}; }
+    v = v * 10 + cast(int) (s[i] - '0');
+    if v > CT_INT_MAX { return CtNum.{}; }
+  }
+  return CtNum.{ok = true, v = ifx a == 1 then -v else v};
+}
+// s into out at n: the place after it, or past out's end (which every later put keeps) when it does not fit.
+ct_put :: (out: [] u8, n: int, s: string) -> int #effects(all) {
+  if n + s.count > out.count { return out.count + 1; }
+  for i: 0..<s.count { out[n + i] = s[i]; }
+  return n + s.count;
+}
+ct_put_int :: (out: [] u8, n: int, v: int) -> int #effects(all) {
+  d: [12] u8; m := 0; x := v; neg := v < 0;
+  if neg { x = -v; }
+  while true { d[m] = cast(u8) ('0' + x % 10); m += 1; x = x / 10; if x == 0 { break; } }
+  if neg { d[m] = '-'; m += 1; }
+  if n + m > out.count { return out.count + 1; }
+  for i: 0..<m { out[n + i] = d[m - 1 - i]; }
+  return n + m;
+}
+// s into dst: its length, or 0 when it does not fit (no name is empty).
+ct_copy :: (dst: [] u8, s: string) -> int #effects(all) {
+  if s.count > dst.count { return 0; }
+  for i: 0..<s.count { dst[i] = s[i]; }
+  return s.count;
+}
+ct_kind :: (k: string) -> int #effects(all) {
+  if k == "int" { return CT_INT; }
+  if k == "text" { return CT_STR; }
+  if k == "cm" { return CT_CM; }
+  if k.count > 4 && k[0..<4] == "ref." { return CT_REF; }
+  if k.count > 4 && k[0..<4] == "opt." { return CT_OPT; }
+  return -1;
+}
+
+// ---- what a document holds
+
+ct_doc_name :: (d: [] ContentDoc) -> string #effects(all) { return cast(string) d[0].name[0..<d[0].name_n]; }
+ct_table_name :: (d: [] ContentDoc, t: int) -> string #effects(all) { return cast(string) d[0].t[t].name[0..<d[0].t[t].name_n]; }
+ct_col_name :: (d: [] ContentDoc, t: int, k: int) -> string #effects(all) { return ifx k == 0 then "id" else cast(string) d[0].t[t].col[k][0..<d[0].t[t].col_n[k]]; }
+ct_ref_name :: (d: [] ContentDoc, t: int, k: int) -> string #effects(all) { return cast(string) d[0].t[t].ref[k][0..<d[0].t[t].ref_n[k]]; }
+// The table called name, or -1.
+ct_table :: (d: [] ContentDoc, name: string) -> int #effects(all) {
+  for t: 0..<d[0].t_n { if ct_table_name(d, t) == name { return t; } }
+  return -1;
+}
+// Table t's column called name (0: "id"), or -1.
+ct_col :: (d: [] ContentDoc, t: int, name: string) -> int #effects(all) {
+  for k: 0..<ct_cols(d, t) { if ct_col_name(d, t, k) == name { return k; } }
+  return -1;
+}
+// Table t's columns and rows; none for a table the document does not have.
+ct_cols :: (d: [] ContentDoc, t: int) -> int #effects(all) { return ifx t < 0 || t >= d[0].t_n then 0 else d[0].t[t].cols; }
+ct_rows :: (d: [] ContentDoc, t: int) -> int #effects(all) { return ifx t < 0 || t >= d[0].t_n then 0 else d[0].t[t].rows; }
+// Whether table t has a row r and a column k.
+ct_in :: (d: [] ContentDoc, t: int, r: int, k: int) -> bool #effects(all) { return r >= 0 && r < ct_rows(d, t) && k >= 0 && k < ct_cols(d, t); }
+// Row r of table t, column k: its number (an ID, an int, a place, a ref), or 0 outside the table.
+ct_get :: (d: [] ContentDoc, t: int, r: int, k: int) -> int #effects(all) {
+  if !ct_in(d, t, r, k) || d[0].t[t].kind[k] == CT_STR { return 0; }
+  return d[0].cell[(d[0].t[t].row0 + r) * CT_COLS + k];
+}
+// Its text ("" for a column that is not text, or outside the table).
+ct_str :: (d: [] ContentDoc, t: int, r: int, k: int) -> string #effects(all) {
+  if !ct_in(d, t, r, k) || d[0].t[t].kind[k] != CT_STR { return ""; }
+  c := d[0].cell[(d[0].t[t].row0 + r) * CT_COLS + k];
+  return cast(string) d[0].text[c / CT_SPAN..<c / CT_SPAN + c % CT_SPAN];
+}
+// The row of table t whose ID is id, or -1.
+ct_find :: (d: [] ContentDoc, t: int, id: int) -> int #effects(all) {
+  for r: 0..<ct_rows(d, t) { if ct_get(d, t, r, 0) == id { return r; } }
+  return -1;
+}
+
+// ---- the writer
+
+// Table t's "table NAME id COL:KIND ..." line, without its newline, into out at n (ct_put's answer).
+ct_put_table :: (d: [] ContentDoc, t: int, out: [] u8, at: int) -> int #effects(all) {
+  kinds := [5] string.["int", "text", "cm", "ref.", "opt."];
+  n := ct_put(out, at, "table "); n = ct_put(out, n, ct_table_name(d, t)); n = ct_put(out, n, " id");
+  for k: 1..<d[0].t[t].cols {
+    n = ct_put(out, n, " "); n = ct_put(out, n, ct_col_name(d, t, k)); n = ct_put(out, n, ":");
+    n = ct_put(out, n, kinds[d[0].t[t].kind[k]]); n = ct_put(out, n, ct_ref_name(d, t, k));
+  }
+  return n;
+}
+// The document's bytes into out; "" when out is too small.
+ct_write :: (d: [] ContentDoc, out: [] u8) -> string #effects(all) {
+  n := ct_put(out, 0, CT_MAGIC); n = ct_put(out, n, " "); n = ct_put(out, n, ct_doc_name(d));
+  n = ct_put(out, n, " "); n = ct_put_int(out, n, d[0].rev);
+  n = ct_put(out, n, "\nreach "); n = ct_put_int(out, n, d[0].reach); n = ct_put(out, n, "\n");
+  for t: 0..<d[0].t_n {
+    n = ct_put_table(d, t, out, n); n = ct_put(out, n, "\n");
+    for s: 0..<d[0].t[t].sums {
+      n = ct_put(out, n, "sum "); n = ct_put(out, n, ct_col_name(d, t, d[0].t[t].sum_col[s]));
+      n = ct_put(out, n, " by "); n = ct_put(out, n, ct_col_name(d, t, d[0].t[t].sum_by[s]));
+      n = ct_put(out, n, " "); n = ct_put_int(out, n, d[0].t[t].sum_is[s]); n = ct_put(out, n, "\n");
+    }
+    for r: 0..<d[0].t[t].rows {
+      for k: 0..<d[0].t[t].cols {
+        if k > 0 { n = ct_put(out, n, "|"); }
+        if d[0].t[t].kind[k] == CT_STR { n = ct_put(out, n, ct_str(d, t, r, k)); } else { n = ct_put_int(out, n, ct_get(d, t, r, k)); }
+      }
+      n = ct_put(out, n, "\n");
+    }
+  }
+  if n > out.count { return ""; }
+  return cast(string) out[0..<n];
+}
+
+// ---- the reader. Its parts keep what a line says when the document has room for it and skip it
+// when it does not; they refuse nothing. ct_read refuses: a document must hold its rules
+// (ct_valid) and write back as the bytes read, which a skipped or misread line never does.
+
+// A "table NAME id COL:KIND ..." line: the next table.
+ct_read_table :: (d: [] ContentDoc, line: string) #effects(all) {
+  words := ct_parts(line, ' ');
+  if d[0].t_n >= CT_TABLES || words > CT_COLS + 2 { return; }
+  t := d[0].t_n;
+  d[0].t[t] = CtTable.{};
+  d[0].t[t].name_n = ct_copy(d[0].t[t].name[..], ct_part(line, ' ', 1));
+  d[0].t[t].cols = words - 2; d[0].t[t].row0 = d[0].row_n;
+  for k: 1..<words - 2 {
+    spec := ct_part(line, ' ', k + 2);
+    kt := ct_part(spec, ':', 1);
+    d[0].t[t].col_n[k] = ct_copy(d[0].t[t].col[k][..], ct_part(spec, ':', 0));
+    d[0].t[t].kind[k] = ct_kind(kt);
+    if d[0].t[t].kind[k] >= CT_REF { d[0].t[t].ref_n[k] = ct_copy(d[0].t[t].ref[k][..], kt[4..<kt.count]); }
+  }
+  d[0].t_n = t + 1;
+}
+// A "sum COL by COL N" line of table t: an int column, grouped by a column that is not text.
+ct_read_sum :: (d: [] ContentDoc, t: int, line: string) #effects(all) {
+  col := ct_col(d, t, ct_part(line, ' ', 1)); by := ct_col(d, t, ct_part(line, ' ', 3));
+  s := d[0].t[t].sums;
+  if s >= CT_SUMS || col < 1 || by < 0 || d[0].t[t].kind[col] != CT_INT || d[0].t[t].kind[by] == CT_STR { return; }
+  d[0].t[t].sum_col[s] = col; d[0].t[t].sum_by[s] = by; d[0].t[t].sum_is[s] = ct_num(ct_part(line, ' ', 4)).v; d[0].t[t].sums = s + 1;
+}
+// A row of table t.
+ct_read_row :: (d: [] ContentDoc, t: int, line: string) #effects(all) {
+  if d[0].row_n >= CT_ROWS { return; }
+  r := d[0].row_n; used := d[0].text_n;
+  for k: 0..<d[0].t[t].cols {
+    c := ct_part(line, '|', k);
+    if d[0].t[t].kind[k] != CT_STR { d[0].cell[r * CT_COLS + k] = ct_num(c).v; continue; }
+    if used + c.count > CT_TEXT { return; }
+    for i: 0..<c.count {
+      if c[i] < ' ' { return; }
+      d[0].text[used + i] = c[i];
+    }
+    d[0].cell[r * CT_COLS + k] = used * CT_SPAN + c.count;
+    used += c.count;
+  }
+  d[0].row_n = r + 1; d[0].t[t].rows += 1; d[0].text_n = used;
+}
+// Whether what was read holds the document's rules: names, order, each cell's kind, every ref a
+// row, every place in reach, every sum its table's.
+ct_valid :: (d: [] ContentDoc) -> bool #effects(all) {
+  if !ct_name_ok(ct_doc_name(d)) || d[0].rev < 1 || d[0].reach < 1 || d[0].reach > CT_REACH_MAX { return false; }
+  for t: 0..<d[0].t_n {
+    if !ct_name_ok(ct_table_name(d, t)) { return false; }
+    if t > 0 && !ct_before(ct_table_name(d, t - 1), ct_table_name(d, t)) { return false; }
+    for k: 1..<d[0].t[t].cols {
+      kind := d[0].t[t].kind[k];
+      if !ct_name_ok(ct_col_name(d, t, k)) || ct_col(d, t, ct_col_name(d, t, k)) != k || kind < 0 { return false; }
+      if kind >= CT_REF && ct_table(d, ct_ref_name(d, t, k)) < 0 { return false; }
+    }
+    prev := 0;
+    for r: 0..<d[0].t[t].rows {
+      id := ct_get(d, t, r, 0);
+      if id <= prev { return false; }
+      prev = id;
+      for k: 1..<d[0].t[t].cols {
+        kind := d[0].t[t].kind[k]; x := ct_get(d, t, r, k);
+        if kind == CT_INT && x < 0 { return false; }
+        if kind == CT_CM && (x > d[0].reach || x < -d[0].reach) { return false; }
+        if kind >= CT_REF && !(kind == CT_OPT && x == 0) && ct_find(d, ct_table(d, ct_ref_name(d, t, k)), x) < 0 { return false; }
+      }
+      for s: 0..<d[0].t[t].sums {
+        by := d[0].t[t].sum_by[s]; total := 0;
+        for q: 0..<d[0].t[t].rows { if ct_get(d, t, q, by) == ct_get(d, t, r, by) { total += ct_get(d, t, q, d[0].t[t].sum_col[s]); } }
+        if total != d[0].t[t].sum_is[s] { return false; }
+      }
+    }
+  }
+  return true;
+}
+// The document in text into d; false, and d not ok, for anything but a whole valid document in its
+// one form.
+ct_read :: (d: [] ContentDoc, text: string) -> bool #effects(all) {
+  d[0].t_n = 0; d[0].row_n = 0; d[0].text_n = 0;
+  at := 0; ln := 0;
+  while at < text.count {
+    end := at;
+    while end < text.count && text[end] != '\n' { end += 1; }
+    line := text[at..<end];
+    at = end + 1; ln += 1;
+    if ln == 1 {
+      // NAME and REV stand after the magic and a space
+      if line.count > CT_MAGIC.count {
+        rest := line[CT_MAGIC.count + 1..<line.count];
+        d[0].name_n = ct_copy(d[0].name[..], ct_part(rest, ' ', 0)); d[0].rev = ct_num(ct_part(rest, ' ', 1)).v;
+      }
+    } else if ln == 2 {
+      d[0].reach = ct_num(ct_part(line, ' ', 1)).v;
+    } else if ct_part(line, ' ', 0) == "table" {
+      ct_read_table(d, line);
+    } else if d[0].t_n > 0 {
+      if ct_part(line, ' ', 0) == "sum" { ct_read_sum(d, d[0].t_n - 1, line); } else { ct_read_row(d, d[0].t_n - 1, line); }
+    }
+  }
+  out: [CT_BODY] u8;
+  d[0].ok = ct_valid(d) && ct_write(d, out[..]) == text;
+  return d[0].ok;
+}
+
+// ---- checks (proto/aethyr/content-v1.json holds the same fixture)
+
+#test "content: the fixture reads, answers by table, column and ID, and writes its own bytes" {
+  d: [1] ContentDoc; o: [CT_BODY] u8;
+  #assert ct_read(d[..], CT_FIXTURE) && d[0].ok && ct_doc_name(d[..]) == "demo" && d[0].rev == 7 && d[0].reach == 4000 && d[0].t_n == 5 && d[0].row_n == 9;
+  #assert ct_write(d[..], o[..]) == CT_FIXTURE;
+  short: [64] u8; #assert ct_write(d[..], short[..]) == "";
+  item := ct_table(d[..], "item"); loot := ct_table(d[..], "loot"); point := ct_table(d[..], "point");
+  #assert ct_table(d[..], "creature") == 0 && item == 1 && loot == 2 && point == 3 && ct_table(d[..], "spawn") == 4 && ct_table(d[..], "quest") == -1 && ct_table(d[..], "ite") == -1;
+  #assert ct_rows(d[..], item) == 2 && ct_rows(d[..], loot) == 3 && ct_rows(d[..], -1) == 0 && ct_rows(d[..], 5) == 0 && ct_rows(d[..], 4) == 1;
+  #assert ct_col(d[..], item, "id") == 0 && ct_col(d[..], item, "name") == 1 && ct_col(d[..], item, "slot") == 2 && ct_col(d[..], item, "weight") == -1;
+  #assert ct_col(d[..], -1, "id") == -1 && ct_col(d[..], 5, "id") == -1 && ct_col(d[..], 4, "count") == 3;
+  #assert ct_find(d[..], item, 5) == 1 && ct_find(d[..], item, 1) == 0 && ct_find(d[..], item, 2) == -1 && ct_find(d[..], -1, 1) == -1;
+  #assert ct_str(d[..], item, 1, 1) == "Short sword" && ct_get(d[..], item, 1, 2) == 8 && ct_get(d[..], item, 1, 0) == 5 && ct_str(d[..], 0, 1, 1) == "Goblin Warrior";
+  #assert ct_get(d[..], point, 0, 2) == -1200 && ct_get(d[..], point, 0, 3) == 350 && ct_get(d[..], loot, 2, 3) == 100 && ct_get(d[..], loot, 1, 2) == 0;
+  // outside the table, or the other kind of cell: nothing
+  #assert ct_get(d[..], item, 2, 0) == 0 && ct_get(d[..], item, -1, 0) == 0 && ct_get(d[..], item, 0, 3) == 0 && ct_get(d[..], item, 0, -1) == 0 && ct_get(d[..], item, 0, 1) == 0;
+  #assert ct_get(d[..], -1, 0, 0) == 0 && ct_get(d[..], 5, 0, 0) == 0 && ct_get(d[..], 4, 0, 3) == 3 && ct_get(d[..], item, 1, 2) == 8;
+  #assert ct_str(d[..], item, 2, 1) == "" && ct_str(d[..], item, -1, 1) == "" && ct_str(d[..], item, 0, 2) == "" && ct_str(d[..], item, 0, 3) == "" && ct_str(d[..], item, 0, -1) == "";
+  #assert ct_str(d[..], -1, 0, 1) == "" && ct_str(d[..], 5, 0, 1) == "" && ct_str(d[..], 3, 0, 1) == "Old oak" && ct_str(d[..], item, 0, 1) == "Wolf pelt";
+  #assert ct_ref_name(d[..], loot, 1) == "creature" && ct_ref_name(d[..], loot, 2) == "item" && d[0].t[loot].sums == 1 && d[0].t[loot].sum_is[0] == 100;
+}
+#test "content: a dangling ID, a place out of reach and a sum that is wrong are refused" {
+  o: [CT_BODY] u8;
+  #assert ct_reads(CT_FIXTURE);
+  // a ref to no row, an opt to no row; an opt of 0 is none, a ref of 0 is dangling
+  #assert !ct_reads(ct_swap("3|2|5|100", "3|3|5|100", o[..])) && !ct_reads(ct_swap("3|2|5|100", "3|2|4|100", o[..]));
+  #assert ct_reads(ct_swap("3|2|5|100", "3|2|0|100", o[..])) && !ct_reads(ct_swap("3|2|5|100", "3|0|5|100", o[..]));
+  #assert !ct_reads(ct_swap("1|1|1|3", "1|1|2|3", o[..])) && !ct_reads(ct_swap("ref.point", "ref.place", o[..]));
+  // a place: the reach itself is in, one past it is out, either way
+  #assert ct_reads(ct_swap("-1200|350", "-4000|4000", o[..])) && !ct_reads(ct_swap("-1200|350", "-4001|0", o[..])) && !ct_reads(ct_swap("-1200|350", "0|4001", o[..]));
+  #assert ct_reads(ct_swap("-1200|350", "4000|-4000", o[..])) && !ct_reads(ct_swap("-1200|350", "4001|0", o[..])) && !ct_reads(ct_swap("-1200|350", "0|-4001", o[..]));
+  // a sum: each group adds up to its table's, no more and no less
+  #assert !ct_reads(ct_swap("2|1|0|40", "2|1|0|41", o[..])) && !ct_reads(ct_swap("2|1|0|40", "2|1|0|39", o[..])) && !ct_reads(ct_swap("3|2|5|100", "3|2|5|99", o[..]));
+  #assert ct_reads(ct_swap("1|1|1|60\n2|1|0|40", "1|1|1|100\n2|2|0|0", o[..])) && !ct_reads(ct_swap("by creature 100", "by creature 101", o[..]));
+  #assert ct_reads(ct_swap("sum weight by creature 100\n1|1|1|60\n2|1|0|40\n3|2|5|100", "sum weight by id 7\n1|1|1|7", o[..]));
+  #assert ct_reads(ct_swap("sum weight by creature 100\n", "sum weight by creature 100\nsum weight by item 100\n", o[..])) == false;
+  #assert ct_reads(ct_swap("sum weight by creature 100\n1|1|1|60\n2|1|0|40\n3|2|5|100", "sum weight by creature 0\nsum weight by item 0\n1|1|1|0", o[..]));
+}
+#test "content: one form only: names, order, numbers and every line" {
+  o: [CT_BODY] u8; s := CT_FIXTURE;
+  #assert !ct_reads(s[0..<s.count - 1]) && !ct_reads("aethyr.content.v1 demo 7\n") && ct_reads("aethyr.content.v1 demo 7\nreach 4000\n") && ct_reads("aethyr.content.v1 d 1\nreach 1\n");
+  #assert !ct_reads(ct_swap("aethyr.content.v1", "aethyr.content.v2", o[..])) && !ct_reads(ct_swap("demo 7", "demo 0", o[..])) && !ct_reads(ct_swap("demo 7", "demo 07", o[..])) && !ct_reads(ct_swap("demo 7", "demo -7", o[..]));
+  #assert !ct_reads(ct_swap("demo 7", "Demo 7", o[..])) && !ct_reads(ct_swap("demo 7", " 7", o[..])) && !ct_reads(ct_swap("demo 7", "demo 7 8", o[..])) && !ct_reads(ct_swap("demo 7", "abcdefghijklmnop 7", o[..]));
+  #assert ct_reads(ct_swap("demo 7", "abcdefghijklmno 2147483647", o[..])) && !ct_reads(ct_swap("demo 7", "demo 2147483648", o[..])) && !ct_reads(ct_swap("demo 7", "demo 99999999999", o[..]));
+  #assert !ct_reads(ct_swap("reach 4000", "reach 0", o[..])) && !ct_reads(ct_swap("reach 4000", "reach 10000001", o[..])) && ct_reads(ct_swap("reach 4000", "reach 10000000", o[..])) && !ct_reads(ct_swap("reach 4000", "range 4000", o[..]));
+  #assert !ct_reads(ct_swap("reach 4000\n", "", o[..])) && !ct_reads(ct_swap("reach 4000\n", "reach 4000\n\n", o[..])) && !ct_reads(ct_swap("reach 4000\n", "reach 4000\n1|Wolf|50\n", o[..]));
+  #assert !ct_reads(ct_swap("reach 4000\n", "reach 4000\nsum xp by id 1\n", o[..]));
+  // tables ascending by name; a table's name, columns and kinds
+  #assert !ct_reads(ct_swap("table item", "table zitem", o[..])) && !ct_reads(ct_swap("table item", "table creature", o[..])) && !ct_reads(ct_swap("table item", "table Item", o[..]));
+  #assert !ct_reads(ct_swap("table item id", "table item key", o[..])) && !ct_reads(ct_swap("slot:int", "slot:num", o[..])) && !ct_reads(ct_swap("slot:int", "slot", o[..])) && !ct_reads(ct_swap("slot:int", "name:int", o[..]));
+  #assert !ct_reads(ct_swap("slot:int", "id:int", o[..])) && !ct_reads(ct_swap("slot:int", "Slot:int", o[..])) && !ct_reads(ct_swap("slot:int", "slot:int:x", o[..])) && !ct_reads(ct_swap("opt.item", "opt.", o[..])) && !ct_reads(ct_swap("opt.item", "opt.Item", o[..]));
+  #assert !ct_reads(ct_swap("opt.item", "opt", o[..])) && !ct_reads(ct_swap("ref.creature item", "ref item", o[..])) && !ct_reads(ct_swap("ref.creature item", "refxcreature item", o[..])) && !ct_reads(ct_swap("opt.item", "optxitem", o[..]));
+  #assert ct_reads(ct_swap("table item id name:text slot:int\n1|Wolf pelt|0\n5|Short sword|8\n", "table item id\n1\n5\n", o[..])) && !ct_reads(ct_swap("table item id name:text slot:int\n", "table item\n", o[..]));
+  #assert ct_reads(ct_swap("table item id name:text slot:int\n1|Wolf pelt|0\n5|Short sword|8\n", "table item id a:int b:int c:int d:int e:int f:int g:int\n1|0|0|0|0|0|0|0\n5|1|2|3|4|5|6|7\n", o[..]));
+  #assert !ct_reads(ct_swap("table item id name:text slot:int\n1|Wolf pelt|0\n5|Short sword|8\n", "table item id a:int b:int c:int d:int e:int f:int g:int h:int\n1|0|0|0|0|0|0|0|0\n5|1|2|3|4|5|6|7|8\n", o[..]));
+  // rows: IDs 1 and up, ascending; whole numbers in their one form; every cell and no more
+  #assert !ct_reads(ct_swap("3|2|5|100", "2|2|5|100", o[..])) && !ct_reads(ct_swap("3|2|5|100", "1|2|5|100", o[..])) && ct_reads(ct_swap("3|2|5|100", "4|2|5|100", o[..]));
+  #assert !ct_reads(ct_swap("1|1|1|60", "0|1|1|60", o[..])) && !ct_reads(ct_swap("1|1|1|60", "-1|1|1|60", o[..])) && ct_reads(ct_swap("1|1|1|3", "9|1|1|3", o[..])) && !ct_reads(ct_swap("1|1|1|3", "0|1|1|3", o[..]));
+  #assert !ct_reads(ct_swap("5|Short sword|8", "5|Short sword|-8", o[..])) && !ct_reads(ct_swap("5|Short sword|8", "5|Short sword|08", o[..])) && !ct_reads(ct_swap("5|Short sword|8", "5|Short sword|", o[..]));
+  #assert !ct_reads(ct_swap("5|Short sword|8", "5|Short sword", o[..])) && !ct_reads(ct_swap("5|Short sword|8", "5|Short sword|8|9", o[..])) && !ct_reads(ct_swap("5|Short sword|8", "5|Short sword|8x", o[..]));
+  #assert !ct_reads(ct_swap("5|Short sword|8", "5|Short sword|/", o[..])) && !ct_reads(ct_swap("5|Short sword|8", "5|Short sword|:", o[..])) && ct_reads(ct_swap("5|Short sword|8", "5|Short sword|2147483647", o[..]));
+  #assert !ct_reads(ct_swap("5|Short sword|8", "5|Short sword|2147483648", o[..])) && !ct_reads(ct_swap("-1200|350", "-|350", o[..])) && !ct_reads(ct_swap("-1200|350", "-0|350", o[..])) && !ct_reads(ct_swap("-1200|350", "+12|350", o[..]));
+  #assert ct_reads(ct_swap("Short sword", "", o[..])) && ct_reads(ct_swap("Short sword", "a~é b", o[..])) && !ct_reads(ct_swap("Short sword", "a\tb", o[..])) && !ct_reads(ct_swap("Short sword", "a\rb", o[..]));
+  x: [3] u8; x[0] = 'a'; x[1] = 31; x[2] = 'b'; o2: [CT_BODY] u8;
+  #assert !ct_reads(ct_swap("Short sword", cast(string) x[..], o[..])) && ct_reads(ct_swap("Short sword", " ", o2[..]));
+  // a sum names an int column and a column that is not text
+  #assert !ct_reads(ct_swap("sum weight by", "sum item by", o[..])) && !ct_reads(ct_swap("sum weight by", "sum id by", o[..])) && !ct_reads(ct_swap("sum weight by", "sum none by", o[..]));
+  #assert !ct_reads(ct_swap("by creature 100", "by none 100", o[..])) && !ct_reads(ct_swap("by creature 100", "by creature -100", o[..])) && !ct_reads(ct_swap("by creature 100", "by creature x", o[..]));
+  #assert !ct_reads(ct_swap("by creature 100", "of creature 100", o[..])) && !ct_reads(ct_swap("table creature id name:text xp:int\n", "table creature id name:text xp:int\nsum xp by name 100\n", o[..]));
+  #assert ct_reads(ct_swap("table creature id name:text xp:int\n", "table creature id name:text xp:int\nsum xp by xp 100\n", o[..]));
+}
+#test "content: the document's limits refuse rather than overwrite" #steps 4000000000 {
+  b: [CT_BODY + 64] u8; d: [1] ContentDoc;
+  // 16 tables read, 17 do not
+  n := ct_put(b[..], 0, "aethyr.content.v1 big 1\nreach 1\n");
+  for i: 0..<CT_TABLES { n = ct_put(b[..], n, "table t"); n = ct_put_int(b[..], n, 10 + i); n = ct_put(b[..], n, " id\n"); }
+  #assert ct_read(d[..], cast(string) b[0..<n]) && d[0].t_n == CT_TABLES;
+  n = ct_put(b[..], n, "table t26 id\n"); #assert !ct_read(d[..], cast(string) b[0..<n]) && !d[0].ok;
+  // 1024 rows read, 1025 do not
+  n = ct_put(b[..], 0, "aethyr.content.v1 big 1\nreach 1\ntable t id\n");
+  for i: 0..<CT_ROWS { n = ct_put_int(b[..], n, i + 1); n = ct_put(b[..], n, "\n"); }
+  #assert ct_read(d[..], cast(string) b[0..<n]) && d[0].row_n == CT_ROWS && ct_find(d[..], 0, CT_ROWS) == CT_ROWS - 1;
+  n = ct_put(b[..], n, "1025\n"); #assert !ct_read(d[..], cast(string) b[0..<n]);
+  // CT_TEXT bytes of text read, one more does not; a document of CT_BODY bytes is the longest
+  n = ct_put(b[..], 0, "aethyr.content.v1 big 1\nreach 1\ntable t id s:text\n");
+  for r: 0..<8 { n = ct_put_int(b[..], n, r + 1); n = ct_put(b[..], n, "|"); for i: 0..<CT_TEXT / 8 { b[n] = 'a'; n += 1; } n = ct_put(b[..], n, "\n"); }
+  #assert ct_read(d[..], cast(string) b[0..<n]) && d[0].text_n == CT_TEXT && ct_str(d[..], 0, 7, 1).count == CT_TEXT / 8;
+  b[n - 1] = 'a'; b[n] = '\n'; #assert !ct_read(d[..], cast(string) b[0..<n + 1]);
+  n = ct_put(b[..], 0, "aethyr.content.v1 big 1\nreach 1\ntable t id s:text u:text v:text\n1|");
+  while n < CT_BODY - 3 { b[n] = 'a'; n += 1; if n == 30000 || n == 50000 { b[n] = '|'; n += 1; } }
+  b[n] = '\n'; #assert ct_read(d[..], cast(string) b[0..<n + 1]) == false;   // 65534 bytes, but more text than CT_TEXT
+  n = ct_put(b[..], 0, "aethyr.content.v1 big 1\nreach 1\ntable t id\n");
+  for i: 0..<CT_ROWS { n = ct_put_int(b[..], n, 2000000000 + i); n = ct_put(b[..], n, "\n"); }
+  #assert n < CT_BODY && ct_read(d[..], cast(string) b[0..<n]);
+  for i: n..<CT_BODY + 1 { b[i] = ' '; }
+  #assert !ct_read(d[..], cast(string) b[0..<CT_BODY + 1]);
+  // sums: four to a table
+  n = ct_put(b[..], 0, "aethyr.content.v1 big 1\nreach 1\ntable t id a:int b:int\nsum a by a 0\nsum a by b 0\nsum a by id 0\nsum b by a 0\n");
+  #assert ct_read(d[..], cast(string) b[0..<n]) && d[0].t[0].sums == CT_SUMS;
+  n = ct_put(b[..], n, "sum b by b 0\n"); #assert !ct_read(d[..], cast(string) b[0..<n]);
+}
+#test "content: names, order, parts and numbers, each on its own" {
+  #assert ct_name_ok("a") && ct_name_ok("z9_") && ct_name_ok("abcdefghijklmno") && !ct_name_ok("abcdefghijklmnop") && !ct_name_ok("") && !ct_name_ok("9a") && !ct_name_ok("_a");
+  #assert !ct_name_ok("aB") && !ct_name_ok("a-b") && !ct_name_ok("a b") && !ct_name_ok("`a") && !ct_name_ok("{a") && ct_name_ok("az") && ct_name_ok("za") && !ct_name_ok("a`") && !ct_name_ok("a{");
+  #assert ct_name_ok("a0") && ct_name_ok("a9") && !ct_name_ok("a/") && !ct_name_ok("a:") && !ct_name_ok("Aa") && !ct_name_ok("a^");
+  #assert ct_before("a", "b") && !ct_before("b", "a") && !ct_before("a", "a") && ct_before("a", "ab") && !ct_before("ab", "a") && ct_before("ab", "b") && !ct_before("b", "ab") && ct_before("", "a") && !ct_before("", "");
+  #assert ct_before("abc", "abd") && !ct_before("abd", "abc") && ct_before("abc", "b");
+  #assert ct_part("a b c", ' ', 0) == "a" && ct_part("a b c", ' ', 1) == "b" && ct_part("a b c", ' ', 2) == "c" && ct_part("a b c", ' ', 3) == "" && ct_part("", ' ', 0) == "" && ct_part("a||c", '|', 1) == "" && ct_part("a||c", '|', 2) == "c";
+  #assert ct_parts("a b c", ' ') == 3 && ct_parts("", ' ') == 1 && ct_parts("a||", '|') == 3;
+  #assert ct_num("0").ok && ct_num("0").v == 0 && ct_num("-5").v == -5 && ct_num("2147483647").v == CT_INT_MAX && ct_num("-2147483647").v == -CT_INT_MAX && ct_num("-2147483647").ok;
+  #assert !ct_num("").ok && !ct_num("-").ok && !ct_num("2147483648").ok && !ct_num("-2147483648").ok && !ct_num("12345678901").ok && !ct_num("1a").ok && !ct_num("a").ok && !ct_num("1-").ok && ct_num("1234567890").ok;
+  #assert !ct_num("-12345678901").ok && ct_num("-1234567890").v == -1234567890 && ct_num("19").v == 19 && ct_num("90").v == 90 && !ct_num("/").ok && !ct_num(":").ok;
+  o: [16] u8; #assert cast(string) o[0..<ct_put_int(o[..], 0, -120)] == "-120" && cast(string) o[0..<ct_put_int(o[..], 0, 0)] == "0" && ct_put_int(o[..], 14, 123) == 17 && ct_put_int(o[..], 13, 123) == 16;
+  #assert ct_put(o[..], 15, "ab") == 17 && ct_put(o[..], 14, "ab") == 16 && ct_put_int(o[..], 0, -2147483647) == 11 && ct_put(o[..], 17, "") == 17 && ct_put_int(o[..], 17, 0) == 17;
+  #assert cast(string) o[0..<ct_put_int(o[..], 0, 7)] == "7" && cast(string) o[0..<ct_put_int(o[..], 0, -1)] == "-1" && cast(string) o[0..<ct_put_int(o[..], 0, 10)] == "10";
+  c: [3] u8; #assert ct_copy(c[..], "abc") == 3 && cast(string) c[..] == "abc" && ct_copy(c[..], "abcd") == 0 && ct_copy(c[..], "") == 0;
+  #assert ct_part("|a", '|', 0) == "" && ct_part("|a", '|', 1) == "a";
+  #assert ct_kind("int") == CT_INT && ct_kind("text") == CT_STR && ct_kind("cm") == CT_CM && ct_kind("ref.a") == CT_REF && ct_kind("opt.a") == CT_OPT && ct_kind("ref.") == -1 && ct_kind("opt.") == -1 && ct_kind("") == -1 && ct_kind("refs") == -1;
+}
+#test "content: every table's rows and order are checked, the first table's too, and a read starts clean" #steps 4000000000 {
+  d: [1] ContentDoc; o: [CT_BODY] u8; b: [CT_BODY] u8;
+  #assert !ct_reads(ct_swap("1|Wolf|50", "1|Wolf|-50", o[..])) && !ct_reads(ct_swap("2|Goblin Warrior|50", "1|Goblin Warrior|50", o[..]));
+  #assert ct_reads("aethyr.content.v1 d 1\nreach 1\ntable a id\ntable b id\n") && !ct_reads("aethyr.content.v1 d 1\nreach 1\ntable b id\ntable a id\n") && !ct_reads("aethyr.content.v1 d 1\nreach 1\ntable a id\ntable a id\n");
+  #assert !ct_reads("aethyr.content.v1 d 1\nreach 1\ntable a id\ntable abcdefghijklmnop id\n") && ct_reads("aethyr.content.v1 d 1\nreach 1\ntable a id\ntable abcdefghijklmno id\n");
+  #assert !ct_reads("aethyr.content.v1 d 1\nreach 1\ntable a id abcdefghijklmnop:int\n") && ct_reads("aethyr.content.v1 d 1\nreach 1\ntable a id abcdefghijklmno:int\n");
+  #assert !ct_reads("aethyr.content.v1 d 1\nreach 1\ntable a id b:ref.abcdefghijklmnop\n") && ct_reads("aethyr.content.v1 d 1\nreach 1\ntable a id b:ref.a\n") && !ct_reads("aethyr.content.v1 d 1\nreach 1\ntable a id b:opt.c\n") && !ct_reads("aethyr.content.v1 d 1\nreach 1\ntable a id b:ref.c\n");
+  #assert !ct_reads("aethyr.content.v1\nreach 1\n") && !ct_reads("aethyr.content.v1 \nreach 1\n") && !ct_reads("aethyr.content.v\nreach 1\n");
+  #assert !ct_reads("aethyr.content.v1 d 1\nreach 1\ntable a\n") && !ct_reads("aethyr.content.v1 d 1\nreach 1\ntable\n") && !ct_reads("") && !ct_reads("aethyr.content.v1 d 1\n");
+  // a sum's columns: an int column summed, never the ID, a ref or text; grouped by anything but text
+  #assert ct_reads("aethyr.content.v1 d 1\nreach 1\ntable t id a:int b:ref.t n:text\nsum a by b 4\n1|4|1|x\n");
+  #assert !ct_reads("aethyr.content.v1 d 1\nreach 1\ntable t id a:int b:ref.t n:text\nsum b by id 1\n1|4|1|x\n");
+  #assert !ct_reads("aethyr.content.v1 d 1\nreach 1\ntable t id a:int b:ref.t n:text\nsum id by a 1\n1|4|1|x\n");
+  #assert !ct_reads("aethyr.content.v1 d 1\nreach 1\ntable t id a:int b:ref.t n:text\nsum a by n 4\n1|4|1|x\n");
+  #assert !ct_reads("aethyr.content.v1 d 1\nreach 1\ntable t id a:int b:ref.t n:text\nsum a by z 4\n1|4|1|x\n");
+  #assert !ct_reads("aethyr.content.v1 d 1\nreach 1\ntable t id a:int b:ref.t n:text\nsum n by id 0\n1|4|1|x\n");
+  // the writer's buffer: the document's own length fits, one byte less does not
+  #assert ct_read(d[..], CT_FIXTURE);
+  s := CT_FIXTURE; #assert ct_write(d[..], o[0..<s.count]) == s && ct_write(d[..], o[0..<s.count - 1]) == "";
+  // sixteen tables and eight columns: the last of each answers, one past it is nothing
+  n := ct_put(b[..], 0, "aethyr.content.v1 big 1\nreach 1\n");
+  for i: 0..<CT_TABLES { n = ct_put(b[..], n, "table t"); n = ct_put_int(b[..], n, 10 + i); n = ct_put(b[..], n, " id a:int b:int c:int d:int e:int f:int g:text\n1|1|2|3|4|5|6|x\n"); }
+  #assert ct_read(d[..], cast(string) b[0..<n]) && ct_rows(d[..], 15) == 1 && ct_rows(d[..], 16) == 0 && ct_cols(d[..], 15) == 8 && ct_cols(d[..], 16) == 0 && ct_cols(d[..], -1) == 0;
+  #assert ct_get(d[..], 15, 0, 6) == 6 && ct_get(d[..], 15, 0, 8) == 0 && ct_get(d[..], 16, 0, 0) == 0 && ct_str(d[..], 15, 0, 7) == "x" && ct_str(d[..], 15, 0, 8) == "" && ct_str(d[..], 16, 0, 7) == "";
+  #assert ct_get(d[..], 15, 1, 0) == 0 && ct_get(d[..], 14, 1, 0) == 0 && ct_str(d[..], 14, 1, 7) == "" && ct_col(d[..], 15, "g") == 7 && ct_col(d[..], 16, "id") == -1;
+  // a full document read twice is the same document: nothing is left from the first read
+  n = ct_put(b[..], 0, "aethyr.content.v1 big 1\nreach 1\ntable t id s:text\n");
+  for r: 0..<8 { n = ct_put_int(b[..], n, r + 1); n = ct_put(b[..], n, "|"); for i: 0..<CT_TEXT / 8 { b[n] = 'a'; n += 1; } n = ct_put(b[..], n, "\n"); }
+  #assert ct_read(d[..], cast(string) b[0..<n]) && ct_read(d[..], cast(string) b[0..<n]) && d[0].text_n == CT_TEXT;
+  // a refused read leaves the document not ok, and a name too long is no name
+  #assert !ct_read(d[..], "aethyr.content.v1 abcdefghijklmnop 1\nreach 1\n") && !d[0].ok && d[0].name_n == 0;
+}

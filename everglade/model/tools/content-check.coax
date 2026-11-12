@@ -1,0 +1,19 @@
+// Checks a content tables file against Everglade's rules (#13294; everglade/model/content.coax): it is
+// a content document (aethyr-content-v1: no dangling ID, no place out of reach, every sum right) with
+// exactly Everglade's tables, loot that adds up for each creature, and quests the record can hold.
+// Usage: coax/web/tool.sh everglade/model/tools/content-check.coax everglade/content/everglade.content
+#import "Basic";
+#load "../content.coax";
+#load "../../../coax/lib/sys/tool.coax";
+#load "../../../coax/lib/sys/fs.coax";
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) != 1 { tool_errln("usage: content-check FILE"); return 2; }
+  raw: [CT_BODY] u8; n := fs_read(args_at(a[..], 0), raw[..]);
+  d: [1] ContentDoc;
+  if n <= 0 || !ct_read(d[..], cast(string) raw[0..<n]) { print("everglade content: not a content document\n"); return 1; }
+  if !ec_ok(d[..]) { print("everglade content: a content document, but not Everglade's tables or rules\n"); return 1; }
+  print("everglade content: revision % holds (% creatures, % items, % loot rows, % quests, % steps)\n", d[0].rev, ct_rows(d[..], EC_CREATURE), ct_rows(d[..], EC_ITEM), ct_rows(d[..], EC_LOOT), ct_rows(d[..], EC_QUEST), ct_rows(d[..], EC_STEP));
+  return 0;
+}

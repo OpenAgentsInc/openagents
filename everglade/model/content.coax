@@ -1,0 +1,257 @@
+// Everglade's content tables (#13294, AAA P4.5) and the rules that read them: which tables the game
+// needs, what a creature drops (#13291) and what a quest asks next (#13292). The document is
+// aethyr/content/tables.coax's (profile aethyr-content-v1); the tables are data in
+// everglade/content/everglade.content, which a room loads at start and Aethyrforge edits. Nothing
+// here is a zone's: a new creature, item, loot row or quest is a row, not code.
+//
+//   ability   id name                                  abilities and auras, by content ID (#13286)
+//   creature  id name kind xp                          kind: the room's creature template
+//   dialogue  id npc point quest line                  who says it, where they stand, the quest it offers (0 none)
+//   item      id name slot                             slot 0 not worn, else 1 to 10: the record's slots, in order
+//   loot      id creature item weight                  a creature's drops: weights add up to 100; item 0 is nothing
+//   point     id name x z r                            a named place: centimetres, and its radius
+//   quest     id name
+//   reward    id quest item coin xp                    paid in ID order once a quest's steps are done
+//   spawn     id creature point count
+//   step      id quest creature point item talk count  one objective, in ID order: kill `count` of a creature,
+//                                                      reach a point, bring `count` of an item, or talk
+//
+// A quest's stage (the character record's, everglade/model/character.coax) counts what is done:
+// 0 not taken; 1 taken; each unit of a step done adds one (a kill, an item brought, a point reached,
+// a talk); then each reward paid adds one. The last stage is 1 + the steps' counts + the rewards.
+//   coax/bin/coax test everglade/model/content.coax --library
+//   coax/bin/coax mutate everglade/model/content.coax --library --root-only
+#authority;
+#load "../../aethyr/content/tables.coax";
+#load "content-checks.coax";   // the checks' fixture and helpers
+
+EC_TABLES :: 10;
+EC_ABILITY :: 0; EC_CREATURE :: 1; EC_DIALOGUE :: 2; EC_ITEM :: 3; EC_LOOT :: 4; EC_POINT :: 5; EC_QUEST :: 6; EC_REWARD :: 7; EC_SPAWN :: 8; EC_STEP :: 9;
+EC_HEAD :: [EC_TABLES] string.[
+  "table ability id name:text",
+  "table creature id name:text kind:int xp:int",
+  "table dialogue id npc:text point:ref.point quest:opt.quest line:text",
+  "table item id name:text slot:int",
+  "table loot id creature:ref.creature item:opt.item weight:int",
+  "table point id name:text x:cm z:cm r:int",
+  "table quest id name:text",
+  "table reward id quest:ref.quest item:opt.item coin:int xp:int",
+  "table spawn id creature:ref.creature point:ref.point count:int",
+  "table step id quest:ref.quest creature:opt.creature point:opt.point item:opt.item talk:opt.dialogue count:int"];
+EC_NAME :: 1;
+EC_CREATURE_KIND :: 2; EC_CREATURE_XP :: 3;
+EC_DIALOGUE_POINT :: 2; EC_DIALOGUE_QUEST :: 3; EC_DIALOGUE_LINE :: 4;
+EC_ITEM_SLOT :: 2;
+EC_LOOT_CREATURE :: 1; EC_LOOT_ITEM :: 2; EC_LOOT_WEIGHT :: 3;
+EC_POINT_X :: 2; EC_POINT_Z :: 3; EC_POINT_R :: 4;
+EC_REWARD_QUEST :: 1; EC_REWARD_ITEM :: 2; EC_REWARD_COIN :: 3; EC_REWARD_XP :: 4;
+EC_SPAWN_CREATURE :: 1; EC_SPAWN_POINT :: 2; EC_SPAWN_COUNT :: 3;
+EC_STEP_QUEST :: 1; EC_STEP_CREATURE :: 2; EC_STEP_POINT :: 3; EC_STEP_ITEM :: 4; EC_STEP_TALK :: 5; EC_STEP_COUNT :: 6;
+EC_LOOT_WHOLE :: 100;    // a creature's loot weights add up to this
+EC_SLOTS :: 10;          // the record's equipment slots (CHAR_WORN)
+EC_STAGE_MAX :: 255;     // the record's highest stage (CHAR_STAGE_MAX)
+
+// What a quest asks next.
+EQ_NONE :: 0;     // no such quest or stage
+EQ_TAKE :: 1;     // talk to the dialogue that offers it
+EQ_KILL :: 2;     // a creature
+EQ_REACH :: 3;    // a point
+EQ_BRING :: 4;    // an item, given up
+EQ_TALK :: 5;     // a dialogue
+EQ_REWARD :: 6;   // the server pays reward row `row`
+EQ_DONE :: 7;
+EqNext :: struct { kind: int; target: int; row: int; }
+
+// How many of a quest's step units there are, and how many rewards.
+ec_total :: (d: [] ContentDoc, quest: int) -> int #effects(all) {
+  n := 0;
+  for r: 0..<ct_rows(d, EC_STEP) { if ct_get(d, EC_STEP, r, EC_STEP_QUEST) == quest { n += ct_get(d, EC_STEP, r, EC_STEP_COUNT); } }
+  return n;
+}
+ec_rewards :: (d: [] ContentDoc, quest: int) -> int #effects(all) {
+  n := 0;
+  for r: 0..<ct_rows(d, EC_REWARD) { if ct_get(d, EC_REWARD, r, EC_REWARD_QUEST) == quest { n += 1; } }
+  return n;
+}
+// Whether d is Everglade's content: a document that read, with exactly Everglade's tables and
+// columns; loot weights that add up to 100 for each creature; an item slot the record has; each step
+// one objective with a count (one for a point or a talk); each quest with a step, and stages the
+// record can hold.
+ec_ok :: (d: [] ContentDoc) -> bool #effects(all) {
+  if !d[0].ok || d[0].t_n != EC_TABLES { return false; }
+  for t: 0..<EC_TABLES {
+    hb: [320] u8;
+    if cast(string) hb[0..<ct_put_table(d, t, hb[..], 0)] != EC_HEAD[t] { return false; }
+  }
+  if d[0].t[EC_LOOT].sums != 1 || d[0].t[EC_LOOT].sum_by[0] != EC_LOOT_CREATURE || d[0].t[EC_LOOT].sum_is[0] != EC_LOOT_WHOLE { return false; }
+  for r: 0..<ct_rows(d, EC_ITEM) { if ct_get(d, EC_ITEM, r, EC_ITEM_SLOT) > EC_SLOTS { return false; } }
+  for r: 0..<ct_rows(d, EC_STEP) {
+    count := ct_get(d, EC_STEP, r, EC_STEP_COUNT); targets := 0;
+    for k: EC_STEP_CREATURE..<EC_STEP_COUNT { if ct_get(d, EC_STEP, r, k) != 0 { targets += 1; } }
+    once := ct_get(d, EC_STEP, r, EC_STEP_POINT) != 0 || ct_get(d, EC_STEP, r, EC_STEP_TALK) != 0;
+    if targets != 1 || count < 1 || (once && count != 1) { return false; }
+  }
+  for r: 0..<ct_rows(d, EC_QUEST) {
+    quest := ct_get(d, EC_QUEST, r, 0); total := ec_total(d, quest);
+    if total < 1 || total + ec_rewards(d, quest) >= EC_STAGE_MAX { return false; }
+  }
+  return true;
+}
+
+// The creature of the room's template `kind` (the first, by ID), or 0.
+ec_creature :: (d: [] ContentDoc, kind: int) -> int #effects(all) {
+  for r: 0..<ct_rows(d, EC_CREATURE) { if ct_get(d, EC_CREATURE, r, EC_CREATURE_KIND) == kind { return ct_get(d, EC_CREATURE, r, 0); } }
+  return 0;
+}
+// An item's slot in the record (0 to 9), or -1 for an item that is not worn, or no item.
+ec_slot :: (d: [] ContentDoc, item: int) -> int #effects(all) { return ct_get(d, EC_ITEM, ct_find(d, EC_ITEM, item), EC_ITEM_SLOT) - 1; }
+// What a creature drops for a roll of 0 to 99: an item's content ID, or 0 for nothing. Its loot
+// rows, in ID order, each take `weight` rolls.
+ec_drop :: (d: [] ContentDoc, creature: int, roll: int) -> int #effects(all) {
+  at := 0;
+  if roll < 0 { return 0; }
+  for r: 0..<ct_rows(d, EC_LOOT) {
+    if ct_get(d, EC_LOOT, r, EC_LOOT_CREATURE) != creature { continue; }
+    at += ct_get(d, EC_LOOT, r, EC_LOOT_WEIGHT);
+    if roll < at { return ct_get(d, EC_LOOT, r, EC_LOOT_ITEM); }
+  }
+  return 0;
+}
+
+// What quest asks at stage: who offers it (0), the step its next unit belongs to, the next reward,
+// or done.
+eq_next :: (d: [] ContentDoc, quest: int, stage: int) -> EqNext #effects(all) {
+  if ct_find(d, EC_QUEST, quest) < 0 || stage < 0 { return EqNext.{}; }
+  if stage == 0 {
+    for r: 0..<ct_rows(d, EC_DIALOGUE) { if ct_get(d, EC_DIALOGUE, r, EC_DIALOGUE_QUEST) == quest { return EqNext.{kind = EQ_TAKE, target = ct_get(d, EC_DIALOGUE, r, 0), row = r}; } }
+    return EqNext.{};
+  }
+  unit := stage - 1;
+  for r: 0..<ct_rows(d, EC_STEP) {
+    if ct_get(d, EC_STEP, r, EC_STEP_QUEST) != quest { continue; }
+    if unit < ct_get(d, EC_STEP, r, EC_STEP_COUNT) {
+      // one of the four is the step's target; the others are 0 (ec_ok)
+      point := ct_get(d, EC_STEP, r, EC_STEP_POINT); item := ct_get(d, EC_STEP, r, EC_STEP_ITEM); talk := ct_get(d, EC_STEP, r, EC_STEP_TALK);
+      kind := EQ_KILL;
+      if point != 0 { kind = EQ_REACH; }
+      if item != 0 { kind = EQ_BRING; }
+      if talk != 0 { kind = EQ_TALK; }
+      return EqNext.{kind = kind, target = ct_get(d, EC_STEP, r, EC_STEP_CREATURE) + point + item + talk, row = r};
+    }
+    unit -= ct_get(d, EC_STEP, r, EC_STEP_COUNT);
+  }
+  for r: 0..<ct_rows(d, EC_REWARD) {
+    if ct_get(d, EC_REWARD, r, EC_REWARD_QUEST) != quest { continue; }
+    if unit == 0 { return EqNext.{kind = EQ_REWARD, row = r}; }
+    unit -= 1;
+  }
+  return EqNext.{kind = ifx unit == 0 then EQ_DONE else EQ_NONE};
+}
+// Whether what happened (a kill of creature `target`, a point reached, an item brought, a talk, or
+// the talk that takes the quest) is what quest asks at stage: the stage then rises by one.
+eq_advances :: (d: [] ContentDoc, quest: int, stage: int, kind: int, target: int) -> bool #effects(all) {
+  n := eq_next(d, quest, stage);
+  return kind >= EQ_TAKE && kind <= EQ_TALK && n.kind == kind && n.target == target;
+}
+
+// ---- checks
+
+#test "everglade content: the shipped tables are Everglade's, and only these tables and columns are" {
+  d: [1] ContentDoc; o: [CT_BODY] u8;
+  #assert ct_read(d[..], EC_FIXTURE) && ec_ok(d[..]) && d[0].rev == 1;
+  d[0].ok = false; #assert !ec_ok(d[..]); d[0].ok = true; #assert ec_ok(d[..]);
+  // another table, a table missing, a column renamed or of another kind
+  with_zone := ec_swap("1|1|1|0|0|0|4\n2|1|0|0|1|0|2\n3|1|0|0|0|1|1\n4|2|0|3|0|0|1\n5|2|2|0|0|0|2\n6|2|0|0|0|2|1\n", "1|1|1|0|0|0|4\n2|1|0|0|1|0|2\n3|1|0|0|0|1|1\n4|2|0|3|0|0|1\n5|2|2|0|0|0|2\n6|2|0|0|0|2|1\ntable zone id\n", o[..]);
+  #assert ec_reads(with_zone) && !ec_takes(with_zone);
+  no_ability := ec_swap("table ability id name:text\n", "", o[..]); #assert ec_reads(no_ability) && !ec_takes(no_ability);
+  for t: 0..<EC_TABLES {
+    // each table's header, a column added: still a document, not Everglade's
+    hb: [400] u8; n := ct_put(hb[..], 0, EC_HEAD[t]); n = ct_put(hb[..], n, " extra:opt.item");
+    more := ec_swap(EC_HEAD[t], cast(string) hb[0..<n], o[..]);
+    if t == EC_STEP { continue; }   // a ninth column is no table
+    #assert more.count > 0 && !ec_takes(more);
+  }
+  renamed := ec_swap("table quest id name:text", "table quest id title:text", o[..]); #assert ec_reads(renamed) && !ec_takes(renamed);
+  empty: [1] ContentDoc; #assert !ec_ok(empty[..]);
+}
+#test "everglade content: loot adds up to 100 for each creature, an item's slot is the record's, a step is one objective" {
+  o: [CT_BODY] u8;
+  no_sum := ec_swap("sum weight by creature 100\n", "", o[..]); #assert ec_reads(no_sum) && !ec_takes(no_sum);
+  half := ec_swap("sum weight by creature 100\n1|1|1|60\n2|1|0|40\n3|2|2|50\n4|2|0|50", "sum weight by creature 50\n1|1|1|10\n2|1|0|40\n3|2|2|25\n4|2|0|25", o[..]); #assert ec_reads(half) && !ec_takes(half);
+  by_id := ec_swap("sum weight by creature 100\n1|1|1|60\n2|1|0|40\n3|2|2|50\n4|2|0|50", "sum weight by id 100\n1|1|1|100\n2|1|0|100\n3|2|2|100\n4|2|0|100", o[..]); #assert ec_reads(by_id) && !ec_takes(by_id);
+  two := ec_swap("sum weight by creature 100\n", "sum weight by creature 100\nsum weight by creature 100\n", o[..]); #assert ec_reads(two) && !ec_takes(two);
+  #assert ec_takes(ec_swap("4|Traveller's ring|7", "4|Traveller's ring|10", o[..])) && !ec_takes(ec_swap("4|Traveller's ring|7", "4|Traveller's ring|11", o[..])) && ec_reads(ec_swap("4|Traveller's ring|7", "4|Traveller's ring|11", o[..]));
+  // a step: one target, a count, and one only for a point or a talk
+  #assert !ec_takes(ec_swap("1|1|1|0|0|0|4", "1|1|0|0|0|0|4", o[..])) && !ec_takes(ec_swap("1|1|1|0|0|0|4", "1|1|1|1|0|0|4", o[..])) && !ec_takes(ec_swap("1|1|1|0|0|0|4", "1|1|1|0|1|0|4", o[..]));
+  #assert !ec_takes(ec_swap("1|1|1|0|0|0|4", "1|1|1|0|0|1|4", o[..])) && !ec_takes(ec_swap("1|1|1|0|0|0|4", "1|1|1|0|0|0|0", o[..])) && ec_takes(ec_swap("1|1|1|0|0|0|4", "1|1|1|0|0|0|1", o[..]));
+  #assert !ec_takes(ec_swap("4|2|0|3|0|0|1", "4|2|0|3|0|0|2", o[..])) && !ec_takes(ec_swap("3|1|0|0|0|1|1", "3|1|0|0|0|1|2", o[..])) && ec_takes(ec_swap("2|1|0|0|1|0|2", "2|1|0|0|1|0|1", o[..]));
+  #assert ec_reads(ec_swap("4|2|0|3|0|0|1", "4|2|0|3|0|0|2", o[..])) && ec_reads(ec_swap("1|1|1|0|0|0|4", "1|1|0|0|0|0|4", o[..]));
+  // a quest: a step at least, and no more stages than the record holds (1 taken + 252 units + 1 reward + done)
+  #assert !ec_takes(ec_swap("2|The goblin camp\n", "2|The goblin camp\n3|No steps\n", o[..])) && ec_reads(ec_swap("2|The goblin camp\n", "2|The goblin camp\n3|No steps\n", o[..]));
+  #assert ec_takes(ec_swap("1|1|1|0|0|0|4", "1|1|1|0|0|0|250", o[..])) && !ec_takes(ec_swap("1|1|1|0|0|0|4", "1|1|1|0|0|0|251", o[..]));
+  d: [1] ContentDoc; #assert ct_read(d[..], ec_swap("1|1|1|0|0|0|4", "1|1|1|0|0|0|250", o[..])) && ec_total(d[..], 1) == 253 && ec_rewards(d[..], 1) == 1 && eq_next(d[..], 1, 255).kind == EQ_DONE && eq_next(d[..], 1, 254).kind == EQ_REWARD;
+}
+#test "everglade content: a creature's template, an item's slot and what a roll drops" {
+  d: [1] ContentDoc; #assert ct_read(d[..], EC_FIXTURE);
+  #assert ec_creature(d[..], 0) == 1 && ec_creature(d[..], 1) == 2 && ec_creature(d[..], 2) == 0 && ec_creature(d[..], -1) == 0;
+  #assert ec_slot(d[..], 3) == 1 && ec_slot(d[..], 4) == 6 && ec_slot(d[..], 1) == -1 && ec_slot(d[..], 9) == -1 && ec_slot(d[..], 0) == -1;
+  // a Wolf: 60 rolls a pelt, 40 nothing; a Goblin: 50 an ear; no creature, nothing; a roll outside 0 to 99, nothing
+  #assert ec_drop(d[..], 1, 0) == 1 && ec_drop(d[..], 1, 59) == 1 && ec_drop(d[..], 1, 60) == 0 && ec_drop(d[..], 1, 99) == 0 && ec_drop(d[..], 1, 100) == 0 && ec_drop(d[..], 1, -1) == 0;
+  #assert ec_drop(d[..], 2, 0) == 2 && ec_drop(d[..], 2, 49) == 2 && ec_drop(d[..], 2, 50) == 0 && ec_drop(d[..], 3, 0) == 0 && ec_drop(d[..], 0, 0) == 0;
+  o: [CT_BODY] u8; e: [1] ContentDoc;
+  #assert ct_read(e[..], ec_swap("1|1|1|60\n2|1|0|40", "1|1|0|40\n2|1|1|60", o[..])) && ec_drop(e[..], 1, 39) == 0 && ec_drop(e[..], 1, 40) == 1 && ec_drop(e[..], 1, 99) == 1 && ec_drop(e[..], 1, -1) == 0;
+  #assert ec_total(d[..], 1) == 7 && ec_total(d[..], 2) == 4 && ec_total(d[..], 3) == 0 && ec_rewards(d[..], 1) == 1 && ec_rewards(d[..], 3) == 0;
+}
+#test "everglade quests: each stage asks one thing, in order, and only that advances it" {
+  d: [1] ContentDoc; #assert ct_read(d[..], EC_FIXTURE);
+  // Thin the pack: taken from the Warden's first line, 4 Wolves, 2 pelts, the Warden again, one reward
+  n := eq_next(d[..], 1, 0); #assert n.kind == EQ_TAKE && n.target == 1 && n.row == 0;
+  for s: 1..<5 { n = eq_next(d[..], 1, s); #assert n.kind == EQ_KILL && n.target == 1 && n.row == 0; }
+  for s: 5..<7 { n = eq_next(d[..], 1, s); #assert n.kind == EQ_BRING && n.target == 1 && n.row == 1; }
+  n = eq_next(d[..], 1, 7); #assert n.kind == EQ_TALK && n.target == 1 && n.row == 2;
+  n = eq_next(d[..], 1, 8); #assert n.kind == EQ_REWARD && n.row == 0 && n.target == 0;
+  #assert eq_next(d[..], 1, 9).kind == EQ_DONE && eq_next(d[..], 1, 10).kind == EQ_NONE && eq_next(d[..], 1, -1).kind == EQ_NONE && eq_next(d[..], 3, 0).kind == EQ_NONE && eq_next(d[..], 0, 1).kind == EQ_NONE;
+  // The goblin camp: its own dialogue, the camp reached, 2 Goblins, the Warden's second line, its reward (row 1)
+  n = eq_next(d[..], 2, 0); #assert n.kind == EQ_TAKE && n.target == 2 && n.row == 1;
+  n = eq_next(d[..], 2, 1); #assert n.kind == EQ_REACH && n.target == 3 && n.row == 3;
+  n = eq_next(d[..], 2, 2); #assert n.kind == EQ_KILL && n.target == 2 && n.row == 4; n = eq_next(d[..], 2, 3); #assert n.kind == EQ_KILL && n.row == 4;
+  n = eq_next(d[..], 2, 4); #assert n.kind == EQ_TALK && n.target == 2 && n.row == 5;
+  n = eq_next(d[..], 2, 5); #assert n.kind == EQ_REWARD && n.row == 1; #assert eq_next(d[..], 2, 6).kind == EQ_DONE && eq_next(d[..], 2, 7).kind == EQ_NONE;
+  // only what the stage asks advances it
+  #assert eq_advances(d[..], 1, 0, EQ_TAKE, 1) && !eq_advances(d[..], 1, 0, EQ_TAKE, 2) && !eq_advances(d[..], 1, 0, EQ_TALK, 1) && !eq_advances(d[..], 1, 0, EQ_KILL, 1);
+  #assert eq_advances(d[..], 1, 1, EQ_KILL, 1) && !eq_advances(d[..], 1, 1, EQ_KILL, 2) && !eq_advances(d[..], 1, 1, EQ_BRING, 1) && !eq_advances(d[..], 1, 1, EQ_TAKE, 1);
+  #assert eq_advances(d[..], 1, 5, EQ_BRING, 1) && !eq_advances(d[..], 1, 5, EQ_KILL, 1) && eq_advances(d[..], 1, 7, EQ_TALK, 1) && !eq_advances(d[..], 1, 7, EQ_TALK, 2);
+  #assert eq_advances(d[..], 2, 1, EQ_REACH, 3) && !eq_advances(d[..], 2, 1, EQ_REACH, 2) && !eq_advances(d[..], 2, 1, EQ_KILL, 3);
+  // a reward and the end are the server's: nothing that happens advances them, and no quest has stage -1
+  #assert !eq_advances(d[..], 1, 8, EQ_REWARD, 0) && !eq_advances(d[..], 1, 9, EQ_DONE, 0) && !eq_advances(d[..], 1, 10, EQ_NONE, 0) && !eq_advances(d[..], 3, 0, EQ_NONE, 0);
+  // a quest no dialogue offers can't be taken; one with no reward is done when its steps are
+  o: [CT_BODY] u8; e: [1] ContentDoc;
+  #assert ct_read(e[..], ec_swap("2|Warden|1|2|", "2|Warden|1|0|", o[..])) && eq_next(e[..], 2, 0).kind == EQ_NONE && eq_next(e[..], 1, 0).kind == EQ_TAKE;
+  #assert ct_read(e[..], ec_swap("2|2|4|50|150\n", "", o[..])) && eq_next(e[..], 2, 5).kind == EQ_DONE && eq_next(e[..], 2, 4).kind == EQ_TALK && eq_next(e[..], 2, 6).kind == EQ_NONE;
+  // two rewards are paid one stage each, in ID order
+  #assert ct_read(e[..], ec_swap("2|2|4|50|150\n", "2|2|4|50|150\n3|1|0|5|0\n", o[..])) && ec_ok(e[..]);
+  n = eq_next(e[..], 1, 8); #assert n.kind == EQ_REWARD && n.row == 0; n = eq_next(e[..], 1, 9); #assert n.kind == EQ_REWARD && n.row == 2;
+  #assert ec_rewards(e[..], 1) == 2 && ec_rewards(e[..], 2) == 1;
+  #assert eq_next(e[..], 1, 10).kind == EQ_DONE && eq_next(e[..], 1, 11).kind == EQ_NONE;
+}
+#test "everglade content: each rule reads its own table, to its last row" {
+  o: [CT_BODY] u8; p: [CT_BODY] u8; q: [CT_BODY] u8; d: [1] ContentDoc;
+  // an item's slot: the first row's and the last row's, with fewer loot rows than items
+  #assert !ec_takes(ec_swap("1|Wolf pelt|0", "1|Wolf pelt|11", o[..]));
+  less_loot := ec_swap("1|1|1|60\n2|1|0|40\n", "1|1|1|100\n", o[..]);
+  #assert ec_takes(less_loot) && !ec_takes(ec_sub(less_loot, "4|Traveller's ring|7", "4|Traveller's ring|11", p[..]));
+  // a quest's ID is its own, not a reward's; a quest of one unit is a quest
+  #assert ec_takes(ec_swap("1|1|3|25|100\n2|2|4|50|150", "5|1|3|25|100\n6|2|4|50|150", o[..]));
+  one := ec_sub(ec_swap("2|The goblin camp\n", "2|The goblin camp\n3|One step\n", o[..]), "6|2|0|0|0|2|1\n", "6|2|0|0|0|2|1\n7|3|0|1|0|0|1\n", p[..]);
+  #assert ec_takes(one) && ct_read(d[..], one) && ec_total(d[..], 3) == 1 && eq_next(d[..], 3, 1).kind == EQ_REACH && eq_next(d[..], 3, 2).kind == EQ_DONE && eq_next(d[..], 3, 0).kind == EQ_NONE;
+  // a third creature, an item no loot row shares an ID with, a drop on a creature's last loot row
+  #assert ct_read(d[..], ec_swap("2|Goblin Warrior|1|50\n", "2|Goblin Warrior|1|50\n7|Bear|2|10\n", o[..])) && ec_ok(d[..]) && ec_creature(d[..], 2) == 7 && ec_creature(d[..], 1) == 2;
+  #assert ct_read(d[..], ec_swap("4|Traveller's ring|7\n", "4|Traveller's ring|7\n9|Hat|1\n", o[..])) && ec_ok(d[..]) && ec_slot(d[..], 9) == 0 && ec_slot(d[..], 4) == 6;
+  #assert ct_read(d[..], ec_swap("3|2|2|50\n4|2|0|50", "3|2|0|50\n4|2|2|50", o[..])) && ec_drop(d[..], 2, 49) == 0 && ec_drop(d[..], 2, 50) == 2 && ec_drop(d[..], 2, 99) == 2;
+  // a quest offered by the fifth dialogue (more dialogues than items), whose ID is no item's
+  five := ec_sub(ec_sub(ec_swap("2|Warden|1|2|Goblins have made a camp past the far woods. Find it and drive them off.\n", "2|Warden|1|2|Goblins have made a camp past the far woods. Find it and drive them off.\n8|Smith|1|0|a\n9|Smith|1|0|b\n10|Smith|1|3|c\n", o[..]),
+    "2|The goblin camp\n", "2|The goblin camp\n3|One step\n", p[..]), "6|2|0|0|0|2|1\n", "6|2|0|0|0|2|1\n7|3|0|0|0|10|1\n", q[..]);
+  #assert ct_read(d[..], five) && ec_ok(d[..]);
+  n := eq_next(d[..], 3, 0); #assert n.kind == EQ_TAKE && n.target == 10 && n.row == 4;
+  n = eq_next(d[..], 3, 1); #assert n.kind == EQ_TALK && n.target == 10 && n.row == 6 && eq_advances(d[..], 3, 1, EQ_TALK, 10) && !eq_advances(d[..], 3, 1, EQ_TALK, 1);
+}

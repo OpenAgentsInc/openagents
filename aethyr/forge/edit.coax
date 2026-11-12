@@ -104,7 +104,7 @@ forge_same_shape :: (p: ForgeShape, q: ForgeShape) -> bool {
 }
 
 // A slot's name: one of its kinds, a colon, and a lowercase name ("row:0", "lore:old-mara").
-FORGE_SLOT_KINDS :: [7] string.["row", "feature", "tool", "set", "lore", "quest", "place"];
+FORGE_SLOT_KINDS :: [8] string.["row", "feature", "tool", "set", "lore", "quest", "place", "table"];   // "table": content-edit.coax's
 forge_slot_key_ok :: (key: string) -> bool {
   if key.count > FORGE_SLOT_KEY { return false; }
   colon := 0; while colon < key.count && key[colon] != ':' { colon += 1; }

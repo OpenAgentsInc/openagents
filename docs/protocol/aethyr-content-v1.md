@@ -1,0 +1,120 @@
+# Content tables v1 (`aethyr.content.v1`)
+
+A game's data as versioned tables of rows, in one text document. A room loads
+the document at start, and Aethyrforge edits it. Tracked in GitHub #13294
+(AAA P4.5).
+
+- Schema and fixtures: [`proto/aethyr/content-v1.json`](../../proto/aethyr/content-v1.json)
+- Codec and validator: `aethyr/content/tables.coax` (`#authority`)
+- Everglade's tables: `everglade/content/everglade.content`, bound by
+  `everglade/model/content.coax` (`#authority`)
+- Editor: `aethyr/forge/content-edit.coax`, on Aethyrforge's edit log
+
+## The document
+
+```text
+aethyr.content.v1 NAME REV
+reach N
+table NAME id COL:KIND ...
+sum COL by COL N
+ID|CELL|CELL...
+```
+
+| Line | Meaning |
+| --- | --- |
+| `aethyr.content.v1 NAME REV` | The document's name and its revision, 1 and up |
+| `reach N` | How far from the middle a place may be, in centimetres |
+| `table NAME id COL:KIND ...` | A table. Its first column is always the row's ID |
+| `sum COL by COL N` | A rule of the table above: for each value of the second column, the first column's cells add up to `N` |
+| `ID\|CELL\|...` | A row of the table above |
+
+A column's kind:
+
+| Kind | Cell |
+| --- | --- |
+| `int` | A whole number, 0 to 2147483647 |
+| `text` | One line of text with no bar (`\|`) and no control byte |
+| `cm` | A place in centimetres, within the reach either way |
+| `ref.TABLE` | The ID of a row of `TABLE` |
+| `opt.TABLE` | The ID of a row of `TABLE`, or 0 for none |
+
+## One form
+
+A document has exactly one form:
+
+- Tables stand in ascending order by name. Rows stand in ascending order by ID.
+- Numbers have no leading zeros.
+- Every line ends in one newline.
+
+`ct_read` writes what it read and compares the bytes, so a document that reads
+is the document a writer writes. A change of content is a change of bytes, and
+a regenerated file is byte-identical.
+
+## What the validator refuses
+
+- A dangling ID: a `ref` or `opt` cell that names no row.
+- A place out of reach: a `cm` cell past the document's reach. This is how a
+  spawn that can't be reached is refused.
+- A sum that is wrong: a group whose cells don't add up to the rule's `N`. This
+  is how a loot table that sums wrong is refused.
+- Any other bytes than the document's one form.
+
+## Limits
+
+| Limit | Value |
+| --- | --- |
+| Document | 65,536 bytes |
+| Tables | 16 |
+| Columns in a table, with its ID | 8 |
+| Rows in a document | 1,024 |
+| Text cells in a document | 32,768 bytes |
+| Sum rules in a table | 4 |
+| A name | 15 bytes: a lowercase letter, then lowercase letters, digits and underscores |
+
+A document past a limit doesn't read.
+
+## Everglade's tables
+
+`everglade/model/content.coax` names the tables Everglade needs and refuses a
+document with other tables or columns.
+
+| Table | Columns | Meaning |
+| --- | --- | --- |
+| `ability` | `name` | Abilities and auras, by content ID (#13286) |
+| `creature` | `name`, `kind`, `xp` | `kind` is the room's creature template |
+| `dialogue` | `npc`, `point`, `quest`, `line` | Who says the line, where they stand, and the quest it offers (0 for none) |
+| `item` | `name`, `slot` | `slot` is 0 for an item that isn't worn, else 1 to 10: the character record's slots, in order |
+| `loot` | `creature`, `item`, `weight` | A creature's drops. Weights add up to 100 for each creature. Item 0 is nothing |
+| `point` | `name`, `x`, `z`, `r` | A named place and its radius, in centimetres |
+| `quest` | `name` | A quest |
+| `reward` | `quest`, `item`, `coin`, `xp` | Paid in ID order once a quest's steps are done |
+| `spawn` | `creature`, `point`, `count` | Where a creature appears |
+| `step` | `quest`, `creature`, `point`, `item`, `talk`, `count` | One objective, in ID order: kill `count` of a creature, reach a point, bring `count` of an item, or talk |
+
+Everglade also refuses an item slot the record doesn't have, a step with no
+target or more than one, a quest with no step, and a quest with more stages
+than the record holds (255).
+
+## Edit the tables
+
+Each edit is one step on Aethyrforge's edit log, with undo and redo. The file is
+written at its next revision only when every table still holds its rules.
+
+```sh
+coax/web/tool.sh aethyr/tools/content-edit.coax everglade/content/everglade.content \
+  row creature '3|Bear|0|450' \
+  row loot '5|3|0|100' \
+  row spawn '3|3|2|2'
+coax/web/tool.sh everglade/model/tools/content-check.coax everglade/content/everglade.content
+```
+
+| Edit | Meaning |
+| --- | --- |
+| `row TABLE 'ID\|CELL\|...'` | Add a row, or change the row with that ID |
+| `drop TABLE ID` | Take a row away |
+| `table NAME 'id COL:KIND ...;sum COL by COL N'` | Add a table, or change its columns |
+
+## Versions and migration
+
+A change to the document's lines or kinds is a new id (`aethyr.content.v2`),
+never an edit in place. A reader refuses an id it doesn't know.

@@ -1,0 +1,47 @@
+{
+  "profile": "aethyr-content-v1",
+  "id": "aethyr.content.v1",
+  "version": 1,
+  "title": "Aethyr content tables v1",
+  "check": "coax/web/tool.sh aethyr/tools/content-profile.coax proto/aethyr/content-v1.json",
+  "spec": "docs/protocol/aethyr-content-v1.md",
+  "lines": {
+    "1": "aethyr.content.v1 NAME REV",
+    "2": "reach N",
+    "table": "table NAME id COL:KIND ...  (KIND: int, text, cm, ref.TABLE, opt.TABLE)",
+    "sum": "sum COL by COL N",
+    "row": "ID|CELL|..."
+  },
+  "limits": {
+    "bytes": 65536,
+    "tables": 16,
+    "columns": 8,
+    "rows": 1024,
+    "text_bytes": 32768,
+    "sums_per_table": 4,
+    "name_bytes": 15,
+    "reach_max": 10000000,
+    "int_max": 2147483647
+  },
+  "fixtures": [
+    {
+      "name": "demo",
+      "wire": "aethyr.content.v1 demo 7\nreach 4000\ntable creature id name:text xp:int\n1|Wolf|50\n2|Goblin Warrior|50\ntable item id name:text slot:int\n1|Wolf pelt|0\n5|Short sword|8\ntable loot id creature:ref.creature item:opt.item weight:int\nsum weight by creature 100\n1|1|1|60\n2|1|0|40\n3|2|5|100\ntable point id name:text x:cm z:cm\n1|Old oak|-1200|350\ntable spawn id creature:ref.creature point:ref.point count:int\n1|1|1|3\n"
+    },
+    {
+      "name": "everglade revision 1",
+      "wire": "aethyr.content.v1 everglade 1\nreach 100000\ntable ability id name:text\ntable creature id name:text kind:int xp:int\n1|Wolf|0|50\n2|Goblin Warrior|1|50\ntable dialogue id npc:text point:ref.point quest:opt.quest line:text\n1|Warden|1|1|The wolves grow bold on the south road. Thin the pack and bring me their pelts.\n2|Warden|1|2|Goblins have made a camp past the far woods. Find it and drive them off.\ntable item id name:text slot:int\n1|Wolf pelt|0\n2|Goblin ear|0\n3|Warden's cloak|2\n4|Traveller's ring|7\ntable loot id creature:ref.creature item:opt.item weight:int\nsum weight by creature 100\n1|1|1|60\n2|1|0|40\n3|2|2|50\n4|2|0|50\ntable point id name:text x:cm z:cm r:int\n1|Glade|0|0|6000\n2|Wolf woods|0|-17500|6000\n3|Goblin camp|0|-45000|8000\ntable quest id name:text\n1|Thin the pack\n2|The goblin camp\ntable reward id quest:ref.quest item:opt.item coin:int xp:int\n1|1|3|25|100\n2|2|4|50|150\ntable spawn id creature:ref.creature point:ref.point count:int\n1|1|2|8\n2|2|3|4\ntable step id quest:ref.quest creature:opt.creature point:opt.point item:opt.item talk:opt.dialogue count:int\n1|1|1|0|0|0|4\n2|1|0|0|1|0|2\n3|1|0|0|0|1|1\n4|2|0|3|0|0|1\n5|2|2|0|0|0|2\n6|2|0|0|0|2|1\n"
+    }
+  ],
+  "rejected": [
+    "aethyr.content.v1 demo 7\nreach 4000\ntable creature id name:text xp:int\n1|Wolf|50\n2|Goblin Warrior|50\ntable item id name:text slot:int\n1|Wolf pelt|0\n5|Short sword|8\ntable loot id creature:ref.creature item:opt.item weight:int\nsum weight by creature 100\n1|1|1|60\n2|1|0|40\n3|2|5|100\ntable point id name:text x:cm z:cm\n1|Old oak|-1200|350\ntable spawn id creature:ref.creature point:ref.point count:int\n1|1|1|3",
+    "aethyr.content.v1 demo 7\nreach 4000\ntable creature id name:text xp:int\n1|Wolf|50\n2|Goblin Warrior|50\ntable item id name:text slot:int\n1|Wolf pelt|0\n5|Short sword|8\ntable loot id creature:ref.creature item:opt.item weight:int\nsum weight by creature 100\n1|1|1|60\n2|1|0|40\n3|3|5|100\ntable point id name:text x:cm z:cm\n1|Old oak|-1200|350\ntable spawn id creature:ref.creature point:ref.point count:int\n1|1|1|3\n",
+    "aethyr.content.v1 demo 7\nreach 4000\ntable creature id name:text xp:int\n1|Wolf|50\n2|Goblin Warrior|50\ntable item id name:text slot:int\n1|Wolf pelt|0\n5|Short sword|8\ntable loot id creature:ref.creature item:opt.item weight:int\nsum weight by creature 100\n1|1|1|60\n2|1|0|40\n3|2|5|100\ntable point id name:text x:cm z:cm\n1|Old oak|-4001|350\ntable spawn id creature:ref.creature point:ref.point count:int\n1|1|1|3\n",
+    "aethyr.content.v1 demo 7\nreach 4000\ntable creature id name:text xp:int\n1|Wolf|50\n2|Goblin Warrior|50\ntable item id name:text slot:int\n1|Wolf pelt|0\n5|Short sword|8\ntable loot id creature:ref.creature item:opt.item weight:int\nsum weight by creature 100\n1|1|1|60\n2|1|0|41\n3|2|5|100\ntable point id name:text x:cm z:cm\n1|Old oak|-1200|350\ntable spawn id creature:ref.creature point:ref.point count:int\n1|1|1|3\n",
+    "aethyr.content.v1 demo 07\nreach 4000\ntable creature id name:text xp:int\n1|Wolf|50\n2|Goblin Warrior|50\ntable item id name:text slot:int\n1|Wolf pelt|0\n5|Short sword|8\ntable loot id creature:ref.creature item:opt.item weight:int\nsum weight by creature 100\n1|1|1|60\n2|1|0|40\n3|2|5|100\ntable point id name:text x:cm z:cm\n1|Old oak|-1200|350\ntable spawn id creature:ref.creature point:ref.point count:int\n1|1|1|3\n",
+    "aethyr.content.v1 demo 7\nreach 4000\ntable creature id name:text xp:int\n1|Wolf|50\n2|Goblin Warrior|50\ntable zitem id name:text slot:int\n1|Wolf pelt|0\n5|Short sword|8\ntable loot id creature:ref.creature item:opt.item weight:int\nsum weight by creature 100\n1|1|1|60\n2|1|0|40\n3|2|5|100\ntable point id name:text x:cm z:cm\n1|Old oak|-1200|350\ntable spawn id creature:ref.creature point:ref.point count:int\n1|1|1|3\n",
+    "aethyr.content.v1 demo 7\nreach 4000\ntable creature id name:text xp:int\n1|Wolf|50\n2|Goblin Warrior|50\ntable item id name:text slot:int\n1|Wolf pelt|0\n5|Short sword|8|9\ntable loot id creature:ref.creature item:opt.item weight:int\nsum weight by creature 100\n1|1|1|60\n2|1|0|40\n3|2|5|100\ntable point id name:text x:cm z:cm\n1|Old oak|-1200|350\ntable spawn id creature:ref.creature point:ref.point count:int\n1|1|1|3\n",
+    "aethyr.content.v2 demo 7\nreach 4000\ntable creature id name:text xp:int\n1|Wolf|50\n2|Goblin Warrior|50\ntable item id name:text slot:int\n1|Wolf pelt|0\n5|Short sword|8\ntable loot id creature:ref.creature item:opt.item weight:int\nsum weight by creature 100\n1|1|1|60\n2|1|0|40\n3|2|5|100\ntable point id name:text x:cm z:cm\n1|Old oak|-1200|350\ntable spawn id creature:ref.creature point:ref.point count:int\n1|1|1|3\n",
+    ""
+  ]
+}
