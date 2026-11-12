@@ -47,7 +47,7 @@ NW_LINE :: [NW_STATIONS] string.[
   "A relay says what it is and which NIPs it serves.",
   "The relay sends a challenge. You sign it.",
   "Your relay list says where to find you. Lose one, lose nothing.",
-  "Ask a relay to delete an event, or let one expire.",
+  "Ask a relay to delete an event, let one expire, or vanish from it.",
   "Two relays compare what they hold and send only what is missing.",
   "Count a nonce up until the ID starts with enough zeros.",
   "A message between two keys. The relay sees noise.",
@@ -94,7 +94,7 @@ NostrWalk :: struct {
 // The walk's stations and words: set on every call in, so a fresh state has them.
 nw_conf :: (nk: [] NostrWalk) -> [] LabWalk {
   w := nk[0].w[..];
-  if w[0].n == 0 { w[0].look = true; lab_conf(w, "NOSTR LAB", NW_INTRO, "NOSTR FROM SCRATCH: KEYS, EVENTS, RELAYS AND NIPS", "NOSTR FROM SCRATCH", NW_STATION_Z[..], NW_STATION_SIDE[..], NW_NAME[..], NW_LINE[..]); }
+  if w[0].n == 0 { w[0].look = true; lab_conf(w, "NOSTR LAB", NW_INTRO, "NOSTR FROM SCRATCH: KEYS, EVENTS, RELAYS AND NIPS", "NOSTR FROM SCRATCH", NW_STATION_Z[..], NW_STATION_SIDE[..], NW_NAME[..], NW_LINE[..]); for i: NW_OWN..<NW_STATIONS { w[0].big[i] = NW_CARD_BIG; } }
   return w;
 }
 
@@ -222,44 +222,46 @@ nw_tone :: (tone: int) -> LabRgb {
   return LAB_ICE;
 }
 NW_ROW_EVERY :: 0.45f32;   // seconds between one row starting and the next
+NW_CARD_BIG :: 1.45f32;    // a card's slab against the first four's: its letters are that much larger, to be read from the lane
 NW_ROW_TOP :: 2.805f32; NW_ROW_STEP :: 0.405f32; NW_ROW_LEFT :: 0.45f32; NW_VALUE_H :: 0.175f32; NW_LABEL_UP :: 0.22f32; NW_LABEL_H :: 0.15f32;   // the first row's value from the floor, a row's height, the rows' left edge, a value's letter height, its label above it and the label's letter height
 nw_rows_done :: (rows: int) -> f32 { return 0.3 + NW_ROW_EVERY * f32(rows) + 0.4; }
 nw_card :: (nk: [] NostrWalk, i: int, lit: f32) {
   w := nk[0].w[..]; x0 := lab_left(w, i); z := lab_face(w, i); t := lab_anim(w, i); now := lab_clock(w);
+  g := w[0].big[i]; wide := lab_wide(w, i);   // every length below is for a slab of LAB_PANEL_W, times g
   c := nk[0].card[i - NW_OWN..<i - NW_OWN + 1];
   if !c[0].ready {
     if c[0].stopped != 0 {
       b: [40] u8; n := lab_str(b[..], 0, "LESSON STOPPED AT STEP "); n = lab_int(b[..], n, c[0].stopped);
-      lab_say_mid(w, cast(string) b[0..<n], x0, z, LAB_PANEL_W * 0.5, 1.9, 0.22, LAB_RED, 1.2);
-    } else { lab_say_mid(w, "WORKING IT OUT", x0, z, LAB_PANEL_W * 0.5, 1.9, 0.22, LAB_DIM, 1.0); }
+      lab_say_mid(w, cast(string) b[0..<n], x0, z, wide * 0.5, 1.9 * g, 0.22 * g, LAB_RED, 1.2);
+    } else { lab_say_mid(w, "WORKING IT OUT", x0, z, wide * 0.5, 1.9 * g, 0.22 * g, LAB_DIM, 1.0); }
     return;
   }
   // the strip: the boxes, a beam between each two, a light running from the first to the last
-  nn := c[0].nodes; y := 3.4f32; hw := 0.66f32;
+  nn := c[0].nodes; y := 3.4 * g; hw := 0.66 * g;
   if nn > 0 {
-    span := LAB_PANEL_W / f32(nn);
+    span := wide / f32(nn);
     for k: 0..<nn {
       cx := x0 + span * (f32(k) + 0.5);
-      lab_face_z(w, cx, y, z + 0.01, hw, 0.17, lab_scale(LAB_CYAN, 0.12), 0.3 + 0.15 * lit, 1.2, 1);
-      lab_say_mid(w, c[0].node[k], x0, z + 0.01, span * (f32(k) + 0.5), y - 0.075, 0.15, LAB_ICE, 1.3);
-      if k + 1 < nn { lab_beam(w, lab_v(cx + hw + 0.04, y, z + 0.015), lab_v(cx + span - hw - 0.04, y, z + 0.015), 0.035, LAB_CYAN, 1.4, false); }
+      lab_face_z(w, cx, y, z + 0.01, hw, 0.17 * g, lab_scale(LAB_CYAN, 0.12), 0.3 + 0.15 * lit, 1.2, 1);
+      lab_say_mid(w, c[0].node[k], x0, z + 0.01, span * (f32(k) + 0.5), y - 0.075 * g, 0.15 * g, LAB_ICE, 1.3);
+      if k + 1 < nn { lab_beam(w, lab_v(cx + hw + 0.04, y, z + 0.015), lab_v(cx + span - hw - 0.04, y, z + 0.015), 0.035 * g, LAB_CYAN, 1.4, false); }
     }
     if nn > 1 {
       run := now * 0.45 - floor(now * 0.45); a := x0 + span * 0.5 + hw; e := x0 + span * (f32(nn) - 0.5) - hw;
-      lab_lamp(w, a + (e - a) * run, y, z + 0.02, 0.13, LAB_ORANGE, 2.2);
+      lab_lamp(w, a + (e - a) * run, y, z + 0.02, 0.13 * g, LAB_ORANGE, 2.2);
     }
   }
   // the rows: each a small label with its value under it, the value as large as 42 letters fit
   for k: 0..<c[0].rows {
     at := t - 0.3 - NW_ROW_EVERY * f32(k); if at <= 0 { break; }
-    v := NW_ROW_TOP - NW_ROW_STEP * f32(k); r := c[0].row[k];
-    lab_say(w, cast(string) r.label[0..<r.label_n], x0, z, NW_ROW_LEFT, v + NW_LABEL_UP, NW_LABEL_H, LAB_CYAN, 1.35);
-    lab_say(w, nw_typed(cast(string) r.text[0..<r.n], cast(int) (at * 110)), x0, z, NW_ROW_LEFT, v, NW_VALUE_H, nw_tone(r.tone), 1.25);
+    v := (NW_ROW_TOP - NW_ROW_STEP * f32(k)) * g; r := c[0].row[k];
+    lab_say(w, cast(string) r.label[0..<r.label_n], x0, z, NW_ROW_LEFT * g, v + NW_LABEL_UP * g, NW_LABEL_H * g, LAB_CYAN, 1.35);
+    lab_say(w, nw_typed(cast(string) r.text[0..<r.n], cast(int) (at * 110)), x0, z, NW_ROW_LEFT * g, v, NW_VALUE_H * g, nw_tone(r.tone), 1.25);
   }
   // what held, then what was refused
   done := nw_rows_done(c[0].rows);
-  if t > done { lab_say_mid(w, c[0].good, x0, z, LAB_PANEL_W * 0.5, 0.42, 0.21, LAB_GREEN, 1.4 + lit); }
-  if t > done + 0.9 && c[0].bad.count > 0 { lab_say_mid(w, c[0].bad, x0, z, LAB_PANEL_W * 0.5, 0.12, 0.19, LAB_RED, 1.3 + lit); }
+  if t > done { lab_say_mid(w, c[0].good, x0, z, wide * 0.5, 0.42 * g, 0.21 * g, LAB_GREEN, 1.4 + lit); }
+  if t > done + 0.9 && c[0].bad.count > 0 { lab_say_mid(w, c[0].bad, x0, z, wide * 0.5, 0.12 * g, 0.19 * g, LAB_RED, 1.3 + lit); }
 }
 
 // Which stations' faces are listed: the ones you can read from where you are. Every slab is listed.
@@ -334,6 +336,7 @@ nw_test_lab :: (nk: [] NostrWalk) {
 #test "nostr lab walk: the page stands a level, bare zone with its stations down the lane" #steps 2000000000 {
   nk: [1] NostrWalk; nw_test_lab(nk[..]); w := nk[0].w[..]; s := w[0].z[..];
   #assert w[0].on && s[0].creator[0].flat && s[0].bare && s[0].put_z == w[0].start_z;
+  #assert w[0].big[0] == 1 && w[0].big[NW_OWN] == NW_CARD_BIG && w[0].big[NW_STATIONS - 1] == NW_CARD_BIG && w[0].look;
   #assert w[0].n == NW_STATIONS && NW_STATIONS <= LAB_MAX && w[0].name[3] == "THE SIGNATURE" && w[0].name[NW_STATIONS - 1] == "NIP-PYLON" && w[0].title == "NOSTR LAB";
   for k: 1..<NW_STATIONS { #assert NW_STATION_Z[k] < NW_STATION_Z[k - 1] - 10; }   // each far enough on that you come to them in order (lab_at)
   nw_stand(nk[..]); p := w[0].z[0].creator[0].props[0];

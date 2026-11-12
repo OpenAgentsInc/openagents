@@ -77,8 +77,8 @@ nlr_same32 :: (a: [32] u8, b: [32] u8) -> bool { for i: 0..<32 { if a[i] != b[i]
 // What the lab relay holds: store.coax's store with room for six events, and store_delete.coax's
 // tombstones (what deletion requests have named).
 NlrRelay :: struct {
-  arena: [4096] u8; recs: [6] RsdRec; s: [1] RsdStore;
-  tombs: [6] NsdTomb; tb: [1] NsdTombs; work: [6] NsdTomb;
+  arena: [8192] u8; recs: [10] RsdRec; s: [1] RsdStore;
+  tombs: [10] NsdTomb; tb: [1] NsdTombs; work: [10] NsdTomb;
   scratch: [4096] u8;   // the ID preimage
 }
 nlr_relay_init :: (r: [] NlrRelay) {
@@ -461,7 +461,7 @@ nlr_card_two :: (c: [] NostrCard) -> bool {
   return nc_done(c, "ONE RELAY LOST, NOTE STILL READ", "A LIST WITH A BAD MARKER: REFUSED");
 }
 
-// ---- 4. NIP-09 and NIP-40: delete and expire ---------------------------------------------------
+// ---- 4. NIP-09, NIP-40 and NIP-62: delete, expire and vanish -----------------------------------
 
 NLR_EXPIRES_IN :: 60;   // the expiring note's life, in seconds after NLR_NOW
 // [["e","<the event's ID>"]]: the tags of a deletion request for one event.
@@ -498,12 +498,27 @@ nlr_card_delete :: (c: [] NostrCard) -> bool {
   before := nlr_held(r[..], 1, NLR_NOW + NLR_EXPIRES_IN - 1, idx[..]);
   after := nlr_held(r[..], 1, NLR_NOW + NLR_EXPIRES_IN, idx[..]);
   if before != 1 || after != 0 { return nc_stop(c, 13); }
-  eb: [64] u8; n := json_write_int(eb[..], 0, before); n = json_raw(eb[..], n, " HELD BEFORE, "); n = json_write_int(eb[..], n, after); n = json_raw(eb[..], n, " HELD AFTER");
+  eb: [64] u8; n := json_write_int(eb[..], 0, before); n = json_raw(eb[..], n, " HELD BEFORE ITS TIME, "); n = json_write_int(eb[..], n, after); n = json_raw(eb[..], n, " AFTER");
   if n < 1 { return nc_stop(c, 14); }
+  // NIP-62: Bob has two notes here; his kind 62 request to vanish names this relay, and both are gone
+  // (the note that has not expired yet is Alice's, and stays)
+  b1: [512] u8; one := nlr_sign(NLR_BOB_KEY, NLR_NOW - 40, 1, "[]", "bob's first", b1[..]);
+  b2: [512] u8; two := nlr_sign(NLR_BOB_KEY, NLR_NOW - 30, 1, "[]", "bob's second", b2[..]);
+  if one.count == 0 || two.count == 0 { return nc_stop(c, 16); }
+  if nlr_admit(r[..], one, NLR_NOW).reason != RS_ACCEPT || nlr_admit(r[..], two, NLR_NOW).reason != RS_ACCEPT { return nc_stop(c, 17); }
+  with_bob := nlr_held(r[..], 1, NLR_NOW, idx[..]); if with_bob != 3 { return nc_stop(c, 18); }
+  vt: [96] u8; vn := json_raw(vt[..], 0, "[[\"relay\","); vn = json_write_string(vt[..], vn, NLR_RELAY_URL); vn = json_raw(vt[..], vn, "]]");
+  if vn < 1 { return nc_stop(c, 19); }
+  vb: [640] u8; vanish := nlr_sign(NLR_BOB_KEY, NLR_NOW, 62, cast(string) vt[0..<vn], "", vb[..]); if vanish.count == 0 { return nc_stop(c, 20); }
+  if nlr_admit(r[..], vanish, NLR_NOW).reason != RS_ACCEPT { return nc_stop(c, 21); }
+  gone := nlr_held(r[..], 1, NLR_NOW, idx[..]); if gone != 1 { return nc_stop(c, 22); }
+  if nlr_admit(r[..], one, NLR_NOW).reason != NSD_DELETED { return nc_stop(c, 23); }   // and it cannot be sent back
+  gb: [64] u8; m := json_raw(gb[..], 0, "BOB'S NOTES: "); m = json_write_int(gb[..], m, with_bob - 1); m = json_raw(gb[..], m, " HELD, THEN "); m = json_write_int(gb[..], m, gone - 1);
+  if m < 1 { return nc_stop(c, 24); }
   if !nc_row_hex(c, "NOTE", id[..], NC_VALUE) || !nc_row(c, "KIND 5 TAGS", tags, NC_PLAIN)
-    || !nc_row_int(c, "AFTER BOB'S", after_bob, "NOTE HELD", NC_BAD) || !nc_row_int(c, "AFTER ALICE'S", after_alice, "NOTES HELD", NC_GOOD)
-    || !nc_row(c, "EXPIRES TAG", expire, NC_PLAIN) || !nc_row(c, "AT THAT TIME", cast(string) eb[0..<n], NC_GOOD) { return nc_stop(c, 15); }
-  return nc_done(c, "DELETED BY ITS AUTHOR, AND EXPIRED", "SOMEONE ELSE'S REQUEST: NO EFFECT");
+    || !nc_row_int(c, "BOB ASKS", after_bob, "NOTE HELD: IT IS NOT HIS", NC_BAD) || !nc_row_int(c, "ALICE ASKS", after_alice, "NOTES HELD", NC_GOOD)
+    || !nc_row(c, "EXPIRATION", cast(string) eb[0..<n], NC_GOOD) || !nc_row(c, "KIND 62 VANISH", cast(string) gb[0..<m], NC_GOOD) { return nc_stop(c, 15); }
+  return nc_done(c, "DELETED, EXPIRED AND VANISHED", "SOMEONE ELSE'S REQUEST: NO EFFECT");
 }
 
 // ---- 5. NIP-77: sync ---------------------------------------------------------------------------
@@ -753,11 +768,16 @@ nlr_t_starts :: (text: string, head: string) -> bool { return text.count >= head
   #assert ob_sub_event(s[..], 1, got.id) == OB_NEW && ob_sub_eose(s[..], 1) && ob_caught_up(s[..]);
   #assert ob_list(NLR_LIST_BAD).error == N65_MARKER;
 }
-#test "nostr lab relays: the author's deletion removes the note, another's does not, and an expired note is gone" #steps 6000000000 {
+#test "nostr lab relays: the author's deletion removes the note, another's does not, an expired note is gone, and a vanish takes all of its signer's" #steps 6000000000 {
   c: [1] NostrCard; #assert nlr_card(4, c[..]) && nlr_t_shape(c[..], 3);
   #assert nlr_t_starts(nc_text(c[..], 1), "[[\"e\",\"") && nc_text(c[..], 1)[7..<19] == nc_text(c[..], 0)[0..<12];
-  #assert nc_text(c[..], 2) == "1 NOTE HELD" && nc_text(c[..], 3) == "0 NOTES HELD";
-  #assert nc_text(c[..], 4) == "[[\"expiration\",\"1794441660\"]]" && nc_text(c[..], 5) == "1 HELD BEFORE, 0 HELD AFTER";
+  #assert nc_text(c[..], 2) == "1 NOTE HELD: IT IS NOT HIS" && nc_text(c[..], 3) == "0 NOTES HELD";
+  #assert nc_text(c[..], 4) == "1 HELD BEFORE ITS TIME, 0 AFTER" && nc_text(c[..], 5) == "BOB'S NOTES: 2 HELD, THEN 0" && c[0].good == "DELETED, EXPIRED AND VANISHED";
+  // apart from the card: a request to vanish that names another relay removes nothing here, one for ALL_RELAYS does
+  v: [1] NlrRelay; nlr_relay_init(v[..]); vi: [6] int; v1: [512] u8; v2: [640] u8; v3: [640] u8;
+  #assert nlr_admit(v[..], nlr_sign(NLR_BOB_KEY, NLR_NOW - 40, 1, "[]", "bob's first", v1[..]), NLR_NOW).reason == RS_ACCEPT;
+  #assert nlr_admit(v[..], nlr_sign(NLR_BOB_KEY, NLR_NOW - 1, 62, "[[\"relay\",\"wss://elsewhere.example\"]]", "", v2[..]), NLR_NOW).reason == RS_ACCEPT && nlr_held(v[..], 1, NLR_NOW, vi[..]) == 1;
+  #assert nlr_admit(v[..], nlr_sign(NLR_BOB_KEY, NLR_NOW, 62, "[[\"relay\",\"ALL_RELAYS\"]]", "", v3[..]), NLR_NOW).reason == RS_ACCEPT && nlr_held(v[..], 1, NLR_NOW, vi[..]) == 0;
   // apart from the card, in the other order: Alice's request first, then the note is refused as deleted
   r: [1] NlrRelay; nlr_relay_init(r[..]); idx: [6] int; scratch: [1024] u8;
   nb: [512] u8; note := nlr_sign(NLR_ALICE_KEY, NLR_NOW - 300, 1, "[]", "published by accident", nb[..]);

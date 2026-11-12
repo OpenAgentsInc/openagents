@@ -32,8 +32,9 @@ out, what held, and what was refused.
    old answer to a new challenge is refused.
 8. **NIP-65, two relays**: your relay list, the same note on two relays, and
    the note still read after one relay is lost.
-9. **NIP-09, delete** (and NIP-40): the author deletes a note, and a note
-   expires. Someone else's deletion request does nothing.
+9. **NIP-09, delete** (with NIP-40 and NIP-62): the author deletes a note, a
+   note expires, and a request to vanish removes all of its signer's notes.
+   Someone else's deletion request does nothing.
 10. **NIP-77, sync**: two relays compare what they hold with Negentropy and
     learn only what each lacks.
 11. **NIP-13, proof of work**: a nonce counted up until the ID starts with
