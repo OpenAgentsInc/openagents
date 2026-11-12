@@ -21,6 +21,19 @@
 // Failure is safe. A client that finds no resident starts one and compiles
 // cold. A resident that refuses (another binary), does not answer, or whose
 // request dies makes the client compile cold. COAX_SERVE=0 turns it off.
+//
+// Bounded (#13323, #13310). One resident serves every checkout whose compiler
+// has its bytes, so it must not grow with them: at most COAX_SERVE_JOBS
+// requests run at once (default the machine's cores); the next ones wait in
+// its queue (their clients told so) and start as running ones end. A request
+// runs at most COAX_SERVE_TIMEOUT seconds (default 3600); then it is killed
+// and its client exits 124. A request ends with its client (the resident
+// kills it when the client's socket closes), with its resident (it dies with
+// its parent, as a build worker does: jobs.cpp), and within 30 s of its reply
+// (its reports to the resident are the resident's memo, never worth waiting
+// on). A resident whose binary is gone or replaced takes no new request and
+// leaves once its running ones end, so a resident from a live binary can
+// start beside it. The log of the previous resident is kept as log.1.
 #include <cstdarg>
 #include <ctime>
 #include <poll.h>
@@ -233,6 +246,9 @@ void request_finish(int status) {
   // The command is over for its caller: let go of its streams, so a reader waiting for their end is not kept by the report below.
   const int null = open("/dev/null", O_RDWR);
   if (null >= 0) { dup2(null, 0); dup2(null, 1); dup2(null, 2); if (null > 2) close(null); }
+  // The report only feeds the resident's memo: a resident too busy to take it
+  // within 10 s a send loses it, and the request ends (#13323).
+  if (s.report >= 0) { timeval limit{10, 0}; setsockopt(s.report, SOL_SOCKET, SO_SNDTIMEO, &limit, sizeof limit); }
   if (s.compiler_fresh) report_send(REPORT_COMPILER, s.compiler);
   for (const auto &unit : s.fresh) report_send(REPORT_UNIT, unit_record(*unit));
   for (const auto &[entry, passed] : s.passed_fresh) report_send(REPORT_PASSED, passed_record(entry, *passed));
@@ -263,13 +279,16 @@ bool parse_run(const std::string &payload, RunRequest *out) {
   return r.ok && r.at == r.end && !out->args.empty();
 }
 // In the forked child. Never returns.
-[[noreturn]] void request_run(const RunRequest &run, int streams[3], int client, int report) {
+[[noreturn]] void request_run(const RunRequest &run, int streams[3], int client, int report, pid_t resident) {
   ServeState &s = serve_state();
   s.request = true;
   s.report = report;
   s.client = client;
   s.executable = run.executable;
   setpgid(0, 0);
+  // It never outlives its resident (a killed resident's requests were left
+  // running with no one to stop them, #13310); its client then compiles cold.
+  job_die_with_parent(resident);
   signal(SIGPIPE, SIG_DFL);
   signal(SIGCHLD, SIG_DFL);
   signal(SIGTERM, SIG_DFL);
@@ -303,6 +322,12 @@ bool parse_run(const std::string &payload, RunRequest *out) {
   char go = 0;
   if (!write_all(client, &started, 1) || !read_all(client, &go, 1) || go != 'G') _exit(125);
   report_send(REPORT_RUNNING, "");
+  // For coax/tests/serve.coax: a request that takes this long before its command.
+  if (const char *hold = getenv("COAX_SERVE_TEST_HOLD_MS")) {
+    const unsigned long long ms = std::min(60000ull, strtoull(hold, nullptr, 10));
+    timespec wait{(time_t)(ms / 1000), (long)(ms % 1000) * 1000000L};
+    while (nanosleep(&wait, &wait) != 0 && errno == EINTR) {}
+  }
   int status = finish_profile(main_impl((int)run.args.size(), argv.data()));
   if (status != 0) report_stale_compiler();
   request_finish(status);
@@ -315,16 +340,26 @@ struct Resident {
   std::string dir, image;
   int log = -1, listener = -1, lock = -1;
   uint64_t requests = 0, hits = 0, misses = 0, evicted = 0, limit = 0, idle = 0, answered = 0;
-  std::chrono::steady_clock::time_point began = std::chrono::steady_clock::now(), active = began;
+  uint64_t cap = 1, timeout = 0, queued_total = 0, timed_out = 0, lingered = 0, log_lines = 0;
+  bool draining = false;  // its binary is gone or replaced: no new requests, and it leaves once the running ones end
+  std::chrono::steady_clock::time_point began = std::chrono::steady_clock::now(), active = began, binary_checked = began;
   struct Live {
     pid_t pid = -1;
     int client = -1, report = -1;
     std::string in;
-    bool running = false, replied = false, ended = false;
+    bool running = false, replied = false, ended = false, killed = false;
     std::string what;
-    std::chrono::steady_clock::time_point began;
+    std::chrono::steady_clock::time_point began, replied_at;
   };
   std::vector<Live> live;
+  // A request that came while cap requests ran: its client is told 'Q' and waits.
+  struct Waiting {
+    int client = -1;
+    int streams[3] = {-1, -1, -1};
+    RunRequest run;
+    std::string what;
+  };
+  std::vector<Waiting> waiting;
   std::map<std::string, std::string> verified;  // a client's binary path -> its stat identity, once its bytes matched
   bool stop = false;
 };
@@ -333,8 +368,19 @@ void resident_signal(int sig) {
   const char byte = sig == SIGCHLD ? 'c' : 't';
   if (g_resident_wake[1] >= 0) { ssize_t n = write(g_resident_wake[1], &byte, 1); (void)n; }
 }
-void resident_log(const Resident &r, const char *format, ...) {
+// The log goes to log.1 when it passes 4 MiB, and at a resident's start, so
+// the last one's lines are there to read after it is gone (#13310).
+void resident_log_open(Resident &r, bool keep_last) {
+  const std::string path = r.dir + "/log";
+  struct stat st;
+  if (keep_last && stat(path.c_str(), &st) == 0 && st.st_size > 0) rename(path.c_str(), (path + ".1").c_str());
+  if (r.log >= 0) close(r.log);
+  r.log = open(path.c_str(), O_WRONLY | O_CREAT | O_APPEND | O_CLOEXEC, 0600);
+}
+void resident_log(Resident &r, const char *format, ...) {
   if (r.log < 0) return;
+  struct stat st;
+  if (++r.log_lines % 256 == 0 && fstat(r.log, &st) == 0 && st.st_size > (4 << 20)) resident_log_open(r, true);
   char line[1024];
   time_t now = time(nullptr);
   struct tm tm;
@@ -520,15 +566,72 @@ std::string resident_status(const Resident &r) {
   for (const auto &[hash, bucket] : s.units) units += bucket.size();
   size_t passed = 0;
   for (const auto &[entry, kept] : s.passed) passed += kept.last.size();
-  char text[768];
+  char text[1024];
   snprintf(text, sizeof text,
-           "coax serve: pid %lld, up %lld s, %llu requests (%zu running), %zu unit lexes kept in %llu MiB (limit %llu MiB, %llu evicted), "
+           "coax serve: pid %lld, up %lld s, %llu requests (%zu running), %zu waiting, at most %llu at once (COAX_SERVE_JOBS), "
+           "each at most %llu s (COAX_SERVE_TIMEOUT; %llu stopped there), %llu queued in all, %llu stopped after their reply, %s"
+           "%zu unit lexes kept in %llu MiB (limit %llu MiB, %llu evicted), "
            "%llu reused and %llu made, %zu checked programs remembered, %llu errors from changed bodies alone, idle exit after %llu s\n  %s\n",
            (long long)getpid(), (long long)std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - r.began).count(),
-           (unsigned long long)r.requests, r.live.size(), units, (unsigned long long)(s.bytes >> 20), (unsigned long long)(r.limit >> 20),
+           (unsigned long long)r.requests, r.live.size(), r.waiting.size(), (unsigned long long)r.cap, (unsigned long long)r.timeout,
+           (unsigned long long)r.timed_out, (unsigned long long)r.queued_total, (unsigned long long)r.lingered,
+           r.draining ? "draining (its binary is gone: no new requests), " : "", units, (unsigned long long)(s.bytes >> 20), (unsigned long long)(r.limit >> 20),
            (unsigned long long)r.evicted, (unsigned long long)r.hits, (unsigned long long)r.misses, passed, (unsigned long long)r.answered,
            (unsigned long long)r.idle, r.dir.c_str());
   return text;
+}
+// Forks the request's child. The client's socket and streams go to it; the
+// resident keeps the client's socket to see it leave, and the report pair's end.
+void resident_start(Resident &r, int fd, int streams[3], const RunRequest &run, const std::string &what) {
+  auto refuse = [&](const char *why) {
+    const char reply = 'R';
+    write_all(fd, &reply, 1);
+    close(fd);
+    close_streams(streams);
+    resident_log(r, "refused: %s", why);
+  };
+  int report[2];
+  if (socketpair(AF_UNIX, SOCK_STREAM, 0, report) != 0) return refuse("no socket pair");
+  no_sigpipe(report[0]);
+  no_sigpipe(report[1]);
+  // Room for a request's whole report (a checked program's skeleton is tens of
+  // MB): macOS gives a socket pair 8 KB, and a child then waited on the
+  // resident for every 8 KB of it while the resident served everyone else (#13323).
+  for (int end : report) {
+    int size = 4 << 20;
+    setsockopt(end, SOL_SOCKET, SO_SNDBUF, &size, sizeof size);
+    setsockopt(end, SOL_SOCKET, SO_RCVBUF, &size, sizeof size);
+  }
+  r.requests++;
+  const pid_t resident = getpid();
+  const pid_t pid = fork();
+  if (pid < 0) { close(report[0]); close(report[1]); return refuse("fork failed"); }
+  if (pid == 0) {
+    close(report[0]);
+    close(r.listener);
+    close(r.lock);
+    if (r.log >= 0) close(r.log);
+    close(g_resident_wake[0]);
+    close(g_resident_wake[1]);
+    for (const auto &other : r.live) { if (other.client >= 0) close(other.client); if (other.report >= 0) close(other.report); }
+    for (const auto &other : r.waiting) { close(other.client); for (int f : other.streams) if (f >= 0) close(f); }
+    // The programs the command starts (cc, a check's binary) never hold the report's end.
+    fcntl(report[1], F_SETFD, FD_CLOEXEC);
+    timeval none{0, 0};
+    setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &none, sizeof none);
+    request_run(run, streams, fd, report[1], resident);
+  }
+  close(report[1]);
+  close_streams(streams);
+  fcntl(report[0], F_SETFD, FD_CLOEXEC);
+  Resident::Live live;
+  live.pid = pid;
+  live.client = fd;
+  live.report = report[0];
+  live.began = std::chrono::steady_clock::now();
+  live.what = what;
+  resident_log(r, "pid %lld: %s (in %s)", (long long)pid, live.what.c_str(), run.directory.c_str());
+  r.live.push_back(std::move(live));
 }
 void resident_accept(Resident &r) {
   int fd = accept(r.listener, nullptr, nullptr);
@@ -562,36 +665,25 @@ void resident_accept(Resident &r) {
   RunRequest run;
   if (kind != SERVE_RUN || !parse_run(payload, &run) || streams[0] < 0) return refuse("malformed request");
   if (!same_binary(r, run.executable)) return refuse("the client is another compiler binary");
-  int report[2];
-  if (socketpair(AF_UNIX, SOCK_STREAM, 0, report) != 0) return refuse("no socket pair");
-  no_sigpipe(report[0]);
-  no_sigpipe(report[1]);
-  r.requests++;
-  const pid_t pid = fork();
-  if (pid < 0) { close(report[0]); close(report[1]); return refuse("fork failed"); }
-  if (pid == 0) {
-    close(report[0]);
-    close(r.listener);
-    close(r.lock);
-    if (r.log >= 0) close(r.log);
-    close(g_resident_wake[0]);
-    close(g_resident_wake[1]);
-    for (const auto &other : r.live) { if (other.client >= 0) close(other.client); if (other.report >= 0) close(other.report); }
-    timeval none{0, 0};
-    setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &none, sizeof none);
-    request_run(run, streams, fd, report[1]);
+  if (r.draining) return refuse("its binary is gone; a new resident takes new requests");
+  std::string what;
+  for (size_t i = 1; i < run.args.size() && what.size() < 160; i++) what += (i > 1 ? " " : "") + run.args[i];
+  if (r.live.size() >= r.cap) {
+    // At most 16 waiting for each running slot: past that the client compiles cold.
+    if (r.waiting.size() >= 16 * r.cap) return refuse("too many requests waiting");
+    const char queued = 'Q';
+    if (!write_all(fd, &queued, 1)) { close(fd); close_streams(streams); return; }
+    Resident::Waiting w;
+    w.client = fd;
+    for (int i = 0; i < 3; i++) w.streams[i] = streams[i];
+    w.run = std::move(run);
+    w.what = what;
+    r.waiting.push_back(std::move(w));
+    r.queued_total++;
+    resident_log(r, "waiting (%zu running, %zu waiting): %s", r.live.size(), r.waiting.size(), what.c_str());
+    return;
   }
-  close(report[1]);
-  close_streams(streams);
-  fcntl(report[0], F_SETFD, FD_CLOEXEC);
-  Resident::Live live;
-  live.pid = pid;
-  live.client = fd;
-  live.report = report[0];
-  live.began = std::chrono::steady_clock::now();
-  for (size_t i = 1; i < run.args.size() && live.what.size() < 160; i++) live.what += (i > 1 ? " " : "") + run.args[i];
-  resident_log(r, "pid %lld: %s (in %s)", (long long)pid, live.what.c_str(), run.directory.c_str());
-  r.live.push_back(std::move(live));
+  resident_start(r, fd, streams, run, what);
 }
 void resident_reap(Resident &r) {
   for (;;) {
@@ -601,7 +693,10 @@ void resident_reap(Resident &r) {
     for (size_t i = 0; i < r.live.size(); i++) {
       Resident::Live &live = r.live[i];
       if (live.pid != pid) continue;
-      if (live.report >= 0) { while (resident_read(r, live)) {} }
+      // What it sent before it ended. A bounded drain: a child that died
+      // without its end report while another process still held the report's
+      // end left this loop spinning, and the resident served no one (#13323).
+      for (int round = 0; live.report >= 0 && round < 64 && resident_read(r, live); round++) {}
       if (live.report >= 0) { close(live.report); live.report = -1; }
       if (live.client >= 0) {
         // It left without replying: exit() inside the command, or a crash.
@@ -624,6 +719,8 @@ int resident_main(const std::string &dir) {
   r.image = read_file_bytes(executable_path());
   r.limit = env_count("COAX_SERVE_MEMORY_MB", 4096) << 20;
   r.idle = env_count("COAX_SERVE_IDLE", 900);
+  r.cap = std::max<uint64_t>(1, env_count("COAX_SERVE_JOBS", available_cores()));
+  r.timeout = env_count("COAX_SERVE_TIMEOUT", 3600);
   std::error_code ec;
   std::filesystem::create_directories(dir, ec);
   chmod(dir.c_str(), 0700);
@@ -634,9 +731,7 @@ int resident_main(const std::string &dir) {
   }
   r.lock = open((dir + "/lock").c_str(), O_RDWR | O_CREAT | O_CLOEXEC, 0600);
   if (r.lock < 0 || flock(r.lock, LOCK_EX | LOCK_NB) != 0) return 0;  // another resident serves this binary
-  r.log = open((dir + "/log").c_str(), O_WRONLY | O_CREAT | O_APPEND | O_CLOEXEC, 0600);
-  struct stat log_stat;
-  if (r.log >= 0 && fstat(r.log, &log_stat) == 0 && log_stat.st_size > (4 << 20)) { int t = ftruncate(r.log, 0); (void)t; }
+  resident_log_open(r, true);
   unlink(address.sun_path);
   r.listener = socket(AF_UNIX, SOCK_STREAM, 0);
   if (r.listener < 0) return 1;
@@ -653,19 +748,22 @@ int resident_main(const std::string &dir) {
   signal(SIGTERM, resident_signal);
   signal(SIGINT, resident_signal);
   { std::string pid = std::to_string((long long)getpid()) + "\n"; write_file(dir + "/pid", pid); }
-  resident_log(r, "resident %lld of %s: memory limit %llu MiB, idle exit after %llu s", (long long)getpid(), executable_path().c_str(),
-               (unsigned long long)(r.limit >> 20), (unsigned long long)r.idle);
+  resident_log(r, "resident %lld of %s: memory limit %llu MiB, idle exit after %llu s, at most %llu requests at once, each at most %llu s",
+               (long long)getpid(), executable_path().c_str(), (unsigned long long)(r.limit >> 20), (unsigned long long)r.idle,
+               (unsigned long long)r.cap, (unsigned long long)r.timeout);
   const std::string own = executable_path();
   while (!r.stop) {
     std::vector<pollfd> fds;
-    fds.push_back({r.listener, POLLIN, 0});
+    fds.push_back({r.listener, (short)(r.listener >= 0 ? POLLIN : 0), 0});
     fds.push_back({g_resident_wake[0], POLLIN, 0});
     const size_t first = fds.size();
     for (const auto &live : r.live) {
       fds.push_back({live.report, (short)(live.report >= 0 ? POLLIN : 0), 0});
       fds.push_back({live.client, (short)(live.client >= 0 ? POLLIN : 0), 0});
     }
-    const int ready = poll(fds.data(), fds.size(), 5000);
+    const size_t waiters = fds.size();
+    for (const auto &w : r.waiting) fds.push_back({w.client, POLLIN, 0});
+    const int ready = poll(fds.data(), fds.size(), 1000);
     if (ready < 0 && errno != EINTR) break;
     if (ready > 0 && (fds[1].revents & POLLIN)) {
       char bytes[64];
@@ -676,9 +774,39 @@ int resident_main(const std::string &dir) {
     // Reports before hang-ups: a request says it replied before its client can leave.
     for (size_t i = 0; ready > 0 && i < r.live.size(); i++)
       if (r.live[i].report >= 0 && (fds[first + 2 * i].revents & (POLLIN | POLLHUP | POLLERR))) resident_read(r, r.live[i]);
-    for (size_t i = 0; ready > 0 && i < r.live.size(); i++) {
+    const auto now = std::chrono::steady_clock::now();
+    for (size_t i = 0; i < r.live.size(); i++) {
       Resident::Live &live = r.live[i];
-      if (live.client < 0 || !(fds[first + 2 * i + 1].revents & (POLLIN | POLLHUP | POLLERR))) continue;
+      if (live.replied && live.replied_at == std::chrono::steady_clock::time_point()) live.replied_at = now;
+      if (live.killed) continue;
+      const double age = std::chrono::duration<double>(now - live.began).count();
+      // Its time is up: the client exits 124 with a note, and the command stops.
+      if (!live.replied && r.timeout > 0 && age >= (double)r.timeout) {
+        resident_log(r, "pid %lld: still running after %llu s (COAX_SERVE_TIMEOUT); stopping it", (long long)live.pid, (unsigned long long)r.timeout);
+        if (live.client >= 0) {
+          char reply[5] = {'T', 0, 0, 0, 0};
+          const uint32_t limit = (uint32_t)r.timeout;
+          memcpy(reply + 1, &limit, 4);
+          write_all(live.client, reply, sizeof reply);
+          close(live.client);
+          live.client = -1;
+        }
+        r.timed_out++;
+        live.killed = true;
+        kill(-live.pid, SIGKILL);
+        kill(live.pid, SIGKILL);
+        continue;
+      }
+      // Replied 30 s ago and still sending its report: the memo can do without it.
+      if (live.replied && std::chrono::duration<double>(now - live.replied_at).count() >= 30) {
+        resident_log(r, "pid %lld: replied 30 s ago and has not ended; stopping it", (long long)live.pid);
+        r.lingered++;
+        live.killed = true;
+        kill(-live.pid, SIGKILL);
+        kill(live.pid, SIGKILL);
+        continue;
+      }
+      if (ready <= 0 || live.client < 0 || !(fds[first + 2 * i + 1].revents & (POLLIN | POLLHUP | POLLERR))) continue;
       if (live.report >= 0) resident_read(r, live);
       if (live.client < 0) continue;
       // Its end of file means the client is gone, and its command stops with
@@ -690,20 +818,55 @@ int resident_main(const std::string &dir) {
       resident_log(r, "pid %lld: its client left; stopping it", (long long)live.pid);
       close(live.client);
       live.client = -1;
+      live.killed = true;
       kill(-live.pid, SIGKILL);
       kill(live.pid, SIGKILL);
     }
+    // A waiting client that left (it sends nothing until its request starts).
+    for (size_t i = r.waiting.size(); ready > 0 && i-- > 0;) {
+      if (!(fds[waiters + i].revents & (POLLIN | POLLHUP | POLLERR))) continue;
+      Resident::Waiting &w = r.waiting[i];
+      resident_log(r, "a waiting client left: %s", w.what.c_str());
+      close(w.client);
+      close_streams(w.streams);
+      r.waiting.erase(r.waiting.begin() + (std::ptrdiff_t)i);
+    }
     resident_reap(r);
-    if (ready > 0 && (fds[0].revents & POLLIN)) resident_accept(r);
-    const auto now = std::chrono::steady_clock::now();
-    if (!r.live.empty()) r.active = now;
-    else if ((uint64_t)std::chrono::duration_cast<std::chrono::seconds>(now - r.active).count() >= r.idle) break;
-    // A binary that is gone or replaced (a temporary build, a new install) has no more clients here.
-    else if (std::chrono::duration_cast<std::chrono::seconds>(now - r.active).count() >= 20 && !same_binary(r, own)) break;
+    // The waiting ones, in the order they came, as running ones end.
+    while (!r.waiting.empty() && r.live.size() < r.cap) {
+      Resident::Waiting w = std::move(r.waiting.front());
+      r.waiting.erase(r.waiting.begin());
+      resident_start(r, w.client, w.streams, w.run, w.what);
+    }
+    if (ready > 0 && r.listener >= 0 && (fds[0].revents & POLLIN)) resident_accept(r);
+    if (!r.live.empty() || !r.waiting.empty()) r.active = now;
+    else if (r.draining || (uint64_t)std::chrono::duration_cast<std::chrono::seconds>(now - r.active).count() >= r.idle) break;
+    // A binary that is gone or replaced (a temporary build, a new install, a
+    // removed worktree) has no more clients here: take no new request, let a
+    // resident of a live binary start in this directory, and leave once the
+    // running and waiting ones end. Checked every 20 s (or every COAX_SERVE_IDLE
+    // seconds, when that is less), busy or not (#13310).
+    if (!r.draining && (uint64_t)std::chrono::duration_cast<std::chrono::seconds>(now - r.binary_checked).count() >= std::min<uint64_t>(20, std::max<uint64_t>(1, r.idle))) {
+      r.binary_checked = now;
+      if (!same_binary(r, own)) {
+        if (r.live.empty() && r.waiting.empty()) break;
+        resident_log(r, "its binary is gone or replaced: no new requests; leaving after %zu running and %zu waiting", r.live.size(), r.waiting.size());
+        r.draining = true;
+        close(r.listener);
+        r.listener = -1;
+        unlink(address.sun_path);
+        unlink((dir + "/pid").c_str());
+        close(r.lock);
+        r.lock = -1;
+      }
+    }
   }
   for (const auto &live : r.live) { kill(-live.pid, SIGKILL); kill(live.pid, SIGKILL); }
-  unlink(address.sun_path);
-  unlink((dir + "/pid").c_str());
+  for (auto &w : r.waiting) { const char reply = 'R'; write_all(w.client, &reply, 1); close(w.client); close_streams(w.streams); }
+  if (!r.draining) {
+    unlink(address.sun_path);
+    unlink((dir + "/pid").c_str());
+  }
   resident_log(r, "resident %lld leaves after %llu requests", (long long)getpid(), (unsigned long long)r.requests);
   return 0;
 }
@@ -809,7 +972,15 @@ bool serve_client(int argc, char **argv, int *status) {
   timeval wait{5, 0};
   setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &wait, sizeof wait);
   char reply = 0;
-  if (!send_head(fd, SERVE_RUN, payload.size(), true) || !write_all(fd, payload.data(), payload.size()) || !read_all(fd, &reply, 1) || reply != 'A') {
+  bool sent = send_head(fd, SERVE_RUN, payload.size(), true) && write_all(fd, payload.data(), payload.size()) && read_all(fd, &reply, 1);
+  if (sent && reply == 'Q') {
+    // Every running slot is taken: wait for one (COAX_SERVE_WAIT seconds,
+    // default 900), else compile here.
+    timeval queued{(time_t)env_count("COAX_SERVE_WAIT", 900), 0};
+    setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &queued, sizeof queued);
+    sent = read_all(fd, &reply, 1);
+  }
+  if (!sent || reply != 'A') {
     close(fd);
     return false;  // nothing ran
   }
@@ -820,6 +991,13 @@ bool serve_client(int argc, char **argv, int *status) {
   const bool answered = write_all(fd, &go, 1) && read_all(fd, done, sizeof done);
   close(fd);
   if (answered && done[0] == 'X') { *status = (unsigned char)done[1]; return true; }
+  if (answered && done[0] == 'T') {
+    uint32_t limit = 0;
+    memcpy(&limit, done + 1, 4);
+    fprintf(stderr, "coax: stopped after %u s, the resident compiler's limit for one command (COAX_SERVE_TIMEOUT)\n", limit);
+    *status = 124;
+    return true;
+  }
   // A signal this process would have taken itself (its output's reader left, an interrupt): leave by it.
   const int sig = answered && done[0] == 'S' ? (unsigned char)done[1] : 0;
   if (sig == SIGPIPE || sig == SIGINT || sig == SIGTERM || sig == SIGHUP) { signal(sig, SIG_DFL); raise(sig); _exit(128 + sig); }

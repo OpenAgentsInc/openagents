@@ -630,10 +630,49 @@ on every compile.
 **One resident serves every checkout.** Its directory is named by the
 binary's content, so worktrees with the same compiler share one resident and
 its memo, and a host's three slots do too. A resident leaves after 15 idle
-minutes (`COAX_SERVE_IDLE`, seconds), when its binary is replaced or
-deleted, or on `coax serve stop`. It keeps at most 4 GiB of unit lexes
+minutes (`COAX_SERVE_IDLE`, seconds), once its requests end after its binary
+is replaced or deleted, or on `coax serve stop`. It keeps at most 4 GiB of unit lexes
 (`COAX_SERVE_MEMORY_MB`), least recently used out first; fivelab's 294 units
 take 160 MiB.
+
+**Bounded (#13323, #13310).** On 2026-11-11 one resident on the Mac held 683
+children and the load average reached 96. Every checkout with the same
+compiler bytes shares one resident, and it forked a child for every request
+the moment it came, with no limit: seven agents' parallel module builds and
+suites fed it hundreds at once. Each finished child then sent the resident
+its report (a checked program's skeleton is tens of MB) through a socket pair
+macOS sizes at 8 KB, and the resident took 8 KB per turn of its loop while it
+served everyone else, so finished children waited at 0% CPU and piled up
+(its log was lost; the counts in #13310, about 97 busy and the rest idle, fit
+this). Its
+idle and replaced-binary exits ran only with no child left, so it never left.
+A child that died without its end report while a program it started still
+held the report socket also left the resident's reap loop spinning. Now:
+
+- At most `COAX_SERVE_JOBS` requests run at once (default: the machine's
+  cores, 18 on the Mac, 30 on a host). The next ones wait in the resident's
+  queue, their clients told so (`COAX_SERVE_WAIT`, default 900 s, then the
+  client compiles cold), and start in order as running ones end; past 16
+  waiting per slot a client compiles cold at once. So a resident never has
+  more than `COAX_SERVE_JOBS` children; each child's own build workers come
+  from the machine-wide budget (`coax status --jobs`).
+- A request ends when its client goes (the resident kills it), when its
+  resident goes (it dies with its parent, as a build worker does; the client
+  then compiles cold), after `COAX_SERVE_TIMEOUT` seconds (default 3600; the
+  client exits 124 with a note), and at most 30 s after its reply (its report
+  socket holds 4 MB, a send waits at most 10 s, and the report is only the
+  memo's). Programs a request starts don't hold its report socket.
+- A resident whose binary is gone or replaced (checked every 20 s, busy or
+  not) takes no new request, lets a new resident start, and leaves once its
+  requests end. The previous resident's log is kept as `log.1`.
+- `coax serve status` shows the running and waiting requests, the cap, the
+  time limit and how many requests were stopped.
+
+`coax/tests/serve.coax` checks it: with `COAX_SERVE_JOBS=2`, eight requests
+at once never give the resident more than 2 children and each answers as a
+cold compile; a request ends within 3 s of its client or its resident being
+killed; `COAX_SERVE_TIMEOUT=1` stops a request with exit 124; a resident whose
+binary is removed finishes its request and leaves.
 
 **Failure is safe.** With no resident, the command starts one and runs cold
 (the resident never delays a command). A resident that refuses (the client is

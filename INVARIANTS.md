@@ -5482,6 +5482,13 @@ Three rules hold that.
   is still waiting. A client that gets no reply runs the command itself
   only when the request never started or is known to be gone.
 
+- **A resident is bounded (#13323).** At most `COAX_SERVE_JOBS` requests
+  (default the machine's cores) run at once; more wait in its queue and their
+  clients are told so. A request never outlives its client, its resident,
+  `COAX_SERVE_TIMEOUT` (its client then exits 124 with a note) or 30 s after
+  its reply. A resident whose binary is gone takes no new request and leaves
+  once its requests end.
+
 A resident that is absent, refuses, is silent or dies costs a cold compile.
 `COAX_SERVE=0` turns residents off.
 
@@ -5490,7 +5497,10 @@ cold and in a resident agree on stdout, stderr and exit status for a
 three-unit `#authority` program after an edited line, an appended comment, a
 syntax error and its repair; for the C and header of a library compile; for
 the pass, fail, diagnostics and check-fixture corpora; and after the
-resident is killed or stopped. With a checkout, it compares the C and header
+resident is killed or stopped; eight requests at once in a resident with
+`COAX_SERVE_JOBS=2` give it at most two children; a request ends within 3 s
+of its client or its resident being killed and at `COAX_SERVE_TIMEOUT`; a
+resident whose binary is removed finishes its request and leaves. With a checkout, it compares the C and header
 of fivelab, everglade2 and Character Create before and after a comment and a
 new procedure in a loaded file.
 

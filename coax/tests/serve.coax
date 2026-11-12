@@ -12,6 +12,9 @@
 //     compile as a cold compile does;
 //   - the header and the C of a library compile are a cold compile's;
 //   - a resident that was killed, or stopped, costs nothing but a cold compile;
+//   - at most COAX_SERVE_JOBS requests run at once; a request ends with its
+//     client, with its resident and at COAX_SERVE_TIMEOUT; a resident whose
+//     binary is removed finishes its requests and leaves (#13323);
 //   - COAX_SERVE=0 starts none.
 // With ROOT (a checkout) and UNIT:EDITED pairs (paths in it), each UNIT is
 // also compiled to C cold and in the resident before and after two edits of
@@ -86,6 +89,18 @@ PROCEDURE :: "printf '\\nserve_coax_probe_13138 :: (n: int) -> int #effects(all)
 // the resident's compile and the cold one failed with the same stderr.
 BODY_ERROR :: "sed 's/^serve_coax_probe_13138 :: (n: int) -> int #effects(all) { return n + 1; }$/serve_coax_probe_13138 :: (n: int) -> int #effects(all) { flag: bool = n; return n + 1; }/' \"$R/$E\" > \"$D/edited.new\" && cp \"$D/edited.new\" \"$R/$E\"";
 ERRORS :: "errors() { s=different; cmp -s \"$D/$1-res.err\" \"$D/$1-cold.err\" && [ \"$(cat \"$D/$1-res.status\")\" = 1 ] && [ \"$(cat \"$D/$1-cold.status\")\" = 1 ] && grep -q 'error.E' \"$D/$1-res.err\" && s=same; echo $s; }; ";
+
+// Bounded (#13323): with COAX_SERVE_JOBS=2, eight requests at once run two at
+// a time (the others wait in its queue) and answer as cold compiles do;
+// COAX_SERVE_TEST_HOLD_MS holds each request before its command, so they overlap.
+BOUNDED :: "\"$C\" serve stop > /dev/null 2>&1; sleep 0.3; COAX_SERVE=0 \"$C\" check \"$D/w/main.coax\" > \"$D/cap.cold\" 2>&1; COAX_SERVE=0 \"$C\" check \"$D/w/main.coax\" > \"$D/cap.cold.out\" 2> /dev/null; COAX_SERVE_JOBS=2 \"$C\" check \"$D/w/main.coax\" > /dev/null 2>&1; up > /dev/null; pid=$(cat \"$S\"/*/pid); i=0; while [ $i -lt 8 ]; do COAX_SERVE_TEST_HOLD_MS=1500 \"$C\" check \"$D/w/main.coax\" > \"$D/cap-$i.out\" 2>&1 & i=$((i + 1)); done; max=0; n=0; while [ $n -lt 100 ]; do c=$(pgrep -P \"$pid\" | wc -l | tr -d ' '); [ \"$c\" -gt \"$max\" ] && max=$c; sleep 0.1; n=$((n + 1)); done; wait; echo \"children=$max\"; d=0; for f in \"$D\"/cap-*.out; do cmp -s \"$f\" \"$D/cap.cold\" || d=$((d + 1)); done; echo \"differ=$d\"; \"$C\" serve status | grep -o 'at most [0-9]* at once\\|[0-9]* queued in all'";
+// A request ends when its client is killed, and when its resident is killed
+// (the client then compiles cold, with the same output).
+GONE :: "pid=$(cat \"$S\"/*/pid); COAX_SERVE_TEST_HOLD_MS=30000 \"$C\" check \"$D/w/main.coax\" > /dev/null 2>&1 & cpid=$!; i=0; while [ $i -lt 50 ] && [ -z \"$(pgrep -P \"$pid\")\" ]; do sleep 0.1; i=$((i + 1)); done; child=$(pgrep -P \"$pid\" | head -n 1); [ -n \"$child\" ] && echo started; kill -9 $cpid; i=0; while [ $i -lt 30 ] && kill -0 \"$child\" 2> /dev/null; do sleep 0.1; i=$((i + 1)); done; kill -0 \"$child\" 2> /dev/null && echo client-gone=running || echo client-gone=ended; COAX_SERVE_TEST_HOLD_MS=4000 \"$C\" check \"$D/w/main.coax\" > \"$D/orphan.out\" 2> \"$D/orphan.err\" & cpid=$!; i=0; while [ $i -lt 50 ] && [ -z \"$(pgrep -P \"$pid\")\" ]; do sleep 0.1; i=$((i + 1)); done; child=$(pgrep -P \"$pid\" | head -n 1); kill -9 \"$pid\"; i=0; while [ $i -lt 30 ] && kill -0 \"$child\" 2> /dev/null; do sleep 0.1; i=$((i + 1)); done; kill -0 \"$child\" 2> /dev/null && echo parent-gone=running || echo parent-gone=ended; wait $cpid; echo \"client=$?\"; cmp -s \"$D/orphan.out\" \"$D/cap.cold.out\" && echo orphan-output=same; grep -c 'running the command again' \"$D/orphan.err\"";
+// COAX_SERVE_TIMEOUT stops a request and its client exits 124 with a note; a
+// resident whose binary is removed takes no new request (a new resident can
+// start), finishes the one it runs, and leaves.
+LIMITS :: "sleep 0.3; COAX_SERVE_TIMEOUT=1 \"$C\" check \"$D/w/main.coax\" > /dev/null 2>&1; up > /dev/null; COAX_SERVE_TEST_HOLD_MS=20000 \"$C\" check \"$D/w/main.coax\" > /dev/null 2> \"$D/limit.err\"; echo \"limited=$?\"; grep -c COAX_SERVE_TIMEOUT \"$D/limit.err\"; \"$C\" serve stop > /dev/null 2>&1; sleep 0.3; cp \"$C\" \"$D/coax-copy\"; X=\"$D/coax-copy\"; COAX_SERVE_IDLE=2 \"$X\" check \"$D/w/main.coax\" > /dev/null 2>&1; i=0; while ! \"$X\" serve status > /dev/null 2>&1 && [ $i -lt 100 ]; do sleep 0.1; i=$((i + 1)); done; COAX_SERVE_TEST_HOLD_MS=6000 \"$X\" check \"$D/w/main.coax\" > \"$D/drain.out\" 2>&1 & cpid=$!; sleep 0.5; rm -f \"$X\"; i=0; while \"$C\" serve status > /dev/null 2>&1 && [ $i -lt 50 ]; do sleep 0.1; i=$((i + 1)); done; \"$C\" serve status > /dev/null 2>&1 || echo drained; wait $cpid; echo \"drain-client=$?\"; cmp -s \"$D/drain.out\" \"$D/cap.cold\" && echo drain-output=same; \"$C\" check \"$D/w/main.coax\" > /dev/null 2>&1; up";
 
 // a + b + c in buffer.
 join3 :: (buffer: [] u8, a: string, b: string, c: string) -> string {
@@ -250,6 +265,22 @@ tool_main :: () -> int #export_c #effects(all) {
   t = cast(string) out[0..<r.out_n];
   bad += check(has(t, "killed status=0 same\nup\nagain status=0 same"), "after its resident is killed a compile runs cold and starts another");
   if !has(t, "killed status=0 same\nup\nagain status=0 same") { print("%", t); }
+
+  // Bounded: at most COAX_SERVE_JOBS requests at once; a request ends with its client and with its resident; a time limit; a removed binary.
+  r = run(compiler, dir, serve, BOUNDED, out[..]);
+  t = cast(string) out[0..<r.out_n];
+  bad += check(has(t, "children=2\n") && has(t, "differ=0\n") && has(t, "at most 2 at once"), "eight requests at once run two at a time in a resident with COAX_SERVE_JOBS=2, each with a cold compile's output");
+  if !has(t, "children=2\n") || !has(t, "differ=0\n") { print("%", t); }
+  r = run(compiler, dir, serve, GONE, out[..]);
+  t = cast(string) out[0..<r.out_n];
+  bad += check(has(t, "started\nclient-gone=ended\n"), "a request ends within 3 s of its client being killed");
+  bad += check(has(t, "parent-gone=ended\nclient=0\norphan-output=same\n1"), "a request ends within 3 s of its resident being killed, and its client compiles cold");
+  if !has(t, "client-gone=ended\n") || !has(t, "parent-gone=ended\nclient=0\norphan-output=same\n1") { print("%", t); }
+  r = run(compiler, dir, serve, LIMITS, out[..]);
+  t = cast(string) out[0..<r.out_n];
+  bad += check(has(t, "limited=124\n1\n"), "a request past COAX_SERVE_TIMEOUT is stopped, and its client exits 124 with a note");
+  bad += check(has(t, "drained\ndrain-client=0\ndrain-output=same\nup"), "a resident whose binary is removed takes no new request and finishes the one it runs");
+  if !has(t, "limited=124\n1\n") || !has(t, "drained\ndrain-client=0\ndrain-output=same\nup") { print("%", t); }
 
   // Stopped, and off.
   r = run(compiler, dir, serve, "\"$C\" serve stop | tail -n 1; sleep 0.3; \"$C\" serve status; COAX_SERVE=0 \"$C\" check \"$D/w/main.coax\" > /dev/null 2>&1; echo \"off=$?\"; sleep 0.3; \"$C\" serve status", out[..]);
