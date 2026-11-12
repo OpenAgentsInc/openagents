@@ -259,6 +259,7 @@ dragon_foe :: (b: [] RsBattle, x: int, y: int) -> int #effects(all) {
   #assert rs_burning_tick(b[..], f) == 0 && b[0].c[f].hp == 194;
   b[0].c[f].burning = 3; rs_fresh(b[..], f);
   #assert rs_burning_douse(b[..], f) && b[0].c[f].burning == 0 && rs_has(b[0].c[f], RS_PRONE);
+  for q: b[0].c[f].eff { if q.kind == EF_COND && q.cond == RS_PRONE { #assert q.until == 0 && q.turn_end == 0 && q.by == -1; } }
   #assert !rs_burning_douse(b[..], f);
 }
 #test "Tail Sweep, Wing Buffet and Frightful Roar: the SRD's DC formula, their reach, damage and conditions" {
@@ -272,9 +273,13 @@ dragon_foe :: (b: [] RsBattle, x: int, y: int) -> int #effects(all) {
   // fixed: 1d10 + 8 = 13 Bludgeoning; a 10 on the save fails
   #assert rs_tail_sweep(b[..], 0) == 2 && b[0].c[a].hp == 187 && b[0].c[c].hp == 187 && b[0].c[e].hp == 200;
   #assert rs_has(b[0].c[a], RS_PRONE) && rs_has(b[0].c[c], RS_PRONE) && !rs_has(b[0].c[e], RS_PRONE);
+  for q: b[0].c[a].eff { if q.kind == EF_COND && q.cond == RS_PRONE { #assert q.until == 0 && q.turn_end == 0 && q.by == 0; } }   // no clock holds it down: standing ends it
   rs_fresh(b[..], 0); #assert rs_wing_buffet(b[..], 0) == 1 && b[0].c[a].hp == 174 && b[0].c[a].x == 13 && b[0].c[c].hp == 187;   // pushed one square, stopped by the foe behind it
   rs_fresh(b[..], 0); #assert rs_dragon_roar(b[..], 0) == 3 && rs_has(b[0].c[e], RS_FRIGHTENED);
-  rs_tick(b[..], 7); #assert !rs_has(b[0].c[e], RS_FRIGHTENED);
+  // six seconds, to the tick
+  for q: b[0].c[e].eff { if q.kind == EF_COND && q.cond == RS_FRIGHTENED { #assert q.until == b[0].clock + 6000000 && q.turn_end == 0; } }
+  rs_tick_ticks(b[..], 5999999); #assert rs_has(b[0].c[e], RS_FRIGHTENED);
+  rs_tick_ticks(b[..], 1); #assert !rs_has(b[0].c[e], RS_FRIGHTENED);
   // one Action each
   rs_fresh(b[..], 0); #assert rs_tail_sweep(b[..], 0) >= 0 && rs_wing_buffet(b[..], 0) == -1 && rs_dragon_roar(b[..], 0) == -1;
   // not a dragon
