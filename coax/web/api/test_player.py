@@ -207,7 +207,7 @@ check("the same email typed in another browser opens nothing of the first's",
       other_browser["player"]["key"] == other["key"] and other_browser["player"]["account"] not in (None, acct), other_browser)
 check("its progress is its own", pt("GET", slot, key=other["key"]) == (200, {"rev": 0, "current": None, "previous": None}))
 check("nor its worlds", pt("GET", "player", key=other["key"])[1]["worlds"] == [])
-sql("insert into verse.accounts (id, email, created_ms) values ('e-legacy', 'legacy@example.com', 0)")
+sql("insert into verse.accounts (id, created_ms) values ('e-legacy', 0)")
 status, legacy = pt("POST", "join", {"email": "legacy@example.com", "how": "email"})
 check("an email's account from the demo is never handed out", status == 200 and legacy["player"]["account"] not in (None, "e-legacy"), legacy)
 check("erase", pt("POST", slot + "/erase", {}, key=other["key"]) == (200, {"erased": True}))

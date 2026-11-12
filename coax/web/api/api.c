@@ -34,7 +34,7 @@
 //   scheduled jobs                POST /api/jobs/<job>, Cloud Scheduler or an admin (jobs.c)
 //   email, admins only            POST /api/admin/email, through Resend (email.c)
 //   /chat, admins only             /api/chat/*, and the runner's /api/chat/runner/* (chat.c)
-//   realm invites, auth v2         /api/playtest/access, /api/admin/access, /api/auth/v2 (access.c, flags off)
+//   realm invites                  /api/playtest/access, /api/admin/access (access.c, flag off)
 //   private human packs            /api/verse/packs/<name>, /api/verse/packs/fetch/<sid>, per-session keys (verse_packs.c)
 #include "api.h"
 

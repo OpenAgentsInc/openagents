@@ -75,7 +75,7 @@ Lg :: struct {
   has_passkey: int = -1;                                    // -1 not heard yet, 0 none, 1 passkeys, 2 and autofill
   pk_wait: int; cond_asked: bool; cond_at: f32;             // key.js's ceremony: 1 a button's, 2 the autofill's, 3 adding one
   after_root: bool;                                         // after the offer: home (the email link) rather than next
-  next: [256] u8; next_n: int;
+  next: [256] u8; next_n: int; next_hash: bool;              // next_hash: it came from #next= (it wins over ?next=)
   // The request the face hands to coaxial_http, when want is set.
   want: bool; url: [320] u8; url_n: int; body: [4400] u8; body_n: int; flags: int;
   action: int; outbox: [4000] u8; out_n: int;
@@ -128,8 +128,36 @@ lg_same_site :: (t: string) -> bool {
   for i: 0..<t.count { c := t[i]; if c <= ' ' || c >= 127 || c == '\\' { return false; } }
   return true;
 }
+// Whether a same-site path may be next: anything but this login page again (/login, /login?..., /login#...,
+// /login/email, /loginx). /login/device (a computer's login, its code after #) is a page of its own.
+lg_next_ok :: (t: string) -> bool {
+  if !lg_same_site(t) { return false; }
+  if !lg_is(t, 0, "/login") { return true; }
+  d := "/login/device";
+  if !lg_is(t, 0, d) { return false; }
+  return t.count == d.count || t[d.count] == '#' || t[d.count] == '?';
+}
+// raw percent-decoded into next when it is a path next may be; false (next unchanged) when not.
+lg_take_next :: (s: [] Lg, raw: string) -> bool {
+  out: [256] u8; n := 0; j := 0;
+  while j < raw.count {
+    c := raw[j];
+    if c == '%' {
+      if j + 2 >= raw.count { return false; }
+      a := lg_hex(raw[j + 1]); b := lg_hex(raw[j + 2]);
+      if a < 0 || b < 0 { return false; }
+      c = cast(u8) (a * 16 + b); j += 3;
+    } else { if c == '+' { c = ' '; } j += 1; }
+    if n >= 256 { return false; }
+    out[n] = c; n += 1;
+  }
+  t := cast(string) out[0..<n];
+  if !lg_next_ok(t) { return false; }
+  s[0].next_n = lg_set(s[0].next[..], t);
+  return true;
+}
 // ?next= from the page's url fact, percent-decoded; kept only when it is a same-site path
-// (and not the login page itself).
+// (and not the login page itself), and when no #next= came first.
 lg_facts :: (s: [] Lg, text: string) {
   p := -1;
   if lg_is(text, 0, "url=") { p = 4; } else {
@@ -144,20 +172,7 @@ lg_facts :: (s: [] Lg, text: string) {
   while i < url.count && url[i] != '#' {
     stop := i; while stop < url.count && url[stop] != '&' && url[stop] != '#' { stop += 1; }
     if lg_is(url, i, "next=") {
-      raw := url[i + 5..<stop]; out: [256] u8; n := 0; j := 0; bad := false;
-      while j < raw.count {
-        c := raw[j];
-        if c == '%' {
-          if j + 2 >= raw.count { bad = true; break; }
-          a := lg_hex(raw[j + 1]); b := lg_hex(raw[j + 2]);
-          if a < 0 || b < 0 { bad = true; break; }
-          c = cast(u8) (a * 16 + b); j += 3;
-        } else { if c == '+' { c = ' '; } j += 1; }
-        if n >= 256 { bad = true; break; }
-        out[n] = c; n += 1;
-      }
-      t := cast(string) out[0..<n];
-      if !bad && lg_same_site(t) && !lg_is(t, 0, "/login") { s[0].next_n = lg_set(s[0].next[..], t); }
+      if !s[0].next_hash { _ = lg_take_next(s, url[i + 5..<stop]); }
       return;
     }
     i = stop + 1;
@@ -429,9 +444,19 @@ lg_signed :: (s: [] Lg, text: string) {
   cb: [120] u8; cn := lg_challenge_body(s, cb[..]); n = lg_add(b[..], n, cast(string) cb[0..<cn]);
   lg_ask(s, REQ_NOSTR, "/api/auth/nostr?as=lines", cast(string) b[0..<n], LG_HTTP_POST | LG_HTTP_AUTH);
 }
+// The hash on /login: next=PATH (the host hands it over decoded; a path with its own #, such as
+// /invite#code=..., is whole after next=). It stays in a fragment so no server log sees a link's code;
+// read once, then cleared from the address bar.
 // The hash on /login/email: t=TOKEN. Read once, then cleared from the address bar.
 lg_hash :: (s: [] Lg, text: string) #export_c #effects(all) {
-  if s.count < 1 || s[0].page != LG_PAGE_LINK || s[0].token_n > 0 { return; }
+  if s.count < 1 { return; }
+  if s[0].page == LG_PAGE_LOGIN {
+    if !lg_is(text, 0, "next=") { return; }
+    if lg_take_next(s, text[5..<text.count]) { s[0].next_hash = true; }
+    if s[0].action == 0 { s[0].out_n = 0; s[0].action = LG_ACT_HASH; }   // the way back (and its code) leaves the address bar
+    return;
+  }
+  if s[0].page != LG_PAGE_LINK || s[0].token_n > 0 { return; }
   if !lg_is(text, 0, "t=") { if s[0].screen == LG_LINK && text.count > 0 { s[0].screen = LG_LINK_FAILED; lg_err(s, "That link isn't whole. Type the code instead."); } return; }
   t := text[2..<text.count];
   e := 0; while e < t.count && t[e] != '&' { e += 1; }
@@ -916,6 +941,92 @@ lg_error_of :: (s: [] Lg) -> string { return cast(string) s[0].error[0..<s[0].er
   t: [1] Lg; lg_facts(t[..], "now=5\nurl=https://openagents.com/login#next=/x"); #assert t[0].next_n == 0;
   lg_go_next(t[..]); #assert lg_out(t[..]) == "/";
   #assert lg_same_site("/") && !lg_same_site("") && !lg_same_site("/a b") && !lg_same_site("x/y");
+}
+#test "#next= on /login: read once, cleared from the address bar, and login goes there with its own fragment" {
+  s: [1] Lg; lg_new(s[..], LG_PAGE_LOGIN);
+  lg_hash(s[..], "next=/invite#code=00112233445566778899aabbccddeeff");
+  #assert s[0].next_hash && cast(string) s[0].next[0..<s[0].next_n] == "/invite#code=00112233445566778899aabbccddeeff";
+  #assert s[0].action == LG_ACT_HASH && s[0].out_n == 0;   // the code leaves the address bar
+  lg_done(s[..]); lg_hash(s[..], "");                      // the cleared hash changes nothing
+  #assert s[0].action == 0 && s[0].next_n == 45;
+  lg_reply(s[..], 0, "200\nlogged_in 0\n");
+  #assert s[0].screen == LG_EMAIL;
+  lg_type(s[..], "ada@example.com"); lg_press(s[..], H_MAIN);
+  lg_reply(s[..], 1, "200\nstate sent\nexpires_in 600\ntries 5\n");
+  lg_type(s[..], "123456");
+  lg_reply(s[..], 2, "200\nstate logged-in\naccount acct_x\nnew 0\n");
+  #assert s[0].screen == LG_DONE && s[0].action == LG_ACT_GO && lg_out(s[..]) == "/invite#code=00112233445566778899aabbccddeeff";
+  // still percent-encoded (a host that hands it over as is): decoded here, the same checks
+  t: [1] Lg; lg_new(t[..], LG_PAGE_LOGIN);
+  lg_hash(t[..], "next=%2Fworlds%2Forbit-league%2Fclaim%23code%3D00112233445566778899aabbccddeeff");
+  lg_go_next(t[..]); #assert lg_out(t[..]) == "/worlds/orbit-league/claim#code=00112233445566778899aabbccddeeff";
+  // already logged in: Continue goes there too
+  c: [1] Lg; lg_new(c[..], LG_PAGE_LOGIN);
+  lg_hash(c[..], "next=/login/device#code=00112233445566778899aabbccddeeff");
+  lg_done(c[..]); lg_reply(c[..], 0, "200\nlogged_in 1\naccount acct_x\n");
+  #assert c[0].screen == LG_IN;
+  lg_press(c[..], H_MAIN);
+  #assert c[0].action == LG_ACT_GO && lg_out(c[..]) == "/login/device#code=00112233445566778899aabbccddeeff";
+}
+#test "#next= keeps ?next='s rules: a same-site path, and never this login page again, but /login/device is its own page" {
+  good := [5] string.["/login/device", "/login/device#code=00112233445566778899aabbccddeeff", "/login/device?x=1", "/projects/x", "/invite#code=ab"];
+  for i: 0..<5 {
+    #assert lg_next_ok(good[i]);
+    t: [1] Lg; lg_new(t[..], LG_PAGE_LOGIN);
+    h: [120] u8; n := lg_add(h[..], 0, "next="); n = lg_add(h[..], n, good[i]);
+    lg_hash(t[..], cast(string) h[0..<n]);
+    #assert t[0].next_hash && cast(string) t[0].next[0..<t[0].next_n] == good[i];
+    u: [1] Lg; f: [160] u8; m := lg_add(f[..], 0, "url=https://openagents.com/login?next="); m = lg_add(f[..], m, good[i]);
+    lg_facts(u[..], cast(string) f[0..<m]);
+    // a ? path's own # ends the query: only what is before it can be next
+    q := 0; while q < good[i].count && good[i][q] != '#' { q += 1; }
+    #assert cast(string) u[0].next[0..<u[0].next_n] == good[i][0..<q];
+  }
+  bad := [16] string.["/login", "/login?next=/x", "/login#next=/x", "/login/", "/login/email", "/login/email#t=x", "/login/devicex", "/login/device/x", "/loginx",
+                      "//evil.example", "https://evil.example", "/\\evil.example", "javascript:alert(1)", "/a b", "", "x/y"];
+  for i: 0..<16 {
+    #assert !lg_next_ok(bad[i]);
+    t: [1] Lg; lg_new(t[..], LG_PAGE_LOGIN);
+    h: [120] u8; n := lg_add(h[..], 0, "next="); n = lg_add(h[..], n, bad[i]);
+    lg_hash(t[..], cast(string) h[0..<n]);
+    #assert t[0].next_n == 0 && !t[0].next_hash && t[0].action == LG_ACT_HASH;   // refused, and still cleared
+    lg_go_next(t[..]); #assert lg_out(t[..]) == "/";
+  }
+  // encoded tricks are decoded first, then checked
+  enc := [4] string.["next=%2F%2Fevil.example", "next=%2Flogin", "next=/a%0Ab", "next=%zz"];
+  for i: 0..<4 { t: [1] Lg; lg_new(t[..], LG_PAGE_LOGIN); lg_hash(t[..], enc[i]); #assert t[0].next_n == 0 && !t[0].next_hash; }
+  long: [300] u8; ln := lg_add(long[..], 0, "next=/"); while ln < 300 { long[ln] = 'a'; ln += 1; }
+  l: [1] Lg; lg_new(l[..], LG_PAGE_LOGIN); lg_hash(l[..], cast(string) long[0..<ln]); #assert l[0].next_n == 0;
+  k: [1] Lg; lg_new(k[..], LG_PAGE_LOGIN); lg_hash(k[..], cast(string) long[0..<261]); #assert k[0].next_n == 256;
+}
+#test "#next= wins over ?next= in either order; other hashes on /login do nothing; a waiting action isn't overwritten" {
+  a: [1] Lg; lg_new(a[..], LG_PAGE_LOGIN);
+  lg_hash(a[..], "next=/invite#code=ab"); lg_done(a[..]);
+  lg_facts(a[..], "url=https://openagents.com/login?next=/projects");
+  #assert cast(string) a[0].next[0..<a[0].next_n] == "/invite#code=ab";
+  b: [1] Lg; lg_new(b[..], LG_PAGE_LOGIN);
+  lg_facts(b[..], "url=https://openagents.com/login?next=/projects");
+  #assert !b[0].next_hash && cast(string) b[0].next[0..<b[0].next_n] == "/projects";
+  lg_hash(b[..], "next=/invite#code=ab");
+  #assert cast(string) b[0].next[0..<b[0].next_n] == "/invite#code=ab";
+  // a refused #next= leaves a good ?next= alone, and ?next= still counts after it
+  r: [1] Lg; lg_new(r[..], LG_PAGE_LOGIN);
+  lg_facts(r[..], "url=https://openagents.com/login?next=/projects");
+  lg_hash(r[..], "next=//evil.example");
+  #assert cast(string) r[0].next[0..<r[0].next_n] == "/projects" && !r[0].next_hash;
+  lg_facts(r[..], "url=https://openagents.com/login?next=/chat");
+  #assert cast(string) r[0].next[0..<r[0].next_n] == "/chat";
+  for h: [3] string.["", "t=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef", "nex=/x"] {
+    o: [1] Lg; lg_new(o[..], LG_PAGE_LOGIN); lg_hash(o[..], h);
+    #assert o[0].next_n == 0 && o[0].action == 0 && o[0].req == REQ_ACCOUNT && o[0].screen == LG_EMAIL;
+  }
+  w: [1] Lg; lg_new(w[..], LG_PAGE_LOGIN);
+  w[0].action = LG_ACT_PASSKEY; w[0].out_n = lg_set(w[0].outbox[..], "conditional\nx");
+  lg_hash(w[..], "next=/invite#code=ab");
+  #assert w[0].action == LG_ACT_PASSKEY && lg_out(w[..]) == "conditional\nx" && w[0].next_hash;
+  // /login/email's link reads only t=
+  e: [1] Lg; lg_new(e[..], LG_PAGE_LINK); lg_hash(e[..], "next=/invite#code=ab");
+  #assert e[0].next_n == 0 && e[0].req == REQ_NONE;
 }
 #test "email, code, logged in: the code screen shows tries and time, and login goes to next" {
   s: [1] Lg; lg_new(s[..], LG_PAGE_LOGIN); lg_reply(s[..], 0, "200\nlogged_in 0\n");

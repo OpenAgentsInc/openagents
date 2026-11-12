@@ -74,10 +74,10 @@ cli_onoff :: (s: string) -> int #effects(all) {
 
 // The access flags an admin turns on or off (0090).
 #test "flag names" {
-  #assert cli_flag_ok("realm_invites") && cli_flag_ok("auth_v2");
-  #assert !cli_flag_ok("") && !cli_flag_ok("realm-invites") && !cli_flag_ok("auth_v3");
+  #assert cli_flag_ok("realm_invites");
+  #assert !cli_flag_ok("") && !cli_flag_ok("realm-invites") && !cli_flag_ok("auth_v2") && !cli_flag_ok("realm_invitesx");
 }
-cli_flag_ok :: (s: string) -> bool #effects(all) { return s == "realm_invites" || s == "auth_v2"; }
+cli_flag_ok :: (s: string) -> bool #effects(all) { return s == "realm_invites"; }
 
 // A count in bounds as typed: plain decimal digits, no sign, at most 18; -1 otherwise.
 #test "counts in bounds" {
@@ -161,15 +161,15 @@ cli_spec_value :: (text: string, key: string) -> string #effects(all) {
 
 // What GET /api/admin/access says, counted: its F (flag), I (invite), R (request) and C (creator)
 // rows (migrations/0090_realm_invites.sql, access.admin_lines).
-AccessSum :: struct { invites_flag: int = -1; auth_flag: int = -1; invites: int; live: int; requests: int; waiting: int; creators: int; }
+AccessSum :: struct { invites_flag: int = -1; invites: int; live: int; requests: int; waiting: int; creators: int; }
 #test "access rows counted" {
-  t := "F|realm_invites|1\nF|auth_v2|0\nI|3|1|0|99|live|for kiki\nI|2|1|1|99|used|\nR|5|npub1x|note|a@b.c|waiting|9\nR|4|npub1y|n||approved|8\nC|n-ab|admin|7\nC|p-cd|grandfather|6\n";
+  t := "F|realm_invites|1\nF|old_flag|0\nI|3|1|0|99|live|for kiki\nI|2|1|1|99|used|\nR|5|npub1x|note|a@b.c|waiting|9\nR|4|npub1y|n||approved|8\nC|n-ab|admin|7\nC|p-cd|grandfather|6\n";
   s := cli_access_sum(t);
-  #assert s.invites_flag == 1 && s.auth_flag == 0 && s.invites == 2 && s.live == 1 && s.requests == 2 && s.waiting == 1 && s.creators == 2;
+  #assert s.invites_flag == 1 && s.invites == 2 && s.live == 1 && s.requests == 2 && s.waiting == 1 && s.creators == 2;
   e := cli_access_sum("");
-  #assert e.invites_flag == -1 && e.auth_flag == -1 && e.invites == 0 && e.creators == 0 && e.waiting == 0;
-  o := cli_access_sum("F|realm_invites|0\nF|auth_v2|1\nX|1\nI|1|1|0|1|revoked|x|live\nR|1|n|a|b|declined|1\nC|w-1|invite|1");
-  #assert o.invites_flag == 0 && o.auth_flag == 1 && o.invites == 1 && o.live == 0 && o.requests == 1 && o.waiting == 0 && o.creators == 1;
+  #assert e.invites_flag == -1 && e.invites == 0 && e.creators == 0 && e.waiting == 0;
+  o := cli_access_sum("F|old_flag|1\nF|realm_invites|0\nX|1\nI|1|1|0|1|revoked|x|live\nR|1|n|a|b|declined|1\nC|w-1|invite|1");
+  #assert o.invites_flag == 0 && o.invites == 1 && o.live == 0 && o.requests == 1 && o.waiting == 0 && o.creators == 1;
   #assert cli_access_sum("\nC|x").creators == 1;
   #assert cli_field("a|b|c", 0) == "a" && cli_field("a|b|c", 2) == "c" && cli_field("a|b|c", 3) == "" && cli_field("|x", 0) == "" && cli_field("a||c", 1) == "";
 }
@@ -183,7 +183,6 @@ cli_access_sum :: (text: string) -> AccessSum #effects(all) {
     if kind == "F" {
       on := ifx cli_field(line, 2) == "1" then 1 else 0;
       if cli_field(line, 1) == "realm_invites" { s.invites_flag = on; }
-      if cli_field(line, 1) == "auth_v2" { s.auth_flag = on; }
     }
     if kind == "I" { s.invites += 1; if cli_field(line, 5) == "live" { s.live += 1; } }
     if kind == "R" { s.requests += 1; if cli_field(line, 5) == "waiting" { s.waiting += 1; } }

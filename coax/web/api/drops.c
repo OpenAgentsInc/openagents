@@ -244,19 +244,17 @@ static bool who(const request *q, PGconn *db, char pk[65], bool *signed_req) {
     *signed_req = true;
     return true;
   }
-  const char *sql[2] = {
-    "SELECT pubkey FROM drops.sessions WHERE token_sha256 = encode(sha256(convert_to($1, 'UTF8')), 'hex') AND expires_ms > drops.now_ms()",
-    "SELECT pubkey FROM analytics.admin_sessions WHERE token_sha256 = encode(sha256(convert_to($1, 'UTF8')), 'hex') AND expires_ms > drops.now_ms()"};
-  const char *names[2] = {COOKIE, "oa_admin"};
-  for (int k = 0; k < 2; k++) {
-    if (!cookie(q, names[k], tok)) continue;
+  if (cookie(q, COOKIE, tok)) {
     const char *v[1] = {tok};
-    PGresult *r = PQexecParams(db, sql[k], 1, NULL, v, NULL, NULL, 0);
+    PGresult *r = PQexecParams(db, "SELECT pubkey FROM drops.sessions WHERE token_sha256 = encode(sha256(convert_to($1, 'UTF8')), 'hex') AND expires_ms > drops.now_ms()",
+                               1, NULL, v, NULL, NULL, 0);
     if (PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1) snprintf(pk, 65, "%s", PQgetvalue(r, 0, 0));
     PQclear(r);
-    if (pk[0] && (k == 0 || admin_is(pk))) return true;
-    pk[0] = 0;
+    if (pk[0]) return true;
   }
+  // An admin logged in with a session of ours (auth.c: /login, or the admin page's signed link).
+  const auth_principal *p = auth_principal_of(q);
+  if (p && p->session[0] && p->pubkey[0] && admin_is(p->pubkey)) { memcpy(pk, p->pubkey, 65); return true; }
   return false;
 }
 

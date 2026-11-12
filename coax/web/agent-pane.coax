@@ -1,7 +1,7 @@
 // YOUR AGENT, played in headless Chrome (no window opens, no sound plays) against a local oa-api and
 // a stand-in runner (openagents#12655; docs/verse/realm-seat.md "The agent pane"). The page is the
 // made realm's page this checkout builds, on one local origin with the API (coax/web/local-origin.coax),
-// so the page sends its own session cookie (oa_session) and Origin with every seat request, as the
+// so the page sends its own session cookie (__Host-oa_session, auth.c) and Origin with every seat request, as the
 // site's page does on openagents.com.
 //
 // The tool makes its owner first, in SQL: an account (a throwaway key), a logged-in session for it, a
@@ -27,6 +27,7 @@
 // Exit 0 when every check passed, 1 when one failed, 2 for a usage error.
 #import "Basic";
 #load "../lib/net/cdp.coax";
+#load "../lib/crypto/token.coax";   // the owner's session token (oas_...), as /login makes one
 
 AP_MS :: 30000;
 AP_PNG_MAX :: 25165824;
@@ -74,12 +75,29 @@ ap_origin_ok :: (o: string) -> bool {
   }
   return false;
 }
-// The owner, made in SQL: an account for a throwaway key (auth.caller_key), its logged-in session,
-// a player key of that account, and a private made realm it owns. stamp keeps each run's apart.
-ap_owner_sql :: (o: [] ApBuf, stamp: int) {
-  ap_put(o, "SELECT auth.caller_key('"); ap_digits(o, stamp, 64); ap_put(o, "') IS NOT NULL; ");
-  ap_put(o, "INSERT INTO signin.sessions (token_sha256, pubkey, created_ms, expires_ms) VALUES (encode(sha256('"); ap_digits(o, stamp + 1, 64);
-  ap_put(o, "'), 'hex'), '"); ap_digits(o, stamp, 64); ap_put(o, "', 0, 9999999999999); ");
+// The owner's session token, oas_... (coax/lib/crypto/token.coax), from the run's stamp (a throwaway
+// on a local database), into tok; its digest as hex into dig. False if the codec refused.
+ap_token :: (stamp: int, tok: [] ApBuf, dig: [] ApBuf) -> bool {
+  r: [32] u8; x := stamp;
+  for i: 0..<32 { r[i] = cast(u8) (x % 251); x = x / 7 + i * 13 + 1; }
+  t: [TK_MAX] u8;
+  n := token_make("oas_", r[..], t[..]);
+  if n <= 0 { return false; }
+  ap_put(tok, cast(string) t[0..<n]);
+  d: [32] u8;
+  if !token_digest(cast(string) t[0..<n], d[..]) { return false; }
+  hx := "0123456789abcdef"; h: [64] u8;
+  for i: 0..<32 { h[2 * i] = hx[cast(int) (d[i] >> 4)]; h[2 * i + 1] = hx[cast(int) (d[i] & 15)]; }
+  ap_put(dig, cast(string) h[..]);
+  return true;
+}
+// The owner, made in SQL: an account for a throwaway key (auth.account_for_key), its logged-in session
+// (auth.session_new at L2, the token's digest dig), a player key of that account, and a private made
+// realm it owns. stamp keeps each run's apart.
+ap_owner_sql :: (o: [] ApBuf, stamp: int, dig: string) {
+  ap_put(o, "SELECT (auth.account_for_key('"); ap_digits(o, stamp, 64); ap_put(o, "', 'agent pane')).acct IS NOT NULL; ");
+  ap_put(o, "DO $$ BEGIN PERFORM auth.session_new('"); ap_put(o, dig); ap_put(o, "', k.account, 'nostr', k.id, 'L2', 'web', 'agent pane', NULL) FROM auth.nostr_keys k WHERE k.pubkey = '");
+  ap_digits(o, stamp, 64); ap_put(o, "'; END $$; ");
   ap_put(o, "INSERT INTO verse.players (id, key_sha256, account, created_ms) VALUES ('p-ap"); ap_int(o, stamp);
   ap_put(o, "', encode(sha256(convert_to('agent-pane-owner-key-"); ap_int(o, stamp); ap_put(o, "', 'UTF8')), 'hex'), auth.account_of('"); ap_digits(o, stamp, 64); ap_put(o, "'), 1); ");
   ap_put(o, "INSERT INTO verse.worlds (id, owner_account, created_ms) VALUES ('made-ap-"); ap_int(o, stamp); ap_put(o, "', auth.account_of('"); ap_digits(o, stamp, 64); ap_put(o, "'), 1); ");
@@ -92,9 +110,11 @@ ap_owner_sql :: (o: [] ApBuf, stamp: int) {
   ap_digits(o[..], 42, 6);
   #assert ap_text(o[..]) == "000042";
   q: [1] ApBuf;
-  ap_owner_sql(q[..], 7);
+  ap_owner_sql(q[..], 7, "ab");
   t := ap_text(q[..]);
-  #assert !q[0].bad && ap_starts(t, "SELECT auth.caller_key('0000000000000000000000000000000000000000000000000000000000000007') IS NOT NULL; INSERT INTO signin.sessions");
+  #assert !q[0].bad && ap_starts(t, "SELECT (auth.account_for_key('0000000000000000000000000000000000000000000000000000000000000007', 'agent pane')).acct IS NOT NULL; DO $$ BEGIN PERFORM auth.session_new('ab', ");
+  tk: [1] ApBuf; dg: [1] ApBuf;
+  #assert ap_token(7, tk[..], dg[..]) && token_check(ap_text(tk[..])).kind == TK_SESSION && ap_text(dg[..]).count == 64;
   #assert t[t.count - 11..<t.count] == "'private');";
 }
 
@@ -142,7 +162,10 @@ ap_go :: (c: [] Cdp, f: [] Pane, url: string) -> bool {
 ap_cookie :: (c: [] Cdp, f: [] Pane, name: string, value: string) -> bool {
   b: [1024] u8; o: [1] Jo; jo_start(o[..], b[..]);
   jo_obj(o[..]); jo_key(o[..], "name"); jo_str(o[..], name); jo_key(o[..], "value"); jo_str(o[..], value);
-  jo_key(o[..], "url"); jo_str(o[..], f[0].origin); jo_end(o[..]);
+  jo_key(o[..], "url"); jo_str(o[..], f[0].origin);
+  // a __Host- cookie is Secure with Path=/ (Chrome takes it on a local origin, which it counts as secure)
+  if name.count > 7 && name[0..<7] == "__Host-" { jo_key(o[..], "secure"); jo_bool(o[..], true); jo_key(o[..], "path"); jo_str(o[..], "/"); }
+  jo_end(o[..]);
   return ap_call(c, f, "Network.setCookie", jo_text(o[..])) >= 0;
 }
 ap_sql :: (f: [] Pane, sql: string, out: [] u8) -> string {
@@ -230,7 +253,7 @@ ap_check :: (f: [] Pane, name: string, ok: bool, seen: int) {
 // A browser with the owner's session (cookie) and player key (localStorage) on this origin.
 ap_browser :: (c: [] Cdp, f: [] Pane, page: string, token: string, key_js: string) -> bool {
   if !cdp_launch(c, 1440, 900, "coax-agent-pane-") { tool_err("agent-pane: "); tool_errln(cdp_error(c)); return false; }
-  armed := ap_cookie(c, f, "verse-automation", "agent-pane") && ap_cookie(c, f, "oa_session", token);
+  armed := ap_cookie(c, f, "verse-automation", "agent-pane") && ap_cookie(c, f, "__Host-oa_session", token);
   // a page that can't present a WebGPU canvas here draws offscreen (cdp_swiftshader_offscreen)
   armed = armed && ap_call(c, f, "Page.enable", "{}") >= 0 && cdp_swiftshader_offscreen(c);
   armed = armed && ap_go(c, f, page) && ap_eval(c, f, key_js) >= 0;
@@ -258,12 +281,13 @@ tool_main :: () -> int #export_c #effects(all) {
 
   // the owner, logged in, and their realm
   stamp := proc_now_ms() % 1000000000;
-  q: [1] ApBuf; ap_owner_sql(q[..], stamp);
+  tok: [1] ApBuf; dig: [1] ApBuf;
+  if !ap_token(stamp, tok[..], dig[..]) { tool_errln("agent-pane: no session token"); return 1; }
+  q: [1] ApBuf; ap_owner_sql(q[..], stamp, ap_text(dig[..]));
   sq: [256] u8;
   made := ap_sql(f[..], ap_text(q[..]), sq[..]);
   ap_check(f[..], "a logged-in owner and their private made realm", !f[0].bad && made == "t", 0);
   if f[0].bad { return 1; }
-  tok: [1] ApBuf; ap_digits(tok[..], stamp + 1, 64);
   key: [1] ApBuf; ap_put(key[..], "agent-pane-owner-key-"); ap_int(key[..], stamp);
   pg: [1] ApBuf; ap_put(pg[..], origin); ap_put(pg[..], "/realms/built#ap-"); ap_int(pg[..], stamp);
   page := ap_text(pg[..]);

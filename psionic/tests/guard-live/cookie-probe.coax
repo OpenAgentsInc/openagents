@@ -28,24 +28,41 @@ cp_fetch :: (c:[]Cdp,url:string,body:string,authorization:string)->int {
 }
 cp_sign :: (signer:string,key:string,login:string,out:[]u8)->int {
     h:=proc_new();if h<0 {return -1;}
-    argv:=[6]string.[signer,"--key",key,"POST","https://openagents.com/api/auth/key",login];ok:=proc_unset(h,"SIGN_AGE");
+    argv:=[6]string.[signer,"--key",key,"POST",CP_LOGIN_URL,login];ok:=proc_unset(h,"SIGN_AGE");
     for a:argv {if !proc_arg(h,a) {ok=false;}}
     if !ok || proc_start(h)!=0 {released:=proc_release(h);return -1;}
     raw:[4096]u8;n:=proc_line(h,5000,raw[..]);status:=proc_wait(h,5000);released:=proc_release(h);
     if n<=0 || status!=0 {return -1;}at:=ws_put(out,0,"Nostr ");return ws_put(out,at,cast(string)raw[0..<n]);
 }
-cp_browser :: (c:[]Cdp,request:string,authorization:string,case_id:int,request_sha:string,out:string)->bool {
+// The login's challenge from the page's own fetch (POST /api/auth/nostr/challenge?as=lines: a
+// "challenge HEX" line), as {"challenge":"HEX"} into out; its length, or -1.
+cp_challenge :: (c:[]Cdp,out:[]u8)->int {
+    r:=cp_fetch(c,CP_CHALLENGE_URL,"{}","");d:=cdp_doc(c);
+    if jv_int(d,jv_get(d,r,"status"),0)!=200 {return -1;}
+    b:[CP_BODY_MAX]u8;n:=jv_str(d,jv_get(d,r,"body"),b[..]);text:=cast(string)b[0..<ifx n>0 then n else 0];
+    at:=0;while at+10<=text.count && text[at..<at+10]!="challenge " {at+=1;}
+    if at+74>text.count {return -1;}
+    for i:at+10..<at+74 {x:=text[i];if !((x>='0'&&x<='9')||(x>='a'&&x<='f')) {return -1;}}
+    k:=ws_put(out,0,"{\"challenge\":\"");k=ws_put(out,k,text[at+10..<at+74]);return ws_put(out,k,"\"}");
+}
+cp_browser :: (c:[]Cdp,request:string,signer:string,key:string,login_file:string,case_id:int,request_sha:string,out:string)->bool {
     if cdp_call(c,"Network.enable","{}",5000)<0 || cdp_call(c,"Network.setBypassServiceWorker","{\"bypass\":true}",5000)<0 {return false;}
     if cdp_call(c,"Page.navigate","{\"url\":\"https://openagents.com/robots.txt\"}",5000)<0 {return false;}
     origin:=false;end:=proc_now_ms()+5000;
     while proc_now_ms()<end {v:=cp_eval(c,"location.origin === 'https://openagents.com'");if v>=0 && jv_bool(cdp_doc(c),v) {origin=true;break;}proc_sleep(50);}
     if !origin {return false;}
-    login:=cp_fetch(c,"https://openagents.com/api/auth/key",CP_LOGIN,authorization);
+    // A real login (auth.c): the page asks for a challenge, the owned key signs it, the page posts it.
+    lbody:[256]u8;bn:=cp_challenge(c,lbody[..]);
+    if bn<0 || !fs_write(login_file,cast(string)lbody[0..<bn]) {return false;}
+    auth:[8192]u8;auth_n:=cp_sign(signer,key,login_file,auth[..]);
+    if auth_n<0 {tool_errln("cookie probe: signer failed");return false;}
+    login:=cp_fetch(c,CP_LOGIN_URL,cast(string)lbody[0..<bn],cast(string)auth[0..<auth_n]);
+    for i:0..<auth.count {auth[i]=0;}
     status:=jv_int(cdp_doc(c),jv_get(cdp_doc(c),login,"status"),0);
     cookies:=cdp_call(c,"Network.getCookies","{\"urls\":[\"https://openagents.com\"]}",5000);d:=cdp_doc(c);
     list:=jv_get(d,cookies,"cookies");http_only:=false;secure:=false;
-    for i:0..<jv_len(d,list) {cookie:=jv_at(d,list,i);if gg_is(d,jv_get(d,cookie,"name"),"oa_session") {http_only=jv_bool(d,jv_get(d,cookie,"httpOnly"));secure=jv_bool(d,jv_get(d,cookie,"secure"));}}
-    visible:=cp_eval(c,"document.cookie.includes('oa_session=')");script_readable:=jv_kind(cdp_doc(c),visible)!=JV_FALSE;
+    for i:0..<jv_len(d,list) {cookie:=jv_at(d,list,i);if gg_is(d,jv_get(d,cookie,"name"),"__Host-oa_session") {http_only=jv_bool(d,jv_get(d,cookie,"httpOnly"));secure=jv_bool(d,jv_get(d,cookie,"secure"));}}
+    visible:=cp_eval(c,"document.cookie.includes('oa_session')");script_readable:=jv_kind(cdp_doc(c),visible)!=JV_FALSE;
     if !cp_cookie(status,http_only,secure,script_readable) {return false;}
     // Empty authorization: this request uses only the browser's normal session.
     reply:=cp_fetch(c,CP_URL,request,"");d=cdp_doc(c);
@@ -71,12 +88,9 @@ tool_main :: ()->int #export_c #effects(all) {
     for i:0..<32 {b:=cast(int)hash[i];hex[2*i]="0123456789abcdef"[b>>4];hex[2*i+1]="0123456789abcdef"[b&15];}
     folder:[4096]u8;dir:=fs_temp("guard-cookie-",folder[..]);path:[4096]u8;login:=fs_join(dir,"login.json",path[..]);
     if dir.count==0 {tool_errln("cookie probe: private login folder unavailable");return 1;}
-    if !fs_write(login,CP_LOGIN) {removed:=fs_remove(dir);return 1;}
     if !fs_write(out,"") {removed:=fs_remove(dir);tool_errln("cookie probe: output is not writable");return 2;}
-    auth:[8192]u8;auth_n:=cp_sign(signer,key,login,auth[..]);removed:=fs_remove(dir);
-    if auth_n<0 {tool_errln("cookie probe: signer failed");return 1;}
-    c:[1]Cdp;if !cdp_launch(c[..],800,600,"guard-cookie-browser-") {tool_errln("cookie probe: headless transport unavailable");cdp_close(c[..]);return 1;}
-    ok:=cp_browser(c[..],cast(string)request[0..<n],cast(string)auth[0..<auth_n],case_id,cast(string)hex[..],out);
+    c:[1]Cdp;if !cdp_launch(c[..],800,600,"guard-cookie-browser-") {removed:=fs_remove(dir);tool_errln("cookie probe: headless transport unavailable");cdp_close(c[..]);return 1;}
+    ok:=cp_browser(c[..],cast(string)request[0..<n],signer,key,login,case_id,cast(string)hex[..],out);removed:=fs_remove(dir);
     ignored:=cp_fetch(c[..],"https://openagents.com/api/auth/logout","{}","");cdp_close(c[..]);
     if !ok {tool_errln("cookie probe: session or capture failed; no record admitted");return 1;}
     print("cookie probe: bounded API record saved; replay determines decision admission\n");return 0;

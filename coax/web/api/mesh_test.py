@@ -151,15 +151,20 @@ check("actual HTTP422 input rejection stays distinct from transport413", status 
 mode["value"] = "503"
 check("native unavailability refuses without substitution", signed()[0] == 503)
 reset()
-token = secrets.token_hex(32)
-sql(f"INSERT INTO signin.sessions VALUES (projects.sha('{token}'),'{pubkey}',projects.now_ms(),projects.now_ms()+60000)")
-cookie = {"Cookie": "oa_session=" + token}
+# A web session of ours (auth.c) for the key's account, made as /login makes one (coax/lib/crypto/token.coax's format).
+import base64, hashlib, zlib
+token = "oas_" + base64.b32encode(secrets.token_bytes(32)).decode().rstrip("=")
+token += "".join("ABCDEFGHIJKLMNOPQRSTUVWXYZ234567"[((zlib.crc32(token.encode()) >> 2) >> (25 - 5 * i)) & 31] for i in range(6))
+mesh_acct = sql(f"SELECT acct FROM auth.account_for_key('{pubkey}', 'test')")
+mesh_kid = sql(f"SELECT id FROM auth.nostr_keys WHERE pubkey = '{pubkey}'")
+sql(f"SELECT auth.session_new('{hashlib.sha256(token.encode()).hexdigest()}', '{mesh_acct}', 'nostr', {mesh_kid}, 'L2', 'web', 'test', NULL)")
+cookie = {"Cookie": "__Host-oa_session=" + token}
 check("cookie requires Origin", call(**cookie)[0] == 403)
 check("cookie rejects cross-origin", call(**cookie, Origin="https://evil.invalid")[0] == 403)
 check("valid site session and same Origin work", call(**cookie, Origin=API)[0] == 200)
 check("explicit malformed authorization never falls back to cookie", call(auth="Bearer wrong", **cookie, Origin=API)[0] == 401)
 check("signed request with foreign Origin refuses", (lambda data: call(data, sign(data), Origin="https://evil.invalid")[0])(body()) == 403)
-sql(f"UPDATE signin.sessions SET expires_ms=0 WHERE token_sha256=projects.sha('{token}')")
+sql(f"SELECT auth.session_end(id) FROM auth.sessions WHERE token_sha256 = '{hashlib.sha256(token.encode()).hexdigest()}'")
 check("expired session refuses", call(**cookie, Origin=API)[0] == 401)
 reset()
 for n, timestamp, expected in [(12, "clock_timestamp()", "minute"), (120, "clock_timestamp()-interval '2 minutes'", "account day")]:

@@ -8,7 +8,7 @@
 admin_usage :: () {
   print("%\n", "Admin (a site admin's key):");
   print("%\n", "  admin access                     flags and counts: invites, requests, creators");
-  print("%\n", "  admin flag realm_invites|auth_v2 on|off");
+  print("%\n", "  admin flag realm_invites on|off");
   print("%\n", "  admin invite new [--uses N] [--days N] [--note T]   prints the code and its link once");
   print("%\n", "  admin invite list | admin invite revoke ID");
   print("%\n", "  admin requests | admin approve ID | admin decline ID");
@@ -65,7 +65,6 @@ admin_access :: (a: [] Args, r: [] Rep, profile: string) -> int {
   if !ok { return api_fail(r, res[0], rows); }
   s := cli_access_sum(rows);
   rep_str(r, "realm_invites", ifx s.invites_flag == 1 then "on" else "off");
-  rep_str(r, "auth_v2", ifx s.auth_flag == 1 then "on" else "off");
   rep_int(r, "invites", s.invites); rep_int(r, "invites_live", s.live);
   rep_int(r, "requests", s.requests); rep_int(r, "requests_waiting", s.waiting);
   rep_int(r, "creators", s.creators);
@@ -131,7 +130,7 @@ admin_invite :: (a: [] Args, r: [] Rep, profile: string) -> int {
 admin_flag :: (a: [] Args, r: [] Rep, profile: string) -> int {
   name := positional(a, 2);
   on := cli_onoff(positional(a, 3));
-  if !cli_flag_ok(name) || on < 0 { return fail(r, EXIT_USAGE, "admin flag realm_invites|auth_v2 on|off"); }
+  if !cli_flag_ok(name) || on < 0 { return fail(r, EXIT_USAGE, "admin flag realm_invites on|off"); }
   buf: [128] u8; o: [1] Jo; jo_start(o[..], buf[..]);
   jo_obj(o[..]); jo_key(o[..], "name"); jo_str(o[..], name); jo_key(o[..], "on"); jo_bool(o[..], on == 1); jo_end(o[..]);
   return admin_post(a, r, profile, "/api/admin/access/flag", jo_text(o[..]));

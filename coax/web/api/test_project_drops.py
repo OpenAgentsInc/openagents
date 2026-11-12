@@ -228,8 +228,10 @@ try:
     cookies = r.headers.get_all("Set-Cookie")
 except urllib.error.HTTPError as e:
     cookies = e.headers.get_all("Set-Cookie") or []
-admin_drop = [c for c in cookies if "Path=/api/drops;" in c]
-check("drops: the admin sign-in link opens /api/drops too", len(admin_drop) == 1 and any("Path=/api/admin;" in c for c in cookies), cookies)
+# The admin login is a session of ours (#13207): one __Host-oa_session for the whole site, /api/drops too.
+admin_drop = [c for c in cookies if c.startswith("__Host-oa_session=oas_") and "Path=/;" in c and "HttpOnly" in c and "Secure" in c]
+check("drops: the admin sign-in link opens /api/drops too", len(admin_drop) == 1
+      and not any(c.startswith("oa_admin=") or "Path=/api/admin;" in c or "Path=/api/drops;" in c for c in cookies), cookies)
 if admin_drop:
     check("drops: with that cookie the admin sees their drops",
           dcall("GET", "/api/drops", cookie=admin_drop[0].split(";")[0])[1]["drops"][0]["id"] == d)

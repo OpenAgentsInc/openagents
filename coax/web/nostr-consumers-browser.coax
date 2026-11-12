@@ -24,14 +24,6 @@
 //                                        is test key 7's, which the relay asks before any write)
 //                                        and reaches the page with one
 //                                        content byte changed: refused, nothing kept
-//   signin URL                  /login (URL: http://127.0.0.1:PORT/login): the page makes a
-//                               throwaway words account in this fresh profile, signs its NIP-98
-//                               login in Coax (Wasm) and posts it through the browser's fetch.
-//                               The request is held at the network layer (CDP Fetch) and
-//                               answered here, so nothing leaves the machine; its
-//                               Authorization is checked with the API's own NIP-98 check
-//                               (coax/web/api/nip98.coax), and with one byte changed and for
-//                               another URL, refused
 //   unlock URL MODE             the hidden-presentation opener (coax/web/unlock) on a page
 //                               staged by inject.ts with COAXIAL_UNLOCK_SIGNER=coax and one
 //                               entry, NB_PHRASE, sealed to test key 25 on a local relay
@@ -55,7 +47,6 @@
 // tool.sh: run-steps 250000000
 #import "Basic";
 #load "../lib/net/cdp.coax";
-#load "api/nip98.coax";
 #load "../lib/nostr/event_sign.coax";
 
 NB_WAIT_MS :: 90000;
@@ -167,10 +158,8 @@ nb_target :: (e: [] NbEvents, held: int) -> int {
 
 // ---- the browser, with the network's events handled while waiting ---------
 
-NB_HTTP :: 16384;
 NbSeen :: struct {
-  viewer: int; other: int; posts: int;
-  auth: [NB_HTTP] u8; auth_n: int; url: [2048] u8; url_n: int; method: [16] u8; method_n: int; body: [4096] u8; body_n: int;
+  viewer: int; other: int;
 }
 nb_ends :: (s: string, tail: string) -> bool { return s.count >= tail.count && s[s.count - tail.count..<s.count] == tail; }
 nb_path :: (url: string) -> string {
@@ -178,28 +167,17 @@ nb_path :: (url: string) -> string {
   return url[0..<q];
 }
 // A held request (Fetch.requestPaused, in cdp_doc): /api/auth/viewer answers 200 with
-// nothing (no one is signed in), the login POST is kept and answered 401, anything
-// else 404. Nothing is forwarded.
+// nothing (no one is logged in), anything else 404. Nothing is forwarded.
 nb_paused :: (c: [] Cdp, s: [] NbSeen) {
   d := c[0].doc[0];
   p := jv_get(d, 0, "params");
   rid: [256] u8; rn := jv_str(d, jv_get(d, p, "requestId"), rid[..]);
   if rn <= 0 { return; }
   url: [2048] u8; un := jv_str(d, jv_path(d, p, "request.url"), url[..]);
-  m: [16] u8; mn := jv_str(d, jv_path(d, p, "request.method"), m[..]);
   u := ifx un > 0 then nb_path(cast(string) url[0..<un]) else "";
-  method := ifx mn > 0 then cast(string) m[0..<mn] else "";
   code := 404;
   if nb_ends(u, "/api/auth/viewer") { code = 200; s[0].viewer += 1; }
-  else if nb_ends(u, "/api/auth/key") && method == "POST" {
-    code = 401; s[0].posts += 1;
-    if s[0].posts == 1 {
-      s[0].auth_n = jv_str(d, jv_path(d, p, "request.headers.Authorization"), s[0].auth[..]);
-      s[0].body_n = jv_str(d, jv_path(d, p, "request.postData"), s[0].body[..]);
-      for i: 0..<un { s[0].url[i] = url[i]; } s[0].url_n = un;
-      for i: 0..<mn { s[0].method[i] = m[i]; } s[0].method_n = mn;
-    }
-  } else { s[0].other += 1; }
+  else { s[0].other += 1; }
   buf: [512] u8; o: [1] Jo;
   jo_start(o[..], buf[..]); jo_obj(o[..]); jo_key(o[..], "requestId"); jo_str(o[..], cast(string) rid[0..<rn]);
   jo_key(o[..], "responseCode"); jo_int(o[..], code); jo_end(o[..]);
@@ -465,22 +443,6 @@ nb_unlock :: (c: [] Cdp, s: [] NbSeen, url: string, tamper: bool, r: [] NbUnlock
 
 // ---- sign-in ------------------------------------------------------------------
 
-// The API's own NIP-98 check (oa-api runs nip98.coax as nip98.generated.c).
-nb_nip98 :: (auth: string, url: string, body: [] u8, now: int, pub: [] u8) -> int {
-  work: [N98_WORK] u8; out: [N98_OUT] u8;
-  r := nip98_check_coax(auth, "POST", url, body, now, work[..], out[..]);
-  if r.error == N98_OK { for i: 0..<64 { pub[i] = out[64 + i]; } }
-  return r.error;
-}
-nb_signin :: (c: [] Cdp, s: [] NbSeen, url: string) -> bool {
-  if nb_call(c, s, "Fetch.enable", "{\"patterns\":[{\"urlPattern\":\"*/api/*\"}]}", 30000) < 0 { return false; }
-  if !nb_param(c, s, "Page.navigate", "url", url) { return false; }
-  print("nostr-consumers-browser: open % (its /api/ requests held here)\n", url);
-  until := proc_now_ms() + NB_WAIT_MS;
-  while proc_now_ms() < until && s[0].posts == 0 { at := nb_eval(c, s, "1"); proc_sleep(200); }
-  return s[0].posts > 0 && s[0].auth_n > 0;
-}
-
 tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
   ok := args_load(a[..]);
@@ -519,9 +481,8 @@ tool_main :: () -> int #export_c #effects(all) {
     return 0;
   }
   project := ok && verb == "project" && nb_local(args_at(a[..], 1)) && nb_local_ws(args_at(a[..], 2)) && nb_mode(args_at(a[..], 3)) >= 0;
-  signin := ok && verb == "signin" && nb_local(args_at(a[..], 1));
-  if !project && !signin {
-    tool_errln("usage: coax/web/tool.sh coax/web/nostr-consumers-browser.coax export OUT.jsonl | project URL ws://127.0.0.1:PORT control|sync|live | signin URL  --frames CAPTURE.jsonl [--require-hardware]  |  unlock URL control|tamper [--require-hardware]");
+  if !project {
+    tool_errln("usage: coax/web/tool.sh coax/web/nostr-consumers-browser.coax export OUT.jsonl | project URL ws://127.0.0.1:PORT control|sync|live --frames CAPTURE.jsonl [--require-hardware]  |  unlock URL control|tamper [--require-hardware]");
     return 2;
   }
   c: [1] Cdp; s: [1] NbSeen; gpu: [256] u8;
@@ -535,34 +496,6 @@ tool_main :: () -> int #export_c #effects(all) {
     total := e[0].n - 1;   // the relay holds every captured event but the held comment
     passed = ran && nb_project_passed(mode, r[0], total);
     print("% project page, %: % events on the relay\n", ifx passed then "pass" else "FAIL", args_at(a[..], 3), total);
-  } else {
-    ran := nb_signin(c[..], s[..], args_at(a[..], 1));
-    now := nb_int(c[..], s[..], "Math.floor(Date.now()/1000)");
-    stored := nb_true(c[..], s[..], "new Promise((r)=>{const q=indexedDB.open('coaxial',1);q.onerror=()=>r(false);q.onsuccess=()=>{try{const g=q.result.transaction('kept').objectStore('kept').getAll();g.onsuccess=()=>r(g.result.some((v)=>typeof v==='string'&&/^[0-9a-f]{32}$/.test(v)));g.onerror=()=>r(false)}catch{r(false)}}})");
-    released := nb_call(c[..], s[..], "Fetch.disable", "", 30000) >= 0;
-    adapter = nb_adapter(c[..], gpu[..]);
-    cdp_close(c[..]);
-    if !ran { tool_errln("nostr-consumers-browser: no login was posted"); return 1; }
-    auth := cast(string) s[0].auth[0..<s[0].auth_n]; u := cast(string) s[0].url[0..<s[0].url_n]; body := cast(string) s[0].body[0..<s[0].body_n];
-    print("nostr-consumers-browser: % % with Authorization (% bytes, %...) and body %; viewer asks %, other /api/ %\n",
-      cast(string) s[0].method[0..<s[0].method_n], u, auth.count, auth[0..<12], body, s[0].viewer, s[0].other);
-    pub: [64] u8;
-    v := nb_nip98(auth, u, s[0].body[0..<s[0].body_n], now, pub[..]);
-    print("nostr-consumers-browser: the API's NIP-98 check: % (signer %)\n", ifx v == N98_OK then "ok" else nip98_error_text(v), ifx v == N98_OK then cast(string) pub[..] else "-");
-    // one base64 byte changed (well inside the event), and the same header for another URL
-    bad: [NB_HTTP] u8; for i: 0..<auth.count { bad[i] = auth[i]; }
-    k := auth.count / 2; bad[k] = ifx bad[k] == 'A' then 'B' else 'A';
-    p2: [64] u8;
-    v2 := nb_nip98(cast(string) bad[0..<auth.count], u, s[0].body[0..<s[0].body_n], now, p2[..]);
-    print("nostr-consumers-browser: one byte changed: %\n", ifx v2 == N98_OK then "ok" else nip98_error_text(v2));
-    ob: [2048] u8; op := [2] string.[u, "x"];
-    v3 := nb_nip98(auth, nb_cat(ob[..], op[..]), s[0].body[0..<s[0].body_n], now, p2[..]);
-    print("nostr-consumers-browser: another URL: %\n", ifx v3 == N98_OK then "ok" else nip98_error_text(v3));
-    print("nostr-consumers-browser: the account's entropy is kept in this profile's IndexedDB (coaxial/kept) as 32 hex digits: %\n", stored);
-    passed = v == N98_OK && v2 != N98_OK && v3 != N98_OK && s[0].posts >= 1;
-    print("% web sign-in: signed in the page's Wasm, carried by the browser's fetch, accepted by the API's check\n", ifx passed then "pass" else "FAIL");
-    if hardware && !cdp_adapter_hardware(adapter) { tool_errln("nostr-consumers-browser: --require-hardware: no hardware WebGPU adapter"); return 1; }
-    return ifx passed then 0 else 1;
   }
   cdp_close(c[..]);
   if hardware && !cdp_adapter_hardware(adapter) { tool_errln("nostr-consumers-browser: --require-hardware: no hardware WebGPU adapter"); return 1; }

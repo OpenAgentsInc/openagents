@@ -54,7 +54,7 @@
 // Who asks: the X-Verse-Player key; a NIP-98 signed request (Authorization:
 // Nostr) adds that pubkey's account, and an admin's signature (OA_ADMIN_PUBKEYS)
 // is the site, which owns the built-in worlds; so is an admin logged in on the
-// site (oa_session, site_session below). A bad signature, or one seen before,
+// site (a session of ours, site_session below). A bad signature, or one seen before,
 // is refused. The automation mark is the analytics one.
 #include "api.h"
 #include "nostr.h"
@@ -122,7 +122,7 @@ static bool first_use(PGconn *db, const nostr_event *ev) {
   return ok;
 }
 
-// An admin logged in on the site (/login's oa_session, admin.c admin_who) is
+// An admin logged in on the site (/login, admin.c admin_who) is
 // the site too, so an admin edits the built-in worlds from the page itself
 // (eg-edit: Everglade's edit mode). A write sent from another site's page
 // never counts, whatever cookie it carries.

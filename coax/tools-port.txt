@@ -372,7 +372,6 @@ coax/web/api/test_player.py
 coax/web/api/test_private.py
 coax/web/api/test_private_agent.py
 coax/web/api/test_private_phone.py
-coax/web/api/test_private_phone_key.py
 coax/web/api/test_private_runner.py
 coax/web/api/test_private_tools.py
 coax/web/api/test_project_drops.py

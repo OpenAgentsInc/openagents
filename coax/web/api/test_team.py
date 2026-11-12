@@ -35,7 +35,7 @@ def login_cookies(key):
 status, cookies = login_cookies(admin)
 check("an admin's login marks the browser team: oa_team for the whole site, two years",
       status == 303 and any(c.startswith("oa_team=1; Path=/; Max-Age=63072000;") for c in cookies), cookies)
-t_cookie = [c for c in cookies if c.startswith("oa_admin=")][0].split(";")[0]
+t_cookie = [c for c in cookies if c.startswith("__Host-oa_session=")][0].split(";")[0]
 # a fresh visit from a browser with no marks, then the same device with the cookie
 status, body, h = tpost(tsid("01"), [tev("session-start", 1, {"pid": "dev-team-aaa1"}), tev("click", 2)])
 check("a stranger is a visitor", status == 200 and autos(tsid("01")) == "-,-" and "oa_team" not in str(h), (body, h))
@@ -52,12 +52,10 @@ check("automation keeps its own mark, even from the team's browser",
       tpost(tsid("04"), [tev("click", 1)], {"Cookie": "oa_team=1", "X-Verse-Automation": "release-smoke"})[0] == 200
       and autos(tsid("04")) == "release-smoke")
 
-# an admin's key: a site session (/login's oa_session) of an admin
+# an admin's key: a session of ours (/login) for an admin's account
 admin_pub = sql("select value from analytics.team where kind = 'npub'")
-site_token = "5" * 64
-sql(f"insert into signin.sessions (token_sha256, pubkey, created_ms, expires_ms) values "
-    f"(encode(sha256(convert_to('{site_token}', 'UTF8')), 'hex'), '{admin_pub}', 0, 99999999999999)")
-tpost(tsid("05"), [tev("session-start", 1, {"pid": "dev-team-ccc3"})], {"Cookie": "oa_session=" + site_token})
+site_cookie = login_cookie(admin_pub)
+tpost(tsid("05"), [tev("session-start", 1, {"pid": "dev-team-ccc3"})], {"Cookie": site_cookie})
 check("a browser logged in (/login) as an admin is team", autos(tsid("05")) == "team")
 
 # (2) a team player's session, and (3) the same device's earlier visits, backfilled
@@ -107,4 +105,4 @@ check("the sessions list leaves them out", tsid("02") not in lst and tsid("01") 
 lst = call("GET", "/api/admin/analytics?view=sessions&days=0&auto=0&team=1", headers={"Cookie": t_cookie})[1].decode()
 check("and shows them, marked, with team=1", any(l.startswith(tsid("02")) and l.endswith("|our team") for l in lst.splitlines()), lst[:400])
 sql("delete from analytics.playtesters where id = 'tm1'")
-sql(f"delete from signin.sessions where token_sha256 = encode(sha256(convert_to('{site_token}', 'UTF8')), 'hex')")
+sql(f"delete from auth.sessions where token_sha256 = encode(sha256(convert_to('{site_cookie.split('=', 1)[1]}', 'UTF8')), 'hex')")

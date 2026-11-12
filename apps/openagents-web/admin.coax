@@ -262,8 +262,8 @@ ad_dput :: (s: [] AdminState, at: int, text: string) -> int {
   return n;
 }
 // The flags' names, and what the page calls them.
-ad_flag_label :: (name: string) -> string { return ifx name == "realm_invites" then "INVITE ONLY" else ifx name == "auth_v2" then "NEW LOGIN" else ""; }
-ad_flag_name :: (label: string) -> string { return ifx label == "INVITE ONLY" then "realm_invites" else ifx label == "NEW LOGIN" then "auth_v2" else ""; }
+ad_flag_label :: (name: string) -> string { return ifx name == "realm_invites" then "INVITE ONLY" else ""; }
+ad_flag_name :: (label: string) -> string { return ifx label == "INVITE ONLY" then "realm_invites" else ""; }
 // The value'th "|" field of line (0 is the kind letter).
 ad_field :: (line: string, k: int) -> string {
   i := 0; c := 0;
@@ -961,7 +961,7 @@ AD_QUEUE :: "200\n#OPEN REPORTS|aw|KIND|WHICH|REPORTS|FIRST|WHAT IT SAYS|WHY\nno
   #assert cast(string) s[0].outbox[0..<s[0].out_n] == "/admin/analytics";
 }
 
-AD_ACCESS_LINES :: "200\nF|realm_invites|1\nF|auth_v2|0\nI|12|10|3|1790000000000|live|for the playtest|Sep 21 11:33\nI|11|1|1|1780000000000|used||May 28 15:46\nR|7|npub1asker|a racing track|me@example.com|waiting|1780000000000|May 28 15:46\nR|6|npub1other|a garden||declined|1770000000000|Feb 02 21:20\nC|npub1maker|grandfathered|1760000000000|Oct 09 03:53\n";
+AD_ACCESS_LINES :: "200\nF|realm_invites|1\nF|retired_flag|0\nI|12|10|3|1790000000000|live|for the playtest|Sep 21 11:33\nI|11|1|1|1780000000000|used||May 28 15:46\nR|7|npub1asker|a racing track|me@example.com|waiting|1780000000000|May 28 15:46\nR|6|npub1other|a garden||declined|1770000000000|Feb 02 21:20\nC|npub1maker|grandfathered|1760000000000|Oct 09 03:53\n";
 
 #test "/admin/access reads the lines into SWITCHES, INVITES, REQUESTS and CREATORS, with buttons only where they do something" {
   s: [1] AdminState; data: [AD_TEST_DATA] u8; s[0].data = data[..];
@@ -974,14 +974,14 @@ AD_ACCESS_LINES :: "200\nF|realm_invites|1\nF|auth_v2|0\nI|12|10|3|1790000000000
   #assert s[0].status == 403 && s[0].sec_n == 0;   // ADMINS ONLY, nothing else
   ad_ask(s[..]);
   ad_answer(s[..], AD_ACCESS_LINES);
-  #assert s[0].status == 200 && s[0].sec_n == 4 && s[0].row_n == 7;
+  #assert s[0].status == 200 && s[0].sec_n == 4 && s[0].row_n == 6;   // a flag this page doesn't know is not drawn
   #assert ad_title(s[..], 0) == "SWITCHES" && ad_title(s[..], 1) == "INVITES" && ad_title(s[..], 2) == "REQUESTS" && ad_title(s[..], 3) == "CREATORS";
-  #assert s[0].sec_rows[0] == 2 && s[0].sec_rows[1] == 2 && s[0].sec_rows[2] == 2 && s[0].sec_rows[3] == 1;
+  #assert s[0].sec_rows[0] == 1 && s[0].sec_rows[1] == 2 && s[0].sec_rows[2] == 2 && s[0].sec_rows[3] == 1;
   #assert ad_cell(s[..], s[0].row_at[0], s[0].row_end[0], 0) == "INVITE ONLY" && ad_cell(s[..], s[0].row_at[0], s[0].row_end[0], 1) == "ON";
-  #assert ad_cell(s[..], s[0].row_at[2], s[0].row_end[2], 4) == "for the playtest" && ad_cell(s[..], s[0].row_at[4], s[0].row_end[4], 2) == "a racing track";
-  #assert ad_cell(s[..], s[0].row_at[6], s[0].row_end[6], 0) == "npub1maker";
-  #assert ad_cell(s[..], s[0].row_at[2], s[0].row_end[2], 5) == "Sep 21 11:33" && ad_cell(s[..], s[0].row_at[4], s[0].row_end[4], 5) == "May 28 15:46";   // when, Chicago time
-  #assert ad_cell(s[..], s[0].row_at[6], s[0].row_end[6], 2) == "Oct 09 03:53";
+  #assert ad_cell(s[..], s[0].row_at[1], s[0].row_end[1], 4) == "for the playtest" && ad_cell(s[..], s[0].row_at[3], s[0].row_end[3], 2) == "a racing track";
+  #assert ad_cell(s[..], s[0].row_at[5], s[0].row_end[5], 0) == "npub1maker";
+  #assert ad_cell(s[..], s[0].row_at[1], s[0].row_end[1], 5) == "Sep 21 11:33" && ad_cell(s[..], s[0].row_at[3], s[0].row_end[3], 5) == "May 28 15:46";   // when, Chicago time
+  #assert ad_cell(s[..], s[0].row_at[5], s[0].row_end[5], 2) == "Oct 09 03:53";
   n := coaxial_admin_frame(s[..], out[..], u[..], 1440, 900, 2, 0.016, true);
   #assert n > n0;
   l := ad_layout(s[..]);
@@ -991,11 +991,10 @@ AD_ACCESS_LINES :: "200\nF|realm_invites|1\nF|auth_v2|0\nI|12|10|3|1790000000000
   bx: [2] Box; acts: [2] int;
   #assert ad_buttons(s[..], 0, boxes[0], 0, bx[..], acts[..]) == 1 && acts[0] == AD_TURN_OFF;
   #assert ad_hit(s[..], (bx[0].x0 + bx[0].x1) * 0.5, (bx[0].y0 + bx[0].y1) * 0.5) == AD_ACC + 0 * 8 + AD_TURN_OFF;
-  #assert ad_buttons(s[..], 0, boxes[0], 1, bx[..], acts[..]) == 1 && acts[0] == AD_TURN_ON;
   #assert ad_buttons(s[..], 1, boxes[1], 0, bx[..], acts[..]) == 1 && acts[0] == AD_REVOKE;
   #assert ad_buttons(s[..], 1, boxes[1], 1, bx[..], acts[..]) == 0;   // used up: nothing to press
   #assert ad_buttons(s[..], 2, boxes[2], 0, bx[..], acts[..]) == 2 && acts[0] == AD_APPROVE && acts[1] == AD_DECLINE;
-  #assert ad_hit(s[..], (bx[1].x0 + bx[1].x1) * 0.5, (bx[1].y0 + bx[1].y1) * 0.5) == AD_ACC + 4 * 8 + AD_DECLINE;
+  #assert ad_hit(s[..], (bx[1].x0 + bx[1].x1) * 0.5, (bx[1].y0 + bx[1].y1) * 0.5) == AD_ACC + 3 * 8 + AD_DECLINE;
   #assert ad_buttons(s[..], 2, boxes[2], 1, bx[..], acts[..]) == 0;   // decided already
   #assert ad_buttons(s[..], 3, boxes[3], 0, bx[..], acts[..]) == 0;
 }
@@ -1019,26 +1018,22 @@ AD_ACCESS_LINES :: "200\nF|realm_invites|1\nF|auth_v2|0\nI|12|10|3|1790000000000
   ad_act(s[..], AD_ACC + 0 * 8 + AD_TURN_OFF);
   #assert s[0].post && cast(string) s[0].ask[0..<s[0].ask_n] == "/api/admin/access/flag";
   #assert cast(string) s[0].pbody[0..<coaxial_admin_body_n(s[..])] == "{\"name\":\"realm_invites\",\"on\":false}";
-  ad_act(s[..], AD_ACC + 2 * 8 + AD_REVOKE);
+  ad_act(s[..], AD_ACC + 1 * 8 + AD_REVOKE);
   #assert cast(string) s[0].ask[0..<s[0].ask_n] == "/api/admin/access/flag";   // one at a time
   ad_answer(s[..], "200\n{\"name\": \"realm_invites\", \"on\": false}");
   #assert !s[0].post && cast(string) s[0].ask[0..<s[0].ask_n] == "/api/admin/access" && cast(string) s[0].anote[0..<s[0].anote_n] == "TURNED OFF";
   ad_answer(s[..], AD_ACCESS_LINES);
-  ad_act(s[..], AD_ACC + 1 * 8 + AD_TURN_ON);
-  #assert cast(string) s[0].pbody[0..<s[0].pbody_n] == "{\"name\":\"auth_v2\",\"on\":true}";
-  ad_answer(s[..], "200\n{}");
-  ad_answer(s[..], AD_ACCESS_LINES);
   // REVOKE the live invite, APPROVE and DECLINE the waiting request
-  ad_act(s[..], AD_ACC + 2 * 8 + AD_REVOKE);
+  ad_act(s[..], AD_ACC + 1 * 8 + AD_REVOKE);
   #assert cast(string) s[0].ask[0..<s[0].ask_n] == "/api/admin/access/invites/12/revoke" && coaxial_admin_body_n(s[..]) == 0;
   ad_answer(s[..], "200\n{}");
   ad_answer(s[..], AD_ACCESS_LINES);
-  ad_act(s[..], AD_ACC + 4 * 8 + AD_APPROVE);
+  ad_act(s[..], AD_ACC + 3 * 8 + AD_APPROVE);
   #assert cast(string) s[0].ask[0..<s[0].ask_n] == "/api/admin/access/requests/7/approve";
   ad_answer(s[..], "200\n{}");
   #assert cast(string) s[0].anote[0..<s[0].anote_n] == "APPROVED";
   ad_answer(s[..], AD_ACCESS_LINES);
-  ad_act(s[..], AD_ACC + 4 * 8 + AD_DECLINE);
+  ad_act(s[..], AD_ACC + 3 * 8 + AD_DECLINE);
   #assert cast(string) s[0].ask[0..<s[0].ask_n] == "/api/admin/access/requests/7/decline";
   ad_answer(s[..], "409\n{\"error\":\"already decided\"}");
   #assert cast(string) s[0].anote[0..<s[0].anote_n] == "ALREADY DECIDED" && cast(string) s[0].ask[0..<s[0].ask_n] == "/api/admin/access";

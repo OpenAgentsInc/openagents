@@ -220,8 +220,15 @@ aid_auth_tests :: (t: [] Aid, body: string) {
   reset = aid_reset(t); signed = aid_sign(t,"POST",AI_ROUTE,body,true); before = aid_model_calls(t);
   aid_check(t,"foreign Origin is refused before spending a good signature",reset && signed && aid_call(t,"POST",AI_ROUTE,body,true,false,false,"https://outside.invalid","application/json") == 403 && aid_count(t) == 0 && aid_model_calls(t) == before);
   aid_check(t,"changing only Origin admits that exact unspent signature",aid_call(t,"POST",AI_ROUTE,body,true,false,false,t[0].origin,"application/json") == 200);
-  login := "{\"kind\":\"login\"}"; signed = aid_sign(t,"POST","/api/auth/key",login,true);
-  code := ifx signed then aid_call(t,"POST","/api/auth/key",login,true,false,false,t[0].origin,"application/json") else -1;
+  // A real login (POST /api/auth/nostr, auth.c): a challenge, then the key signs it.
+  chc := aid_call(t,"POST","/api/auth/nostr/challenge?as=lines","{}",false,false,false,t[0].origin,"application/json");
+  chs := aid_body(t); cat := 0;
+  while cat + 10 <= chs.count && chs[cat..<cat + 10] != "challenge " { cat += 1; }
+  lgb: [160] u8; lgn := 0;
+  if chc == 200 && cat + 10 + 64 <= chs.count { lgn = aid_put(lgb[..],0,"{\"challenge\":\""); lgn = aid_put(lgb[..],lgn,chs[cat + 10..<cat + 74]); lgn = aid_put(lgb[..],lgn,"\"}"); }
+  login := cast(string) lgb[0..<ifx lgn > 0 then lgn else 0];
+  signed = lgn > 0 && aid_sign(t,"POST","/api/auth/nostr",login,true);
+  code := ifx signed then aid_call(t,"POST","/api/auth/nostr",login,true,false,false,t[0].origin,"application/json") else -1;
   cookie := http_header(cast(string)t[0].w[0].head[0..<t[0].w[0].head_n],"Set-Cookie"); end := 0;
   while end < cookie.count && cookie[end] != ';' { end += 1; }
   if end > 11 && end <= t[0].cookie.count { t[0].cookie_n = aid_put(t[0].cookie[..],0,cookie[0..<end]); }

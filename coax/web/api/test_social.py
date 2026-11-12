@@ -78,9 +78,7 @@ status, bl = soc("POST", "/api/playtest/block", {"player": wren["id"], "on": Fal
 check("social: unblock, and they are back", status == 200 and bl["blocked"] == [] and soc("GET", "/api/playtest/inbox", key=moss["key"])[1]["unread"] > 0, bl)
 
 # An admin removes a line
-scookie = "oa_admin=" + "5" * 64
-sql("insert into analytics.admin_sessions (token_sha256, pubkey, created_ms, expires_ms) values (encode(sha256(convert_to('%s', 'UTF8')), 'hex'), '%s', 0, 99999999999999) on conflict do nothing"
-    % ("5" * 64, os.environ["OA_ADMIN_PUBKEYS"].split(",")[0]))
+scookie = login_cookie(os.environ["OA_ADMIN_PUBKEYS"].split(",")[0])
 R = FC + "/remove"
 check("social: a player can't remove a line", soc("POST", R, {"n": w["n"]}, moss["key"])[0] == 403)
 check("social: the inbox says who is an admin", soc("GET", "/api/playtest/inbox", key=moss["key"], cookie=scookie)[1]["admin"] is True)

@@ -1,5 +1,9 @@
 # Logging in on the web with a passkey
 
+Superseded (#13207): the words account below was built and is now removed.
+`/login` is `apps/openagents-web/login.coax` (email code, passkey or a Nostr
+key).
+
 Spec, not built yet (2026-10-30). Today `/login` only works with the
 OpenAgents iOS app ([phone-sign-in.md](phone-sign-in.md)): the page shows a
 QR code and the phone approves it. Someone without the app can't log in.

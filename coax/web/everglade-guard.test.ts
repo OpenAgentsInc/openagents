@@ -140,7 +140,7 @@ async function livePilot(revoke:boolean){
     const event=JSON.parse(String(e.data)),p=event.params
     if(event.method==='Fetch.requestPaused'){
       const path=new URL(p.request.url).pathname
-      if(['/api/auth/key','/api/auth/logout','/api/auth/viewer','/api/v1/systemone'].includes(path)){
+      if(['/api/auth/nostr/challenge','/api/auth/nostr','/api/auth/logout','/api/auth/viewer','/api/v1/systemone'].includes(path)){
         await cdp('Fetch.continueRequest',{requestId:p.requestId});return
       }
       if(path.startsWith('/api/')){
@@ -176,18 +176,22 @@ async function livePilot(revoke:boolean){
   try{
     await cdp('Page.navigate',{url:publicOrigin+'/realms/everglade?guard-ai=off'})
     await until(()=>evaluate('!!globalThis.coaxial?.sceneReady'),'live-origin local scene did not become ready')
-    const login=join(profile,'login.json');writeFileSync(login,'{"kind":"login"}',{mode:0o600})
-    const signed=Bun.spawnSync([signer,'--key',key,'POST',publicOrigin+'/api/auth/key',login],{stdout:'pipe',stderr:'ignore'})
+    // A real login (auth.c): the page asks for a challenge, the owned key signs it, the page posts it.
+    const challenge=await evaluate(`(async()=>{const r=await fetch('/api/auth/nostr/challenge',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:'{}'});return r.status===200?(await r.json()).challenge:''})()`)
+    if(!/^[0-9a-f]{64}$/.test(String(challenge)))throw Error('Owned demo login challenge refused')
+    const loginBody=JSON.stringify({challenge})
+    const login=join(profile,'login.json');writeFileSync(login,loginBody,{mode:0o600})
+    const signed=Bun.spawnSync([signer,'--key',key,'POST',publicOrigin+'/api/auth/nostr',login],{stdout:'pipe',stderr:'ignore'})
     if(signed.exitCode!==0)throw Error('Owned demo key signer failed')
     const auth=new TextDecoder().decode(signed.stdout).trim()
-    const status=await evaluate(`(async()=>{const r=await fetch('/api/auth/key',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json',Authorization:${JSON.stringify('Nostr '+auth)}},body:'{"kind":"login"}'});await r.text();return r.status})()`)
+    const status=await evaluate(`(async()=>{const r=await fetch('/api/auth/nostr',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json',Authorization:${JSON.stringify('Nostr '+auth)}},body:${JSON.stringify(loginBody)}});await r.text();return r.status})()`)
     if(status!==200)throw Error('Owned demo session login refused with HTTP'+status)
     loggedIn=true
     const cookieState=await cdp('Network.getCookies',{urls:[publicOrigin]})
-    const cookie=cookieState.cookies.find((c:any)=>c.name==='oa_session')
+    const cookie=cookieState.cookies.find((c:any)=>c.name==='__Host-oa_session')
     const session={present:!!cookie,http_only:!!cookie?.httpOnly,secure:!!cookie?.secure}
     expect(session.present&&session.http_only&&session.secure).toBe(true)
-    expect(await evaluate("document.cookie.includes('oa_session=')")).toBe(false)
+    expect(await evaluate("document.cookie.includes('oa_session')")).toBe(false)
     await cdp('Page.navigate',{url:publicOrigin+'/realms/everglade?guard-ai=shadow'})
     if(revoke){
       await until(async()=>requestId!==''&&(await probe())[2]===1,'live request did not start')

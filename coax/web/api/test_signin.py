@@ -91,7 +91,7 @@ check("the first pubkey keeps its worlds and session", sql(f"select count(*) fro
       and sql(f"select npub from analytics.sessions where sid='{sid1}'") == ann)
 
 status, g4 = pt("POST", "player", {})
-sql("insert into verse.accounts (id, email, created_ms) values ('e-old', 'old@example.com', 0)")
+sql("insert into verse.accounts (id, created_ms) values ('e-old', 0)")
 sql(f"update verse.players set account = 'e-old' where id = '{g4['id']}'")
 status, done = signin(bob_key, {"n": 4}, key=g4["key"])
 check("a key on an email's account signs in with a fresh key and takes nothing", status == 200 and done["player"]["key"] != g4["key"]

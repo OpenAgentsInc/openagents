@@ -94,7 +94,7 @@ mkdir -p "$work_root"
 work="$(mktemp -d "$work_root/$name.XXXXXXXX")"
 trap 'rm -rf "$work"' EXIT
 # COAXIAL_RUN_STEPS: a larger compile-time budget (coax --run-steps) for libraries whose
-# tables are computed at compile time (secp256k1 signing, for /login's words account).
+# tables are computed at compile time (secp256k1 signing).
 run_steps=()
 if [[ -n "${COAXIAL_RUN_STEPS:-}" ]]; then run_steps=(--run-steps "$COAXIAL_RUN_STEPS")
 elif [[ "$render" == 1 ]]; then

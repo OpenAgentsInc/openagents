@@ -112,15 +112,14 @@ check("a player's piece is kept as theirs", sql("select count(*) from verse.sand
 # ---- an admin's spoken edit to a realm (eg-voice-edit, migrations/0045_realm_voice_edit.sql): the same
 # fake model, an admin only; the edit the page then publishes is an admin's write (test_realm_edit.py).
 admin_hex = os.environ["OA_ADMIN_PUBKEYS"].strip()
-for tok, pk in (("9" * 64, admin_hex), ("8" * 64, "7" * 64)):
-    sql(f"insert into signin.sessions (token_sha256, pubkey, created_ms, expires_ms) values (encode(sha256('{tok}'), 'hex'), '{pk}', 0, 9999999999999) on conflict do nothing")
+SP_SITE = {"9" * 64: login_cookie(admin_hex), "8" * 64: login_cookie("7" * 64)}   # an admin's session of ours, and someone else's
 
 
 def voice_edit(sentence, answer=None, cookie="9" * 64, realm="everglade", origin=API, wait=True):
     if answer is not None:
         piece_mode["text"] = answer if isinstance(answer, str) else json.dumps(answer)
     h = {"Content-Type": "application/json"}
-    if cookie: h["Cookie"] = "oa_session=" + cookie
+    if cookie: h["Cookie"] = SP_SITE[cookie]
     if origin: h["Origin"] = origin
     if wait: time.sleep(0.05)
     s, raw, _ = call("POST", f"/api/playtest/realm/{realm}/edit", json.dumps({"sentence": sentence}).encode(), h)
@@ -203,7 +202,7 @@ held("what is that dark strip in the sky", dict(edit="look"), {"edit": "look"}, 
 def look(question, image, cookie="9" * 64):
     time.sleep(0.05)
     s, raw, _ = call("POST", "/api/playtest/realm/everglade/look", json.dumps({"question": question, "image": image}).encode(),
-                     {"Content-Type": "application/json", "Cookie": "oa_session=" + cookie, "Origin": API})
+                     {"Content-Type": "application/json", "Cookie": SP_SITE[cookie], "Origin": API})
     return s, json.loads(raw)
 piece_mode["text"] = "That dark band is the far edge of the sky dome."
 s, a = look("what is that dark strip in the sky", "QUJD")
@@ -302,7 +301,7 @@ check("every realm: a catalogue's verb or a row it hasn't is no edit",
       generic("put a crate here", {"edit": "place"})[0] == 502 and generic("turn off the guards", {"edit": "switch", "row": "guards"})[0] == 502)
 time.sleep(0.05)
 s, raw, _ = call("POST", "/api/playtest/realm/haunted-house/look", json.dumps({"question": "what is that", "image": "QUJD"}).encode(),
-                 {"Content-Type": "application/json", "Cookie": "oa_session=" + "9" * 64, "Origin": API})
+                 {"Content-Type": "application/json", "Cookie": SP_SITE["9" * 64], "Origin": API})
 check("every realm: look answers from the picture, the realm named", s == 200 and "Haunted House" in piece_seen[-1]["body"]["systemInstruction"]["parts"][0]["text"], (s, raw))
 check("every realm: Everglade keeps its catalogue and no ask", "ask" not in json.loads(sql("select verse.voice_edit_schema('everglade')::text"))["properties"]["edit"]["enum"])
 # a made realm (test_realm_builder.py's): its board's rows, by the board's keys

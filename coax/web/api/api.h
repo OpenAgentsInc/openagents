@@ -35,7 +35,6 @@ void analytics_team_init(PGconn *db);     // the team (OA_TEAM, OA_ADMIN_PUBKEYS
 void admin_init(void);                    // admin.c
 bool admin_route(const request *q);
 bool admin_is(const char *pubkey);        // a site admin: a root (OA_ADMIN_PUBKEYS) or a database admin (0100)
-bool admin_cookie_who(const request *q, PGconn *db, char who[65], long long *age_ms);   // the oa_admin cookie's admin, until #13207
 bool admin_is_root(const char *pubkey);   // a pubkey in OA_ADMIN_PUBKEYS (admins.conf)
 void admin_roots(char *out, size_t cap);  // the roots as a Postgres text array literal
 int admin_who(const request *q, PGconn *db, char who[65]);   // 0 an admin (cookie or NIP-98), else 401/403

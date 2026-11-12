@@ -293,17 +293,21 @@ ar_checks :: (t: [] Ap, dir: string) {
   ap_check(t, "the account's notices are listed", st == 200 && ap_has(ap_body(t), "\"what\": \"recovery.done\""), ap_body(t));
 
   // ---- admins: a change needs L2 within five minutes; reading stays L2
-  // an admin signed in the old way (admin.sh's link): its oa_admin session, made as /api/admin/login makes it
+  // an admin logged in with admin.sh's link (GET /api/admin/login, a signed event): a web session of ours at L2
   apkb: [128] u8; apk := ac_pubkey(t, t[0].admin_key, apkb[..]);
-  SA := "ad00000000000000000000000000000000000000000000000000000000000001";
-  ap_do(t, ar_q(q[..], "INSERT INTO analytics.admin_sessions (token_sha256, pubkey, created_ms, expires_ms) SELECT encode(sha256(convert_to('ad00000000000000000000000000000000000000000000000000000000000001', 'UTF8')), 'hex'), '",
-                apk, "', m, m + 3600000 FROM (SELECT (extract(epoch FROM now()) * 1000)::bigint AS m) x"));
+  lu: [1] Sb; sb(lu[..], t[0].api); sb(lu[..], "/api/admin/login");
+  lsb: [4096] u8; lsig := ap_nostr(t, t[0].admin_key, "GET", sb_text(lu[..]), "", false, lsb[..]);
+  lp: [1] Sb; sb(lp[..], "/api/admin/login?auth=");
+  for c: lsig { if c == '+' { sb(lp[..], "%2B"); } else if c == '/' { sb(lp[..], "%2F"); } else if c == '=' { sb(lp[..], "%3D"); } else { cc: [1] u8; cc[0] = c; sb(lp[..], cast(string) cc[..]); } }
+  ls := ac_call(t, "GET", sb_text(lp[..]), "", "", "", "");
+  sab: [160] u8; SA := ac_cookie(t, "__Host-oa_session", sab[..]);
+  ap_check(t, "an admin's signed link logs in: a session of ours, no old admin cookie", ls == 303 && SA != "" && !ap_has(ac_head(t), "oa_admin="), ac_head(t));
   ca: [1] Sb; ob: [1] Sb; sb(ob[..], "Origin: "); sb(ob[..], t[0].api); org := sb_text(ob[..]);
-  rs := ac_call(t, "POST", "/api/admin/access/flag", "{}", ac_cookie_header("oa_admin", SA, ca[..]), org, "");
+  rs := ac_call(t, "POST", "/api/admin/access/flag", "{}", ac_cookie_header("__Host-oa_session", SA, ca[..]), org, "");
   ap_check(t, "an admin's change works within five minutes of signing", rs != 401 && rs != 403 && rs != 404, ap_body(t));
-  ap_do(t, "UPDATE analytics.admin_sessions SET created_ms = created_ms - 360000");
-  rs = ac_call(t, "GET", "/api/admin/analytics", "", ac_cookie_header("oa_admin", SA, ca[..]), "", "");
-  st = ac_call(t, "POST", "/api/admin/access/flag", "{}", ac_cookie_header("oa_admin", SA, ca[..]), org, "");
+  ap_do(t, ar_q(q[..], "UPDATE auth.sessions SET l2_at = l2_at - interval '6 minutes' WHERE account = (SELECT account FROM auth.nostr_keys WHERE pubkey = '", apk, "')"));
+  rs = ac_call(t, "GET", "/api/admin/analytics", "", ac_cookie_header("__Host-oa_session", SA, ca[..]), "", "");
+  st = ac_call(t, "POST", "/api/admin/access/flag", "{}", ac_cookie_header("__Host-oa_session", SA, ca[..]), org, "");
   ap_check(t, "session theft: an admin's change needs L2 within five minutes; reading doesn't", SA != "" && rs != 401 && st == 401
            && ap_member(ap_body(t), "step_up", eb[..]) == "L2-fresh", ap_body(t));
 }

@@ -245,7 +245,7 @@ bool seats_route(const request *q) {
   char from[256];
   if (post && api_header(q, "Origin", from, sizeof from) && strcmp(from, site_origin())) { api_json(q->fd, 403, "{\"error\":\"cross-site\"}"); return true; }
   // a seat is an account's: a signed caller (caller-policy.coax), or, unsigned, this site's own page
-  // logged in (its oa_session; a POST only with this site's Origin); never the player key
+  // logged in (a session of ours, auth.c; a POST only with this site's Origin); never the player key
   char signer[65] = "", key[160] = "";
   int sig = access_signed(q, db, signer);
   if (sig < 0) return true;

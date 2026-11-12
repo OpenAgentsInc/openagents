@@ -277,10 +277,8 @@ if os.environ.get("WAKE_PORT"):
           and [b for p, b, _ in runner_seen if p == "/seat/close"] == [{"id": h1["id"]}])
     # The YOUR AGENT pane (verse/edit/agent.coax): the realm's own page, logged in on this site, opens,
     # acts in and closes a hosted seat with its session; another site's page and the player key can't.
-    tok = "d" * 64
-    sql(f"insert into signin.sessions (token_sha256, pubkey, created_ms, expires_ms) values (encode(sha256('{tok}'), 'hex'), "
-        f"'{pubkey_of(OK_)}', 0, 9999999999999) on conflict do nothing")
-    on_page = {"Content-Type": "application/json", "Cookie": "oa_session=" + tok, "Origin": API}
+    site_cookie = login_cookie(pubkey_of(OK_))
+    on_page = {"Content-Type": "application/json", "Cookie": site_cookie, "Origin": API}
 
     def page_call(path, body, headers=on_page):
         status, out, _ = call("POST", path, json.dumps(body).encode(), headers)
@@ -295,9 +293,9 @@ if os.environ.get("WAKE_PORT"):
     check("the page's verbs reach the seat", status == 200 and ob["result"] == "looked"
           and [b for p, b, _ in runner_seen if p == "/seat/act"][-1] == {"id": h3["id"], "action": {"op": "look", "turn": -90}}, ob)
     check("the session on another site's page is refused", page_call(SEATS, {"slug": "seat-green", "hosted": True}, {**on_page, "Origin": "https://elsewhere.example"})[0] == 403)
-    check("a POST without this site's Origin isn't the session's", page_call(SEATS, {"slug": "seat-green", "hosted": True}, {"Content-Type": "application/json", "Cookie": "oa_session=" + tok})[0] == 401)
+    check("a POST without this site's Origin isn't the session's", page_call(SEATS, {"slug": "seat-green", "hosted": True}, {"Content-Type": "application/json", "Cookie": site_cookie})[0] == 401)
     check("the player key is no account here", page_call(SEATS, {"slug": "seat-green", "hosted": True}, {"Content-Type": "application/json", "Origin": API, "X-Verse-Player": visitor["key"]})[0] == 401)
-    unknown = page_call(SEATS, {"slug": "seat-green", "hosted": True}, {**on_page, "Cookie": "oa_session=" + os.urandom(32).hex()})
+    unknown = page_call(SEATS, {"slug": "seat-green", "hosted": True}, {**on_page, "Cookie": login_cookie(os.urandom(32).hex())[:-8] + "AAAAAAAA"})
     check("an unknown session is no account", unknown[0] == 401, unknown)
     check("the page closes its seat", page_call(f"{SEATS}/{h3['id']}/close", {}) == (200, {"closed": True})
           and [b for p, b, _ in runner_seen if p == "/seat/close"][-1] == {"id": h3["id"]})

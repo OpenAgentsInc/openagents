@@ -833,9 +833,10 @@ hashed, spent once, revoked and expired refused).
 
 ## A NIP-98 caller is its key's account, once per signature
 
-On `/api/playtest/realms` and `GET /api/auth/v2/me`, a request with an
+On `/api/playtest/realms` and `GET /api/auth/account`, a request with an
 `Authorization: Nostr` header is its signer's account, `auth.account_of`
-(a linked key's account, else `n-<pubkey>`), and nothing else: a bad, forged
+(the account that holds the key in `auth.nostr_keys`, else `n-<pubkey>`), and
+nothing else (a key no account holds is not logged in on `/api/auth/account`): a bad, forged
 or expired signature, a signed write without a `payload` tag, and a signature
 seen before are 401, never a fallback to the `X-Verse-Player` key. The
 decision is `cp_caller` (`coax/web/api/caller-policy.coax`, `#authority`,
@@ -847,16 +848,21 @@ builder's caps) is the same SQL a page's key meets; no rule was changed for
 it. The Origin check still runs first. Checks:
 `coax/web/api/tests/cli_auth.coax` (owner's signed save 200, another key's
 403, replay, changed body, unbound write, wrong URL and forged header 401,
-another site's Origin 403, the player key as before), run by `test.sh` and by
-`coax/web/api/cli-auth-test.sh` on staging.
+another site's Origin 403, the player key as before; `/api/auth/account`
+not logged in before the key logs in, its account after), run by `test.sh`
+and by `coax/web/api/cli-auth-test.sh` on staging.
 
-A key joins an account in two ways only: `link/nostr` (the session and the
-key's own signature) and device login (`migrations/0098_cli_callers.sql`):
-the key's signed `device/start`, then APPROVE pressed on `/login/device` by a
-logged-in session. The code is 128 bits, kept as SHA-256 only, good for ten
-minutes and approved once; only the starting key's signature reads the
-answer. A key that is another account's, or owns realms, players or creator
-rows of its own, is refused. Checks: the `device` part of `cli_auth.coax`;
+A key joins an account in three ways only, all `auth.c` and its neighbours:
+a login with the key (`POST /api/auth/nostr`, which makes the account on
+first use), `POST /api/auth/link/nostr` (a logged-in session and the key's own
+signature), and device login (`/api/auth/device/*`, `agents.c`): the key's
+signed `device/start`, then APPROVE pressed on `/login/device` by a logged-in
+session. The old groundwork's `/api/auth/v2/*` (WorkOS, its own device login
+and links) and the old phone sign-in's `/api/auth/challenge|approve|poll|key`
+were deleted in #13207 and answer 404; their tables (`signin.*`,
+`auth.identities`, `auth.v0_sessions`, `auth.workos_states`) are dropped.
+Checks: `coax/web/api/tests/agent_checks.coax` (device login);
+`coax/web/api/test_realm_edit.py` and `test_access.py` (the old routes are 404);
 `apps/openagents-web/private.coax` (page 7 approves only on the press).
 
 ## Anime words become directions only through the catalogue holder
@@ -954,7 +960,7 @@ signature 401, 40 s fresh, gone at once).
 
 `POST /api/playtest/seats` opens a seat only for a verified NIP-98 caller
 (`coax/web/api/seats.c`; caller-policy.coax) or, unsigned, this site's own
-logged-in page (its `oa_session`, a POST only with this site's Origin: the
+logged-in page (its session, `__Host-oa_session`, a POST only with this site's Origin: the
 YOUR AGENT pane, `verse/edit/agent.coax`), never for the player key, and only where
 `coax/web/api/seat-policy.coax` (`#authority`) admits it: a made realm the
 caller may see, fewer than 8 other seats open on the site, and for a hosted

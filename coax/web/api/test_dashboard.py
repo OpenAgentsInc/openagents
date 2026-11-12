@@ -25,8 +25,10 @@ reports = "/api/admin/analytics?view=overview&days=0&space=all&auto=1"
 
 status, body, _ = call("GET", reports)
 check("signed out: a 401 and no numbers", status == 401 and b"Sessions" not in body, body)
-status, body, _ = call("GET", reports, headers={"Cookie": "oa_admin=" + "0" * 64})
+status, body, _ = call("GET", reports, headers={"Cookie": "__Host-oa_session=oas_" + "A" * 58})
 check("a made-up session: a 401", status == 401)
+status, body, _ = call("GET", reports, headers={"Cookie": "oa_admin=" + "0" * 64})
+check("the old admin cookie is nobody: a 401", status == 401)
 status, body, _ = login(other)
 check("someone not on the list can't sign in", status == 403 and b"Set-Cookie" not in body, body)
 status, body, _ = call("GET", reports, headers={"Authorization": "Nostr " + signed(other, "GET", API + reports)})
@@ -35,13 +37,14 @@ check("someone not on the list can't sign a request either", status == 403 and b
 auth = urllib.parse.quote(signed(admin, "GET", API + "/api/admin/login"), safe="")
 status, body, headers = call("GET", "/api/admin/login?auth=" + auth)
 cookie = headers.get("Set-Cookie", "")
-check("an admin signs in: a session cookie and on to the dashboard",
-      status == 303 and headers.get("Location") == "/admin/analytics" and cookie.startswith("oa_admin=")
-      and "HttpOnly" in cookie and "Secure" in cookie and "SameSite=Strict" in cookie and "Path=/api/admin" in cookie, (status, headers))
+check("an admin logs in: a session of ours and on to the dashboard",
+      status == 303 and headers.get("Location") == "/admin/analytics" and cookie.startswith("__Host-oa_session=oas_")
+      and "HttpOnly" in cookie and "Secure" in cookie and "SameSite=Lax" in cookie and "Path=/;" in cookie, (status, headers))
 check("the same signed sign-in can't be used twice", call("GET", "/api/admin/login?auth=" + auth)[0] == 401)
 check("a sign-in signed for another site is refused", login(admin, "https://evil.example")[0] == 401)
 token = cookie.split(";")[0]
-check("only the token's hash is kept", sql("select count(*) from analytics.admin_sessions where token_sha256 = '" + token.split("=")[1] + "'") == "0")
+check("only the token's hash is kept", sql("select count(*) from auth.sessions where token_sha256 = '" + token.split("=", 1)[1] + "'") == "0"
+      and sql("select level from auth.sessions where token_sha256 = encode(sha256(convert_to('" + token.split("=", 1)[1] + "', 'UTF8')), 'hex')") == "L2")
 
 status, body, _ = call("GET", reports, headers={"Cookie": token})
 text = body.decode()
@@ -76,20 +79,19 @@ check("an admin's signed request works once", call("GET", "/api/admin/analytics?
 call("GET", "/api/admin/logout", headers={"Cookie": token})
 check("signed out: the session is gone", call("GET", reports, headers={"Cookie": token})[0] == 401)
 
-# ---- logged in on the site with the phone (/login, oa_session): an admin's key opens the dashboard, anyone else's doesn't
+# ---- logged in on the site (/login, a session of ours): an admin's key opens the dashboard, anyone else's doesn't
 admin_hex = os.environ["OA_ADMIN_PUBKEYS"].strip()
-for tok, pk in (("a" * 64, admin_hex), ("b" * 64, "c" * 64)):
-    sql(f"insert into signin.sessions (token_sha256, pubkey, created_ms, expires_ms) values (encode(sha256('{tok}'), 'hex'), '{pk}', 0, 9999999999999) on conflict do nothing")
-status, body, _ = call("GET", reports, headers={"Cookie": "oa_session=" + "a" * 64})
+dash_admin, dash_other = login_cookie(admin_hex), login_cookie("c" * 64)
+status, body, _ = call("GET", reports, headers={"Cookie": dash_admin})
 check("an admin logged in on the site sees the dashboard", status == 200 and b"Sessions" in body, (status, body[:120]))
-status, body, _ = call("GET", "/api/admin/reports", headers={"Cookie": "oa_session=" + "a" * 64})
+status, body, _ = call("GET", "/api/admin/reports", headers={"Cookie": dash_admin})
 check("and the review queue", status == 200, (status, body[:120]))
-status, body, _ = call("GET", reports, headers={"Cookie": "oa_session=" + "b" * 64})
+status, body, _ = call("GET", reports, headers={"Cookie": dash_other})
 check("someone else logged in on the site: admins only", status == 403 and b"Sessions" not in body, (status, body[:120]))
 
 # ---- a realm's old addresses (/realm/<slug> before October 29, /realms/<slug> before November 2) count with its new one (/worlds/<slug>)
 post(batch("c00000000000000r9", [ev("page-view", 1, {"path": "/realm/everglade"}), ev("page-view", 2, {"path": "/realms/everglade"}), ev("page-view", 3, {"path": "/worlds/everglade"})]))
-text = call("GET", reports, headers={"Cookie": "oa_session=" + "a" * 64})[1].decode()
+text = call("GET", reports, headers={"Cookie": dash_admin})[1].decode()
 pages = text.split("#PAGES|")[1].split("\n#")[0] if "#PAGES|" in text else ""
 check("pages: /realm/everglade, /realms/everglade and /worlds/everglade are one row", "\n/worlds/everglade|3" in pages and "/realm/everglade|" not in pages and "/realms/everglade|" not in pages, pages[:400])
 
@@ -98,7 +100,7 @@ app_ua = {"User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) 
 eg = lambda e, i, p=None: dict(ev(e, i, p), page="everglade")
 post(batch("c00000000000000e1", [eg("page-view", 1), eg("load-engine", 2), eg("world-enter", 3, {"world": "everglade"}),
      eg("spell", 4, {"id": "magic-missile"}), eg("tally", 5, {"spell_magic_missile": 6, "kill": 2}), eg("walk", 6, {"m": 50})]), app_ua)
-text = call("GET", reports, headers={"Cookie": "oa_session=" + "a" * 64})[1].decode()
+text = call("GET", reports, headers={"Cookie": dash_admin})[1].decode()
 card = text.split("#EVERGLADE|")[1].split("\n#")[0] if "#EVERGLADE|" in text else ""
 check("a realm's card: its steps, then the most done, a tally summed",
       "|WHAT|SESSIONS|TIMES" in card and "\nIn the world|1|" in card and "\nWalked 50 m|1|" in card and "\nspell_magic_missile|1|6" in card

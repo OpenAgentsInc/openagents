@@ -36,7 +36,7 @@
 //   OA_TIP_MIN_SATS, OA_TIP_MAX_SATS   a tip's bounds (10, 100,000)
 //   OA_MAKER_DAY_PAYOUT_SATS           what payouts may send in a Chicago day (50,000)
 //
-// Who: the site session (oa_session, from /login) or a NIP-98 signature that binds the body and
+// Who: a logged-in session (auth.c, from /login) or a NIP-98 signature that binds the body and
 // was never seen before. A POST from another site's page (Origin) is refused. The claim code
 // travels in the link's fragment and the request body, never a path or query, so it never
 // reaches a load balancer's logs.

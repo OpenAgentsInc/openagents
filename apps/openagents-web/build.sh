@@ -126,8 +126,8 @@ after_generated() { while [[ ! -e "$generated" ]]; do kill -0 $$ 2> /dev/null ||
     # /og: the link-preview workbench (docs/web/og-tags.md), og.coax over og/pages.txt.
     timed og "$here/../../coax/web/wasm.sh" "$here/og.coax" "$here/og-face.c" "$here/build/og.wasm" & made+=($!)
     # A private project's page (/projects/<slug>, served by oa-api to members).
-    COAXIAL_RUN_STEPS=250000000 timed private "$here/../../coax/web/wasm.sh" "$here/private.coax" "$here/private-face.c" "$here/build/private.wasm" \
-      "$here/../../coax/lib/qr/qr-memory.coax" "$here/../../coax/lib/nostr/weblogin.coax" "$here/../../coax/lib/crypto/entropy.coax" & made+=($!)
+    timed private "$here/../../coax/web/wasm.sh" "$here/private.coax" "$here/private-face.c" "$here/build/private.wasm" \
+      "$here/../../coax/lib/qr/qr-memory.coax" & made+=($!)
     for pid in "${made[@]}"; do wait "$pid"; done
   ) &
   project_list=$!

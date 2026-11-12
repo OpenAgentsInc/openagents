@@ -3,7 +3,8 @@
 #authority;
 CP_ORIGIN :: "https://openagents.com";
 CP_URL :: "https://openagents.com/api/v1/systemone";
-CP_LOGIN :: "{\"kind\":\"login\"}";
+CP_CHALLENGE_URL :: "https://openagents.com/api/auth/nostr/challenge?as=lines";
+CP_LOGIN_URL :: "https://openagents.com/api/auth/nostr";   // a NIP-98 signed {"challenge"} logs the key in (auth.c)
 CP_REQUEST_MAX :: 16384;
 CP_BODY_MAX :: 8192;
 CP_TIMEOUT :: 8000;

@@ -1,5 +1,9 @@
 # Signing in to openagents.com with the phone
 
+Retired (#13207): `/signin` goes to `/login` and LINK A PHONE is gone. People
+log in at `/login` (`apps/openagents-web/login.coax`). What follows is the old
+flow.
+
 The fast path of the m9-phone-sign-in milestone: the OpenAgents iOS app
 holds a Nostr key and approves sign-ins with NIP-98 signed requests. Full
 NIP-46 (the phone as a remote signer for the page) stays in the plan for
@@ -68,5 +72,5 @@ its owner's linked phone key; its key setup is unchanged for now.
 | Rules and storage | `coax/web/api/migrations/0019_phone_signin.sql` (`signin.api`, the `projects.api` wrapper), `0022_signin_verse_player.sql` (the Verse player) |
 | Routes | `coax/web/api/private.c` (`auth_route`, `claim`, `link`) |
 | Checks | `coax/web/api/test_private_phone.py` (run by `coax/web/api/test.sh`) |
-| Page | `apps/openagents-web/private.coax` page 2 (`/signin`) and LINK A PHONE on page 0 |
+| Page | removed (#13207): it was `apps/openagents-web/private.coax` page 2 (`/signin`) and LINK A PHONE on page 0 |
 | Phone | `apps/openagents-ios` (Keychain key, scanner, approval sheet) |

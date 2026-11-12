@@ -10,7 +10,7 @@
 //
 // Our own testing is not usage (migrations/0037_analytics_team.sql): a batch
 // from the team's browser (cookie oa_team=1, set when an admin logs in), from
-// an admin's site session (cookie oa_session) or key, a team player or a
+// an admin's logged-in session (auth.c) or key, a team player or a
 // team device is kept with auto = 'team'. A team session's answer sets
 // oa_team, so that browser stays the team's after it logs out. On start the
 // service writes the team (OA_TEAM from team.conf, and OA_ADMIN_PUBKEYS) into
@@ -121,8 +121,10 @@ static void ingest(const request *q) {
   if (api_header(q, "Cookie", cookies, sizeof cookies)) {
     if (!automation[0]) cookie_auto(cookies, automation, sizeof automation);
     cookie_value(cookies, "oa_team", team, sizeof team);
-    cookie_value(cookies, "oa_session", site, sizeof site);
   }
+  // A logged-in page's key (auth.c): an admin's session is our own testing (analytics.ingest).
+  const auth_principal *sp = auth_principal_of(q);
+  if (sp && sp->session[0] && sp->pubkey[0]) snprintf(site, sizeof site, "%s", sp->pubkey);
   api_header(q, "X-Client-Region", region, sizeof region);
   api_header(q, "X-Client-Subdivision", subdivision, sizeof subdivision);
   api_header(q, "X-Client-City", city, sizeof city);

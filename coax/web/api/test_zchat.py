@@ -90,22 +90,21 @@ try:
 except urllib.error.HTTPError as e:
     s, cookies, where = e.code, e.headers.get_all("Set-Cookie") or [], e.headers.get("Location")
 check("chat: admin sign-in with next=chat goes to /chat", s == 303 and where == "/chat", (s, where))
-CTOK = next((c.split(";")[0].split("=", 1)[1] for c in cookies if "Path=/api/chat" in c), "")
-check("chat: the admin's cookie opens /api/chat too", len(CTOK) == 64 and any("Path=/api/chat" in c and "HttpOnly" in c and "SameSite=Strict" in c for c in cookies), cookies)
-PTOK = next((c.split(";")[0].split("=", 1)[1] for c in cookies if "Path=/api/playtest" in c), "")
-check("admin: the same cookie goes to /api/playtest, so every realm's EDIT knows a site admin without /login",
-      PTOK == CTOK and any("Path=/api/playtest" in c and "HttpOnly" in c and "SameSite=Strict" in c for c in cookies), cookies)
-_rq = urllib.request.Request(API + "/api/playtest/realms/the-grid", headers={"Cookie": "oa_admin=" + PTOK, "X-Forwarded-For": "10.9.0.1"})
+CTOK = next((c.split(";")[0] for c in cookies if c.startswith("__Host-oa_session=oas_")), "")
+check("chat: the login is a session of ours for the whole site (auth.c), so it opens /api/chat too",
+      CTOK != "" and any(c.startswith("__Host-oa_session=") and "Path=/;" in c and "HttpOnly" in c and "SameSite=Lax" in c for c in cookies), cookies)
+check("chat: and no old admin cookie", not any(c.startswith("oa_admin=") for c in cookies), cookies)
+_rq = urllib.request.Request(API + "/api/playtest/realms/the-grid", headers={"Cookie": CTOK, "X-Forwarded-For": "10.9.0.1"})
 _spec = urllib.request.urlopen(_rq).read().decode()
 _anon = urllib.request.urlopen(urllib.request.Request(API + "/api/playtest/realms/the-grid", headers={"X-Forwarded-For": "10.9.0.1"})).read().decode()
-check("admin: with only the oa_admin cookie, the Grid's spec says role admin (and a visitor's says visitor)",
+check("admin: with that session, the Grid's spec says role admin (and a visitor's says visitor)",
       "\nrole admin\n" in "\n" + _spec and "\nrole visitor\n" in "\n" + _anon, (_spec[:80], _anon[:80]))
 
 
 def cpage(method, op, body=None, cookie=None, origin=API, query=""):
     h = {"X-Forwarded-For": "10.9.0.1"}
     if origin: h["Origin"] = origin
-    if cookie is not False: h["Cookie"] = "oa_admin=" + (cookie or CTOK)
+    if cookie is not False: h["Cookie"] = cookie or CTOK
     raw = None if body is None else json.dumps(body).encode()
     if raw is not None: h["Content-Type"] = "application/json"
     s, b, _ = call(method, "/api/chat/" + op + query, raw, h)
@@ -140,7 +139,7 @@ s, b, _ = call("GET", "/api/chat/state")
 check("chat: signed out, a 401 from the gate (auth.c)", s == 401 and json.loads(b) == {"error": "Log in first."}, (s, b))
 s, b, _ = call("GET", "/api/chat/state", headers={"Authorization": chat_signed(os.environ["OTHER_KEY"], "GET", "/api/chat/state")})
 check("chat: someone not an admin, a 403 from the gate and nothing else", s == 403 and json.loads(b) == {"error": "Admins only."}, (s, b))
-s, b = cpage("POST", "send", {"text": "hi"}, cookie="0" * 64)
+s, b = cpage("POST", "send", {"text": "hi"}, cookie="__Host-oa_session=oas_" + "A" * 58)
 check("chat: a made-up session can't send", s == 401, (s, b))
 s, b = cpage("POST", "send", {"text": "hi"}, origin="https://evil.example")
 check("chat: a write from another site is refused", s == 403 and "cross-site" in b, (s, b))
@@ -318,8 +317,8 @@ s2, b2 = state(C)
 check("chat: REMOVE deletes the saved key", s == 200 and sql("select count(*) from chat.credentials") == "0" and lines(b2, "Z")[0][3] == "", (s, b2))
 
 # ---- another admin sees none of it (the same 'admins only' rules, per person)
-s, b = cpage("GET", "state", query=f"?c={C}", cookie="f" * 64)
-check("chat: someone else's session can't read the conversation", s == 401, s)
+s, b = cpage("GET", "state", query=f"?c={C}", cookie=login_cookie("f" * 64))
+check("chat: someone else's session, not an admin, can't read the conversation", s == 403, s)
 
 # ---- the project agent: the member who asked, on their own saved credential
 # (one store with /chat), else OpenAgents' key under the project's cap; never another member's

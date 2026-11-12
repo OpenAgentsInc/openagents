@@ -17,6 +17,10 @@
 //
 // Routes (JSON; ?as=lines answers the same as "name value" lines for the Coax pages):
 //   GET  /api/auth/account                who is logged in: account, kind, level, emails (masked), keys
+//   GET  /api/auth/viewer                 who is logged in as every page reads it (coax/web/host.js): K|npub,
+//                                         J|slug..., a blank line, H|hex key, M|member..., a blank line, A|1
+//                                         an admin; U|account for an account with no key it acts as; nobody
+//                                         is a 200 with an empty body. GET /api/auth/me: the same, nobody a 401
 //   GET  /api/auth/limits                 every limit (the table /docs/limits is made from)
 //   POST /api/auth/email/start {email, client?, link?}   one message with a code and a link; sets
 //                                         __Host-oa_pending (an app gets {pending} instead)
@@ -30,7 +34,7 @@
 //   POST /api/auth/phone/poll {poll}      waiting | expired | logged in
 //   POST /api/auth/refresh {refresh_token}     an app's next pair; a reused one ends the family; a login
 //                                         bound to a device key needs OA-Device-Proof (auth-device.c, #13216)
-//   POST /api/auth/logout                 this session (with no session of ours, the old route's: private.c)
+//   POST /api/auth/logout                 this session (none: the cookie is cleared all the same)
 //   POST /api/auth/logout-everywhere      every session of the account (L2)
 //   GET  /api/auth/sessions               the devices list; POST /api/auth/sessions/<id>/remove
 //   POST /api/auth/freeze {t?}            "This wasn't me": a notice's link token, or the session's own account
@@ -77,6 +81,8 @@ static const auth_rule RULES[] = {
   // ---- our own authentication (this file)
   R("GET",  "/api/auth/account", false, AP_PUBLIC, "who is logged in, or nobody"),
   R("GET",  "/api/auth/limits", false, AP_PUBLIC, "every limit"),
+  R("GET",  "/api/auth/viewer", false, AP_PUBLIC, "who is logged in, as every page reads it"),
+  R("GET",  "/api/auth/me", false, AP_PUBLIC, "the viewer's lines; nobody is a 401"),
   R("POST", "/api/auth/email/start", false, AP_PUBLIC, "log in (or link an email when logged in)"),
   R("POST", "/api/auth/email/verify", false, AP_PUBLIC, "the code, in the browser that asked"),
   R("POST", "/api/auth/email/link", false, AP_PUBLIC, "the link, in the browser that asked"),
@@ -151,9 +157,6 @@ static const auth_rule RULES[] = {
   R("POST", "/api/wallet/backup/export", false, AP_L2_FRESH, "export the wallet's encrypted backup (#13217)"),
   R("POST", "/api/wallet/limit", false, AP_L2_FRESH, "raise a spend limit (#13217)"),
   R("POST", "/api/lnaddr/destination", false, AP_L2_FRESH, "change a Lightning Address's destination (#13209)"),
-  // ---- the old groundwork, until #13207 deletes it (each checks its own caller)
-  R("*",    "/api/auth/v2/", true, AP_PUBLIC, "device login and links (access.c): NIP-98 or session, checked there"),
-  R("*",    "/api/auth/", true, AP_PUBLIC, "the phone sign-in and words account (private.c), until deleted"),
   // ---- admins (admin.c, email.c, makers.c' and upgrades' admin pages)
   R("GET",  "/api/admin/login", false, AP_PUBLIC, "an admin's NIP-98 signature logs in"),
   R("*",    "/api/admin/logout", false, AP_PUBLIC, "ends the session"),
@@ -708,28 +711,6 @@ static bool resolve(const request *q, PGconn *db, auth_principal *p, int *status
     memset(p, 0, sizeof *p);
     api_header(q, "X-Verse-Player", p->player, sizeof p->player);
     if (!set_cookie[0]) cookie_header(set_cookie, sizeof set_cookie, SESSION_COOKIE, "", 0);
-  }
-  // The old key-made sessions, until #13207 deletes them: the admin page's oa_admin and the phone
-  // sign-in's oa_session. Both were made by a key's signature, so both are L2; neither is an account.
-  char legacy[65] = "", old[80];
-  long long legacy_age = -1;
-  if (!admin_cookie_who(q, db, legacy, &legacy_age)) {
-    legacy[0] = 0;
-    cookie(q, "oa_session", old, sizeof old);
-    if (strlen(old) == 64) {
-      const char *v[1] = {old};
-      PGresult *r = PQexecParams(db, "SELECT signin.session($1)", 1, NULL, v, NULL, NULL, 0);
-      if (PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1 && !PQgetisnull(r, 0, 0)) snprintf(legacy, sizeof legacy, "%s", PQgetvalue(r, 0, 0));
-      PQclear(r);
-    }
-  }
-  if (strlen(legacy) == 64) {
-    p->kind = AP_PERSON; p->credential = AUTH_COOKIE; p->level = 2; p->l2_age_ms = legacy_age;   // the sign-in's signature; -1 the phone's
-    memcpy(p->pubkey, legacy, 65);
-    p->admin = admin_is(legacy);
-    snprintf(p->verse_account, sizeof p->verse_account, "n-%s", legacy);
-    snprintf(p->via, sizeof p->via, "old-session");
-    return true;
   }
   p->kind = p->player[0] ? AP_KIND_GUEST : AP_NOBODY;
   return true;
@@ -1368,6 +1349,9 @@ bool auth_freeze_link(PGconn *db, const char *acct, char token[65]) {
 
 static void me(const request *q, PGconn *db) {
   const auth_principal *p = auth_principal_of(q);
+  // A bad, forged or expired NIP-98 signature is refused, never read as nobody (INVARIANTS.md).
+  char authz[8] = {0};
+  if (!p && api_header(q, "Authorization", authz, sizeof authz) && !strncmp(authz, "Nostr ", 6)) { refuse(q, 401, "That signature isn't good. Sign this request again."); return; }
   if (!p || !p->account[0]) {
     // A key that signs without an account, or nobody: not logged in (a 200, so pages ask without a console error).
     answer(q, 200, NULL, "{\"logged_in\":false}", "logged_in 0\n");
@@ -1405,6 +1389,36 @@ static void me(const request *q, PGconn *db) {
   PQclear(r);
   answer(q, 200, NULL, json, lines);
   free(json); free(lines);
+}
+
+// GET /api/auth/viewer and /api/auth/me: who is logged in, as the pages read it (coax/web/host.js
+// viewer(); auth.viewer_lines, migration 0157). The key is the one the principal acts as: a session's
+// account key (none while limited or frozen) or a NIP-98 signer. An account with no such key is
+// U|account, so a page knows someone is logged in. Nobody: viewer is a 200 with an empty body (every
+// page asks it), me a 401.
+static void viewer(const request *q, PGconn *db, bool quiet) {
+  const auth_principal *p = auth_principal_of(q);
+  const char *head = "Cache-Control: no-store\r\nVary: Cookie, Authorization\r\n";
+  char *out = NULL;
+  if (p && p->pubkey[0]) {
+    const char *v[1] = {p->pubkey};
+    PGresult *r = PQexecParams(db, "SELECT auth.viewer_lines($1)", 1, NULL, v, NULL, NULL, 0);
+    if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1 || PQgetisnull(r, 0, 0)) {
+      api_log("auth: viewer: %s", PQerrorMessage(db)); PQclear(r); refuse(q, 500, "That didn't work. Try again."); return;
+    }
+    size_t n = strlen(PQgetvalue(r, 0, 0));
+    out = malloc(n + 8);
+    if (out) { memcpy(out, PQgetvalue(r, 0, 0), n + 1); if (p->admin) strcat(out, "A|1\n"); }
+    PQclear(r);
+    if (!out) { refuse(q, 500, "Out of memory."); return; }
+  } else if (p && p->account[0]) {
+    out = malloc(64);
+    if (!out) { refuse(q, 500, "Out of memory."); return; }
+    snprintf(out, 64, "U|%s\n", p->account);
+  }
+  if (!out && !quiet) { api_respond(q->fd, 401, "text/plain; charset=utf-8", head, "not logged in\n", 14); return; }
+  api_respond(q->fd, 200, "text/plain; charset=utf-8", head, out ? out : "", out ? strlen(out) : 0);
+  free(out);
 }
 
 static void limits(const request *q) {
@@ -1457,13 +1471,12 @@ bool auth_api_route(const request *q) {
   bool known_post = false;
   for (const char *const *o = posts; *o; o++) if (!strcmp(op, *o)) known_post = true;
   bool remove = !strncmp(op, "sessions/", 9) && strstr(op, "/remove");
-  if (!known_post && !remove && strcmp(op, "account") && strcmp(op, "limits") && strcmp(op, "sessions")) return false;   // the old routes, until #13207
-  // POST /api/auth/logout is the phone sign-in's too (private.c, until #13207): ours when a session of ours asks.
-  if (!strcmp(op, "logout")) { const auth_principal *p = auth_principal_of(q); if (!p || !p->session[0]) return false; }
+  if (!known_post && !remove && strcmp(op, "account") && strcmp(op, "limits") && strcmp(op, "sessions") && strcmp(op, "viewer") && strcmp(op, "me")) return false;   // the gate has no rule for it: 404
   if (!strcmp(op, "limits")) { if (!get) { refuse(q, 405, "GET this."); return true; } limits(q); return true; }
   PGconn *db = api_db();
   if (!db) { refuse(q, 503, "The database isn't answering. Try again."); return true; }
   if (!strcmp(op, "account")) { if (!get) { refuse(q, 405, "GET this."); return true; } me(q, db); return true; }
+  if (!strcmp(op, "viewer") || !strcmp(op, "me")) { if (!get) { refuse(q, 405, "GET this."); return true; } viewer(q, db, op[0] == 'v'); return true; }
   if (!strcmp(op, "sessions")) { if (!get) { refuse(q, 405, "GET this."); return true; } sessions(q, db); return true; }
   if (get || strcmp(q->method, "POST")) { refuse(q, 405, "POST this."); return true; }
   if (!same_site(q)) { refuse(q, 403, "Not from this site."); return true; }

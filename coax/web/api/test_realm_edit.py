@@ -1,14 +1,12 @@
 # Edit mode for admins in a built-in realm (eg-edit): an admin logged in on the
-# site (/login, oa_session) is told so by /api/auth/me (A|1) and publishes the
+# site (/login, a session of ours) is told so by /api/auth/me (A|1) and publishes the
 # realm's edits (POST /api/playtest/world/everglade) from the page; anyone else,
 # and a write from another site, is refused. test.py runs this file after
 # test_player.py (pt, P).
 
 admin_hex = os.environ["OA_ADMIN_PUBKEYS"].strip()
-for tok, pk in (("e" * 64, admin_hex), ("f" * 64, "d" * 64)):
-    sql(f"insert into signin.sessions (token_sha256, pubkey, created_ms, expires_ms) values (encode(sha256('{tok}'), 'hex'), '{pk}', 0, 9999999999999) on conflict do nothing")
-ADMIN_SITE = {"Cookie": "oa_session=" + "e" * 64, "Origin": API}
-OTHER_SITE = {"Cookie": "oa_session=" + "f" * 64, "Origin": API}
+ADMIN_SITE = {"Cookie": login_cookie(admin_hex), "Origin": API}
+OTHER_SITE = {"Cookie": login_cookie("d" * 64), "Origin": API}
 
 s, b, _ = call("GET", "/api/auth/me", headers={"Cookie": ADMIN_SITE["Cookie"]})
 check("an admin's /api/auth/me says so (A|1)", s == 200 and b"A|1" in b, (s, b))
@@ -20,6 +18,11 @@ s, b, h = call("GET", "/api/auth/viewer")
 check("signed out, the pages' viewer: 200 and empty, not an error", s == 200 and b == b"", (s, b))
 s, b, _ = call("GET", "/api/auth/viewer", headers={"Cookie": ADMIN_SITE["Cookie"]})
 check("logged in, the viewer is me's lines", s == 200 and b"A|1" in b and b"H|" in b, (s, b))
+s, b, _ = call("GET", "/api/auth/viewer", headers={"Cookie": "oa_session=" + "e" * 64})
+check("the old sign-in's cookie is nobody", s == 200 and b == b"", (s, b))
+check("the old sign-in's routes are gone: 404", all(call("POST", "/api/auth/" + r, b"{}", {"Content-Type": "application/json"})[0] == 404
+      for r in ("challenge", "approve", "poll", "key", "v2/device/start", "v2/unlink")) and call("GET", "/api/auth/v2/me")[0] == 404
+      and call("GET", "/api/auth/v2/workos/start")[0] == 404)
 
 edits = {"everglade": 1, "edits": "eg-edit 1\nt 1 4.50 -10.00 0.79 1.00\n"}
 st, g = pt("POST", "player", {})

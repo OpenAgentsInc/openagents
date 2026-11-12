@@ -18,9 +18,8 @@
 //   POST /api/chat/key_remove      deletes it
 //   POST /api/chat/runner/next|event|end   the runner (NIP-98, a key in OA_AGENT_RUNNER_PUBKEYS)
 //
-// Who: an admin (admin.c: the oa_admin cookie, which admin sign-in sets for
-// /api/chat too, or a NIP-98 signature), or the phone sign-in's site session
-// (/signin, docs/phone-sign-in.md) for a key in admins.conf. Anyone else gets
+// Who: an admin (admin.c admin_who: a session of ours, auth.c, whose account
+// holds a key in admins.conf, or a NIP-98 signature). Anyone else gets
 // admin.c's 401 or 403 and nothing more.
 //
 // Environment: OA_CHAT_DAILY_USD (10) the cap on OpenAgents' key for /chat, every

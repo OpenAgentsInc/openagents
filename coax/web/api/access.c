@@ -1,11 +1,10 @@
-// Realm making behind invites, and auth groundwork (docs/auth/2026-10-31-realm-invites-and-auth.md;
-// migrations/0090_realm_invites.sql holds every rule). Two flags, rows of access.flags, both off
-// until an admin turns them on (no row is off): with realm_invites off, GET /api/playtest/access
-// answers "make 1" and the POSTs here are 404, so every page and route behaves as before; with
-// auth_v2 off, /api/auth/v2/* is 404.
+// Realm making behind invites (docs/auth/2026-10-31-realm-invites-and-auth.md;
+// migrations/0090_realm_invites.sql holds every rule). A flag, a row of access.flags, off until an
+// admin turns it on (no row is off): with realm_invites off, GET /api/playtest/access answers
+// "make 1" and the POSTs here are 404, so every page and route behaves as before.
 //
 //   GET  /api/playtest/access                 text/plain: invites 0|1, make 0|1, in 0|1, creator 0|1, asked none|waiting|...
-// (Off, those POSTs and /api/auth/v2 fall through to the routes that answered them before: 404.)
+// (Off, those POSTs fall through to the routes that answered them before: 404.)
 //   POST /api/playtest/access/redeem {code}   -> creator 1; 401 log in first; 404 that code isn't good; 429
 //   POST /api/playtest/access/request {note, contact?}   -> asked waiting; 400, 401, 429
 //        (?as=lines: the lines, or the error's words, as text/plain; else JSON)
@@ -19,26 +18,10 @@
 //   GET  /api/admin/access/realms[?visibility=V][&as=lines]   every made realm: realm SLUG|VISIBILITY|REV|PUBLISHED|OWNER|NAME (0099)
 //   GET  /api/admin/access/admins             A|npub|hex|root and A|npub|hex|db|added by|at|note (0100)
 //   POST /api/admin/access/admins {pubkey, note?}   a root admin adds a database admin; .../admins/<hex>/remove
-//   GET  /api/auth/v2/me                      account ID, then id|nostr|npub..., id|workos|email (with the flags
-//                                             off too; a NIP-98 signature is good once, caller-policy.coax)
-//   Device login (0098), with the flags off too; codes 128 bits, SHA-256 only, ten minutes, once:
-//   POST /api/auth/v2/device/start {machine}  signed by the new key -> {id, code, expires_ms}
-//   GET  /api/auth/v2/device/<id>             signed by that key -> waiting | approved + account | expired
-//   POST /api/auth/v2/device/look {code}      what /login/device shows: {machine, state}
-//   POST /api/auth/v2/device/approve {code}   logged in: the key joins the account as cli:MACHINE
-//   POST /api/auth/v2/unlink {pubkey}         a key of the account (session or signature): that key leaves it
-//   POST /api/auth/v2/link/nostr {"kind":"link"}   the session's account takes the NIP-98 signer's key
-//   GET  /api/auth/v2/workos/start            302 to AuthKit (OA_WORKOS_CLIENT_ID); 503 while it isn't set
-//   GET  /api/auth/v2/workos/callback?code&state   the state spent; the code exchange is not built (501)
-//
-// Who: the site session (oa_session) or a NIP-98 signature (site_identity, private.c); the player
+// Who: a logged-in session's key or a NIP-98 signature (site_identity, private.c); the player
 // key (X-Verse-Player) for creators grandfathered as guests; a site admin (admin_who) always may.
 // A POST from another site's page (Origin) is refused. Codes are never logged.
 //   OA_ACCESS_WAITING       waiting requests the waitlist holds (2000)
-//   OA_WORKOS_CLIENT_ID     AuthKit's client id (not a secret); OA_WORKOS_API_KEY is the secret
-//                           the exchange will need (Secret Manager, never in this repository)
-//   OA_WORKOS_REDIRECT_URI  the callback WorkOS sends back to (origin + /api/auth/v2/workos/callback)
-//   OA_WORKOS_PROVIDER      the connection AuthKit opens (GoogleOAuth; "authkit" shows them all)
 #include "api.h"
 #include "nostr.h"
 #include "caller-policy.generated.h"
@@ -355,167 +338,15 @@ static bool admin(const request *q, PGconn *db, const char *rest) {
   return true;
 }
 
-// ---- /api/auth/v2 (auth_v2)
-static void cookie_session(const request *q, PGconn *db, char pk[65]) {
-  char cookies[4096], token[65]; size_t n = 0;
-  pk[0] = 0;
-  if (!api_header(q, "Cookie", cookies, sizeof cookies)) return;
-  for (const char *c = strstr(cookies, "oa_session="); c; c = strstr(c + 1, "oa_session=")) {
-    if (c != cookies && c[-1] != ' ' && c[-1] != ';') continue;
-    c += 11;
-    while (n < 64 && isxdigit((unsigned char)c[n])) { token[n] = c[n]; n++; }
-    break;
-  }
-  token[n] = 0;
-  if (n != 64) return;
-  const char *v[1] = {token};
-  PGresult *r = PQexecParams(db, "SELECT signin.session($1)", 1, NULL, v, NULL, NULL, 0);
-  if (PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1 && !PQgetisnull(r, 0, 0)) snprintf(pk, 65, "%s", PQgetvalue(r, 0, 0));
-  PQclear(r);
-}
-static void url_encode(char *out, size_t cap, const char *s) {
-  size_t n = 0;
-  for (; *s && n + 4 < cap; s++) {
-    unsigned char c = (unsigned char)*s;
-    if (isalnum(c) || c == '-' || c == '_' || c == '.' || c == '~') out[n++] = (char)c;
-    else n += (size_t)snprintf(out + n, cap - n, "%%%02X", c);
-  }
-  out[n] = 0;
-}
-
-// The code's exchange with WorkOS (POST https://api.workos.com/user_management/authenticate with
-// client_id, the client secret OA_WORKOS_API_KEY, grant_type authorization_code and the code)
-// answers the user's {id, email, email_verified}. Not built: no WorkOS account yet. When it is, its
-// profile goes to auth.workos_link with the state's session pubkey, and the answer's token becomes
-// the account's session cookie.
-static int workos_exchange(const char *code, char *profile, size_t cap) {
-  (void)code; if (cap) profile[0] = 0;
-  return 501;
-}
-
-static bool auth_v2(const request *q, PGconn *db, const char *rest) {
-  bool post = !strcmp(q->method, "POST");
-  char pk[65];
-  if (!strcmp(rest, "me") && !post) {   // any time, flags or not: who this session or signature is
-    int sig = access_signed(q, db, pk);
-    if (sig < 0) return true;
-    if (sig == 0) logged_in(q, db, pk);
-    if (!pk[0]) { api_json(q->fd, 401, "{\"error\":\"log in first\"}"); return true; }
-    const char *v[1] = {pk};
-    PGresult *r = PQexecParams(db, "SELECT auth.me($1)", 1, NULL, v, NULL, NULL, 0);
-    if (PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1) api_respond(q->fd, 200, "text/plain; charset=utf-8", NULL, PQgetvalue(r, 0, 0), strlen(PQgetvalue(r, 0, 0)));
-    else { api_log("auth: me: %s", PQerrorMessage(db)); api_json(q->fd, 500, "{\"error\":\"not read\"}"); }
-    PQclear(r);
-    return true;
-  }
-  // Device login (0098), flags or not: a CLI's new key asks, a logged-in person approves it.
-  bool start = !strcmp(rest, "device/start"), look = !strcmp(rest, "device/look"), approve = !strcmp(rest, "device/approve");
-  bool poll = !strncmp(rest, "device/", 7) && !start && !look && !approve, unlink = !strcmp(rest, "unlink");
-  if (start || look || approve || poll || unlink) {
-    if (poll ? post : !post) { api_json(q->fd, 405, poll ? "{\"error\":\"GET it\"}" : "{\"error\":\"POST it\"}"); return true; }
-    if (!poll && !start && !same_site(q)) { api_json(q->fd, 403, "{\"error\":\"cross-site\"}"); return true; }
-    if (q->body_len > 4096) { api_json(q->fd, 413, "{\"error\":\"too large\"}"); return true; }
-    char ip[128]; visitor(q, ip);
-    if (!allowed(rest[0] == 'u' ? "unlink" : start ? "dstart" : poll ? "dpoll" : "dcode", ip, poll ? 60 : 10)) {
-      if (as_lines(q)) api_respond(q->fd, 429, "text/plain; charset=utf-8", "Retry-After: 60\r\n", "slow down", 9);
-      else api_respond(q->fd, 429, "application/json", "Retry-After: 60\r\n", "{\"error\":\"slow down\"}", 21);
-      return true;
-    }
-    if (start || poll) {   // the new key's own signature, nothing else
-      int sig = access_signed(q, db, pk);
-      if (sig < 0) return true;
-      if (sig == 0) { api_json(q->fd, 401, "{\"error\":\"sign it with the new key\"}"); return true; }
-    } else if (!look) {
-      logged_in(q, db, pk);
-    }
-    if (poll) {
-      const char *id = rest + 7;
-      bool ok = strlen(id) == 16;
-      for (const char *c = id; ok && *c; c++) ok = (*c >= '0' && *c <= '9') || (*c >= 'a' && *c <= 'f');
-      if (!ok) { api_json(q->fd, 404, "{\"error\":\"no such request\"}"); return true; }
-      const char *v[2] = {pk, id};
-      answer(q, db, RESULT "auth.device_poll($1, $2) x", 2, v, "device poll");
-      return true;
-    }
-    char *body = body_of(q);
-    if (!body) { api_json(q->fd, 503, "{\"error\":\"memory\"}"); return true; }
-    char ttl[24]; snprintf(ttl, sizeof ttl, "%lld", atoll(env_or("OA_DEVICE_TTL_MS", "600000")));
-    const char *v[3] = {pk, body, ttl};
-    const char *v1[1] = {body};
-    if (start) answer(q, db, RESULT "auth.device_start($1, $2::jsonb, $3::bigint) x", 3, v, "device start");
-    else if (look) answer(q, db, RESULT "auth.device_look($1::jsonb) x", 1, v1, "device look");
-    else if (approve) answer(q, db, RESULT "auth.device_approve(nullif($1, ''), $2::jsonb) x", 2, v, "device approve");
-    else answer(q, db, RESULT "auth.unlink(nullif($1, ''), $2::jsonb) x", 2, v, "unlink");
-    free(body);
-    if (pk[0] && !look) api_log("auth %s by %.8s", rest, pk);
-    return true;
-  }
-  if (!flag(db, "auth_v2")) return false;   // off: the rest of /api/auth/* is private.c's, as before
-  if (!strcmp(rest, "link/nostr") && post) {
-    // The new key signs (NIP-98, payload this exact body, fresh, once); the session says whose account.
-    if (q->body_len != 15 || memcmp(q->body, "{\"kind\":\"link\"}", 15)) { api_json(q->fd, 400, "{\"error\":\"not a link\"}"); return true; }
-    char from[256], ip[128];
-    if (!api_header(q, "Origin", from, sizeof from) || strcmp(from, origin())) { api_json(q->fd, 403, "{\"error\":\"cross-site\"}"); return true; }
-    visitor(q, ip);
-    if (!allowed("link", ip, 10)) { api_json(q->fd, 429, "{\"error\":\"slow down\"}"); return true; }
-    char signer[65]; bool signed_req = false, payload = false, unseen = false;
-    if (!site_identity(q, db, signer, &signed_req, &payload, &unseen) || !signed_req || !payload || !unseen) {
-      api_json(q->fd, 401, "{\"error\":\"not signed\"}"); return true;
-    }
-    cookie_session(q, db, pk);
-    const char *v[2] = {pk, signer};
-    answer(q, db, RESULT "auth.link_nostr(nullif($1, ''), $2) x", 2, v, "link");
-    return true;
-  }
-  if (!strcmp(rest, "workos/start") && !post) {
-    const char *client = getenv("OA_WORKOS_CLIENT_ID");
-    if (!client || !*client) { api_json(q->fd, 503, "{\"error\":\"WorkOS is not set up\"}"); return true; }
-    cookie_session(q, db, pk);
-    const char *v[1] = {pk};
-    PGresult *r = PQexecParams(db, "SELECT auth.workos_state(nullif($1, ''))", 1, NULL, v, NULL, NULL, 0);
-    if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) { PQclear(r); api_json(q->fd, 500, "{\"error\":\"not kept\"}"); return true; }
-    char redirect[600], back[1800], c[400], prov[120], st[80], head[3200];
-    snprintf(redirect, sizeof redirect, "%s", env_or("OA_WORKOS_REDIRECT_URI", ""));
-    if (!redirect[0]) snprintf(redirect, sizeof redirect, "%s/api/auth/v2/workos/callback", origin());
-    url_encode(back, sizeof back, redirect); url_encode(c, sizeof c, client);
-    url_encode(prov, sizeof prov, env_or("OA_WORKOS_PROVIDER", "GoogleOAuth"));
-    snprintf(st, sizeof st, "%s", PQgetvalue(r, 0, 0));
-    PQclear(r);
-    snprintf(head, sizeof head, "Location: https://api.workos.com/user_management/authorize?response_type=code&client_id=%s&redirect_uri=%s&provider=%s&state=%s\r\n",
-             c, back, prov, st);
-    api_respond(q->fd, 302, "text/plain", head, "", 0);
-    return true;
-  }
-  if (!strcmp(rest, "workos/callback") && !post) {
-    char state[80], code[200];
-    api_query(q, "state", state, sizeof state);
-    api_query(q, "code", code, sizeof code);
-    const char *v[1] = {state};
-    PGresult *r = PQexecParams(db, "SELECT (x->>'status')::int, (x->'body')::text FROM auth.workos_spend($1) x", 1, NULL, v, NULL, NULL, 0);
-    int status = PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1 ? atoi(PQgetvalue(r, 0, 0)) : 500;
-    if (status != 200) { api_json(q->fd, status == 400 ? 400 : 500, status == 400 ? PQgetvalue(r, 0, 1) : "{\"error\":\"not read\"}"); PQclear(r); return true; }
-    PQclear(r);
-    char profile[2048];
-    if (!code[0]) { api_json(q->fd, 400, "{\"error\":\"no code\"}"); return true; }
-    int got = workos_exchange(code, profile, sizeof profile);
-    if (got == 501) { api_json(q->fd, 501, "{\"error\":\"WorkOS code exchange is not built\"}"); return true; }
-    api_json(q->fd, 502, "{\"error\":\"WorkOS did not answer\"}");
-    return true;
-  }
-  api_json(q->fd, 404, "{\"error\":\"not found\"}");
-  return true;
-}
-
 bool access_route(const request *q) {
-  static const char play[] = "/api/playtest/access", adm[] = "/api/admin/access", v2[] = "/api/auth/v2/";
+  static const char play[] = "/api/playtest/access", adm[] = "/api/admin/access";
   const char *p = q->path, *rest;
   int which;
   if (!strncmp(p, play, sizeof play - 1) && (!p[sizeof play - 1] || p[sizeof play - 1] == '/')) { which = 0; rest = p + sizeof play - 1; }
   else if (!strncmp(p, adm, sizeof adm - 1) && (!p[sizeof adm - 1] || p[sizeof adm - 1] == '/')) { which = 1; rest = p + sizeof adm - 1; }
-  else if (!strncmp(p, v2, sizeof v2 - 1)) { which = 2; rest = p + sizeof v2 - 1; }
   else return false;
   if (*rest == '/') rest++;
   PGconn *db = api_db();
   if (!db) { api_json(q->fd, 503, "{\"error\":\"no database\"}"); return true; }
-  return which == 0 ? playtest(q, db, rest) : which == 1 ? admin(q, db, rest) : auth_v2(q, db, rest);
+  return which == 0 ? playtest(q, db, rest) : admin(q, db, rest);
 }

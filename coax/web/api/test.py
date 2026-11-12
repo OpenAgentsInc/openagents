@@ -25,6 +25,19 @@ def sql(q):
     return subprocess.run(PSQL + [q], capture_output=True, text=True, check=True).stdout.strip()
 
 
+def login_cookie(pk, level="L2"):
+    """A web session of ours (auth.c) for this key's account, made the way /login makes one: the
+    Cookie header's value, __Host-oa_session=oas_... (the token format of coax/lib/crypto/token.coax)."""
+    import base64, hashlib, secrets, zlib
+    t = "oas_" + base64.b32encode(secrets.token_bytes(32)).decode().rstrip("=")
+    s = zlib.crc32(t.encode()) >> 2
+    t += "".join("ABCDEFGHIJKLMNOPQRSTUVWXYZ234567"[(s >> (25 - 5 * i)) & 31] for i in range(6))
+    acct = sql(f"select acct from auth.account_for_key('{pk}', 'test')")
+    kid = sql(f"select id from auth.nostr_keys where pubkey = '{pk}'")
+    sql(f"select auth.session_new('{hashlib.sha256(t.encode()).hexdigest()}', '{acct}', 'nostr', {kid}, '{level}', 'web', 'test', NULL)")
+    return "__Host-oa_session=" + t
+
+
 status, body, _ = call("GET", "/api/playtest/health")
 h = json.loads(body)
 check("health answers with a database round trip", status == 200 and h["ok"] and h["database"] == "oa_analytics", body)

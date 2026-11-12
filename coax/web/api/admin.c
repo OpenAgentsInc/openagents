@@ -1,15 +1,14 @@
-// Admin routes for openagents.com/admin/analytics (pt-dashboard). Never
-// WorkOS: an admin is a Nostr public key in OA_ADMIN_PUBKEYS (admins.conf).
-// An admin logged in on the site with the phone (/login, the oa_session
-// cookie) is an admin here too. From a machine, the admin signs a NIP-98
-// request (sign.c, admin-login.sh) and this file checks it (nostr.c,
-// BIP-340 via libsecp256k1 for now):
+// Admin routes for openagents.com/admin/analytics (pt-dashboard). An admin
+// is a Nostr public key in OA_ADMIN_PUBKEYS (admins.conf), logged in with a
+// session of ours (auth.c: /login, or the signed link below) whose account
+// holds that key. From a machine, the admin signs a NIP-98 request (sign.c,
+// admin-login.sh) and this file checks it (nostr.c, BIP-340 via libsecp256k1):
 //
 //   GET /api/admin/login?auth=<base64 event>   the event signs GET <origin>/api/admin/login;
-//                                              good once; sets the oa_admin cookie
-//                                              (HttpOnly, Secure, SameSite=Strict, /api/admin)
-//                                              and sends the browser to /admin/analytics
-//                                              (?next=chat: to /chat; the cookie opens /api/chat too);
+//                                              good once; makes a web session at L2 for the key's
+//                                              account (auth_login_key_redirect, the cookie
+//                                              __Host-oa_session) and sends the browser to
+//                                              /admin/analytics (?next=chat: to /chat);
 //                                              and oa_team=1 (Path=/, two years): the team's browser
 //   GET /api/admin/logout                      ends that session
 //   GET /api/admin/analytics?view=overview|sessions|everglade|session&days=N&space=web|kiki|dev|all&auto=1&team=1&sid=S
@@ -45,7 +44,6 @@
 #define ADMINS_MAX 32
 static char admins[ADMINS_MAX][65];
 static int admin_count;
-#define SESSION_HOURS 12
 
 void admin_init(void) {
   const char *list = getenv("OA_ADMIN_PUBKEYS");
@@ -88,29 +86,6 @@ static bool is_admin(const char *pubkey) {
 }
 bool admin_is(const char *pubkey) { return is_admin(pubkey); }
 
-// The admin page's own cookie (oa_admin, until #13207 moves /admin to our sessions): its admin's
-// key in who, or false. auth.c reads it so the gate knows an admin logged in that way; age_ms is
-// how long ago that sign-in's signature was (an admin change needs it within 5 minutes, #13212).
-bool admin_cookie_who(const request *q, PGconn *db, char who[65], long long *age_ms) {
-  char cookies[4096];
-  who[0] = 0; *age_ms = -1;
-  if (!api_header(q, "Cookie", cookies, sizeof cookies)) return false;
-  const char *c = strstr(cookies, "oa_admin=");
-  if (!c || (c != cookies && c[-1] != ' ' && c[-1] != ';')) return false;
-  c += 9;
-  char token[65]; size_t n = 0;
-  while (n < 64 && isxdigit((unsigned char)c[n])) { token[n] = c[n]; n++; }
-  token[n] = 0;
-  if (n != 64) return false;
-  char ms[32]; snprintf(ms, sizeof ms, "%lld", (long long)api_now_ms());
-  const char *v[2] = {token, ms};
-  PGresult *r = PQexecParams(db, "SELECT pubkey, $2::bigint - created_ms FROM analytics.admin_sessions WHERE token_sha256 = encode(sha256(convert_to($1, 'UTF8')), 'hex') "
-                                 "AND expires_ms > $2::bigint", 2, NULL, v, NULL, NULL, 0);
-  bool ok = PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1;
-  if (ok) { snprintf(who, 65, "%s", PQgetvalue(r, 0, 0)); *age_ms = atoll(PQgetvalue(r, 0, 1)); }
-  PQclear(r);
-  return ok && is_admin(who);
-}
 static const char *origin(void) { const char *o = getenv("OA_API_ORIGIN"); return o && *o ? o : "https://openagents.com"; }
 
 // A signed event used once only: false when it was seen before.
@@ -127,7 +102,7 @@ static bool first_use(PGconn *db, const nostr_event *ev) {
 // The admin making this request (their pubkey into who), or why not: 0 an
 // admin; 401 nobody signed in; 403 signed, but not an admin.
 static int who_is(const request *q, PGconn *db, char who[65]) {
-  char auth[4096], cookies[4096];
+  char auth[4096];
   who[0] = 0;
   if (api_header(q, "Authorization", auth, sizeof auth) && !strncmp(auth, "Nostr ", 6)) {
     char url[4200]; snprintf(url, sizeof url, "%s%s", origin(), q->target);
@@ -144,55 +119,10 @@ static int who_is(const request *q, PGconn *db, char who[65]) {
     memcpy(who, p->pubkey, 65);
     return is_admin(who) ? 0 : 403;
   }
-  if (!api_header(q, "Cookie", cookies, sizeof cookies)) return 401;
-  const char *c = strstr(cookies, "oa_admin=");
-  if (!c || (c != cookies && c[-1] != ' ' && c[-1] != ';')) return 401;
-  c += 9;
-  char token[65]; size_t n = 0;
-  while (n < 64 && isxdigit((unsigned char)c[n])) { token[n] = c[n]; n++; }
-  token[n] = 0;
-  if (n != 64) return 401;
-  char ms[32]; snprintf(ms, sizeof ms, "%lld", (long long)api_now_ms());
-  const char *v[2] = {token, ms};
-  PGresult *r = PQexecParams(db, "SELECT pubkey FROM analytics.admin_sessions WHERE token_sha256 = encode(sha256(convert_to($1, 'UTF8')), 'hex') "
-                                 "AND expires_ms > $2::bigint", 2, NULL, v, NULL, NULL, 0);
-  int status = 401;
-  if (PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1) {
-    snprintf(who, 65, "%s", PQgetvalue(r, 0, 0));
-    status = is_admin(who) ? 0 : 403;   // taken off the list: the session is no good
-  }
-  PQclear(r);
-  return status;
+  return 401;
 }
-
-// Else the phone sign-in's site session (/login, oa_session, Path=/) for a key in admins.conf:
-// logged in on the site is logged in here.
-static int site_who(const request *q, PGconn *db, char who[65]) {
-  int s = who_is(q, db, who);
-  if (s != 401) return s;
-  char cookies[4096], token[65]; size_t n = 0;
-  if (!api_header(q, "Cookie", cookies, sizeof cookies)) return 401;
-  for (const char *c = strstr(cookies, "oa_session="); c; c = strstr(c + 1, "oa_session=")) {
-    if (c != cookies && c[-1] != ' ' && c[-1] != ';') continue;
-    c += 11;
-    while (n < 64 && isxdigit((unsigned char)c[n])) { token[n] = c[n]; n++; }
-    break;
-  }
-  token[n] = 0;
-  if (n != 64) return 401;
-  const char *v[1] = {token};
-  PGresult *r = PQexecParams(db, "SELECT signin.session($1)", 1, NULL, v, NULL, NULL, 0);
-  int status = 401;
-  if (PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1 && !PQgetisnull(r, 0, 0)) {
-    snprintf(who, 65, "%s", PQgetvalue(r, 0, 0));
-    status = is_admin(who) ? 0 : 403;
-  }
-  PQclear(r);
-  return status;
-}
-
 // The same check for other routes (chat.c): 0 an admin (pubkey in who), else 401 or 403.
-int admin_who(const request *q, PGconn *db, char who[65]) { return site_who(q, db, who); }
+int admin_who(const request *q, PGconn *db, char who[65]) { return who_is(q, db, who); }
 
 static void refuse(int fd, int status) {
   api_json(fd, status, status == 403 ? "{\"error\":\"admins only\"}" : "{\"error\":\"log in as an admin\"}");
@@ -210,57 +140,17 @@ static void login(const request *q, PGconn *db) {
   }
   if (!is_admin(ev.pubkey)) { api_log("admin login: not an admin"); refuse(q->fd, 403); return; }
   if (!first_use(db, &ev)) { refuse(q->fd, 401); return; }
-  unsigned char raw[32]; char token[65];
-  int fd = open("/dev/urandom", O_RDONLY);
-  if (fd < 0 || read(fd, raw, 32) != 32) { if (fd >= 0) close(fd); api_json(q->fd, 503, "{\"error\":\"no randomness\"}"); return; }
-  close(fd);
-  for (int i = 0; i < 32; i++) snprintf(token + 2 * i, 3, "%02x", raw[i]);
-  char now[32], until[32];
-  long long t = (long long)api_now_ms();
-  snprintf(now, sizeof now, "%lld", t); snprintf(until, sizeof until, "%lld", t + SESSION_HOURS * 3600000LL);
-  const char *v[4] = {token, ev.pubkey, now, until};
-  PGresult *r = PQexecParams(db, "INSERT INTO analytics.admin_sessions (token_sha256, pubkey, created_ms, expires_ms) "
-                                 "VALUES (encode(sha256(convert_to($1, 'UTF8')), 'hex'), $2, $3::bigint, $4::bigint)", 4, NULL, v, NULL, NULL, 0);
-  bool ok = PQresultStatus(r) == PGRES_COMMAND_OK;
-  PQclear(r);
-  if (!ok) { api_json(q->fd, 503, "{\"error\":\"no session\"}"); return; }
-  char headers[1400], next[16];
   // ?next=chat sends the browser to /chat instead (the link is signed without it, as before).
+  // The session is ours (auth.c), so it opens /api/drops, /api/chat and every realm's EDIT too.
+  char next[16] = "";
   api_query(q, "next", next, sizeof next);
-  // The same session opens /api/drops (drops.c), so an admin can drop files for a new project,
-  // /api/chat (chat.c), the admins' chat with a Claude agent, and /api/playtest, where every
-  // realm's EDIT (realms.c and player.c ask admin_who) knows a site admin without /login.
-  snprintf(headers, sizeof headers, "Location: %s\r\nSet-Cookie: oa_admin=%s; Path=/api/admin; Max-Age=%d; HttpOnly; Secure; SameSite=Strict\r\n"
-           "Set-Cookie: oa_admin=%s; Path=/api/drops; Max-Age=%d; HttpOnly; Secure; SameSite=Strict\r\n"
-           "Set-Cookie: oa_admin=%s; Path=/api/chat; Max-Age=%d; HttpOnly; Secure; SameSite=Strict\r\n"
-           "Set-Cookie: oa_admin=%s; Path=/api/playtest; Max-Age=%d; HttpOnly; Secure; SameSite=Strict\r\n"
-           TEAM_COOKIE,   // this browser's later visits, logged out too, are our own testing (analytics.c)
-           !strcmp(next, "chat") ? "/chat" : "/admin/analytics",
-           token, SESSION_HOURS * 3600, token, SESSION_HOURS * 3600, token, SESSION_HOURS * 3600, token, SESSION_HOURS * 3600);
-  api_log("admin signed in: %.12s", ev.pubkey);
-  api_respond(q->fd, 303, "text/plain", headers, "", 0);
+  if (auth_login_key_redirect(q, db, ev.pubkey, !strcmp(next, "chat") ? "/chat" : "/admin/analytics")) api_log("admin logged in: %.12s", ev.pubkey);
 }
 
 static void logout(const request *q, PGconn *db) {
-  char cookies[4096];
-  if (api_header(q, "Cookie", cookies, sizeof cookies)) {
-    const char *c = strstr(cookies, "oa_admin=");
-    if (c) {
-      char token[65]; size_t n = 0; c += 9;
-      while (n < 64 && isxdigit((unsigned char)c[n])) { token[n] = c[n]; n++; }
-      token[n] = 0;
-      const char *v[1] = {token};
-      PQclear(PQexecParams(db, "DELETE FROM analytics.admin_sessions WHERE token_sha256 = encode(sha256(convert_to($1, 'UTF8')), 'hex')",
-                           1, NULL, v, NULL, NULL, 0));
-    }
-  }
-  const auth_principal *p = auth_principal_of(q);   // and our own session (auth.c)
+  const auth_principal *p = auth_principal_of(q);   // our own session (auth.c)
   if (p && p->session[0]) { const char *v[1] = {p->session}; PQclear(PQexecParams(db, "SELECT auth.session_end($1)", 1, NULL, v, NULL, NULL, 0)); }
-  api_respond(q->fd, 303, "text/plain", "Location: /\r\nSet-Cookie: __Host-oa_session=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax\r\n"
-              "Set-Cookie: oa_admin=; Path=/api/admin; Max-Age=0; HttpOnly; Secure; SameSite=Strict\r\n"
-              "Set-Cookie: oa_admin=; Path=/api/drops; Max-Age=0; HttpOnly; Secure; SameSite=Strict\r\n"
-              "Set-Cookie: oa_admin=; Path=/api/chat; Max-Age=0; HttpOnly; Secure; SameSite=Strict\r\n"
-              "Set-Cookie: oa_admin=; Path=/api/playtest; Max-Age=0; HttpOnly; Secure; SameSite=Strict\r\n", "", 0);
+  api_respond(q->fd, 303, "text/plain", "Location: /\r\nSet-Cookie: __Host-oa_session=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax\r\n", "", 0);
 }
 
 // ---- the reports
@@ -783,7 +673,7 @@ bool admin_route(const request *q) {
   bool link = !strcmp(q->path, "/api/admin/team-link");
   if (strcmp(q->path, "/api/admin/analytics") && !queue && !room_view && !link) { api_json(q->fd, 404, "{\"error\":\"not found\"}"); return true; }
   char who[65];
-  int status = site_who(q, db, who);
+  int status = who_is(q, db, who);
   if (status) { refuse(q->fd, status); return true; }
   if (link) team_link(q, db, who);
   else if (room_view) rooms(q, db);

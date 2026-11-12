@@ -565,8 +565,7 @@ marked equivalent above.
 
 The callers' checks pass unchanged: `coax test` on `bip32.coax`,
 `coax/lib/nostr/nipkeys.coax`, `coax/lib/nostr/nipkeys_sign.coax` and
-`nostr/examples/checks/seed-phrase.coax`, and the BIP-39, BIP-32 and NIP-06
-vectors in `coax/tests/nostr/weblogin_vectors.coax`.
+`nostr/examples/checks/seed-phrase.coax`.
 
 ## Summary
 

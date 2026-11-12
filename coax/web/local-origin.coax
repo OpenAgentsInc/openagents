@@ -111,8 +111,8 @@ lo_forward :: (head: string, out: [] string) -> int {
 }
 #test "local origin: the page's cookie, Origin and key go on to the API; its framing doesn't" {
   h: [HTTP_HEADERS] string;
-  n := lo_forward("POST /api/x HTTP/1.1\r\nHost: 127.0.0.1:1\r\nContent-Length: 2\r\nCookie: oa_session=abc\r\nOrigin: http://127.0.0.1:1\r\nX-Verse-Player: k\r\nConnection: keep-alive\r\nAccept-Encoding: gzip\r\n\r\n", h[..]);
-  #assert n == 3 && h[0] == "Cookie: oa_session=abc" && h[1] == "Origin: http://127.0.0.1:1" && h[2] == "X-Verse-Player: k";
+  n := lo_forward("POST /api/x HTTP/1.1\r\nHost: 127.0.0.1:1\r\nContent-Length: 2\r\nCookie: __Host-oa_session=abc\r\nOrigin: http://127.0.0.1:1\r\nX-Verse-Player: k\r\nConnection: keep-alive\r\nAccept-Encoding: gzip\r\n\r\n", h[..]);
+  #assert n == 3 && h[0] == "Cookie: __Host-oa_session=abc" && h[1] == "Origin: http://127.0.0.1:1" && h[2] == "X-Verse-Player: k";
 }
 
 // ---- the site's files
