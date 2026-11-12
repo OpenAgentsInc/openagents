@@ -161,6 +161,9 @@ mc_take :: (l: [] McLoop, text: string) -> int {
   if why.count > 0 { return mc_bad(l, why); }
   l[0].steps += 1;
   l[0].bad = 0;
+  // a finish that carries edits, commands or views is a working step: they are run, not
+  // dropped, and the run finishes in a turn of its own, once it has seen their results
+  if l[0].pending[0].finished && (l[0].pending[0].nc > 0 || l[0].pending[0].ne > 0 || l[0].pending[0].nv > 0) { l[0].pending[0].finished = false; }
   a := l[0].pending[0];
   if a.finished { l[0].reply = a.reply; mc_record_bare(l); return mc_end(l, MC_END_FINISHED); }
   if a.asks { l[0].reply = a.reply; mc_record_bare(l); return mc_end(l, MC_END_ASKED); }
@@ -287,6 +290,21 @@ mc_script_run :: (l: [] McLoop, s: [] McScript) {
   #assert mc_escaped_size(req.messages[0].text) + MC_REQUEST_ROOM <= MC_REQUEST_MAX;
   #assert json_valid(req.messages[0].text);
   #assert l[0].st[0].nearly > before;      // compacted, not dropped
+}
+
+#test "a finish that carries edits, commands or views runs them and is not taken; the next finish is" {
+  sb: [1] McStateBuffers; lb: [1] McLoopBuffers; l: [1] McLoop;
+  mc_init(l[..], sb[..], lb[..], "{}", "fix the typo", "{}", 1.0);
+  replies: [3] string;
+  replies[0] = "{\"rationale\":\"fix and done\",\"edits\":[],\"commands\":[\"sed -i s/helo/hello/ a.txt\"],\"view\":[],\"finished\":true,\"reply\":\"Fixed.\",\"ask\":\"none\"}";
+  replies[1] = "{\"rationale\":\"look\",\"edits\":[],\"commands\":[],\"view\":[\"a.txt\"],\"finished\":true,\"reply\":\"Fixed, I think.\",\"ask\":\"none\"}";
+  replies[2] = "{\"rationale\":\"done\",\"edits\":[],\"commands\":[],\"view\":[],\"finished\":true,\"reply\":\"Fixed: helo is hello.\",\"ask\":\"none\"}";
+  s: [1] McScript; s[0].replies = replies[..];
+  mc_script_run(l[..], s[..]);
+  #assert l[0].ending == MC_END_FINISHED && l[0].reply == "Fixed: helo is hello." && s[0].calls == 3 && s[0].nran == 1 && s[0].ran[0] == "sed -i s/helo/hello/ a.txt";
+  j := mc_state_json(l[0].st[..], lb[0].prompt[..]);
+  ab: [512] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+  #assert cl_int(j, "actions.0.results.0.exit").value == 0 && cl_str(ar[..], j, "actions.1.results.0.view") == "a.txt" && cl_count(cl_raw(j, "actions")) == 3;
 }
 
 #test "'what is 2+2' finishes in one step with no commands" {
