@@ -23,7 +23,7 @@ what was measured and whether the piece stayed.
 | 7. Economy | Kept (913a63b6fb) | Argon: cost about halved on H4, T4 and T5. Carbon on #13263: still no edit |
 | A command's time limit | Kept (66b316de85) | H6's own checks ran (120 s) where they had been killed (30 s) |
 | A finish that carries edits | Fixed (96ee94bc29) | Flash dropped its edits on the first tiny task; Argon in 2 of 113 finishes |
-| Verdict, round 1 of 2 | Run on N1 to N6 | Passes 4 to 4, cost $13.03 against at least $15.94, median 426 s against 639 s; round 2 waits for the owner (budget) |
+| Verdict, both rounds | Run on N1 to N6 | Passes 8 against 10 (not met), cost $25.73 against at least $30.97, median 513 s against 606 s: not better |
 | Field runs on Carbon | Read offline, no change made | 46 runs on real issues: 20 finished, 26 ended on a limit. Every wrong commit traced came from a run that ended on a limit, which the finish reader (item 2) never sees |
 
 The build the verdict runs use is 93455e7032: the round 2 loop of #13231
@@ -471,9 +471,45 @@ shared that load.
   24 to 36) and sent a third to a fifth of the input tokens. Antigravity's
   input was 75% to 92% cached, Microcoder's 12% to 52%.
 
-Round 2 has not been run. Its cost, about $29 at round 1's rate, would take
-this issue past its $49 and the owner's $200 for this work, so it waits for
-the owner.
+Round 2 was run on 2026-11-12 with the owner's approval, past the $200 cap.
+
+## The verdict: round 2 and both rounds (2026-11-12)
+
+Same build (`61a4d76fdd`), same pairs, two at once.
+
+| Task | Microcoder | Antigravity |
+| --- | --- | --- |
+| N1 | **fail**: cut at 900 s, 16 calls, $1.83 | pass, 654 s, 31 calls, $3.93 |
+| N2 | pass, 330 s, 7 calls, $0.93 | pass, 528 s, 17 calls, $1.22 |
+| N3 | pass, 570 s, 26 calls, $2.64 | pass, 857 s, 25 calls, $3.97 |
+| N4 | **fail**: 895 s, 47 calls, $4.02 | pass, 525 s, 14 calls, $1.62 |
+| N5 | pass, 493 s, 14 calls, $1.62 | pass, 304 s, 14 calls, $1.77 |
+| N6 | pass, 533 s, 22 calls, $1.66 | pass, 617 s, 25 calls, $2.52 |
+| **Round 2** | **4 of 6, $12.70** | **6 of 6, $15.03** |
+
+| Both rounds (12 runs a side) | Microcoder | Antigravity | Condition |
+| --- | --- | --- | --- |
+| Passes | 8 | 10 | **not met** |
+| Total cost | $25.73 | at least $30.97 | met |
+| Median wall time | 513 s | 606 s | met |
+
+**Verdict: Microcoder is not better on this benchmark.** It is cheaper by at
+least 17% and faster at the median by 15%, but it passed two fewer runs. A
+gap of 2 in 12 is within the noise named above (under 5 is noise), so the
+benchmark does not show Antigravity is better either; the definition asks
+Microcoder not to be behind, and it is.
+
+- **N4 is the clearest difference.** Microcoder failed it both rounds (128
+  commands in round 1; 47 calls and 895 s in round 2); Antigravity passed it
+  both rounds, in 14 and 21 calls.
+- **Microcoder's failures are all on its limits:** the command limit twice,
+  the 15-minute limit once, and N4 round 2 at 895 s. Antigravity's two
+  failures were the time limit and one wrong change (N3 round 1).
+- **Caching:** Antigravity's input was 75% to 92% cached, Microcoder's 12% to
+  58%, so Antigravity's far larger prompts cost it less than their size.
+
+What to change next is the subject of a transcript analysis of these runs
+and the tuning set, and of a plan document that follows this page.
 
 ## Field runs on Carbon (2026-11-12, read offline)
 
@@ -565,7 +601,7 @@ Of the $49 for this issue, before the verdict runs: about $15.40.
 | Tiny test turns | $0.06 |
 
 Verdict round 1: $13.03 for Microcoder and at least $15.94 for Antigravity,
-$28.97 in all. This issue: about $44.40 of its $49. Across #13231 and this
+$28.97 in all. Round 2: $12.70 and $15.03, $27.73. This issue: about $44.40 of its $49. Across #13231 and this
 issue since #13231's round 4: about $195 of the owner's $200.
 
 What more would cost, at round 1's rate of about $2.40 a run on the N
