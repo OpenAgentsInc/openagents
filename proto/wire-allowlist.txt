@@ -139,6 +139,7 @@ route coax/web/api/admin.c  # admin: hand-built bodies; the api.v1 envelope (#13
 route coax/web/api/analytics.c  # analytics: hand-built bodies; the api.v1 envelope (#13250)
 route coax/web/api/anime.c  # the anime director: hand-built bodies; the api.v1 envelope (#13250)
 route coax/web/api/auth.c  # auth: hand-built bodies; the api.v1 envelope (#13250)
+route coax/web/api/auth-device.c  # device keys: hand-built bodies like the rest of /api/auth; the api.v1 envelope (#13250)
 route coax/web/api/auth-life.c  # auth life: hand-built bodies; the api.v1 envelope (#13250)
 route coax/web/api/auth-recover.c  # auth recovery: hand-built bodies; the api.v1 envelope (#13250)
 route coax/web/api/passkeys.c  # passkeys: hand-built bodies; the api.v1 envelope (#13250)
