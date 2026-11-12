@@ -11,9 +11,7 @@ open, and how to check it.
     runnable example in `nostr/examples/` with a fixture in
     `nostr/fixtures/`, refusals shown in the output, and an independent check
     in `nostr/examples/checks/`.
-  - **Partly implemented:** chapter 103. See "Open work". Chapter 104 is
-    implemented as of 2026-11-12: its spend and recovery ran on a private
-    signet, not the public one.
+  - **Partly implemented:** chapters 103 and 104. See "Open work".
 - **Structure check:** `python3 psionic/tests/book.py --book nostr` passes
   (104 programs, 831 source-linked listings).
 - **Examples:** the last full run of every example (204 runs at `784cbdb9bf`,
@@ -87,12 +85,12 @@ open, and how to check it.
 
 ### Not built or not run
 
-- **Chapter 104** is implemented on the private signet run (#13366,
-  2026-11-12: the plan says "on signet", and a BIP-325 signet this node signs
-  is one). The 2-of-3 spend has not been broadcast on the public signet. Its
-  coins come only from faucets behind a captcha or a bot check, so someone
-  would have to claim them to the treasury's receive 0,
-  `tb1qrpl09ws69aprwz205re9zpkn47ysezuww9cdfau2cfanuamd9ahsyy5tx2`. Sign requests over a
+- **Chapter 104** is still partly implemented. Its "Done means" needs one
+  more thing: the 2-of-3 spend broadcast on the public signet. Its coins
+  come only from a captcha-gated faucet, so someone has to claim them to the
+  treasury's receive 0,
+  `tb1qrpl09ws69aprwz205re9zpkn47ysezuww9cdfau2cfanuamd9ahsyy5tx2`, or the
+  owner accepts the private signet run as the exit. Sign requests over a
   relay, recovery with Bitcoin Core's wallet (regtest 2026-11-05; regtest
   and a private signet 2026-11-12,
   `docs/verification/2026-11-12-nostr-ch104-possession-and-private-signet/`)
