@@ -265,7 +265,7 @@ a person's limit; an agent spends within its grant.
 Upgrades never add to the credit's count, because service credit can't buy one
 (#13343): since #13210 an upgrade is paid in Bitcoin from the player's wallet
 straight to the maker, and `POST /api/playtest/upgrades/<id>/buy {pay:
-"credit"}` gets 400 (`mp_pay` in `coax/web/api/makerpay-policy.coax`;
+"credit"}` gets 400 (`mp_pay` in `pay/makerpay-policy.coax`;
 `makers.buy_credit`, migration 0154, touches no credit). The price is a wallet
 payment, so it counts through `POST /api/wallet/spend` like any other: past
 the limit it gets the step-up answer and goes after a fresh L2
