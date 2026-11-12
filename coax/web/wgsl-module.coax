@@ -99,7 +99,8 @@ wm_module :: (file: string, into: string, options: string, check: bool) -> int {
   m := wm_words(cast(string) ob[0..<on], argv[3..<16]);
   if m < 0 { tool_errln("wgsl-module: too many options"); return WM_FAILED; }
   out: [WM_PAGE] u8; err: [65536] u8;
-  r := proc_run(argv[0..<m + 3], 120000, out[..], err[..]);
+  // ten minutes a module: on a busy Mac (load 60) the big ones took over two, and the release's build failed (2026-11-11)
+  r := proc_run(argv[0..<m + 3], 600000, out[..], err[..]);
   if r.started != 0 || r.status != 0 || r.cut {
     tool_err(cast(string) err[0..<r.err_n]);
     tool_err("wgsl-module: coax wgsl failed on "); tool_err(file); tool_errln(" (run from the repo root)");
