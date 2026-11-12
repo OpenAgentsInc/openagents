@@ -13,6 +13,7 @@
 //   aethyr-up    a file under aethyr/ loads from verse/, apps/, everglade/ or coax/web/
 //   everglade-up a file under everglade/ loads from apps/
 //   tests        a file under aethyr/, everglade/, coax/web/api/ or coax/web/room/ loads a file in a tests/ or test/ folder
+//   context      a file in context A loads a file in context B (A != B) not in A's "may load" list in contexts.txt (#13317)
 // Support code is a test, check, tool, example or book file, which may load what it exercises:
 //   a path with a folder named tests, test, tools, examples, book, fixtures or lab;
 //   a file named test_X, test-X, check-X, check.E, checks.E, X_test.E, X-test.E, X-check.E,
@@ -33,16 +34,32 @@
 #load "../lib/sys/proc.coax";
 
 LC_ALLOW :: "aethyr/layer-allowlist.txt";
+LC_CONTEXTS :: "contexts.txt";
 LC_HOW :: "aethyr/README.md, \"Layers\"";
 LC_BUF :: 16777216;      // git grep's and git ls-files' output, and the largest file read
 LC_MODS :: 8192;         // engine modules tracked by --consumers
 LC_LINES :: 4096;        // allowlist lines tracked
+LC_MAX_CTX :: 64;        // bounded contexts in contexts.txt
+LC_MAX_PFX :: 32;        // folder/file prefixes or allowed dependencies per context
 
 // The rules, by index (0: none).
-LC_UP_AETHYR :: 1; LC_UP_EVERGLADE :: 2; LC_TESTS :: 3; LC_RULES :: 4;
-LC_NAMES :: [4] string.["", "aethyr-up", "everglade-up", "tests"];
+LC_UP_AETHYR :: 1; LC_UP_EVERGLADE :: 2; LC_TESTS :: 3; LC_CONTEXT :: 4; LC_RULES :: 5;
+LC_NAMES :: [5] string.["", "aethyr-up", "everglade-up", "tests", "context"];
 
 LcRun :: struct { quiet: bool; }
+LcCtx :: struct {
+  slug: string;
+  folders: [LC_MAX_PFX] string;
+  n_folders: int;
+  may: [LC_MAX_PFX] string;
+  n_may: int;
+}
+LcCtxMap :: struct {
+  ok: bool;
+  bad: string;
+  ctxs: [LC_MAX_CTX] LcCtx;
+  n: int;
+}
 // One "#load" line of git grep's output: the loading file, its line and the path it names.
 LcLoad :: struct { ok: bool; from: string; line: int; rel: string; }
 
@@ -169,12 +186,101 @@ lc_in_tests :: (path: string) -> bool {
   }
   return false;
 }
-// The rule a load from `from` (not support code) to `to` breaks, or 0.
+// Parses contexts.txt: one line per context, "SLUG folders: A/ B/ ... may load: SLUG ...".
+lc_parse_contexts :: (text: string) -> LcCtxMap {
+  m: LcCtxMap; m.ok = true;
+  i := 0;
+  while i < text.count {
+    j := i;
+    while j < text.count && text[j] != '\n' { j += 1; }
+    raw := cast(string) text[i..<j]; i = j + 1;
+    e := 0;
+    while e < raw.count && raw[e] != '#' { e += 1; }
+    line := lc_trim(cast(string) raw[0..<e]);
+    if line.count == 0 { continue; }
+    if m.n >= LC_MAX_CTX { m.ok = false; m.bad = line; return m; }
+    c: LcCtx;
+    // split by whitespace
+    words: [128] string; wn := 0; k := 0;
+    while k < line.count {
+      while k < line.count && (line[k] == ' ' || line[k] == '\t') { k += 1; }
+      if k >= line.count { break; }
+      w0 := k;
+      while k < line.count && line[k] != ' ' && line[k] != '\t' { k += 1; }
+      if wn < words.count { words[wn] = cast(string) line[w0..<k]; wn += 1; }
+    }
+    if wn < 4 || words[1] != "folders:" {
+      m.ok = false; m.bad = line; return m;
+    }
+    c.slug = words[0];
+    may_at := -1;
+    for q: 2..<wn - 1 {
+      if words[q] == "may" && words[q + 1] == "load:" { may_at = q; break; }
+    }
+    if may_at < 3 {
+      m.ok = false; m.bad = line; return m;
+    }
+    for q: 2..<may_at {
+      if c.n_folders >= LC_MAX_PFX { m.ok = false; m.bad = line; return m; }
+      c.folders[c.n_folders] = words[q]; c.n_folders += 1;
+    }
+    for q: may_at + 2..<wn {
+      if c.n_may >= LC_MAX_PFX { m.ok = false; m.bad = line; return m; }
+      c.may[c.n_may] = words[q]; c.n_may += 1;
+    }
+    m.ctxs[m.n] = c; m.n += 1;
+  }
+  for a: 0..<m.n {
+    for q: 0..<m.ctxs[a].n_may {
+      want := m.ctxs[a].may[q]; found := false;
+      for b: 0..<m.n { if m.ctxs[b].slug == want { found = true; break; } }
+      if !found { m.ok = false; m.bad = want; return m; }
+    }
+  }
+  return m;
+}
+// Index of the context in m whose folder/file prefix is longest for path, or -1.
+lc_context_of :: (m: LcCtxMap, path: string) -> int {
+  best := -1; best_len := 0;
+  for c: 0..<m.n {
+    for f: 0..<m.ctxs[c].n_folders {
+      pfx := m.ctxs[c].folders[f];
+      if lc_starts(path, pfx) && pfx.count > best_len {
+        best = c; best_len = pfx.count;
+      }
+    }
+  }
+  return best;
+}
+// Whether context a allows loading context b.
+lc_context_allows :: (m: LcCtxMap, a: int, b: int) -> bool {
+  if a < 0 || b < 0 || a == b { return true; }
+  target := m.ctxs[b].slug;
+  for k: 0..<m.ctxs[a].n_may {
+    if m.ctxs[a].may[k] == target { return true; }
+  }
+  return false;
+}
+// The fixed layer rule a load from `from` (not support code) to `to` breaks, or 0.
 lc_rule :: (from: string, to: string) -> int {
   if lc_starts(from, "aethyr/") && (lc_starts(to, "verse/") || lc_starts(to, "apps/") || lc_starts(to, "everglade/") || lc_starts(to, "coax/web/")) { return LC_UP_AETHYR; }
   if lc_starts(from, "everglade/") && lc_starts(to, "apps/") { return LC_UP_EVERGLADE; }
   if (lc_starts(from, "aethyr/") || lc_starts(from, "everglade/") || lc_starts(from, "coax/web/api/") || lc_starts(from, "coax/web/room/")) && lc_in_tests(to) { return LC_TESTS; }
   return 0;
+}
+// Including contexts.txt: fixed rules take precedence; otherwise cross-context disallowed loads return LC_CONTEXT.
+lc_rule_ctx :: (from: string, to: string, ctxs: LcCtxMap, from_ctx: [] int, to_ctx: [] int) -> int {
+  r := lc_rule(from, to);
+  if r != 0 { return r; }
+  if ctxs.n == 0 { return 0; }
+  // Everglade's one allowed adapter path into v1 code while v1 still builds (#13269)
+  if lc_starts(from, "everglade/server/legacy/") { return 0; }
+  a := lc_context_of(ctxs, from);
+  if a < 0 { return 0; }
+  b := lc_context_of(ctxs, to);
+  if b < 0 || lc_context_allows(ctxs, a, b) { return 0; }
+  from_ctx[0] = a; to_ctx[0] = b;
+  return LC_CONTEXT;
 }
 
 // ---- the allowlist
@@ -246,22 +352,27 @@ lc_entry_rule :: (entry: string) -> int {
 // Every load in `loads` (git grep -n output for "#load" lines): how many break a rule with no
 // allowlist line. found counts the loads that break each rule (excused or not), once per
 // FROM -> TO; used marks the allowlist lines that excused a load.
-lc_judge :: (loads: string, tools: string, allow: string, used: [] bool, run: LcRun, found: [] int) -> int {
+lc_judge_with_contexts :: (loads: string, tools: string, allow: string, ctxs: LcCtxMap, used: [] bool, run: LcRun, found: [] int) -> int {
   bad := 0; i := 0;
-  last := ""; last_support := false;
+  last := ""; last_support := false; last_judged := false;
   prev_from := ""; prev_to: [1024] u8; prev_n := 0;
   out: [1024] u8; buf: [2048] u8;
+  fc: [1] int; tc: [1] int;
   while i < loads.count {
     j := i;
     while j < loads.count && loads[j] != '\n' { j += 1; }
     l := lc_parse(cast(string) loads[i..<j]); i = j + 1;
     if !l.ok { continue; }
-    if !lc_starts(l.from, "aethyr/") && !lc_starts(l.from, "everglade/") && !lc_starts(l.from, "coax/web/api/") && !lc_starts(l.from, "coax/web/room/") { continue; }
-    if l.from != last { last = l.from; last_support = lc_support(l.from, tools); }
-    if last_support { continue; }
+    if l.from != last {
+      last = l.from;
+      in_fixed := lc_starts(l.from, "aethyr/") || lc_starts(l.from, "everglade/") || lc_starts(l.from, "coax/web/api/") || lc_starts(l.from, "coax/web/room/");
+      last_judged = in_fixed || (ctxs.n > 0 && lc_context_of(ctxs, l.from) >= 0);
+      last_support = ifx last_judged then lc_support(l.from, tools) else false;
+    }
+    if !last_judged || last_support { continue; }
     to := lc_resolve(lc_dir(l.from), l.rel, out[..]);
     if to.count == 0 { continue; }
-    rule := lc_rule(l.from, to);
+    rule := lc_rule_ctx(l.from, to, ctxs, fc[..], tc[..]);
     if rule == 0 { continue; }
     // a file that loads the same path twice is one load
     if l.from == prev_from && cast(string) prev_to[0..<prev_n] == to { continue; }
@@ -274,9 +385,14 @@ lc_judge :: (loads: string, tools: string, allow: string, used: [] bool, run: Lc
     if run.quiet { continue; }
     if rule == LC_UP_AETHYR { print("FAIL aethyr-up: %:% loads %. aethyr/ is the engine: it loads nothing from verse/, apps/, everglade/ or coax/web/. Fix: move what it needs down into aethyr/, or have the caller pass it in (%).\n", l.from, l.line, to, LC_HOW); }
     else if rule == LC_UP_EVERGLADE { print("FAIL everglade-up: %:% loads %. everglade/ is the game: it loads nothing from apps/. Fix: move what it needs into everglade/ or aethyr/ (%).\n", l.from, l.line, to, LC_HOW); }
-    else { print("FAIL tests: %:% loads %, which is in a tests folder, and % is not a test, check or tool. Fix: move what both need out of the tests folder into a module (%).\n", l.from, l.line, to, l.from, LC_HOW); }
+    else if rule == LC_TESTS { print("FAIL tests: %:% loads %, which is in a tests folder, and % is not a test, check or tool. Fix: move what both need out of the tests folder into a module (%).\n", l.from, l.line, to, l.from, LC_HOW); }
+    else { print("FAIL context: %:% (%) loads % (%), which %'s line in % does not allow. Fix: move the dependency behind an allowed context or published contract (%).\n", l.from, l.line, ctxs.ctxs[fc[0]].slug, to, ctxs.ctxs[tc[0]].slug, ctxs.ctxs[fc[0]].slug, LC_CONTEXTS, LC_HOW); }
   }
   return bad;
+}
+lc_judge :: (loads: string, tools: string, allow: string, used: [] bool, run: LcRun, found: [] int) -> int {
+  empty: LcCtxMap;
+  return lc_judge_with_contexts(loads, tools, allow, empty, used, run, found);
 }
 // The allowlist's own faults: a line that is not "RULE FROM -> TO", and a line that excused
 // nothing this run (the load is gone: take the line out).
@@ -289,7 +405,7 @@ lc_judge_allow :: (allow: string, used: [] bool, run: LcRun) -> int {
     if entry.count == 0 { continue; }
     if lc_entry_rule(entry) == 0 {
       bad += 1;
-      if !run.quiet { print("FAIL allowlist: % has a line that is not \"RULE FROM -> TO\" with RULE aethyr-up, everglade-up or tests: \"%\"\n", LC_ALLOW, entry); }
+      if !run.quiet { print("FAIL allowlist: % has a line that is not \"RULE FROM -> TO\" with RULE aethyr-up, everglade-up, tests or context: \"%\"\n", LC_ALLOW, entry); }
       continue;
     }
     if n - 1 < used.count && !used[n - 1] {
@@ -372,6 +488,11 @@ tool_main :: () -> int #export_c #effects(all) {
   an := fs_read(LC_ALLOW, atext[..]);
   if an < 0 { print("layer-check: no % here; run from the repository root (an empty file is the goal; a missing one is not)\n", LC_ALLOW); return 2; }
   allow := cast(string) atext[0..<an];
+  ctext: [65536] u8;
+  ctxs_n := fs_read(LC_CONTEXTS, ctext[..]);
+  if ctxs_n < 0 { print("layer-check: no % here; run from the repository root\n", LC_CONTEXTS); return 2; }
+  ctxs := lc_parse_contexts(cast(string) ctext[0..<ctxs_n]);
+  if !ctxs.ok { print("layer-check: invalid line in %: \"%\"\n", LC_CONTEXTS, ctxs.bad); return 2; }
 
   loads_buf: [LC_BUF] u8; tools_buf: [1048576] u8; body: [LC_BUF] u8;
   grep := [6] string.["git", "grep", "-nE", "^#load \"", "--", "*.coax"];
@@ -412,7 +533,7 @@ tool_main :: () -> int #export_c #effects(all) {
   }
 
   used: [LC_LINES] bool; found: [LC_RULES] int;
-  bad := lc_judge(loads, tools, allow, used[..], run, found[..]);
+  bad := lc_judge_with_contexts(loads, tools, allow, ctxs, used[..], run, found[..]);
   bad += lc_judge_allow(allow, used[..], run);
 
   // the allowlist against the base's copy: it only shrinks
@@ -440,8 +561,8 @@ tool_main :: () -> int #export_c #effects(all) {
     }
   }
 
-  total := found[1] + found[2] + found[3];
-  print("layer-check: aethyr-up %, everglade-up %, tests %, total % loads across the layers (each needs a line in %), % failed\n", found[1], found[2], found[3], total, LC_ALLOW, bad);
+  total := found[1] + found[2] + found[3] + found[4];
+  print("layer-check: aethyr-up %, everglade-up %, tests %, context %, total % loads across the layers (each needs a line in %), % failed\n", found[1], found[2], found[3], found[4], total, LC_ALLOW, bad);
   return ifx bad == 0 then 0 else 1;
 }
 
@@ -507,7 +628,7 @@ LC_T_ALLOW :: "# seed\naethyr-up aethyr/net/latency.coax -> apps/openagents-web/
   used[0] = true;
   #assert lc_judge_allow("aethyr-up aethyr/gone.coax -> verse/a.coax\n", used[..], LC_T_QUIET) == 0;
   #assert lc_judge_allow("up aethyr/a.coax -> verse/a.coax\n", used[..], LC_T_QUIET) == 1 && lc_judge_allow("aethyr-up aethyr/a.coax verse/a.coax\n", used[..], LC_T_QUIET) == 1 && lc_judge_allow("tests a -> b c\n", used[..], LC_T_QUIET) == 1;
-  #assert lc_entry_rule("tests aethyr/a.coax -> aethyr/tests/b.coax") == LC_TESTS && lc_entry_rule("everglade-up a -> b") == LC_UP_EVERGLADE;
+  #assert lc_entry_rule("tests aethyr/a.coax -> aethyr/tests/b.coax") == LC_TESTS && lc_entry_rule("everglade-up a -> b") == LC_UP_EVERGLADE && lc_entry_rule("context a -> b") == LC_CONTEXT;
   base := "# seed\naethyr-up aethyr/a.coax -> verse/a.coax\ntests aethyr/b.coax -> aethyr/tests/b.coax\n";
   added: [1] int;
   #assert lc_grown(base, base, LC_T_QUIET, added[..]) == 0 && lc_grown("tests aethyr/b.coax -> aethyr/tests/b.coax\n", base, LC_T_QUIET, added[..]) == 0 && added[0] == 0;
@@ -516,6 +637,35 @@ LC_T_ALLOW :: "# seed\naethyr-up aethyr/net/latency.coax -> apps/openagents-web/
   added[0] = 0;
   #assert lc_grown("aethyr-up aethyr/c.coax -> apps/x.coax  # the HUD frame moves down in P2.1 (#13270)\n", base, LC_T_QUIET, added[..]) == 0 && added[0] == 1;
   #assert lc_reasoned("a  # why (#123)") && !lc_reasoned("a") && !lc_reasoned("a # #1234");
+}
+#test "contexts.txt: allowed loads pass, disallowed loads fail, allowlisted loads pass" {
+  ctext := "# contexts\nengine folders: aethyr/ may load: toolchain\ncombat-rules folders: rules/srd/ aethyr/rules/srd/ may load: engine toolchain\nroom-session folders: aethyr/session/ coax/web/room/ may load: combat-rules engine toolchain\npayments folders: pay/ coax/lib/bitcoin/ may load: toolchain\ntoolchain folders: coax/lib/ may load:\nworld folders: everglade/world/ everglade/server/ everglade/client/ everglade/server/legacy/ may load: engine combat-rules toolchain\n";
+  ctxs := lc_parse_contexts(ctext);
+  #assert ctxs.ok && ctxs.n == 6;
+  // longest prefix wins: aethyr/rules/srd/ belongs to combat-rules, not engine; coax/lib/bitcoin/ to payments, not toolchain
+  #assert ctxs.ctxs[lc_context_of(ctxs, "aethyr/walk.coax")].slug == "engine";
+  #assert ctxs.ctxs[lc_context_of(ctxs, "aethyr/rules/srd/dice.coax")].slug == "combat-rules";
+  #assert ctxs.ctxs[lc_context_of(ctxs, "coax/lib/bitcoin/tx.coax")].slug == "payments";
+  #assert ctxs.ctxs[lc_context_of(ctxs, "coax/lib/json/json.coax")].slug == "toolchain";
+  #assert ctxs.ctxs[lc_context_of(ctxs, "everglade/server/legacy/v1.coax")].slug == "world";
+  #assert lc_context_of(ctxs, "docs/x.coax") < 0;
+  // allowed cross-context load (room-session -> combat-rules) and same-context load pass
+  ok_loads := "aethyr/session/turn.coax:3:#load \"../rules/srd/dice.coax\";\naethyr/session/turn.coax:4:#load \"seat.coax\";\neverglade/server/legacy/v1.coax:2:#load \"../../../aethyr/walk.coax\";\n";
+  used: [8] bool; found: [LC_RULES] int;
+  #assert lc_judge_with_contexts(ok_loads, "", "", ctxs, used[..], LC_T_QUIET, found[..]) == 0 && found[LC_CONTEXT] == 0;
+  // disallowed cross-context load (room-session -> payments) fails without an allowlist line
+  bad_loads := "aethyr/session/turn.coax:5:#load \"../../coax/lib/bitcoin/tx.coax\";\n";
+  f2: [LC_RULES] int;
+  #assert lc_judge_with_contexts(bad_loads, "", "", ctxs, used[..], LC_T_QUIET, f2[..]) == 1 && f2[LC_CONTEXT] == 1;
+  // allowlisted cross-context load passes and marks its allowlist line used
+  allow := "context aethyr/session/turn.coax -> coax/lib/bitcoin/tx.coax  # seeded (#13317)\n";
+  u3: [8] bool; f3: [LC_RULES] int;
+  #assert lc_judge_with_contexts(bad_loads, "", allow, ctxs, u3[..], LC_T_QUIET, f3[..]) == 0 && f3[LC_CONTEXT] == 1 && u3[0];
+  #assert lc_judge_allow(allow, u3[..], LC_T_QUIET) == 0;
+  // support code in a context is exempt, and contexts.txt validation rejects malformed lines or unknown may-load slugs
+  u4: [8] bool; f4: [LC_RULES] int;
+  #assert lc_judge_with_contexts("aethyr/session/tests/t.coax:1:#load \"../../../coax/lib/bitcoin/tx.coax\";\n", "", "", ctxs, u4[..], LC_T_QUIET, f4[..]) == 0;
+  #assert !lc_parse_contexts("engine folders: aethyr/ may load: nope\n").ok && !lc_parse_contexts("engine aethyr/\n").ok;
 }
 #test "consumers: a module a product loads, directly or through another module, is consumed" {
   mods := [4] string.["aethyr/a.coax", "aethyr/b.coax", "aethyr/c.coax", "aethyr/d.coax"];

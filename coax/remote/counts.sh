@@ -26,8 +26,8 @@
 # the growth is not red. A count that falls is the new baseline.
 set -uo pipefail
 export LC_ALL=C
-CN_FILES=(everglade/features.coax coax/web/components-check.coax proto/wire-allowlist.txt coax/tools-port.txt aethyr/layer-allowlist.txt coax/web/api/schema.sql ':(glob)coax/web/api/*.c')
-CN_NAMES="parity-known parity-gaps components-to-move wire-allowlist tools-port layer-aethyr-up layer-everglade-up layer-tests sql-rules-routes"
+CN_FILES=(everglade/features.coax coax/web/components-check.coax proto/wire-allowlist.txt coax/tools-port.txt aethyr/layer-allowlist.txt contexts.txt coax/web/api/schema.sql ':(glob)coax/web/api/*.c')
+CN_NAMES="parity-known parity-gaps components-to-move wire-allowlist tools-port layer-aethyr-up layer-everglade-up layer-tests layer-context sql-rules-routes"
 cn_show() {   # rev: NAME VALUE lines (a count whose file is missing at REV is left out)
   local r="$1"
   git show "$r:everglade/features.coax" 2> /dev/null | sed -nE 's/^EF_KNOWN :: \[([0-9]+)\].*/parity-known \1/p; s/^EF_GAPS :: \[([0-9]+)\].*/parity-gaps \1/p'
@@ -38,8 +38,10 @@ cn_show() {   # rev: NAME VALUE lines (a count whose file is missing at REV is l
     echo "${f%%:*} $(git show "$r:${f#*:}" | grep -cvE '^[[:space:]]*(#|$)')"
   done
   if git cat-file -e "$r:aethyr/layer-allowlist.txt" 2> /dev/null; then
+    local has_ctx=0
+    git cat-file -e "$r:contexts.txt" 2> /dev/null && has_ctx=1
     git show "$r:aethyr/layer-allowlist.txt" |
-      awk '!/^[[:space:]]*(#|$)/ { n[$1]++ } END { split("aethyr-up everglade-up tests", k, " "); for (i = 1; i <= 3; i++) print "layer-" k[i], n[k[i]] + 0 }'
+      awk -v has_ctx="$has_ctx" '!/^[[:space:]]*(#|$)/ { n[$1]++ } END { m = has_ctx ? 4 : 3; split("aethyr-up everglade-up tests context", k, " "); for (i = 1; i <= m; i++) print "layer-" k[i], n[k[i]] + 0 }'
   fi
   if git cat-file -e "$r:coax/web/api/schema.sql" 2> /dev/null; then
     local fns
