@@ -1,6 +1,6 @@
 // Frame-rate parity for attention and the camera (GitHub #13026). One recorded input (a walk, a turn,
 // a target that crosses your view, ducks behind a wall and comes back, and a switch press) is played
-// through aethyr/loop.coax's FrameClock at 30, 60 and 144 FPS and over uneven frames with a stall. The
+// through aethyr/core/loop.coax's FrameClock at 30, 60 and 144 FPS and over uneven frames with a stall. The
 // actor and attention step only on the paid fixed ticks; the camera reads the finished actor pose on
 // each frame. The checks: attention's state and the actor's pose agree tick for tick at every frame
 // rate, and evaluating the camera (cam_centred, its ground ring and its shot) leaves the actor
@@ -9,7 +9,7 @@
 //   coax/bin/coax test aethyr/cam/parity.coax --library
 
 #module "aethyr.cam.parity";
-#load "../loop.coax" as clock;
+#load "../core/loop.coax" as clock;
 #load "attention.coax" as attn;
 #load "modes.coax";
 

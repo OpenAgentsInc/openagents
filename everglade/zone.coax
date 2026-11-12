@@ -19,11 +19,11 @@
 #load "../verse/experimental-village.coax" as village;
 #load "../verse/experimental-hostiles.coax" as hostile;
 #load "../verse/experimental-dungeon.coax" as xdungeon;
-#load "../aethyr/loop.coax";
-#load "../aethyr/quality-page.coax";   // the graphics governor, wired as every realm wires it (zone_quality_frame, #13147)
+#load "../aethyr/core/loop.coax";
+#load "../aethyr/core/quality-page.coax";   // the graphics governor, wired as every realm wires it (zone_quality_frame, #13147)
 #load "../rules/srd/battle.coax";
 #load "../rules/srd/condition-display.coax";   // the conditions' words and icons, every zone's (#13082)
-#load "../aethyr/space.coax" as asp;
+#load "../aethyr/core/space.coax" as asp;
 #load "../aethyr/fx/puff.coax";   // the glade's spell and combat effects (book chapter 72)
 #load "../aethyr/fx/battle.coax";   // which effect each battle event starts (#13086)
 #load "scene/bodies.coax" as figs;   // the figures: Everglade's Quaternius people, skinned from baked clips
@@ -90,10 +90,10 @@ EgZone :: struct {
   put_on: bool; put_x: f32; put_y: f32; put_z: f32; put_face: f32;
   safe_on: bool; safe_x: f32; safe_y: f32; safe_z: f32; safe_face: f32;
   village_near: [1] village.EvNear;   // the walls and floors round you, for the controller
-  touch: bool; stick_on: bool; stick_ox: f32; stick_oy: f32; stick_px: f32; stick_py: f32;   // the thumb's stick (aethyr/sticks.coax)
+  touch: bool; stick_on: bool; stick_ox: f32; stick_oy: f32; stick_px: f32; stick_py: f32;   // the thumb's stick (aethyr/core/sticks.coax)
   zt_stick: int = -100; zt_up: int = -100; zt_thumb: bool; zt_top: f32;   // a phone's fingers: the thumb's and JUMP's, and a realm's panel over the stick's side (zone-touch.coax)
   env: [U_ENV_WORDS] f32; env_n: int;   // the light: the painterly default resolved at the page's fixed noon, once (zone_light)
-  qp: [1] QualityPage; gfx_finger: int = -1;   // the graphics governor (aethyr/quality-page.coax): the pixels drawn and the knobs; the finger on its control
+  qp: [1] QualityPage; gfx_finger: int = -1;   // the graphics governor (aethyr/core/quality-page.coax): the pixels drawn and the knobs; the finger on its control
   glade_cull: [1] mc.MeshCull;   // the glade's environment mesh's runs and their boxes, from the host (zone_mesh_cull; a face's coaxial_mesh_bounds_v1)
   gyro: [1] gy.Gyro; gyro_menu: bool; gyro_finger: int = -100;   // a phone's turn as look and aim, its menu open, the finger on its button (zone-touch.coax)
   lines: bool;  // ?net: the coordinates, the graphics and the frame rate on an upright phone too (zone-combat.coax xc_corner)
@@ -104,7 +104,7 @@ EgZone :: struct {
 // The world is up: the page is a zone's, and you aren't walking out of Character Create's studio.
 zone_world :: (s: [] EgZone) -> bool { c := s[0].creator[..]; return c[0].on && c[0].experimental && !c[0].walk.on; }
 
-// ---- your body's step: the face steps Everglade's controller (aethyr/walk.coax through
+// ---- your body's step: the face steps Everglade's controller (aethyr/move/walk.coax through
 // everglade-step.coax) on the keys and the thumb's stick each frame; this is the zone's half.
 ZoneWalk :: struct { on: bool; put: bool; x: f32; y: f32; z: f32; face: f32; }
 // Whether the face walks your body this frame (never while you are down), and a place to put it first.
@@ -401,7 +401,7 @@ zone_mesh_cull :: (s: [] EgZone, n0: int) -> int {
   #assert total > 0 && total <= mc.MC_TEST_TRIS * 3;
 }
 
-// ---- the graphics governor (aethyr/quality.coax through aethyr/quality-page.coax, #13147): in AUTO
+// ---- the graphics governor (aethyr/core/quality.coax through aethyr/core/quality-page.coax, #13147): in AUTO
 // it draws fewer pixels, then less grass and understory, when frames run long, and more again when
 // they keep on time. A zone's face calls zone_quality_frame every frame and answers the host's
 // pixel budget with zone_pixel_budget; the tier shows beside the frame rate

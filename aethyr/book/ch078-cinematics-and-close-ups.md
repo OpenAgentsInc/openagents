@@ -22,7 +22,7 @@ live camera over a declared interval.
 
 ## One output for every camera
 
-[CameraShot](../shot.coax) contains two `WorldPoint` values, `eye` and `at`.
+[CameraShot](../cam/shot.coax) contains two `WorldPoint` values, `eye` and `at`.
 The new [flight](../shot/flight.coax) and [close-up](../shot/closeup.coax)
 producers return that same type. The [legacy adapter](../shot/legacy.coax)
 copies all six components to or from the existing `Point`/`Shot` record at a
@@ -50,7 +50,7 @@ share once.
 
 ## Author the actual arrival
 
-[aethyr/cinematic.coax](../cinematic.coax) retains the flight state and key
+[aethyr/cam/cinematic.coax](../cam/cinematic.coax) retains the flight state and key
 admission. A flight holds at most 16 keys. Times must be finite, nonnegative
 and strictly increasing. A key with a nonfinite shot is refused. Easing is
 `EASE_LINEAR`, `EASE_SMOOTH`, `EASE_IN` or `EASE_OUT`.
@@ -118,7 +118,7 @@ stated path and live camera, not every possible realm camera or browser FPS.
 
 ## Point through the close-up
 
-[aethyr/arrange.coax](../arrange.coax) owns the vase, orbit, opening and up to
+[aethyr/cam/arrange.coax](../cam/arrange.coax) owns the vase, orbit, opening and up to
 24 stems. It frames the opening from 1.05 m away, pitched down 0.6 radians,
 looking 0.2 m above the opening. Opening preserves the approach direction;
 closing clears the current selection and returns the view over 0.7 seconds.

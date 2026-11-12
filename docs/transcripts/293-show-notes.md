@@ -186,7 +186,7 @@ longer" was a one-line change.
 | A deterministic recorder | `coax/web/clip.coax`: headless Chrome with WebGPU, one fixed game step a frame, optional sound ([docs/verse/clips.md](../verse/clips.md)) | None for 1080p. |
 | A named setup for a shot | `?stage=NAME` on a realm's page | Everglade II and Experimental need stages for the shots above. |
 | A keyed camera | The raid preview's camera flight (`?raid=preview&cine=1`), Aethyr chapter 78 | A general camera track that any zone can load. |
-| Film quality | The film profile (`aethyr/film.coax`, #13004): many samples a frame for motion blur and depth of field on the native hosts | Use the recorder for this video. The film profile is for later. |
+| Film quality | The film profile (`aethyr/render/film.coax`, #13004): many samples a frame for motion blur and depth of field on the native hosts | Use the recorder for this video. The film profile is for later. |
 | A cut list and assembler | Nothing since the reset | Bring back `cut.py` and its JSON format from history, or cut by hand for this one video. |
 | Labels, titles, music | Nothing since the reset | Same. |
 | Review | The review page, still on the Mac at `~/work/film-out/tools/review.py` | None. |

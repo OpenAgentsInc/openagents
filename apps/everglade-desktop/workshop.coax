@@ -2,7 +2,7 @@
 // Golemancers' Workshop, a round marble temple open to the night. Six pylons stand round the
 // middle, where an unfinished golem stands with a sphere in its chest, and the bronze door is in
 // the wall at the back. This file is what stops you and how you move; where things are is
-// everglade/workshop/layout.coax, which the temple is also built and lit from. You walk it with the controller every web realm uses (aethyr/walk.coax: its fixed step, its
+// everglade/workshop/layout.coax, which the temple is also built and lit from. You walk it with the controller every web realm uses (aethyr/move/walk.coax: its fixed step, its
 // follow camera, its run and jump) and the web's keys: W A S D, Space, Shift to walk, a drag or the
 // arrows to look, the wheel to zoom.
 // You are the web's player model, which model.coax holds and the host draws: ws_you says where
@@ -10,8 +10,8 @@
 // What this draws is the text over the scene, in Everglade's faces (text.coax).
 //   coax/bin/coax test --library apps/everglade-desktop/workshop.coax
 #load "../../aethyr/ui/draw.coax";
-#load "../../aethyr/math.coax";
-#load "../../aethyr/walk.coax" as pc;
+#load "../../aethyr/core/math.coax";
+#load "../../aethyr/move/walk.coax" as pc;
 #load "../../everglade/workshop/layout.coax";   // where things are: the same numbers the temple is built and lit from
 #load "text.coax";     // Everglade's faces, Spectral and Cinzel
 
@@ -23,7 +23,7 @@ WS_PYLON_BASE :: WK_PYLON_BASE;    // half the width of a pylon's foot
 WS_WALL :: WK_WALL;           // metres from the middle to the chamber's wall, which holds the iron door
 WS_REACH :: WK_REACH;         // how far from the middle your feet may go: the wall, less your body
 WS_NEAR :: 0.2;           // nothing closer than this to the eye is drawn
-WS_LOOK :: 0.006;         // radians a point dragged, as aethyr/sticks.coax's STICKS_LOOK
+WS_LOOK :: 0.006;         // radians a point dragged, as aethyr/core/sticks.coax's STICKS_LOOK
 WS_WALLS :: 8;            // the six pylons, the golem and the door, each a box you can't walk through
 
 // keys: the web realms' bits: 1 forward, 2 back, 4 left, 8 right, 16 jump, 32 Shift.
@@ -40,7 +40,7 @@ Workshop :: struct {
 // The eye for one frame, its right, up and forward, and the picture it projects onto.
 WsView :: struct { ex: f32; ey: f32; ez: f32; rx: f32; rz: f32; ux: f32; uy: f32; uz: f32; fx: f32; fy: f32; fz: f32; cx: f32; cz: f32; focal: f32; d: f32; }
 WsPoint :: struct { x: f32; y: f32; z: f32; }
-// The view from an eye toward a point. You face +Z with your left along +X (aethyr/figure.coax),
+// The view from an eye toward a point. You face +Z with your left along +X (aethyr/anim/figure.coax),
 // so right is forward cross up.
 ws_view :: (eye: pc.Vec3, at: pc.Vec3, width: f32, height: f32, d: f32) -> WsView {
   v: WsView;

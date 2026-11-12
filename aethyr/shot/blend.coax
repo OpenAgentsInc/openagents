@@ -1,7 +1,7 @@
 // One smootherstep blend for authored camera flights and object close-ups.
 #module "aethyr.shot.blend";
 #authority;
-#load "../shot.coax";
+#load "../cam/shot.coax";
 
 #test "a camera blend has exact endpoints and hand-worked quarter and half shots" {
  a:=CameraShot.{eye=world_point(0,2,4),at=world_point(2,4,6)};

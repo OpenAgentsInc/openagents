@@ -191,7 +191,7 @@ This is the part that matters most for Everglade II.
 | Understory | Each kit has a hard cutoff distance: pebbles and mushrooms 26 m, flowers 45 m, ferns 80 m, bushes 95 m. | `verse/everglade2/plant.coax:21-22` |
 | Shadows | One map 68 m across, centred on the player and snapped in world xz to 2 m steps. Its y follows the terrain height. Only pieces within 40 m cast, all at LOD 1. Aethyr has light-space texel-snapped cascades (`aethyr/render/cascades.coax`), but Everglade II doesn't use them. | `apps/openagents-web/everglade2.coax:28,562-564,648-652`, `apps/openagents-web/gpu/everglade2.coax:90-116` |
 | AA | No temporal AA. DPR 2. | |
-| Quality | A governor steps the resolution and costs down and up with hysteresis. | `aethyr/quality.coax` |
+| Quality | A governor steps the resolution and costs down and up with hysteresis. | `aethyr/core/quality.coax` |
 | Measurement | `frametime.ts`: per-pass GPU timestamps in headless Chrome. `perf.ts`: p95 must stay at or under 17.5 ms and no frame may exceed 33 ms, at four Everglade v1 places. Everglade II: about 16 ms at the glade and 17 ms at the clearing, at 2400x1400. | `coax/web/frametime.ts`, `coax/web/perf.ts`, `docs/verse/everglade2.md` |
 
 The grass is already in good shape: it is world-locked and nested, and it only thins. The trees,

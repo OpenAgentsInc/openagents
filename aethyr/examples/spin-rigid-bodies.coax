@@ -1,9 +1,9 @@
 // Book chapter 18: free rigid bodies under the three integrator profiles of
-// aethyr/sim/rigid.coax, each measured on the invariants: a ballistic throw
+// aethyr/physics/sim/rigid.coax, each measured on the invariants: a ballistic throw
 // against the closed form, a symmetric top's precession, a box flipping
 // about its intermediate axis against the Jacobi elliptic solution, and the
 // energy and angular momentum drift over 10^5 steps.
-#load "../sim/rigid.coax";
+#load "../physics/sim/rigid.coax";
 #import "Basic";
 
 PROFILES :: [3] Rigid_Profile.[Rigid_Profile.explicit_euler, Rigid_Profile.semi_implicit, Rigid_Profile.implicit_gyro];

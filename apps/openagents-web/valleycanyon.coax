@@ -3,15 +3,15 @@
 #load "../../verse/valley/canyon-pack-policy.coax";
 #load "../../verse/valley/slay-gpu-policy.coax";
 #load "../../aethyr/ui/draw.coax";
-#load "../../aethyr/budget.coax";
-#load "../../aethyr/assets.coax";
-#load "../../aethyr/sticks.coax";
+#load "../../aethyr/core/budget.coax";
+#load "../../aethyr/core/assets.coax";
+#load "../../aethyr/core/sticks.coax";
 #load "../../verse/valley/slay-shot-play.coax";
 #load "../../verse/valley/slay-lights.coax";
-#load "../../aethyr/locomotion.coax" as locomotion;
-#load "../../aethyr/walk.coax" as pc;
-#load "../../aethyr/follow.coax" as camera;
-#load "../../aethyr/collision-profiles.coax" as collision;
+#load "../../aethyr/move/locomotion.coax" as locomotion;
+#load "../../aethyr/move/walk.coax" as pc;
+#load "../../aethyr/cam/follow.coax" as camera;
+#load "../../aethyr/physics/collision-profiles.coax" as collision;
 CANYON_HUD :: 32768;
 #test "Source blend profiles keep body opaque, strands covered and orb additive" {
  s:[1]ValleyCanyon;for i:-1..<6 {#assert canyon_draw_blend(s[..],i)==(ifx i==2 then 2 else 0);}s[0].source_shot=true;for i:-1..<6 {#assert canyon_draw_blend(s[..],i)==(ifx i==4 then 1 else ifx i==2 then 2 else 0);}

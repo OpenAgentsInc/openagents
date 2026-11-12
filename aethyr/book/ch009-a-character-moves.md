@@ -1,8 +1,8 @@
 # 9. A character moves
 
 > **Status: runnable — native and Wasm fixed-step walking.**
-> `aethyr/walk.coax` owns the controller and declared locomotion tuning;
-> `aethyr/player.coax` retains its C facade. The Garden and villa's fetching
+> `aethyr/move/walk.coax` owns the controller and declared locomotion tuning;
+> `aethyr/move/player.coax` retains its C facade. The Garden and villa's fetching
 > dogs consume the same paid steps and drawing alpha. The core, facade,
 > replay and actual scene adapters have separate qualification records.
 > Complete special realm adapters remain chapter 64's migration.
@@ -23,7 +23,7 @@ order, and the numbers it gives on the 1/64 s step.
 
 ## The declared tuning
 
-<!-- source: aethyr/locomotion.coax profile -->
+<!-- source: aethyr/move/locomotion.coax profile -->
 ```jai
 LocomotionProfile :: struct {
   walk_speed: f32 = 3.5; run_speed: f32 = 7.5;
@@ -49,7 +49,7 @@ rather than paying one duration and integrating another.
 
 `SLIDE_GRIP` (0.1) is the share of your push you keep on a slope too steep
 to stand on. `STEP_UP`, the steep slope and the floor pad come from
-`aethyr/query.coax` (chapter 7).
+`aethyr/physics/query.coax` (chapter 7).
 
 ## The wish
 
@@ -65,7 +65,7 @@ An admitted step first takes a waiting jump press. Chapter 4's input buffer make
 each press is taken by exactly one step. From the ground, the press sets the
 vertical speed to `JUMP`:
 
-<!-- source: aethyr/walk.coax take -->
+<!-- source: aethyr/move/walk.coax take -->
 ```jai
 // One fixed step. It first takes a waiting jump press: from the ground, it jumps.
 step_body :: (w: World, given: Player, dt: f32) -> Player #effects(all) {
@@ -99,7 +99,7 @@ The rest of the step runs in this order:
    (chapter 10). A refused step leaves the physical state and queued press
    intact and skips camera tracking; the scheduler still pays its time.
 
-<!-- source: aethyr/walk.coax move -->
+<!-- source: aethyr/move/walk.coax move -->
 ```jai
   next := p;
   dir := wish(p);
@@ -198,7 +198,7 @@ The rest of the step runs in this order:
 }
 ```
 
-A realm that flies declares a `FlightProfile` (`aethyr/flight.coax`; Fairy
+A realm that flies declares a `FlightProfile` (`aethyr/move/flight.coax`; Fairy
 Forest is the one that does). In the air, after gravity, the step hands the
 vertical speed to `flight_vertical`: a press taken in the air is a wing
 beat, the jump held climbs, between beats you glide, and the dive held
@@ -231,7 +231,7 @@ measures each of these:
 
 <!-- source: aethyr/examples/run-and-jump.coax example -->
 ```jai
-#load "../player.coax";
+#load "../move/player.coax";
 #import "Basic";
 
 // The walking controller on the 1/64 s step: how many steps it takes to reach RUN, how high
@@ -374,12 +374,12 @@ animation, rather than instances of this follower controller.
 ## Checks
 
 ```shell
-coax/bin/coax test aethyr/walk.coax --library
-coax/bin/coax test aethyr/player.coax --library
+coax/bin/coax test aethyr/move/walk.coax --library
+coax/bin/coax test aethyr/move/player.coax --library
 coax/bin/coax test verse/gridwalk.coax --library
 ```
 
-Checks in `aethyr/player.coax` for this chapter:
+Checks in `aethyr/move/player.coax` for this chapter:
 
 - "jump acts on the press, not the hold, and only from the ground";
 - "placed in the air, you fall to the floor", "standing eases onto a floor
@@ -418,8 +418,8 @@ records the C facade parity, actual scene checks and complete Wasm links.
 
 ## The module and the realm boundary
 
-`aethyr/walk.coax` owns Player, World, physical stepping and interpolation.
-The Walk unit declares no C exports of its own. `aethyr/player.coax` retains
+`aethyr/move/walk.coax` owns Player, World, physical stepping and interpolation.
+The Walk unit declares no C exports of its own. `aethyr/move/player.coax` retains
 the published `verse_player_*` C signatures as thin adapters to `walk_*`.
 Coax consumers that qualify names load Walk directly; an alias cannot
 re-export a different module's types. Related generated C headers must still

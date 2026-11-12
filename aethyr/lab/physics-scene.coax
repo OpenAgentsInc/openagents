@@ -1,7 +1,7 @@
 // The Physics Lab's canonical inputs. Every engine receives this one generated body table.
 #module "aethyr.lab.physics_scene";
 #authority;
-#load "../rand.coax";
+#load "../core/rand.coax";
 
 LAB_SCENES :: 6;LAB_MAX_BODIES :: 30000;LAB_STEPS :: 180;LAB_SAMPLE_EVERY :: 30;
 LabVec :: struct {x:f64;y:f64;z:f64;}

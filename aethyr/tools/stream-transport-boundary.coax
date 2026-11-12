@@ -1,6 +1,6 @@
 // Actual SDK entry points: incomplete/stale source and premature release.
 #load "../../coax/web/wasm-chrome.coax";
-#load "../assets.coax" as assets;
+#load "../core/assets.coax" as assets;
 tool_main :: ()->int #export_c #effects(all) {
   a:[1]Args;if !args_load(a[..]) || (args_count(a[..])!=4 && args_count(a[..])!=5) {tool_errln("usage: stream-transport-boundary BASE SCENE_JSON TRANSPORT_SHA OUTPUT_JSON [--observer|--capture]");return 2;}
   observer:=args_count(a[..])==5 && args_at(a[..],4)=="--observer";capture:=args_count(a[..])==5 && args_at(a[..],4)=="--capture";if args_count(a[..])==5 && !observer && !capture {return 2;}

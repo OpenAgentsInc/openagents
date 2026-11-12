@@ -1,4 +1,4 @@
-// The checks' side of aethyr/checkpoint.coax: the fleet of aethyr/tests/decide-oracle.coax (four
+// The checks' side of aethyr/core/checkpoint.coax: the fleet of aethyr/tests/decide-oracle.coax (four
 // creatures a model steers while a player walks past) as the realm. A captured run journals every
 // accepted event and step digest, takes a checkpoint every CO_EVERY steps into two slots in turn,
 // posts an XP grant to an outside ledger for each model intent it admits, and stops (a crash) at

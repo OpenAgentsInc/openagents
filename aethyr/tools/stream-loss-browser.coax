@@ -1,7 +1,7 @@
 // Actual muted WebGPU loss callbacks, deadline/late-device effects and drain.
 // tool.sh: stack-gib 1
 #load "../../coax/web/wasm-chrome.coax";
-#load "../assets.coax" as assets;
+#load "../core/assets.coax" as assets;
 slb_error :: (c: [] Cdp) {
   tool_errln(cdp_error(c)); raw := jv_raw(cdp_doc(c), 0);
   tool_errln(raw[0..<(ifx raw.count < 4096 then raw.count else 4096)]);

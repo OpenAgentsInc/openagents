@@ -196,16 +196,16 @@ starts) and `verse/everglade/gpu-fx.coax`.
 
 ### Camera
 
-The shared modules are `aethyr/camera.coax` (the orbit), `aethyr/cam/` (modes,
+The shared modules are `aethyr/cam/camera.coax` (the orbit), `aethyr/cam/` (modes,
 mouselook, attention, the reticle, first person, and the zones' follow layer:
-`chase.coax`, `studio.coax`, `boom.coax` and `overhead.coax`), `aethyr/shot.coax`
-and `aethyr/follow.coax`.
+`chase.coax`, `studio.coax`, `boom.coax` and `overhead.coax`), `aethyr/cam/shot.coax`
+and `aethyr/cam/follow.coax`.
 
 | Zone | Where |
 | --- | --- |
 | Everglade II | Shared: the follow step, ground ring, trunks and mouselook framing (`aethyr/cam/chase.coax`, wired in `e2_chase_step` everglade/client/client.coax), and Character Create's studio, run and lens (`aethyr/cam/studio.coax`, wired in `e2c_view` and `e2c_view_lens` everglade/client/create.coax). |
 | Experimental | Shared: the 5E Lab's follow step (`chase.coax`, `lab_chase_step` fivelab.coax) and spectator camera (`aethyr/cam/overhead.coax`, `lab_view_zoom`, `lab_view_home`, `lab_view_pan`); the world's over-the-shoulder boom (`aethyr/cam/boom.coax`, `cc_view` charactercreator.coax), studio and walk (`studio.coax`, `cc_view` and `walk_view` charactercreator-walk.coax). |
-| Everglade v1 | Shared orbit (`aethyr/camera.coax`, everglade.coax:62); local framing in `camera_frame` everglade.coax:3547, `cz_frame_shot` everglade-create.coax:500 and `everglade_place_camera` everglade-place.coax:63. |
+| Everglade v1 | Shared orbit (`aethyr/cam/camera.coax`, everglade.coax:62); local framing in `camera_frame` everglade.coax:3547, `cz_frame_shot` everglade-create.coax:500 and `everglade_place_camera` everglade-place.coax:63. |
 
 ## The manifest
 

@@ -25,7 +25,7 @@
 #load "../../verse/anime/take.coax";
 #load "../../coax/lib/nostr/block/fi-base64url.coax";
 #load "../../aethyr/ui/font.coax";
-#load "../../aethyr/budget.coax";
+#load "../../aethyr/core/budget.coax";
 #load "../../aethyr/render/cel-mesh.coax";
 #load "animelab-cast.coax";
 #load "animelab-world.coax";
@@ -717,7 +717,7 @@ animelab_live_n :: (s: [] Animelab) -> int #export_c #effects(all) { return s[0]
 animelab_draw_count :: (s: [] Animelab) -> int #export_c #effects(all) { return ifx s[0].world_built then DRAWS else 0; }
 
 // ---------------------------------------------------------------------------------------------
-// The frame budget (aethyr/budget.coax): what one frame of Anime Lab may use.
+// The frame budget (aethyr/core/budget.coax): what one frame of Anime Lab may use.
 ANIMELAB_BUDGET :: FrameBudget.{steps = 8, vertices = MAX_VERTICES - 6, draws = DRAWS, bytes = 16777216};
 
 #test "Anime Lab's frames fit its declared budget" {

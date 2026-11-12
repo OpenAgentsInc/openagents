@@ -3,10 +3,10 @@
 // admitted view decides membership and ignored identities, never render colour.
 #module "aethyr.cam.eye";
 #authority;
-#load "../query-scene.coax" as scene;
-#load "../query-filter.coax" as filters;
-#load "../query.coax" as queries;
-#load "../space.coax";
+#load "../physics/query-scene.coax" as scene;
+#load "../physics/query-filter.coax" as filters;
+#load "../physics/query.coax" as queries;
+#load "../core/space.coax";
 
 CamEye :: struct {
  eye: WorldPoint;

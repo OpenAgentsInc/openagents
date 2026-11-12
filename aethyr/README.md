@@ -53,28 +53,28 @@ product loads, directly or through another module (#13272).
 
 | Module | What |
 | --- | --- |
-| `loop.coax` | The one frame loop: fixed-step simulation, interpolated drawing, one clock |
-| `input.coax` | Keys, touch and pads to one `Intent` a frame; levels, presses each taken by exactly one fixed step, and look and zoom split over a frame's steps |
-| `space.coax` | Typed spaces (world, local, view, screen, grid) and units (metres, grid units), converted only by name |
-| `entity.coax` | Entities: handles (slot and generation) inside a step, `EntityId`s for saves, the network and edits, and spawns and despawns that apply at the step's flush (a despawn before then cancels a spawn). Dead Gears runs on it |
-| `query.coax` | One set of colliders a realm (flat/heightfield ground, boxes, capsules, floors) and four queries over it: ground, ray, overlap and sweep; the step height, steep slope and floor pad defined once |
-| `visibility.coax` | The visibility service (#13073): whether a point sees a target, for name plates, health bars, damage numbers, targeting and monster sight. `vis_line` tests the colliders through `query_clear` and a terrain profile the realm samples; `vis_depth` tests a read-back depth image; `vis_settle` holds the answer against flicker. [Design](../docs/verse/visibility-service.md) |
-| `query-filter.coax`, `query-scene.coax`, `query-fluid.coax` | Semantic queries: stable collider IDs/generations, checked entity references, category and role selection, separate physical surfaces, atomic overlap/volume results and bounded flat/heightfield fluids with holes. [The shared journey](examples/query-world.coax) uses the existing capsule, camera and AI kernels; [qualification and remaining adapters](../docs/verification/aethyr-query-12989/README.md) |
-| `ground.coax` | Checked sampling of actual rounded mesh triangles, metre inputs and exact stored vertices; shared with legacy terrain |
-| `ground-query.coax` | Bounded exact cell traversal for terrain rays, with explicit exhausted-work refusal |
-| `ground-contact.coax` | Sphere overlap and continuous sphere contact against triangle faces, edges, vertices and constant edge continuation |
-| `collide.coax` | Checked kinematic capsule resolution, declared passes/travel and atomic refusal diagnostics |
-| `collision-profiles.coax` | Explicit supported realm identities and their collision profiles; unknown identities refuse |
-| `walk.coax` | The fixed-step walking controller and camera-state adapters; declared locomotion tuning; an ephemeral trace of the actual paid steps; `aethyr/player.coax` retains its C facade |
-| `locomotion.coax` | Finite, bounded walking and grounded-route tuning, separate from capsule collision profiles |
-| `flight.coax` | The walker's per-step flight hook: a realm's `FlightProfile` (Fairy Forest's is on) sets the vertical speed of each step in the air: a wing beat, the held climb, the glide, the ceiling and the dive |
-| `walk-frame.coax` | Shared post-step targets and velocity records, with no C exports or persistent clock |
-| `follower.coax` | Grounded route followers and fetch on the realm's paid steps: checked terrain, declared tuning, strict directions, atomic refusal and previous-pose drawing, with no second clock |
-| `follow.coax` | The follow camera: look and zoom, a spring on the point it looks at, room from the colliders (pulled in at once, backed out gently), the eye drawn between steps, and its third- and first-person shots; it steps after the player and only reads it |
-| `shot.coax` | The `CameraShot` every camera makes (an eye and the point it looks at): top down, the free orbit and the dive from a far shot down to a live one |
-| `flyover.coax` | A camera path as text (`?fly=T,EX,EY,EZ,AX,AY,AZ~...`), parsed whole or refused and flown through with `cinematic.coax`'s Catmull-Rom, for benchmarks that cross a realm's heaviest views (#13017) |
-| `budget.coax` | Frame budgets: what one frame may use (steps, vertices, draw records, bytes), taken whole or refused and counted; every realm declares one and its check fails on any frame past it |
-| `assets.coax` | Asset identity: an asset is the SHA-256 of its bytes; a registry admits a pack whole or refuses it (an entry that doesn't hash to its table's id, new bytes past the declared limit, no free slot), shares bytes already held and frees them with their last use |
+| `core/loop.coax` | The one frame loop: fixed-step simulation, interpolated drawing, one clock |
+| `core/input.coax` | Keys, touch and pads to one `Intent` a frame; levels, presses each taken by exactly one fixed step, and look and zoom split over a frame's steps |
+| `core/space.coax` | Typed spaces (world, local, view, screen, grid) and units (metres, grid units), converted only by name |
+| `core/entity.coax` | Entities: handles (slot and generation) inside a step, `EntityId`s for saves, the network and edits, and spawns and despawns that apply at the step's flush (a despawn before then cancels a spawn). Dead Gears runs on it |
+| `physics/query.coax` | One set of colliders a realm (flat/heightfield ground, boxes, capsules, floors) and four queries over it: ground, ray, overlap and sweep; the step height, steep slope and floor pad defined once |
+| `physics/visibility.coax` | The visibility service (#13073): whether a point sees a target, for name plates, health bars, damage numbers, targeting and monster sight. `vis_line` tests the colliders through `query_clear` and a terrain profile the realm samples; `vis_depth` tests a read-back depth image; `vis_settle` holds the answer against flicker. [Design](../docs/verse/visibility-service.md) |
+| `physics/query-filter.coax`, `physics/query-scene.coax`, `physics/query-fluid.coax` | Semantic queries: stable collider IDs/generations, checked entity references, category and role selection, separate physical surfaces, atomic overlap/volume results and bounded flat/heightfield fluids with holes. [The shared journey](examples/query-world.coax) uses the existing capsule, camera and AI kernels; [qualification and remaining adapters](../docs/verification/aethyr-query-12989/README.md) |
+| `physics/ground.coax` | Checked sampling of actual rounded mesh triangles, metre inputs and exact stored vertices; shared with legacy terrain |
+| `physics/ground-query.coax` | Bounded exact cell traversal for terrain rays, with explicit exhausted-work refusal |
+| `physics/ground-contact.coax` | Sphere overlap and continuous sphere contact against triangle faces, edges, vertices and constant edge continuation |
+| `physics/collide.coax` | Checked kinematic capsule resolution, declared passes/travel and atomic refusal diagnostics |
+| `physics/collision-profiles.coax` | Explicit supported realm identities and their collision profiles; unknown identities refuse |
+| `move/walk.coax` | The fixed-step walking controller and camera-state adapters; declared locomotion tuning; an ephemeral trace of the actual paid steps; `aethyr/move/player.coax` retains its C facade |
+| `move/locomotion.coax` | Finite, bounded walking and grounded-route tuning, separate from capsule collision profiles |
+| `move/flight.coax` | The walker's per-step flight hook: a realm's `FlightProfile` (Fairy Forest's is on) sets the vertical speed of each step in the air: a wing beat, the held climb, the glide, the ceiling and the dive |
+| `move/walk-frame.coax` | Shared post-step targets and velocity records, with no C exports or persistent clock |
+| `move/follower.coax` | Grounded route followers and fetch on the realm's paid steps: checked terrain, declared tuning, strict directions, atomic refusal and previous-pose drawing, with no second clock |
+| `cam/follow.coax` | The follow camera: look and zoom, a spring on the point it looks at, room from the colliders (pulled in at once, backed out gently), the eye drawn between steps, and its third- and first-person shots; it steps after the player and only reads it |
+| `cam/shot.coax` | The `CameraShot` every camera makes (an eye and the point it looks at): top down, the free orbit and the dive from a far shot down to a live one |
+| `cam/flyover.coax` | A camera path as text (`?fly=T,EX,EY,EZ,AX,AY,AZ~...`), parsed whole or refused and flown through with `cam/cinematic.coax`'s Catmull-Rom, for benchmarks that cross a realm's heaviest views (#13017) |
+| `core/budget.coax` | Frame budgets: what one frame may use (steps, vertices, draw records, bytes), taken whole or refused and counted; every realm declares one and its check fails on any frame past it |
+| `core/assets.coax` | Asset identity: an asset is the SHA-256 of its bytes; a registry admits a pack whole or refuses it (an entry that doesn't hash to its table's id, new bytes past the declared limit, no free slot), shares bytes already held and frees them with their last use |
 | `actors/` | [Compiled actor profile 1](actors/README.md): bounded sensing/weighted behavior, fenced navigation and model intents, scoped lifecycle and shared control; playable Actor Lab (#12992) |
 | `state/` | [Declared facts and lifetimes](state/README.md), FST1 migration, retry and atomic six-resource world variants; playable State Lab and HH_Save v1 fact admission (#12991) |
 | `world/` | [Cell and resource contracts](world/README.md): historical residency/edge/save primitives, decoder-derived RCM1 manifests and named cost admission; the bounded corridor adopts shared owners, semantic queries and persistent HUD on browser/WebGPU and native/Vulkan hosts, with accepted-history CPU replay. [Qualification and remaining adapters](../docs/verification/aethyr-streaming-12990/delivery-audit.md) |
@@ -100,17 +100,17 @@ product loads, directly or through another module (#13272).
 | `render/shadow-filter.coax`, `render/post.coax` | Shared shadow sampling, exposure, saturation, black lift, bloom and light shafts; pass orchestration remains with each renderer |
 | `action/` | [Actions, contacts and reactions](action/README.md): versioned tick-timed actions whose events fire once at any frame rate, swept blade sensors with attack-instance deduplication, typed attack/response/reaction tables, scoped hit stop, capped presentation, reflection, breakables and attachments; Everglade Experimental's weapon blows land on blade contact (#12993) |
 | `cam/` | [Camera modes, attention and hand-back](cam/README.md): parameterized follow modes with inheritance and volume selection, the centred look-up with a ground-clamped eye, one attention query for lock-on/talk/look/action with hold and grace, two-subject framing, cinematic entry and hand-back by outcome; Everglade II's follow camera and its Character Create run, and Everglade Experimental's save-spell aim, use them (#12994) |
-| `replay.coax` | Recording and replay: one envelope for every accepted external event, a gate that refuses duplicate, stale and unknown events, a digest every step, and replays that make no remote calls |
-| `rand.coax` | Random streams: a draw is a pure function of seed, stream and counter |
-| `scatter.coax` | Scatter from a seed: things on a jittered grid of world cells, each cell's draws keyed by its layer, version and grid coordinates, kept clear of keep-outs (book chapter 80) |
+| `core/replay.coax` | Recording and replay: one envelope for every accepted external event, a gate that refuses duplicate, stale and unknown events, a digest every step, and replays that make no remote calls |
+| `core/rand.coax` | Random streams: a draw is a pure function of seed, stream and counter |
+| `world/scatter.coax` | Scatter from a seed: things on a jittered grid of world cells, each cell's draws keyed by its layer, version and grid coordinates, kept clear of keep-outs (book chapter 80) |
 | `ai/stimulus.coax` | What a creature senses and knows: sight through `query_ray`, sound and touch as typed stimuli stamped by tick, and a bounded memory that forgets and counts what it refuses (book chapter 75) |
 | `ai/pilot.coax` | Bounded external actor actions as typed `Intent`s and `ReplayEvent` envelopes; the Verse OS WoW adapter consumes it, without claiming replay of WoW's simulation (book chapter 75) |
 | `talk/` | [Bounded native conversation profile](talk/README.md): authored fallback, UTF-8 request/reply admission, ticketed outcomes, tick deadlines and an owned answer record replayed without send intentions; realm and service adoption remain (book chapter 77) |
 | `character/` | [The character runtime](../docs/verse/engine-core.md#characters-aethyrcharacter): a world's pack table (an ECH1 rig and its EFC1 face, sizes under declared maximums) and one `Character` record each, spawned, placed, stepped on the fixed step (locomotion graph, a looped idle clip or a held body; face clips and an idle face cycle) and despawned; it writes the skinning palette, morph weights and capsules the GPU reads. `idle.coax` adds blinks, saccades and breathing. Valley Lab's Echo runs on it (`coax/bin/coax test aethyr/character/checks.coax`) |
-| `frame-report.coax` | A realm's frames, measured: frame statistics and the 60 FPS rule every realm is held to (`coax/web/realm-perf.coax` judges each case by it), and one frame's report by stage (book chapter 83) |
-| `voice.coax` | Spoken requests (HOLD TO TALK): a press is a question on the replay gate, the voice host's final transcript its answer, applied once, only in its epoch; duplicates, answers after a cancel and unasked answers are refused, and the record replays every heard request with no recognizer (`examples/hold-to-talk.coax`; local recognition is resident Parakeet, `docs/voice/dev.md`) |
-| `math.coax` | Sine, cosine and powers with the same bits natively and in the browser, for simulation steps |
-| `refusals.coax` | Checks that what must not compile doesn't: the fixtures in `tests/` |
+| `core/frame-report.coax` | A realm's frames, measured: frame statistics and the 60 FPS rule every realm is held to (`coax/web/realm-perf.coax` judges each case by it), and one frame's report by stage (book chapter 83) |
+| `audio/voice.coax` | Spoken requests (HOLD TO TALK): a press is a question on the replay gate, the voice host's final transcript its answer, applied once, only in its epoch; duplicates, answers after a cancel and unasked answers are refused, and the record replays every heard request with no recognizer (`examples/hold-to-talk.coax`; local recognition is resident Parakeet, `docs/voice/dev.md`) |
+| `core/math.coax` | Sine, cosine and powers with the same bits natively and in the browser, for simulation steps |
+| `core/refusals.coax` | Checks that what must not compile doesn't: the fixtures in `tests/` |
 
 ## Audio
 
@@ -140,20 +140,20 @@ The engine modules that were in `verse/` moved here in one scripted commit
 
 | Module | What |
 | --- | --- |
-| `player.coax` | The walking controller's C surface over `walk.coax` |
-| `camera.coax`, `cinematic.coax`, `arrange.coax`, `spacecam.coax` | The overview, dolly and free orbit; authored flights; the close-up arranging view; the floating-origin space camera |
-| `points.coax` | The points and arithmetic the world modules share (was `verse/space.coax`; `space.coax` here is the typed spaces) |
-| `stand.coax`, `terrain.coax`, `throw.coax`, `flock.coax` | Floors to stand on; heightfield ground, paths and followers; thrown and carried things; a following flock |
-| `sticks.coax` | The touch controls: move stick, look finger, pinch, tap, the hotbar's slot |
-| `figure.coax`, `motion.coax`, `skin.coax` | Soft figures, keyframed motions, skinned clips |
-| `rigid.coax`, `contact.coax`, `gravity.coax`, `thrust.coax`, `vehicle.coax`, `orbit.coax` | Rigid bodies, contacts, gravity fields, thrusters, wheeled vehicles, orbits |
-| `particles.coax`, `particle-motion.coax` | Particle emitters and their stateless motion |
-| `command.coax` | Selection, groups and order queues for commanding units |
+| `move/player.coax` | The walking controller's C surface over `move/walk.coax` |
+| `cam/camera.coax`, `cam/cinematic.coax`, `cam/arrange.coax`, `cam/spacecam.coax` | The overview, dolly and free orbit; authored flights; the close-up arranging view; the floating-origin space camera |
+| `core/points.coax` | The points and arithmetic the world modules share (was `verse/space.coax`; `core/space.coax` here is the typed spaces) |
+| `physics/stand.coax`, `world/terrain.coax`, `physics/throw.coax`, `anim/flock.coax` | Floors to stand on; heightfield ground, paths and followers; thrown and carried things; a following flock |
+| `core/sticks.coax` | The touch controls: move stick, look finger, pinch, tap, the hotbar's slot |
+| `anim/figure.coax`, `anim/motion.coax`, `anim/skin.coax` | Soft figures, keyframed motions, skinned clips |
+| `physics/rigid.coax`, `physics/contact.coax`, `physics/gravity.coax`, `physics/thrust.coax`, `physics/vehicle.coax`, `physics/orbit.coax` | Rigid bodies, contacts, gravity fields, thrusters, wheeled vehicles, orbits |
+| `render/particles.coax`, `render/particle-motion.coax` | Particle emitters and their stateless motion |
+| `core/command.coax` | Selection, groups and order queues for commanding units |
 
 ```sh
-coax/bin/coax test aethyr/loop.coax --library
-coax/bin/coax mutate aethyr/loop.coax
-coax/web/tool.sh aethyr/refusals.coax      # mixing spaces fails to compile
+coax/bin/coax test aethyr/core/loop.coax --library
+coax/bin/coax mutate aethyr/core/loop.coax
+coax/web/tool.sh aethyr/core/refusals.coax      # mixing spaces fails to compile
 coax/bin/coax test aethyr/tests/cross-realm.coax         # every walking realm: camera, feet, replay
 coax/bin/coax test aethyr/tests/cross-realm-floor.coax   # the floor grid from any position
 coax/bin/coax test aethyr/tests/cross-realm-made.coax    # made realms: feet and replay on the clock

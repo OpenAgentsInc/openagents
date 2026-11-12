@@ -1,6 +1,6 @@
 // A single pinned geometry page; the complete original scene remains resident as its fallback.
 #load "detail-policy.coax";
-#load "../../aethyr/points.coax";
+#load "../../aethyr/core/points.coax";
 #authority;
 DetailState :: struct {ready:[2]bool;mode:int=1;revision:int;chosen:int= -1;refused:int;}
 DetailView :: struct {eye:Point;forward:Point=Point.{x=1};right:Point=Point.{y=1};up:Point=Point.{z=1};sx:f32=1;sy:f32=1;}

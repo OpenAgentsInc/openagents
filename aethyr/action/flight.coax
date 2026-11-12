@@ -3,7 +3,7 @@
 // everything that flies on wings: Everglade's shapeshifting (everglade/shapeshift.coax) and its
 // mounts both step one WingState with wing_step.
 //
-// The vertical rule is Aethyr's flight rule (aethyr/flight.coax, flight_vertical): a beat is a
+// The vertical rule is Aethyr's flight rule (aethyr/move/flight.coax, flight_vertical): a beat is a
 // jump press in the air, a held jump climbs, between beats you glide and a held dive folds the
 // wings. This module adds what a big flier needs round it:
 //   - the ground: you walk at the walk pace; a jump press takes off
@@ -24,7 +24,7 @@
 
 #module "aethyr.action.flight";
 #authority;
-#load "../flight.coax";
+#load "../move/flight.coax";
 
 WING_GROUND :: 0; WING_TAKEOFF :: 1; WING_AIR :: 2; WING_LANDING :: 3;
 // the clip a body shows (wing_clip)
@@ -47,7 +47,7 @@ WingProfile :: struct {
   dive_boost: f32 = 0.5;    // the dive's extra pace, a share of fly
   hover_speed: f32 = 0.6;   // m/s: below this an airborne body hovers rather than flies
   gravity: f32 = 9.8;       // m/s² pulling down before the wings act each step
-  vertical: FlightProfile;  // the beat, climb, glide, dive and ceiling (aethyr/flight.coax)
+  vertical: FlightProfile;  // the beat, climb, glide, dive and ceiling (aethyr/move/flight.coax)
 }
 // book:end wing-profile
 
@@ -60,7 +60,7 @@ WingState :: struct {
   yaw: f32;                 // heading: 0 faces +Z, turning toward +X
   bank: f32;                // lean into the turn: + as the heading grows (toward +X, the body's left), - to its right
   turning: f32;             // this step's turn, rad/s
-  beat: bool; diving: bool; // this step's wing beat and dive (aethyr/flight.coax)
+  beat: bool; diving: bool; // this step's wing beat and dive (aethyr/move/flight.coax)
 }
 // One step's steering: (mx, mz) the wanted direction in the world, its length the share of full
 // pace (0 none, at most 1); the jump pressed this step, held, the dive held, land pressed.

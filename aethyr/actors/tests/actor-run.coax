@@ -2,7 +2,7 @@
 #import "Basic";
 #load "../../../coax/lib/sys/tool.coax";
 #load "../lab.coax";
-#load "../../assets.coax" as assets;
+#load "../../core/assets.coax" as assets;
 #run_steps 250000000;
 tool_main :: ()->int #export_c #effects(all) {
  a:[1]Args;if !args_load(a[..]) {return 2;}fps:=args_whole(args_at(a[..],0));s:[1]ActorLab;profile:=ifx args_count(a[..])>1 then args_whole(args_at(a[..],1)) else 0;

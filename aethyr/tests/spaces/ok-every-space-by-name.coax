@@ -1,5 +1,5 @@
 // expect: ok. The control: each space reached through its named conversion compiles.
-#load "../../space.coax";
+#load "../../core/space.coax";
 f :: () -> f32 {
   mid := GridPoint.{x = 0, y = 0, z = 0};
   w := world_point(1, 2, 3);

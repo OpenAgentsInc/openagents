@@ -29,7 +29,7 @@
 #load "../../verse/everglade2/plant.coax";
 #load "../../verse/everglade2/field.coax";
 #load "../../verse/everglade2/ground.coax";   // the ground's admitted tiles, from the pack's record, and the canopy bake (#12995, #13059)
-#load "../../aethyr/quality.coax";
+#load "../../aethyr/core/quality.coax";
 #load "../../aethyr/render/cascades.coax";   // the key light's shadow tiles (#13016), as Everglade's
 #load "create.coax";   // Character Create, in this world: /worlds/character-creator
 #load "../../aethyr/character/material.coax" as cmat;   // the characters' material table (#13012)
@@ -109,7 +109,7 @@ E2 :: struct {
   press: f32; eye_pitch: f32;                        // the eye's pitch, held on the land, and how far the look has gone past it (e2_chase_step)
   ground: [1] figs.CamGround;                         // the land round you for the camera (figs.cam_ground_next, filled from e2_height)
   view: figs.CamMode;                                 // Everglade II's follow mode (e2_mode)
-  q: [1] Quality; q_ready: bool;                     // the graphics governor (aethyr/quality.coax): the pixels drawn
+  q: [1] Quality; q_ready: bool;                     // the graphics governor (aethyr/core/quality.coax): the pixels drawn
   q_dev: QualityDevice; q_facts: bool; q_mode: int = QUALITY_AUTO; q_tell: bool;   // the page's device and the player's pick (e2_quality_facts)
   q_settled: [QUALITY_CLASSES] int;                 // the rung each class settled at on an earlier visit (-1 none)
   gpu_vendor: [24] u8; gpu_vendor_n: int; gpu_arch: [24] u8; gpu_arch_n: int;   // the adapter's, as host.js said them (the graphics event)
@@ -381,7 +381,7 @@ e2_move_in :: (s: [] E2) -> EgMoveIn #export_c #effects(all) {
   if e2st_moves(s) { return e2st_move_in(s); }
   if s[0].autowalk && h == 0 {
     if s[0].you_z < E2_CLEAR_Z - 6 { return EgMoveIn.{theta = figs.wrap_angle(s[0].orbit.yaw + 3.14159265)}; }
-    // run is the keys' Shift: the keys run by default (aethyr/input.coax), so this walks
+    // run is the keys' Shift: the keys run by default (aethyr/core/input.coax), so this walks
     return EgMoveIn.{key_y = 1, run = true, theta = e2_walk_theta(e2_auto_heading(s[0].you_x, s[0].you_z))};
   }
   if h != 0 { s[0].autowalk = false; }
@@ -581,7 +581,7 @@ e2_key_up :: (s: [] E2, key: int, mods: int) -> bool #export_c #effects(all) {
   s[0].held = s[0].held & (HOLD_ALL - h); return h != 0;
 }
 e2_blur :: (s: [] E2) #export_c #effects(all) { s[0].held = 0; s[0].shift = false; s[0].dragging = false; mlook.ml_blur(s[0].ml[..]); }
-// A mouse drag looks round (a finger is the face's: aethyr/sticks.coax).
+// A mouse drag looks round (a finger is the face's: aethyr/core/sticks.coax).
 e2_pointer :: (s: [] E2, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c #effects(all) {
   if phase == 0 { s[0].ml[0].touch = kind != 0; }
   if e2_quality_pointer(s, x, y, phase, id) { return true; }   // the GFX control
@@ -756,7 +756,7 @@ e2_chase_step :: (s: [] E2, dt: f32) {
   c := figs.cam_chase_settle(s[0].view, g, o, spheres[0..<sn * 12], dt);
   s[0].orbit = c.orbit; s[0].eye_pitch = c.eye_pitch; s[0].press = c.press;
 }
-// ---- the graphics governor (aethyr/quality.coax, as Everglade's everglade-quality.coax): in AUTO
+// ---- the graphics governor (aethyr/core/quality.coax, as Everglade's everglade-quality.coax): in AUTO
 // it draws fewer pixels when frames run long and more again when they keep on time, so the page
 // holds 60 frames a second. It starts from the page's facts (the device, ?quality= and the tier this
 // browser kept, e2_quality_facts) on the first frame with a size; the face asks it for the host's
@@ -846,7 +846,7 @@ e2_quality_pointer :: (s: [] E2, x: f32, y: f32, phase: int, id: int) -> bool {
 e2_quality_pick :: (s: [] E2, mode: int) {
   quality_choose(s[0].q[..], mode); s[0].q_mode = s[0].q[0].mode; s[0].q_tell = true;
 }
-// ---- the rung's knobs, as the frame uses them (aethyr/quality.coax quality_rung_knobs)
+// ---- the rung's knobs, as the frame uses them (aethyr/core/quality.coax quality_rung_knobs)
 // grass: the grass field's reach (e2_field, the shader's u[35]); fine: the finest grass tier's share
 // (u[36]); scenery: the kit pieces' reach (e2_pieces); shadow: 0 no tiles, under 0.5 the nearest tile
 // only, under 1 the full set with the nearest redrawn every other frame and six filter taps
@@ -2141,7 +2141,7 @@ e2_heads :: (s: [] E2, out: [] f32, at: int) -> int {
   s[0].sight_rem[0] = cc.HudSight.{}; s[0].sight_dt = 0.05; _ := e2_heads(s[..], out[..], 0);
   #assert s[0].plates[0].placed == 1 && s[0].sight_rem[0].share > 0.3 && s[0].sight_rem[0].share < 0.4;
   // its health bar and name ride the same answer: behind the stall again, the plate holds one stray
-  // frame (aethyr/visibility.coax vis_settle), then fades
+  // frame (aethyr/physics/visibility.coax vis_settle), then fades
   s[0].heads[0].x = hx; s[0].heads[0].y = e2_height(hx, hz) + 2.05; s[0].heads[0].z = hz;
   dx := hx - ex; dz := hz - ez; l := sqrt(dx * dx + dz * dz);
   s[0].fwd = [3] f32.[dx / l, 0, dz / l]; s[0].right = [3] f32.[-dz / l, 0, dx / l];

@@ -3,7 +3,7 @@
 #load "../../coax/lib/sys/tool.coax";
 #load "../../coax/lib/sys/fs.coax";
 #load "../../coax/lib/json/json.coax";
-#load "../../aethyr/frame-report.coax";
+#load "../../aethyr/core/frame-report.coax";
 FP_LIMIT :: 4096;
 fp_us :: (v:Jv,node:int)->int {n:=args_number(jv_raw(v,node));return ifx n.ok && n.value>=0 then cast(int)(n.value*1000+0.5) else 0;}
 #test "profile converts browser fractional milliseconds without discarding submillisecond work" {

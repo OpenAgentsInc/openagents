@@ -1,6 +1,6 @@
 // The arranging view produces the same typed CameraShot as a flight or follow.
 #authority;
-#load "../arrange.coax";
+#load "../cam/arrange.coax";
 #load "legacy.coax";
 
 #test "a close-up blends the live camera and accepts pointing through its actual shot" {

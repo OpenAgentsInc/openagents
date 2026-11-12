@@ -1,0 +1,280 @@
+// Free rigid bodies, batched (book chapter 18). A Rigid_Set holds every
+// body as structure-of-arrays: position, attitude, linear velocity, angular
+// velocity in the body frame, mass and inverse mass, principal moments and
+// their inverses, and a world-frame force and torque accumulated for the
+// next step. One loop advances every body with no branch on its kind: a
+// static body has mass, inverse mass and inverse inertia zero, so every
+// update leaves it where it is.
+//
+// Three integrators, each a named profile so a recording can say which ran:
+//
+//   rigid-explicit-f64-v1        v += dt F/m, x += dt v_old;
+//                                w += dt I^-1 (t - w x I w), q from w_old
+//   rigid-semi-implicit-f64-v1   v += dt F/m, x += dt v_new;
+//                                w as above, q from w_new
+//   rigid-implicit-gyro-f64-v1   v and x as semi-implicit; w' solves
+//                                (w' - w) + dt I^-1 (w' x I w' - t) = 0 by one
+//                                Newton step from w (Catto, GDC 2015)
+//
+// The attitude multiplies by exp(dt w / 2) on the right (w is in the body
+// frame) and renormalizes, so |q| = 1 holds to rounding. Every profile is
+// f64 on the CPU; device kernels and f32 profiles are not built yet.
+// aethyr/physics/rigid.coax is the independent reference: it rotates torque-free
+// bodies by RK4 with the angular momentum held fixed.
+//   coax/bin/coax test --library aethyr/physics/sim/rigid.coax
+#load "../rigid.coax";
+
+RIGID_BODIES :: 64;
+
+Rigid_Profile :: enum u8 { explicit_euler; semi_implicit; implicit_gyro; }
+
+rigid_profile_name :: (p: Rigid_Profile) -> string {
+  if p == Rigid_Profile.explicit_euler { return "rigid-explicit-f64-v1"; }
+  if p == Rigid_Profile.semi_implicit { return "rigid-semi-implicit-f64-v1"; }
+  return "rigid-implicit-gyro-f64-v1";
+}
+
+Rigid_Set :: struct {
+  count: int;
+  pos: [RIGID_BODIES] D3;
+  att: [RIGID_BODIES] DQ;
+  vel: [RIGID_BODIES] D3;
+  omega: [RIGID_BODIES] D3;        // body frame, rad/s
+  mass: [RIGID_BODIES] f64;        // kg; 0 for a static body
+  inv_mass: [RIGID_BODIES] f64;
+  inertia: [RIGID_BODIES] D3;      // principal moments, kg m^2
+  inv_inertia: [RIGID_BODIES] D3;  // 0 for a static body
+  force: [RIGID_BODIES] D3;        // world frame, cleared by each step
+  torque: [RIGID_BODIES] D3;
+}
+
+// Adds a body and returns its index, or -1 when the set is full. Mass 0
+// makes it static.
+rigid_add :: (s: [] Rigid_Set, mass: f64, inertia: D3, pos: D3, att: DQ) -> int {
+  i := s[0].count;
+  if i == RIGID_BODIES { return -1; }
+  s[0].count = i + 1;
+  s[0].pos[i] = pos; s[0].att[i] = att; s[0].vel[i] = D3_ZERO; s[0].omega[i] = D3_ZERO;
+  s[0].mass[i] = mass; s[0].inertia[i] = inertia;
+  s[0].inv_mass[i] = ifx mass > 0.0 then 1.0 / mass else 0.0;
+  s[0].inv_inertia[i] = ifx mass > 0.0 then d3(1.0 / inertia.x, 1.0 / inertia.y, 1.0 / inertia.z) else D3_ZERO;
+  s[0].force[i] = D3_ZERO; s[0].torque[i] = D3_ZERO;
+  return i;
+}
+
+// exp(v / 2) as a unit quaternion: a turn by |v| about v. sin(h)/h is
+// 1 - h^2/6 below 1e-4, where the next term is under 1e-17.
+rigid_exp :: (v: D3) -> DQ {
+  h := d3_len(v) * 0.5;
+  s := ifx h > 0.0001 then sin(h) / h else 1.0 - h * h / 6.0;   // mutant: equivalent (at h = 1e-4 both forms agree to rounding)
+  return dq(v.x * 0.5 * s, v.y * 0.5 * s, v.z * 0.5 * s, cos(h));
+}
+
+// The solution x of m x = b for a 3x3 m given by rows, by Cramer's rule.
+rigid_solve :: (r0: D3, r1: D3, r2: D3, b: D3) -> D3 {
+  det := d3_dot(r0, d3_cross(r1, r2));
+  c0 := d3(r0.x, r1.x, r2.x); c1 := d3(r0.y, r1.y, r2.y); c2 := d3(r0.z, r1.z, r2.z);
+  return d3(d3_dot(b, d3_cross(c1, c2)) / det, d3_dot(c0, d3_cross(b, c2)) / det, d3_dot(c0, d3_cross(c1, b)) / det);
+}
+
+// One Newton step on f(w') = (w' - w) + dt I^-1 (w' x I w' - t) from w' = w.
+// Its Jacobian is Id + dt I^-1 (skew(w) I - skew(I w)); for a static body
+// I^-1 = 0 makes it the identity and the step zero.
+rigid_gyro_implicit :: (w: D3, inertia: D3, inv: D3, t: D3, dt: f64) -> D3 {
+  iw := d3_mul(inertia, w);
+  f := d3_scale(d3_mul(inv, d3_sub(d3_cross(w, iw), t)), dt);
+  // Column j of skew(w) I - skew(I w) is w x (I_j e_j) - (I w) x e_j.
+  c0 := d3_sub(d3_cross(w, d3(inertia.x, 0.0, 0.0)), d3_cross(iw, D3_X));
+  c1 := d3_sub(d3_cross(w, d3(0.0, inertia.y, 0.0)), d3_cross(iw, D3_Y));
+  c2 := d3_sub(d3_cross(w, d3(0.0, 0.0, inertia.z)), d3_cross(iw, D3_Z));
+  // A cross product has no component along its own axis: c0.x, c1.y and c2.z
+  // are zero, so the diagonal is 1.
+  k := d3_scale(inv, dt);
+  r0 := d3(1.0, k.x * c1.x, k.x * c2.x);
+  r1 := d3(k.y * c0.y, 1.0, k.y * c2.y);
+  r2 := d3(k.z * c0.z, k.z * c1.z, 1.0);
+  return d3_sub(w, rigid_solve(r0, r1, r2, f));
+}
+
+// One step of dt under uniform gravity for every body, by profile p. The
+// accumulators clear.
+rigid_set_step :: (s: [] Rigid_Set, p: Rigid_Profile, dt: f64, gravity: D3) {
+  for i: 0..<s[0].count {
+    v0 := s[0].vel[i]; w0 := s[0].omega[i]; q := s[0].att[i];
+    // m g / m is g for a body with mass and 0 for a static one.
+    accel := d3_add(d3_scale(s[0].force[i], s[0].inv_mass[i]), d3_scale(gravity, s[0].mass[i] * s[0].inv_mass[i]));
+    v := d3_add(v0, d3_scale(accel, dt));
+    tb := dq_rotate(dq_conj(q), s[0].torque[i]);
+    inertia := s[0].inertia[i]; inv := s[0].inv_inertia[i];
+    w := d3_add(w0, d3_scale(d3_mul(inv, d3_sub(tb, d3_cross(w0, d3_mul(inertia, w0)))), dt));
+    if p == Rigid_Profile.implicit_gyro { w = rigid_gyro_implicit(w0, inertia, inv, tb, dt); }
+    explicit := p == Rigid_Profile.explicit_euler;
+    s[0].pos[i] = d3_add(s[0].pos[i], d3_scale(ifx explicit then v0 else v, dt));
+    s[0].att[i] = dq_unit(dq_mul(q, rigid_exp(d3_scale(ifx explicit then w0 else w, dt))));
+    s[0].vel[i] = v; s[0].omega[i] = w;
+    s[0].force[i] = D3_ZERO; s[0].torque[i] = D3_ZERO;
+  }
+}
+
+// Kinetic energy, linear and rotational.
+rigid_energy :: (s: Rigid_Set, i: int) -> f64 {
+  w := s.omega[i];
+  return 0.5 * s.mass[i] * d3_dot(s.vel[i], s.vel[i]) + 0.5 * d3_dot(w, d3_mul(s.inertia[i], w));
+}
+// Angular momentum about the centre of mass, world frame.
+rigid_spin :: (s: Rigid_Set, i: int) -> D3 { return dq_rotate(s.att[i], d3_mul(s.inertia[i], s.omega[i])); }
+// Total linear momentum.
+rigid_linear :: (s: Rigid_Set) -> D3 {
+  sum := D3_ZERO;
+  for i: 0..<s.count { sum = d3_add(sum, d3_scale(s.vel[i], s.mass[i])); }
+  return sum;
+}
+
+// The torque-free solution for body-frame angular velocity about distinct
+// moments I1 < I2 < I3 with L^2 > 2 E I2 (Landau and Lifshitz, Mechanics,
+// section 37): w2 is a multiple of sn(lambda t, k), so it changes sign every
+// 2 K(k) / lambda. K comes from the arithmetic-geometric mean.
+rigid_agm :: (a: f64, b: f64) -> f64 {
+  x := a; y := b;
+  for k: 0..<40 { m := (x + y) * 0.5; y = sqrt(x * y); x = m; }   // mutant: equivalent (converged long before 40)
+  return x;
+}
+rigid_flip_interval :: (inertia: D3, w: D3) -> f64 {
+  e2 := d3_dot(w, d3_mul(inertia, w)); l2 := d3_len2(d3_mul(inertia, w));
+  i1 := inertia.x; i2 := inertia.y; i3 := inertia.z;
+  lambda := sqrt((i3 - i2) * (l2 - e2 * i1) / (i1 * i2 * i3));
+  k2 := (i2 - i1) * (e2 * i3 - l2) / ((i3 - i2) * (l2 - e2 * i1));
+  return PI_D / rigid_agm(1.0, sqrt(1.0 - k2)) / lambda;
+}
+
+#test "free fall: semi-implicit Euler is off by g dt t / 2, explicit by minus that" {
+  for p: 0..<3 {
+    s: [1] Rigid_Set; g := d3(0.0, -9.81, 0.0); dt := 0.01;
+    i := rigid_add(s[..], 2.0, d3(1.0, 1.0, 1.0), d3(0.0, 100.0, 0.0), DQ.{});
+    s[0].vel[i] = d3(3.0, 4.0, 0.0); s[0].omega[i] = d3(0.0, 0.0, 2.0);
+    #assert rigid_energy(s[0], i) == 27.0;   // 2 kg at 5 m/s, and 1 kg m^2 at 2 rad/s
+    for k: 0..<200 { rigid_set_step(s[..], cast(Rigid_Profile) p, dt, g); }
+    t := 2.0; offset := ifx p == 0 then -0.5 * 9.81 * dt * t else 0.5 * 9.81 * dt * t;
+    want := 100.0 + 4.0 * t - 0.5 * 9.81 * t * t - offset;
+    #assert abs(s[0].pos[i].y - want) < 1e-10 && abs(s[0].pos[i].x - 6.0) < 1e-12 && abs(s[0].vel[i].y - (4.0 - 9.81 * t)) < 1e-12;
+  }
+}
+
+#test "a static body stays put under gravity, force and torque; a full set refuses" {
+  for p: 0..<3 {
+    s: [1] Rigid_Set; q := dq_euler_xyz(0.3, 0.2, 0.1);
+    i := rigid_add(s[..], 0.0, d3(1.0, 2.0, 3.0), d3(1.0, 2.0, 3.0), q);
+    s[0].force[i] = d3(5.0, 5.0, 5.0); s[0].torque[i] = d3(1.0, 1.0, 1.0);
+    rigid_set_step(s[..], cast(Rigid_Profile) p, 0.01, d3(0.0, -9.81, 0.0));
+    #assert d3_eq(s[0].pos[i], d3(1.0, 2.0, 3.0)) && d3_eq(s[0].vel[i], D3_ZERO) && d3_eq(s[0].omega[i], D3_ZERO);
+    #assert s[0].att[i].x == q.x && s[0].att[i].w == q.w && d3_eq(s[0].force[i], D3_ZERO) && d3_eq(s[0].torque[i], D3_ZERO);
+  }
+  full: [1] Rigid_Set;
+  for k: 0..<RIGID_BODIES { #assert rigid_add(full[..], 1.0, d3(1.0, 1.0, 1.0), D3_ZERO, DQ.{}) == k; }
+  #assert rigid_add(full[..], 1.0, d3(1.0, 1.0, 1.0), D3_ZERO, DQ.{}) == -1 && full[0].count == RIGID_BODIES;
+  // A set emptied by count = 0 and refilled keeps nothing of the old bodies.
+  full[0].vel[0] = D3_X; full[0].omega[0] = D3_Y; full[0].force[0] = D3_Z; full[0].torque[0] = D3_X; full[0].count = 0;
+  #assert rigid_add(full[..], 1.0, d3(1.0, 1.0, 1.0), D3_ZERO, DQ.{}) == 0;
+  #assert d3_eq(full[0].vel[0], D3_ZERO) && d3_eq(full[0].omega[0], D3_ZERO) && d3_eq(full[0].force[0], D3_ZERO) && d3_eq(full[0].torque[0], D3_ZERO);
+}
+
+#test "force and torque: the momentum change is the impulse, and they clear" {
+  for p: 0..<3 {
+    s: [1] Rigid_Set; dt := 0.02;
+    a := rigid_add(s[..], 2.0, d3(1.5, 2.0, 3.0), D3_ZERO, dq_euler_xyz(0.4, -0.2, 0.7));
+    b := rigid_add(s[..], 5.0, d3(2.0, 2.0, 2.0), d3(1.0, 0.0, 0.0), DQ.{});
+    s[0].force[a] = d3(1.0, 2.0, 3.0); s[0].force[b] = d3(-4.0, 0.0, 1.0);
+    s[0].torque[a] = d3(0.5, -0.25, 1.0);
+    rigid_set_step(s[..], cast(Rigid_Profile) p, dt, D3_ZERO);
+    #assert d3_len(d3_sub(rigid_linear(s[0]), d3_scale(d3(-3.0, 2.0, 4.0), dt))) < 1e-15;
+    // From rest, the first step's spin is the angular impulse: exactly for
+    // explicit Euler, which turns by the old (zero) spin; the others turn the
+    // same vector by the new one, so only its length is exact.
+    impulse := d3_scale(d3(0.5, -0.25, 1.0), dt); spin := rigid_spin(s[0], a);
+    #assert abs(d3_len(spin) - d3_len(impulse)) < 1e-16 && d3_len(d3_sub(spin, impulse)) < ifx p == 0 then 1e-17 else 1e-5;
+    #assert d3_len(d3_sub(spin, impulse)) > ifx p == 0 then -1.0 else 1e-7;
+    #assert d3_eq(s[0].omega[b], D3_ZERO);
+    #assert d3_eq(s[0].force[a], D3_ZERO) && d3_eq(s[0].torque[a], D3_ZERO);
+    rigid_set_step(s[..], cast(Rigid_Profile) p, dt, D3_ZERO);
+    #assert d3_len(d3_sub(rigid_linear(s[0]), d3_scale(d3(-3.0, 2.0, 4.0), dt))) < 1e-15;
+  }
+}
+
+#test "a symmetric top's spin precesses in the body frame at (I3 - I1) w3 / I1" {
+  // I = (1, 1, 2), w3 = 1: one radian a second. After 1 s at dt 1e-3 each
+  // profile's angle is within 1e-6 of the turn.
+  for p: 0..<3 {
+    s: [1] Rigid_Set; i := rigid_add(s[..], 1.0, d3(1.0, 1.0, 2.0), D3_ZERO, DQ.{});
+    s[0].omega[i] = d3(0.1, 0.0, 1.0);
+    for k: 0..<1000 { rigid_set_step(s[..], cast(Rigid_Profile) p, 0.001, D3_ZERO); }
+    w := s[0].omega[i];
+    #assert abs(acos_d(w.x / sqrt(w.x * w.x + w.y * w.y)) - 1.0) < 1e-6 && abs(w.z - 1.0) < 1e-12;
+  }
+}
+
+#test "spinning fast: explicit gyroscopic terms gain energy, the implicit step does not" {
+  e: [3] f64; l: [3] f64;
+  for p: 0..<3 {
+    s: [1] Rigid_Set; i := rigid_add(s[..], 1.0, d3(1.0, 2.0, 3.0), D3_ZERO, DQ.{});
+    s[0].omega[i] = d3(0.0, 1.0, 20.0);
+    e0 := rigid_energy(s[0], i); l0 := d3_len(rigid_spin(s[0], i));
+    for k: 0..<100 { rigid_set_step(s[..], cast(Rigid_Profile) p, 0.01, D3_ZERO); }
+    e[p] = rigid_energy(s[0], i) / e0 - 1.0; l[p] = d3_len(rigid_spin(s[0], i)) / l0 - 1.0;
+  }
+  // One second at dt 0.01: +6% energy and +1.6% |L| explicit, -0.12% and
+  // -0.03% implicit.
+  #assert e[0] > 0.05 && e[1] > 0.05 && l[0] > 0.01 && l[1] > 0.01;
+  #assert e[2] < 0.0 && e[2] > -0.002 && l[2] < 0.0 && l[2] > -0.0005;
+}
+
+#test "the intermediate axis flips, every 2 K / lambda" {
+  inertia := d3(1.0, 2.0, 3.0); w0 := d3(0.0, 1.0, 0.05);
+  want := rigid_flip_interval(inertia, w0);
+  s: [1] Rigid_Set; i := rigid_add(s[..], 1.0, inertia, D3_ZERO, DQ.{});
+  s[0].omega[i] = w0; dt := 0.004;
+  crossings: [2] f64; n := 0; t := 0.0; last := w0.y;
+  while n < 2 && t < 100.0 {
+    rigid_set_step(s[..], Rigid_Profile.implicit_gyro, dt, D3_ZERO); t += dt;
+    now := s[0].omega[i].y;
+    if (now < 0.0) != (last < 0.0) { crossings[n] = t - dt * now / (now - last); n += 1; }
+    last = now;
+  }
+  #assert n == 2 && abs((crossings[1] - crossings[0]) / want - 1.0) < 1e-6;
+  // K(0) = pi / 2 and K for k^2 = 1/2 is 1.8540746773013719.
+  #assert abs(rigid_agm(1.0, 1.0) - 1.0) < 1e-15 && abs(PI_D / 2.0 / rigid_agm(1.0, sqrt(0.5)) - 1.8540746773013719) < 1e-15;
+}
+
+#test "halving the step halves the energy error: each profile is first order" {
+  for p: 0..<3 {
+    err: [2] f64;
+    for h: 0..<2 {
+      s: [1] Rigid_Set; i := rigid_add(s[..], 1.0, d3(1.0, 1.0, 2.0), D3_ZERO, DQ.{});
+      s[0].omega[i] = d3(0.1, 0.0, 1.0); n := 200 * (h + 1); e0 := rigid_energy(s[0], i);
+      for k: 0..<n { rigid_set_step(s[..], cast(Rigid_Profile) p, 1.0 / cast(f64) n, D3_ZERO); }
+      err[h] = rigid_energy(s[0], i) / e0 - 1.0;
+    }
+    #assert abs(err[0] / err[1] - 2.0) < 0.01 && (err[0] > 0.0) == (p != 2);
+  }
+}
+
+#test "torque-free attitude agrees with aethyr/physics/rigid.coax's RK4 to the step's order" {
+  inertia := d3(1.0, 2.0, 3.0); w0 := d3(0.3, 1.0, -0.4); q0 := dq_euler_xyz(0.2, 0.5, -0.3);
+  ref: [1] RigidBody; ref[0] = rigid_body(1.0, inertia, D3_ZERO, q0); ref[0].omega = w0;
+  world := rigid_world(0.001, ref[..]);
+  s: [1] Rigid_Set; i := rigid_add(s[..], 1.0, inertia, D3_ZERO, q0); s[0].omega[i] = w0;
+  for k: 0..<1000 { world = rigid_step(world, D3_ZERO); rigid_set_step(s[..], Rigid_Profile.implicit_gyro, 0.001, D3_ZERO); }
+  a := s[0].att[i]; b := ref[0].orientation;
+  #assert abs(a.x * b.x + a.y * b.y + a.z * b.z + a.w * b.w) > 1.0 - 1e-6;
+  #assert d3_len(d3_sub(rigid_spin(s[0], i), rigid_angular_momentum(ref[0]))) < 0.002;
+  #assert rigid_profile_name(Rigid_Profile.explicit_euler) == "rigid-explicit-f64-v1" && rigid_profile_name(Rigid_Profile.semi_implicit) == "rigid-semi-implicit-f64-v1";
+  #assert rigid_profile_name(Rigid_Profile.implicit_gyro) == "rigid-implicit-gyro-f64-v1";
+}
+
+#test "the attitude exponential and the 3x3 solve" {
+  q := rigid_exp(d3(0.0, 0.0, PI_D));
+  #assert abs(q.z - 1.0) < 1e-15 && abs(q.w) < 1e-15;
+  small := rigid_exp(d3(0.00002, 0.0, 0.0)); big := rigid_exp(d3(0.0004, 0.0, 0.0));
+  #assert abs(small.x - sin(0.00001)) < 1e-20 && abs(big.x - sin(0.0002)) < 1e-19 && abs(dq_len(small) - 1.0) < 1e-15;
+  x := rigid_solve(d3(2.0, 1.0, 0.0), d3(0.0, 3.0, 1.0), d3(1.0, 0.0, 4.0), d3(4.0, 9.0, 13.0));
+  #assert abs(x.x - 1.0) < 1e-14 && abs(x.y - 2.0) < 1e-14 && abs(x.z - 3.0) < 1e-14;
+}

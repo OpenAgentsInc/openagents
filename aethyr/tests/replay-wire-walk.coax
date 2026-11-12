@@ -1,6 +1,6 @@
 // Real controller trace used by the native/browser record-exchange check.
 #load "replay-walk.coax";
-#load "../replay-wire.coax";
+#load "../core/replay-wire.coax";
 RW_PROFILE :: 1;
 RW_BYTES :: 131072;
 RwWalk :: struct {backing:[1]WalkBacking;wire:[RW_BYTES]u8;count:int;steps:int;digest:int;remote:int;diverged:int;}

@@ -30,7 +30,7 @@
 //   coax/bin/coax mutate aethyr/session/control.coax --library --root-only
 
 #module "aethyr.session.control";
-#load "../ids.coax";
+#load "../core/ids.coax";
 #authority;
 
 // book:begin control-profile

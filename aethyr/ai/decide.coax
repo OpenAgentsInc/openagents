@@ -2,7 +2,7 @@
 // book chapters 75 and 77). The realm asks without waiting: decide_ask opens a ticket for one
 // actor, from what that actor senses (its Memory, a digest of it), with a deadline in ticks, and
 // refuses past a per-actor and a fleet quota. The model's answer comes back as an ordinary
-// REPLAY_MODEL event through aethyr/replay.coax's gate, which already refuses duplicates, answers
+// REPLAY_MODEL event through aethyr/core/replay.coax's gate, which already refuses duplicates, answers
 // never asked for and answers from an old epoch, and records what it accepts. At the start of a
 // step the realm hands each event it takes to decide_admit, which checks it against the ticket:
 // the same actor, its owner then and now, the context it was asked with, the deadline, an intent
@@ -17,7 +17,7 @@
 #module "aethyr.ai.decide";
 #authority;
 #load "stimulus.coax";
-#load "../replay.coax";
+#load "../core/replay.coax";
 
 // book:begin decide-profile
 DECIDE_ACTORS :: 16;         // actors one table decides for
@@ -54,7 +54,7 @@ DECIDE_COUNTERS :: 11;
 DECIDE_W_ACTOR :: 0; DECIDE_W_OWNER :: 1; DECIDE_W_CONTEXT :: 2; DECIDE_W_KIND :: 3;
 DECIDE_W_TARGET :: 4; DECIDE_W_X :: 5; DECIDE_W_Z :: 6;
 
-// One open question: the model request (aethyr/replay.coax's number), whose it is, who owned the
+// One open question: the model request (aethyr/core/replay.coax's number), whose it is, who owned the
 // actor when it was asked, what the actor sensed then, and the last tick an answer may apply.
 DecideTicket :: struct { live: bool; request: int; actor: int; owner: int; context: int; due: int; }
 DecideTable :: struct {

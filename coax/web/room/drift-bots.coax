@@ -210,7 +210,7 @@ tool_main :: () -> int #export_c #effects(all) {
       wx := goal.x - b[i].x; wz := goal.z - b[i].z;
       ahead := ifx wx * wx + wz * wz > 1 then 100 else 0;
       run := ifx wx * wx + wz * wz > 16 then 1 else 0;   // running to keep up
-      // the camera's yaw (aethyr/walk.coax): it sits at theta round you, so ahead is -(sin, cos) of it
+      // the camera's yaw (aethyr/move/walk.coax): it sits at theta round you, so ahead is -(sin, cos) of it
       yaw := db_atan2(wx, wz) + 3.14159265;
       if yaw > 3.14159265 { yaw -= 6.2831853; }
       seq[i] += 1;

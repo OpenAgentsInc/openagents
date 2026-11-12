@@ -1,6 +1,6 @@
 # 23. Particles and their neighbors
 
-> **Status: partly implemented.** [`aethyr/sim/particles.coax`](../../aethyr/sim/particles.coax)
+> **Status: partly implemented.** [`aethyr/physics/sim/particles.coax`](../physics/sim/particles.coax)
 > (344 mutants: 331 killed, 13 marked equivalent with their reason)
 > holds the shared particle store, sorts particles into cells by counting
 > sort and finds fixed-radius neighbors on the CPU in f64, with overflow
@@ -45,7 +45,7 @@ coalesced on GPUs ([Green, *Particle Simulation using CUDA*, 2010](https://devel
 
 ## What runs today
 
-[`aethyr/sim/particles.coax`](../../aethyr/sim/particles.coax) keeps up to
+[`aethyr/physics/sim/particles.coax`](../physics/sim/particles.coax) keeps up to
 512 particles in a `Pstore`: position, velocity, mass, a material ID and an
 entity ID. A `Pgrid` is bounded: an origin, a cell size `h` and at most
 4,096 cells, so a cell is a linear index rather than a hash. A grid too
@@ -64,7 +64,7 @@ overflowed.
 `psample_box` and `psample_sphere` fill a shape with a cell-centred lattice
 of spacing `a`, each particle carrying `density × a³`. With jitter, each
 point moves by up to `jitter × a / 2` per axis, drawn from a counter stream
-of [`aethyr/rand.coax`](../../aethyr/rand.coax), so the same seed gives the
+of [`aethyr/core/rand.coax`](../core/rand.coax), so the same seed gives the
 same points.
 
 The example [`particle-neighbors.coax`](../../aethyr/examples/particle-neighbors.coax)
@@ -146,7 +146,7 @@ and the report says so instead of dropping them silently.
 The checks run with:
 
 ```shell
-coax/bin/coax test aethyr/sim/particles.coax --library
+coax/bin/coax test aethyr/physics/sim/particles.coax --library
 ```
 
 They compare neighbor sets with brute force on random and clustered clouds

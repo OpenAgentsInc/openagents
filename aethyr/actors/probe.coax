@@ -2,7 +2,7 @@
 #module "aethyr.actors.probe";
 #load "perception.coax";
 #load "probe-data.coax";
-#load "../assets.coax" as assets;
+#load "../core/assets.coax" as assets;
 actor_probe :: ()->assets.AssetId #effects(all) {
  p:=actor_probe_parameters();
  brain:ActorBrain;words:[4096]int;n:=0;

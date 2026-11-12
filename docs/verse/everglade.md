@@ -56,11 +56,11 @@ python3 verse/everglade/map.py --times
   7.5 m.
 - Streets and trails are 3 m wide. Buildings keep at least 2 m from each
   other and from the palisade; props at least 1 m from anything.
-- You walk at 3.5 m/s and run at 7.5 m/s (`aethyr/player.coax`): the city
+- You walk at 3.5 m/s and run at 7.5 m/s (`aethyr/move/player.coax`): the city
   is half a minute's walk across, and the farthest trail end under a minute
   from the South Gate. That keeps a hub dense enough to meet people in and
   small enough to learn in one visit.
-- The ground is `aethyr/terrain.coax`'s heightfield, with the bowl's rim
+- The ground is `aethyr/world/terrain.coax`'s heightfield, with the bowl's rim
   moved out to 80 m (`Ground.rim_from`, `rim`): gentle hills inside the
   walls, flat under every building and square, rising into the forest
   past the trails' ends.
@@ -245,7 +245,7 @@ retargeted to the two bodies (`verse/everglade/people-rig.coax`): idle,
 walk, talk, a nod, folded arms, a raised lantern and a spell idle. Alone,
 they shift their weight and glance about; within 4 m they turn to face you
 and look at you (the neck and head turned through `skin_turn` in
-`aethyr/skin.coax`); when you speak they nod, and they talk while their
+`aethyr/anim/skin.coax`); when you speak they nod, and they talk while their
 answer shows. The ten nearest in view (six on a phone) within 60 m (40 on a
 phone) are drawn.
 
@@ -300,7 +300,7 @@ browser or device starts afresh.
 ## The bird flock (eg-companion)
 
 Hand in Across the River and a flock of seven birds follows you, each
-trailing a ribbon of its own colour that narrows to nothing. `aethyr/flock.coax`
+trailing a ribbon of its own colour that narrows to nothing. `aethyr/anim/flock.coax`
 is the engine piece: the birds ride a slow ring over and just ahead of you,
 each pulled to its place by a critically damped spring, kept apart, under a
 top speed (16 m/s) and acceleration (40 m/s²). They step at a fixed 120 Hz
@@ -340,13 +340,13 @@ as grey boxes at full size, built on the realm host
 
 - `verse/everglade/plan.coax`: the layout and its checks.
 - `apps/openagents-web/everglade.coax`, `everglade-face.c`, `everglade.wgsl`:
-  the realm. It draws the ground and streets (`aethyr/terrain.coax`), the
+  the realm. It draws the ground and streets (`aethyr/world/terrain.coax`), the
   palisade, every building as a box with a gable roof, the props, the
   forest (below), you as the Ranger (below), the people (Quaternius
   characters, above) and the cats (still plain shapes), and each
   place's name as you come near. The free orbit
-  (`aethyr/camera.coax`) follows you and keeps out of the walls; walking is
-  `aethyr/player.coax` among the plan's solids, thumbs `verse/grid.coax`.
+  (`aethyr/cam/camera.coax`) follows you and keeps out of the walls; walking is
+  `aethyr/move/player.coax` among the plan's solids, thumbs `verse/grid.coax`.
 - M or MAP lifts the camera over the whole city; `#above` opens there, and a
   place's id in the hash starts you at it (`#commons`, `#market`, `#guilds`,
   `#temple`, `#observatory`, `#inn`, `#road`, `#deep-wood`, `#ruins`,
@@ -383,7 +383,7 @@ clips are exactly the old ones:
 
 `verse/tools/pack_realm.py` (manifest `"character"`) copies it into the pack
 (32 bytes a vertex: position, normal and layer, uv, four joints and
-weights) and writes its rig to `verse/everglade/ranger.coax`. `aethyr/skin.coax`
+weights) and writes its rig to `verse/everglade/ranger.coax`. `aethyr/anim/skin.coax`
 plays it as the old engine did (`Motion::of`, `ClipPlayer`): standing below
 0.1 m/s idles, below 5 m/s walks, faster runs, off the ground jumps; a
 change of clip blends over 0.22 s from the pose it left; a gait advances by
@@ -393,8 +393,8 @@ so the feet keep to the ground; keys are sampled as the old engine did
 joints' skinning matrices to a store the shader reads; the GPU skins the
 vertices (four joints each) and draws the Ranger in one draw at your feet,
 turned to face the way you go. The controller is unchanged: walking,
-running, jumping, the camera and their speeds are `aethyr/player.coax` and
-`aethyr/camera.coax`'s.
+running, jumping, the camera and their speeds are `aethyr/move/player.coax` and
+`aethyr/cam/camera.coax`'s.
 
 The checks: the pack's catalog names the Ranger with its 75 joints; the
 controller's state picks idle, walk, run and jump as the old engine did;
@@ -1038,12 +1038,12 @@ coax/web/tool.sh flyover http://127.0.0.1:8870 --out coax/web/build/flyover-afte
   from over the Great Lawn. That is its heaviest view. The path ends in the Deep Wood and a view
   of the whole city, 54 s in all.
 - The page flies the path itself. `#fly=T,EX,EY,EZ,AX,AY,AZ~...` hands the camera to
-  `aethyr/flyover.coax`, and `#fly=` hands it back. `coaxial.fieldProbe(30)` returns how long the
+  `aethyr/cam/flyover.coax`, and `#fly=` hands it back. `coaxial.fieldProbe(30)` returns how long the
   path has flown. The tool refuses a build that never takes the camera.
 - The tool flies twice. The first flight saves `shot-000.jpg` and one more JPEG each second, and
   it warms the city. The second flight is timed, with nothing else running. The report gives the
   average, p50, p95 and worst frame, the frames over 33 ms and over 20 ms, and the 60 FPS rule
-  from `aethyr/frame-report.coax`. It also gives each frame's CPU time, from host.js's frame
+  from `aethyr/core/frame-report.coax`. It also gives each frame's CPU time, from host.js's frame
   trace, and its GPU time, from host.js's pass timer. The tool sets `coaxialPassTimer` before the
   page loads, and host.js then puts GPU timestamps round every render pass. The GPU figure runs
   from the first pass's start to the last pass's end. The shadow figure is the shadow map's pass

@@ -2,10 +2,10 @@
 // The shared Grid session owns walking, fixed steps, input, follow camera and replay.
 // Aethyr's HUD renderer and UI tree own strokes, text, picking and focus.
 #load "../../verse/gridwalk.coax" as gw;
-#load "../../aethyr/points.coax";
+#load "../../aethyr/core/points.coax";
 #load "../../aethyr/ui/draw.coax";
 #load "../../aethyr/ui/tree.coax";
-#load "../../aethyr/budget.coax";
+#load "../../aethyr/core/budget.coax";
 #load "bitcoin-lab-chapters.coax";
 #load "bitcoin-lab-blocks.coax";
 #load "bitcoin-lab-remote.coax";

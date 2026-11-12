@@ -1,5 +1,5 @@
 #run_steps 250000000;   // secp256k1's tables: the seat ticket's v5 check (aethyr/session/seat-ticket.coax, #13260)
-#load "../../../aethyr/ids.coax";
+#load "../../../aethyr/core/ids.coax";
 #load "../../../everglade/shared/everglade-handles.coax";
 #load "room-handles.coax";
 // The room server's decisions: which room a WebSocket's path names, who sits where, each realm's

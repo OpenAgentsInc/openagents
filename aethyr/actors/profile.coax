@@ -1,7 +1,7 @@
 #module "aethyr.actors.profile";
 // Flat authored actor records, profile 1. Compilation is outside the paid loop.
 #load "../state/codec.coax";
-#load "../assets.coax" as assets;
+#load "../core/assets.coax" as assets;
 #authority;
 ACTOR_PROFILES :: 8; ACTOR_RULES :: 8; ACTOR_ROWS :: 8; ACTOR_EXEC_PHASES :: 6;
 ACTOR_SEEN :: 1; ACTOR_ALERTED :: 2; ACTOR_KNOWN :: 4; ACTOR_SCHEDULE :: 8; ACTOR_PATH_FAILED :: 16; ACTOR_CONTROLLED :: 32; ACTOR_MODEL :: 64;

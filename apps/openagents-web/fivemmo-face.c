@@ -1,6 +1,6 @@
 // 5E MMO's C face for the browser (coax/web/host.js): fivemmo.coax is the page (Everglade's
 // state, with the battle's view beside it), fivemmo-battle.coax runs the SRD 5e fight (its own C
-// unit, Fivemmo-battle.h), aethyr/player.coax walks you and verse/grid.coax reads a phone's
+// unit, Fivemmo-battle.h), aethyr/move/player.coax walks you and verse/grid.coax reads a phone's
 // thumbs, verse/everglade/river.coax is Everglade's river. Once a frame, in order: the camera's
 // keys, the battle's step, its numbers into the view, your pace from your Speed, the walk among
 // the walls and the others' bodies, kept on the grid (and pulled back to your square when the

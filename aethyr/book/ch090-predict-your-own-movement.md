@@ -77,7 +77,7 @@ velocity, which a correction sets without the player asking, so a collider
 that only the server had swung the camera. It now turns toward
 `walk_asked`, the motion the controls ask for:
 
-<!-- source: aethyr/walk.coax asked -->
+<!-- source: aethyr/move/walk.coax asked -->
 ```jai
 // The motion your controls ask for, m/s on the flat: the wish at the pace you walk or run. A follow
 // camera turns toward this, not toward the velocity, which a wall, a push or a room server's
@@ -108,7 +108,7 @@ The page steps inputs 101 to 106. The server's frame for tick `t` says
 ## Run it
 
 ```shell
-coax/bin/coax test aethyr/walk.coax --only "walk: the intent"
+coax/bin/coax test aethyr/move/walk.coax --only "walk: the intent"
 coax/bin/coax test everglade/shared/everglade-step.coax --only "step:"
 ```
 

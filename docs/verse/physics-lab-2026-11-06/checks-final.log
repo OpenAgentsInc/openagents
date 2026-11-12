@@ -31,7 +31,7 @@ ok   #test erasure postconditions include high bits and empty spans (1 case, 993
 ok   #test supports: the farthest corner, end and point along a direction (1 case, 3996 steps, 0 ms)
 ok   #test GJK distance between separated boxes equals the brute-force distance (1 case, 74068430 steps, 4172 ms)
 ok   #test EPA depth of overlapping boxes equals the least overlap of the 15 axes, and SAT agrees (1 case, 37710849 steps, 2035 ms)
-ok   #test spheres and boxes agree with aethyr/contact.coax (1 case, 3205428 steps, 142 ms)
+ok   #test spheres and boxes agree with aethyr/physics/contact.coax (1 case, 3205428 steps, 142 ms)
 ok   #test capsules: the closed form agrees with GJK, and parallel cores are handled (1 case, 1488619 steps, 74 ms)
 ok   #test swapping the shapes negates the normal and changes nothing else (1 case, 35178642 steps, 1526 ms)
 ok   #test a box resting on a box reports the same four corners, step after step (1 case, 40162654 steps, 2620 ms)

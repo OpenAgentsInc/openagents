@@ -33,7 +33,7 @@
 #load "ui.coax";
 #load "../../coax/web/analytics.coax";
 #load "access.coax";
-#load "../../aethyr/budget.coax";
+#load "../../aethyr/core/budget.coax";
 
 VERTEX_FLOATS :: 16;
 MAX_VERTICES :: 30000;
@@ -1904,7 +1904,7 @@ access_answer :: (s: [] Builder, t: [] Track, text: string) { builder_access_sen
 }
 
 // ---------------------------------------------------------------------------------------------
-// The frame budget (aethyr/budget.coax, book chapter 16): what one frame of the realm builder may use.
+// The frame budget (aethyr/core/budget.coax, book chapter 16): what one frame of the realm builder may use.
 // The vertex limit is under the vertex buffer, so a frame its writers clip fails the check.
 BUILDER_BUDGET :: FrameBudget.{steps = 8, vertices = 3000, draws = 0, bytes = 2162688};
 

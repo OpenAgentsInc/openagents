@@ -147,8 +147,8 @@ for realm in "${realms[@]}"; do
   cp "$here"/vkhands.h "$ship/"
   # the typed renderer's window session, as aethyr/host/emit-linux-world-shell.coax emits it
   (cd "$root" && "${COAX:-$root/coax/bin/coax}" c aethyr/host/linux-window-session.coax --library --header "$ship/linux-window-session.h") > "$ship/linux-window-session.c"
-  # the film profile (aethyr/film.coax, #13004): vk-realm's samples, jitter and lens
-  (cd "$root" && "${COAX:-$root/coax/bin/coax}" c aethyr/film.coax --library --header "$ship/film.h") > "$ship/film.c"
+  # the film profile (aethyr/render/film.coax, #13004): vk-realm's samples, jitter and lens
+  (cd "$root" && "${COAX:-$root/coax/bin/coax}" c aethyr/render/film.coax --library --header "$ship/film.h") > "$ship/film.c"
   # the kms headers apart: a module has a realm.h of its own (the realm module's), and keys.h finds its sibling first
   mkdir -p "$ship/kms" && cp "$root"/verse/kms/evdev.h "$root"/verse/kms/mice.h "$root"/verse/kms/keys.h "$root"/verse/kms/realm.h "$ship/kms/"
   [[ "$realm" == everglade ]] && cp "$root/apps/openagents-web/realms/everglade/assets/everglade.pack" "$root/verse/native/everglade.facts" "$ship/"

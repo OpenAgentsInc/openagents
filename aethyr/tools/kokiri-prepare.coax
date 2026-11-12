@@ -6,7 +6,7 @@
 #load "../../coax/lib/sys/fs.coax";
 #load "../../coax/lib/sys/proc.coax";
 #load "../../coax/lib/json/json.coax";
-#load "../../aethyr/assets.coax";
+#load "../core/assets.coax";
 #load "../../verse/valley/scan.coax";
 #test "Kokiri preparation reads Zstandard dictionary widths and window descriptor" {
  b:[16]u8;scan_put(b[..],0,0xfd2fb528);b[4]=0x21;b[5]=3;#assert kp_dict(b[..])==3;

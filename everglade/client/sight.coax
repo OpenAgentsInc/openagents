@@ -1,5 +1,5 @@
 // Whether a body shows from Everglade II's camera, for what floats over it (zone wiring for the
-// engine's visibility service, aethyr/visibility.coax, through aethyr/ui/hud-sight.coax): this zone's
+// engine's visibility service, aethyr/physics/visibility.coax, through aethyr/ui/hud-sight.coax): this zone's
 // colliders across the line from the eye to the body (its trunks as upright capsules, its rocks' and
 // the camp's hulls) and its land's heights under the line (e2_height). A plate, its health bar, a name
 // or a damage number over a body shows only while the service sees the body, and fades over 0.15 s.

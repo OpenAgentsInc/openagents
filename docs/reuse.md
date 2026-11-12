@@ -31,15 +31,15 @@ undo was hand-rolled and had no redo, while Aethyrforge's edit log had both.
 | Drawing UI on the GPU or in a terminal | Backends | `components/backend/` |
 | Editing a world: typed edits, undo and redo, revision-checked saves | Aethyrforge's edit log | `aethyr/forge/edit.coax`, `aethyr/forge/doc.coax` |
 | Publishing or packing a realm | Aethyrforge | `aethyr/forge/publish.coax`, `aethyr/forge/pack.coax` |
-| The player character, walking, WASD, jump, touch stick | The Everglade zone controller | `everglade/zone.coax`, `everglade/zone-touch.coax`, `aethyr/walk.coax`, `aethyr/player.coax` |
-| A follow, orbit or free camera | Aethyr's cameras | `aethyr/follow.coax`, `aethyr/orbit.coax`, `aethyr/camera.coax`, `aethyr/cam/` |
-| Characters, rigs, faces, poses, materials | Aethyr's character | `aethyr/character/`, `aethyr/character-appearance.coax` |
-| Ground, terrain, heights, ground rays | Aethyr's terrain | `aethyr/terrain.coax`, `aethyr/terrain-tile.coax`, `aethyr/ground-query.coax` |
-| Collision, contact, queries | Aethyr | `aethyr/collide.coax`, `aethyr/contact.coax`, `aethyr/query.coax` |
-| Scattering things, grass, props | Aethyr | `aethyr/scatter.coax`, `aethyr/render/` |
-| Rendering, lighting, shadows, quality tiers | Aethyr's renderer and governor | `aethyr/render/`, `aethyr/quality.coax`, `aethyr/frame-pacing.coax` |
+| The player character, walking, WASD, jump, touch stick | The Everglade zone controller | `everglade/zone.coax`, `everglade/zone-touch.coax`, `aethyr/move/walk.coax`, `aethyr/move/player.coax` |
+| A follow, orbit or free camera | Aethyr's cameras | `aethyr/cam/follow.coax`, `aethyr/physics/orbit.coax`, `aethyr/cam/camera.coax`, `aethyr/cam/` |
+| Characters, rigs, faces, poses, materials | Aethyr's character | `aethyr/character/`, `aethyr/character/character-appearance.coax` |
+| Ground, terrain, heights, ground rays | Aethyr's terrain | `aethyr/world/terrain.coax`, `aethyr/world/terrain-tile.coax`, `aethyr/physics/ground-query.coax` |
+| Collision, contact, queries | Aethyr | `aethyr/physics/collide.coax`, `aethyr/physics/contact.coax`, `aethyr/physics/query.coax` |
+| Scattering things, grass, props | Aethyr | `aethyr/world/scatter.coax`, `aethyr/render/` |
+| Rendering, lighting, shadows, quality tiers | Aethyr's renderer and governor | `aethyr/render/`, `aethyr/core/quality.coax`, `aethyr/core/frame-pacing.coax` |
 | Multiplayer: transport, replication, prediction, rewind | Aethyr's netcode | `aethyr/net/` |
-| Steering and pathfinding | Aethyr | `aethyr/ai/`, `aethyr/nav/` |
+| Steering and pathfinding | Aethyr | `aethyr/ai/`, `aethyr/world/nav/` |
 | The Grid | The Grid and its session | `verse/grid.coax`, `verse/gridwalk.coax` |
 | 3D models | The asset registry | `assets/registry/` (read its README) |
 | Hashes, signatures, encryption | Coax crypto | `coax/lib/crypto/` |

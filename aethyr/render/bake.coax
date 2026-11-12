@@ -3,7 +3,7 @@
 // state they were baked for.
 //
 // Profile `aethyr.bake.grid.v1` (BAKE_VERSION 1, BAKE_PROFILE_GRID 1):
-//   - Coordinates: the bake's grid is its tile's (aethyr/terrain-tile.coax): the same cells,
+//   - Coordinates: the bake's grid is its tile's (aethyr/world/terrain-tile.coax): the same cells,
 //     spacing and f64 origin, so the one floating-origin conversion places both. It is valid on
 //     the tile's rectangle, edges included. Past it a sample is the fallback.
 //   - Encoding: per sample, AO as f32 in 0..1 (the share of the sky's diffuse light that reaches
@@ -29,7 +29,7 @@
 
 #module "aethyr.render.bake";
 #authority;
-#load "../terrain-tile.coax";
+#load "../world/terrain-tile.coax";
 #load "terrain-shade.coax";
 #load "tests/bake-fixtures.coax";
 

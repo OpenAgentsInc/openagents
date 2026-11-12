@@ -1,5 +1,5 @@
 // Camera and sight query classes (GitHub #13026). One realm world, admitted once
-// (aethyr/query-scene.coax), answers walking, the camera and sight. What blocks each is a query
+// (aethyr/physics/query-scene.coax), answers walking, the camera and sight. What blocks each is a query
 // property, never a collision-pair permission, so a realm tags each collider with the classes below
 // (QueryCollider.categories) and each purpose selects through its own filter:
 //
@@ -19,8 +19,8 @@
 //   coax/bin/coax test aethyr/cam/filters.coax --library
 
 #module "aethyr.cam.filters";
-#load "../query-scene.coax";
-#load "../entity.coax" as ents;
+#load "../physics/query-scene.coax";
+#load "../core/entity.coax" as ents;
 #load "attention.coax" as attn;
 
 CAM_CLASS_SOLID :: cast(u32) 1;

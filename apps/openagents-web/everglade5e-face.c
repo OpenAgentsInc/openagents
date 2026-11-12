@@ -16,7 +16,7 @@
 // Everglade's face, as it says of itself:
 //
 // Everglade's C face for the browser (coax/web/host.js): everglade.coax is
-// the page, aethyr/player.coax walks you (its own library, as the realm
+// the page, aethyr/move/player.coax walks you (its own library, as the realm
 // links it) and verse/grid.coax reads a phone's thumbs. Once a frame it
 // passes values between them in order: the page's controls, the player's
 // step among the city's walls, then the page's frame with where you
@@ -349,7 +349,7 @@ EXPORT("coaxial_probe") int32_t coaxial_probe(cx_face_addr state) {
 }
 
 // Your body as this frame drew it, for a headless walk (globalThis.coaxial.fieldProbe(field)):
-// 0, 1, 2 the drawn feet in mm; 3 the controller's act (3 airborne); 4 the clip playing (aethyr/skin.coax
+// 0, 1, 2 the drawn feet in mm; 3 the controller's act (3 airborne); 4 the clip playing (aethyr/anim/skin.coax
 // SKIN_*, 3 the jump); 5 the gait's speed squared in cm^2/s^2 / 100; 6 the room's re-runs so far;
 // 7 the last re-run's move, squared, in mm^2.
 static float probe_feet[3], probe_speed, probe_fix;
@@ -406,7 +406,7 @@ uint32_t coaxial_frame(cx_face_addr state, cx_face_addr vertices, cx_face_addr u
   frames += 1;
   coax_t_Everglade *g = city(state);
   width = w; height = h; dpr = scale;
-  float frame = dt;   /* the player's clock (aethyr/loop.coax) steps it; the rest moves by what it counts */
+  float frame = dt;   /* the player's clock (aethyr/core/loop.coax) steps it; the rest moves by what it counts */
   quality_state = state;
   everglade_quality_frame(at(state), frame, golden);   /* the graphics quality's governor (everglade-quality.coax) */
   e5_tick(e5v(), frame);   /* the frame rate in the corner (everglade5e.coax e5_fps_draw) */
@@ -466,7 +466,7 @@ uint32_t coaxial_frame(cx_face_addr state, cx_face_addr vertices, cx_face_addr u
       probe_fix = dx * dx + dy * dy + dz * dz;
     }
     /* the time the player's clock counted this frame (dt: a frame over 0.25 s counts as 0.25 s,
-       aethyr/loop.coax), as offline's step takes: a hitch costs a room the walk it costs offline. Its own
+       aethyr/core/loop.coax), as offline's step takes: a hitch costs a room the walk it costs offline. Its own
        0.13 s cap here dropped up to 0.12 s more of every long frame, so a room walked short of offline
        by the frames the page hitched on (#12718). */
     step_acc += dt;

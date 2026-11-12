@@ -1,8 +1,8 @@
 // Everglade v2's C face for the browser (coax/web/host.js): scalar Wasm exports over everglade/client/client.coax,
 // which says what is round you, where you may stand and what is drawn. It decides nothing.
 // The controller steps your body as fivelab-face.c's Player mode does: everglade-step.coax
-// (aethyr/walk.coax, with player.coax's verse_player_*) on the keys and a phone's thumbs
-// (aethyr/sticks.coax). The scene is three stores: the records (the glade, its grass, your
+// (aethyr/move/walk.coax, with player.coax's verse_player_*) on the keys and a phone's thumbs
+// (aethyr/core/sticks.coax). The scene is three stores: the records (the glade, its grass, your
 // character's parts), the clips baked once (into the state, sized by everglade/scene/bodies.coax), and the
 // kit pieces in view this frame.
 // In a room (everglade/client/net.coax, #13054) the controller steps at the room's rate, 1/30 s, each step's

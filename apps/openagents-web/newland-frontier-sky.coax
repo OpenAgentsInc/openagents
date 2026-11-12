@@ -5,7 +5,7 @@
 //   a wedge-shaped destroyer. On "Trek" the cruiser holds a beam on the wedge's shield; on
 //   "Wars" the wedge answers with bolts. Then the cruiser stretches into warp and the wedge
 //   jumps through streaking stars, and the sky is the solar system's.
-// - Earth or Mars or belt or outer planets: Belt 2200's space (aethyr/orbit.coax, as belt.coax
+// - Earth or Mars or belt or outer planets: Belt 2200's space (aethyr/physics/orbit.coax, as belt.coax
 //   draws it): the real solar system from 1 January 2200 at FR_DAYS a second, each world a
 //   wireframe globe on its J2000 orbit (its far side faint), Earth with the Moon, Jupiter
 //   banded, Saturn ringed, Ceres with a spinning ring station, the Belt's rocks tumbling on their

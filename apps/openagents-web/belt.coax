@@ -1,8 +1,8 @@
 // Belt 2200, openagents.com/worlds/belt-2200: the first playable of the hard
 // sci-fi RTS (docs/verse/game-ideas/belt-2200.md). This file is the game's
-// rules and its drawing only; the space is the engine's: aethyr/orbit.coax
+// rules and its drawing only; the space is the engine's: aethyr/physics/orbit.coax
 // (Kepler orbits, the ephemeris, Lambert transfers, the rocket equation),
-// aethyr/spacecam.coax (the floating origin and twelve decades of zoom) and
+// aethyr/cam/spacecam.coax (the floating origin and twelve decades of zoom) and
 // verse/stars.coax (the sky, in belt.wgsl). docs/verse/space.md lists them.
 //
 // You run the Free Belt's Hearth Station at Ceres and three ships. Select a
@@ -22,9 +22,9 @@
 
 #load "../../aethyr/ui/font.coax";
 #load "../../coax/web/analytics.coax";
-#load "../../aethyr/orbit.coax";
-#load "../../aethyr/spacecam.coax";
-#load "../../aethyr/command.coax";
+#load "../../aethyr/physics/orbit.coax";
+#load "../../aethyr/cam/spacecam.coax";
+#load "../../aethyr/core/command.coax";
 #load "belt-station.coax";
 #load "belt-tactical.coax";
 #load "belt-rival.coax";
@@ -32,8 +32,8 @@
 #load "belt-lockstep.coax";
 #load "lockroom.coax";
 #load "belt-net.coax";
-#load "../../aethyr/budget.coax";
-#load "../../aethyr/loop.coax";      // the lockstep ticks' clock (belt-net.coax) and the battle's (tac_clock)
+#load "../../aethyr/core/budget.coax";
+#load "../../aethyr/core/loop.coax";      // the lockstep ticks' clock (belt-net.coax) and the battle's (tac_clock)
 
 VERTEX_FLOATS :: 12;
 MAX_VERTICES :: 90000;
@@ -164,7 +164,7 @@ Belt :: struct {
   ships: [SHIPS] Ship; ship_n: int;
   rocks: [ROCKS] Rock;
   ices: [ICE_ROCKS] Orbit;
-  cmd: [1] Command;      // which ships are chosen, the control groups and each ship's queue of orders (aethyr/command.coax)
+  cmd: [1] Command;      // which ships are chosen, the control groups and each ship's queue of orders (aethyr/core/command.coax)
   press_t: f32;          // when a finger went down, for a long-press
   dest: int = -1;        // the destination being planned, -1 none
   eco: Plan; fast: Plan; replan: f32;
@@ -380,7 +380,7 @@ ship_state :: (s: [] Belt, k: int, t: f64) -> State {
 }
 
 // A ship in flight: its heliocentric coast, handed over to a hyperbola about the world it
-// leaves or reaches inside that world's sphere of influence (aethyr/orbit.coax), so it swings
+// leaves or reaches inside that world's sphere of influence (aethyr/physics/orbit.coax), so it swings
 // out from its world and in to its periapsis instead of flying through the centres.
 is_world :: (p: int) -> bool { return p >= 1 && p < BODIES; }
 flight_state :: (sh: Ship, t: f64) -> State {
@@ -1096,7 +1096,7 @@ REPAIR_METAL :: 200.0;      // t of metal a whole hull
 TAC_RATE :: 12.0;           // battle seconds a real second (four times that, faster)
 TAC_STEP_NS :: 100000000;   // TAC_STEP (belt-tactical.coax) in nanoseconds of battle time
 TAC_MAX_FRAME_NS :: 4800000000;   // the longest frame, 0.1 s, at the fastest rate (4 TAC_RATE): 4.8 battle seconds
-TAC_CATCH_UP :: 8;         // steps a frame may run (aethyr/budget.coax): 1X keeps its pace down to 15 FPS, 4X to 60
+TAC_CATCH_UP :: 8;         // steps a frame may run (aethyr/core/budget.coax): 1X keeps its pace down to 15 FPS, 4X to 60
 tac_begin :: (s: [] Belt, i: int, j: int, t: f64) {
   tac_clear(s[0].tac[..], cast(u64) (i * 977 + j * 131 + safe_int(t / 60.0) % 100000 + 1));
   a := ship_state(s, i, t); b := ship_state(s, j, t);   // flying, or (met at a rock or the Unknown) parked
@@ -2788,7 +2788,7 @@ belt_step :: (s: [] Belt, dt: f32) {
   if lr_on(s[0].lock[..]) { net_frame(s, real); game = 0.0; }
   if s[0].tac[0].on && !lr_on(s[0].lock[..]) {
     game = 0.0;
-    // Aethyr's clock in battle time (aethyr/loop.coax): the frame's battle seconds are owed and
+    // Aethyr's clock in battle time (aethyr/core/loop.coax): the frame's battle seconds are owed and
     // whole TAC_STEPs run; a battle that ends leaves the rest unpaid.
     c := loop_accept(s[0].tac_clock, real * TAC_RATE * (ifx s[0].tac_fast then 4.0 else 1.0));
     ran := 0;
@@ -3740,7 +3740,7 @@ stage_hud :: (s: [] Belt, out: [] f32, u: [] f32, d: [] Draw) {
 }
 
 // ---------------------------------------------------------------------------------------------
-// The frame budget (aethyr/budget.coax, book chapter 16): what one frame of Belt 2200 may use.
+// The frame budget (aethyr/core/budget.coax, book chapter 16): what one frame of Belt 2200 may use.
 // The vertex limit is under the vertex buffer, so a frame its writers clip fails the check.
 BELT_BUDGET :: FrameBudget.{steps = 8, vertices = 56000, draws = 0, bytes = 5373952};
 

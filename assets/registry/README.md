@@ -32,7 +32,7 @@ advertises seven monsters; those extra models are not in the Standard download.
 
 An authoring ID such as `quaternius/nature/birch-1` is a stable lookup key, not
 Aethyr's `AssetId`. Runtime asset identity remains SHA-256 of actual bytes,
-with the existing bounded, whole-pack admission in `aethyr/assets.coax`.
+with the existing bounded, whole-pack admission in `aethyr/core/assets.coax`.
 
 * `packages/NAME.json` pins the exact source snapshot.
 * `packages/NAME.files.json` inventories every source file by relative path,

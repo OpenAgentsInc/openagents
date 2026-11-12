@@ -5,7 +5,7 @@
 // Everglade's skinned people, dressed for their class. fivemmo-battle.coax runs the fight on the
 // SRD 5e engine (rules/srd/); this file draws it: the bodies and their clips (idle, walk,
 // cast, slash, die), the weapons, the names and hit points over heads, and the HUD. The face
-// (fivemmo-face.c) walks you with aethyr/player.coax and hands this file the battle's numbers.
+// (fivemmo-face.c) walks you with aethyr/move/player.coax and hands this file the battle's numbers.
 // How your walking maps onto squares: realms/5e-mmo/index.md.
 //   coax/bin/coax test apps/openagents-web/fivemmo.coax --only "5E MMO"
 //
@@ -148,7 +148,7 @@ mmo_set_name :: (m: [] Mmo, i: int, name: string) #export_c #effects(all) {
 mm_name :: (m: [] Mmo, i: int) -> string { return cast(string) m[0].name[i * MM_NAME..<i * MM_NAME + m[0].name_n[i]]; }
 
 // The pace the controller walks you at: the engine's squares a beat as metres a second, over
-// aethyr/walk.coax's walk (3.5 m/s). 0 when you can't move (Restrained, Paralyzed, down).
+// aethyr/move/walk.coax's walk (3.5 m/s). 0 when you can't move (Restrained, Paralyzed, down).
 mmo_pace :: (m: [] Mmo) -> f32 #export_c #effects(all) {
   me := m[0].me;
   if me < 0 || me >= m[0].n || m[0].flags[me] & MM_UP == 0 || m[0].beat <= 0 { return 0; }

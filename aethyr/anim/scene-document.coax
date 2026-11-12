@@ -1,5 +1,5 @@
 #load "performance-document.coax";
-#load "../cinematic.coax";
+#load "../cam/cinematic.coax";
 #load "scene-document-checks.coax";
 #authority;
 AnimPath :: struct {count:int;time:[32]f32;point:[32]Point;yaw:[32]f32;}

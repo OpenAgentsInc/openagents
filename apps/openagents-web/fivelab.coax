@@ -18,7 +18,7 @@
 // grid and the tokens and areas are strokes. Either way the labels, effects and text are fx
 // strokes (font.coax) and bg_fs puts the log's glass under them.
 // Player mode (P) plays one hero on Everglade's controller and follow camera (fivelab-face.c,
-// everglade-step.coax, aethyr/camera.coax): W A S D, Shift, Space, a drag or a phone's thumbs; the
+// everglade-step.coax, aethyr/cam/camera.coax): W A S D, Shift, Space, a drag or a phone's thumbs; the
 // token walks the squares to your body on your turns (player_turn, lab_keep). Escape pauses.
 //   coax/bin/coax test apps/openagents-web/fivelab.coax
 //
@@ -32,11 +32,11 @@
 #load "../../verse/experimental-village.coax" as village;
 #load "../../verse/experimental-hostiles.coax" as hostile;
 #load "../../verse/experimental-dungeon.coax" as xdungeon;
-#load "../../aethyr/loop.coax";
+#load "../../aethyr/core/loop.coax";
 #load "../../rules/srd/battle.coax";
 #load "../../rules/srd/condition-display.coax";   // the conditions' words and icons, every zone's (#13082)
-#load "../../aethyr/shot.coax" as ash;   // the camera's orbit is Aethyr's (book chapter 10)
-#load "../../aethyr/space.coax" as asp;
+#load "../../aethyr/cam/shot.coax" as ash;   // the camera's orbit is Aethyr's (book chapter 10)
+#load "../../aethyr/core/space.coax" as asp;
 #load "../../aethyr/fx/puff.coax";   // the glade's spell and combat effects (book chapter 72)
 #load "../../aethyr/fx/battle.coax";   // which effect each battle event starts (#13086)
 #load "../../aethyr/fx/flat.coax";     // the flat view draws the same effects from above
@@ -207,8 +207,8 @@ Lab :: struct {
   eye: P3; fwd: P3; right: P3; up: P3; focal: f32; cx: f32; cy: f32;
   // the figures (everglade/scene/bodies.coax): their playback, and the squares the Horde filled afresh
   fresh: [LAB_MAX] bool;
-  // Player mode's camera and your body: Everglade's free orbit (aethyr/camera.coax) behind the body
-  // Everglade's controller walks (fivelab-face.c: aethyr/walk.coax through everglade-step.coax)
+  // Player mode's camera and your body: Everglade's free orbit (aethyr/cam/camera.coax) behind the body
+  // Everglade's controller walks (fivelab-face.c: aethyr/move/walk.coax through everglade-step.coax)
   orbit: figs.Orbit; look_yaw: f32; look_pitch: f32;   // a drag's look, spent each frame
   blend: f32;                       // 0 the spectator's camera, 1 the follow camera; it swings between
   you_me: int = -1;   // the hero your body is (the body itself is the zone's: you_on, you_x, put_x)
@@ -1689,7 +1689,7 @@ set_player :: (s: [] Lab, on: bool) {
 }
 
 // ---- Player mode's body and camera: Everglade's. fivelab-face.c steps Everglade's controller
-// (aethyr/walk.coax through everglade-step.coax's eg_step_begin and eg_step_advance, the steps
+// (aethyr/move/walk.coax through everglade-step.coax's eg_step_begin and eg_step_advance, the steps
 // Everglade's page and room server run) on the keys and the thumb's stick each frame; this is the
 // world's half: the figures round you, your Speed and what holds you, and where your body is
 // held. Your body moves freely; the rules still decide: your token walks the squares to your body
@@ -1823,7 +1823,7 @@ lab_you :: (s: [] Lab, x: f32, y: f32, z: f32, face: f32, airborne: bool, touch:
   if touch { s[0].w[0].touch = true; }
   s[0].w[0].stick_on = stick_on; s[0].w[0].stick_ox = ox; s[0].w[0].stick_oy = oy; s[0].w[0].stick_px = px; s[0].w[0].stick_py = py;
 }
-// A thumb's look and pinch (aethyr/sticks.coax), as a drag and the wheel.
+// A thumb's look and pinch (aethyr/core/sticks.coax), as a drag and the wheel.
 lab_look :: (s: [] Lab, dyaw: f32, dpitch: f32, zoom: f32) #export_c #effects(all) {
   s[0].look_yaw += dyaw; s[0].look_pitch += dpitch;
   s[0].orbit = figs.cam_pinch(s[0].orbit, zoom);
@@ -2562,7 +2562,7 @@ lab_player_bar :: (s: [] Lab, out: [] f32, at: int, k: f32) -> int {
           else "W A S D MOVE  SHIFT WALK  DRAG LOOK  SPACE JUMP  WHEEL ZOOM  1 TO 9 ACT  CLICK OR TAB TARGET  [ ] CLASS";
   room := ifx s[0].portrait then s[0].width - 32 * k else s[0].panel.x0 - 300 * k;
   n = say_at(out, n, keys, 16 * k, ifx nab > 0 then r0.y1 + 14 * k else s[0].cy, ln_fit(keys, 8.5 * k, room), ink(k, 0.9, GOLD));
-  // the thumb's stick: where it is held, or where to put your thumb (aethyr/sticks.coax's ring)
+  // the thumb's stick: where it is held, or where to put your thumb (aethyr/core/sticks.coax's ring)
   if s[0].w[0].touch {
     sr := 56 * k;
     ox := ifx s[0].w[0].stick_on then s[0].w[0].stick_ox else s[0].width * 0.22;

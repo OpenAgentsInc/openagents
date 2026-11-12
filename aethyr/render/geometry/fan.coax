@@ -1,7 +1,7 @@
 // A deliberately constrained simplification fixture: an axis-aligned square
 // pyramid fan. Only its interior apex is removed; all four boundary edges stay.
 // It is not an arbitrary mesh simplifier. Callers supply a finite height.
-#load "../../points.coax";
+#load "../../core/points.coax";
 FAN_SOURCE :: [12]u32.[0,4,1,1,4,2,2,4,3,3,4,0];
 FAN_COARSE :: [6]u32.[0,2,1,0,3,2];
 FanPatch :: struct {p:[5]Point;i:[12]u32;vertices:int;indices:int;error:f32;}

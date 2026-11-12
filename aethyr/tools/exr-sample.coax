@@ -3,7 +3,7 @@
 // DIR gets none.exr, zips.exr and zip.exr, each 37x21 with half R, G, B, A and a float
 // depth.Z, from tests/exr-image.coax.
 #import "Basic";
-#load "../exr.coax";
+#load "../render/exr.coax";
 #load "../tests/exr-image.coax";
 #load "../../coax/lib/sys/tool.coax";
 #load "../../coax/lib/sys/fs.coax";

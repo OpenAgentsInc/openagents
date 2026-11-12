@@ -2,7 +2,7 @@
 // JSON nodes and pack views are borrowed only for the synchronous call.
 #load "../../coax/lib/json/json.coax";
 #load "../../coax/lib/nostr/json.coax";
-#load "../assets.coax";
+#load "../core/assets.coax";
 #load "pose.coax";
 #load "field-catalog.coax";
 #load "document-checks.coax";

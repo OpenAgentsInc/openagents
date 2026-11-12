@@ -1,7 +1,7 @@
-// Book chapter 26: aethyr/sim/mpm.coax's MLS-MPM. An elastic block falls
+// Book chapter 26: aethyr/physics/sim/mpm.coax's MLS-MPM. An elastic block falls
 // and bounces off the floor; columns of sand of two aspect ratios collapse
 // and spread; the example prints the block's height and the sand's runout.
-#load "../sim/mpm.coax";
+#load "../physics/sim/mpm.coax";
 #import "Basic";
 
 r4 :: (x: f64) -> f64 { return floor(x * 10000.0 + 0.5) / 10000.0; }

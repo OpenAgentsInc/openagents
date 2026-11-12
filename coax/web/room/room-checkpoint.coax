@@ -1,4 +1,4 @@
-#load "../../../aethyr/ids.coax";
+#load "../../../aethyr/core/ids.coax";
 // Character checkpoint profile 2. All effects here consume the shared checked
 // capture/flow policies. A schema 1 seat keeps the legacy path unchanged.
 #load "../../../aethyr/session/checkpoint-flow.coax";

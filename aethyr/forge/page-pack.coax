@@ -3,7 +3,7 @@
 // pack byte for byte, as pages a browser fetches with HTTP Range, each deflated on its own and
 // each named by the SHA-256 of its decoded bytes. A small manifest lists the pages; its own SHA-256
 // is in the header beside the image's. A client admits each page here, by content, as it arrives
-// (aethyr/assets.coax identities), so a page from another deploy or a damaged range is refused and
+// (aethyr/core/assets.coax identities), so a page from another deploy or a damaged range is refused and
 // fetched again, never used. The image's root pages are enough to publish it; the rest may follow.
 // VPK1 stays as it was: the assembled image is the VPK1 file, so its readers and pins don't change.
 //

@@ -1,5 +1,5 @@
 // The exact native HLOD instance pair; geometry is the source asset, not its render fallback.
-#load "../../aethyr/points.coax";
+#load "../../aethyr/core/points.coax";
 CANYON_TRIANGLES :: 999995;
 CANYON_VERTICES :: 504367;
 CANYON_CATALOG :: "VALLEY_CANYON_PAIR_V1 / 504367 vertices / 999995 triangles / source geometry / 4096 albedo + roughness";

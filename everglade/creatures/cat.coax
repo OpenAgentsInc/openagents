@@ -12,7 +12,7 @@
 // head is toward +Z.
 //   coax/bin/coax test everglade/creatures/cat.coax --library
 #module "everglade.cat";
-#load "../../aethyr/rand.coax";
+#load "../../aethyr/core/rand.coax";
 
 EG_CAT_FRAMES :: 64;
 EG_CAT_IDLE :: 0; EG_CAT_WALK :: 1; EG_CAT_SIT :: 2;

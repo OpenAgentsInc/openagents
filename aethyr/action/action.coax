@@ -1,7 +1,7 @@
 // Actions (book chapters 9 and 14, GitHub #12993): one authoritative lifecycle for a swing, a cast, a
 // landing or a block. An action definition is versioned and admitted whole: a stable action ID, the
 // realm's clip reference, its movement owner, its length and its timed events in integer simulation
-// ticks (aethyr/loop.coax's 1/64 s), its sensor window and its cancel window. An instance carries an
+// ticks (aethyr/core/loop.coax's 1/64 s), its sensor window and its cancel window. An instance carries an
 // authoritative instance ID and the tick it started; advancing it to a tick hands back every event
 // crossed since the last advance exactly once, in tick order, however the frames fall (stalls,
 // catch-up, one tick at a time). Time scaling is a rational num/den on the elapsed ticks, never a float.
@@ -13,7 +13,7 @@
 
 ACTION_EVENTS :: 16;          // timed events one definition may declare
 ACTION_TICKS_MAX :: 3840;     // one minute at 64 ticks a second: a longer action is not one
-ACTION_TICK_HZ :: 64;         // aethyr/loop.coax LOOP_STEP_NS: the walking realms' step
+ACTION_TICK_HZ :: 64;         // aethyr/core/loop.coax LOOP_STEP_NS: the walking realms' step
 ACTION_SCALE_MAX :: 64;       // a time scale's numerator and denominator stay within 1..64
 
 ActionEventKind :: enum u8 { none; window_open; window_close; impact; cancel_open; cancel_close; cue; }

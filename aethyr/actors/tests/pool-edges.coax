@@ -1,4 +1,4 @@
-#load "../../entity.coax" as entities;
+#load "../../core/entity.coax" as entities;
 #load "../../ai/decide.coax" as decisions;
 #test "direct spawns publish exact scoped clock and model catalogue without an override wrapper" #steps 200000000 #traversal 2000000000 {
  f:=actor_test_pool();refs:StateRefs;d:=f.definition;d.parameters.hooks=1;d.parameters.schedule[0].field=f.resources.schema.fields[0].id;

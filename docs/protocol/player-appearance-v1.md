@@ -3,7 +3,7 @@
 A player's chosen look, class and level, as one line of ASCII text. The
 schema ID is `aethyr.player.appearance.v1`. Profile:
 [`player-appearance-v1.json`](../../proto/aethyr/player-appearance-v1.json).
-Codec: `aethyr/character-appearance.coax` (`ca_save`, `ca_restore`), which
+Codec: `aethyr/character/character-appearance.coax` (`ca_save`, `ca_restore`), which
 Character Create, Everglade's join and the room's hello all call.
 
 The page host keeps the text on the player's device under the schema ID:

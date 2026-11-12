@@ -12,8 +12,8 @@
 
 #module "aethyr.action.attachoverlap";
 #authority;
-#load "../space.coax";
-#load "../stand.coax";   // stand_lo and stand_hi
+#load "../core/space.coax";
+#load "../physics/stand.coax";   // stand_lo and stand_hi
 
 // book:begin types
 OVERLAP_BONES_MAX :: 32;      // bones one pose may list

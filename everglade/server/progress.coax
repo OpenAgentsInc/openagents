@@ -1,4 +1,4 @@
-#load "../../aethyr/ids.coax";
+#load "../../aethyr/core/ids.coax";
 // Everglade II's progress in a room: XP and its awards, the hello's demo flag, a fallen player's
 // rise, and the Long Rest (#12801). Moved from coax/web/room/room-events.coax, whose world events
 // (the Cultist Raid and its standing siege, the g and v entries, levels 1 to 3 by the SRD kits) were

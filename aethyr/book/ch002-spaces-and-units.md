@@ -1,8 +1,8 @@
 # 2. Spaces and units
 
 > Engine-core task: `ec-space` (#12609). The module
-> [aethyr/space.coax](../space.coax) and its refusal check
-> [aethyr/refusals.coax](../refusals.coax) landed in `a93d35c2dd`.
+> [aethyr/core/space.coax](../core/space.coax) and its refusal check
+> [aethyr/core/refusals.coax](../core/refusals.coax) landed in `a93d35c2dd`.
 > This chapter's profile is native f32 spatial boundaries: typed conversions,
 > compiler refusals, and the interpolated world anchor consumed by every
 > current avatar renderer. It does not qualify browser pixels or consolidate
@@ -41,7 +41,7 @@ types apart: if you pass a `GridPoint` to a function that takes a
 | screen | `ScreenPoint` | CSS pixels. `+y` is down. |
 | grid | `GridPoint` | The Grid's drawing units, two metres each, measured from the middle of the places. |
 
-<!-- source: aethyr/space.coax types -->
+<!-- source: aethyr/core/space.coax types -->
 ```jai
 WorldPoint :: struct { x: f32; y: f32; z: f32; }
 LocalPoint :: struct { x: f32; y: f32; z: f32; }
@@ -69,7 +69,7 @@ Distances use Coax's `quantity` library, the first part of roadmap item R12.
 A grid unit is a unit of length equal to two metres. Two is a power of two, so
 the conversion is exact. Use `grid_metres` to convert; there is no other way.
 
-<!-- source: aethyr/space.coax units -->
+<!-- source: aethyr/core/space.coax units -->
 ```jai
 // A grid unit is two metres (the Grid draws a metre as half a unit, newland-walkers.coax
 // WALK_SCALE): a power of two, so converting is exact.
@@ -84,7 +84,7 @@ The Grid draws one metre as half a unit. It must scale heights by the same
 factor as the ground. `world_to_grid` is the only function that converts a
 world point for the Grid's drawing, and it scales all three axes:
 
-<!-- source: aethyr/space.coax grid -->
+<!-- source: aethyr/core/space.coax grid -->
 ```jai
 // The world as the Grid draws it: `mid` is the places' middle in grid units, and grid
 // heights are metres times GRID_PER_METRE too, so a figure's feet are drawn at its physics height.
@@ -101,7 +101,7 @@ screen. If a point is nearer than the near plane, or behind the camera,
 `view_to_screen` returns `Seen.ok` as `false`. It doesn't project the point
 to the wrong side of the screen.
 
-<!-- source: aethyr/space.coax screen -->
+<!-- source: aethyr/core/space.coax screen -->
 ```jai
 world_to_view :: (l: Lens, w: WorldPoint) -> ViewPoint {
   v := world_sub(w, l.eye);
@@ -123,7 +123,7 @@ converts a figure's feet at the top of a jump into every space:
 
 <!-- source: aethyr/examples/feet-in-every-space.coax example -->
 ```jai
-#load "../space.coax";
+#load "../core/space.coax";
 #import "Basic";
 
 // A figure at the top of its jump, 1.17 m up, followed through every space by name.
@@ -181,7 +181,7 @@ the interpolation on all three axes.
 The existing realm boundary keeps its `Point` layout for C callers, but
 the conversion goes through Aethyr's distinct local and world types:
 
-<!-- source: aethyr/points.coax feet -->
+<!-- source: aethyr/core/points.coax feet -->
 ```jai
 // A realm that steps its controller on a flat floor supplies that floor's world
 // height from its terrain or bridge once. Figures and cameras share the resulting
@@ -211,8 +211,8 @@ performs that calculation, then converts to Grid units with a nonzero origin:
 
 <!-- source: aethyr/examples/feet-at-a-realm-boundary.coax example -->
 ```jai
-#load "../points.coax";
-#load "../space.coax" as engine;
+#load "../core/points.coax";
+#load "../core/space.coax" as engine;
 #import "Basic";
 
 main :: () {
@@ -255,14 +255,14 @@ python3 aethyr/tests/check_drawn_feet.py --coax coax/bin/coax
 A type error is only useful if a check keeps it in place. Otherwise, a later
 cast can remove it without anyone noticing. Each fixture in
 `aethyr/tests/spaces/` states on its first line what the compiler must
-report. The tool `aethyr/refusals.coax` compiles each fixture and compares
+report. The tool `aethyr/core/refusals.coax` compiles each fixture and compares
 the result.
 
 This fixture passes a grid point where a world point is required:
 
 <!-- source: aethyr/tests/spaces/grid-as-world.coax fixture -->
 ```jai
-#load "../../space.coax";
+#load "../../core/space.coax";
 f :: (l: Lens, g: GridPoint) -> Seen { return world_to_screen(l, g); }
 main :: () {}
 ```
@@ -275,7 +275,7 @@ This fixture adds metres to grid units:
 
 <!-- source: aethyr/tests/spaces/metres-plus-grid.coax fixture -->
 ```jai
-#load "../../space.coax";
+#load "../../core/space.coax";
 f :: (a: WorldPoint, g: GridPoint) -> f32 { d := world_distance(a, a) + grid_distance(g, g); return d.value; }
 main :: () {}
 ```
@@ -297,7 +297,7 @@ There are six fixtures:
   reason; the control catches that.
 
 ```shell
-coax/web/tool.sh aethyr/refusals.coax
+coax/web/tool.sh aethyr/core/refusals.coax
 ```
 
 ```text
@@ -313,13 +313,13 @@ ok   aethyr/tests/spaces/world-as-view.coax (E0317)
 ## Checks
 
 ```shell
-coax/bin/coax test aethyr/space.coax --library
-coax/bin/coax mutate aethyr/space.coax
-coax/bin/coax test aethyr/refusals.coax --library
-coax/bin/coax mutate aethyr/refusals.coax
+coax/bin/coax test aethyr/core/space.coax --library
+coax/bin/coax mutate aethyr/core/space.coax
+coax/bin/coax test aethyr/core/refusals.coax --library
+coax/bin/coax mutate aethyr/core/refusals.coax
 ```
 
-The checks in `aethyr/space.coax` cover:
+The checks in `aethyr/core/space.coax` cover:
 
 - world arithmetic;
 - distances in their units, and the exact grid conversion;
@@ -328,8 +328,8 @@ The checks in `aethyr/space.coax` cover:
 - the lens: ahead, right, up, a point exactly on the near plane, and points
   behind the camera.
 
-`coax mutate` kills 78 of 78 mutants of `aethyr/space.coax`. It kills 47 of
-47 mutants of `aethyr/refusals.coax`, whose checks read a fixture's
+`coax mutate` kills 78 of 78 mutants of `aethyr/core/space.coax`. It kills 47 of
+47 mutants of `aethyr/core/refusals.coax`, whose checks read a fixture's
 expectation and decide whether the compiler met it.
 
 ## The qualified boundary
@@ -371,11 +371,11 @@ pixels are separate qualifications in chapters 11 and 84.
 The realm migration ([chapter 64](ch064-every-realm-runs-on-aethyr.md))
 replaces the older vector types behind the existing C interfaces:
 
-- `Point` in [aethyr/points.coax](../../aethyr/points.coax);
-- `Vec3` in [aethyr/player.coax](../../aethyr/player.coax);
+- `Point` in [aethyr/core/points.coax](../core/points.coax);
+- `Vec3` in [aethyr/move/player.coax](../move/player.coax);
 - the f64 `D3` type with a floating origin in
-  [aethyr/rigid.coax](../../aethyr/rigid.coax) and
-  [aethyr/spacecam.coax](../../aethyr/spacecam.coax). When these move, this
+  [aethyr/physics/rigid.coax](../physics/rigid.coax) and
+  [aethyr/cam/spacecam.coax](../cam/spacecam.coax). When these move, this
   module gains f64 spaces. These types and floating-origin arithmetic are
   outside this chapter's native f32 profile.
 

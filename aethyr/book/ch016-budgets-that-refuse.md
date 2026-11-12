@@ -1,10 +1,10 @@
 # 16. Budgets that refuse
 
 > **Status: partly implemented.** Engine-core task: `ec-budget` (#12609).
-> The module is [aethyr/budget.coax](../budget.coax). Every realm declares a
+> The module is [aethyr/core/budget.coax](../core/budget.coax). Every realm declares a
 > frame budget beside its state and has a check that draws its frames at
 > three screen sizes and fails when any frame passes the budget.
-> Content-hashed asset identity is [aethyr/assets.coax](../assets.coax);
+> Content-hashed asset identity is [aethyr/core/assets.coax](../core/assets.coax);
 > the shared [pack reader](../forge/pack.coax) uses its admission gate.
 > A bounded resource-cost streaming consumer has separate qualification.
 
@@ -99,7 +99,7 @@ dropped 3,318 vertices, about 550 quads, every swarm frame. The buffer is now
 
 ## The declaration
 
-<!-- source: aethyr/budget.coax declare -->
+<!-- source: aethyr/core/budget.coax declare -->
 ```jai
 BUDGET_STEPS :: 0;      // fixed simulation steps one frame runs
 BUDGET_VERTICES :: 1;   // vertices one frame writes
@@ -140,7 +140,7 @@ also refuses a limit below zero.
 
 ## The meter
 
-<!-- source: aethyr/budget.coax meter -->
+<!-- source: aethyr/core/budget.coax meter -->
 ```jai
 // The first take a meter refused: in which frame, of what kind (BUDGET_NONE for one that isn't
 // a kind), how much was asked, and how much of the limit that frame had used.
@@ -207,7 +207,7 @@ refused.
 
 ## Measuring a frame
 
-<!-- source: aethyr/budget.coax measure -->
+<!-- source: aethyr/core/budget.coax measure -->
 ```jai
 // The screens a realm's budget check draws at: a laptop at 1440 by 900 CSS pixels, the same at
 // twice the density, and a phone at 390 by 844 at three times.
@@ -287,7 +287,7 @@ runs the same frames:
 
 <!-- source: aethyr/examples/budget-a-frame.coax example -->
 ```jai
-#load "../budget.coax";
+#load "../core/budget.coax";
 #import "Basic";
 
 // A realm with a vertex buffer of 36 vertices (six quads) declares 30, and draws 2, 5, 7 and
@@ -385,7 +385,7 @@ refuses past its limit the same way: whole, with the reason kept.
 | --- | ---: | --- |
 | [aethyr/render/material.coax](../render/material.coax) | 256 materials in a realm's table | `material_admit` refuses the whole table (`MATERIAL_TABLE`) |
 | [aethyr/render/light.coax](../render/light.coax) | 16 local lights a frame | `light_local_add` refuses the light and counts it |
-| [aethyr/anim/pose.coax](../anim/pose.coax), [aethyr/skin.coax](../skin.coax) | 96 joints a rig | `skin_advance` and `skin_palette` leave the pose and palette as they were |
+| [aethyr/anim/pose.coax](../anim/pose.coax), [aethyr/anim/skin.coax](../anim/skin.coax) | 96 joints a rig | `skin_advance` and `skin_palette` leave the pose and palette as they were |
 | [aethyr/ui/tree.coax](../ui/tree.coax) | 128 elements in a UI tree | `ui_check` refuses the tree (`UI_COUNT`) |
 
 None of these counts is part of `FrameBudget` yet. A realm that declares
@@ -408,13 +408,13 @@ Grid and fixture realm counts exactly the objects each renderer holds:
 ## Checks
 
 ```shell
-coax/bin/coax test aethyr/budget.coax --library
-coax/bin/coax mutate aethyr/budget.coax --library
+coax/bin/coax test aethyr/core/budget.coax --library
+coax/bin/coax mutate aethyr/core/budget.coax --library
 coax/bin/coax test apps/openagents-web/garden.coax --only "declared budget"
 coax/bin/coax test apps/openagents-web/stair.coax --steps 3000000000 --only "declared budget"
 ```
 
-`aethyr/budget.coax` has six checks. They cover:
+`aethyr/core/budget.coax` has six checks. They cover:
 
 - each limit by kind, a declaration refused for a limit below zero or a
   vertex limit at or above its buffer, and the kinds' names;
@@ -428,7 +428,7 @@ coax/bin/coax test apps/openagents-web/stair.coax --steps 3000000000 --only "dec
 - a count below zero, a kind that isn't one, and a sum that would pass the
   largest `int`.
 
-<!-- source: aethyr/budget.coax planted -->
+<!-- source: aethyr/core/budget.coax planted -->
 ```jai
 #test "one vertex too many is refused whole, reported with its kind and counts, and fails the check" {
   bm := [1] BudgetMeter.[budget_meter(budget_small())];
@@ -456,7 +456,7 @@ Each realm's check is sharp. With Hold the Stair's buffer put back to 36,000
 and its budget at 35,000, its check fails on the swarm. Its check also pins
 the swarm's peak at 39,318.
 
-`coax mutate` kills all 139 mutants of `aethyr/budget.coax`. The realm
+`coax mutate` kills all 139 mutants of `aethyr/core/budget.coax`. The realm
 files' changes are checks and declarations, and Hold the Stair's buffer,
 which its check pins.
 
@@ -533,7 +533,7 @@ stale completion cannot spend another owner through a copied lease.
 
 - **Whole-realm resource-cost adoption.** An asset's identity is its content
   hash, so two realms that use one mesh share it and a changed texture is a
-  new asset. [aethyr/assets.coax](../assets.coax) is the registry: it admits
+  new asset. [aethyr/core/assets.coax](../core/assets.coax) is the registry: it admits
   a pack whole or refuses it (an entry that doesn't hash to its table's id,
   new bytes past the limit, no free slot) and frees bytes with their last use
   (mutation 162 of 162). The shared VPK reader uses it, and current browser

@@ -2,9 +2,9 @@
 #load "../filters.coax" as purpose;
 #load "../eye.coax" as body;
 #load "../attention.coax" as attention;
-#load "../../query-scene.coax" as scene;
-#load "../../query.coax" as queries;
-#load "../../space.coax";
+#load "../../physics/query-scene.coax" as scene;
+#load "../../physics/query.coax" as queries;
+#load "../../core/space.coax";
 
 #test "checked eye and attention compose with the shared purpose filters and exact ignored self" {
  camera_blocks:=[6]bool.[true,true,false,false,false,false];sight_blocks:=[6]bool.[true,false,true,false,false,false];

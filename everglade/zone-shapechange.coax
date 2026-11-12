@@ -125,7 +125,7 @@ xd_frame :: (s: [] EgZone, dt: f32) {
   cr[0].body_spin = ifx bd.kind == SH_DRAGON then 0.0f32 else bd.spin;
   cr[0].cam_k = sh_cam_scale(sh[0], now);
 }
-// Your keys or stick along the camera (aethyr/walk.coax wish), and the wings' buttons.
+// Your keys or stick along the camera (aethyr/move/walk.coax wish), and the wings' buttons.
 xd_input :: (s: [] EgZone, now: f32) -> WingInput {
   x := s[0].xc[..]; cr := s[0].creator[0]; held := s[0].held;
   ax := axis(held, HOLD_D, HOLD_A); ay := axis(held, HOLD_W, HOLD_S);

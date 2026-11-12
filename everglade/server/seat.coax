@@ -69,7 +69,7 @@ EG_FIGHT_TICKS :: 90;   // ticks (3 s) an entity whose HP moved counts as fighti
 EG_FIGHT_NEAR :: 30.0;  // m: fighting this near a seat is combat near it
 EG_CHUNK :: 3740;               // a D frame's entries at most (WIRE_SERVER_FRAME with its header); past it, F 2
 EG_CAST_GAP :: 8;               // ticks between a seat's casts at least (about 4 a second)
-EG_NAME :: 24; EG_LOOK :: 64;   // a look: Character Create's CC3 record (57 bytes, aethyr/character-appearance.coax) or v1's ranger.S.D.T
+EG_NAME :: 24; EG_LOOK :: 64;   // a look: Character Create's CC3 record (57 bytes, aethyr/character/character-appearance.coax) or v1's ranger.S.D.T
 // A tick's events (e entries) at most. An outcome (eg_ev_outcome: the town's pieces, a rebuild, an edit:
 // a page that misses one is wrong until it joins again) has EG_EV_KEEP more events and EG_EV_KEEP_BYTES
 // more bytes that cues never take, so a busy tick's cues can't crowd one out (#12836); so does a cue

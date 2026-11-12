@@ -1,8 +1,8 @@
 // A bounded external actor's steering vocabulary. Facts come from its adapter, not engine truth.
 // Reuses Aethyr Intent and replay event envelopes; does not run another game's physics.
 #authority;
-#load "../input.coax";
-#load "../replay.coax";
+#load "../core/input.coax";
+#load "../core/replay.coax";
 PILOT_STOP :: 0; PILOT_FORWARD :: 1; PILOT_LEFT :: 2; PILOT_RIGHT :: 3; PILOT_BACK :: 4; PILOT_JUMP :: 5;
 PilotAction :: struct { ok: bool; intent: Intent; milliseconds: int; name: int; }
 #test "external actions are bounded typed Aethyr intents with a replay envelope" {

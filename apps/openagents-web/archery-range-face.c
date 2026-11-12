@@ -6,7 +6,7 @@
 // the pack's catalog here, its vertices, indices and layers on the GPU, and two stores, the frame's
 // instances (zone_scene) and the clips baked once (zone_bake); fivelab-fx.wgsl draws the effects
 // (puffs) after the figures. Your body walks on Everglade's controller as fivelab-face.c walks it:
-// everglade-step.coax (aethyr/walk.coax, with player.coax's verse_player_*) steps it on the keys,
+// everglade-step.coax (aethyr/move/walk.coax, with player.coax's verse_player_*) steps it on the keys,
 // and the zone says where it may stand and draws it.
 #include "archery-range.h"
 #include "Everglade-step.h"
@@ -27,7 +27,7 @@ static float bake[6453720];        // everglade/scene/bodies.coax BD_BAKE_FLOATS
 static uint32_t baked;            // the bake's generation: 1 once baked
 static uint32_t frames;
 static int64_t draw_n;
-static coax_t_Player player;   // your body (aethyr/walk.coax)
+static coax_t_Player player;   // your body (aethyr/move/walk.coax)
 static coax_t_Sticks sticks;   // a phone's thumb: the stick of the finger the zone says is its (everglade/zone-touch.coax)
 static double now;
 static coax_t_Drive drive;   // the agent driver's (aethyr/agent/drive.coax): the zone holds a view of it
@@ -47,7 +47,7 @@ EXPORT("coaxial_vertex_floats") uint32_t coaxial_vertex_floats(void) { return (u
 EXPORT("coaxial_uniform_floats") uint32_t coaxial_uniform_floats(void) { return (uint32_t)coaxial_range_uniform_floats(); }
 // The glade's ground, trees and sky are traced per pixel: drawn at most 6.4 million pixels (3200 by
 // 2000; the host scales the canvas up past that), as Experimental's are.
-// The graphics governor's (everglade/zone.coax zone_pixel_budget, aethyr/quality-page.coax): fewer while frames run long.
+// The graphics governor's (everglade/zone.coax zone_pixel_budget, aethyr/core/quality-page.coax): fewer while frames run long.
 static cx_face_addr quality_state;
 static float width, height, dpr;
 static bool golden;
@@ -150,7 +150,7 @@ EXPORT("coaxial_host_contract_version") uint32_t coaxial_host_contract_version(v
 EXPORT("coaxial_focus") void coaxial_focus(cx_face_addr state) { (void)state; }
 EXPORT("coaxial_pointer") uint32_t coaxial_pointer(cx_face_addr state, float x, float y, int32_t phase, int32_t kind, int32_t id) {
   bool took = range_pointer(at(state), x, y, phase, kind, id);
-  // the finger the zone says is the thumb's moves the stick (aethyr/sticks.coax)
+  // the finger the zone says is the thumb's moves the stick (aethyr/core/sticks.coax)
   if (zone_thumb(zone(state))) sticks = verse_sticks_world_touch(sticks, id, phase, x, y, width, height, dpr, now);
   return took ? 1u : 0u;
 }

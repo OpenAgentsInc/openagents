@@ -111,7 +111,7 @@ pieces:
 - `?clock=T`, which pins time of day, and golden mode, which holds effects
   still;
 - replay of the same input stream across hosts, matching bit for bit
-  (`aethyr/replay.coax`, `coax/web/replay-hosts.coax`).
+  (`aethyr/core/replay.coax`, `coax/web/replay-hosts.coax`).
 
 **Gap.** There is no interactive "freeze, then advance on command" mode
 that a driver controls. There is no `settle` (run until nothing is

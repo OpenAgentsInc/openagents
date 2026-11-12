@@ -48,7 +48,7 @@ name, not ignored. USD is later.
 
 ## What it builds
 
-- `aethyr/sim/import/`: URDF and MJCF readers, mesh readers,
+- `aethyr/physics/sim/import/`: URDF and MJCF readers, mesh readers,
   validators, decomposition and tetrahedralization, asset writer.
 - The Panda and a quadruped imported and checked.
 

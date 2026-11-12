@@ -10,12 +10,12 @@
 // TT time reaches a table only through that library's pinned conversions.
 //
 // Between rows a state is the nearest row carried by two-body motion about
-// the table's centre (aethyr/orbit.coax), which is exact at a row and drifts
+// the table's centre (aethyr/physics/orbit.coax), which is exact at a row and drifts
 // with the perturbations it ignores; the checks measure that drift. Light
 // time and stellar aberration are separate queries (eph_light_time,
 // eph_aberrate), so a geometric state is never mistaken for an apparent one.
 //   coax/bin/coax test aethyr/space/ephemeris.coax --library
-#load "../orbit.coax";
+#load "../physics/orbit.coax";
 #load "../../coax/lib/clock.coax";
 #load "../../coax/lib/crypto/sha256-kernel.coax";
 #load "fixtures/horizons.coax";

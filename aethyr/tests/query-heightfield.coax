@@ -1,6 +1,6 @@
 // A heightfield is the realm's ground, including valleys below its flat fallback.
 // Its slopes come from the same actual triangles the renderer uses.
-#load "../ground.coax" as mesh;
+#load "../physics/ground.coax" as mesh;
 
 #test "checked ground and sweep boundaries include zero reach and exactly the admitted table" {
   boundary_heights := [4] f32.[0, 0, 0, 0];

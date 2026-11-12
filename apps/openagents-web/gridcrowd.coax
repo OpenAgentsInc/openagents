@@ -32,7 +32,7 @@
 // empty under the same camera.
 //   coax/bin/coax test apps/openagents-web/gridcrowd.coax
 
-#load "../../aethyr/points.coax";
+#load "../../aethyr/core/points.coax";
 
 VERTEX_FLOATS :: 16;
 MAX_VERTICES :: 6;     // no strokes yet
@@ -87,7 +87,7 @@ REACH :: 1.9;          // m: neighbours further than this don't matter
 PUSH :: 14.0;          // m/s^2 at contact
 PUSH_FALL :: 0.28;     // m: how fast the push fades with the gap
 EASE_IN :: 0.45;       // s to reach the speed you want
-GRAVITY :: 24.0;       // m/s^2 (aethyr/walk.coax)
+GRAVITY :: 24.0;       // m/s^2 (aethyr/move/walk.coax)
 JUMP :: 6.2;           // m/s up: a 0.8 m hop (each hop 0.75 to 1.15 of it)
 CELL :: 2.0;           // m: the hash's cells
 CELLS :: 4096;

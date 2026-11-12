@@ -271,8 +271,8 @@ unit_spatial() {
      COAX_TEST_COMPILER="$PWD/$COAX" COAX_SPATIAL_RECORD_DIR="$spatial_output/aggregate" python3 tests/spatial_native.py && \
      python3 tests/spatial/frame_parser_native.py --compiler "$PWD/$COAX" --output "$spatial_output/frame-parser" && \
      COAX_TEST_COMPILER="$PWD/$COAX" python3 tests/spatial_spacecam.py "$spatial_output/spacecam" && \
-     "$COAX" test --library ../aethyr/spacecam.coax --only 'camera-relative displacement' && \
-     "$COAX" test --library ../aethyr/spacecam.coax --only 'a hull at 5 AU'; then
+     "$COAX" test --library ../aethyr/cam/spacecam.coax --only 'camera-relative displacement' && \
+     "$COAX" test --library ../aethyr/cam/spacecam.coax --only 'a hull at 5 AU'; then
     return 0
   fi
   echo "Spatial gate failed; evidence: $spatial_output" >&2

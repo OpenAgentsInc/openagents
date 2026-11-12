@@ -13,7 +13,7 @@
 #load "../../coax/lib/media/media.coax";
 #load "../../coax/lib/crypto/sha256-memory.coax";
 #load "../../coax/lib/json/json.coax";
-#load "../exr.coax";
+#load "../render/exr.coax";
 
 FILM_MAX_PIXELS :: 3840 * 2160;
 FILM_MAX_TARGETS :: 4;

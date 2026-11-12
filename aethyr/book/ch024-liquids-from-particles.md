@@ -1,6 +1,6 @@
 # 24. Liquids from particles
 
-> **Status: partly implemented.** [`aethyr/sim/sph.coax`](../../aethyr/sim/sph.coax)
+> **Status: partly implemented.** [`aethyr/physics/sim/sph.coax`](../physics/sim/sph.coax)
 > (266 mutants: 256 killed, 10 marked equivalent with their reason)
 > runs weakly compressible SPH (profile `wcsph-f64-v1`) on chapter 23's
 > particles on the CPU in f64: the cubic spline kernel, density, Tait
@@ -48,7 +48,7 @@ coupling with rigid bodies.
 
 ## What runs today
 
-[`aethyr/sim/sph.coax`](../../aethyr/sim/sph.coax) computes the
+[`aethyr/physics/sim/sph.coax`](../physics/sim/sph.coax) computes the
 fluid on chapter 23's store and neighbor search. A particle of material
 `SPH_FLUID` moves; one of `SPH_WALL` is a fixed boundary sample.
 
@@ -159,7 +159,7 @@ splashes out of the tank within half a second.
 The checks run with:
 
 ```shell
-coax/bin/coax test aethyr/sim/sph.coax --library
+coax/bin/coax test aethyr/physics/sim/sph.coax --library
 ```
 
 They integrate the kernel to 1 within 0.2% for three supports, match the

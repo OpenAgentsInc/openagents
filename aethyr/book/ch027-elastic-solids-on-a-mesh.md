@@ -51,7 +51,7 @@ checked.
 
 ## What it builds
 
-- `aethyr/sim/fem.coax`: element data, energies with gradients and
+- `aethyr/physics/sim/fem.coax`: element data, energies with gradients and
   projected Hessians, explicit and implicit steppers, CG, Dirichlet pins.
 - Fixtures: cantilever beam, compressed cube, a pad pressed by a rigid
   finger.

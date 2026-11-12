@@ -1,6 +1,6 @@
 # 28. Smoke on a grid
 
-> **Status: partly implemented.** [`aethyr/sim/grid-fluid.coax`](../../aethyr/sim/grid-fluid.coax)
+> **Status: partly implemented.** [`aethyr/physics/sim/grid-fluid.coax`](../physics/sim/grid-fluid.coax)
 > (996 mutants: 963 killed, 33 marked equivalent with their reason)
 > runs stable fluids on a 2D MAC grid on the CPU in f64 (profile
 > `stable-fluids-2d-f64-v1`): semi-Lagrangian advection, implicit viscosity
@@ -40,7 +40,7 @@ interpolation damps.
 
 ## What runs today
 
-[`aethyr/sim/grid-fluid.coax`](../../aethyr/sim/grid-fluid.coax) keeps a 2D
+[`aethyr/physics/sim/grid-fluid.coax`](../physics/sim/grid-fluid.coax) keeps a 2D
 grid of up to 64 by 64 cells (`Gf`). Velocity lives on the cell faces, `u`
 on the vertical faces and `v` on the horizontal ones; pressure and smoke
 live at the cell centers. The grid is periodic or a closed box; in a box the
@@ -139,7 +139,7 @@ metre per unit density. The smoke rises at about 0.2 m/s.
 The checks run with:
 
 ```shell
-coax/bin/coax test aethyr/sim/grid-fluid.coax --library
+coax/bin/coax test aethyr/physics/sim/grid-fluid.coax --library
 ```
 
 They project a rough field on periodic and closed grids and require every

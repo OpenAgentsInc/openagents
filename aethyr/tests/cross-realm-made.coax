@@ -1,7 +1,7 @@
 // Cross-realm checks for made realms (GitHub #12721): apps/openagents-web/myrealm.coax, the page
 // every realm made at /worlds/new opens in, and Aethyrforge's canvas. It keeps its own controls
-// (W and S walk, A and D turn) but walks on Aethyr's clock (aethyr/loop.coax) and is pushed out of
-// what stands by the shared walker (aethyr/walk.coax move_across), so it is checked here as the
+// (W and S walk, A and D turn) but walks on Aethyr's clock (aethyr/core/loop.coax) and is pushed out of
+// what stands by the shared walker (aethyr/move/walk.coax move_across), so it is checked here as the
 // walking realms are in cross-realm.coax, in a file of its own because the page declares names the
 // walker's modules also use:
 //

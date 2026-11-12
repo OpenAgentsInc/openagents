@@ -17,7 +17,7 @@ A slow camera flight through the Grid, at https://openagents.com/worlds/penultim
 
 ## How it is made
 
-- It is the homepage's own module: `apps/openagents-web/newland.coax` draws the scene (`land_scene`), and the page asks for it with `data-page="2"`. `newland-frontier.coax` draws the story and its camera (the sky in `newland-frontier-sky.coax` on `aethyr/orbit.coax`, the falling buildings in `newland-frontier-ruins.coax`, the rest of the reading in `newland-frontier-act2.coax`, the Pylons, payments and sky worlds in `newland-frontier-pool.coax`, its camera's shots in `newland-frontier-shots.coax`, and its HUD in `newland-frontier-hud.coax`), then eases onto the lap (`wk_fly_path` in `newland-walk.coax`); there is no walker or text.
+- It is the homepage's own module: `apps/openagents-web/newland.coax` draws the scene (`land_scene`), and the page asks for it with `data-page="2"`. `newland-frontier.coax` draws the story and its camera (the sky in `newland-frontier-sky.coax` on `aethyr/physics/orbit.coax`, the falling buildings in `newland-frontier-ruins.coax`, the rest of the reading in `newland-frontier-act2.coax`, the Pylons, payments and sky worlds in `newland-frontier-pool.coax`, its camera's shots in `newland-frontier-shots.coax`, and its HUD in `newland-frontier-hud.coax`), then eases onto the lap (`wk_fly_path` in `newland-walk.coax`); there is no walker or text.
 - Nobody is posted to the Grid's room from here, so watching it never adds a walker to the Grid.
 
 ## Make your own world

@@ -1,9 +1,9 @@
 // Valley Lab: original graybox, shared Aethyr walking/collision/camera and touch controls.
-#load "../../aethyr/walk.coax" as pc;
-#load "../../aethyr/sticks.coax";
-#load "../../aethyr/points.coax";
+#load "../../aethyr/move/walk.coax" as pc;
+#load "../../aethyr/core/sticks.coax";
+#load "../../aethyr/core/points.coax";
 #load "../../aethyr/ui/draw.coax";
-#load "../../aethyr/budget.coax";
+#load "../../aethyr/core/budget.coax";
 #load "../../verse/valley/rock.coax";
 #load "../../verse/valley/rock-parent.coax";
 #load "../../verse/valley/rock-grid.coax";

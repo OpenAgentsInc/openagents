@@ -1,6 +1,6 @@
 # 25. Cloth and rope from constraints
 
-> **Status: partly implemented.** [`aethyr/sim/pbd.coax`](../../aethyr/sim/pbd.coax)
+> **Status: partly implemented.** [`aethyr/physics/sim/pbd.coax`](../physics/sim/pbd.coax)
 > (441 mutants: 412 killed, 29 marked equivalent with their reason)
 > runs XPBD distance constraints over chapter 23's particle store on the CPU
 > in f64, with a deterministic graph coloring, Gauss–Seidel and Jacobi
@@ -47,7 +47,7 @@ in one step ([Macklin et al., SCA 2019](https://doi.org/10.1145/3309486.3340247)
 
 ## What runs today
 
-[`aethyr/sim/pbd.coax`](../../aethyr/sim/pbd.coax) keeps distance
+[`aethyr/physics/sim/pbd.coax`](../physics/sim/pbd.coax) keeps distance
 constraints in fixed arrays (`Pbd`): two particle indices, a rest length, a
 compliance `α` in metres per newton and a multiplier `λ`. A particle of mass
 zero in chapter 23's store is pinned. `pbd_rope` and `pbd_cloth` build a
@@ -174,7 +174,7 @@ radius plus the thickness.
 The checks run with:
 
 ```shell
-coax/bin/coax test aethyr/sim/pbd.coax --library
+coax/bin/coax test aethyr/physics/sim/pbd.coax --library
 ```
 
 They hold the link's period within 0.2% of the spring's for 1, 4 and 16

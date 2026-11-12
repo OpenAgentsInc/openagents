@@ -2070,8 +2070,8 @@ net_probe :: (s: [] Everglade, field: int) -> int #export_c #effects(all) {
   if field == 28 { k := 0; for i: 0..<sp_dm(s)[0].n { if sp_dm(s)[0].pieces[i].state != DP_STANDING { k += 1; } } return ifx sp_on(s) then k else -1; }
   if field == 25 { k := 0; for i: 0..<WATCH_ACTORS { if s[0].wt[0].actors[i].ready && s[0].wt[0].actors[i].mode != WM_CALM { k += 1; } } return k; }   // off their day as drawn
   if field == 19 { return n[0].creature_deaths; }
-  // you as this frame drew you: the controller's act (aethyr/walk.coax Act: 3 airborne) and the clip
-  // your body plays (aethyr/skin.coax SKIN_*: 3 the jump), for a check that the jump's pose ends
+  // you as this frame drew you: the controller's act (aethyr/move/walk.coax Act: 3 airborne) and the clip
+  // your body plays (aethyr/anim/skin.coax SKIN_*: 3 the jump), for a check that the jump's pose ends
   if field >= 31 && field <= 38 || field >= 300 && field < 300 + EG_RA_SEATS || field >= 320 && field < 320 + EG_RA_SEATS { return md_probe(s, field); }   // the others, as you deal with them (everglade-moderate.coax)
   // 340 + SEAT: that caster's authoritative Reverse Gravity cylinders. Doors
   // and boats use larger entity IDs too, so an ID cutoff is not a spell count.

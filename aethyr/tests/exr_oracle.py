@@ -1,4 +1,4 @@
-# Firm reason: 2 (independent oracle: decodes aethyr/exr.coax's files from the OpenEXR layout with Python's zlib).
+# Firm reason: 2 (independent oracle: decodes aethyr/render/exr.coax's files from the OpenEXR layout with Python's zlib).
 """Decode the EXR files that aethyr/tools/exr-sample.coax writes, without loading Coax code.
 
     python3 aethyr/tests/exr_oracle.py            # builds the samples in a temporary directory

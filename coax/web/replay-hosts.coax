@@ -1,5 +1,5 @@
 // A recorded session replays bit for bit natively and in the browser
-// (aethyr/replay.coax, Aethyr book chapter 5). aethyr/tests/replay-walk.coax
+// (aethyr/core/replay.coax, Aethyr book chapter 5). aethyr/tests/replay-walk.coax
 // records a walk, replays it and plants a fault; this builds it to wasm the
 // way pages are built (coax/web/wasm.sh: -O2, no fast math, no
 // contraction), runs it in headless Chrome (coax/web/wasm-chrome.coax), and

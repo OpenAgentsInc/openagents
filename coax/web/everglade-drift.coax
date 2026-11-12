@@ -68,7 +68,7 @@ DR_PART :: 300;           // rows read back at once
 DR_RUN :: 6;              // frames failing in a row that make a drift
 DR_YAW_JUMP :: 300;       // mrad the camera may turn in one frame
 DR_TURN :: 175;           // mrad (10 degrees) the camera may turn in DR_TURN_MS with no look (a pointer move): only
-DR_TURN_MS :: 1000;       // your look turns it (aethyr/camera.coax verse_orbit_follow), so this is rounding room
+DR_TURN_MS :: 1000;       // your look turns it (aethyr/cam/camera.coax verse_orbit_follow), so this is rounding room
 DR_FIX_RATE :: 1;         // corrections over 5 cm a second, at most
 DR_STALL :: 15;           // percent more frames of the town's people walking in place than offline
 // book:end drift-bounds

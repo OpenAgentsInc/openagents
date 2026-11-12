@@ -26,7 +26,7 @@
 //   coax/bin/coax mutate everglade/model/character.coax --library --root-only
 #authority;
 #load "../../coax/lib/json/json.coax";
-#load "../../aethyr/ids.coax";
+#load "../../aethyr/core/ids.coax";
 #load "../../rules/srd/advancement.coax";
 #load "character-checks.coax";   // the checks' fixture and helpers
 

@@ -33,19 +33,19 @@ tasks) builds Part I and II's primitives first. Each task owns one chapter.
 
 | Task | Chapter | Module | Blocked by |
 | --- | --- | --- | --- |
-| `ec-loop` | [1](ch001-a-frame-has-a-fixed-step.md) | `aethyr/loop.coax` | — |
-| `ec-space` | [2](ch002-spaces-and-units.md) | `aethyr/space.coax` | — |
+| `ec-loop` | [1](ch001-a-frame-has-a-fixed-step.md) | `aethyr/core/loop.coax` | — |
+| `ec-space` | [2](ch002-spaces-and-units.md) | `aethyr/core/space.coax` | — |
 | `ec-state` | [3](ch003-state-starts-from-its-defaults.md) | realm state constructors | — |
-| `ec-input` | [4](ch004-input-becomes-typed-actions.md) | `aethyr/input.coax` | `ec-loop` |
+| `ec-input` | [4](ch004-input-becomes-typed-actions.md) | `aethyr/core/input.coax` | `ec-loop` |
 | `ec-replay` | [5](ch005-replay-a-session-exactly.md) | session records and replay | `ec-loop`, `ec-input`, `ec-state` |
 | `ec-entity` | [6](ch006-entities-are-born-and-die.md) | entity IDs and lifetime | `ec-state` |
-| `ec-query` | [7](ch007-ask-the-world-where-things-are.md) | `aethyr/query.coax` | `ec-space` |
-| `ec-camera` | [10](ch010-the-camera-follows.md) | `aethyr/follow.coax` | `ec-loop`, `ec-space`, `ec-query` |
+| `ec-query` | [7](ch007-ask-the-world-where-things-are.md) | `aethyr/physics/query.coax` | `ec-space` |
+| `ec-camera` | [10](ch010-the-camera-follows.md) | `aethyr/cam/follow.coax` | `ec-loop`, `ec-space`, `ec-query` |
 | `ec-budget` | [16](ch016-budgets-that-refuse.md) | asset identity and budgets | — |
 | `ec-migrate` | [64](ch064-every-realm-runs-on-aethyr.md) | every realm on the core | all of the above |
 
 Chapter 8 now owns the admitted ground sampler, mesh contacts and bounded
-capsule publication in `aethyr/ground*.coax` and `aethyr/collide.coax`.
+capsule publication in `aethyr/ground*.coax` and `aethyr/physics/collide.coax`.
 Chapter 9 consolidates the walking controller and its declared tuning;
 chapter 64 still owns the complete migration of realm adapters. Part III
 consolidates the existing Coax shader and host paths in `verse/gpu/`.

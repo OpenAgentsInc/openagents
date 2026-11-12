@@ -1,5 +1,5 @@
 /* The legacy C boundary must keep its layout while its sampled geometry is
-   owned by aethyr/ground.coax. These checks call the production exports. */
+   owned by aethyr/physics/ground.coax. These checks call the production exports. */
 #include "terrain-native.h"
 #include <assert.h>
 #include <math.h>

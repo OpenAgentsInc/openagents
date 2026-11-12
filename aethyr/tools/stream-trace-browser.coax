@@ -1,7 +1,7 @@
 // Actual diagnostic pressure while a concrete browser source/cancel stays live.
 // tool.sh: stack-gib 1
 #load "stream-walk-faults.coax";
-#load "../assets.coax" as assets;
+#load "../core/assets.coax" as assets;
 stb_save :: (c:[]Cdp,expression:string,path:string)->bool {
   at:=cdp_evaluate(c,expression);if at<0 {tool_errln(cdp_error(c));return false;}
   out:[16777216]u8;n:=jv_str(cdp_doc(c),at,out[..]);return n>0 && fs_write(path,cast(string)out[0..<n]);

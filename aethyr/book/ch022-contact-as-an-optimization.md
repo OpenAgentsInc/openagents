@@ -1,7 +1,7 @@
 # 22. Contact as an optimization
 
 > **Status: unimplemented — design draft.** Aethyr resolves contacts by
-> sequential impulses ([`aethyr/contact.coax`](../../aethyr/contact.coax)).
+> sequential impulses ([`aethyr/physics/contact.coax`](../physics/contact.coax)).
 > This chapter plans the constraint solver an articulated robot needs:
 > contacts, joint limits and friction solved together as one convex
 > problem. Nothing here runs yet.
@@ -70,7 +70,7 @@ as a separate reference and as the cheap profile for games.
 
 ## What it builds
 
-- `aethyr/sim/constraint.coax`: row assembly, impedance, pyramidal and
+- `aethyr/physics/sim/constraint.coax`: row assembly, impedance, pyramidal and
   elliptic cones, the primal Newton solver with line search, CG, warm
   start, islands.
 - Fixtures: a box at rest, a 20-box stack, a sliding block on an incline at

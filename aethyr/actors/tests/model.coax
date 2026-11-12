@@ -1,4 +1,4 @@
-#load "../../space.coax" as spatial;
+#load "../../core/space.coax" as spatial;
 #test "actor model wrappers refuse absent identities before touching the existing intent gate" {
  p:[1]ActorExecPool;session:replay.ReplaySession;h:Handle(entities.Entity);t:ActorModelTicket;
  #assert actor_model_ask(p[..],h,session,0,1,1,1).status==ACTOR_INVALID;

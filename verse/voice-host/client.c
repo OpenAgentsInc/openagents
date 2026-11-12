@@ -7,7 +7,7 @@
 // second turn after it, and --after-end cancel|barge|realm cancels the first
 // turn's recognition (on the host, by a barge-in's new epoch, or only in the
 // realm). --aethyr passes each final transcript through Aethyr's event gate
-// (aethyr/voice.coax), as a realm does, and replays the record at the end.
+// (aethyr/audio/voice.coax), as a realm does, and replays the record at the end.
 #include "../platform/voice.h"
 #include "AethyrVoice.h"
 #include "wav.h"
@@ -97,7 +97,7 @@ typedef struct {
   int ended, exact_ok;
 } tally;
 
-// The realm's side (aethyr/voice.coax): each held turn is a press, and its
+// The realm's side (aethyr/audio/voice.coax): each held turn is a press, and its
 // final transcript the press's answer.
 static coax_t_VoiceRealm *realm;
 static int realm_steps;

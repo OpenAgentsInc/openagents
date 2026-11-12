@@ -1,4 +1,4 @@
-// An independent raster oracle for aethyr/terrain-tile.coax (#12995): it builds every drawn
+// An independent raster oracle for aethyr/world/terrain-tile.coax (#12995): it builds every drawn
 // triangle of a small random tile from the f32 vertex positions a vertex shader would see, finds
 // the triangle that contains a random point by brute force in f64 (no cell arithmetic), and
 // interpolates heights and material weights with its own barycentric weights. Points within a

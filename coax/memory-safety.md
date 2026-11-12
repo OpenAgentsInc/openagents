@@ -48,7 +48,7 @@ Enforcement is still proposed.
 | Raw pointers | Not implemented. |
 | Allocation | Not implemented in Coax; native hosts own allocation. |
 | View lifetimes | Partial. E0383 rejects known local backing returned directly or retained in caller or static storage ([verification-return-borrows.md](verification-return-borrows.md), [verification-retained-stores.md](verification-retained-stores.md)). Recursive and unmodeled helper relations, regions and transfer lifetimes are open (R3). |
-| Views in records | Allowed and common (for example `EntityStore.gen: [] int` in `aethyr/entity.coax`). Their lifetime isn't tracked. |
+| Views in records | Allowed and common (for example `EntityStore.gen: [] int` in `aethyr/core/entity.coax`). Their lifetime isn't tracked. |
 | Persistent references | `Handle(T)` and `Store(T)` check generation and retire exhausted slots. Aethyr and Everglade use typed lifetimes; saved state uses stable IDs. Store provenance and view regions remain caller obligations. |
 | Foreign calls | About 1,100 `#foreign` declarations in 184 files. Each is trusted. |
 | Concurrency | No jobs, atomics or race checking yet (§12). |
@@ -298,7 +298,7 @@ Do all of these, in this order:
 3. **Regions for views (option 1).** Finish R3's view lifetimes as regions,
    including records that hold views and the lease-scoped host regions
    decided above. Foreign acquisition stays at the unsafe boundary.
-4. **`Handle(T)` with failable lookup.** Move `aethyr/entity.coax` from
+4. **`Handle(T)` with failable lookup.** Move `aethyr/core/entity.coax` from
    packed `int` handles to the nominal type.
 5. **Structured jobs before any parallelism.** R15's jobs bind scratch and
    views to the job's scope and allow overlapping writes only on proven

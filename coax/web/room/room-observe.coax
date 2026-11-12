@@ -1,4 +1,4 @@
-#load "../../../aethyr/ids.coax";
+#load "../../../aethyr/core/ids.coax";
 // Read production state; never substitute HTTP success, expiry or an ACK for
 // durable acceptance. These exports have no admission or persistence effects.
 #test "capacity input observations use actual pending inputs and preserve unknown clock ages (#12843)" #steps 2000000000 {

@@ -33,8 +33,8 @@
 > and its flat view draws the same causes from above
 > ([`flat.coax`](../../aethyr/fx/flat.coax)). The stateless emitters (`aethyr/fx/emitter.coax`,
 > `motion.coax`) are not built yet: the Haunted House and Hecate's
-> Cemetery still use [`aethyr/particles.coax`](../../aethyr/particles.coax)
-> and [`aethyr/particle-motion.coax`](../../aethyr/particle-motion.coax),
+> Cemetery still use [`aethyr/render/particles.coax`](../render/particles.coax)
+> and [`aethyr/render/particle-motion.coax`](../render/particle-motion.coax),
 > and Everglade still writes its own puffs (`everglade-spells.coax` `sp_fx`).
 
 Visual effects are particles that only look: embers off a candle, dust in
@@ -90,9 +90,9 @@ and capped by a budget.
 
 ## What exists today
 
-- [aethyr/particles.coax](../../aethyr/particles.coax): emitter layout, caps
+- [aethyr/render/particles.coax](../render/particles.coax): emitter layout, caps
   and the Haunted House's emitter choice, with three `#test` checks.
-- [aethyr/particle-motion.coax](../../aethyr/particle-motion.coax): ember,
+- [aethyr/render/particle-motion.coax](../render/particle-motion.coax): ember,
   dust and firefly motion, with checks that embers rise and fade, dust stays
   in its room, and fireflies blink.
 - [apps/openagents-web/gpu/particles.coax](../../apps/openagents-web/gpu/particles.coax):

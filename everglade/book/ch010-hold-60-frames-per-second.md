@@ -4,7 +4,7 @@
 > [`everglade/client/client.coax`](../client/client.coax),
 > [`everglade/client/cull.coax`](../client/cull.coax)
 > and [`everglade/client/gpu/everglade2-cull.coax`](../client/gpu/everglade2-cull.coax).
-> The graphics governor is Aethyr's [`aethyr/quality.coax`](../../aethyr/quality.coax).
+> The graphics governor is Aethyr's [`aethyr/core/quality.coax`](../../aethyr/core/quality.coax).
 > This chapter names functions and has no source listings yet.
 
 This chapter answers the player's question: "Why is it smooth?"
@@ -166,7 +166,7 @@ In `everglade/client/cull.coax`:
 - `#test "the cull's runs are the frame's kit draws, each with its kit piece, and
   nothing else"`.
 
-In `aethyr/quality.coax`:
+In `aethyr/core/quality.coax`:
 
 - `#test "quality: a phone starts at LOW and climbs, a weak one at the bottom, a
   computer HIGH"`.

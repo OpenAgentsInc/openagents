@@ -1,13 +1,13 @@
 # 21. Find where they touch
 
-> **Status: partly implemented.** [`aethyr/sim/narrow.coax`](../../aethyr/sim/narrow.coax)
+> **Status: partly implemented.** [`aethyr/physics/sim/narrow.coax`](../physics/sim/narrow.coax)
 > (1,230 mutants: 1,085 killed, 145 marked equivalent with their reason)
 > finds where spheres, capsules, boxes and convex hulls touch, on the CPU
 > in f64: support functions, GJK distance, EPA depth, closed forms for
 > spheres and capsules, boxes by the separating axis theorem with clipped
 > four-point manifolds and feature IDs, and time of impact by conservative
 > advancement. Its checks compare GJK and EPA with brute-force box
-> distances and depths, agree with [`aethyr/contact.coax`](../../aethyr/contact.coax),
+> distances and depths, agree with [`aethyr/physics/contact.coax`](../physics/contact.coax),
 > and check symmetry and manifold stability. Signed distance fields, MPR,
 > triangle meshes, heightfields, perturbed-query manifolds for curved
 > shapes and device kernels are not built yet.
@@ -53,7 +53,7 @@ normal `∇φ` at any point for arbitrary shapes, at the cost of resolution.
 
 ## What runs today
 
-[`aethyr/sim/narrow.coax`](../../aethyr/sim/narrow.coax) describes a shape
+[`aethyr/physics/sim/narrow.coax`](../physics/sim/narrow.coax) describes a shape
 as a `Shape`: a kind, a pose and the kind's sizes. A sphere is a point core
 with a radius, a capsule a segment core with a radius, and boxes and hulls
 of up to 32 points have radius 0. `narrow_support` returns the farthest
@@ -63,7 +63,7 @@ lowest index, so the answer depends on the direction alone.
 `narrow_pair` takes two shapes and returns a `Manifold`: up to four points
 that share one normal, each with a signed distance (negative is overlap)
 and a feature ID. The normal points from the second shape toward the first,
-the direction that pushes the first out, as in `aethyr/contact.coax`. Each
+the direction that pushes the first out, as in `aethyr/physics/contact.coax`. Each
 pair takes one of three paths:
 
 - Two spheres or capsules take the closed form: the nearest points of the
@@ -184,14 +184,14 @@ along, where its surface meets the plate's face.
 The checks run with:
 
 ```shell
-coax/bin/coax test aethyr/sim/narrow.coax --library
+coax/bin/coax test aethyr/physics/sim/narrow.coax --library
 ```
 
 They compare GJK's distance between boxes given as hulls with a
 brute-force distance over every corner and every edge pair, on 200 random
 pairs; EPA's depth with the least overlap over all 15 axes, and check that
 moving the first box out by that depth leaves the boxes touching; spheres
-against spheres and boxes with `aethyr/contact.coax`; capsules' closed form
+against spheres and boxes with `aethyr/physics/contact.coax`; capsules' closed form
 with GJK; every pair with its arguments swapped; a box resting on the
 ground under a micrometre and a microradian of jitter, which must report
 the same four features for 1,000 queries; and a 200 m/s ball against a
@@ -226,7 +226,7 @@ bodies, and is required by IPC in chapter 30.
 
 ## What it still builds
 
-- In `aethyr/sim/narrow.coax`: MPR as a measured profile, SDF queries
+- In `aethyr/physics/sim/narrow.coax`: MPR as a measured profile, SDF queries
   with their error against grid resolution, triangle meshes and
   heightfields, manifolds for curved pairs by perturbed queries, time of
   impact under rotation, and device kernels generated from the same
@@ -241,7 +241,7 @@ bodies, and is required by IPC in chapter 30.
 - GJK distance on random polytopes against brute-force vertex/face
   distances; EPA depth against a brute-force minimum over face normals of
   the explicitly built Minkowski difference (small cases only).
-- Agreement with `aethyr/contact.coax` on its shapes.
+- Agreement with `aethyr/physics/contact.coax` on its shapes.
 - Symmetry: every test with arguments swapped.
 - Manifold stability: a box at rest on a plane reports the same four feature
   IDs for 10,000 steps.

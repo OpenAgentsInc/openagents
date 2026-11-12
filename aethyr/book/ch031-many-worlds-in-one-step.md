@@ -46,7 +46,7 @@ per-environment steps per second and the batch size, always together.
 
 ## What it builds
 
-- Batch dimension through every solver; `aethyr/sim/batch.coax` for
+- Batch dimension through every solver; `aethyr/physics/sim/batch.coax` for
   resets, randomization and seeding.
 - A benchmark of a rigid quadruped and a Panda arm at B = 1 to 16,384.
 

@@ -1,6 +1,6 @@
 // WorldBuilder's ground (openagents.com/create-world, #13225): one Aethyr terrain tile
-// (aethyr/terrain-tile.coax), 256 cells of a metre round the Grid's middle, edited with the engine's
-// brushes (aethyr/terrain-edit.coax) and undone through Aethyrforge's scene log (aethyr/forge/edit.coax
+// (aethyr/world/terrain-tile.coax), 256 cells of a metre round the Grid's middle, edited with the engine's
+// brushes (aethyr/world/terrain-edit.coax) and undone through Aethyrforge's scene log (aethyr/forge/edit.coax
 // land steps). The bare Grid is its first material; grass, dirt, sand, stone, snow and water are
 // painted over it. The tile's outer ring of samples stays at height 0, where the Grid's endless floor
 // (the page's background) carries on.
@@ -10,7 +10,7 @@
 // (the oldest steps go first).
 //   coax/bin/coax test apps/openagents-web/worldbuilder-plan.coax
 
-#load "../../aethyr/terrain-edit.coax";
+#load "../../aethyr/world/terrain-edit.coax";
 #load "../../coax/lib/quantity.coax" as wb_units;
 
 WB_LAND_CELLS :: 256;
@@ -221,7 +221,7 @@ wb_land_loaded :: (l: [] WbLand) {
   l[0].version += 1;
 }
 
-// ---- the layers' looks: an Aethyr material table (aethyr/terrain-tile.coax, `aethyr.terrain.materials.v1`),
+// ---- the layers' looks: an Aethyr material table (aethyr/world/terrain-tile.coax, `aethyr.terrain.materials.v1`),
 // procedural albedos only. The page hands these numbers to its shader, which evaluates
 // aethyr/render/terrain-shade.coax's equations with them.
 wb_layer_look :: (id: int, a: [3] f32, b: [3] f32, f1: f32, f2: f32, g1: f32) -> TerrainMaterial {

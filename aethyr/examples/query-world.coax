@@ -2,10 +2,10 @@
 // streaming, action, actor, camera and terrain issues. All IDs are durable.
 #module "aethyr.examples.queryworld";
 #import "Basic";
-#load "../query-fluid.coax";
-#load "../entity.coax" as entities;
-#load "../collide.coax";
-#load "../follow.coax";
+#load "../physics/query-fluid.coax";
+#load "../core/entity.coax" as entities;
+#load "../physics/collide.coax";
+#load "../cam/follow.coax";
 #load "../ai/stimulus.coax";
 
 QueryWorldContent :: struct {

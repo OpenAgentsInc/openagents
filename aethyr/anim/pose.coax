@@ -1,12 +1,12 @@
 // Aethyr's pose (book chapter 14): a joint's local pose, the rotations it is made of, a cross-fade
 // blended joint by joint, the posed skeleton chained from the root, and the skinning palette's
-// three rows of four. aethyr/skin.coax plays clips through these (Everglade's Ranger, its people
+// three rows of four. aethyr/anim/skin.coax plays clips through these (Everglade's Ranger, its people
 // and the 5E lab's bodies); the arithmetic is the one skin.coax had before it moved here, in the
 // same order, so every palette is bit for bit what it was (book chapter 14's digest).
 //   coax/bin/coax test aethyr/anim/pose.coax --library
 //   coax/bin/coax mutate aethyr/anim/pose.coax --library
 
-#load "../points.coax";
+#load "../core/points.coax";
 
 // book:begin quat
 Quat :: struct { x: f32; y: f32; z: f32; w: f32 = 1; }

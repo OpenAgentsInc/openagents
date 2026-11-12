@@ -3,7 +3,7 @@
 #module "aethyr.forge.vertices";
 #authority;
 #load "pack.coax" as packs;
-#load "../query.coax" as queries;
+#load "../physics/query.coax" as queries;
 
 PACK_VERTEX_BYTES :: 48;
 PACK_VERTEX_FLOATS :: 8;

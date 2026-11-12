@@ -1,4 +1,4 @@
-#load "../../../aethyr/ids.coax";
+#load "../../../aethyr/core/ids.coax";
 // The room's measured work budget. Both SDK hosts charge the same complete
 // simulation/serialization call. Transport remains separately socket-bounded.
 #load "work-budget.coax";

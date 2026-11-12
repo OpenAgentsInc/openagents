@@ -3,7 +3,7 @@
 #load "bundle-policy.coax";
 #load "../audio/host-wav.coax";
 #load "../audio/wav.coax";
-#load "../speak.coax";
+#load "../audio/speak.coax";
 #load "voice-source-checks.coax";
 #authority;
 VoiceSource :: struct {valid:bool;track:string;wave:[]u8;wave_at:int;}

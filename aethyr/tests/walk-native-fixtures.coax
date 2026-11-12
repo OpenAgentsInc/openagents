@@ -1,9 +1,9 @@
 // The same adapter compiles against current Player and the git-pinned pre-extraction Player.
 // Its worlds are data; it does not reproduce either controller's arithmetic.
-#load "../player.coax";
-#load "../stand.coax";
-#load "../query.coax" as parity_query;
-#load "../ground.coax" as parity_ground;
+#load "../move/player.coax";
+#load "../physics/stand.coax";
+#load "../physics/query.coax" as parity_query;
+#load "../physics/ground.coax" as parity_ground;
 
 walk_parity_frame :: (kind: int, person: Player, frame: f32) -> Player #export_c #effects(all) {
   parity_world: World;

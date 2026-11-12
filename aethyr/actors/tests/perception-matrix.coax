@@ -33,7 +33,7 @@
  old.memory.forgotten=1000000000;p.forget=1;r=actor_perceive(p,old,2,1,0,0,0,0,0,c[..]);#assert r.status==ACTOR_INVALID;
  old.tick=1;r=actor_perceive(p,old,2,1,0,0,0,0,0,c[..]);#assert r.status==ACTOR_EXHAUSTED;
 }
-#load "../../assets.coax" as assets;
+#load "../../core/assets.coax" as assets;
 #test "the complete acquisition retention culling generation and memory trace matches the independent oracle" #steps 200000000 #traversal 2000000000 {
  old:ActorPerception;p:=ActorParameters.{period=4,grace=6,forget=8};words:[4096]int;n:=0;
  for tick:0..<128 {candidates:=[3]ActorCandidate.[ActorCandidate.{id=1,generation=1,clear=true},ActorCandidate.{id=2,generation=ifx tick>=80 then 2 else 1,x=100+tick*7,clear=tick%8<4,eligible=tick<48 || tick>=64},ActorCandidate.{id=3,generation=1,x= -600,clear=tick%16<12}];focus:=ifx tick>=112 then 2001 else 0;

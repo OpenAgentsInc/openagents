@@ -1,7 +1,7 @@
-// aethyr/exr.coax: the half codec, and files written and read back for every compression, type
+// aethyr/render/exr.coax: the half codec, and files written and read back for every compression, type
 // and source. exr_oracle.py decodes the same files with its own reader.
 #import "Basic";
-#load "../exr.coax";
+#load "../render/exr.coax";
 #load "exr-image.coax";
 
 exr_round :: (compression: int, type: int, src_type: int) -> bool #effects(all) {

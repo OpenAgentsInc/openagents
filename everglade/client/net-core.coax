@@ -40,7 +40,7 @@ NET_PINGS :: 8;
 // hidden or frozen tab draws none) starts the wait again: the socket had no chance to be heard.
 NET_SILENT_MS :: 6000; NET_OPEN_MS :: 10000; NET_STALL_MS :: 1000;
 
-NC_PI :: 3.14159265; NC_TAU :: 6.2831853;   // aethyr/points.coax PI and TAU
+NC_PI :: 3.14159265; NC_TAU :: 6.2831853;   // aethyr/core/points.coax PI and TAU
 nc_lerp :: (a: f32, b: f32, t: f32) -> f32 { return a + (b - a) * t; }
 nc_clamp01 :: (x: f32) -> f32 { if x < 0 { return 0; } if x > 1 { return 1; } return x; }
 nc_hi :: (a: int, b: int) -> int { if a > b { return a; } return b; }

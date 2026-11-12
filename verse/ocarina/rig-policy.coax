@@ -1,6 +1,6 @@
 // OCL1 private Link rig profile: 309 joints, eight named source clips, TQ/S3/flags.
 // Content identity is a separate whole-pack gate. No view is formed before this succeeds.
-#load "../../aethyr/binary-words.coax";
+#load "../../aethyr/core/binary-words.coax";
 #load "rig-policy-fixture.coax";
 #authority;
 OCL_JOINTS :: 309;

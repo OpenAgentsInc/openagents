@@ -2,7 +2,7 @@
 // JavaScript strings call platform SDKs; Coax admits the qualifier verdict.
 // tool.sh: stack-gib 1
 #load "../../coax/web/wasm-chrome.coax";
-#load "../assets.coax" as assets;
+#load "../core/assets.coax" as assets;
 #load "../host/stream-callback-conformance.coax";
 scb_save :: (c: [] Cdp, expression: string, path: string) -> bool {
   value := cdp_evaluate(c,expression);if value < 0 {tool_errln(cdp_error(c));return false;}

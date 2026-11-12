@@ -65,7 +65,7 @@ integrate it as chapter 18 does.
 
 ## What it builds
 
-- `aethyr/sim/articulation.coax`: model arrays, forward kinematics,
+- `aethyr/physics/sim/articulation.coax`: model arrays, forward kinematics,
   RNEA, CRBA, ABA, Jacobians for any link point, and the integrator.
 - Fixtures: a double pendulum, a seven-joint arm with the Panda's published
   inertias, and a screw joint.

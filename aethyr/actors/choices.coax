@@ -1,7 +1,7 @@
 #module "aethyr.actors.choices";
 // Typed, bounded local brains. No body movement or unrestricted world reads.
 #load "profile.coax";
-#load "../rand.coax" as random;
+#load "../core/rand.coax" as random;
 #authority;
 ACTOR_CHOSEN :: 0; ACTOR_HELD :: 1; ACTOR_COOLDOWN :: 2; ACTOR_INTERRUPTED :: 3; ACTOR_SLEEP :: 4;
 ActorBrain :: struct {tick:int= -1;rule:int= -1;until:int;ready:[ACTOR_RULES]int;last:int= -1;draws:int #counter;}

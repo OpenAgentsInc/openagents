@@ -10,7 +10,7 @@
 
 #module "aethyr.action.floats";
 #load "react.coax" as react;
-#load "../space.coax";
+#load "../core/space.coax";
 
 FLOATS :: 12;               // numbers live at once (the oldest gives way)
 FLOAT_TEXT :: 16;

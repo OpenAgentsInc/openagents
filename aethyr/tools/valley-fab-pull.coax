@@ -7,7 +7,7 @@
 #load "../../coax/lib/sys/fs.coax";
 #load "../../coax/lib/json/json.coax";
 #load "../../coax/lib/net/http.coax";
-#load "../assets.coax";
+#load "../core/assets.coax";
 vp_join :: (parts:[]string,b:[]u8)->string {at:=0;for p:parts {for c:p {if at>=b.count {return "";}b[at]=c;at+=1;}}return cast(string)b[0..<at];}
 vp_decimal :: (n:int,b:[]u8)->string {o:[1]Jo;jo_start(o[..],b);jo_int(o[..],n);return jo_text(o[..]);}
 #test "Fab pull concatenation is bounded and integer range endpoints are decimal" {b:[32]u8;parts:=[2]string.["ab","cd"];#assert vp_join(parts[..],b[..])=="abcd" && vp_join(parts[..],b[0..<3])=="";#assert vp_decimal(524287,b[..])=="524287";}

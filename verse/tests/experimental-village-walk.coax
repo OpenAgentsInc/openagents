@@ -1,5 +1,5 @@
 // Integration checks for the same Aethyr walker used by Everglade Experimental.
-#load "../../aethyr/walk.coax" as walk;
+#load "../../aethyr/move/walk.coax" as walk;
 #load "../experimental-village.coax" as village;
 #load "../experimental-dungeon.coax" as dungeon;
 

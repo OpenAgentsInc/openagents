@@ -12,7 +12,7 @@
 // effect, its sound and how the body moves. deed_feel_missing names what one lacks; a game's check
 // walks its every action with it.
 //
-// Time is in ticks of 1/64 s (aethyr/loop.coax), as aethyr/action/action.coax's.
+// Time is in ticks of 1/64 s (aethyr/core/loop.coax), as aethyr/action/action.coax's.
 //
 //   coax/bin/coax test aethyr/action/deed.coax --library
 

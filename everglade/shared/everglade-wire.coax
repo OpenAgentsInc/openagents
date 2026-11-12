@@ -1059,7 +1059,7 @@ WireHist :: struct {
 // past what a row's field holds (wire_s32), so they never stick at its clamp. A page only asks whether
 // a row's LIFE or WARP is the one it holds, and a slot counts at most one a tick, so a number comes
 // back in one slot only after WIRE_LIFE_MAX - 1 of them: over two years of a new life every tick. As
-// aethyr/entity.coax retires a slot before its generation would wrap, nothing here repeats while a
+// aethyr/core/entity.coax retires a slot before its generation would wrap, nothing here repeats while a
 // page could still hold the number it repeats. The step is the named add_sat, so a debug and a release
 // room count the same (#12927).
 WIRE_LIFE_MAX :: 2000000000;

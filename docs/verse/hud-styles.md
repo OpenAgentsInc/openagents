@@ -146,7 +146,7 @@ while their body shows from the camera. One engine path decides it:
    colliders and land: boxes, capsules and convex hulls in world heights,
    and the heights of its land under the line.
 2. `hud_sight_look` in `aethyr/ui/hud-sight.coax` asks the visibility
-   service, `vis_line` in `aethyr/visibility.coax`, about three points on
+   service, `vis_line` in `aethyr/physics/visibility.coax`, about three points on
    the body: its knees, chest and head. The body shows when any of them
    does. The service doesn't cross hulls yet, so `hud_sight_hull_cut` tests
    them on the same lines.
@@ -167,7 +167,7 @@ Each part is engine (any realm), game (every Everglade zone) or zone wiring
 | --- | --- | --- |
 | Engine | Style tokens, text roles and part drawers, SCIFI and FANTASY | `aethyr/ui/hud-style.coax` |
 | Engine | Side bar, menu, tip and words | `aethyr/ui/hud-menu.coax` |
-| Engine | Sight for plates, health bars, names and damage numbers: a body as the visibility service's target, the settled answer faded over 0.15 s | `aethyr/ui/hud-sight.coax` on `aethyr/visibility.coax` |
+| Engine | Sight for plates, health bars, names and damage numbers: a body as the visibility service's target, the settled answer faded over 0.15 s | `aethyr/ui/hud-sight.coax` on `aethyr/physics/visibility.coax` |
 | Engine | Where plates over bodies go: reach, order, lift or fold | `aethyr/ui/hud-plates.coax` |
 | Engine | The straight-alpha HUD blend and the two-face glyph atlas | `coax/web/host.js` (`coaxial_fx_alpha_v1`, `sansAtlas`) |
 | Game | Everglade picks FANTASY and draws primitives and words as vertices | `EG_HUD`, `hud_emit`, `hud_draw`, `hud_say` in `everglade/scene/charactercreator.coax` |

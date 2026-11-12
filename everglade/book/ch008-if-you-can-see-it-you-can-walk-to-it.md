@@ -4,8 +4,8 @@
 > [`everglade/shared/move.coax`](../shared/move.coax)
 > from the same item list as the drawn pieces. Rock hulls are baked into
 > [`verse/everglade2/rock-hulls.coax`](../../verse/everglade2/rock-hulls.coax),
-> and Aethyr's [`aethyr/query.coax`](../../aethyr/query.coax) and
-> [`aethyr/collide.coax`](../../aethyr/collide.coax) resolve them. The page
+> and Aethyr's [`aethyr/physics/query.coax`](../../aethyr/physics/query.coax) and
+> [`aethyr/physics/collide.coax`](../../aethyr/physics/collide.coax) resolve them. The page
 > and the room server step you on the same code. This chapter names functions
 > and has no source listings yet.
 

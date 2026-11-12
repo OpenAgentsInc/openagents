@@ -1,0 +1,354 @@
+// Editing an Aethyr terrain tile (aethyr/world/terrain-tile.coax, `aethyr.terrain.tile.v1`) by brush: raise,
+// lower, smooth and flatten its heights, and paint its material influences. Every editor of ground
+// uses these (WorldBuilder first, GitHub #13225), so a brush feels the same in each and what it
+// leaves is always a tile terrain_tile_admit takes: finite heights inside the editor's limit, each
+// sample's influences distinct with a weight above zero, and no drawn triangle naming more than four
+// materials (terrain_edit_settle).
+//
+// A brush is a shape on the ground and how strongly it acts at each sample (its coverage, 0 to 1):
+//   a disc: full inside `inner` of its radius, easing to nothing at the radius;
+//   a box: full inside, easing to nothing over `feather` metres outside (a strip along an edge, or
+//   with a box round the whole tile, everything).
+// Heights: raise adds amount x coverage (a negative amount lowers); smooth moves a sample toward the
+// mean of its four neighbours by strength x coverage; flatten moves it toward a level the same way.
+// With `pin` the tile's outer ring of samples never moves, so the tile's edge meets whatever lies
+// round it. Paint lays a material over what is there, as aethyr_terrain_over does
+// (aethyr/render/terrain-shade.coax): the weights so far scale by 1 - c and c joins the material's.
+// A sample keeps its four heaviest influences as bytes that add to 255.
+//
+// Each edit answers the rectangle of samples it may have changed (TerrainEditRect), for an undo
+// record and for the part of a GPU store to send again.
+//   coax/bin/coax test aethyr/world/terrain-edit.coax --library
+
+#load "terrain-tile.coax";
+
+TERRAIN_EDIT_DISC :: 0;
+TERRAIN_EDIT_BOX :: 1;
+TERRAIN_EDIT_INNER :: 0.35;   // the share of a disc's radius that takes the brush whole
+
+// The tile's samples as an editor holds them: `side` samples a side (cells + 1), `spacing` metres
+// apart from (west, south), heights by rows from the south, four influences a sample.
+TerrainEdit :: struct {
+  side: int; spacing: f32; west: f32; south: f32;
+  heights: [] f32; ids: [] u8; weights: [] u8;
+  limit: f32 = 60;      // metres a height may reach either way
+  pin: bool = true;     // the outer ring of samples keeps its height
+}
+TerrainEditShape :: struct {
+  kind: int;
+  x: f32; z: f32; radius: f32;                // a disc
+  x0: f32; z0: f32; x1: f32; z1: f32; feather: f32;   // a box
+}
+// Samples i0..i1 by j0..j1, both ends in; `any` false when the brush met no sample.
+TerrainEditRect :: struct { any: bool; i0: int; j0: int; i1: int; j1: int; }
+
+terrain_edit_disc :: (x: f32, z: f32, radius: f32) -> TerrainEditShape { return TerrainEditShape.{kind = TERRAIN_EDIT_DISC, x = x, z = z, radius = radius}; }
+terrain_edit_box :: (x0: f32, z0: f32, x1: f32, z1: f32, feather: f32) -> TerrainEditShape {
+  return TerrainEditShape.{kind = TERRAIN_EDIT_BOX, x0 = ifx x0 < x1 then x0 else x1, z0 = ifx z0 < z1 then z0 else z1, x1 = ifx x0 < x1 then x1 else x0, z1 = ifx z0 < z1 then z1 else z0, feather = feather};
+}
+terrain_edit_ok :: (t: TerrainEdit) -> bool {
+  p := t.side * t.side;
+  return t.side >= 2 && t.spacing > 0 && t.heights.count == p && t.ids.count == p * 4 && t.weights.count == p * 4;
+}
+te_ease :: (a: f32, b: f32, v: f32) -> f32 {
+  if b <= a { return ifx v < a then 0.0f32 else 1.0f32; }
+  q := (v - a) / (b - a);
+  if q <= 0 { return 0; }
+  if q >= 1 { return 1; }
+  return q * q * (3 - 2 * q);
+}
+// How strongly the shape acts at (px, pz): 0 to 1.
+terrain_edit_coverage :: (s: TerrainEditShape, px: f32, pz: f32) -> f32 {
+  if s.kind == TERRAIN_EDIT_BOX {
+    dx := ifx px < s.x0 then s.x0 - px else ifx px > s.x1 then px - s.x1 else 0.0f32;
+    dz := ifx pz < s.z0 then s.z0 - pz else ifx pz > s.z1 then pz - s.z1 else 0.0f32;
+    d := sqrt(dx * dx + dz * dz);
+    if d <= 0 { return 1; }
+    if s.feather <= 0 || d >= s.feather { return 0; }
+    return 1 - te_ease(0, s.feather, d);
+  }
+  if s.radius <= 0 { return 0; }
+  dx := px - s.x; dz := pz - s.z;
+  d := sqrt(dx * dx + dz * dz);
+  if d >= s.radius { return 0; }
+  return 1 - te_ease(s.radius * TERRAIN_EDIT_INNER, s.radius, d);
+}
+te_clampi :: (v: int, a: int, b: int) -> int { return ifx v < a then a else ifx v > b then b else v; }
+// The samples the shape may reach.
+terrain_edit_reach :: (t: TerrainEdit, s: TerrainEditShape) -> TerrainEditRect {
+  x0 := s.x - s.radius; x1 := s.x + s.radius; z0 := s.z - s.radius; z1 := s.z + s.radius;
+  if s.kind == TERRAIN_EDIT_BOX { x0 = s.x0 - s.feather; x1 = s.x1 + s.feather; z0 = s.z0 - s.feather; z1 = s.z1 + s.feather; }
+  last := t.side - 1;
+  far := cast(f32) last * t.spacing;
+  if x1 < t.west || z1 < t.south || x0 > t.west + far || z0 > t.south + far { return TerrainEditRect.{}; }
+  i0 := te_clampi(cast(int) floor((x0 - t.west) / t.spacing), 0, last);
+  i1 := te_clampi(cast(int) floor((x1 - t.west) / t.spacing) + 1, 0, last);
+  j0 := te_clampi(cast(int) floor((z0 - t.south) / t.spacing), 0, last);
+  j1 := te_clampi(cast(int) floor((z1 - t.south) / t.spacing) + 1, 0, last);
+  return TerrainEditRect.{any = true, i0 = i0, j0 = j0, i1 = i1, j1 = j1};
+}
+terrain_edit_join :: (a: TerrainEditRect, b: TerrainEditRect) -> TerrainEditRect {
+  if !a.any { return b; }
+  if !b.any { return a; }
+  return TerrainEditRect.{any = true, i0 = ifx a.i0 < b.i0 then a.i0 else b.i0, j0 = ifx a.j0 < b.j0 then a.j0 else b.j0,
+    i1 = ifx a.i1 > b.i1 then a.i1 else b.i1, j1 = ifx a.j1 > b.j1 then a.j1 else b.j1};
+}
+// The rectangle a sample wider every way, inside the tile: what a smooth or a settle may touch.
+terrain_edit_grow :: (t: TerrainEdit, r: TerrainEditRect) -> TerrainEditRect {
+  if !r.any { return r; }
+  last := t.side - 1;
+  return TerrainEditRect.{any = true, i0 = te_clampi(r.i0 - 1, 0, last), j0 = te_clampi(r.j0 - 1, 0, last), i1 = te_clampi(r.i1 + 1, 0, last), j1 = te_clampi(r.j1 + 1, 0, last)};
+}
+te_pinned :: (t: TerrainEdit, i: int, j: int) -> bool { return t.pin && (i == 0 || j == 0 || i == t.side - 1 || j == t.side - 1); }
+te_limit :: (t: TerrainEdit, h: f32) -> f32 { return ifx h > t.limit then t.limit else ifx h < -t.limit then -t.limit else h; }
+
+// Raise (amount above zero) or lower (below) by amount metres at full coverage.
+terrain_edit_raise :: (t: TerrainEdit, s: TerrainEditShape, amount: f32) -> TerrainEditRect {
+  if !terrain_edit_ok(t) { return TerrainEditRect.{}; }
+  r := terrain_edit_reach(t, s);
+  if !r.any { return r; }
+  for j: r.j0..<r.j1 + 1 { for i: r.i0..<r.i1 + 1 {
+    if te_pinned(t, i, j) { continue; }
+    c := terrain_edit_coverage(s, t.west + cast(f32) i * t.spacing, t.south + cast(f32) j * t.spacing);
+    if c <= 0 { continue; }
+    k := j * t.side + i;
+    t.heights[k] = te_limit(t, t.heights[k] + amount * c);
+  } }
+  return r;
+}
+// Toward a level, by strength (0 to 1) at full coverage.
+terrain_edit_flatten :: (t: TerrainEdit, s: TerrainEditShape, level: f32, strength: f32) -> TerrainEditRect {
+  if !terrain_edit_ok(t) { return TerrainEditRect.{}; }
+  r := terrain_edit_reach(t, s);
+  if !r.any { return r; }
+  st := ifx strength < 0 then 0.0f32 else ifx strength > 1 then 1.0f32 else strength;
+  for j: r.j0..<r.j1 + 1 { for i: r.i0..<r.i1 + 1 {
+    if te_pinned(t, i, j) { continue; }
+    c := terrain_edit_coverage(s, t.west + cast(f32) i * t.spacing, t.south + cast(f32) j * t.spacing);
+    if c <= 0 { continue; }
+    k := j * t.side + i;
+    t.heights[k] = te_limit(t, t.heights[k] + (level - t.heights[k]) * st * c);
+  } }
+  return r;
+}
+// Toward the mean of the four neighbours, by strength (0 to 1) at full coverage. Rows are worked
+// from the south and samples from the west, each reading what the pass has already left.
+terrain_edit_smooth :: (t: TerrainEdit, s: TerrainEditShape, strength: f32) -> TerrainEditRect {
+  if !terrain_edit_ok(t) { return TerrainEditRect.{}; }
+  r := terrain_edit_reach(t, s);
+  if !r.any { return r; }
+  st := ifx strength < 0 then 0.0f32 else ifx strength > 1 then 1.0f32 else strength;
+  last := t.side - 1;
+  for j: r.j0..<r.j1 + 1 { for i: r.i0..<r.i1 + 1 {
+    if te_pinned(t, i, j) { continue; }
+    c := terrain_edit_coverage(s, t.west + cast(f32) i * t.spacing, t.south + cast(f32) j * t.spacing);
+    if c <= 0 { continue; }
+    k := j * t.side + i;
+    west := t.heights[ifx i > 0 then k - 1 else k]; east := t.heights[ifx i < last then k + 1 else k];
+    south := t.heights[ifx j > 0 then k - t.side else k]; north := t.heights[ifx j < last then k + t.side else k];
+    mean := (west + east + south + north) * 0.25;
+    t.heights[k] = te_limit(t, t.heights[k] + (mean - t.heights[k]) * st * c);
+  } }
+  return r;
+}
+// The surface's height at (x, z) between its samples (bilinear: a brush's level, not the drawn triangle).
+terrain_edit_height :: (t: TerrainEdit, x: f32, z: f32) -> f32 {
+  if !terrain_edit_ok(t) { return 0; }
+  last := t.side - 1;
+  fx := (x - t.west) / t.spacing; fz := (z - t.south) / t.spacing;
+  fx = ifx fx < 0 then 0.0f32 else ifx fx > cast(f32) last then cast(f32) last else fx;
+  fz = ifx fz < 0 then 0.0f32 else ifx fz > cast(f32) last then cast(f32) last else fz;
+  i := te_clampi(cast(int) floor(fx), 0, last - 1); j := te_clampi(cast(int) floor(fz), 0, last - 1);
+  ax := fx - cast(f32) i; az := fz - cast(f32) j;
+  k := j * t.side + i;
+  a := t.heights[k] + (t.heights[k + 1] - t.heights[k]) * ax;
+  b := t.heights[k + t.side] + (t.heights[k + t.side + 1] - t.heights[k + t.side]) * ax;
+  return a + (b - a) * az;
+}
+
+// ---- materials
+
+// A sample's share of a material, 0 to 1.
+terrain_edit_share :: (t: TerrainEdit, k: int, material: int) -> f32 {
+  total := 0; mine := 0;
+  for q: 0..<4 {
+    w := cast(int) t.weights[k * 4 + q];
+    total += w;
+    if w > 0 && cast(int) t.ids[k * 4 + q] == material { mine += w; }
+  }
+  return ifx total > 0 then cast(f32) mine / cast(f32) total else 0.0f32;
+}
+// Every sample one material.
+terrain_edit_fill :: (t: TerrainEdit, material: int) {
+  for k: 0..<t.side * t.side {
+    t.ids[k * 4] = cast(u8) material; t.weights[k * 4] = 255;
+    for q: 1..<4 { t.ids[k * 4 + q] = TERRAIN_TILE_NO_MATERIAL; t.weights[k * 4 + q] = 0; }
+  }
+}
+// One sample takes coverage c of a material over what it has.
+te_over :: (t: TerrainEdit, k: int, material: int, c: f32) {
+  if c >= 0.998 {
+    t.ids[k * 4] = cast(u8) material; t.weights[k * 4] = 255;
+    for q: 1..<4 { t.ids[k * 4 + q] = TERRAIN_TILE_NO_MATERIAL; t.weights[k * 4 + q] = 0; }
+    return;
+  }
+  id: [5] int; w: [5] f32; n := 0;
+  total := 0;
+  for q: 0..<4 { total += cast(int) t.weights[k * 4 + q]; }
+  mine := -1;
+  for q: 0..<4 {
+    b := cast(int) t.weights[k * 4 + q];
+    if b == 0 || total == 0 { continue; }
+    id[n] = cast(int) t.ids[k * 4 + q]; w[n] = cast(f32) b / cast(f32) total * (1 - c);
+    if id[n] == material { mine = n; }
+    n += 1;
+  }
+  if mine < 0 { id[n] = material; w[n] = 0; mine = n; n += 1; }
+  w[mine] += c;
+  // the four heaviest, heaviest first
+  for a: 0..<n { for b: a + 1..<n {
+    if w[b] > w[a] || (w[b] == w[a] && id[b] < id[a]) { ti := id[a]; id[a] = id[b]; id[b] = ti; tw := w[a]; w[a] = w[b]; w[b] = tw; }
+  } }
+  if n > 4 { n = 4; }
+  sum: f32 = 0;
+  for q: 0..<n { sum += w[q]; }
+  left := 255;
+  for q: 1..<4 {
+    b := ifx q < n && sum > 0 then cast(int) floor(w[q] / sum * 255 + 0.5) else 0;
+    if b > left - 1 { b = left - 1; }
+    if b < 0 { b = 0; }
+    t.ids[k * 4 + q] = ifx b > 0 then cast(u8) id[q] else cast(u8) TERRAIN_TILE_NO_MATERIAL;
+    t.weights[k * 4 + q] = cast(u8) b;
+    left -= b;
+  }
+  t.ids[k * 4] = cast(u8) id[0]; t.weights[k * 4] = cast(u8) left;
+}
+// No drawn triangle in (or beside) the rectangle names more than four materials: where one does,
+// its corners' lightest influences go, never a corner's heaviest.
+terrain_edit_settle :: (t: TerrainEdit, around: TerrainEditRect) {
+  if !around.any { return; }
+  r := terrain_edit_grow(t, around);
+  cells := t.side - 1;
+  for j: r.j0..<(ifx r.j1 < cells then r.j1 + 1 else cells) { for i: r.i0..<(ifx r.i1 < cells then r.i1 + 1 else cells) {
+    for half: 0..<2 {
+      corners := tt_corners(cells, i, j, half == 0);
+      while tt_triangle_ids(t.ids, t.weights, corners) > 4 {
+        best := -1; light := 256;
+        for v: 0..<3 { for q: 1..<4 {   // slot 0 is a sample's heaviest (te_over): it stays
+          at := corners[v] * 4 + q;
+          b := cast(int) t.weights[at];
+          if b > 0 && b < light { light = b; best = at; }
+        } }
+        if best < 0 { break; }
+        k := best / 4;
+        t.weights[k * 4] = cast(u8) (cast(int) t.weights[k * 4] + cast(int) t.weights[best]);
+        t.weights[best] = 0; t.ids[best] = TERRAIN_TILE_NO_MATERIAL;
+      }
+    }
+  } }
+}
+// Paint a material over the shape, strength (0 to 1) at full coverage.
+terrain_edit_paint :: (t: TerrainEdit, s: TerrainEditShape, material: int, strength: f32) -> TerrainEditRect {
+  if !terrain_edit_ok(t) || material < 0 || material >= TERRAIN_TILE_NO_MATERIAL { return TerrainEditRect.{}; }
+  r := terrain_edit_reach(t, s);
+  if !r.any { return r; }
+  st := ifx strength < 0 then 0.0f32 else ifx strength > 1 then 1.0f32 else strength;
+  for j: r.j0..<r.j1 + 1 { for i: r.i0..<r.i1 + 1 {
+    c := terrain_edit_coverage(s, t.west + cast(f32) i * t.spacing, t.south + cast(f32) j * t.spacing) * st;
+    if c <= 0.002 { continue; }
+    te_over(t, j * t.side + i, material, c);
+  } }
+  terrain_edit_settle(t, r);
+  return terrain_edit_grow(t, r);
+}
+
+// ---- checks
+
+TeTest :: struct { h: [81] f32; ids: [324] u8; w: [324] u8; }
+te_test :: (b: [] TeTest) -> TerrainEdit {
+  t := TerrainEdit.{side = 9, spacing = 1, west = -4, south = -4, heights = b[0].h[..], ids = b[0].ids[..], weights = b[0].w[..]};
+  terrain_edit_fill(t, 0);
+  return t;
+}
+te_near :: (a: f32, b: f32) -> bool { return abs(a - b) < 0.0005; }
+// The tile's own table check: materials 0..3, in id order.
+te_table :: () -> [4] TerrainMaterial {
+  m: [4] TerrainMaterial;
+  for k: 0..<4 { m[k].id = k; m[k].blend_weight = [2] f32.[1, 0]; m[k].gain = [2] f32.[1, 0]; }
+  return m;
+}
+
+#test "a disc is whole inside its inner share and eases to nothing at its radius; a box feathers outside" {
+  d := terrain_edit_disc(0, 0, 4);
+  #assert terrain_edit_coverage(d, 0, 0) == 1 && terrain_edit_coverage(d, 1.4, 0) == 1 && terrain_edit_coverage(d, 4, 0) == 0 && terrain_edit_coverage(d, 0, -5) == 0;
+  mid := terrain_edit_coverage(d, 2.7, 0);
+  #assert mid > 0.4 && mid < 0.6;
+  b := terrain_edit_box(2, -1, -2, 1, 2);
+  #assert terrain_edit_coverage(b, 0, 0) == 1 && terrain_edit_coverage(b, 2, 1) == 1 && terrain_edit_coverage(b, 4, 0) == 0;
+  #assert te_near(terrain_edit_coverage(b, 3, 0), 0.5);
+  #assert terrain_edit_coverage(terrain_edit_box(-1, -1, 1, 1, 0), 1.01, 0) == 0;
+}
+#test "raise makes a hill, lower a hollow, the limit holds and the pinned ring stays level" {
+  b: [1] TeTest; t := te_test(b[..]);
+  r := terrain_edit_raise(t, terrain_edit_disc(0, 0, 3), 2);
+  #assert r.any && r.i0 == 1 && r.i1 == 8 && r.j0 == 1 && r.j1 == 8;
+  #assert te_near(t.heights[4 * 9 + 4], 2) && t.heights[4 * 9 + 6] > 0 && t.heights[4 * 9 + 6] < 2 && t.heights[4 * 9 + 7] == 0;
+  #assert te_near(terrain_edit_height(t, 0, 0), 2) && terrain_edit_height(t, 0.5, 0) > 1.9;
+  r = terrain_edit_raise(t, terrain_edit_disc(0, 0, 3), -5);
+  #assert te_near(t.heights[4 * 9 + 4], -3);
+  r = terrain_edit_raise(t, terrain_edit_box(-10, -10, 10, 10, 0), 500);
+  #assert t.heights[4 * 9 + 4] == 60 && t.heights[0] == 0 && t.heights[8] == 0 && t.heights[9 * 4] == 0 && t.heights[80] == 0;
+  t.pin = false;
+  r = terrain_edit_raise(t, terrain_edit_box(-10, -10, 10, 10, 0), -1);
+  #assert t.heights[0] == -1 && t.heights[4 * 9 + 4] == 59;
+  // a brush off the tile touches nothing
+  r = terrain_edit_raise(t, terrain_edit_disc(40, 0, 3), 1);
+  #assert !r.any;
+}
+#test "flatten goes to its level by its strength; smooth takes a spike toward its neighbours" {
+  b: [1] TeTest; t := te_test(b[..]);
+  r := terrain_edit_raise(t, terrain_edit_box(-10, -10, 10, 10, 0), 4);
+  r = terrain_edit_flatten(t, terrain_edit_disc(0, 0, 2), 1, 0.5);
+  #assert te_near(t.heights[4 * 9 + 4], 2.5) && te_near(t.heights[4 * 9 + 1], 4);
+  r = terrain_edit_flatten(t, terrain_edit_box(-10, -10, 10, 10, 0), 0, 1);
+  for k: 0..<81 { #assert t.heights[k] == 0; }
+  t.heights[4 * 9 + 4] = 8;
+  r = terrain_edit_smooth(t, terrain_edit_disc(0, 0, 3), 1);
+  // the spike's west and south neighbours rose before it was read; it fell to their mean with the east and north
+  #assert t.heights[4 * 9 + 4] < 2 && t.heights[4 * 9 + 4] > 0 && t.heights[4 * 9 + 3] == 2 && t.heights[3 * 9 + 4] > 1.9;
+}
+#test "paint lays a material over what is there; the weights of a sample add to 255 and it stays a tile" {
+  b: [1] TeTest; t := te_test(b[..]);
+  r := terrain_edit_paint(t, terrain_edit_disc(0, 0, 3), 1, 1);
+  #assert r.any && terrain_edit_share(t, 4 * 9 + 4, 1) == 1 && terrain_edit_share(t, 4 * 9 + 4, 0) == 0;
+  edge := terrain_edit_share(t, 4 * 9 + 6, 1);
+  #assert edge > 0.2 && edge < 0.95 && te_near(terrain_edit_share(t, 4 * 9 + 6, 0), 1 - edge);
+  #assert terrain_edit_share(t, 0, 1) == 0 && terrain_edit_share(t, 0, 0) == 1;
+  // half strength over it: half of what was there stays
+  r = terrain_edit_paint(t, terrain_edit_disc(0, 0, 3), 2, 0.5);
+  #assert abs(terrain_edit_share(t, 4 * 9 + 4, 2) - 0.5) < 0.01 && abs(terrain_edit_share(t, 4 * 9 + 4, 1) - 0.5) < 0.01;
+  for k: 0..<81 {
+    sum := 0;
+    for q: 0..<4 { sum += cast(int) t.weights[k * 4 + q]; #assert (t.weights[k * 4 + q] == 0) == (t.ids[k * 4 + q] == TERRAIN_TILE_NO_MATERIAL); }
+    #assert sum == 255;
+  }
+  table := te_table();
+  tile := TerrainTile.{cells = 8, spacing = 1, origin_x = -4, origin_z = -4, table = terrain_materials_revision(table[..])};
+  holes: [64] u8;
+  #assert terrain_tile_admit(tile, table[..], t.heights, holes[..], t.ids, t.weights).code == TERRAIN_TILE_OK;
+}
+#test "five materials meeting in one triangle settle to four, each sample keeping its heaviest" {
+  b: [1] TeTest; t := te_test(b[..]);
+  // corners of cell (3, 3): each a blend of different pairs, six materials in all
+  te_over(t, 3 * 9 + 3, 1, 0.4);
+  te_over(t, 3 * 9 + 4, 2, 0.4); te_over(t, 3 * 9 + 4, 3, 0.3);
+  te_over(t, 4 * 9 + 4, 4, 0.45); te_over(t, 4 * 9 + 4, 5, 0.2);
+  cells := 8;
+  #assert tt_triangle_ids(t.ids, t.weights, tt_corners(cells, 3, 3, true)) == 6;
+  terrain_edit_settle(t, TerrainEditRect.{any = true, i0 = 3, j0 = 3, i1 = 4, j1 = 4});
+  for j: 0..<cells { for i: 0..<cells {
+    #assert tt_triangle_ids(t.ids, t.weights, tt_corners(cells, i, j, true)) <= 4 && tt_triangle_ids(t.ids, t.weights, tt_corners(cells, i, j, false)) <= 4;
+  } }
+  #assert terrain_edit_share(t, 3 * 9 + 3, 0) > 0.5 && terrain_edit_share(t, 4 * 9 + 4, 0) > 0.4;
+  for k: 0..<81 { sum := 0; for q: 0..<4 { sum += cast(int) t.weights[k * 4 + q]; } #assert sum == 255; }
+}

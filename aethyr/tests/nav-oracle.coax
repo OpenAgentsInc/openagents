@@ -1,4 +1,4 @@
-// An independent reference for aethyr/nav/grid.coax (book chapter 76): every cell's walking
+// An independent reference for aethyr/world/nav/grid.coax (book chapter 76): every cell's walking
 // distance by brute force. It keeps no heap and no order: it relaxes every step out of every
 // cell, cells * 8 times over, until nothing changes, which is Bellman-Ford. The step rules
 // are written again here from the chapter (straight steps cost a cell, diagonals

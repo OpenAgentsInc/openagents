@@ -6,16 +6,16 @@
 #load "compiled-archetypes.coax" as archetypes;
 #load "signals.coax";
 #load "../state/fixture.coax";
-#load "../loop.coax" as clock;
-#load "../entity.coax" as entities;
-#load "../query-scene.coax" as scene;
-#load "../query-filter.coax" as filters;
-#load "../query.coax" as queries;
-#load "../input.coax" as input;
-#load "../assets.coax" as assets;
-#load "../walk.coax" as walking;
-#load "../nav/grid.coax" as navigation;
-#load "../replay.coax" as replay;
+#load "../core/loop.coax" as clock;
+#load "../core/entity.coax" as entities;
+#load "../physics/query-scene.coax" as scene;
+#load "../physics/query-filter.coax" as filters;
+#load "../physics/query.coax" as queries;
+#load "../core/input.coax" as input;
+#load "../core/assets.coax" as assets;
+#load "../move/walk.coax" as walking;
+#load "../world/nav/grid.coax" as navigation;
+#load "../core/replay.coax" as replay;
 #load "../ai/decide.coax" as decisions;
 // Native archetypes supply resolved services, parameter slots and phase plans;
 // the execution profile adds bounded native behavior and schedule rows.

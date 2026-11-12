@@ -1,8 +1,8 @@
-#load "../../entity.coax" as entities;
+#load "../../core/entity.coax" as entities;
 #load "../../ai/decide.coax" as decisions;
-#load "../../walk.coax" as walking;
-#load "../../replay.coax" as replay;
-#load "../../nav/grid.coax" as navigation;
+#load "../../move/walk.coax" as walking;
+#load "../../core/replay.coax" as replay;
+#load "../../world/nav/grid.coax" as navigation;
 #test "runtime movement keeps exact retry refusal and single-axis progress outcomes" #steps 500000000 #traversal 5000000000 {
  base:[1]ActorRuntimeFixture;actor_runtime_fixture(base[..]);
  for mode:0..<18 {f:=base;i:=entities.entity_slot(f[0].base.handle);a:=f[0].base.pool[0].actors[i];w:=actor_runtime_world(f[..],1);a.choice.verb=ACTOR_HOLD;a.goal_x=600;a.goal_z=600;

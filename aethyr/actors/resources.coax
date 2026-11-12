@@ -1,6 +1,6 @@
 // Actor root claims use the shared stream's existing logical owner.
 #load "definitions.coax";
-#load "../assets.coax" as assets;
+#load "../core/assets.coax" as assets;
 #load "../render/registry.coax" as gpu;
 #authority;
 ActorResources :: struct {valid:bool;manifest:assets.AssetId;epoch:int;n:int;roots:[ACTOR_ROOTS]int;claims:[ACTOR_ROOTS]ResourceReference;}

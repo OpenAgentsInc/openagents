@@ -6,12 +6,12 @@
 #load "definitions.coax";
 #load "behavior.coax";
 #load "behavior-plan.coax";
-#load "../entity.coax" as entities;
-#load "../ids.coax" as ids;
-#load "../space.coax" as points;
+#load "../core/entity.coax" as entities;
+#load "../core/ids.coax" as ids;
+#load "../core/space.coax" as points;
 #load "../ai/stimulus.coax" as senses;
-#load "../loop.coax" as clock;
-#load "../assets.coax" as assets;
+#load "../core/loop.coax" as clock;
+#load "../core/assets.coax" as assets;
 #load "../render/registry.coax" as gpu;
 ACTOR_POOL_SLOTS :: 16;
 ACTOR_EMPTY :: 0; ACTOR_LOADING :: 1; ACTOR_BORN :: 2; ACTOR_LIVE :: 3; ACTOR_RETIRING :: 4; ACTOR_REMOVED :: 5; ACTOR_PRESSURE :: 6;

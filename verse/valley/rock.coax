@@ -1,8 +1,8 @@
 // Original sandstone asset. No external art, parser, SDK or platform effects.
 // Cube-face seams share the same position function, units are metres, +Y is up.
 #load "../../aethyr/render/geometry/indexed.coax";
-#load "../../aethyr/rand.coax";
-#load "../../aethyr/assets.coax";
+#load "../../aethyr/core/rand.coax";
+#load "../../aethyr/core/assets.coax";
 #load "../../aethyr/render/light.coax";
 ROCK_MAX_VERTICES :: 6534;
 ROCK_MAX_INDICES :: 36864;

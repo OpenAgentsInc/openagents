@@ -5,7 +5,7 @@
 #load "layers-station-checks.coax";
 #load "../../aethyr/anim/retarget.coax";
 #load "../../aethyr/anim/inspect-mesh.coax";
-#load "../../aethyr/loop.coax" as clock;
+#load "../../aethyr/core/loop.coax" as clock;
 #load "../../aethyr/ui/draw.coax";
 #load "../../aethyr/ui/font.coax";
 #load "../../verse/tools/humans/ph_num.coax";

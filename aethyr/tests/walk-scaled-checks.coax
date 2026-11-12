@@ -1,5 +1,5 @@
-#load "../walk.coax" as walk;
-#load "../collide.coax" as collision;
+#load "../move/walk.coax" as walk;
+#load "../physics/collide.coax" as collision;
 
 
 #test "fast locomotion retains the fixed clock and collision travel contract through substeps" {

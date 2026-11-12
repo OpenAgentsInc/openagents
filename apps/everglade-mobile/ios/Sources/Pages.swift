@@ -84,7 +84,7 @@ import Metal
     // tier, which is Coax's to say (aethyr/render/texture-format.coax).
     c.touch = true
     // The screen in points, as a browser's screen.width says it: the governor reads its short side to
-    // tell a phone from a tablet (aethyr/quality.coax), and a phone in pixels read as a tablet (#13190).
+    // tell a phone from a tablet (aethyr/core/quality.coax), and a phone in pixels read as a tablet (#13190).
     c.screen = UIScreen.main.bounds.size
     c.layerSide = { declared in Int32(tf_side(Int64(declared), true, tf_pick(0, 0, true, 0))) }
     // The page opens on the deep thread while the frames go on: reading a pack and drawing its

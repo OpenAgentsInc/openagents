@@ -1,11 +1,11 @@
 # 10. The camera follows
 
 > Engine-core task: `ec-camera` (#12609). The modules are
-> [aethyr/follow.coax](../follow.coax), the follow camera, and
-> [aethyr/shot.coax](../shot.coax), the shot every camera makes. Every
+> [aethyr/cam/follow.coax](../cam/follow.coax), the follow camera, and
+> [aethyr/cam/shot.coax](../cam/shot.coax), the shot every camera makes. Every
 > walking realm draws its camera through them, and the free orbit in
-> [aethyr/camera.coax](../../aethyr/camera.coax) draws its shot through
-> `aethyr/shot.coax`. The camera steps after the player's step, and the
+> [aethyr/cam/camera.coax](../cam/camera.coax) draws its shot through
+> `aethyr/cam/shot.coax`. The camera steps after the player's step, and the
 > player's step never touches it.
 
 If a camera chases the last physics state, it moves in steps of 1/64 s while
@@ -40,7 +40,7 @@ The Player exposes camera-query status independently of physical-step status.
 
 ## The state
 
-<!-- source: aethyr/follow.coax follow -->
+<!-- source: aethyr/cam/follow.coax follow -->
 ```jai
 FOLLOW_PI :: 3.14159265;
 FOLLOW_TAU :: 6.2831853;
@@ -77,7 +77,7 @@ or down. A value that isn't a number changes nothing. `follow_offset` is the
 unit direction from the target to the camera. It uses `math_sin` and
 `math_cos` (chapter 5), because the walker's step reads it.
 
-<!-- source: aethyr/follow.coax look -->
+<!-- source: aethyr/cam/follow.coax look -->
 ```jai
 // The look input turns and tilts the camera (radians; positive turns left and looks up), and
 // the zoom moves it out (metres). A value that isn't a number changes nothing.
@@ -92,7 +92,7 @@ follow_zoom :: (f: Follow, delta: f32) -> Follow #effects(all) {
   if follow_finite(delta) { next.max_dist = follow_clamp(f.max_dist + delta, FOLLOW_ZOOM_MIN, FOLLOW_ZOOM_MAX); }
   return next;
 }
-// The unit direction from the target out to the camera. It uses aethyr/math.coax, so a step
+// The unit direction from the target out to the camera. It uses aethyr/core/math.coax, so a step
 // that reads it has the same bits on every host.
 follow_offset :: (f: Follow) -> WorldPoint #effects(all) {
   out := math_sin(f.phi);
@@ -118,7 +118,7 @@ widened band, the box holds the camera in only if the line runs into the box
 itself. This keeps a camera that backs away from a wall out of the wall
 (Dead Gears, 2026-10-31).
 
-<!-- source: aethyr/follow.coax room -->
+<!-- source: aethyr/cam/follow.coax room -->
 ```jai
 // How far out along `offset` (a unit direction) from `target` the camera has room, up to `max`
 // and `limit` (a realm's own ceiling on it): boxes and capsules are widened by FOLLOW_CLEAR, and
@@ -213,7 +213,7 @@ the camera backs out by `FOLLOW_EASE` (0.18) of the remaining distance each
 1/60 s. The back-out uses `1 − (1 − 0.18)^(60 dt)`, so two steps of `dt / 2`
 back out as far as one step of `dt`:
 
-<!-- source: aethyr/follow.coax track -->
+<!-- source: aethyr/cam/follow.coax track -->
 ```jai
 // One step of the camera: the target follows `dest` on the spring, then the camera pulls in at
 // once to the room it has, or backs out toward it by FOLLOW_EASE each 1/60 s.
@@ -236,7 +236,7 @@ The distance is mixed too, but it is never drawn further out than the last
 step. A wall pulls the camera in at once, and the frame doesn't show it
 outside the wall:
 
-<!-- source: aethyr/follow.coax eye -->
+<!-- source: aethyr/cam/follow.coax eye -->
 ```jai
 // Where to draw the camera: the target mixed between the last two steps by `share` (the loop's alpha, in [0, 1]),
 // out along the camera's direction by the mixed distance, but never further than the last step
@@ -252,7 +252,7 @@ follow_eye :: (at: WorldPoint, offset: WorldPoint, prev_dist: f32, dist: f32, sh
 
 The walker draws its camera with these two calls:
 
-<!-- source: aethyr/walk.coax drawn -->
+<!-- source: aethyr/move/walk.coax drawn -->
 ```jai
 // The feet and facing to draw this frame.
 walk_feet :: (p: Player) -> Vec3 #effects(all) { return mix3(p.prev_pos, p.pos, alpha(p)); }
@@ -270,19 +270,19 @@ walk_eye :: (p: Player) -> Vec3 #effects(all) { return vp(walk_shot(p).eye); }
 
 Every camera answers with a `CameraShot`: an eye and the point it looks at.
 A realm can then cut from one camera to another, or blend between two, and
-no camera needs to know about the others. `aethyr/shot.coax` holds the type
-and the cameras that need no `Follow`. It loads only `aethyr/space.coax`
+no camera needs to know about the others. `aethyr/cam/shot.coax` holds the type
+and the cameras that need no `Follow`. It loads only `aethyr/core/space.coax`
 (chapter 2), so a realm with cameras of its own can load it without the
 colliders.
 
-<!-- source: aethyr/shot.coax shot -->
+<!-- source: aethyr/cam/shot.coax shot -->
 ```jai
 // What a camera shows: the eye, and the point it looks at.
 CameraShot :: struct { eye: WorldPoint; at: WorldPoint; }
 
 // A camera's optics, with the names and units of Blender's physical camera (bpy.types.Camera and
 // its CameraDOFSettings), so Blender and Unreal cameras map one to one (GitHub #13004). Lengths on
-// the sensor are millimetres; distances in the world are metres. Only a film render (aethyr/film.coax)
+// the sensor are millimetres; distances in the world are metres. Only a film render (aethyr/render/film.coax)
 // reads the depth of field; a live frame draws a pinhole with the same lens.
 LENS_FIT_AUTO :: 0;          // the image's larger side spans sensor_width
 LENS_FIT_HORIZONTAL :: 1;    // its width spans sensor_width
@@ -326,9 +326,9 @@ The follow camera makes two shots. In third person, the shot is the follow
 camera drawn between its last two steps. In first person, the eye is 1.6 m
 above the drawn feet, and it looks the way the follow camera looks:
 
-<!-- source: aethyr/follow.coax shot -->
+<!-- source: aethyr/cam/follow.coax shot -->
 ```jai
-// The follow camera's shots (aethyr/shot.coax holds the shot type and the cameras that need no
+// The follow camera's shots (aethyr/cam/shot.coax holds the shot type and the cameras that need no
 // Follow): third person, between its last two steps (`share` is the loop's alpha), and first
 // person, the eyes above the drawn feet looking the way the follow camera looks.
 FOLLOW_FIRST_EYE :: 1.6;     // first person: the eyes, above the feet
@@ -346,9 +346,9 @@ follow_first_shot :: (f: Follow, feet: WorldPoint) -> CameraShot #effects(all) {
 The walker's view modes are these three shots. Each one reads only what is
 drawn this frame:
 
-<!-- source: aethyr/walk.coax views -->
+<!-- source: aethyr/move/walk.coax views -->
 ```jai
-// The camera a mode shows, as one of Aethyr's shots (aethyr/follow.coax): first person, the
+// The camera a mode shows, as one of Aethyr's shots (aethyr/cam/follow.coax): first person, the
 // follow behind you, or top down. Each reads only what is drawn this frame.
 walk_view :: (p: Player, mode: int) -> CameraShot #effects(all) {
   if mode == 0 { return follow_first_shot(follow_of(p), wp(walk_feet(p))); }
@@ -361,9 +361,9 @@ walk_view_at :: (p: Player, mode: int) -> Vec3 #effects(all) { return vp(walk_vi
 
 ### The free orbit
 
-An open realm uses the free orbit in `aethyr/camera.coax`. Its `Orbit` keeps
+An open realm uses the free orbit in `aethyr/cam/camera.coax`. Its `Orbit` keeps
 the look, the zoom and the easing, and its shot comes from
-`aethyr/shot.coax`. The eye sits on a line from the pivot at your shoulder.
+`aethyr/cam/shot.coax`. The eye sits on a line from the pivot at your shoulder.
 As you zoom in past the closest distance, `first` goes from 0 to 1: the
 shoulder offset closes, and the line's start rises to your eyes, 0.12 m in
 front of your face. The orbit only draws. At the time of the move it kept
@@ -372,11 +372,11 @@ difference in any eye, look-at point or ray. Its source-level `sin` and `cos`
 now use Coax's fixed CPU kernels (#12917). The engine's simulation step keeps
 its separate qualified math profile.
 
-<!-- source: aethyr/shot.coax orbit -->
+<!-- source: aethyr/cam/shot.coax orbit -->
 ```jai
 // The free orbit: it circles a pivot at your shoulder and, zoomed in past its closest, goes on
 // into your head. `first` is how far in it is, from 0 (outside) to 1 (your eyes). It draws only,
-// and it uses the C library's sine and cosine as it did in aethyr/camera.coax, so its shots are
+// and it uses the C library's sine and cosine as it did in aethyr/cam/camera.coax, so its shots are
 // the same bits as before.
 SHOT_ORBIT_DIST :: 5.2;      // how far ahead of the eye the point it looks at is
 SHOT_ORBIT_HEIGHT :: 1.45;   // the pivot, above the feet
@@ -427,7 +427,7 @@ every frame, so it lands on a camera that is still moving. A frame counts
 for at most 0.25 s, the same as the loop's frame clamp, and a time that
 isn't a number is refused: a dive of no length is a cut.
 
-<!-- source: aethyr/shot.coax dive -->
+<!-- source: aethyr/cam/shot.coax dive -->
 ```jai
 // The dive: from a shot far off (the overview, a page's own view) down to a live camera's shot
 // in `length` seconds, eased at both ends. The point it looks at arrives SHOT_DIVE_LEAD times
@@ -478,9 +478,9 @@ realms' C faces read them. `steps_in` (chapter 1) runs `step_once`, the
 player's step and then the camera's, so every realm that advances through
 `verse_player_advance` gets the same camera as before, bit for bit.
 
-<!-- source: aethyr/walk.coax camera -->
+<!-- source: aethyr/move/walk.coax camera -->
 ```jai
-// The camera's step, after the player's (aethyr/follow.coax): its target follows you on the
+// The camera's step, after the player's (aethyr/cam/follow.coax): its target follows you on the
 // spring, and it pulls in at once where something is in the way and backs out gently. It reads
 // the step's result and the colliders and changes only the camera's fields, so the player's step
 // is the same with the camera or without it. The player keeps those fields because the realms'
@@ -508,9 +508,9 @@ steady turn, at 60 FPS. It compares every field the player's step owns after
 every frame, and it confirms that the three cameras differ and that the
 wall pulled the camera in:
 
-<!-- source: aethyr/walk.coax readonly -->
+<!-- source: aethyr/move/walk.coax readonly -->
 ```jai
-// The camera only reads the player (aethyr/follow.coax, book chapter 10). Through a walk and a
+// The camera only reads the player (aethyr/cam/follow.coax, book chapter 10). Through a walk and a
 // run into a wall and round it, past a body, two jumps and a steady turn, at 60 FPS, the player is the same,
 // bit for bit, whether its camera steps after every step, never, or twice a step. Only the
 // camera's own fields differ, and the camera did meet the wall.
@@ -606,7 +606,7 @@ runs the same three cases, and backs out in steps of 1/30, 1/60, 1/120 and
 
 <!-- source: aethyr/examples/follow-a-wall.coax example -->
 ```jai
-#load "../follow.coax";
+#load "../cam/follow.coax";
 #import "Basic";
 
 // The follow camera on its own: its target chasing a point 1 m away on the spring, a wall
@@ -668,7 +668,7 @@ frames of 1/64 s. Then it tries a dive whose time isn't a number:
 
 <!-- source: aethyr/examples/one-camera-at-a-time.coax example -->
 ```jai
-#load "../player.coax";
+#load "../move/player.coax";
 #import "Basic";
 
 // The cameras read the walker and never move it. One walk into a wall and a jump, with the
@@ -744,7 +744,7 @@ mixed one changes the move by more than three times the bound:
 
 <!-- source: verse/gridwalk.coax smooth -->
 ```jai
-// The camera follows without a jump (Aethyr's follow, aethyr/follow.coax, book chapter 10): at
+// The camera follows without a jump (Aethyr's follow, aethyr/cam/follow.coax, book chapter 10): at
 // 60 FPS the 64 Hz steps don't land one to a frame, yet as you walk, run and jump the eye drawn
 // each frame moves no further than you can in a frame, its move changes by at most 0.016 m from
 // one frame to the next (measured 0.013 m), and on a jump's rising arc it rises every frame.
@@ -780,15 +780,15 @@ mixed one changes the move by more than three times the bound:
 ```
 
 ```shell
-coax/bin/coax test aethyr/follow.coax --library
-coax/bin/coax mutate aethyr/follow.coax
-coax/bin/coax test aethyr/shot.coax --library
-coax/bin/coax mutate aethyr/shot.coax
-coax/bin/coax test aethyr/player.coax --library
+coax/bin/coax test aethyr/cam/follow.coax --library
+coax/bin/coax mutate aethyr/cam/follow.coax
+coax/bin/coax test aethyr/cam/shot.coax --library
+coax/bin/coax mutate aethyr/cam/shot.coax
+coax/bin/coax test aethyr/move/player.coax --library
 coax/bin/coax test verse/gridwalk.coax --library
 ```
 
-`aethyr/follow.coax` has fifteen checks. They cover:
+`aethyr/cam/follow.coax` has fifteen checks. They cover:
 
 - the look's wrap and limits, and the zoom's range from 1 m to 20 m;
 - the spring against its closed form, and stopping on the target instead of
@@ -803,7 +803,7 @@ coax/bin/coax test verse/gridwalk.coax --library
 - the third-person shot against `follow_at` and `follow_eye`, and the
   first-person shot looking along the follow camera's direction.
 
-`aethyr/shot.coax` has five checks. They cover:
+`aethyr/cam/shot.coax` has five checks. They cover:
 
 - the top-down shot, worked by hand;
 - the free orbit's line outside, halfway in and inside, its forward and
@@ -816,13 +816,13 @@ coax/bin/coax test verse/gridwalk.coax --library
 - the helpers' edges: which of two equal values a minimum or clamp returns,
   seen in the sign of a zero, and the ends of the finite range.
 
-`aethyr/player.coax` adds the check that the player is the same whether the
+`aethyr/move/player.coax` adds the check that the player is the same whether the
 camera steps every step, never, or twice a step, and a check that the
 comparison sees each of the 21 fields it names.
 
-`coax mutate` kills all 189 mutants of `aethyr/follow.coax` and all 54 of
-`aethyr/shot.coax`, and no mutant survives on the changed lines of
-`aethyr/player.coax` or `aethyr/camera.coax`.
+`coax mutate` kills all 189 mutants of `aethyr/cam/follow.coax` and all 54 of
+`aethyr/cam/shot.coax`, and no mutant survives on the changed lines of
+`aethyr/move/player.coax` or `aethyr/cam/camera.coax`.
 
 ## Still to do
 
@@ -838,12 +838,12 @@ remain #13026 work; this companion does not expand this chapter's native profile
 The realm migration ([chapter 64](ch064-every-realm-runs-on-aethyr.md))
 moves the rest of the realms' cameras onto `CameraShot`:
 
-- `aethyr/points.coax`'s `Shot`, which the overview, Start's dolly and the
+- `aethyr/core/points.coax`'s `Shot`, which the overview, Start's dolly and the
   free orbit's realms use, becomes `CameraShot`. Today the orbit converts
   between the two at its edge.
 - The homepage's dive into the Grid (`apps/openagents-web/newland-walk.coax`,
   `wk_dive`) moves onto `shot_dive`.
-- `SpaceCam` (`aethyr/spacecam.coax`) makes `CameraShot`s. (Ice Cream
+- `SpaceCam` (`aethyr/cam/spacecam.coax`) makes `CameraShot`s. (Ice Cream
   Man's boom is done: `verse/icecream/camera.coax` is a `Follow` now.)
 - The free orbit's easing (`verse_orbit_follow`, `verse_orbit_limit`) moves
   from the frame to the fixed step, and `verse_orbit_room` reads the realm's

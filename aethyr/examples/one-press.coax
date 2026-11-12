@@ -1,5 +1,5 @@
 // book:begin example
-#load "../input.coax";
+#load "../core/input.coax";
 #import "Basic";
 
 // A tap shorter than a frame, fed to frames that run 0, 2 and 1 steps: the press waits for

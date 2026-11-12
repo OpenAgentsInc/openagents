@@ -1,7 +1,7 @@
-// The checks' side of aethyr/replay.coax: a session's backing, and a small realm with a
+// The checks' side of aethyr/core/replay.coax: a session's backing, and a small realm with a
 // remote model and a peer that answer late, twice, out of order and from an old epoch. Only
 // the checks call it.
-#load "../rand.coax";
+#load "../core/rand.coax";
 
 ORACLE_EVENTS :: 512;
 ORACLE_MARKS :: 256;

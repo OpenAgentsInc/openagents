@@ -9,12 +9,12 @@
 #load "ui-core.coax";      // Box (the match's state keeps the page's button boxes), put_int
 #load "../../coax/web/analytics.coax";    // the match's goal and end events
 #load "../../coax/web/socket.coax";      // the match's state keeps the page's socket pipe
-#load "../../aethyr/vehicle.coax";
-#load "../../aethyr/gravity.coax";
-#load "../../aethyr/thrust.coax";
+#load "../../aethyr/physics/vehicle.coax";
+#load "../../aethyr/physics/gravity.coax";
+#load "../../aethyr/physics/thrust.coax";
 #load "../../verse/drum.coax";
 #load "../../verse/sphere.coax";
-#load "../../aethyr/loop.coax";   // Aethyr's one clock: fixed 120 Hz steps
+#load "../../aethyr/core/loop.coax";   // Aethyr's one clock: fixed 120 Hz steps
 #load "orbit-snapshot.coax";
 
 PLATES :: 16;
@@ -72,7 +72,7 @@ HIT_KICK :: 0.35;
 HIT_FLATTEN :: 0.65;
 HIT_SPIN :: 0.6;         // the share of the car's spin speed across the contact that the ball takes     // how much of the up-down part of a hit's line the kick drops (ol-hit-feel)        // the share of the closing speed added to the ball on a car's hit
 STEP :: 0.008333333333333333;   // physics at 120 Hz
-STEP_NS :: 8333333;             // the same step on the engine's clock (aethyr/loop.coax)
+STEP_NS :: 8333333;             // the same step on the engine's clock (aethyr/core/loop.coax)
 MAX_STEPS :: 8;                 // the realm's step budget (ORBITLEAGUE_BUDGET); it was 12
 MAX_FRAME_NS :: 100000000;      // a frame counts for at most 0.1 s, and at most 8 steps of it run
 BLUE :: 0; MAGENTA :: 1;

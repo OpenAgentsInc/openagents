@@ -2,7 +2,7 @@
 #authority;
 #load "definitions.coax";
 #load "../state/declarations.coax";
-#load "../assets.coax" as assets;
+#load "../core/assets.coax" as assets;
 BEHAVIOR_SEQUENCES :: 8; BEHAVIOR_GUARDS :: 4; BEHAVIOR_ACTIONS :: 4;
 BEHAVIOR_SCHEDULES :: 8; BEHAVIOR_ANCHORS :: 16; BEHAVIOR_TICKS :: 230400;
 BEHAVIOR_EQUAL :: 0; BEHAVIOR_LESS :: 1; BEHAVIOR_SIGNAL :: 2; BEHAVIOR_SCHEDULE :: 3;

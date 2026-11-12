@@ -5,7 +5,7 @@
 > each library header declares `coax_default_T`, and each page's C face
 > calls it. The check is
 > [coax/web/state-defaults.coax](../../coax/web/state-defaults.coax),
-> and [aethyr/loop.coax](../loop.coax)'s clock is safe when it was never
+> and [aethyr/core/loop.coax](../core/loop.coax)'s clock is safe when it was never
 > constructed.
 
 On 2026-10-31, Orbit League ran without gravity for about two and a half
@@ -46,7 +46,7 @@ The walking controller's state uses several defaults:
 - The clock from [chapter 1](ch001-a-frame-has-a-fixed-step.md) has its step,
   clamp, and step limit set.
 
-<!-- source: aethyr/walk.coax state -->
+<!-- source: aethyr/move/walk.coax state -->
 ```jai
 Player :: struct {
   pos: Vec3;            // feet, after the last step
@@ -70,14 +70,14 @@ Player :: struct {
   pad_y: f32;
   run: bool;
   jump_held: bool;
-  jumps: InputPress;          // jump presses, each taken by the first step after it (aethyr/input.coax)
-  // Flight (aethyr/flight.coax), for a realm whose World declares it: whether you may beat and
+  jumps: InputPress;          // jump presses, each taken by the first step after it (aethyr/core/input.coax)
+  // Flight (aethyr/move/flight.coax), for a realm whose World declares it: whether you may beat and
   // climb now, the dive held, the beats taken in the air, and whether the last step dived.
   wings: bool;
   dive_held: bool;
   beats: int;
   diving: bool;
-  // Fixed steps (aethyr/loop.coax, the engine's one clock): time not yet stepped,
+  // Fixed steps (aethyr/core/loop.coax, the engine's one clock): time not yet stepped,
   // and where the last step began, so the frame shows a point between the last two.
   clock: FrameClock;
   prev_pos: Vec3;
@@ -140,7 +140,7 @@ prints a constructed player and then runs a zeroed clock:
 
 <!-- source: aethyr/examples/state-defaults.coax example -->
 ```jai
-#load "../player.coax";
+#load "../move/player.coax";
 #import "Basic";
 
 // A player constructed natively takes its declared defaults. WebAssembly memory starts

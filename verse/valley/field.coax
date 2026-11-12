@@ -1,7 +1,7 @@
 // Original deterministic six-rock teaching field. Rigid yaw and exact binary
 // scales (1 or 1/2) reuse one source asset and its two content-addressed pages.
-#load "../../aethyr/points.coax";
-#load "../../aethyr/rand.coax";
+#load "../../aethyr/core/points.coax";
+#load "../../aethyr/core/rand.coax";
 FieldRock :: struct {pos:Point;yaw:f32;scale:f32=1;}
 #test "field records replay exactly within six bounded placement cells" {
   a:=valley_field(12609);b:=valley_field(12609);c:=valley_field(12610);different:=false;

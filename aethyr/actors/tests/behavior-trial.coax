@@ -5,7 +5,7 @@
 #load "../behavior-plan.coax";
 #load "../definitions.coax";
 #load "../../state/declarations.coax" as state;
-#load "../../loop.coax" as clock;
+#load "../../core/loop.coax" as clock;
 BehaviorTrial :: struct {rows:[256][64]int;count:int;}
 behavior_trial_plan :: ()->BehaviorPlan #effects(all) {
  a:=behavior_fixture_archetype();schema:=behavior_fixture_schema();refs:state.StateRefs;anchors:=[2]int.[100,200];

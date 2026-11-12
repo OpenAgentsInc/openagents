@@ -19,9 +19,9 @@
 // stands (plant_thicket), where everglade_hold stops you. Nothing you can
 // see as open ground is behind an invisible wall.
 //
-// You walk it with the engine's controller (aethyr/player.coax, its own
+// You walk it with the engine's controller (aethyr/move/player.coax, its own
 // library) among the plan's solids and see it through the free orbit
-// (aethyr/camera.coax). M (or MAP on a phone) lifts the camera over the city;
+// (aethyr/cam/camera.coax). M (or MAP on a phone) lifts the camera over the city;
 // the location's hash starts you at a place (#market, #temple ...) and
 // #above opens on the map view. Players can't change the city; an admin
 // can, by voice (everglade-voice.coax): what they place is published over
@@ -38,14 +38,14 @@
 // in; the step you are on shows under the title, with a mark over where it
 // sends you. The stages are kept in this browser for its player (action 4,
 // the save slot everglade; message 4 gives them back). Handing in the river
-// quest brings the bird flock (eg-companion, aethyr/flock.coax), drawn here.
+// quest brings the bird flock (eg-companion, aethyr/anim/flock.coax), drawn here.
 //
 // The player walks on a flat floor and is drawn at the ground's height
-// where it stands, as in the Garden; the ground is aethyr/terrain.coax's.
+// where it stands, as in the Garden; the ground is aethyr/world/terrain.coax's.
 // You are the old Everglade's player, the Universal male Ranger of the old
 // Rust Verse engine's last pinned pack: its mesh and textures come in the
 // realm's pack, its skeleton and clips are verse/everglade/ranger.coax
-// (both written by verse/tools/pack_realm.py), and aethyr/skin.coax plays
+// (both written by verse/tools/pack_realm.py), and aethyr/anim/skin.coax plays
 // the clip the controller's state picks (idle, walk, run, jump), as the old
 // engine did. Its joints' skinning matrices go to the GPU each frame (store
 // 2) and everglade.wgsl skins its vertices with them.
@@ -56,15 +56,15 @@
 //   coax/bin/coax test apps/openagents-web/everglade.coax --steps 2000000000
 
 #load "../../aethyr/ui/font.coax";
-#load "../../aethyr/character-appearance.coax" as cc;
+#load "../../aethyr/character/character-appearance.coax" as cc;
 #load "../../aethyr/action/area-aim.coax" as aa;   // a placed area's ground targeting (Entangle), shared with Everglade II
 #load "everglade-link.coax";
 #load "../../coax/web/analytics.coax";
-#load "../../aethyr/camera.coax";
+#load "../../aethyr/cam/camera.coax";
 #load "../../verse/everglade/plan.coax";
 #load "../../verse/everglade/people.coax";
 #load "../../verse/everglade/quests.coax";
-#load "../../aethyr/flock.coax";
+#load "../../aethyr/anim/flock.coax";
 #load "../../verse/everglade/ranger.coax";
 #load "../../verse/valley/echo-orbit.coax";
 #load "../../verse/everglade/folk.coax";
@@ -90,9 +90,9 @@
 #load "everglade-move.coax";   // the movement step the page and the room server share (with everglade-step.coax)
 #load "everglade-fork.coax";   // FORK, and a fork's rules (docs/verse/realm-fork.md)
 #load "everglade-forge.coax";   // EDIT opens Aethyrforge's panels (docs/verse/aethyrforge.md)
-#load "everglade-stand.coax";   // what you stand on: roofs, rubble, the dome (aethyr/stand.coax)
+#load "everglade-stand.coax";   // what you stand on: roofs, rubble, the dome (aethyr/physics/stand.coax)
 #load "everglade-track.coax";   // what players do, for analytics.coax
-#load "everglade-quality.coax";   // the graphics quality: tier, governor, knobs (aethyr/quality.coax)
+#load "everglade-quality.coax";   // the graphics quality: tier, governor, knobs (aethyr/core/quality.coax)
 #load "everglade-warlock.coax";   // the Warlock's bar, spells and Zombies (CHARACTER: WARLOCK)
 #load "everglade-classes.coax";   // Character Create's twelve SRD classes, each with its slot 1 (#13024)
 #load "everglade-raid-preview.coax";   // the Cultist Raid offline, a preview (?raid=preview, &cine=1 its flight)
@@ -102,8 +102,8 @@
 #load "everglade-sound.coax";   // the spells', the fight's, the raid's and the town's sound (#12751)
 #load "everglade-access.coax";   // SETTINGS: keys and a pad through one record, text size, captions, the accessible layer (#12857)
 #load "../../verse/style-preset.coax";
-#load "../../aethyr/budget.coax";
-#load "../../aethyr/flyover.coax";   // #fly=PATH: the flyover benchmark's camera (coax/web/flyover.coax, #13017)
+#load "../../aethyr/core/budget.coax";
+#load "../../aethyr/cam/flyover.coax";   // #fly=PATH: the flyover benchmark's camera (coax/web/flyover.coax, #13017)
 #load "everglade-glade.coax";   // the glade south of the South Gate, Character Create's, in this world (#13018)
 #load "../../everglade/scene/charactercreator-font.coax";   // AR Kai C's advances, for Character Create's labels
 #load "everglade-create.coax";   // Character Create: this world in the studio at the glade's clearing (#13018)
@@ -498,7 +498,7 @@ Everglade :: struct {
   kept: [SAVE_BYTES] u8; kept_n: int;      // the save this browser gave back, read again once the player is known
   dirty: bool;                             // the stages changed: keep them
   flock: bool;                             // the bird flock is yours (the river quest handed in)
-  birds: [1] Flock;                        // and where its birds are (aethyr/flock.coax)
+  birds: [1] Flock;                        // and where its birds are (aethyr/anim/flock.coax)
   // you, the Ranger: its rig, its playback and its joints' skinning matrices (store 2)
   link:[1]EgLink;link_on:bool;link_ready:bool;link_first:int;link_count:int;link_word:int;link_carry:f32;link_action:int;link_air:bool;link_seconds:f32;link_face:f32;link_yaw:f32;link_flags:int;link_jump:bool;link_jump_held:bool;link_materials:bool;
   rig: [1] Ranger; skin: [1] Skin; palette: [PALETTE_FLOATS] f32;
@@ -526,7 +526,7 @@ Everglade :: struct {
   wl: Warlock;                             // the Warlock's bar and its spells' looks (everglade-warlock.coax)
   cl: EgClass;                             // a Character Create class and its slot 1 (everglade-classes.coax)
   rp: RaidPreview;                         // the Cultist Raid offline, a preview (everglade-raid-preview.coax)
-  fly: FlyPath;                            // #fly=PATH: the flyover benchmark flies the camera (aethyr/flyover.coax)
+  fly: FlyPath;                            // #fly=PATH: the flyover benchmark flies the camera (aethyr/cam/flyover.coax)
   fly_from: f64;                           // and the clock when it began
   character: [SCL_FLOATS] f32;             // the character pass's SceneLights block (everglade-character.coax)
   character_shown: bool;                   // the host draws her: she is a body (everglade_character_ready)
@@ -1271,7 +1271,7 @@ everglade_unreached :: (s: [] Everglade, grid: [] u8, queue: [] u32, at: [] f32)
 }
 
 // A walker's way from `from` toward `to` among the city's walls and bodies, the trunks and rocks
-// round it and the world's edge, as aethyr/player.coax moves you (a stride a step, then out of each
+// round it and the world's edge, as aethyr/move/player.coax moves you (a stride a step, then out of each
 // body and wall too high to step onto, sideways): where it stands after `steps` steps, or once there.
 walk_toward :: (s: [] Everglade, from: Point, to: Point, steps: int) -> Point {
   p := from;
@@ -3309,7 +3309,7 @@ wildlife :: (s: [] Everglade, you: Point, still: bool) {
 }
 
 // You: the old Everglade's Ranger, playing the clip what you are doing picks
-// (aethyr/skin.coax: idle, walk, run, jump; a gait by the distance you move),
+// (aethyr/anim/skin.coax: idle, walk, run, jump; a gait by the distance you move),
 // turned to face your way and standing on the ground. Its joints' skinning
 // matrices are store 2; everglade.wgsl skins its vertices with them.
 // On a still page (a golden, reduced motion), once it has settled into standing idle, it holds the
@@ -4322,7 +4322,7 @@ everglade_frame :: (s: [] Everglade, out: [] f32, u: [] f32, width: f32, height:
   s[0].draws[d] = cast(u32) s[0].ranger_first;
   s[0].draws[d + 1] = cast(u32) s[0].ranger_count;
   // you not in a beast's shape (everglade-circle.coax), nor zoomed into your head (first person,
-  // aethyr/camera.coax); then the others' (everglade-rangers.coax)
+  // aethyr/cam/camera.coax); then the others' (everglade-rangers.coax)
   link_visible:=everglade_link_body(s) && ci_you_shown(s) && !you_inside(s);
   s[0].draws[LINK_DRAW*4]=cast(u32)s[0].link_first;s[0].draws[LINK_DRAW*4+1]=cast(u32)s[0].link_count;s[0].draws[LINK_DRAW*4+2]=cast(u32)(EG_CELLS*EG_CELLS+RANGER_AT);s[0].draws[LINK_DRAW*4+3]=ifx link_visible then cast(u32)1 else cast(u32)0;
   you_on := !link_visible && !avatar_ready(s) && s[0].ranger_count > 0 && ci_you_shown(s) && !you_inside(s);
@@ -5242,7 +5242,7 @@ contains :: (text: string, part: string) -> bool {
 }
 
 // ---------------------------------------------------------------------------------------------
-// The frame budget (aethyr/budget.coax, book chapter 16): what one frame of Everglade may use.
+// The frame budget (aethyr/core/budget.coax, book chapter 16): what one frame of Everglade may use.
 // The vertex limit is under the vertex buffer, so a frame its writers clip fails the check.
 #test "Everglade draws elevated and wading feet at the world floor once" #steps 500000000 {
   s: [1] Everglade; everglade_start(s[..]);
@@ -5268,7 +5268,7 @@ EVERGLADE_BUDGET :: FrameBudget.{steps = 8, vertices = 6000, draws = DRAWS, byte
 // A walk from the gate: three frames at each budget screen, the last one 0.1 s long. Book
 // chapter 16 gives the peaks of 120 frames at each screen, measured natively.
 // Native integration program: aethyr/tests/check_native_gameplay.py (compiler storage limit).
-#load "../../aethyr/frame-pacing.coax";
+#load "../../aethyr/core/frame-pacing.coax";
 #test "Link raid toggle is reversible and cannot activate without a complete private rig" #steps 2000000000 {
  s:[1]Everglade;everglade_start(s[..]);#assert !s[0].link_on;s[0].link_ready=true;s[0].link_on=true;#assert everglade_key(s[..],76,1) && !s[0].link_on;#assert everglade_key(s[..],76,1) && s[0].link_on;#assert DRAWS==WATER_DRAW+1 && LINK_PAL_AT+309*12==PALETTE_FLOATS;
 }

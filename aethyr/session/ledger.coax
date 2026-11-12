@@ -38,7 +38,7 @@
 #module "aethyr.session.ledger";
 #authority;
 #load "control.coax";
-#load "../ids.coax";
+#load "../core/ids.coax";
 
 // book:begin ledger-profile
 LEDGER_ITEMS :: 32;

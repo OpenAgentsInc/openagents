@@ -4,7 +4,7 @@
 #load "../lib/sys/tool.coax";
 #load "../lib/sys/fs.coax";
 #load "../lib/json/json.coax";
-#load "../../aethyr/frame-report.coax";
+#load "../../aethyr/core/frame-report.coax";
 #load "shadow-pair-policy.coax";
 
 #test "paired GPU differences retain their signs through quantiles" {

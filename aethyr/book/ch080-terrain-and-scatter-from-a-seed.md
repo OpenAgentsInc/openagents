@@ -1,12 +1,12 @@
 # 80. Terrain and scatter from a seed
 
 > **Status: partly implemented.** The ground is chapter 8's heightfield,
-> [aethyr/terrain.coax](../../aethyr/terrain.coax): rolling hills in a
+> [aethyr/world/terrain.coax](../world/terrain.coax): rolling hills in a
 > shallow bowl, levelled where paths run and on flats, sampled exactly as it
 > is drawn. Scatter is new and shared:
-> [aethyr/scatter.coax](../../aethyr/scatter.coax) places things on a
+> [aethyr/world/scatter.coax](../world/scatter.coax) places things on a
 > jittered grid of world cells. Each cell's draws come from chapter 5's
-> counter-based streams ([aethyr/rand.coax](../../aethyr/rand.coax)), keyed
+> counter-based streams ([aethyr/core/rand.coax](../core/rand.coax)), keyed
 > by the realm's seed, the layer's stable ID, the generator's version and the
 > property, with the cell's grid coordinates as the counter. Keep-outs are
 > data, and a scatter is placed whole or refused. The example below runs
@@ -42,7 +42,7 @@ its south-west corner, with (n + 1)² heights by rows from the south
 ([chapter 8](ch008-ground-and-collision.md)). Each cell is two triangles
 split south-west to north-east, as the GPU draws it:
 
-<!-- source: aethyr/ground.coax types -->
+<!-- source: aethyr/physics/ground.coax types -->
 ```jai
 Ground :: struct {
   n: int = 64; cell: f32 = 1.5; west: f32 = -48; south: f32 = -48;
@@ -67,7 +67,7 @@ pond) it runs at the flat's level. Both ease back to the hills over
 links. A height is read from the drawn triangle, so a foot set on it stands
 on what you see:
 
-<!-- source: aethyr/terrain.coax height -->
+<!-- source: aethyr/world/terrain.coax height -->
 ```jai
 // The height of the drawn surface at x, z (the edge's beyond it).
 verse_terrain_height :: (g: Ground, heights: [] f32, x: f32, z: f32) -> f32 #export_c #effects(all) {
@@ -83,7 +83,7 @@ stones. Its cells are the world's own: cell (i, j) covers
 [i, i + 1) × [j, j + 1) spacings from the origin. A window asks for some of
 those cells, and keep-outs (a circle, or a box) say what must stay open:
 
-<!-- source: aethyr/scatter.coax layer -->
+<!-- source: aethyr/world/scatter.coax layer -->
 ```jai
 SCATTER_PROPS :: 8;               // property streams a layer may use
 SCATTER_LAYERS :: 1099511627776;  // 2^40 stable layer IDs
@@ -122,7 +122,7 @@ Every property draws from its own stream: the version, the layer and the
 property each get their own bits. Every cell takes its own draw of each
 stream: its grid coordinates, never its place in a list.
 
-<!-- source: aethyr/scatter.coax keys -->
+<!-- source: aethyr/world/scatter.coax keys -->
 ```jai
 // Which stream a property draws from: the version, the layer and the property, each in its
 // own bits, so no two of them share a stream.
@@ -156,7 +156,7 @@ A cell is filled when its fill draw is below the layer's `fill` share. Its
 thing strays from the cell's middle by up to half the `jitter` share of a
 cell each way, so with a jitter of 1 or less it stays in its own cell:
 
-<!-- source: aethyr/scatter.coax cell -->
+<!-- source: aethyr/world/scatter.coax cell -->
 ```jai
 // The thing in cell (i, j), if the cell is filled: kind -1 when it isn't. Its place strays
 // from the cell's middle by up to half the jitter's share of a cell, each way.
@@ -181,7 +181,7 @@ outside a box is computed without comparisons, from
 |x − x0| + |x − x1| − (x1 − x0), which is twice the gap on that axis and 0
 between the box's sides:
 
-<!-- source: aethyr/scatter.coax clear -->
+<!-- source: aethyr/world/scatter.coax clear -->
 ```jai
 // Whether x, z keeps `clear` metres from every keep-out. Inside a box is never clear.
 scatter_clear :: (keeps: [] Keep, x: f32, z: f32, clear: f32) -> bool {
@@ -208,7 +208,7 @@ in its output is refused with nothing written. Everglade's `plant_forest`
 stops silently at its `TREES` limit, so the trees past the limit are lost
 without a word:
 
-<!-- source: aethyr/scatter.coax fill -->
+<!-- source: aethyr/world/scatter.coax fill -->
 ```jai
 // Every thing a window's cells hold, clear of the keep-outs, in out: by rows from the south,
 // west to east in each. The count, or -1 with nothing written when the layer or window can't be
@@ -235,10 +235,10 @@ scatter_fill :: (seed: int, l: ScatterLayer, w: Window, keeps: [] Keep, out: [] 
 Two scatters are the same when their digests are, FNV-1a over every field's
 32-bit words, as chapter 5's step digests are:
 
-<!-- source: aethyr/scatter.coax digest -->
+<!-- source: aethyr/world/scatter.coax digest -->
 ```jai
 // The bits of every placed thing, in order: two scatters are the same exactly when their
-// digests are (FNV-1a over 32-bit words, as aethyr/replay.coax's digests).
+// digests are (FNV-1a over 32-bit words, as aethyr/core/replay.coax's digests).
 scatter_mix :: (h: int, v: int) -> int { return ((h ^ (v & 4294967295)) * 16777619) % 4294967296; }
 scatter_digest :: (out: [] Placed, n: int) -> int {
   h := 2166136261;
@@ -385,7 +385,7 @@ halves gives the same things as the whole.
 
 ## Checks
 
-- `coax/bin/coax test aethyr/scatter.coax --library`: 17 of 17. Layers and
+- `coax/bin/coax test aethyr/world/scatter.coax --library`: 17 of 17. Layers and
   windows are drawn only in range. Streams and counters never collide. A
   cell's numbers are its draws, worked through, and it is filled exactly
   when its fill draw is below the share. Fill 0 places nothing, fill 1 fills
@@ -394,7 +394,7 @@ halves gives the same things as the whole.
   Other checks: refusal when there's no room, a split window equal to the
   whole, another layer or property moving nothing, a new version, and the
   digest.
-- `coax/bin/coax mutate aethyr/scatter.coax --library --root-only`: 188
+- `coax/bin/coax mutate aethyr/world/scatter.coax --library --root-only`: 188
   mutants, 188 killed.
 - `coax/bin/coax test aethyr/tests/scatter-hosts.coax --library`: the seven
   cases draw, and the split window is the whole.
@@ -443,12 +443,12 @@ The vegetation module's 92 root mutants and the sky module's 54 are killed.
 
 ## What exists today
 
-- [aethyr/terrain.coax](../../aethyr/terrain.coax) and
-  [aethyr/ground.coax](../../aethyr/ground.coax): the heightfield, hills,
+- [aethyr/world/terrain.coax](../world/terrain.coax) and
+  [aethyr/physics/ground.coax](../physics/ground.coax): the heightfield, hills,
   path levelling, height, normal and ray queries.
-- [aethyr/scatter.coax](../../aethyr/scatter.coax): keyed scatter with
+- [aethyr/world/scatter.coax](../world/scatter.coax): keyed scatter with
   keep-outs.
-- [aethyr/rand.coax](../../aethyr/rand.coax): the counter-based draw, with
+- [aethyr/core/rand.coax](../core/rand.coax): the counter-based draw, with
   its Python oracle.
 - [verse/everglade/plan.coax](../../verse/everglade/plan.coax): Everglade's
   ground, bounds, streets and clearings.

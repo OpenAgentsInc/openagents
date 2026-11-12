@@ -2,7 +2,7 @@
 
 Status: design report, 2026-11-02; packs shown to every visitor since
 2026-11-03. The first pieces are built: MetaHuman
-Lab and `aethyr/mannequin.coax` (see [MetaHuman Lab](#metahuman-lab)). The
+Lab and `aethyr/anim/mannequin.coax` (see [MetaHuman Lab](#metahuman-lab)). The
 rest is not built yet. It covers how Aethyr, the Coax engine that every Verse realm runs on, loads,
 animates and draws Epic MetaHuman characters. It also covers a first plan for
 5E Lab (`openagents.com/worlds/5e-lab`) to draw MetaHumans in place of its
@@ -26,7 +26,7 @@ Unreal is at most an offline export tool.
   `openagentsgemini-verse-private-assets` and the Cloud Run service
   `verse-assets` are still live, and the exports are still on the owner's
   Mac under `~/work/film-out/draconia/metahuman/`.
-- Aethyr already has most of the body runtime. `aethyr/skin.coax` plays
+- Aethyr already has most of the body runtime. `aethyr/anim/skin.coax` plays
   skinned clips with cross-fades. `verse/tools/people.py` rebinds parts onto
   a shared skeleton. Everglade's shader (`verse/everglade/gpu.coax`) skins
   vertices pulled from a storage buffer with four joints each. The
@@ -335,14 +335,14 @@ All paths below are at `853417f290`, the Nuke's parent. Restore them with
 
 | Piece | Where | Reuse |
 | --- | --- | --- |
-| Skinned clip playback | `aethyr/skin.coax`: 96 joints, rest pose and inverse binds, translation lerp and rotation slerp, a 0.22 s smoothstep cross-fade, gaits that advance with distance, and palettes written as three rows of four | The body animation core. Its joint limit has to rise, and it needs layers. |
+| Skinned clip playback | `aethyr/anim/skin.coax`: 96 joints, rest pose and inverse binds, translation lerp and rotation slerp, a 0.22 s smoothstep cross-fade, gaits that advance with distance, and palettes written as three rows of four | The body animation core. Its joint limit has to rise, and it needs layers. |
 | Part rebinding and clips | `verse/tools/people.py`, `verse/everglade/people-rig.coax`: Quaternius CC0 parts rebound onto 65-joint male and female skeletons, with 12 clips (idle, walk, talk, nod, fold, lantern, spell, slash, run, die, knock, cower) | This is the retarget method. The joint names match the MetaHuman body's main skeleton, so the clips retarget by name. |
 | GPU skinning | `verse/everglade/gpu.coax`: a 24-byte vertex pulled from a storage buffer, four joints and weights, per-person pose blocks with tint rows after the joints | The vertex path for crowds |
 | Pack format | `verse/tools/pack_realm.py` (VPK1): `C` lines for skinned characters, licence per entry, budget, style checks | Extend it for a human pack, or write a sibling compiler |
-| Asset identity | `aethyr/assets.coax`: content-addressed packs admitted whole or refused | A private pack is admitted by digest |
-| Frame budgets | `aethyr/budget.coax` | Every LOD and crowd decision is checked against it |
-| Figures | `aethyr/figure.coax`: rounded-bone figures and gaits for soft-shape realms | The fallback, and the shape of the skeleton plan |
-| Rigid bodies | `aethyr/rigid.coax` | Skeletons collapsing on death |
+| Asset identity | `aethyr/core/assets.coax`: content-addressed packs admitted whole or refused | A private pack is admitted by digest |
+| Frame budgets | `aethyr/core/budget.coax` | Every LOD and crowd decision is checked against it |
+| Figures | `aethyr/anim/figure.coax`: rounded-bone figures and gaits for soft-shape realms | The fallback, and the shape of the skeleton plan |
+| Rigid bodies | `aethyr/physics/rigid.coax` | Skeletons collapsing on death |
 | Painterly style | `verse/style.coax`, [art-styles.md](art-styles.md) §10, §11, §14 | The character shading rules for 5E Lab |
 | Asset protocol | `openagents.verse.asset.v1` `PrivateAsset`, `PrivatePack` (with `rig`, `clips` and `forms`), `PrivatePlacements` and `PrivateUrlRequest` ([§10.17](openagents-verse-protocol.md)) | The schema is already specified |
 | Live infrastructure | Bucket `gs://openagentsgemini-verse-private-assets` and Cloud Run `verse-assets` (both checked as present on 2026-11-02) | Reuse them, with a Coax client in place of the Rust one |
@@ -361,8 +361,8 @@ Only the MetaHuman pack is private.
 ```text
 offline, owner's Mac only                      repo (code)                 runtime (browser / native)
 ---------------------------------------------  --------------------------  -------------------------------
-UE 5.8 headless: create, rig, export   ──►     verse/tools/humans/*        aethyr/assets.coax admits pack
-  head.dna, body.dna, DCC maps, cards           (export scripts,            aethyr/skin.coax + anim-graph
+UE 5.8 headless: create, rig, export   ──►     verse/tools/humans/*        aethyr/core/assets.coax admits pack
+  head.dna, body.dna, DCC maps, cards           (export scripts,            aethyr/anim/skin.coax + anim-graph
 dna tool (OpenRigLogic, MIT)           ──►      dna reader, pack compiler)  aethyr/face-rig.coax (near only)
 pack compiler: LODs, rig, paint pass   ──►     manifests schema only       verse/gpu/human.coax (WGSL)
 upload pack to private bucket          ──►     (no asset names)            verse-assets broker ⇢ signed URL
@@ -445,7 +445,7 @@ The lab runs the face rig live. The pieces:
 - `pack_human.coax` writes the face pieces (head, teeth, eyes, lashes) as one
   vertex range and adds the line `F FIRST COUNT BYTES` to the catalog. The
   block follows the catalog's text after a NUL.
-- `aethyr/facerig.coax` evaluates the block, ported from OpenRigLogic's
+- `aethyr/anim/facerig.coax` evaluates the block, ported from OpenRigLogic's
   evaluator with its MIT notice. Expressions set raw controls, PSDs
   multiply them, joint groups give each face joint's translation, rotation
   (degrees, XYZ order) and scale deltas, and the points take their
@@ -479,7 +479,7 @@ from the camera.
   3. our own capture.
   MetaHuman Animator output is a MetaHuman asset and follows the private
   rules.
-- **Runtime.** Extend `aethyr/skin.coax`:
+- **Runtime.** Extend `aethyr/anim/skin.coax`:
   - raise `SKIN_JOINTS_MAX` from 96, or keep it and use separate face
     palettes;
   - add layers: a base locomotion clip, an upper-body action clip masked
@@ -488,7 +488,7 @@ from the camera.
   - add two-bone IK for feet on uneven ground and for hand targets.
 - **State machine.** `aethyr/anim-graph.coax`: states, transitions and
   timed events (a cast's release frame) as data. A pose is a pure function
-  of (events, clock), so `aethyr/replay.coax` replays look the same as live
+  of (events, clock), so `aethyr/core/replay.coax` replays look the same as live
   play.
 
 ### 4. LODs
@@ -617,7 +617,7 @@ levels coarser.
 | Pack compiler | `verse/tools/humans/pack_human.coax` | Public. Its output is private. |
 | Private CLI (add, place, grant, revoke) | `verse/tools/humans/private.coax`, a port of `crates/verse-private` | Public |
 | Retarget | `aethyr/retarget.coax`, the method of `people.py` | Public |
-| Clip playback and layers | `aethyr/skin.coax` (extended) | Public |
+| Clip playback and layers | `aethyr/anim/skin.coax` (extended) | Public |
 | Animation state machine | `aethyr/anim-graph.coax` | Public |
 | Face rig | `aethyr/face-rig.coax` (MIT notice) | Public |
 | LOD and crowd planner | `aethyr/crowd.coax`, using `budget.coax` | Public |
@@ -675,18 +675,18 @@ It holds no MetaHuman asset and draws with none.
 - **The figure.** One human figure on a studio floor. Its skeleton and clips
   are the CC0 people rig (`verse/everglade/people-rig.coax`: the Quaternius
   male and female skeletons, 65 joints, and the Universal Animation
-  Library's 12 clips), played by `aethyr/skin.coax`. Its body is a building
+  Library's 12 clips), played by `aethyr/anim/skin.coax`. Its body is a building
   block written in `apps/openagents-web/metahumanlab.coax`: 25 capsules, one
   per bone, posed from the same joints, traced per pixel by
   `gpu/metahumanlab.coax`. N and P cycle the clips; walk and run carry the
   figure round a circle so the gait keeps pace with the floor. G switches
   bodies, and K draws the skeleton over a glass body with the mannequin's
   joint names.
-- **The camera.** Aethyr's orbit (`aethyr/shot.coax`) as 5E Lab uses it,
+- **The camera.** Aethyr's orbit (`aethyr/cam/shot.coax`) as 5E Lab uses it,
   with its shoulder offset taken back out so the view centres on the
   pivot: drag orbits, the wheel or a pinch zooms, Shift-drag or two fingers
   pan, and held W, A, S, D, Q and E fly the pivot with eased speed.
-- **Joint names.** `aethyr/mannequin.coax` names the 65 joints in the rig's
+- **Joint names.** `aethyr/anim/mannequin.coax` names the 65 joints in the rig's
   order and folds another body's joint names onto them:
   `spine_04` and `spine_05` into `spine_03`, `neck_02` into `neck_01`,
   twist and corrective helpers into their bone on their side, metacarpals
@@ -1069,7 +1069,7 @@ asset:
 - **Undead motion.** Skeletons get their own idle and walk (stiffer, with
   a jaw rattle), and use the shared cast, melee and hit clips.
 - **Death.** Skeletons have no death saves. At 0 hit points they collapse:
-  each bone becomes an `aethyr/rigid.coax` body with the bone's last
+  each bone becomes an `aethyr/physics/rigid.coax` body with the bone's last
   velocity and settles into a pile. This is presentation only. The battle
   marks the Skeleton dead.
 

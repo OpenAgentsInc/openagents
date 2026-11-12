@@ -1,5 +1,5 @@
 // Bounded indexed mesh admission, independent of packing or GPU effects.
-#load "../../points.coax";
+#load "../../core/points.coax";
 #authority;
 IndexedStatus :: enum u8 { ok; shape; source; budget; position; normal; index; degenerate; }
 IndexedRead :: struct { status:IndexedStatus; vertices:int; indices:int; bytes:int; low:Point; high:Point; }

@@ -1,7 +1,7 @@
 // Everglade's frame time with Echo on screen (docs/verse/2026-11-06-native-hero-characters.md, R4;
 // GitHub #12988): the page in real time in headless Chrome, its frames timed by the host's frame
 // trace (coax/web/host.js coaxialFrameTrace: each frame's start, whether it was drawn or held back
-// because the GPU had frames in flight, the CPU's part of it), judged by the 60 FPS rule (aethyr/frame-report.coax: more than 30 frames, the
+// because the GPU had frames in flight, the CPU's part of it), judged by the 60 FPS rule (aethyr/core/frame-report.coax: more than 30 frames, the
 // 95th percentile at most 17.5 ms, none over 33 ms).
 //   coax/web/tool.sh coax/web/everglade-echo-perf.coax URL SHOT SIZE
 //     SHOT close   URL ?stage=echo: N starts her orbit; its first 1.2 s, the camera within about
@@ -21,7 +21,7 @@
 // A hero qualification also requires ready character draws and the exact
 // requested raster. Empty, suppressed or downscaled scenes remain diagnostics.
 #load "valley-capture.coax";
-#load "../../aethyr/frame-report.coax";
+#load "../../aethyr/core/frame-report.coax";
 #load "everglade-echo-proof.coax";
 
 EP_FRAMES :: 1200;

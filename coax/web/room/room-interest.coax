@@ -1,4 +1,4 @@
-#load "../../../aethyr/ids.coax";
+#load "../../../aethyr/core/ids.coax";
 #load "../../../aethyr/net/grid.coax";   // the engine's spatial grid (#13178)
 // Interest management for the Everglade rooms (#12789; docs/research/mmo.md section 7): which of a
 // room's entities each seat may receive this tick, and how much each matters. The send path

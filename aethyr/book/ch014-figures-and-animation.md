@@ -3,9 +3,9 @@
 > **Status: partly implemented.** The pose moved into
 > [aethyr/anim/pose.coax](../anim/pose.coax): the rotations, a cross-fade
 > blended joint by joint, the skeleton chained from the root and the
-> skinning palette. [aethyr/skin.coax](../skin.coax) plays its clips through
+> skinning palette. [aethyr/anim/skin.coax](../anim/skin.coax) plays its clips through
 > it, bit for bit as before. The Grid's cast (`verse/cast.coax`) and the
-> rounded-bone figures (`aethyr/figure.coax`) still pose their joints in
+> rounded-bone figures (`aethyr/anim/figure.coax`) still pose their joints in
 > their own files (see [Still to do](#still-to-do)).
 
 A character on screen is a skeleton, a pose each frame and something drawn
@@ -88,7 +88,7 @@ Joints come parents first, so `pose_chain` can place each joint from its
 parent's place in one pass from the root. `pose_palette` then writes each
 joint's skinning matrix, its posed rotation and place times its inverse
 bind, as three rows of four for the vertex shader. `skin_palette` in
-[aethyr/skin.coax](../skin.coax) is now these two calls for each joint, and
+[aethyr/anim/skin.coax](../anim/skin.coax) is now these two calls for each joint, and
 `skin_advance` blends with `pose_fade` and `pose_blend`. Everglade's Ranger
 and people and the 5E lab's bodies play through them, and their call sites
 didn't change.
@@ -203,7 +203,7 @@ a wave past the shoulder's limit read false: line 6: right_shoulder roll is outs
 clip for 0.05 m/s idle, 1.3 m/s walk, 6 m/s run, in the air jump
 ```
 
-The original digest independently checked the move out of `aethyr/skin.coax`.
+The original digest independently checked the move out of `aethyr/anim/skin.coax`.
 With Coax's fixed CPU sine
 ([#12917](https://github.com/OpenAgentsInc/openagents/issues/12917)), `slerp`
 now has one recording, 2400183551, across CPU hosts and debug/release builds.
@@ -213,7 +213,7 @@ size, through every fade.
 
 The wave is the broken case. Its sixth line turns the right shoulder's roll
 to −250°, outside the joint's −190° to 40°, and
-[aethyr/motion.coax](../motion.coax) refuses the whole motion with the line
+[aethyr/anim/motion.coax](../anim/motion.coax) refuses the whole motion with the line
 and the allowed range rather than bending the turn to fit.
 
 ## Checks
@@ -221,8 +221,8 @@ and the allowed range rather than bending the turn to fit.
 ```shell
 coax/bin/coax test aethyr/anim/pose.coax --library
 coax/bin/coax mutate aethyr/anim/pose.coax --library --root-only
-coax/bin/coax test aethyr/skin.coax --library
-coax/bin/coax mutate aethyr/skin.coax --library --root-only
+coax/bin/coax test aethyr/anim/skin.coax --library
+coax/bin/coax mutate aethyr/anim/skin.coax --library --root-only
 ```
 
 `aethyr/anim/pose.coax` has nine checks of its own: the quaternion
@@ -233,7 +233,7 @@ share, one joint's blend, the chain (a root, a child turned with its parent,
 and a parent that comes after its joint), and the palette's rows against a
 hand-worked bind. `coax mutate` kills all 119 of its mutants.
 
-`aethyr/skin.coax` keeps its clip, key, gait, fade, skinning and turn checks,
+`aethyr/anim/skin.coax` keeps its clip, key, gait, fade, skinning and turn checks,
 with one more: a character's own fade length replaces `SKIN_FADE`. Its
 changed lines have no surviving mutants. 87 older survivors remain elsewhere
 in `skin.coax`, in its bounds and key lookup; the file had 112 before this
@@ -245,8 +245,8 @@ change.
   robots from `Cast.bin` and blends its seven clips over 0.18 s with its own
   `nlerp` and quaternion type. Moving it onto `pose.coax` must keep the
   Grid's recorded CPU, WebGPU and Vulkan frame identical.
-- **Figures and motions.** The rounded-bone figures (`aethyr/figure.coax`)
-  and motion documents (`aethyr/motion.coax`) pose their joints from pitch,
+- **Figures and motions.** The rounded-bone figures (`aethyr/anim/figure.coax`)
+  and motion documents (`aethyr/anim/motion.coax`) pose their joints from pitch,
   yaw and roll in their own code. Writing a `Pose` from them, with a motion
   layered over a gait replacing only the joints its keys name, remains.
 - **Foot slip.** A measured bound on a stance foot's world speed during a

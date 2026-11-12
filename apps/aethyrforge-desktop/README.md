@@ -206,7 +206,7 @@ AUTO targets that rate and has a 60 FPS minimum quality budget. It can reduce
 rendering quality under load without adopting the web/phone governor's 30 FPS
 budget. Actual throughput still depends on the scene and available GPU time.
 
-`aethyr/frame-pacing.coax` admits at most two unfinished GPU frames in Everglade's
+`aethyr/core/frame-pacing.coax` admits at most two unfinished GPU frames in Everglade's
 legacy WebGPU host. When both are outstanding, the host waits for a queue fence
 before doing more simulation/encoding work; the next admitted frame receives the
 elapsed time. Device recovery owns a fresh pending count. The HUD retains its

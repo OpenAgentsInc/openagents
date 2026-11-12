@@ -54,7 +54,7 @@ with an independent distance-query oracle.
 
 ## What it builds
 
-- `aethyr/sim/sap.coax` and later `aethyr/sim/ipc.coax`.
+- `aethyr/physics/sim/sap.coax` and later `aethyr/physics/sim/ipc.coax`.
 - Fixtures: a finger squeezing a pad and holding it for 10 s, a cube
   grasped and lifted, two cloths stacked on a sphere (IPC).
 

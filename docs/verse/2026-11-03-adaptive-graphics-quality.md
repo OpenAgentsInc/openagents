@@ -47,7 +47,7 @@ the CPU growth that scales with the destroy.
 
 ## The strategy
 
-A shared module, `aethyr/quality.coax`, owns the quality. A world keeps one
+A shared module, `aethyr/core/quality.coax`, owns the quality. A world keeps one
 `Quality`, gives it the page's facts once, gives it every frame's length, and
 reads its knobs. Worlds never make their own ad hoc quality checks.
 
@@ -216,8 +216,8 @@ before (`coaxial_pixel_budget` returns 0) and don't show the tier.
 
 | File | What |
 | --- | --- |
-| `aethyr/quality.coax` | The ladder, the start rung, the governor, the label. Checks for each rule. |
-| `aethyr/quality-page.coax` | A page's wiring round its `Quality`, written once (`QualityPage`): the facts, the GPU's facts, the frame, the pixel budget, the eased knobs, what the host keeps, the label and a pick. |
+| `aethyr/core/quality.coax` | The ladder, the start rung, the governor, the label. Checks for each rule. |
+| `aethyr/core/quality-page.coax` | A page's wiring round its `Quality`, written once (`QualityPage`): the facts, the GPU's facts, the frame, the pixel budget, the eased knobs, what the host keeps, the label and a pick. |
 | `everglade/zone.coax` | A zone's governor (`zone_quality_frame`, `zone_pixel_budget`), so Experimental, the Druid's meadow and the Archery Range all run it; the tier shows beside the frame rate. |
 | `aethyr/render/grid-cull.coax` | The cells of a grid round the eye that the view can see, as runs: the open meadow draws those, not the whole grid (`charactercreator.coax` `meadow_cull`). |
 | `aethyr/render/mesh-cull.coax` | A big static mesh drawn as the runs of 1,024 triangles the view can see. The host boxes each run once from the pack's bytes (`coaxial_mesh_bounds_v1`; host.js and PageHost.m `meshBounds`), so no pack changes. Experimental's glade mesh draws through it (`everglade/zone.coax` `zone_mesh_cull`); `coax/web/mesh-cull-check.coax` times it on and off. |
@@ -229,12 +229,12 @@ before (`coaxial_pixel_budget` returns 0) and don't show the tier.
 | `coax/web/host.js` | `auto` as a fourth tier, `cores`, `memory` and the kept tier in the page's facts, `globalThis.coaxial.quality(field)`. |
 | `coax/web/destroy-fps.coax` | The measuring tool. |
 
-A new world uses it the same way: `#load "../../aethyr/quality.coax"`, start
+A new world uses it the same way: `#load "../../aethyr/core/quality.coax"`, start
 it from the facts (`quality_device_from_facts`, `quality_mode_from_facts`),
 call `quality_frame` each frame, and read `quality_knobs`. Before the governor
 starts, `quality_start_pixels` gives the start rung's pixel budget.
 
-Simpler: keep one `QualityPage` (`#load "../../aethyr/quality-page.coax"`). It
+Simpler: keep one `QualityPage` (`#load "../../aethyr/core/quality-page.coax"`). It
 does all of that. Call `qp_facts` on host message 600, `qp_gpu` on 613,
 `qp_frame` each frame, answer `coaxial_pixel_budget` with `qp_pixels`, read
 the knobs from `kn`, and send what `qp_tell` asks when the page has no other

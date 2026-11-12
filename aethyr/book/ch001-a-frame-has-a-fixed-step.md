@@ -1,8 +1,8 @@
 # 1. A frame has a fixed step
 
 > Engine-core task: `ec-loop` (#12609), done in `3102756f8b`. The module is
-> [aethyr/loop.coax](../loop.coax). The walking controller in
-> [aethyr/player.coax](../../aethyr/player.coax), which every walking realm
+> [aethyr/core/loop.coax](../core/loop.coax). The walking controller in
+> [aethyr/move/player.coax](../move/player.coax), which every walking realm
 > uses, and Orbit League step on it.
 
 A display shows frames at its own rate: 60 frames a second on most phones,
@@ -74,7 +74,7 @@ frame. The clock also counts the frames it refused, the frames it clamped,
 the frames with too many steps, and the time it dropped. A realm and its
 checks can read these counts.
 
-<!-- source: aethyr/loop.coax clock -->
+<!-- source: aethyr/core/loop.coax clock -->
 ```jai
 LOOP_SECOND :: 1000000000;        // nanoseconds
 LOOP_STEP_NS :: 15625000;         // 1/64 s, exact: the walking realms' step
@@ -104,7 +104,7 @@ step, clamp, or step limit is zero or negative, the clock uses the declared
 default. A clock read from memory that was never constructed
 ([chapter 3](ch003-state-starts-from-its-defaults.md)) still runs.
 
-<!-- source: aethyr/loop.coax accept -->
+<!-- source: aethyr/core/loop.coax accept -->
 ```jai
 loop_accept_ns :: (c: FrameClock, frame_ns: int) -> FrameClock {
   next := c;
@@ -137,7 +137,7 @@ realm that could run only some of them (Belt 2200, waiting on its partner)
 calls `loop_ran_some`, and the rest stay owed for the next frame.
 `loop_alpha` returns the value that drawing mixes by.
 
-<!-- source: aethyr/loop.coax ran -->
+<!-- source: aethyr/core/loop.coax ran -->
 ```jai
 // How many steps to run now.
 loop_due :: (c: FrameClock) -> int { return c.due; }
@@ -192,9 +192,9 @@ The walking controller uses the clock as follows:
 
 No other code in the controller reads the frame's time.
 
-<!-- source: aethyr/walk.coax advance -->
+<!-- source: aethyr/move/walk.coax advance -->
 ```jai
-// Advances by a frame's time in fixed steps, on the player's clock (aethyr/loop.coax):
+// Advances by a frame's time in fixed steps, on the player's clock (aethyr/core/loop.coax):
 // the frame's time is clamped, at most LOOP_MAX_STEPS run, and a longer backlog is
 // dropped, so a stall never makes a frame slower.
 advance_in :: (w: World, p: Player, frame: f32) -> Player #effects(all) {
@@ -251,10 +251,10 @@ steps_in :: (w: World, p: Player, n: int) -> Player #effects(all) {
 ```
 
 Drawing reads only the last two steps and `α`. This applies to the feet, the
-facing, and the camera, whose mix is `aethyr/follow.coax`'s `follow_shot`
+facing, and the camera, whose mix is `aethyr/cam/follow.coax`'s `follow_shot`
 (chapter 10).
 
-<!-- source: aethyr/walk.coax drawn -->
+<!-- source: aethyr/move/walk.coax drawn -->
 ```jai
 // The feet and facing to draw this frame.
 walk_feet :: (p: Player) -> Vec3 #effects(all) { return mix3(p.prev_pos, p.pos, alpha(p)); }
@@ -276,7 +276,7 @@ FPS. After every frame, it requires the following:
 - The clock has run `⌊time / h⌋` steps.
 - The drawn time, `(ticks + α) h`, equals the time fed in.
 
-<!-- source: aethyr/loop.coax rates -->
+<!-- source: aethyr/core/loop.coax rates -->
 ```jai
 // The contract: a run's steps are the same whatever the frame rate. Fed five seconds in
 // frames of 30, 60, 120 or 144 a second, the clock has run floor(time / step) steps after
@@ -304,7 +304,7 @@ clock did:
 
 <!-- source: aethyr/examples/frame-rates.coax example -->
 ```jai
-#load "../loop.coax";
+#load "../core/loop.coax";
 #import "Basic";
 
 // Five seconds fed at four frame rates, then a three-second stall: how many fixed steps
@@ -351,7 +351,7 @@ drops the time of the other eight. The next frame runs one step, like any
 other frame.
 
 The controller has a stronger check, "a run and jump has the same states at
-30, 60, 120 and 144 FPS" in `aethyr/player.coax`. It runs a jump at each rate
+30, 60, 120 and 144 FPS" in `aethyr/move/player.coax`. It runs a jump at each rate
 and compares every step, bit for bit, with the same jump run one step at a
 time. It also requires the drawn feet to lie between the last two steps.
 
@@ -366,7 +366,7 @@ The check measures, through the jump, how much each frame's change in height
 differs from the previous frame's. It requires that difference to stay under
 a bound:
 
-<!-- source: aethyr/walk.coax stutter -->
+<!-- source: aethyr/move/walk.coax stutter -->
 ```jai
 // No stutter at 60 FPS: the 64 Hz steps do not land one to a frame (some frames run two),
 // yet what is drawn moves smoothly. Through a jump's flight the feet drawn each frame change
@@ -435,12 +435,12 @@ least three times over, so a change back to last-step drawing fails.
 ## Checks
 
 ```shell
-coax/bin/coax test aethyr/loop.coax --library
-coax/bin/coax mutate aethyr/loop.coax
-coax/bin/coax test aethyr/player.coax --library --only FPS
+coax/bin/coax test aethyr/core/loop.coax --library
+coax/bin/coax mutate aethyr/core/loop.coax
+coax/bin/coax test aethyr/move/player.coax --library --only FPS
 ```
 
-`aethyr/loop.coax` has nine checks. They cover:
+`aethyr/core/loop.coax` has nine checks. They cover:
 
 - rounding seconds to nanoseconds;
 - refusing and clamping a frame's time;
@@ -452,14 +452,14 @@ coax/bin/coax test aethyr/player.coax --library --only FPS
 - a clock read from zeroed memory;
 - the step count at four frame rates.
 
-`coax mutate` makes 74 mutants of `aethyr/loop.coax`, and the checks kill all
+`coax mutate` makes 74 mutants of `aethyr/core/loop.coax`, and the checks kill all
 74.
 
 ## What it replaced
 
 Before this module, each realm kept its own accumulator:
 
-- `aethyr/player.coax`: f32 seconds, 1/64 s, eight steps, 0.25 s.
+- `aethyr/move/player.coax`: f32 seconds, 1/64 s, eight steps, 0.25 s.
 - Orbit League: f64, 1/120 s, at most eight steps of carried time.
 - Dead Gears' ECS clock in
   [verse/deadgears/ecs.coax](../../verse/deadgears/ecs.coax): f64, 1/60 s, a
@@ -490,7 +490,7 @@ Before this module, each realm kept its own accumulator:
   battle time (12 battle seconds a real second, 48 at 4X) was used up, with
   the last step overrunning it and no cap, so a 0.1 s frame at 4X ran 48.
 
-All of them now step on `aethyr/loop.coax`. Dead Gears' clock keeps its
+All of them now step on `aethyr/core/loop.coax`. Dead Gears' clock keeps its
 1/60 s step as 16,666,666 ns, rounded down, so 0.05 s is still three steps
 without the slack. The faces move their realm by `verse_player_counts`, the
 time the player's clock counts the frame for (`loop_counts`), so the frame's

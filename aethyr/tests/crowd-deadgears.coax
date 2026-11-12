@@ -10,7 +10,7 @@
 #load "../../verse/deadgears/rules.coax";
 #load "nav-oracle.coax";
 #load "stimulus-oracle.coax";
-#load "../rand.coax";
+#load "../core/rand.coax";
 
 // ---- the oracles on the deck
 

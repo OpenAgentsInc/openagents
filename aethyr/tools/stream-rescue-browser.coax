@@ -1,7 +1,7 @@
 // Exact-build persistent rescue through real IndexedDB, Wasm and WebGPU.
 // tool.sh: stack-gib 1
 #load "../../coax/web/wasm-chrome.coax";
-#load "../assets.coax" as assets;
+#load "../core/assets.coax" as assets;
 srb_error :: (c: [] Cdp) { tool_errln(cdp_error(c)); raw := jv_raw(cdp_doc(c), 0); tool_errln(raw[0..<(ifx raw.count < 4096 then raw.count else 4096)]); }
 srb_eval :: (c: [] Cdp, code: string) -> bool { if wc_eval(c, code) == "true" { return true; } srb_error(c); return false; }
 srb_ready :: (c: [] Cdp) -> bool {

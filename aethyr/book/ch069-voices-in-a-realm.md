@@ -1,7 +1,7 @@
 # 69. Voices in a realm
 
 > **Status: partly implemented.** One piece runs: a spoken request into a
-> realm, [aethyr/voice.coax](../voice.coax) (#12669). A hold to talk is a
+> realm, [aethyr/audio/voice.coax](../audio/voice.coax) (#12669). A hold to talk is a
 > question on the replay gate and the voice host's final transcript its
 > answer, admitted once and only in its epoch, and replayed with no
 > recognizer. The voice engine [`verse/voice.coax`](../../verse/voice.coax)
@@ -91,10 +91,10 @@ new epoch, so a transcript still on its way is stale.
 
 <!-- source: aethyr/examples/hold-to-talk.coax example -->
 ```jai
-#load "../voice.coax";
+#load "../audio/voice.coax";
 #import "Basic";
 
-// Aethyrforge's HOLD TO TALK through Aethyr's event gate (aethyr/voice.coax). Each hold is a
+// Aethyrforge's HOLD TO TALK through Aethyr's event gate (aethyr/audio/voice.coax). Each hold is a
 // question the realm asks; the voice host's final transcript (Parakeet, run locally:
 // verse/voice-host --recognizer parakeet) is its answer. The transcripts below are the ones the
 // host returned for the committed fixtures (docs/verification/verse-parakeet-2026-11-02).
@@ -179,7 +179,7 @@ record at the end ([record](../../docs/verification/verse-parakeet-2026-11-02/RE
   metering.
 - [verse/voice-host/](../../verse/voice-host/host.c): the C host with
   WebSocket, speech and WAV adapters, run locally on a Mac.
-- [aethyr/voice.coax](../voice.coax): a spoken request into a realm. A hold is a
+- [aethyr/audio/voice.coax](../audio/voice.coax): a spoken request into a realm. A hold is a
   question on the replay gate and the voice host's final transcript its answer
   (local recognition: resident Parakeet, `verse/voice-host --recognizer parakeet`);
   [examples/hold-to-talk.coax](../examples/hold-to-talk.coax) runs it.

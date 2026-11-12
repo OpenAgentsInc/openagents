@@ -3,9 +3,9 @@
 #load "behavior-plan.coax";
 #load "definitions.coax";
 #load "../state/declarations.coax";
-#load "../assets.coax" as assets;
-#load "../loop.coax" as clock;
-#load "../rand.coax" as random;
+#load "../core/assets.coax" as assets;
+#load "../core/loop.coax" as clock;
+#load "../core/rand.coax" as random;
 BEHAVIOR_COUNTER_MAX :: 1000000000;
 BEHAVIOR_NONE :: 0; BEHAVIOR_RUNNING :: 1; BEHAVIOR_SUCCESS :: 2; BEHAVIOR_FAILURE :: 3; BEHAVIOR_INTERRUPTED :: 4;
 BEHAVIOR_MOVING :: 1; BEHAVIOR_INTERACTING :: 2; BEHAVIOR_INTERRUPTIBLE :: 4;

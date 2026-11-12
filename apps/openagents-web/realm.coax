@@ -28,7 +28,7 @@
 #load "room.coax";
 #load "../../verse/edit/edit.coax";   // EDIT for its owner and admins (docs/verse/realm-edit.md)
 #load "access.coax";                 // who may make a realm: BUILD YOUR OWN REALM hides on make 0
-#load "../../aethyr/budget.coax";
+#load "../../aethyr/core/budget.coax";
 #load "../../aethyr/talk/wire.coax";   // the NPC ask's one codec (E4, #13247)
 
 VERTEX_FLOATS :: 16;   // x, y, along, across, length, core, light, glow, red, green, blue, mode, a HUD bar's press and flash, 0, 0
@@ -601,7 +601,7 @@ world_down :: (r: [] Realm, v: RealmView, x: f32, y: f32, id: int) {
   r[0].wf_two = true; r[0].wf_two_moved = r[0].wf_travel; r[0].wf_two_at = r[0].time; r[0].wf_grab = false;
 }
 
-// The angle of (x, y), radians (-pi to pi), as aethyr/points.coax's atan2.
+// The angle of (x, y), radians (-pi to pi), as aethyr/core/points.coax's atan2.
 turn_of :: (y: f32, x: f32) -> f32 {
   ax := abs(x); ay := abs(y);
   if ax == 0 && ay == 0 { return 0; }
@@ -2533,7 +2533,7 @@ plated :: (u: [] f32, b: Box) -> f32 {
 }
 
 // ---------------------------------------------------------------------------------------------
-// The frame budget (aethyr/budget.coax, book chapter 16): what one frame of the Haunted House may use.
+// The frame budget (aethyr/core/budget.coax, book chapter 16): what one frame of the Haunted House may use.
 // The vertex limit is under the vertex buffer, so a frame its writers clip fails the check.
 HOUSE_BUDGET :: FrameBudget.{steps = 8, vertices = 8000, draws = 0, bytes = 2621440};
 

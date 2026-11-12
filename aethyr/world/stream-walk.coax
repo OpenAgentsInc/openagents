@@ -4,12 +4,12 @@
 #authority;
 #load "resource-stream.coax";
 #load "stream-profile.coax" as profiles;
-#load "../walk.coax" as walking;
-#load "../query-scene.coax" as semantics;
-#load "../query-filter.coax" as filters;
-#load "../entity.coax" as entities;
-#load "../nav/grid.coax" as navigation;
-#load "../loop.coax" as clock;
+#load "../move/walk.coax" as walking;
+#load "../physics/query-scene.coax" as semantics;
+#load "../physics/query-filter.coax" as filters;
+#load "../core/entity.coax" as entities;
+#load "nav/grid.coax" as navigation;
+#load "../core/loop.coax" as clock;
 #load "../host/audio-memory.coax";
 #load "../host/audio-encoded.coax";
 #load "../render/host-image-cache.coax";

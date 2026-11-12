@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The oracle for aethyr/rand.coax: lowbias32 and the counter-based draw, written
+"""The oracle for aethyr/core/rand.coax: lowbias32 and the counter-based draw, written
 from the published hash, not from the Coax. Prints the values rand.coax pins.
   python3 aethyr/tests/rand_oracle.py
 """

@@ -2,11 +2,11 @@
 
 > **Status: partly implemented.** Engine-core task: `ec-migrate` (#12609,
 > #12650). Every realm with fixed steps steps them on
-> [aethyr/loop.coax](../../aethyr/loop.coax), and every walking realm walks
-> on [aethyr/walk.coax](../../aethyr/walk.coax) with its own declared
+> [aethyr/core/loop.coax](../core/loop.coax), and every walking realm walks
+> on [aethyr/move/walk.coax](../move/walk.coax) with its own declared
 > collision profile. Dead Gears' entities are
-> [aethyr/entity.coax](../../aethyr/entity.coax)'s, and Ice Cream Man's
-> camera is [aethyr/follow.coax](../../aethyr/follow.coax), stepped with its
+> [aethyr/core/entity.coax](../core/entity.coax)'s, and Ice Cream Man's
+> camera is [aethyr/cam/follow.coax](../cam/follow.coax), stepped with its
 > rules. The engine modules moved from `verse/` to `aethyr/`.
 > [aethyr/tools/realm-inventory.coax](../tools/realm-inventory.coax) reads
 > each realm engine's `#load` closure and fails a realm that no longer loads
@@ -52,11 +52,11 @@ The commits on `main` follow this method:
 | --- | --- | --- |
 | All | Player, camera, terrain, figure, sticks and 17 more modules from `verse/` to `aethyr/`, with every `#load` and build line | 2df3c484bf |
 | Belt 2200 | Its lockstep ticks onto a `FrameClock` of 50 ms steps, at most 6 a frame. A tick waiting on the partner stays owed (`loop_ran_some`) | 5c8606795a |
-| Ice Cream Man | Keys and thumb to one `Intent` through `aethyr/input.coax`, with one dead zone | 43e396014d |
-| Fairy Forest | Flight from `fairy-face.c` to `aethyr/flight.coax`, a per-step hook in the walker, so a glide is the same at 30 and 144 FPS | f2a8d11368 |
+| Ice Cream Man | Keys and thumb to one `Intent` through `aethyr/core/input.coax`, with one dead zone | 43e396014d |
+| Fairy Forest | Flight from `fairy-face.c` to `aethyr/move/flight.coax`, a per-step hook in the walker, so a glide is the same at 30 and 144 FPS | f2a8d11368 |
 | Hecate's Cemetery | Its free orbit eases once a fixed step, not once a frame | 8fd86f5423 |
-| Dead Gears | Its entity store replaced by `aethyr/entity.coax`'s, with a despawn that cancels a waiting spawn. The fight is the same at every step at 30, 60, 120 and 144 FPS | a97d85dab4 |
-| Ice Cream Man | Its private boom camera replaced by `aethyr/follow.coax`, stepped with the 1/30 s rules | 6796c59c32 |
+| Dead Gears | Its entity store replaced by `aethyr/core/entity.coax`'s, with a despawn that cancels a waiting spawn. The fight is the same at every step at 30, 60, 120 and 144 FPS | a97d85dab4 |
+| Ice Cream Man | Its private boom camera replaced by `aethyr/cam/follow.coax`, stepped with the 1/30 s rules | 6796c59c32 |
 | Everglade, Fairy Forest, Belt 2200 | River floats and lily pads on a `FrameClock`. Belt's tactical battle capped at 8 steps a frame | 8330d80b8b |
 | All walkers | The cross-realm checks: camera, feet and replay in all seven walking profiles, and the Grid's floor lattice | b3c05f3c1d |
 
@@ -95,9 +95,9 @@ INV_REALMS :: [15] InvRealm.[
   InvRealm.{slug = "made realms", want = "loop input query ground walk follow flight",
     units = "apps/openagents-web/myrealm.coax verse/edit/computer-wire.coax coax/lib/crypto/entropy.coax"},
   InvRealm.{slug = "haunted-house", want = "loop input query ground walk player follow flight",
-    units = "apps/openagents-web/realm.coax verse/haunt.coax verse/haunt-buffer.coax aethyr/player.coax verse/grid.coax aethyr/particles.coax aethyr/cinematic.coax verse/setpiece.coax"},
+    units = "apps/openagents-web/realm.coax verse/haunt.coax verse/haunt-buffer.coax aethyr/move/player.coax verse/grid.coax aethyr/render/particles.coax aethyr/cam/cinematic.coax verse/setpiece.coax"},
   InvRealm.{slug = "garden", want = "loop input query ground walk player follow camera flight",
-    units = "apps/openagents-web/garden.coax aethyr/player.coax verse/grid.coax"},
+    units = "apps/openagents-web/garden.coax aethyr/move/player.coax verse/grid.coax"},
   InvRealm.{slug = "everglade", want = "loop input query ground walk player follow camera flight quality",
     units = "apps/openagents-web/everglade5e.coax everglade/shared/everglade-step.coax verse/grid.coax verse/everglade/river.coax verse/everglade/guard-guide-policy.coax apps/openagents-web/everglade5e-rules.coax"},
   InvRealm.{slug = "everglade-classic", want = "loop input query ground walk player follow camera flight quality",
@@ -107,9 +107,9 @@ INV_REALMS :: [15] InvRealm.[
   InvRealm.{slug = "ice-cream-man", want = "loop input query ground follow",
     units = "apps/openagents-web/icecream.coax verse/icecream/scene.coax"},
   InvRealm.{slug = "hecates-cemetery", want = "loop input query ground walk player follow camera flight",
-    units = "apps/openagents-web/villa.coax aethyr/player.coax verse/grid.coax apps/openagents-web/villafig.coax"},
+    units = "apps/openagents-web/villa.coax aethyr/move/player.coax verse/grid.coax apps/openagents-web/villafig.coax"},
   InvRealm.{slug = "fairy-forest", want = "loop input query ground walk player follow camera flight",
-    units = "apps/openagents-web/fairy.coax aethyr/player.coax verse/grid.coax verse/fairy-forest/stream.coax coax/lib/qr/qr-memory.coax"},
+    units = "apps/openagents-web/fairy.coax aethyr/move/player.coax verse/grid.coax verse/fairy-forest/stream.coax coax/lib/qr/qr-memory.coax"},
   InvRealm.{slug = "orbit-league", want = "loop",
     units = "apps/openagents-web/orbitleague.coax"},
   InvRealm.{slug = "belt-2200", want = "loop",
@@ -172,7 +172,7 @@ inv_sources :: (json: string) -> int {
   mask := 0;
   for k: 0..<INV_MODULES {
     p: [64] u8; n := 0;
-    parts := [3] string.["/aethyr/", INV_NAMES[k], ".coax\""];
+    parts := [3] string.["/aethyr/", INV_PATHS[k], ".coax\""];
     for part: parts { for c: part { p[n] = c; n += 1; } }
     if inv_find(list, cast(string) p[0..<n]) != -1 { mask |= 1 << k; }
   }
@@ -213,9 +213,9 @@ Read across, the gaps are the remaining migration. Every walker loads
 `flight.coax`, because the walker owns the per-step flight hook, and Fairy
 Forest is the only realm whose profile turns it on. Made realms keep their
 own controls (W and S walk, A and D turn) but, since #12721, `realm_step` in
-`apps/openagents-web/myrealm.coax` runs them in `aethyr/loop.coax`'s fixed
+`apps/openagents-web/myrealm.coax` runs them in `aethyr/core/loop.coax`'s fixed
 1/64 s steps (eight at most a frame) and draws you between the last two, and
-`walk_to` is pushed out of what stands by `aethyr/walk.coax`'s `move_across`.
+`walk_to` is pushed out of what stands by `aethyr/move/walk.coax`'s `move_across`.
 `aethyr/tests/cross-realm-made.coax` holds its feet and replay, and
 `myrealm.coax` checks the same walk at 30, 60, 120 and 144 FPS. The
 space games, Hold the Stair and Watchtower have the clock and nothing else.
@@ -229,21 +229,21 @@ module is what runs.
 
 ## One walker in every walking realm
 
-The seven walking realms step the same `aethyr/walk.coax`, each by the name
+The seven walking realms step the same `aethyr/move/walk.coax`, each by the name
 its collision profile is declared under. The example,
 [aethyr/examples/one-walk-every-realm.coax](../examples/one-walk-every-realm.coax),
 plays one session in each, at 60 FPS and again at 30:
 
 <!-- source: aethyr/examples/one-walk-every-realm.coax example -->
 ```jai
-#load "../walk.coax";
+#load "../move/walk.coax";
 #import "Basic";
 
 cm :: (m: f32) -> int { return cast(int) (m * 100 + ifx m < 0 then -0.5f32 else 0.5f32); }
 
 // The seven walking realms, by the names their collision profiles are declared under
-// (aethyr/collision-profiles.coax), each stepping the one walker, aethyr/walk.coax, on the one
-// clock, aethyr/loop.coax. The same 300 frames in each, close to the session that
+// (aethyr/physics/collision-profiles.coax), each stepping the one walker, aethyr/move/walk.coax, on the one
+// clock, aethyr/core/loop.coax. The same 300 frames in each, close to the session that
 // aethyr/tests/cross-realm.coax plays: walk, run from frame 44, jump at 60, run onto a 0.4 m step
 // and off it, jump again at 200, walk, stop. Then the same at 30 FPS, which takes the same steps.
 REALMS :: [7] string.["the-grid", "haunted-house", "garden", "fairy-forest", "everglade", "hecates-cemetery", "dead-gears"];

@@ -47,7 +47,7 @@ to A8. A6 (finished styles) and A8 (the publishable scene) are pending.
 - **Documents.** `anim.rig/clip/performance/pose/scene/cut.v1`, with packs
   named by hash (`docs/verse/anim-documents-v1.md`).
 - **Rigs.** Up to 512 joints, 8 influences per vertex, 256 sparse morphs,
-  the ARKit face map, and the FRG1 DNA face block (`aethyr/facerig.coax`).
+  the ARKit face map, and the FRG1 DNA face block (`aethyr/anim/facerig.coax`).
 - **Layers.** base, override, additive, face and fix-up, with masks
   (`aethyr/anim/layers.coax`).
 - **IK.** Foot-lock, look-at, hand-to-prop and reach
@@ -151,12 +151,12 @@ From `docs/verse/everglade.md`, `verse/everglade/gpu.coax` and
   written by `everglade-spells.coax` rather than `aethyr/fx`.
 - **Post.** rgba16f, bloom at ¼ and ⅛ resolution, light shafts, then the
   tone curve.
-- **Quality ladder.** Seven rungs in `aethyr/quality.coax` and
-  `everglade-quality.coax`. The 60 FPS rule is in `aethyr/frame-report.coax`.
+- **Quality ladder.** Seven rungs in `aethyr/core/quality.coax` and
+  `everglade-quality.coax`. The 60 FPS rule is in `aethyr/core/frame-report.coax`.
 - **Transparency.** The scene pass has no blending, so the Water Orb and
   similar effects use screen-door dithering.
 - **Cast.** At most 10 NPCs drawn (6 on a phone). 63 raid bodies on the
-  people rig. A 7-bird flock companion (`aethyr/flock.coax`).
+  people rig. A 7-bird flock companion (`aethyr/anim/flock.coax`).
 - **Cinematics.** `?raid=preview&cine=1` is a keyed flight "for a film".
   Movies are clip-recorder captures.
 
@@ -195,8 +195,8 @@ shading.
    writes scratch, steps at a fixed 60 Hz independent of render fps, seeks
    by replay, and uses mesh birds near the camera and silhouettes far
    away. Our pieces already fit:
-   - `aethyr/flock.coax` steps at a fixed 120 Hz;
-   - `aethyr/rand.coax` streams are counter-based;
+   - `aethyr/anim/flock.coax` steps at a fixed 120 Hz;
+   - `aethyr/core/rand.coax` streams are counter-based;
    - `coax cuda` and `coax spirv` kernels can do the compute;
    - chapters 23 (particles and neighbours) and 31 (many worlds in one
      step) plan the batch dimension.
@@ -235,7 +235,7 @@ shafts are areas where Everglade is ahead of vork.
 
 From `docs/verse/character-creator.md`,
 `apps/openagents-web/gpu/charactercreator.coax`, `gpu/character-glade*.coax`
-and `aethyr/character-appearance.coax`.
+and `aethyr/character/character-appearance.coax`.
 
 - **Controls.** Discrete cyclers: body, clothes preset, hood, colourway,
   dye, skin, hair style and colour, beard, eye colour, animation, and

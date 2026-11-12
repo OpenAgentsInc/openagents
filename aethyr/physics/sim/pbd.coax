@@ -1,0 +1,430 @@
+// Cloth and rope from constraints (book chapter 25): extended position-based
+// dynamics (XPBD) over chapter 23's particle store. A particle with mass 0 is
+// pinned. Each distance constraint keeps two particles at a rest length with
+// a compliance alpha (inverse stiffness, m/N); alpha 0 is a rigid link.
+//
+//   pbd_link(c, a, b, rest, alpha)   one distance constraint, or -1 when full
+//   pbd_color(c, n)          greedy coloring in constraint order: no two
+//                            constraints of one color share a particle, so a
+//                            color can be projected in any order, or at once
+//   pbd_step(p, c, w)        one frame: per substep, predict, project every
+//                            constraint once, push particles out of the
+//                            sphere with Coulomb friction, and set velocity
+//                            from the motion
+//
+// Two projection profiles, named so a recording says which ran:
+//   pbd-gauss-seidel-f64-v1  color by color, each constraint sees the moves
+//                            of the colors before it
+//   pbd-jacobi-f64-v1        every constraint from the same positions, moves
+//                            averaged per particle
+// CPU only, f64. Device kernels, bending and volume constraints,
+// self-collision and two-way coupling are not built yet.
+//   coax/bin/coax test --library aethyr/physics/sim/pbd.coax
+#load "particles.coax";
+
+PBD_LINKS :: 2048;
+PBD_COLORS :: 62;
+
+Pbd_Profile :: enum u8 { gauss_seidel; jacobi; }
+pbd_profile_name :: (f: Pbd_Profile) -> string {
+  if f == Pbd_Profile.gauss_seidel { return "pbd-gauss-seidel-f64-v1"; }
+  return "pbd-jacobi-f64-v1";
+}
+
+Pbd :: struct {
+  count: int;
+  a: [PBD_LINKS] int;
+  b: [PBD_LINKS] int;
+  rest: [PBD_LINKS] f64;
+  alpha: [PBD_LINKS] f64;
+  lambda: [PBD_LINKS] f64;
+  color: [PBD_LINKS] int;
+  colors: int;                     // 0 until pbd_color; adding a link resets it
+  start: [PBD_COLORS + 1] int;     // each color's first entry in order
+  order: [PBD_LINKS] int;          // links by color, then index
+  prev: [PSTORE] D3;               // positions at the start of the substep
+  move: [PSTORE] D3;               // Jacobi: summed moves
+  moves: [PSTORE] int;             // Jacobi: how many
+}
+
+// The world a step runs in.
+Pbd_World :: struct {
+  dt: f64 = 1.0 / 60.0;
+  substeps: int = 8;
+  gravity: D3;
+  profile: Pbd_Profile;
+  damping: f64;                    // 1/s: velocity scaled by 1 - damping h
+  sphere: bool;                    // a fixed sphere to stay out of
+  center: D3;
+  radius: f64;
+  thickness: f64;                  // m kept between a particle and the sphere
+  friction: f64;                   // Coulomb coefficient against the sphere
+}
+
+pbd_link :: (c: [] Pbd, a: int, b: int, rest: f64, alpha: f64) -> int {
+  k := c[0].count;
+  if k == PBD_LINKS { return -1; }
+  c[0].count = k + 1; c[0].colors = 0;
+  c[0].a[k] = a; c[0].b[k] = b; c[0].rest[k] = rest; c[0].alpha[k] = alpha; c[0].lambda[k] = 0.0;   // mutant: equivalent (pbd_step zeroes every lambda before it projects)
+  return k;
+}
+
+// Greedy coloring over n particles. Returns the colors used, or -1 when a
+// link would need more than PBD_COLORS.
+pbd_color :: (c: [] Pbd, n: int) -> int {
+  used: [PSTORE] int;              // bit k: the particle is in a link of color k
+  colors := 0;
+  for k: 0..<c[0].count {
+    taken := used[c[0].a[k]] | used[c[0].b[k]];
+    col := 0;
+    while col < PBD_COLORS && ((taken >> col) & 1) != 0 { col += 1; }   // mutant: equivalent (bit 62 is never set (colors stop at 61), so the scan stops at 62 either way)
+    if col == PBD_COLORS { c[0].colors = 0; return -1; }
+    c[0].color[k] = col;
+    used[c[0].a[k]] = used[c[0].a[k]] | (1 << col); used[c[0].b[k]] = used[c[0].b[k]] | (1 << col);
+    if col + 1 > colors { colors = col + 1; }   // mutant: equivalent (colors <= col + 1 makes both forms assign col + 1 or keep it)
+  }
+  // Counting sort by color, stable.
+  for col: 0..<colors + 1 { c[0].start[col] = 0; }   // mutant: equivalent (start[0] is never written non-zero)
+  for k: 0..<c[0].count { c[0].start[c[0].color[k] + 1] += 1; }
+  for col: 0..<colors { c[0].start[col + 1] += c[0].start[col]; }   // mutant: equivalent (start[0] is 0)
+  next: [PBD_COLORS] int;
+  for col: 0..<colors { next[col] = c[0].start[col]; }   // mutant: equivalent (start[0] is 0 and next starts zeroed)
+  for k: 0..<c[0].count { c[0].order[next[c[0].color[k]]] = k; next[c[0].color[k]] += 1; }
+  c[0].colors = colors;
+  return colors;
+}
+
+// The XPBD multiplier change of link k at positions x, for substep h.
+pbd_delta :: (p: [] Pstore, c: [] Pbd, k: int, h: f64) -> f64 {
+  i := c[0].a[k]; j := c[0].b[k];
+  wi := ifx p[0].mass[i] > 0.0 then 1.0 / p[0].mass[i] else 0.0;
+  wj := ifx p[0].mass[j] > 0.0 then 1.0 / p[0].mass[j] else 0.0;
+  d := d3_sub(p[0].pos[i], p[0].pos[j]); dist := d3_len(d);
+  at := c[0].alpha[k] / (h * h);
+  if dist == 0.0 || wi + wj + at == 0.0 { return 0.0; }
+  return (-(dist - c[0].rest[k]) - at * c[0].lambda[k]) / (wi + wj + at);   // mutant: equivalent (each link is projected once per substep, so lambda is read only at 0)
+}
+
+pbd_project :: (p: [] Pstore, c: [] Pbd, w: Pbd_World, h: f64) {
+  if w.profile == Pbd_Profile.gauss_seidel {
+    for s: 0..<c[0].count {
+      k := c[0].order[s];
+      dl := pbd_delta(p, c, k, h);
+      if dl == 0.0 { continue; }
+      i := c[0].a[k]; j := c[0].b[k];
+      n := d3_unit(d3_sub(p[0].pos[i], p[0].pos[j]));
+      if p[0].mass[i] > 0.0 { p[0].pos[i] = d3_add(p[0].pos[i], d3_scale(n, dl / p[0].mass[i])); }
+      if p[0].mass[j] > 0.0 { p[0].pos[j] = d3_sub(p[0].pos[j], d3_scale(n, dl / p[0].mass[j])); }
+      c[0].lambda[k] += dl;
+    }
+    return;
+  }
+  for i: 0..<p[0].count { c[0].move[i] = D3_ZERO; c[0].moves[i] = 0; }
+  for k: 0..<c[0].count {
+    dl := pbd_delta(p, c, k, h);
+    if dl == 0.0 { continue; }
+    i := c[0].a[k]; j := c[0].b[k];
+    n := d3_unit(d3_sub(p[0].pos[i], p[0].pos[j]));
+    if p[0].mass[i] > 0.0 { c[0].move[i] = d3_add(c[0].move[i], d3_scale(n, dl / p[0].mass[i])); c[0].moves[i] += 1; }
+    if p[0].mass[j] > 0.0 { c[0].move[j] = d3_sub(c[0].move[j], d3_scale(n, dl / p[0].mass[j])); c[0].moves[j] += 1; }
+    c[0].lambda[k] += dl;
+  }
+  for i: 0..<p[0].count {
+    if c[0].moves[i] > 0 { p[0].pos[i] = d3_add(p[0].pos[i], d3_scale(c[0].move[i], 1.0 / cast(f64) c[0].moves[i])); }
+  }
+}
+
+// One frame of w.dt in w.substeps substeps, one projection each (Macklin et
+// al., SCA 2019). Gauss-Seidel needs pbd_color first; without it the step
+// does nothing and returns false.
+pbd_step :: (p: [] Pstore, c: [] Pbd, w: Pbd_World) -> bool {
+  if w.profile == Pbd_Profile.gauss_seidel && c[0].colors == 0 && c[0].count > 0 { return false; }
+  h := w.dt / cast(f64) w.substeps;
+  for sub: 0..<w.substeps {
+    for i: 0..<p[0].count {
+      c[0].prev[i] = p[0].pos[i];
+      if p[0].mass[i] > 0.0 {
+        p[0].vel[i] = d3_add(p[0].vel[i], d3_scale(w.gravity, h));
+        p[0].pos[i] = d3_add(p[0].pos[i], d3_scale(p[0].vel[i], h));
+      }
+    }
+    for k: 0..<c[0].count { c[0].lambda[k] = 0.0; }
+    pbd_project(p, c, w, h);
+    if w.sphere {
+      keep := w.radius + w.thickness;
+      for i: 0..<p[0].count {
+        d := d3_sub(p[0].pos[i], w.center); dist := d3_len(d);
+        if p[0].mass[i] > 0.0 && dist < keep && dist > 0.0 {   // mutant: equivalent (at dist == keep the push and the grip are both 0)
+          n := d3_scale(d, 1.0 / dist);
+          p[0].pos[i] = d3_add(w.center, d3_scale(n, keep));
+          // Coulomb friction on positions (Macklin et al., 2014): the
+          // substep's sliding, up to friction times the depth pushed out,
+          // is undone.
+          slide := d3_sub(p[0].pos[i], c[0].prev[i]); slide = d3_sub(slide, d3_scale(n, d3_dot(slide, n)));
+          s := d3_len(slide); grip := w.friction * (keep - dist);
+          if s > 0.0 { p[0].pos[i] = d3_sub(p[0].pos[i], d3_scale(slide, fmin(1.0, grip / s))); }
+        }
+      }
+    }
+    for i: 0..<p[0].count {
+      if p[0].mass[i] > 0.0 { p[0].vel[i] = d3_scale(d3_sub(p[0].pos[i], c[0].prev[i]), (1.0 - w.damping * h) / h); }   // mutant: equivalent (a pinned particle is never moved, and its velocity is never read)
+    }
+  }
+  return true;
+}
+
+// The catenary through (-d, 0) and (d, 0) with arc length s > 2 d: the a
+// with 2 a sinh(d / a) = s, by bisection, and its height at x.
+pbd_sinh :: (x: f64) -> f64 { return (exp(x) - exp(-x)) / 2.0; }
+pbd_cosh :: (x: f64) -> f64 { return (exp(x) + exp(-x)) / 2.0; }
+pbd_catenary_a :: (d: f64, s: f64) -> f64 {
+  // 2 a sinh(d / a) falls from huge to 2 d over lo..hi.
+  lo := d / 50.0; hi := 1000.0 * s;   // mutant: equivalent (any upper bound above the root converges in 200 halvings)
+  for k: 0..<200 {   // mutant: equivalent (the bisection reaches rounding long before 199 halvings)
+    m := (lo + hi) * 0.5;
+    if 2.0 * m * pbd_sinh(d / m) > s { lo = m; } else { hi = m; }   // mutant: equivalent (a tie at exactly s has measure zero; both sides bracket the root)
+  }
+  return (lo + hi) * 0.5;
+}
+pbd_catenary_y :: (a: f64, d: f64, x: f64) -> f64 { return a * (pbd_cosh(x / a) - pbd_cosh(d / a)); }
+
+// A rope of n particles of mass m from (-d, 0, 0) to (d, 0, 0) with both
+// ends pinned and n - 1 links of length s / (n - 1), laid out straight.
+pbd_rope :: (p: [] Pstore, c: [] Pbd, n: int, d: f64, s: f64, m: f64, alpha: f64) {
+  p[0].count = 0; c[0].count = 0;
+  for i: 0..<n {
+    x := -d + 2.0 * d * cast(f64) i / cast(f64) (n - 1);
+    _ := pstore_add(p, d3(x, 0.0, 0.0), D3_ZERO, ifx i == 0 || i == n - 1 then 0.0 else m, 0, 0);   // mutant: equivalent (material and entity are labels the solver never reads)
+  }
+  for i: 0..<n - 1 { _ := pbd_link(c, i, i + 1, s / cast(f64) (n - 1), alpha); }
+}
+
+// A square cloth of side n particles and spacing a at height y, centered
+// on x = z = 0: structural links along rows and columns, shear links on
+// both diagonals.
+pbd_cloth :: (p: [] Pstore, c: [] Pbd, n: int, a: f64, y: f64, m: f64, alpha: f64) {
+  p[0].count = 0; c[0].count = 0;
+  half := a * cast(f64) (n - 1) * 0.5;
+  for r: 0..<n { for q: 0..<n { _ := pstore_add(p, d3(cast(f64) q * a - half, y, cast(f64) r * a - half), D3_ZERO, m, 0, 0); } }   // mutant: equivalent (material and entity are labels the solver never reads)
+  diag := a * sqrt(2.0);
+  for r: 0..<n {
+    for q: 0..<n {
+      i := r * n + q;
+      if q + 1 < n { _ := pbd_link(c, i, i + 1, a, alpha); }
+      if r + 1 < n { _ := pbd_link(c, i, i + n, a, alpha); }
+      if q + 1 < n && r + 1 < n { _ := pbd_link(c, i, i + n + 1, diag, alpha); _ = pbd_link(c, i + 1, i + n, diag, alpha); }
+    }
+  }
+}
+
+// ---- checks
+
+// The period of a mass m on a link of compliance alpha to a pinned anchor,
+// from the first and third upward crossings of the rest length.
+test_period :: (alpha: f64, m: f64, substeps: int, profile: Pbd_Profile) -> f64 {
+  p: [1] Pstore; c: [1] Pbd;
+  built := pstore_add(p[..], D3_ZERO, D3_ZERO, 0.0, 0, 0) == 0 && pstore_add(p[..], d3(0.0, -1.1, 0.0), D3_ZERO, m, 0, 0) == 1;   // mutant: equivalent (material and entity are labels the solver never reads)
+  built = built && pbd_link(c[..], 0, 1, 1.0, alpha) == 0 && pbd_color(c[..], 2) == 1;   // mutant: equivalent (pbd_color does not read n)
+  w := Pbd_World.{dt = 1.0 / 600.0, substeps = substeps, profile = profile};
+  last := 0.1; t := 0.0; ups: [2] f64; n := 0;
+  while built && n < 2 && t < 10.0 {   // mutant: equivalent (the loop ends at the second crossing, long before 10 s)
+    built = pbd_step(p[..], c[..], w); t += w.dt;
+    now := d3_len(p[0].pos[1]) - 1.0;
+    if last < 0.0 && now >= 0.0 { ups[n] = t - w.dt * now / (now - last); n += 1; }   // mutant: equivalent (the interpolation shifts both crossings alike, and the period is their difference)
+    last = now;
+  }
+  return ups[1] - ups[0];
+}
+
+#test "a link of compliance alpha rings at the period of a spring of stiffness 1 / alpha" #steps 200000000 {
+  want := 2.0 * PI_D * sqrt(1.0 * 0.01);   // m = 1 kg, k = 100 N/m
+  for s: [3] int.[1, 4, 16] {
+    for f: 0..<2 { #assert abs(test_period(0.01, 1.0, s, cast(Pbd_Profile) f) / want - 1.0) < 0.002; }
+  }
+  // A heavier mass is slower by its square root.
+  #assert abs(test_period(0.01, 4.0, 4, Pbd_Profile.gauss_seidel) / (2.0 * want) - 1.0) < 0.002;
+}
+
+#test "a hanging rope settles onto the catenary through its ends" #steps 900000000 {
+  for f: 0..<2 {
+    p: [1] Pstore; c: [1] Pbd;
+    pbd_rope(p[..], c[..], 21, 1.0, 3.0, 0.1, 0.0);
+    #assert pbd_color(c[..], 21) == 2;
+    w := Pbd_World.{dt = 1.0 / 60.0, substeps = 20, gravity = d3(0.0, -9.81, 0.0), damping = 4.0, profile = cast(Pbd_Profile) f};
+    for k: 0..<600 { #assert pbd_step(p[..], c[..], w); }
+    a := pbd_catenary_a(1.0, 3.0);
+    worst := 0.0;
+    for i: 1..<20 { worst = fmax(worst, abs(p[0].pos[i].y - pbd_catenary_y(a, 1.0, p[0].pos[i].x))); }
+    #assert worst < 0.02 && p[0].pos[0].x == -1.0 && p[0].pos[20].x == 1.0 && p[0].pos[0].y == 0.0;
+    // The middle hangs about one metre down.
+    #assert p[0].pos[10].y < -0.9 && p[0].pos[10].y > -1.2;
+  }
+  // The catenary itself: its length between the ends is s.
+  a := pbd_catenary_a(1.0, 3.0);
+  #assert abs(2.0 * a * pbd_sinh(1.0 / a) - 3.0) < 1e-12 && abs(pbd_catenary_y(a, 1.0, 1.0)) < 1e-15;
+}
+
+#test "the coloring is valid, in order, and the same every time" {
+  p: [1] Pstore; c: [1] Pbd; d: [1] Pbd;
+  pbd_cloth(p[..], c[..], 12, 0.1, 1.0, 0.01, 0.0);
+  #assert c[0].count == 2 * 12 * 11 + 2 * 11 * 11;
+  n := pbd_color(c[..], p[0].count);
+  #assert n >= 4 && n <= 12;
+  for s: 1..<c[0].count {
+    a := c[0].order[s - 1]; b := c[0].order[s];
+    #assert c[0].color[a] < c[0].color[b] || (c[0].color[a] == c[0].color[b] && a < b);
+  }
+  for col: 0..<n {
+    seen: [PSTORE] bool;
+    #assert c[0].start[col] < c[0].start[col + 1];
+    for s: c[0].start[col]..<c[0].start[col + 1] {
+      k := c[0].order[s];
+      #assert c[0].color[k] == col && !seen[c[0].a[k]] && !seen[c[0].b[k]];
+      seen[c[0].a[k]] = true; seen[c[0].b[k]] = true;
+    }
+  }
+  #assert c[0].start[n] == c[0].count;
+  pbd_cloth(p[..], d[..], 12, 0.1, 1.0, 0.01, 0.0);
+  #assert pbd_color(d[..], p[0].count) == n;
+  for k: 0..<c[0].count { #assert c[0].color[k] == d[0].color[k] && c[0].order[k] == d[0].order[k]; }
+  // Adding a link drops the coloring, and Gauss-Seidel refuses to step.
+  #assert pbd_link(d[..], 0, 5, 0.5, 0.0) >= 0;
+  #assert d[0].colors == 0 && !pbd_step(p[..], d[..], Pbd_World.{});
+  #assert pbd_step(p[..], d[..], Pbd_World.{profile = Pbd_Profile.jacobi});
+  // A star of 63 links on one particle needs 63 colors: refused.
+  s: [1] Pbd;
+  for k: 0..<PBD_COLORS { #assert pbd_link(s[..], 0, k + 1, 1.0, 0.0) >= 0; }
+  #assert pbd_color(s[..], 64) == PBD_COLORS;
+  #assert pbd_link(s[..], 0, 63, 1.0, 0.0) >= 0;
+  #assert pbd_color(s[..], 64) == -1 && s[0].colors == 0;
+  full: [1] Pbd;
+  for k: 0..<PBD_LINKS { #assert pbd_link(full[..], 0, 1, 1.0, 0.0) == k; }
+  #assert pbd_link(full[..], 0, 1, 1.0, 0.0) == -1;
+  #assert pbd_profile_name(Pbd_Profile.gauss_seidel) == "pbd-gauss-seidel-f64-v1" && pbd_profile_name(Pbd_Profile.jacobi) == "pbd-jacobi-f64-v1";
+}
+
+#test "cloth draped on a sphere: no particle ends a step inside it by more than the thickness" #steps 900000000 {
+  p: [1] Pstore; c: [1] Pbd;
+  pbd_cloth(p[..], c[..], 12, 0.1, 0.8, 0.01, 0.0001);
+  #assert pbd_color(c[..], p[0].count) >= 0;
+  w := Pbd_World.{substeps = 4, gravity = d3(0.0, -9.81, 0.0), damping = 1.0, sphere = true, center = d3(0.0, 0.2, 0.0), radius = 0.3, thickness = 0.01, friction = 0.5};
+  for k: 0..<120 {
+    #assert pbd_step(p[..], c[..], w);
+    for i: 0..<p[0].count { #assert d3_dist(p[0].pos[i], w.center) >= w.radius + w.thickness - 1e-12; }
+  }
+  // The middle of the cloth rests on top of the sphere; the corners hang.
+  mid := p[0].pos[5 * 12 + 5];
+  #assert abs(d3_dist(mid, w.center) - 0.31) < 0.01 && mid.y > 0.45;
+  #assert p[0].pos[0].y < mid.y - 0.2;
+}
+
+#test "a pinned particle never moves, and an unlinked one falls freely" {
+  p: [1] Pstore; c: [1] Pbd;
+  #assert pstore_add(p[..], d3(1.0, 2.0, 3.0), D3_ZERO, 0.0, 0, 0) >= 0;
+  #assert pstore_add(p[..], d3(0.0, 10.0, 0.0), D3_ZERO, 2.0, 0, 0) >= 0;
+  #assert pbd_link(c[..], 0, 0, 1.0, 0.0) >= 0;   // a link with itself: no direction, no move
+  #assert pbd_color(c[..], 2) >= 0;
+  w := Pbd_World.{dt = 0.1, substeps = 10, gravity = d3(0.0, -10.0, 0.0)};
+  for k: 0..<10 { #assert pbd_step(p[..], c[..], w); }
+  #assert d3_eq(p[0].pos[0], d3(1.0, 2.0, 3.0)) && d3_eq(p[0].vel[0], D3_ZERO);
+  // Semi-implicit Euler over 100 substeps of 0.01 s: y = 10 - g t^2 / 2 - g h t / 2.
+  #assert abs(p[0].pos[1].y - (10.0 - 5.0 - 0.05)) < 1e-9 && abs(p[0].vel[1].y + 10.0) < 1e-9;
+  // Damping slows it: 1 - 2 h per substep.
+  q: [1] Pstore; e: [1] Pbd;
+  #assert pstore_add(q[..], D3_ZERO, d3(1.0, 0.0, 0.0), 1.0, 0, 0) >= 0;
+  #assert pbd_step(q[..], e[..], Pbd_World.{dt = 0.1, substeps = 1, damping = 2.0});
+  #assert abs(q[0].vel[0].x - 0.8) < 1e-15 && abs(q[0].pos[0].x - 0.1) < 1e-15;
+}
+
+#test "Jacobi keeps a symmetric pair symmetric, and Gauss-Seidel closes more of a stretch" {
+  for f: 0..<2 {
+    p: [1] Pstore; c: [1] Pbd;
+    #assert pstore_add(p[..], d3(-1.0, 0.0, 0.0), D3_ZERO, 1.0, 0, 0) == 0 && pstore_add(p[..], d3(1.0, 0.0, 0.0), D3_ZERO, 1.0, 0, 0) == 1;
+    #assert pbd_link(c[..], 0, 1, 1.0, 0.001) == 0 && pbd_color(c[..], 2) == 1;
+    w := Pbd_World.{dt = 0.1, substeps = 3, profile = cast(Pbd_Profile) f};
+    for k: 0..<4 { #assert pbd_step(p[..], c[..], w); }
+    #assert d3_eq(p[0].pos[0], d3_scale(p[0].pos[1], -1.0)) && p[0].pos[0].x != -1.0;
+  }
+  // A pinned end and a chain of three free particles at twice their rest
+  // length, one substep with no motion. Gauss-Seidel takes the links in
+  // color order (0-1, 2-3, then 1-2), each from the last one's result;
+  // Jacobi averages each particle's moves.
+  for f: 0..<2 {
+    p: [1] Pstore; c: [1] Pbd;
+    for i: 0..<4 { _ := pstore_add(p[..], d3(2.0 * cast(f64) i, 0.0, 0.0), D3_ZERO, ifx i == 0 then 0.0 else 1.0, 0, 0); }
+    for i: 0..<3 { _ := pbd_link(c[..], i, i + 1, 1.0, 0.0); }
+    #assert pbd_color(c[..], 4) == 2;
+    #assert pbd_step(p[..], c[..], Pbd_World.{dt = 0.01, substeps = 1, profile = cast(Pbd_Profile) f});
+    x1 := ifx f == 0 then 2.25 else 1.75; x2 := ifx f == 0 then 3.25 else 4.0;
+    #assert abs(p[0].pos[1].x - x1) < 1e-12 && abs(p[0].pos[2].x - x2) < 1e-12 && abs(p[0].pos[3].x - 5.5) < 1e-12;
+  }
+}
+
+#test "lambda over h squared is the link's force: a hanging mass pulls m g" #steps 200000000 {
+  for f: 0..<2 {
+    p: [1] Pstore; c: [1] Pbd;
+    #assert pstore_add(p[..], D3_ZERO, D3_ZERO, 0.0, 0, 0) == 0 && pstore_add(p[..], d3(0.0, -1.0, 0.0), D3_ZERO, 2.0, 0, 0) == 1;
+    #assert pbd_link(c[..], 0, 1, 1.0, 0.0001) == 0 && pbd_color(c[..], 2) == 1;
+    w := Pbd_World.{dt = 1.0 / 60.0, substeps = 10, gravity = d3(0.0, -9.81, 0.0), damping = 20.0, profile = cast(Pbd_Profile) f};
+    for k: 0..<600 { #assert pbd_step(p[..], c[..], w); }
+    h := w.dt / 10.0;
+    #assert abs(-c[0].lambda[0] / (h * h) / (2.0 * 9.81) - 1.0) < 0.01;
+  }
+}
+
+#test "edge cases: weights equal to the compliance, coincident ends, an uncolored link, a pinned particle inside the sphere" {
+  // wi + wj == alpha / h^2: still a correction.
+  p: [1] Pstore; c: [1] Pbd;
+  #assert pstore_add(p[..], d3(-1.0, 0.0, 0.0), D3_ZERO, 1.0, 0, 0) == 0 && pstore_add(p[..], d3(1.0, 0.0, 0.0), D3_ZERO, 1.0, 0, 0) == 1;
+  #assert pbd_link(c[..], 0, 1, 1.0, 0.5) == 0 && pbd_color(c[..], 2) == 1;
+  #assert pbd_step(p[..], c[..], Pbd_World.{dt = 0.5, substeps = 1}) && p[0].pos[0].x == -0.75;
+  // Two free particles at one point: no direction, so no move.
+  p[0].pos[0] = D3_ZERO; p[0].pos[1] = D3_ZERO; p[0].vel[0] = D3_ZERO; p[0].vel[1] = D3_ZERO;
+  #assert pbd_step(p[..], c[..], Pbd_World.{dt = 0.5, substeps = 1}) && d3_eq(p[0].pos[0], D3_ZERO) && d3_eq(p[0].pos[1], D3_ZERO);
+  // One uncolored link: Gauss-Seidel refuses; an empty set has 0 colors.
+  e: [1] Pbd;
+  #assert pbd_color(e[..], 2) == 0;
+  #assert pbd_link(e[..], 0, 1, 1.0, 0.0) == 0 && !pbd_step(p[..], e[..], Pbd_World.{});
+  // A coloring that fails clears the one before it.
+  s: [1] Pbd;
+  for k: 0..<PBD_COLORS { #assert pbd_link(s[..], 0, k + 1, 1.0, 0.0) >= 0; }
+  #assert pbd_color(s[..], 64) == PBD_COLORS && s[0].colors == PBD_COLORS;
+  s[0].a[PBD_COLORS] = 0; s[0].b[PBD_COLORS] = 63; s[0].count = PBD_COLORS + 1;
+  #assert pbd_color(s[..], 64) == -1 && s[0].colors == 0;
+  // Coloring twice gives the same starts.
+  q: [1] Pstore; d: [1] Pbd;
+  pbd_cloth(q[..], d[..], 6, 0.1, 1.0, 0.01, 0.0);
+  n := pbd_color(d[..], 36); #assert n > 0 && pbd_color(d[..], 36) == n && d[0].start[n] == d[0].count;
+  for col: 0..<n { #assert d[0].start[col] < d[0].start[col + 1]; }
+  // A pinned particle inside the sphere stays; a free one at its center
+  // has no direction out and stays too.
+  r: [1] Pstore; o: [1] Pbd;
+  #assert pstore_add(r[..], d3(0.1, 0.0, 0.0), D3_ZERO, 0.0, 0, 0) == 0 && pstore_add(r[..], D3_ZERO, D3_ZERO, 1.0, 0, 0) == 1;
+  #assert pbd_step(r[..], o[..], Pbd_World.{sphere = true, radius = 0.5});
+  #assert d3_eq(r[0].pos[0], d3(0.1, 0.0, 0.0)) && d3_eq(r[0].pos[1], D3_ZERO);
+}
+
+#test "friction against the sphere undoes friction times the depth of sliding" {
+  // A particle on top of a unit sphere moving down and sideways, one substep.
+  p: [1] Pstore; c: [1] Pbd;
+  #assert pstore_add(p[..], d3(0.0, 1.0, 0.0), d3(1.0, -1.0, 0.0), 1.0, 0, 0) == 0;
+  #assert pbd_step(p[..], c[..], Pbd_World.{dt = 0.01, substeps = 1, sphere = true, radius = 1.0, friction = 0.5});
+  q := d3(0.01, 0.99, 0.0); dist := d3_len(q); pushed := d3_scale(q, 1.0 / dist);
+  #assert abs(d3_dist(p[0].pos[0], pushed) - 0.5 * (1.0 - dist)) < 1e-12 && d3_len(p[0].pos[0]) >= 1.0;
+  // Straight down with no friction: pushed out, nothing to undo.
+  p[0].pos[0] = d3(0.0, 1.0, 0.0); p[0].vel[0] = d3(0.0, -1.0, 0.0);
+  #assert pbd_step(p[..], c[..], Pbd_World.{dt = 0.01, substeps = 1, sphere = true, radius = 1.0});
+  #assert d3_eq(p[0].pos[0], d3(0.0, 1.0, 0.0));
+}
+
+#test "the builders reset their store and lay links at their rest lengths" {
+  p: [1] Pstore; c: [1] Pbd;
+  pbd_rope(p[..], c[..], 5, 1.0, 3.0, 0.1, 0.0);
+  pbd_rope(p[..], c[..], 5, 1.0, 3.0, 0.1, 0.0);
+  #assert p[0].count == 5 && c[0].count == 4 && c[0].a[0] == 0 && c[0].b[3] == 4;
+  pbd_cloth(p[..], c[..], 4, 0.1, 1.0, 0.01, 0.0);
+  pbd_cloth(p[..], c[..], 4, 0.1, 1.0, 0.01, 0.0);
+  #assert p[0].count == 16 && c[0].count == 2 * 4 * 3 + 2 * 3 * 3;
+  #assert p[0].pos[0].x == -p[0].pos[3].x && p[0].pos[0].z == -p[0].pos[15].z;
+  for k: 0..<c[0].count { #assert abs(d3_dist(p[0].pos[c[0].a[k]], p[0].pos[c[0].b[k]]) - c[0].rest[k]) < 1e-12; }
+}

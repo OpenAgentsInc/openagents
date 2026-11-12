@@ -17,8 +17,8 @@
 
 #module "aethyr.action.sensor";
 #load "action.coax";
-#load "../space.coax";
-#load "../query.coax";
+#load "../core/space.coax";
+#load "../physics/query.coax";
 
 SENSOR_SAMPLES :: 32;        // sampled poses one tick may test
 SENSOR_TARGETS :: 32;        // hurt capsules one query may consider

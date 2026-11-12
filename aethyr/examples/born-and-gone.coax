@@ -1,5 +1,5 @@
 // book:begin example
-#load "../entity.coax";
+#load "../core/entity.coax";
 #import "Basic";
 
 // Three cones are thrown in one step and take part from the next. A system despawns the first

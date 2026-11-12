@@ -1,5 +1,5 @@
 // book:begin example
-#load "../sim/scene.coax";
+#load "../physics/sim/scene.coax";
 #import "Basic";
 
 // A plane, a 1 m box of density 500 at 2 m, and a 0.5 m sphere of particles at 4 m.

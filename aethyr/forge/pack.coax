@@ -1,6 +1,6 @@
 // Aethyrforge's asset packs (book chapter 53): a realm's kit art as one VPK1 file, read whole or
 // refused, written byte for byte as verse/tools/pack_realm.py writes it, and admitted into a
-// realm's assets (chapter 16, aethyr/assets.coax) by content.
+// realm's assets (chapter 16, aethyr/core/assets.coax) by content.
 //
 // The format is pack_realm.py's (its header; docs/verse/realm-host.md, "Asset packs"), little endian:
 //   header, 32 bytes: "VPK1", entry count, file bytes, budget bytes, table offset (32), data offset, 0, 0
@@ -27,7 +27,7 @@
 
 #module "aethyr.forge.pack";
 #authority;
-#load "../assets.coax";
+#load "../core/assets.coax";
 
 // book:begin format
 PACK_MAGIC :: "VPK1";

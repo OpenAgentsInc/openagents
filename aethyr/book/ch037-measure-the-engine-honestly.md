@@ -53,7 +53,7 @@ on the same hardware, or are not made.
 
 ## What it builds
 
-- `aethyr/sim/matrix.json` (generated tables), the suite runner, the
+- `aethyr/physics/sim/matrix.json` (generated tables), the suite runner, the
   benchmark scenes and a results ledger.
 
 ## Acceptance checks and oracles

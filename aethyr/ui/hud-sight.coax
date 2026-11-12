@@ -1,11 +1,11 @@
 // Sight for what floats over a body: a plate, its health bar, a name, a damage number shows only
 // while the body itself shows from the camera. Whether it shows is the engine's visibility service's
-// answer (aethyr/visibility.coax vis_line, settled by vis_settle so it doesn't flicker at a wall's
+// answer (aethyr/physics/visibility.coax vis_line, settled by vis_settle so it doesn't flicker at a wall's
 // edge); this file turns a body into the service's target and the settled answer into a share shown,
 // fading in and out over HUD_SIGHT_FADE s. A realm supplies its colliders and its land's heights;
 // it never walks its own line. docs/verse/hud-styles.md, docs/verse/visibility-service.md.
 //   coax/bin/coax test aethyr/ui/hud-sight.coax --library
-#load "../visibility.coax";
+#load "../physics/visibility.coax";
 
 HUD_SIGHT_FADE :: 0.15;   // s: a plate's fade in or out
 HUD_SIGHT_HOLD :: 2;      // answers in a row that must disagree before a plate turns (vis_settle)
@@ -44,13 +44,13 @@ hud_sight_land_at :: (eye: [3] f32, x: f32, foot: f32, z: f32, tall: f32, k: int
 }
 // The service's answer from the realm's heights (heights[k] at hud_sight_land_at k, n of them, or 0
 // when its colliders hold its land) and its colliders: boxes (x0 y0 z0 x1 y1 z1), capsules (two ends
-// and a radius) and convex hulls (aethyr/query.coax's numbers), all in world heights.
+// and a radius) and convex hulls (aethyr/physics/query.coax's numbers), all in world heights.
 hud_sight_look :: (eye: [3] f32, x: f32, foot: f32, z: f32, tall: f32, heights: [] f32, n: int, boxes: [] f32, capsules: [] f32, hulls: [] f32) -> Visibility {
   q := hud_sight_query(eye, x, foot, z, tall);
   land: VisTerrain; land.count = ifx n > VIS_TERRAIN then VIS_TERRAIN else n; for k: 0..<land.count { land.heights[k] = heights[k]; }
   c: Colliders; c.ground_enabled = false; c.boxes = boxes; c.capsules = capsules;
   if hulls.count == 0 { return vis_line(c, land, q); }
-  // The service's line doesn't cross hulls (aethyr/query.coax query_clear tests the ground, capsules,
+  // The service's line doesn't cross hulls (aethyr/physics/query.coax query_clear tests the ground, capsules,
   // heightfields and boxes), so each point's line also goes through the hulls here.
   out := Visibility.{source = VisSource.line};
   for i: 0..<q.target.points {
@@ -65,7 +65,7 @@ hud_sight_look :: (eye: [3] f32, x: f32, foot: f32, z: f32, tall: f32, heights: 
   out.status = ifx out.seen > 0 then VisStatus.visible else VisStatus.occluded;
   return out;
 }
-// Whether a convex hull (aethyr/query.coax's numbers: F, its lowest and highest y, then F faces nx ny
+// Whether a convex hull (aethyr/physics/query.coax's numbers: F, its lowest and highest y, then F faces nx ny
 // nz d, solid where n . p <= d) cuts the line from a to b, short of b's own slack.
 hud_sight_hull_cut :: (h: [] f32, a: WorldPoint, b: WorldPoint, slack: f32) -> bool {
   dx := b.x - a.x; dy := b.y - a.y; dz := b.z - a.z; span := sqrt(dx * dx + dy * dy + dz * dz);
@@ -98,7 +98,7 @@ hud_sight_after :: (h: HudSight, eye: [3] f32, x: f32, foot: f32, z: f32, tall: 
 hud_sight_shows :: (eye: [3] f32, x: f32, foot: f32, z: f32, tall: f32, heights: [] f32, n: int, boxes: [] f32, capsules: [] f32, hulls: [] f32) -> bool {
   return hud_sight_seen(hud_sight_look(eye, x, foot, z, tall, heights, n, boxes, capsules, hulls));
 }
-HUD_SIGHT_LAND :: 64;   // heights a realm samples at most (aethyr/visibility.coax VIS_TERRAIN)
+HUD_SIGHT_LAND :: 64;   // heights a realm samples at most (aethyr/physics/visibility.coax VIS_TERRAIN)
 
 #test "hud sight: a wall between hides the body, one beside it doesn't; the land hides it over a hill" {
   c: Colliders; c.ground_enabled = false;

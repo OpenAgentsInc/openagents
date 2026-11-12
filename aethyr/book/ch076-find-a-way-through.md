@@ -1,7 +1,7 @@
 # 76. Find a way through
 
 > **Status: partly implemented.** The walking grid is built and shared:
-> [aethyr/nav/grid.coax](../../aethyr/nav/grid.coax) holds a grid of any
+> [aethyr/world/nav/grid.coax](../world/nav/grid.coax) holds a grid of any
 > size up to 16,384 cells, eight-neighbour steps that never cut a blocked
 > corner, and Dijkstra flow fields with a fixed tie-break, bounded by a cost
 > and by a number of settled cells, with typed results. Its checks compare
@@ -14,7 +14,7 @@
 > the shared solver with fenced requests and bounded retries (below).
 > Everglade's townsfolk keep their
 > road graph and Hecate's Cemetery its garden paths
-> ([aethyr/terrain.coax](../../aethyr/terrain.coax)). Path graphs, following
+> ([aethyr/world/terrain.coax](../world/terrain.coax)). Path graphs, following
 > and crowd avoidance retain their separate adapter work. See [Still to do](#still-to-do).
 
 A character that walks to a place needs a route that avoids what it can't
@@ -43,7 +43,7 @@ so cell numbers run west to east and then south to north. The caller owns
 the storage: a walkable flag and a cost for each cell, and the search's
 heap and slot arrays. A grid has at most `NAV_GRID_MOST` cells.
 
-<!-- source: aethyr/nav/grid.coax grid -->
+<!-- source: aethyr/world/nav/grid.coax grid -->
 ```jai
 NAV_GRID_MOST :: 16384;       // cells a grid may have
 NAV_GRID_FAR :: 1000000.0;    // the cost of a cell the search never reached
@@ -66,7 +66,7 @@ A straight step costs one cell and a diagonal `NAV_GRID_DIAG` cells, Dead
 Gears' 1.4142135. A diagonal is refused when either cell it passes between
 is blocked, so a character's circle never clips a wall's corner:
 
-<!-- source: aethyr/nav/grid.coax step -->
+<!-- source: aethyr/world/nav/grid.coax step -->
 ```jai
 // The cell one step from c in direction k (0 to 7), or -1 when that leaves the grid, isn't
 // walkable, or is a diagonal past a blocked corner.
@@ -93,7 +93,7 @@ when it settles a cell beyond `max_cost`, leaving cells further away at
 Every step costs more than nothing, so a settled cell is never lowered
 again and needs no mark:
 
-<!-- source: aethyr/nav/grid.coax flow -->
+<!-- source: aethyr/world/nav/grid.coax flow -->
 ```jai
 // Fills cost with every cell's walking distance to `goal`. A cell settled beyond max_cost
 // ends the search, so cells further away keep NAV_GRID_FAR; after `steps` settled cells it
@@ -144,7 +144,7 @@ A character reads the field one cell at a time. It goes to the neighbour
 lowest on the field, the first of equals in direction order, so it keeps
 no route and can be restarted from anywhere:
 
-<!-- source: aethyr/nav/grid.coax downhill -->
+<!-- source: aethyr/world/nav/grid.coax downhill -->
 ```jai
 // The neighbour of c lowest on the field (the first of equals in direction order), or -1 when
 // none is lower than c.
@@ -164,7 +164,7 @@ next cell, or `no_way`. With no way, `nearest` names the reachable cell
 nearest to it, by squared cell distance and then by cell number, so a
 character can walk as near as it can get:
 
-<!-- source: aethyr/nav/grid.coax way -->
+<!-- source: aethyr/world/nav/grid.coax way -->
 ```jai
 NavWayStatus :: enum u8 { there; step; no_way; refused; }
 // From one cell: there (it is the goal), a step to `next`, or no way, with `nearest` the
@@ -253,7 +253,7 @@ grid.
 
 <!-- source: aethyr/examples/flow-round-a-wall.coax example -->
 ```jai
-#load "../nav/grid.coax";
+#load "../world/nav/grid.coax";
 #import "Basic";
 
 // The chapter's 6 by 5 grid: a wall down column 2 with a gap in the top row. One flow field
@@ -323,7 +323,7 @@ is `cut`, and `nav_grid_way` refuses to read a field that isn't `ok`.
 
 ## Checks
 
-- `coax/bin/coax test aethyr/nav/grid.coax --library`: 13 of 13. The step
+- `coax/bin/coax test aethyr/world/nav/grid.coax --library`: 13 of 13. The step
   costs and the corner rule on the chapter's grid. Every goal on that grid
   against the oracle. 90 seeded grids up to 10 by 8 with a third of the
   cells blocked: every cost, every next cell and every nearest reachable
@@ -333,7 +333,7 @@ is `cut`, and `nav_grid_way` refuses to read a field that isn't `ok`.
   swaps moved it. The cost and step bounds, refusals of a bad grid, short
   storage and an unusable goal (nothing written), the largest grid, a cell
   from a point, and the typed ways.
-- `coax/bin/coax mutate aethyr/nav/grid.coax --library --root-only`: 276
+- `coax/bin/coax mutate aethyr/world/nav/grid.coax --library --root-only`: 276
   mutants, 276 killed.
 - `coax/bin/coax test aethyr/tests/nav-deadgears.coax --library`: 33 of 33,
   with Dead Gears' own checks. Dead Gears' `nav_flow_to` and `nav_downhill`
@@ -356,7 +356,7 @@ the costs a search lowers.
   it since #12854, and its private search is gone; `nav-deadgears.coax` keeps
   that search as the consumer's trace and holds the module to it. Everglade's townsfolk and guide, and Hecate's dog, use path
   graphs instead.
-- **Path graphs.** Today [aethyr/terrain.coax](../../aethyr/terrain.coax)
+- **Path graphs.** Today [aethyr/world/terrain.coax](../world/terrain.coax)
   holds them: nodes (x, z pairs) and links (two node numbers each), each
   link a strip `half` metres either side of its line. `costs` is Dijkstra
   over at most `MAX_NODES` (48) nodes, where a metre over grass costs
@@ -364,7 +364,7 @@ the costs a search lowers.
   from where a follower stands, and `verse_route_points` lists the whole
   route for a guide line. Everglade's streets (`EG_NODE_XZ`, `EG_LINK_AB`,
   `EG_PATH_HALF` 1.5 m) and its townsfolk (`verse/everglade/routines.coax`)
-  have their own. A shared `aethyr/nav/graph.coax` with typed results and
+  have their own. A shared `aethyr/world/nav/graph.coax` with typed results and
   the same tie-break is not built.
 - **Following and avoidance.** `verse_follower_step_among` walks at
   `FOLLOW_WALK` (2.6 m/s), runs at `FOLLOW_RUN` (5.2 m/s) beyond
@@ -389,9 +389,9 @@ the costs a search lowers.
 
 - [aethyr/actors/](../actors/README.md): owned bounded flow caches, typed
   failure/retry, current-owner keys and the playable Actor Lab.
-- [aethyr/nav/grid.coax](../../aethyr/nav/grid.coax): walking grids and flow
+- [aethyr/world/nav/grid.coax](../world/nav/grid.coax): walking grids and flow
   fields, with its oracle and the Dead Gears identity check.
-- [aethyr/terrain.coax](../../aethyr/terrain.coax): the path graph,
+- [aethyr/world/terrain.coax](../world/terrain.coax): the path graph,
   `verse_route_next`, `verse_route_points`, `Follower`,
   `verse_follower_step` and `verse_follower_step_among`.
 - [verse/deadgears/arena.coax](../../verse/deadgears/arena.coax): Dead
@@ -415,7 +415,7 @@ The chapter is done when:
 - Routes on a fixed graph match an independent shortest-path reference for
   every pair of nodes, including ties. (Done for grids: every cell and every
   goal on the chapter's grid, and every cell on 114 seeded grids.)
-- Dead Gears' flow-field check passes on `aethyr/nav/grid.coax` with the
+- Dead Gears' flow-field check passes on `aethyr/world/nav/grid.coax` with the
   same next cells, and its demo checks still pass. (The same fields and next
   cells are shown; Dead Gears doesn't call the module yet.)
 - Over a recorded minute, Hecate's dog never crosses a hedge or plot

@@ -4,8 +4,8 @@
 //   coax/bin/coax test --library everglade/client/walk-test.coax
 #load "client.coax";
 #load "../shared/everglade-step.coax" as step;
-#load "../../aethyr/walk.coax" as walk;
-#load "../../aethyr/query.coax" as scaled;
+#load "../../aethyr/move/walk.coax" as walk;
+#load "../../aethyr/physics/query.coax" as scaled;
 
 // Walks you from (x, z) toward (tx, tz) for `seconds` among `bodies` and `hulls`, running or walking;
 // where you end, and how you stand.

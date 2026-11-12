@@ -1,8 +1,8 @@
-#load "../../entity.coax" as entities;
+#load "../../core/entity.coax" as entities;
 #load "../../ai/decide.coax" as decisions;
 #load "../../ai/stimulus.coax" as senses;
-#load "../../space.coax" as spatial;
-#load "../../walk.coax" as walking;
+#load "../../core/space.coax" as spatial;
+#load "../../move/walk.coax" as walking;
 #test "runtime derives guarded control path and model knowledge without granting unselected model goals" #steps 300000000 #traversal 3000000000 {
  base:[1]ActorRuntimeFixture;actor_runtime_fixture(base[..]);
  for mode:0..<8 {f:=base;i:=entities.entity_slot(f[0].base.handle);a:=f[0].base.pool[0].actors[i];a.perception.tick=1;a.definition.parameters.controller=1;

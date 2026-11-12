@@ -12,7 +12,7 @@
 #load "newland-golden-data.coax";
 #load "realms.coax";
 #load "galaxy.coax";
-#load "../../aethyr/figure.coax";
+#load "../../aethyr/anim/figure.coax";
 #load "../../verse/hud/frame.coax";
 #load "newland-network.coax";
 #load "newland-xp.coax";
@@ -21,7 +21,7 @@
 #load "newland-walkers.coax";
 #load "newland-portal.coax";   // Everglade's portal and "Create your character": the way into Character Create
 #load "newland-walk.coax";   // the Grid, /worlds/the-grid: this scene, walked (data-page 1)
-#load "../../aethyr/orbit.coax";   // Belt 2200's space, for Penultimate Frontier's sky
+#load "../../aethyr/physics/orbit.coax";   // Belt 2200's space, for Penultimate Frontier's sky
 #load "newland-frontier.coax";   // Penultimate Frontier: this scene, flown, with its story (data-page 2)
 #load "newland-frontier-sky.coax";
 #load "newland-frontier-ruins.coax";
@@ -31,7 +31,7 @@
 #load "newland-frontier-hud.coax";
 #load "newland-boot.coax";   // Verse OS's boot sequence over it, when the machine's session asks
 #load "newland-local.coax";  // and the agents on that machine, standing by the spawn
-#load "../../aethyr/budget.coax";
+#load "../../aethyr/core/budget.coax";
 
 VERTEX_FLOATS :: 12;      // x, y, along, across, length, core, light, glow, red, green, blue, mode
 MAX_VERTICES :: 400000;
@@ -2496,7 +2496,7 @@ press :: (s: [] LandState, x: f32, y: f32, phase: int, kind: int, id: int) {
 }
 
 // ---------------------------------------------------------------------------------------------
-// The frame budget (aethyr/budget.coax, book chapter 16): what one frame of the Grid may use.
+// The frame budget (aethyr/core/budget.coax, book chapter 16): what one frame of the Grid may use.
 // The vertex limit is under the vertex buffer, so a frame its writers clip fails the check.
 LAND_BUDGET :: FrameBudget.{steps = 8, vertices = 62000, draws = 0, bytes = 21889024};
 

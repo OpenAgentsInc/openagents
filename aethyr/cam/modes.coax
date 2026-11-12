@@ -17,8 +17,8 @@
 //
 //   coax/bin/coax test aethyr/cam/modes.coax --library
 
-#load "../camera.coax";
-#load "../points.coax";
+#load "camera.coax";
+#load "../core/points.coax";
 
 CAM_MODES :: 16;
 CAM_GROUND_N :: 64;                 // cells a side of the ground ring

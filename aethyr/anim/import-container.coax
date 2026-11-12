@@ -1,6 +1,6 @@
 // A bounded source container is data, never a program or a network request.
 #load "document.coax";
-#load "../mannequin.coax";
+#load "mannequin.coax";
 #load "import-container-checks.coax";
 #authority;
 AiGlb :: struct {ok:bool;json_first:int;json_size:int;binary_first:int;binary_size:int;}

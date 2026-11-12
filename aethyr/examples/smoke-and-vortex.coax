@@ -1,8 +1,8 @@
-// Book chapter 28: aethyr/sim/grid-fluid.coax's stable fluids. The
+// Book chapter 28: aethyr/physics/sim/grid-fluid.coax's stable fluids. The
 // Taylor-Green vortex decays on three grids, and the viscosity that fits its
 // energy is the set viscosity plus the grid's numerical viscosity; still air
 // in a box under gravity stays still; a puff of warm smoke rises.
-#load "../sim/grid-fluid.coax";
+#load "../physics/sim/grid-fluid.coax";
 #import "Basic";
 
 r4 :: (x: f64) -> f64 { return floor(x * 10000.0 + 0.5) / 10000.0; }

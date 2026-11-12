@@ -1,5 +1,5 @@
 // Native-test boundary only. Raw C metres are explicitly reconstructed as quantities.
-#load "../ground.coax";
+#load "../physics/ground.coax";
 #load "../../coax/lib/quantity.coax" as units;
 
 GroundNativeSample :: struct {

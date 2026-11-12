@@ -69,7 +69,7 @@ share:
 ### The admitted ground and its baked light (#12995, #13059)
 
 `verse/everglade2/ground.coax` holds Everglade II's land as a set of Aethyr terrain tiles
-(`aethyr/terrain-tile.coax`) against Everglade II's ground material table (meadow, autumn meadow,
+(`aethyr/world/terrain-tile.coax`) against Everglade II's ground material table (meadow, autumn meadow,
 forest litter, path dirt), with four weights a sample from `e2_gold`, `e2_forest` and `e2_path`.
 All tiles lie on one lattice, the glade's 0.65 m samples from (-32.5, -60), each worked out once
 in f64 and rounded once, so a sample two tiles share is the same point and height in both, bit
@@ -245,7 +245,7 @@ coax/web/tool.sh clip "http://127.0.0.1:8871/worlds/everglade2?stage=cat" cat.mp
   the land, and keeps you in the glade's 26 m circle, on the path's corridor, or in the
   clearing. Thick woods stand wherever you may not go, so no edge of the world shows open ground.
 - Every tree trunk and rock stops you. A trunk is a capsule sized to its tree kind's trunk. A
-  rock is its own mesh's convex hull (Aethyr's hulls, `aethyr/query.coax`): its top is ground you
+  rock is its own mesh's convex hull (Aethyr's hulls, `aethyr/physics/query.coax`): its top is ground you
   stand on, its sides stop you where you see them. You step onto a rock lower than 0.55 m, jump
   onto a taller one and stand on its top, walk up a gentle face and slide off a steep one. The
   hulls are baked from the Stylized Nature meshes by
@@ -296,7 +296,7 @@ coax/web/tool.sh clip "http://127.0.0.1:8871/worlds/everglade2?stage=cat" cat.mp
   middle of the view and the sky fills the rest. The eye moves smoothly onto and off the land.
   Everglade II tilts from 1.2 radians below the horizon to 1.2 above.
 - A frame-rate counter in the bottom-right corner shows frames a second, averaged over 0.5 s.
-- The graphics governor (`aethyr/quality.coax`) sets how many pixels the page draws. It lowers
+- The graphics governor (`aethyr/core/quality.coax`) sets how many pixels the page draws. It lowers
   the resolution when frames run slow and raises it again when there's room.
 - The key light's shadows are Aethyr's cascades (`aethyr/render/cascades.coax`): four tiles in
   a 2048 atlas reaching 24, 60, 150 and 360 m round you (two, to 20 and 75 m, on a phone). Each tile's middle snaps to whole texels
@@ -344,7 +344,7 @@ Everglade II builds in seconds:
 ```sh
 cd apps/openagents-web
 ../../coax/web/wasm.sh everglade/client/client.coax everglade2-face.c build/everglade2.wasm \
-  everglade-step.coax ../../aethyr/sticks.coax
+  everglade-step.coax ../../aethyr/core/sticks.coax
 cd ../..
 coax/web/tool.sh coax/web/wgsl-module.coax everglade/client/gpu/everglade2.coax \
   apps/openagents-web/everglade2.wgsl everglade/client/gpu/everglade2.module
@@ -399,7 +399,7 @@ To open it, build a dev `everglade2.wasm` and run a local room and page server:
 ```sh
 cd apps/openagents-web
 COAXIAL_MODE=dev ../../coax/web/wasm.sh everglade/client/client.coax everglade2-face.c build/everglade2.wasm \
-  everglade-step.coax ../../aethyr/sticks.coax
+  everglade-step.coax ../../aethyr/core/sticks.coax
 cd ../..
 coax/web/tool.sh coax/web/room/local.coax --room 8950 --page 8949 --static
 ```

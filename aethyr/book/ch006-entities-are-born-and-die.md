@@ -1,7 +1,7 @@
 # 6. Entities are born and die
 
 > Engine-core task: `ec-entity` (#12609). The module is
-> [aethyr/entity.coax](../entity.coax), with its reference model in
+> [aethyr/core/entity.coax](../core/entity.coax), with its reference model in
 > [aethyr/tests/entity-oracle.coax](../tests/entity-oracle.coax). It
 > generalizes Dead Gears' entity system, which now runs on it:
 > [verse/deadgears/ecs.coax](../../verse/deadgears/ecs.coax) keeps only the
@@ -65,7 +65,7 @@ arrays, one element per slot, so passing it copies only the views. The
 realm keeps its component values in its own columns, beside the store, as
 Dead Gears does.
 
-<!-- source: aethyr/entity.coax store -->
+<!-- source: aethyr/core/entity.coax store -->
 ```jai
 ENTITY_SLOT_BITS :: 20;
 ENTITY_SLOT_MASK :: 1048575;   // (1 << 20) - 1
@@ -104,7 +104,7 @@ spawn when every slot is in use is refused, and `ENTITY_REFUSED` counts it.
 
 ## Handles and IDs
 
-`coax/lib/handle.coax` declares `Handle(T)`, and `aethyr/ids.coax` declares
+`coax/lib/handle.coax` declares `Handle(T)`, and `aethyr/core/ids.coax` declares
 `EntityId` and `EntityGeneration` as nominal integer wrappers. The checker refuses a saved
 ID where a handle is required. Codecs construct a wrapper explicitly and
 extract `.value` to write its integer. Construction does not establish
@@ -113,7 +113,7 @@ and its generation. `entity_handle` also refuses out-of-range slots or
 generations. The stable ID counter refuses exhaustion before reserving a
 slot. These checks belong to the engine library.
 
-<!-- source: aethyr/entity.coax handles -->
+<!-- source: aethyr/core/entity.coax handles -->
 ```jai
 // Whether h names a live entity: its slot is in use, holds a live entity, and has h's generation.
 entity_alive :: (w: EntityStore, h: Handle(Entity)) -> bool #effects(all) {
@@ -163,7 +163,7 @@ replays need.
 
 ## Spawns, despawns, and the flush
 
-<!-- source: aethyr/entity.coax commands -->
+<!-- source: aethyr/core/entity.coax commands -->
 ```jai
 // A spawn: the new entity's handle and EntityId, or ENTITY_NONE and no ID when every slot is in
 // use (counted in ENTITY_REFUSED). Its slot is the realm's to fill now; it is alive from the
@@ -254,7 +254,7 @@ counters, every used slot, the free list, and the waiting spawns. Two equal
 stores have equal digests, so a replay can compare them each step.
 `entity_copy` saves a store into another one, or loads it back.
 
-<!-- source: aethyr/entity.coax digest -->
+<!-- source: aethyr/core/entity.coax digest -->
 ```jai
 // The store as one number (FNV-1a over the counters and every used slot): equal stores give equal
 // digests, so a replay (chapter 5) can compare them a step at a time.
@@ -289,7 +289,7 @@ spawns three cones, despawns one while it walks them, and spawns another:
 
 <!-- source: aethyr/examples/born-and-gone.coax example -->
 ```jai
-#load "../entity.coax";
+#load "../core/entity.coax";
 #import "Basic";
 
 // Three cones are thrown in one step and take part from the next. A system despawns the first
@@ -347,7 +347,7 @@ column for each, walks the live entities, and despawns about one in five.
 After every flush, the store and the model must hold the same IDs with the
 same values, and nothing else.
 
-<!-- source: aethyr/entity.coax model -->
+<!-- source: aethyr/core/entity.coax model -->
 ```jai
 oracle_model_run :: (seed: int) -> bool #effects(all) {
   b: [1] OracleBacking; w := oracle_store(b[..]);
@@ -368,7 +368,7 @@ despawns the entity it visits, or a later one, or none. Every live entity
 must be visited once, every despawned one must stay alive until the flush,
 and after the flush exactly the despawned ones must be gone.
 
-<!-- source: aethyr/entity.coax walk -->
+<!-- source: aethyr/core/entity.coax walk -->
 ```jai
 #forall "despawning while walking: every live entity is visited once, and none after its flush" seed: 0..<32 {
   b: [1] OracleBacking; w := oracle_store(b[..]);
@@ -405,7 +405,7 @@ saved after step 40. The save is loaded into a fresh store, which runs steps
 40 to 80 again. A third store replays all 80 steps from nothing. All three
 must end with the same digest and the same `EntityId` in every slot.
 
-<!-- source: aethyr/entity.coax save -->
+<!-- source: aethyr/core/entity.coax save -->
 ```jai
 #forall "IDs survive save, load and replay" seed: 0..<16 {
   // one session, 80 steps; saved after step 40
@@ -440,11 +440,11 @@ must end with the same digest and the same `EntityId` in every slot.
 ```
 
 ```shell
-coax/bin/coax test aethyr/entity.coax --library
-coax/bin/coax mutate aethyr/entity.coax --library --root-only
+coax/bin/coax test aethyr/core/entity.coax --library
+coax/bin/coax mutate aethyr/core/entity.coax --library --root-only
 ```
 
-`aethyr/entity.coax` has eight checks. They cover:
+`aethyr/core/entity.coax` has eight checks. They cover:
 
 - stale handles, and IDs that are never reused;
 - cancelling a waiting spawn;
@@ -457,7 +457,7 @@ coax/bin/coax mutate aethyr/entity.coax --library --root-only
 - a pinned digest value, and `entity_clear` and `entity_copy` carrying every
   field.
 
-`coax mutate --root-only` makes 211 mutants of `aethyr/entity.coax`, and the checks kill all 211.
+`coax mutate --root-only` makes 211 mutants of `aethyr/core/entity.coax`, and the checks kill all 211.
 
 ## Still to do
 

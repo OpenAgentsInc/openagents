@@ -1,6 +1,6 @@
 /* The room server's Everglade world (GitHub #12705, #13053; everglade/shared/move.coax):
    Everglade II's land, path and woods, one planting for every room, and each seat a controller
-   (everglade-step.coax, the unit that carries aethyr/player.coax) stepped as the page steps it, so
+   (everglade-step.coax, the unit that carries aethyr/move/player.coax) stepped as the page steps it, so
    the page and the server put the player in the same place. Every room is Everglade II's
    (docs/decisions/0005-production-room-runs-everglade-ii.md, #13267): v1's city, town, river and
    pieces are the frozen build's (everglade/server/legacy/v1.sh). This file includes only the units'
@@ -25,7 +25,7 @@ static void pose_of(coax_t_Player p, bool moved, float out[WORLD_POSE]) {
   out[0] = p.pos.x; out[1] = p.pos.y; out[2] = p.pos.z; out[3] = verse_player_face(p);
   out[4] = p.vel.x; out[5] = p.vel.y; out[6] = p.vel.z;
   out[7] = p.on_ground ? 1 : 0;            /* G: 1 on the ground, 2 swimming, 4 in a boat (world_step adds them) */
-  out[8] = (float)p.act;                   /* CLIP: the controller's act (aethyr/walk.coax Act) */
+  out[8] = (float)p.act;                   /* CLIP: the controller's act (aethyr/move/walk.coax Act) */
   out[9] = (float)(p.clock.carry_ns / 100000);   /* CARRY: the fixed step's leftover, tenths of a ms */
   (void)moved;
 }

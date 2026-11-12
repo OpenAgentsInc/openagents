@@ -1,10 +1,10 @@
 // book:begin example
-#load "../ground.coax" as ground;
-#load "../collide.coax" as contact;
-#load "../query.coax" as queries;
-#load "../space.coax" as world;
+#load "../physics/ground.coax" as ground;
+#load "../physics/collide.coax" as contact;
+#load "../physics/query.coax" as queries;
+#load "../core/space.coax" as world;
 #load "../../coax/lib/quantity.coax" as units;
-#load "../../aethyr/walk.coax" as walker;
+#load "../move/walk.coax" as walker;
 #import "Basic";
 
 main :: () {

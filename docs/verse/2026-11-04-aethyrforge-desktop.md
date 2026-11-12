@@ -428,7 +428,7 @@ native Coax and C.
 - The app records 16 kHz mono while Space or the mic button is held, and sends the
   hold's audio to one resident Parakeet model when you let go. The model loads once
   on first explicit voice use and stays loaded until quit.
-- `aethyr/voice.coax` admits each hold's final transcript once, in its turn,
+- `aethyr/audio/voice.coax` admits each hold's final transcript once, in its turn,
   through the replay gate, as the voice host does.
 - The transcript shows in the bar. You can click it to fix a word, then press
   Return to resend it.

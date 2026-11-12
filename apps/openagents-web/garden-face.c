@@ -1,5 +1,5 @@
 // The Garden's C face for the browser (coax/web/host.js): garden.coax is
-// the page, aethyr/player.coax walks you (its own library, as the realm
+// the page, aethyr/move/player.coax walks you (its own library, as the realm
 // links it) and verse/grid.coax reads a phone's thumbs. Once a frame it
 // passes values between them in order: the page's controls, the player's
 // step among the garden's walls, then the page's frame with where you
@@ -71,7 +71,7 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   start(state);
   coax_t_Garden *g = garden(state);
   width = w; height = h; dpr = scale;
-  float frame = dt;   /* the player's clock (aethyr/loop.coax) steps it; the rest moves by what it counts */
+  float frame = dt;   /* the player's clock (aethyr/core/loop.coax) steps it; the rest moves by what it counts */
   dt = verse_player_counts(player, frame);
   now += dt;
   g->golden = golden;

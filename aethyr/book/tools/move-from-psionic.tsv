@@ -17,8 +17,8 @@ part	XXV	psionic	XXIII
 part	XXVI	psionic	XXIV
 # literal <path regex> <old> <new>: final text no rule rewrites (\n is a newline).
 literal	psionic/book/ch1(6[5-9]|7\d|8[0-5])-.*\.md	## The design in Psionic	## The design in Aethyr
-literal	psionic/book/ch1(6[5-9]|7\d|8[0-5])-.*\.md	`psionic/lib/sim/	`aethyr/sim/
-literal	psionic/book/ch1(6[5-9]|7\d|8[0-5])-.*\.md	psionic/lib/sim/	aethyr/sim/
+literal	psionic/book/ch1(6[5-9]|7\d|8[0-5])-.*\.md	`psionic/lib/sim/	`aethyr/physics/sim/
+literal	psionic/book/ch1(6[5-9]|7\d|8[0-5])-.*\.md	psionic/lib/sim/	aethyr/physics/sim/
 literal	psionic/book/ch1(6[5-9]|7\d|8[0-5])-.*\.md	the Psionic solver	the Aethyr solver
 literal	psionic/book/ch1(6[5-9]|7\d|8[0-5])-.*\.md	the Psionic kernel	the Aethyr kernel
 literal	psionic/book/README.md	Sketches in it are illustrative only.\nPart XVIII, the physics engine, is written this way first; see the\n[Genesis parity plan](../docs/genesis-parity.md).	Sketches in it are illustrative only.\nThe physics engine and the spacecraft chapters, first drafted here this way,\nare now Parts IV and V of [the Aethyr book](../../aethyr/book/README.md).

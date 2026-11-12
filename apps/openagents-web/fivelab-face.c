@@ -7,8 +7,8 @@
 // and the clips baked once (bd_bake); fx_fs the strokes lab_frame writes, and fivelab-fx.wgsl the
 // glade's effects (puffs), drawn after the figures, depth-tested.
 // Player mode walks your hero on Everglade's controller, as everglade-face.c does: everglade-step.coax
-// (aethyr/walk.coax, with player.coax's verse_player_*) steps your body on the keys and a phone's
-// thumbs (aethyr/sticks.coax) among the figures round you (lab_move_world), and the Lab says where
+// (aethyr/move/walk.coax, with player.coax's verse_player_*) steps your body on the keys and a phone's
+// thumbs (aethyr/core/sticks.coax) among the figures round you (lab_move_world), and the Lab says where
 // it may stand (lab_keep) and draws it (lab_you).
 #include "fivelab.h"
 #include "Everglade-step.h"
@@ -30,7 +30,7 @@ static float bake[6453720];        // everglade/scene/bodies.coax BD_BAKE_FLOATS
 static uint32_t baked;            // the bake's generation: 1 once baked
 static uint32_t frames;
 static int64_t draw_n;
-static coax_t_Player player;   // your body in Player mode (aethyr/walk.coax)
+static coax_t_Player player;   // your body in Player mode (aethyr/move/walk.coax)
 static coax_t_Sticks sticks;   // a phone's thumbs
 static float width, height, dpr;
 static double now;
@@ -53,7 +53,7 @@ EXPORT("coaxial_vertex_floats") uint32_t coaxial_vertex_floats(void) { return (u
 EXPORT("coaxial_uniform_floats") uint32_t coaxial_uniform_floats(void) { return (uint32_t)coaxial_lab_uniform_floats(); }
 // bg_fs traces the glade's ground, trees and sky per pixel (the figures are drawn, not traced):
 // drawn at most 6.4 million pixels (3200 by 2000; the host scales the canvas up past that).
-// The graphics governor's (everglade/zone.coax zone_pixel_budget, aethyr/quality-page.coax): fewer while frames run long.
+// The graphics governor's (everglade/zone.coax zone_pixel_budget, aethyr/core/quality-page.coax): fewer while frames run long.
 static cx_face_addr quality_state;
 EXPORT("coaxial_pixel_budget") uint32_t coaxial_pixel_budget(void) {
   if (!quality_state) return 6400000u;

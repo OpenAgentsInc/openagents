@@ -4,8 +4,8 @@
 // seed. aethyr/examples/scatter-from-a-seed.coax prints them natively; coax/web/replay-hosts.coax
 // builds this file to wasm with scatter-hosts-face.c, runs it in headless Chrome and compares.
 
-#load "../scatter.coax";
-#load "../terrain.coax";
+#load "../world/scatter.coax";
+#load "../world/terrain.coax";
 
 SH_CASES :: 7;
 SH_MOST :: 400;

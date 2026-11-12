@@ -98,7 +98,7 @@ codec openagents.dictation.stream.v1 apps/openagents-cli/dictate-stream.coax  # 
 codec openagents.cache.github.v1 apps/everglade-desktop/next-context.coax  # coder Golemancy codec still lives in apps/everglade-desktop/ (#13316)
 codec golems-cache apps/everglade-desktop/golems.coax  # coder Golemancy codec still lives in apps/everglade-desktop/ (#13316)
 codec issue-claim-file apps/everglade-desktop/next-context.coax  # coder Golemancy codec still lives in apps/everglade-desktop/ (#13316)
-codec aethyr.player.appearance.v1 aethyr/character-appearance.coax  # characters codec still lives in aethyr/ (#13316)
+codec aethyr.player.appearance.v1 aethyr/character/character-appearance.coax  # characters codec still lives in aethyr/ (#13316)
 codec aethyr.everglade.drift-qualification.v1 coax/web/everglade-drift.coax  # world codec still lives in coax/web/ (#13316)
 codec aethyr.icecream.mesh-bands.controls.v1 verse/icecream/check-mesh-band-controls.coax  # engine codec still lives in verse/icecream/ (#13316)
 codec aethyr.icecream.mesh-bands.native.v1 verse/icecream/check_mesh_bands.py  # engine codec still lives in verse/icecream/ (#13316)

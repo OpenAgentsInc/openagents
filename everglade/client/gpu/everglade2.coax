@@ -382,7 +382,7 @@ cc_player_light :: (u:[]f32,albedo:V3,n:V3,view:V3,visibility:f32)->V3 {
  return mul3(albedo,irradiance);
 }
 // A character's albedo: the colour layer's texel (the array sampler already decoded it from sRGB),
-// dyed in display space (CA_DYES in aethyr/character-appearance.coax: the dye masks and colours are
+// dyed in display space (CA_DYES in aethyr/character/character-appearance.coax: the dye masks and colours are
 // authored on display values), decoded, then times the part's tint and its record's multiplier.
 // Live and film both call this, so they agree.
 cc_albedo :: (tex:V3,dye:V4,tint:V3,base:V3,dyed:bool)->V3 {

@@ -103,7 +103,7 @@ obliquity; it is a stated model, not the IAU Earth rotation model.
 
 The example [aethyr/examples/read-an-ephemeris.coax](../examples/read-an-ephemeris.coax) reads the tables, carries a UTC time to TDB, corrects Mars as
 seen from the Earth on 2 January 2025, transforms a point on the equator and
-measures [`aethyr/orbit.coax`](../../aethyr/orbit.coax)'s mean elements
+measures [`aethyr/physics/orbit.coax`](../physics/orbit.coax)'s mean elements
 against DE441:
 
 <!-- source: aethyr/examples/read-an-ephemeris.coax example -->
@@ -214,7 +214,7 @@ catch the missing `ω × r` term.
   constant rate and obliquity, and body-fixed frames for the Moon and Mars.
 - Interpolation between table rows within the dataset's stated precision;
   today a query between rows is two-body motion from the nearest one.
-- Moving `aethyr/orbit.coax`'s callers from plain f64 seconds onto TDB
+- Moving `aethyr/physics/orbit.coax`'s callers from plain f64 seconds onto TDB
   instants.
 
 ## Acceptance checks and oracles
@@ -227,7 +227,7 @@ catch the missing `ω × r` term.
   a transform that omits `ω × r` is caught by a velocity check.
 - A query outside coverage, and a UTC time beyond the leap-second table,
   are refused.
-- `aethyr/orbit.coax`'s mean-element ephemeris is measured against the
+- `aethyr/physics/orbit.coax`'s mean-element ephemeris is measured against the
   pinned table over a stated span, so its position error per body is a
   reported number, not an assumption.
 

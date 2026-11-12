@@ -8,10 +8,10 @@
 //
 //   coax/bin/coax test aethyr/cam/boom.coax --library
 
-#load "../points.coax";
-#load "../follow.coax" as boom_follow;
-#load "../query.coax" as boom_query;
-#load "../space.coax" as boom_space;
+#load "../core/points.coax";
+#load "follow.coax" as boom_follow;
+#load "../physics/query.coax" as boom_query;
+#load "../core/space.coax" as boom_space;
 #load "firstperson.coax" as boom_fp;
 #load "chase.coax";
 

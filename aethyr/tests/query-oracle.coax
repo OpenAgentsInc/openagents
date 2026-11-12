@@ -1,4 +1,4 @@
-// The oracles for aethyr/query.coax's checks: separate code that answers by containment and
+// The oracles for aethyr/physics/query.coax's checks: separate code that answers by containment and
 // marching, never by the closed forms query.coax uses. Only the checks call it.
 
 

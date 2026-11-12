@@ -362,7 +362,7 @@ coax/bin/coax test aethyr/ui/hud.coax --library
 - Filament, the stroke font in `aethyr/ui/font.coax`
   ([coax/font.md](../../coax/font.md)), and GPUI's atlas for Geist in
   `coax/web/gpui.js`.
-- [aethyr/arrange.coax](../../aethyr/arrange.coax): a close-up view where
+- [aethyr/cam/arrange.coax](../cam/arrange.coax): a close-up view where
   point and click place or take out objects.
 
 ## A HUD survives area retirement

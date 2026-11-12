@@ -1,5 +1,5 @@
 // book:begin example
-#load "../frame-report.coax";
+#load "../core/frame-report.coax";
 #load "../../verse/gridwalk.coax";
 #import "Basic";
 

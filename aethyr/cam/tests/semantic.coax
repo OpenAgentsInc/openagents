@@ -1,6 +1,6 @@
 #load "world.coax" as fixture;
-#load "../../query-filter.coax" as filters;
-#load "../../query.coax" as queries;
+#load "../../physics/query-filter.coax" as filters;
+#load "../../physics/query.coax" as queries;
 
 #test "centred follow uses admitted body geometry and shake moves aim by the accepted eye delta" {
  b:[1]fixture.CamWorldBacking;w:=fixture.cam_world(b[..],1);scratch:[1]scene.QueryScratch;

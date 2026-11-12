@@ -13,8 +13,8 @@
 //
 //   coax/bin/coax test aethyr/cam/chase.coax --library
 
-#load "../camera.coax";
-#load "../points.coax";
+#load "camera.coax";
+#load "../core/points.coax";
 #load "modes.coax";
 
 CAM_DRAG_TURN :: 0.0055;    // radians a CSS pixel of a mouse drag turns or tilts the view
@@ -33,7 +33,7 @@ cam_wheel :: (o: Orbit, dy: f32) -> Orbit {
   d := ifx dy > f32(CAM_WHEEL_MAX) then f32(CAM_WHEEL_MAX) else ifx dy < -f32(CAM_WHEEL_MAX) then -f32(CAM_WHEEL_MAX) else dy;
   return verse_orbit_zoom(o, d * f32(CAM_WHEEL_ZOOM));
 }
-// A thumb's pinch (aethyr/sticks.coax), as the wheel.
+// A thumb's pinch (aethyr/core/sticks.coax), as the wheel.
 cam_pinch :: (o: Orbit, zoom: f32) -> Orbit { if zoom == 0 { return o; } return verse_orbit_zoom(o, zoom * f32(CAM_WHEEL_ZOOM)); }
 
 // Mouselook's framing: the eye and its aim both move CAM_SHOULDER right and CAM_LIFT up, as far as

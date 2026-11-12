@@ -36,12 +36,12 @@ Draconia, The Guardian").
 | Pose math | `aethyr/anim/pose.coax` | Quaternions, local poses, blending, the joint chain and the skinning palette |
 | Blend shapes | `aethyr/anim/morph.coax`, `morph-gpu.coax` | Sampled curves; sparse morph deltas applied on the GPU before skinning |
 | Face playback | `aethyr/anim/face.coax`, `face-pack.coax` | Plays face clips as morph weights plus face-bone overlays on a body pose; the EFC1 face pack format and its checks |
-| Face rig | `aethyr/facerig.coax` | A Coax port of OpenRigLogic: controls, correctives, joint groups and blend shapes from a MetaHuman DNA file |
-| Clip playback | `aethyr/skin.coax` | Skinned clips chosen by speed (stand, walk, run, jump) |
-| Retargeting by name | `aethyr/mannequin.coax` | The 65 UE-mannequin joint names; maps other skeletons onto them by name |
-| Cameras | `aethyr/cinematic.coax`, `aethyr/shot.coax` | Authored camera flights with keys, easing and cuts; orbit and dive shots |
-| Determinism | `aethyr/replay.coax` | Record and replay of inputs, so the same inputs give the same frames |
-| Speaking | `aethyr/speak.coax`, `coax/web/tool.sh speak` | Text to speech, word timing, visemes and moods on a MetaHuman face, rendered to video |
+| Face rig | `aethyr/anim/facerig.coax` | A Coax port of OpenRigLogic: controls, correctives, joint groups and blend shapes from a MetaHuman DNA file |
+| Clip playback | `aethyr/anim/skin.coax` | Skinned clips chosen by speed (stand, walk, run, jump) |
+| Retargeting by name | `aethyr/anim/mannequin.coax` | The 65 UE-mannequin joint names; maps other skeletons onto them by name |
+| Cameras | `aethyr/cam/cinematic.coax`, `aethyr/cam/shot.coax` | Authored camera flights with keys, easing and cuts; orbit and dive shots |
+| Determinism | `aethyr/core/replay.coax` | Record and replay of inputs, so the same inputs give the same frames |
+| Speaking | `aethyr/audio/speak.coax`, `coax/web/tool.sh speak` | Text to speech, word timing, visemes and moods on a MetaHuman face, rendered to video |
 | Echo port | `verse/valley/echo*.coax`, `aethyr/tools/valley-echo-*`, `aethyr/tools/unreal-echo-sdk/` | Echo's mesh, 334 joints, 24 clips and source walking profile, in a private pack |
 | Slay face | `verse/valley/slay-shot.coax`, `slay-shot-play.coax` (#12962) | Slay's facial clips on Echo, with a fixed source-shot view |
 | Anime director | `verse/anime/director.coax`, `take.coax`, `stage.coax`, `coax/web/api/anime-director-policy.coax` | Words to typed directions with confidence; `.take` files (`anime.v1`); timeline grammar |
@@ -95,7 +95,7 @@ What a character is made of:
 - **Skeleton:** joint names, parents, rest pose, bind matrices.
 - **Mesh:** skinned sections, up to 8 influences per vertex, material slots.
 - **Face:** blend shapes by name, face bones, and optionally a DNA face rig
-  (`aethyr/facerig.coax`) with its controls.
+  (`aethyr/anim/facerig.coax`) with its controls.
 - **Retarget map:** each joint's match on the 65-joint mannequin
   (`mannequin_fold`), plus per-joint rest-pose offsets.
 - **Face map:** how ARKit's 52 shape names map onto this face: direct shapes,
@@ -137,8 +137,8 @@ A stage and what happens on it:
 - Cast: characters (rig plus look), each with a performance and a path.
 - Props and effects with their own timed events.
 - Lights with keys.
-- Cameras: named flights (`aethyr/cinematic.coax` keys), lens and focus.
-- Sound cues: voice lines (through `aethyr/speak.coax`), music and effects.
+- Cameras: named flights (`aethyr/cam/cinematic.coax` keys), lens and focus.
+- Sound cues: voice lines (through `aethyr/audio/speak.coax`), music and effects.
 - Style: the render profile (realistic, anime cel), so one scene renders in
   either look.
 
@@ -163,7 +163,7 @@ the mannequin, plus face curves.
 | glTF and FBX | glTF reads directly; FBX uses headless Blender, then the same reader |
 | BVH mocap | Read directly; retarget by name |
 | Phone face capture | ARKit curves (Live Link Face CSV) straight into face curves |
-| MetaHuman | The existing pipeline (`docs/verse/metahuman-support.md`), DNA through `aethyr/facerig.coax` |
+| MetaHuman | The existing pipeline (`docs/verse/metahuman-support.md`), DNA through `aethyr/anim/facerig.coax` |
 | Hand keys | Poses from the pose library, set at times |
 
 Every import writes a receipt (source, export settings, counts, hashes) and
@@ -183,7 +183,7 @@ a private pack.
 - **Transitions:** blend lengths and curves between clips, chosen per
   transition.
 - **Face:** edit curves, add blinks, and drive visemes and moods from a
-  voice line (`aethyr/speak.coax`).
+  voice line (`aethyr/audio/speak.coax`).
 
 ### Check
 
@@ -271,7 +271,7 @@ in it copies the fan film's shots.
 | Walk, stop, turn | Valley Echo's locomotion clips, retargeted, for study renders only |
 | Wand raise and cast | Hand-keyed from the pose library, then a recorded mocap take when one exists |
 | Face | The owner's phone face capture of the lines (ARKit curves through the face map); Slay's face clips only for internal parity tests |
-| Voice | `aethyr/speak.coax` with a chosen voice |
+| Voice | `aethyr/audio/speak.coax` with a chosen voice |
 | Guardian | An effect rig keyed by hand |
 
 Valley's and Slay's clips are Epic sample content. They're fine for the lab's
@@ -316,10 +316,10 @@ Each ends on a check run on our own machines.
 | --- | --- | --- |
 | A0 | #12965 | Converts the Echo port (599558ee03) and the Slay face data (e7e0b0e71c) into the documents |
 | A1 | #12966 | New realm; Valley Lab's J and F views stay as they are |
-| A2 | #12967 | Extends `aethyr/mannequin.coax` |
+| A2 | #12967 | Extends `aethyr/anim/mannequin.coax` |
 | A3 | #12968 | Moves #12962's face layering and ambient segments onto shared layers, same frames |
 | A4 | #12969 | Generalizes the Echo and Slay exporters and the `EchoSourceSDK` plugin |
-| A5 | #12970 | Uses `aethyr/cinematic.coax` and the speaking pipeline (#12798) |
+| A5 | #12970 | Uses `aethyr/cam/cinematic.coax` and the speaking pipeline (#12798) |
 | A6 | #12971 | Uses Anime Lab's render profile and cast |
 | A7 | #12972 | Extends Anime Lab's director |
 | A8 | #12973 | Replaces Epic sample content with our own capture |

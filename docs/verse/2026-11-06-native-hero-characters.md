@@ -45,8 +45,8 @@ describe the delivered implementation and its measured limits.
 | Post pass (depth of field, skin blur) | `vc_post_fs`, run by `coax/web/host.js` | Generic host feature; any page with a `post_fs` gets it |
 | Pack | `~/.openagents/verse/private-build/web/valley-slay.pack`, pinned by `verse/valley/canyon-pack-policy.coax` | 1,023,634,576 bytes, owner-local. Its 35 mipmapped 4K RGBA8 layers reserve about 3.13 GB of GPU memory |
 | Groom | Valley pack | 118,339 curves, drawn as strands at a share set by the head's size on screen |
-| Everglade's characters | `verse/everglade/gpu.coax` (3,597 lines), `aethyr/skin.coax` | CC0 Quaternius people, skinned from a storage buffer with four joints each, painterly shading |
-| Everglade's budgets | `apps/openagents-web/wasm-budgets.txt` | 2,000,446 of 2,150,000 wasm bytes used; 60 FPS rule from `aethyr/frame-report.coax` |
+| Everglade's characters | `verse/everglade/gpu.coax` (3,597 lines), `aethyr/anim/skin.coax` | CC0 Quaternius people, skinned from a storage buffer with four joints each, painterly shading |
+| Everglade's budgets | `apps/openagents-web/wasm-budgets.txt` | 2,000,446 of 2,150,000 wasm bytes used; 60 FPS rule from `aethyr/core/frame-report.coax` |
 
 Three constraints shaped the original plan:
 
@@ -75,7 +75,7 @@ it work for any asset source:
 - `rig.coax`: joints, bind matrices, rest pose and capsules, sized from the
   pack (with declared maximums), not from Echo's constants.
 - `pose.coax`: body clips, cross-fades and the root track, on the world's
-  fixed step (`aethyr/loop.coax`).
+  fixed step (`aethyr/core/loop.coax`).
 - `face.coax`: face clips, curves to morph weights and face bones. This
   absorbs `face-ambient.coax` (idle blinks and saccades), so a character
   standing in a world is never frozen.
@@ -83,7 +83,7 @@ it work for any asset source:
   frame.
 - `character.coax`: one `Character` record (pack, rig, pose, face, tier,
   world transform) with spawn, despawn and step functions. An entity owns
-  it (`aethyr/entity.coax`).
+  it (`aethyr/core/entity.coax`).
 
 The public tests run on the CC0 Quaternius people that Everglade already
 uses, as [MetaHuman support](metahuman-support.md) recommends. Echo is then
@@ -165,7 +165,7 @@ supports both.
 ### 6. Placement, collision and the network
 
 - A world places a character as an entity with a position, a heading and a
-  capsule from the pack, through `aethyr/query.coax`, so walking and the
+  capsule from the pack, through `aethyr/physics/query.coax`, so walking and the
   follow camera treat her like any body.
 - The room protocol gets a character look id (a pack reference) and
   animation state (body clip, face clip, time). Clients without the pack,
@@ -291,7 +291,7 @@ orbit with no second page:
   The morphs switch on while a blink shows.
 - **A body.** Once the host draws her (`coaxial_character_ready_v1`), she
   is one capsule: among the bodies you walk into (`everglade_bodies_near`,
-  which `aethyr/walk.coax` resolves through `aethyr/query.coax`), and in the
+  which `aethyr/move/walk.coax` resolves through `aethyr/physics/query.coax`), and in the
   follow camera's way (`camera_frame`, by `query_ray`). A page that never
   gets her pack has nothing unseen in its way.
 - **The orbit.** N runs `verse/valley/echo-orbit.coax` as a staged camera

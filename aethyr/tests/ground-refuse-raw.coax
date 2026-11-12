@@ -1,5 +1,5 @@
 // Must not compile: raw C numbers need an explicit unit assertion at their boundary.
-#load "../ground.coax";
+#load "../physics/ground.coax";
 #load "../../coax/lib/quantity.coax" as units;
 main :: () {
   g: Ground;

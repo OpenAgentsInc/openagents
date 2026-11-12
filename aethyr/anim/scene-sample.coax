@@ -3,7 +3,7 @@
 #load "scene-document.coax";
 #load "fixup.coax";
 #load "library.coax";
-#load "../speak.coax";
+#load "../audio/speak.coax";
 #load "project.coax";
 #load "scene-sample-checks.coax";
 ScenePathNow :: struct {position:Point;yaw:f32;}

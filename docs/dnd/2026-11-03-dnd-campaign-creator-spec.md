@@ -70,9 +70,9 @@ and "Session recap", never "event", "authority", "replay" or "seed".
 | Realms and their editing | [realm-host.md](../verse/realm-host.md), [realm-edit.md](../verse/realm-edit.md), [aethyrforge.md](../verse/aethyrforge.md), book ch051–ch055 | A campaign's 3D locations are realms: made from a sentence, edited in place, published with a link and forked |
 | Agents in a realm | [realm-seat.md](../verse/realm-seat.md) | An AI player or an AI GM takes a seat with the same verbs a person uses |
 | Characters who talk | `coax/web/api/npc.c`, book ch077 | Improvised NPCs that answer in voice or text |
-| Voice | book ch069, `aethyr/voice.coax` | Hold to talk; the GM speaks to the copilot, a player casts by name |
+| Voice | book ch069, `aethyr/audio/voice.coax` | Hold to talk; the GM speaks to the copilot, a player casts by name |
 | Sound | book ch065–ch068 | Music and ambience from numbers, a sequencer and a mixer |
-| Effects | book ch072 (design draft), `aethyr/particles.coax` | Spell effects, fog, torchlight and weather in 3D scenes |
+| Effects | book ch072 (design draft), `aethyr/render/particles.coax` | Spell effects, fog, torchlight and weather in 3D scenes |
 | Rooms and shared state | book ch049–ch050, `coax/web/room/` | Who is at the table, and the same session state on every screen |
 | Saves | book ch081, `apps/openagents-web/save.coax` | A character and a campaign that persist between sessions |
 | Dice on the wire | `verse.rules.v1` `DiceReveal` in [openagents-verse-protocol.md](../verse/openagents-verse-protocol.md) | A roll's expression, faces and total, revealed after it resolves |

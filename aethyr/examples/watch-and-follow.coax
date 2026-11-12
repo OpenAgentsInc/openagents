@@ -1,13 +1,13 @@
 // Book chapter 75: a guard watches you walk past a wall while a dog follows you, both on the
-// realm's fixed step (aethyr/loop.coax, 1/64 s). The guard senses with aethyr/ai/stimulus.coax and
-// decides from its memory; the dog steps with aethyr/follower.coax. The same 480 ticks are played
+// realm's fixed step (aethyr/core/loop.coax, 1/64 s). The guard senses with aethyr/ai/stimulus.coax and
+// decides from its memory; the dog steps with aethyr/move/follower.coax. The same 480 ticks are played
 // at 30, 60 and 144 frames a second and with uneven frames, and their digests are compared. Then
-// the flock (aethyr/flock.coax), which keeps its own f32 accumulator, is played at 30, 60 and 144.
+// the flock (aethyr/anim/flock.coax), which keeps its own f32 accumulator, is played at 30, 60 and 144.
 #load "../ai/stimulus.coax";
-#load "../follower.coax";
-#load "../flock.coax";
-#load "../loop.coax" as clock;
-#load "../ground.coax" as mesh;
+#load "../move/follower.coax";
+#load "../anim/flock.coax";
+#load "../core/loop.coax" as clock;
+#load "../physics/ground.coax" as mesh;
 #import "Basic";
 
 TICKS :: 480;            // 7.5 s

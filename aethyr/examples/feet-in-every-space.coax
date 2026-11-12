@@ -1,5 +1,5 @@
 // book:begin example
-#load "../space.coax";
+#load "../core/space.coax";
 #import "Basic";
 
 // A figure at the top of its jump, 1.17 m up, followed through every space by name.

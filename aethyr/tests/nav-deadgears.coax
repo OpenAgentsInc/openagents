@@ -1,4 +1,4 @@
-// Dead Gears' flow fields on aethyr/nav/grid.coax (#12854): verse/deadgears/arena.coax's
+// Dead Gears' flow fields on aethyr/world/nav/grid.coax (#12854): verse/deadgears/arena.coax's
 // nav_flow_to and nav_downhill now call the module, and this file keeps the private search they
 // replaced (ndg_old_*, the consumer's trace, as it stood in c3ae074831) to hold them to it: every
 // cell's cost bit for bit, every step and every next cell, for goals across the deck.

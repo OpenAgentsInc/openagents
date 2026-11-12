@@ -8,7 +8,7 @@
 //
 //   coax/bin/coax test aethyr/cam/frame.coax --library
 
-#load "../points.coax";
+#load "../core/points.coax";
 
 FrameSubject :: struct { at: Point; radius: f32; }     // a bounding sphere's centre and radius
 FrameRect :: struct { x0: f32 = -0.8; x1: f32 = 0.8; y0: f32 = -0.75; y1: f32 = 0.75; }   // normalized device coordinates

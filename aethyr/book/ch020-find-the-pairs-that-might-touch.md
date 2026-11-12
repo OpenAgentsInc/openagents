@@ -1,6 +1,6 @@
 # 20. Find the pairs that might touch
 
-> **Status: partly implemented.** [`aethyr/sim/broad.coax`](../../aethyr/sim/broad.coax)
+> **Status: partly implemented.** [`aethyr/physics/sim/broad.coax`](../physics/sim/broad.coax)
 > (589 mutants: 558 killed, 31 marked equivalent with their reason)
 > finds candidate pairs on the CPU in f64 by three named methods (all pairs,
 > sweep and prune, and a linear BVH) behind one filter, and returns the same
@@ -50,7 +50,7 @@ which on a GPU can beat both for a few thousand objects.
 
 ## What runs today
 
-[`aethyr/sim/broad.coax`](../../aethyr/sim/broad.coax) holds up to 128
+[`aethyr/physics/sim/broad.coax`](../physics/sim/broad.coax) holds up to 128
 bodies as a `Broad_Set`: one box per body, and the filter fields (a static
 flag, the joint parent link, a collision group and a mask). `broad_box`
 builds a body's box for one step: the box at the start of the step joined
@@ -173,7 +173,7 @@ each later step costs at most 7.
 The checks run with:
 
 ```shell
-coax/bin/coax test aethyr/sim/broad.coax --library
+coax/bin/coax test aethyr/physics/sim/broad.coax --library
 ```
 
 They compare every method with a reference that tests separation on each

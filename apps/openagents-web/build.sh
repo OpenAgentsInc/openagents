@@ -208,7 +208,7 @@ splash=$!
 # The realms: the engine's house, player and thumbs, each its own library as on
 # iOS, under realm.coax's HUD; the house's light from the engine itself.
 # (realm.wgsl, the house, loads its light in its Coax: gpu/realm.coax.)
-# (particles.wgsl loads aethyr/particle-motion.coax and haunt-light.coax in its Coax: gpu/particles.coax.)
+# (particles.wgsl loads aethyr/render/particle-motion.coax and haunt-light.coax in its Coax: gpu/particles.coax.)
 # The art styles' shading (verse/style.coax, docs/verse/art-styles.md) into the fixture and every
 # painterly realm's WGSL (realms.ts --check refuses a painterly realm without it).
 style_fns="verse_style_wrap verse_style_bands verse_style_bands2 verse_style_shade verse_style_cool verse_style_keep_value verse_style_banded verse_style_ambient verse_style_dab verse_style_rim verse_style_haze verse_style_haze_glow verse_style_haze_teal verse_style_haze_hue verse_style_fog verse_style_sky_t verse_style_sky_band verse_style_halo verse_style_hash verse_style_noise verse_style_cloud_field verse_style_cloud_cover verse_style_cloud_lit verse_style_cloud_fade verse_style_tone verse_style_saturation verse_style_lift verse_style_luma verse_style_bloom_share verse_style_bloom_mix verse_style_shadow_reach verse_style_shadow_snap verse_style_shadow_across verse_style_shadow_depth verse_style_shadow_taps verse_style_shadow_radius verse_style_shadow_tap verse_style_contact verse_style_shaft_source verse_style_shaft_fade verse_style_shaft_tap verse_style_shaft_total verse_style_shaft verse_style_gust verse_style_wind verse_style_bend verse_style_grass_tilt verse_style_blade_height verse_style_grass_fade verse_style_grass_blades verse_style_grass_clear verse_style_segment verse_style_part verse_style_tip verse_style_jitter"
@@ -263,12 +263,12 @@ a="$here/../../aethyr"   # the engine modules (#12609)
 timed voice "$here/../../coax/web/voice/build.sh" "$here/build/voice.wasm" &
 voice=$!
 timed realm "$here/../../coax/web/wasm.sh" "$here/realm.coax" "$here/realm-face.c" "$here/build/realm.wasm" \
-  "$m/haunt.coax" "$m/haunt-buffer.coax" "$a/player.coax" "$m/grid.coax" "$a/particles.coax" "$a/cinematic.coax" "$m/setpiece.coax" &
+  "$m/haunt.coax" "$m/haunt-buffer.coax" "$a/move/player.coax" "$m/grid.coax" "$a/render/particles.coax" "$a/cam/cinematic.coax" "$m/setpiece.coax" &
 realm=$!
 # /worlds/garden: the engine's world pieces (camera, terrain, throwing,
 # arranging) in an open-air realm, with the player and thumbs as their own libraries.
 timed garden "$here/../../coax/web/wasm.sh" "$here/garden.coax" "$here/garden-face.c" "$here/build/garden.wasm" \
-  "$a/player.coax" "$m/grid.coax" &
+  "$a/move/player.coax" "$m/grid.coax" &
 garden=$!
 # /worlds/everglade-classic (Everglade before the SRD 5e rules; everglade.coax is also the city everglade5e.coax loads): the forest city's blockout (verse/everglade/plan.coax), with the player, thumbs and its river (verse/everglade/river.coax).
 timed everglade "$here/../../coax/web/wasm.sh" "$here/everglade.coax" "$here/everglade-face.c" "$here/build/everglade.wasm" \
@@ -276,7 +276,7 @@ timed everglade "$here/../../coax/web/wasm.sh" "$here/everglade.coax" "$here/eve
 everglade=$!
 # /worlds/5e-mmo: the SRD 5e battle in Everglade (fivemmo.coax on everglade.coax), the battle its own unit.
 timed fivemmo "$here/../../coax/web/wasm.sh" "$here/fivemmo.coax" "$here/fivemmo-face.c" "$here/build/fivemmo.wasm" \
-  "$a/player.coax" "$m/grid.coax" "$m/everglade/river.coax" "$here/fivemmo-battle.coax" &
+  "$a/move/player.coax" "$m/grid.coax" "$m/everglade/river.coax" "$here/fivemmo-battle.coax" &
 fivemmo=$!
 # /worlds/everglade (since #12710; /worlds/everglade-5e redirects): Everglade on the SRD 5e engine (everglade5e.coax on everglade.coax), the rules their own unit.
 timed everglade5e "$here/../../coax/web/wasm.sh" "$here/everglade5e.coax" "$here/everglade5e-face.c" "$here/build/everglade5e.wasm" \
@@ -287,12 +287,12 @@ timed everglade-room "$here/../../coax/web/tool.sh" "$here/../../coax/web/room/w
 everglade_room=$!
 # /worlds/fairy-forest: the park (verse/fairy-forest/forest.coax), with the player, thumbs and its stream (verse/fairy-forest/stream.coax).
 timed fairy "$here/../../coax/web/wasm.sh" "$here/fairy.coax" "$here/fairy-face.c" "$here/build/fairy.wasm" \
-  "$a/player.coax" "$m/grid.coax" "$m/fairy-forest/stream.coax" "$here/../../coax/lib/qr/qr-memory.coax" &
+  "$a/move/player.coax" "$m/grid.coax" "$m/fairy-forest/stream.coax" "$here/../../coax/lib/qr/qr-memory.coax" &
 fairy=$!
 # /worlds/hecates-cemetery: Planetary Villa's first expansion (verse/planetary-villa/README.md),
 # with the player, thumbs and figures (villafig.coax: the engine's figures and motions) as libraries.
 timed villa "$here/../../coax/web/wasm.sh" "$here/villa.coax" "$here/villa-face.c" "$here/build/villa.wasm" \
-  "$a/player.coax" "$m/grid.coax" "$here/villafig.coax" &
+  "$a/move/player.coax" "$m/grid.coax" "$here/villafig.coax" &
 villa=$!
 timed animationlab "$here/../../coax/web/wasm.sh" "$here/animationlab.coax" "$here/animationlab-face.c" "$here/build/animationlab.wasm" &
 animationlab=$!
@@ -342,7 +342,7 @@ builder=$!
 # /create-world: chat a world onto an empty Grid (worldbuilder.coax, the API's coax/web/api/worldbuilder.c).
 # It is an Everglade zone too (worldbuilder-walk.coax, everglade/zone.coax): your character walks the world you build.
 timed worldbuilder "$here/../../coax/web/wasm.sh" "$here/worldbuilder-walk.coax" "$here/worldbuilder-face.c" "$here/build/worldbuilder.wasm" \
-  "$here/../../everglade/shared/everglade-step.coax" "$a/sticks.coax" &
+  "$here/../../everglade/shared/everglade-step.coax" "$a/core/sticks.coax" &
 worldbuilder=$!
 # /worlds/ice-cream-man: Ice Cream Man's house (verse/icecream/scene.coax, its own library) under its HUD.
 timed icecream "$here/../../coax/web/wasm.sh" "$here/icecream.coax" "$here/icecream-face.c" "$here/build/icecream.wasm" "$m/icecream/scene.coax" &
@@ -360,24 +360,24 @@ painted=$!
 timed watchtower "$here/../../coax/web/wasm.sh" "$here/watchtower.coax" "$here/watchtower-face.c" "$here/build/watchtower.wasm" &
 watchtower=$!
 # /worlds/5e-lab (unlisted): druids play the SRD 5e rules on a bare grid (rules/srd, docs/dnd).
-# Player mode walks you on Everglade's controller (everglade-step.coax) and a phone's thumbs (aethyr/sticks.coax).
+# Player mode walks you on Everglade's controller (everglade-step.coax) and a phone's thumbs (aethyr/core/sticks.coax).
 timed fivelab "$here/../../coax/web/wasm.sh" "$here/fivelab.coax" "$here/fivelab-face.c" "$here/build/fivelab.wasm" \
-  "$here/../../everglade/shared/everglade-step.coax" "$a/sticks.coax" &
+  "$here/../../everglade/shared/everglade-step.coax" "$a/core/sticks.coax" &
 fivelab=$!
 # /worlds/archery-range (unlisted): the Archery Range, an Everglade zone (everglade/zone.coax) with the range on it
 # (everglade/docs/archery-range-spec.md). It draws with Character Create's passes (charactercreator.wgsl).
 timed archery-range "$here/../../coax/web/wasm.sh" "$here/archery-range.coax" "$here/archery-range-face.c" "$here/build/archery-range.wasm" \
-  "$here/../../everglade/shared/everglade-step.coax" "$a/sticks.coax" &
+  "$here/../../everglade/shared/everglade-step.coax" "$a/core/sticks.coax" &
 archery_range=$!
 # /worlds/bitcoin-lab (unlisted): Bitcoin Lab, the Bitcoin book's first chapter as a walk on the Grid: an Everglade
 # zone (everglade/zone.coax) with your character, its stations drawn as quads by bitcoin-lab-fx.wgsl (aethyr/fx/gpu-quads.coax).
 timed bitcoin-lab-walk "$here/../../coax/web/wasm.sh" "$here/bitcoin-lab-walk.coax" "$here/bitcoin-lab-walk-face.c" "$here/build/bitcoin-lab-walk.wasm" \
-  "$here/../../everglade/shared/everglade-step.coax" "$a/sticks.coax" &
+  "$here/../../everglade/shared/everglade-step.coax" "$a/core/sticks.coax" &
 bitcoin_lab_walk=$!
 # /worlds/nostr-lab (unlisted): Nostr Lab, a key pair, an event, its ID and its signature as a walk on the Grid, on
 # the same lab walk (verse/lab-walk.coax). It signs its event at run time: secp256k1's tables need the larger budget.
 COAXIAL_RUN_STEPS=250000000 timed nostr-lab-walk "$here/../../coax/web/wasm.sh" "$here/nostr-lab-walk.coax" "$here/nostr-lab-walk-face.c" "$here/build/nostr-lab-walk.wasm" \
-  "$here/../../everglade/shared/everglade-step.coax" "$a/sticks.coax" &
+  "$here/../../everglade/shared/everglade-step.coax" "$a/core/sticks.coax" &
 nostr_lab_walk=$!
 # /worlds/valley-lab/cull (unlisted): the GPU cull's lab (#13008), its residency and its fixture.
 timed cullstream "$here/../../coax/web/wasm.sh" "$here/cullstream.coax" "$here/cullstream-face.c" "$here/build/cullstream.wasm" &
@@ -386,7 +386,7 @@ timed cull-fixture in_repo coax/web/tool.sh aethyr/tools/cull-fixture.coax "$her
 cullfixture=$!
 # /worlds/everglade2 (unlisted): Everglade v2, the glade, one path through the woods and a clearing (docs/verse/everglade2.md).
 timed everglade2 "$here/../../coax/web/wasm.sh" "$here/../../everglade/client/client.coax" "$here/everglade2-face.c" "$here/build/everglade2.wasm" \
-  "$here/../../everglade/shared/everglade-step.coax" "$a/sticks.coax" &
+  "$here/../../everglade/shared/everglade-step.coax" "$a/core/sticks.coax" &
 everglade2=$!
 # /worlds/metahuman-lab (unlisted): one figure on the CC0 people rig's skeleton and clips (docs/verse/metahuman-support.md).
 timed metahumanlab "$here/../../coax/web/wasm.sh" "$here/metahumanlab.coax" "$here/metahumanlab-face.c" "$here/build/metahumanlab.wasm" &
@@ -406,13 +406,13 @@ gridcrowd=$!
 # (?stage=ident ... ?stage=end, docs/verse/clips.md), drawn at twice its pixels for clips.
 timed speedrunhud "$here/../../coax/web/wasm.sh" "$here/speedrunhud.coax" "$here/speedrunhud-face.c" "$here/build/speedrunhud.wasm" &
 speedrunhud=$!
-# /worlds/belt-2200: the solar-system strategy game over the engine's orbits (aethyr/orbit.coax, aethyr/spacecam.coax; verse/stars.coax in gpu/belt.coax).
+# /worlds/belt-2200: the solar-system strategy game over the engine's orbits (aethyr/physics/orbit.coax, aethyr/cam/spacecam.coax; verse/stars.coax in gpu/belt.coax).
 timed belt "$here/../../coax/web/wasm.sh" "$here/belt.coax" "$here/belt-face.c" "$here/build/belt.wasm" &
 belt=$!
 # /worlds/orbit-league: car ball in orbit, on the space primitives (docs/verse/space.md).
 timed orbitleague "$here/../../coax/web/wasm.sh" "$here/orbitleague.coax" "$here/orbitleague-face.c" "$here/build/orbitleague.wasm" &
 orbitleague=$!
-# /worlds/characters: the engine's figures (aethyr/figure.coax).
+# /worlds/characters: the engine's figures (aethyr/anim/figure.coax).
 timed characters "$here/../../coax/web/wasm.sh" "$here/characters.coax" "$here/characters-face.c" "$here/build/characters.wasm" &
 characters=$!
 # The public homepage and /new-land alias, and /worlds/the-grid: the same module walked (data-page 1, newland-walk.coax). Warm start is real Coax-verified

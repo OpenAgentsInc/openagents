@@ -135,7 +135,7 @@ final class WorkshopView: MTKView, MTKViewDelegate, UIKeyInput {
     // the corners and the home bar. Its keyboard comes up while it takes text.
     pages.box = bounds.inset(by: safe)
     let realm = pages.frame(scale: CGFloat(scale), dt: dt)
-    // A realm's governor holds 60 (aethyr/quality.coax): drawn at a ProMotion screen's 120 it does
+    // A realm's governor holds 60 (aethyr/core/quality.coax): drawn at a ProMotion screen's 120 it does
     // twice the GPU's work for nothing, the phone heats and slows (#13190).
     let fps = realm != nil ? min(60, UIScreen.main.maximumFramesPerSecond) : UIScreen.main.maximumFramesPerSecond
     if preferredFramesPerSecond != fps { preferredFramesPerSecond = fps }

@@ -6,25 +6,25 @@ META_CLIPS :: 12;
 //
 // The figure is public and holds no MetaHuman asset. Its skeleton and clips are the CC0 Quaternius
 // people rig (verse/everglade/people-rig.coax: the Modular Character Outfits' male and female
-// skeletons and the Universal Animation Library's twelve clips), played by aethyr/skin.coax. Its
+// skeletons and the Universal Animation Library's twelve clips), played by aethyr/anim/skin.coax. Its
 // body is drawn here: a capsule per bone, posed from the same joints, on the Unreal mannequin's
-// joint names (aethyr/mannequin.coax). A private MetaHuman pack binds to those joints by name
+// joint names (aethyr/anim/mannequin.coax). A private MetaHuman pack binds to those joints by name
 // later (mannequin_fold), as one more body source. This world draws without one.
 //
 // gpu/metahumanlab.coax's bg_fs traces the floor and the capsules per pixel and lights them; fx
 // strokes (font.coax) draw the HUD and the skeleton overlay. The camera is Aethyr's orbit
-// (aethyr/shot.coax, book chapter 10) round a pivot: drag orbits, the wheel or a pinch zooms,
+// (aethyr/cam/shot.coax, book chapter 10) round a pivot: drag orbits, the wheel or a pinch zooms,
 // Shift-drag or two fingers pan, and held W A S D (Q down, E up) fly the pivot smoothly.
 //   coax/bin/coax test apps/openagents-web/metahumanlab.coax
 
 #load "../../aethyr/ui/font.coax";
-#load "../../aethyr/loop.coax";
-#load "../../verse/everglade/people-rig.coax";   // the CC0 skeletons and clips (it loads aethyr/skin.coax)
-#load "../../aethyr/mannequin.coax";
-#load "../../aethyr/shot.coax" as ash;   // the camera's orbit is Aethyr's (book chapter 10)
-#load "../../aethyr/space.coax" as asp;
-#load "../../aethyr/facerig.coax";   // the face rig: OpenRigLogic's evaluation, ported (MIT)
-#load "../../aethyr/speak.coax";     // speaking: viseme tracks and their performance (?stage=speak)
+#load "../../aethyr/core/loop.coax";
+#load "../../verse/everglade/people-rig.coax";   // the CC0 skeletons and clips (it loads aethyr/anim/skin.coax)
+#load "../../aethyr/anim/mannequin.coax";
+#load "../../aethyr/cam/shot.coax" as ash;   // the camera's orbit is Aethyr's (book chapter 10)
+#load "../../aethyr/core/space.coax" as asp;
+#load "../../aethyr/anim/facerig.coax";   // the face rig: OpenRigLogic's evaluation, ported (MIT)
+#load "../../aethyr/audio/speak.coax";     // speaking: viseme tracks and their performance (?stage=speak)
 
 VERTEX_FLOATS :: 16;
 MAX_VERTICES :: 40000;
@@ -838,7 +838,7 @@ query_value :: (facts: string, name: string) -> string {
   }
   return "";
 }
-// ?stage=speak&track=TRACK (aethyr/speak.coax's URL form): the speaking stage, idle, its HUD gone.
+// ?stage=speak&track=TRACK (aethyr/audio/speak.coax's URL form): the speaking stage, idle, its HUD gone.
 speak_stage :: (s: [] Lab, url: string) {
   if query_value(url, "stage") != "speak" { return; }
   if !spk_track_parse(query_value(url, "track"), s[0].track[..]) { s[0].track[0].n = 0; }
@@ -1021,7 +1021,7 @@ mesh_line :: (s: [] Lab, line: string) {
 // bone in the bind pose (and of the clip's move of it, the pelvis's), so the pack keeps its own
 // bone lengths. A pack bound in another pose (its clothes' own) turns each joint from that bind to
 // the rig's rest first (bturn), so its vertices are skinned once, from where they were authored.
-// On a pack bound at the rig's own rest this is aethyr/skin.coax's skin_palette.
+// On a pack bound at the rig's own rest this is aethyr/anim/skin.coax's skin_palette.
 lab_palette :: (s: [] Lab) {
   r := rig(s);
   gq: [MANNEQUIN_JOINTS] Quat; rq: [MANNEQUIN_JOINTS] Quat; d: [MANNEQUIN_JOINTS] Quat;

@@ -58,7 +58,7 @@ EF_FEATURES :: [11] EfFeature.[
     marks = "sp_fx SpPuff SpMeteor FX_FIRE =FX_BOLT sp_glow sp_shards sp_bolt_jag =spell_col fx_spot fx_col fx_attacks fx_cause fx_event MOCK_FX fx_feat lw_fx lw_spell_col =Fx =add_fx draw_fx net_draw_ wl_draw",
     files = ""},
   EfFeature.{name = "camera", title = "camera", required = true, issue = 13087,
-    owners = "aethyr/camera.coax aethyr/cam/ aethyr/shot.coax aethyr/follow.coax",
+    owners = "aethyr/cam/camera.coax aethyr/cam/ aethyr/cam/shot.coax aethyr/cam/follow.coax",
     marks = "=camera camera_frame cc_camera walk_camera =e2_follow follow_cam =e2_shot e2_ml_shot e2_cam_ cam_zoom cam_home cam_pan LOOK_DRAG CAM_TRUNK _place_camera cz_frame_shot e2c_shot e2c_lens orbit_cam",
     files = "camera"}
 ];

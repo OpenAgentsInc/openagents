@@ -1,7 +1,7 @@
 // Legacy Point/Shot declarations inherit their caller's logical owner.
 // Keep the conversion in that owner; CameraShot and the blend have stable modules.
 #authority;
-#load "../points.coax";
+#load "../core/points.coax";
 #load "blend.coax";
 
 #test "legacy and world camera records preserve all six source components" {

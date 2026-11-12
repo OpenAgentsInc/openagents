@@ -7,7 +7,7 @@
 // it by moving frames. Nothing here draws or decides; it only writes. Moved from Anime Lab
 // (apps/openagents-web/animelab-mesh.coax) so every cel realm shares one copy.
 //   coax/bin/coax test --library aethyr/render/cel-mesh.coax
-#load "../points.coax";
+#load "../core/points.coax";
 
 VERTEX_WORDS :: 6;
 MAT_WORLD :: 0; MAT_SKIN :: 1; MAT_HAIR :: 2; MAT_GLOW :: 3; MAT_FLAT :: 4; MAT_FLOOR :: 5; MAT_MADE :: 6;

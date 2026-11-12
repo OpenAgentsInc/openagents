@@ -1,9 +1,9 @@
 # 7. Ask the world where things are
 
 > Engine-core task: `ec-query` (#12609). The module is
-> [aethyr/query.coax](../query.coax), with its oracles in
+> [aethyr/physics/query.coax](../physics/query.coax), with its oracles in
 > [aethyr/tests/query-oracle.coax](../tests/query-oracle.coax). The walking
-> controller in [aethyr/player.coax](../../aethyr/player.coax) asks it for the
+> controller in [aethyr/move/player.coax](../move/player.coax) asks it for the
 > ground under your feet.
 
 Several systems ask where things are in a realm:
@@ -59,9 +59,9 @@ The queries follow these rules:
 ## The rules
 
 The optional semantic boundary is implemented in
-[`query-filter.coax`](../query-filter.coax),
-[`query-scene.coax`](../query-scene.coax) and
-[`query-fluid.coax`](../query-fluid.coax). It validates complete geometry,
+[`query-filter.coax`](../physics/query-filter.coax),
+[`query-scene.coax`](../physics/query-scene.coax) and
+[`query-fluid.coax`](../physics/query-fluid.coax). It validates complete geometry,
 metadata and physical surfaces before selecting a consumer's world. The
 unfiltered APIs below retain their original permissive shape contract.
 
@@ -111,7 +111,7 @@ coax/web/tool.sh aethyr/tools/query-world-hosts.coax
 The step height, the steepest slope you can stand on, and the floor pad are
 defined once, here. The walker reads them from this module.
 
-<!-- source: aethyr/query.coax rules -->
+<!-- source: aethyr/physics/query.coax rules -->
 ```jai
 QUERY_STEP_UP :: STAND_STEP;     // 0.55 m: the highest top a walker steps onto
 QUERY_STEEP :: STAND_STEEP;      // tan 55 degrees: a steeper surface doesn't hold you
@@ -139,7 +139,7 @@ Colliders :: struct {
   ground: f32;
   boxes: [] f32;
   capsules: [] f32;
-  floors: [] f32;      // STAND_FLOATS numbers each (aethyr/stand.coax)
+  floors: [] f32;      // STAND_FLOATS numbers each (aethyr/physics/stand.coax)
   heightfields: [] QueryHeightfield;
   hulls: [] f32;       // convex solids, QUERY_HULL_HEAD + F * QUERY_HULL_FACE numbers each
   heightfield_budget: int = height_rays.GROUND_RAY_CELLS;
@@ -149,7 +149,7 @@ Colliders :: struct {
 }
 ```
 
-Floors use the formats in `aethyr/stand.coax`: quads, cones, domes, and rings.
+Floors use the formats in `aethyr/physics/stand.coax`: quads, cones, domes, and rings.
 Floors answer `query_ground`. Rays, overlaps, and sweeps cover flat ground,
 heightfield triangles, boxes and capsules. Chapter 8 supplies the heightfield
 implementation and checked work budgets.
@@ -164,7 +164,7 @@ its footprint is less than `reach` away. For the walker, `reach` is the
 capsule's radius, 0.3 m. A floor replaces the result if it is higher. The
 result says whether the surface is too steep to stand on.
 
-<!-- source: aethyr/query.coax ground -->
+<!-- source: aethyr/physics/query.coax ground -->
 ```jai
 // The surface under (x, z): its height, its slope (dy/dx, dy/dz), whether it is too steep to
 // stand on, and which collider it is.
@@ -239,7 +239,7 @@ The walker's `floor_under` is now one call to `query_stand`. Every walking
 realm (the Grid, Everglade, Fairy Forest, the garden, Hecate's Cemetery, the
 realm host, and Dead Gears) reaches the ground through it:
 
-<!-- source: aethyr/walk.coax ground -->
+<!-- source: aethyr/move/walk.coax ground -->
 ```jai
 floor_under :: (w: World, x: f32, z: f32, feet: f32) -> StandHit #effects(all) {
   g := query_ground(colliders(w), x, z, feet + w.collision.step_up, w.collision.radius);
@@ -261,7 +261,7 @@ smallest `t`:
 
 `t` is in lengths of `d`, so a unit `d` gives `t` in metres.
 
-<!-- source: aethyr/query.coax ray -->
+<!-- source: aethyr/physics/query.coax ray -->
 ```jai
 // Where a ray first reaches a collider: t along the direction (in its lengths), the point, the
 // outward normal there, and which collider. A ray that starts inside one hits it at t = 0,
@@ -393,7 +393,7 @@ collider order, and returns how many there are. If `out` is too small, the
 count is still complete. A sphere that only touches a shape doesn't overlap
 it.
 
-<!-- source: aethyr/query.coax overlap -->
+<!-- source: aethyr/physics/query.coax overlap -->
 ```jai
 QueryId :: struct { shape: QueryShape; index: int; }
 QueryOverlapResult :: struct { status: QueryStatus; count: int; }
@@ -456,7 +456,7 @@ by `r`. So `query_sweep` casts a ray from the centre against grown shapes:
   capsules of radius `r`, one along each edge. The capsules' end spheres
   cover the corners.
 
-<!-- source: aethyr/query.coax sweep -->
+<!-- source: aethyr/physics/query.coax sweep -->
 ```jai
 // A sphere of radius r moving from `from` by `by` first touches a collider at t in [0, 1]: the
 // ray from its centre against each collider grown by r. A box grown by r is three boxes, each
@@ -536,7 +536,7 @@ asks all four questions about one scene:
 
 <!-- source: aethyr/examples/four-questions.coax example -->
 ```jai
-#load "../query.coax";
+#load "../physics/query.coax";
 #import "Basic";
 
 // One scene and the four questions: a 0.5 m step and a 0.6 m wall on the ground, and a post
@@ -628,7 +628,7 @@ box, the states are the same until you walk off. You drop off the floor
 first, because a floor holds you while your middle is within 0.15 m of its
 edge, and a box's top holds you while your capsule is over it.
 
-<!-- source: aethyr/walk.coax course -->
+<!-- source: aethyr/move/walk.coax course -->
 ```jai
 #test "jumping onto, landing on and walking off a ledge is the same in every realm" {
   ledge := [6] f32.[-2, 0, 1.5, 2, 0.5, 3.5];
@@ -665,9 +665,9 @@ edge, and a box's top holds you while your capsule is over it.
 ```
 
 ```shell
-coax/bin/coax test aethyr/query.coax --library
-coax/bin/coax mutate aethyr/query.coax --library --root-only
-coax/bin/coax test aethyr/player.coax --library
+coax/bin/coax test aethyr/physics/query.coax --library
+coax/bin/coax mutate aethyr/physics/query.coax --library --root-only
+coax/bin/coax test aethyr/move/player.coax --library
 ```
 
 The original scene checks and the heightfield suites cover:
@@ -703,7 +703,7 @@ legacy permissive query continues to skip malformed shapes for trusted callers.
 queries and moves the legacy terrain sampler onto the shared implementation.
 The remaining realm migration ([chapter 64](ch064-every-realm-runs-on-aethyr.md))
 includes the four terrain realms' floor-relative adapters, their older ray
-helpers, Everglade's wall-filter step constants and moving `aethyr/stand.coax`
+helpers, Everglade's wall-filter step constants and moving `aethyr/physics/stand.coax`
 into the engine. Rays against floor shapes for roof and rubble picking remain
 outside this query profile.
 

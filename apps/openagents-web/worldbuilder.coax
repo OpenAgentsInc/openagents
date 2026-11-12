@@ -22,7 +22,7 @@
 #load "../../components/backend/gpu.coax";
 #load "textkeys.coax";
 #load "worldbuilder-plan.coax";
-#load "../../aethyr/ground-query.coax";
+#load "../../aethyr/physics/ground-query.coax";
 
 VERTEX_FLOATS :: GP_VERTEX_FLOATS;
 MAX_VERTICES :: 8192;
@@ -587,7 +587,7 @@ field_offset :: (s: [] WorldBuilder, lx: f32) -> int {
 }
 
 // Where a screen point's ray meets the ground: the terrain tile where it is shaped (Aethyr's exact
-// ground ray, aethyr/ground-query.coax), else the level floor.
+// ground ray, aethyr/physics/ground-query.coax), else the level floor.
 ground_at :: (s: [] WorldBuilder, x: f32, y: f32) -> WbSpot {
   nx := x / hi(s[0].width, 1) * 2 - 1; ny := 1 - y / hi(s[0].height, 1) * 2;
   rx := s[0].fwd[0] + nx * s[0].right[0] + ny * s[0].up[0];

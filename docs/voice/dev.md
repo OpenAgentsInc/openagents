@@ -46,7 +46,7 @@ Whisper and Psionic's Parakeet. On Linux it uses an existing `coax/bin/coax`,
 takes libcurl and OpenSSL from the system or from Nix, and builds without
 Whisper (which does not build there yet); Parakeet runs on CUDA (an NVIDIA
 GPU) or, when named, the CPU. The client
-also links Aethyr's spoken-request gate (`aethyr/voice.coax`). `#authority`
+also links Aethyr's spoken-request gate (`aethyr/audio/voice.coax`). `#authority`
 files run their checks inside `coax c`, so a failing check stops the build.
 Outputs go to `verse/voice-host/build/` (ignored by git).
 
@@ -303,7 +303,7 @@ bytes, run threads and call the engine:
   engine's audio, features and text; the weights stay.
 
 To a realm, a final transcript is the answer to the hold that asked for it:
-[`aethyr/voice.coax`](../../aethyr/voice.coax) passes it through Aethyr's event
+[`aethyr/audio/voice.coax`](../../aethyr/audio/voice.coax) passes it through Aethyr's event
 gate (once, only in its epoch, and replayable). `voice-client --hold --aethyr`
 does what a realm does, and `aethyr/examples/hold-to-talk.coax` shows the gate
 alone. Measured on coderos-4080 with CUDA (RTX 4080): the transcript arrives

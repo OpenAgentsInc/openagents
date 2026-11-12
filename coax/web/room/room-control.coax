@@ -1,4 +1,4 @@
-#load "../../../aethyr/ids.coax";
+#load "../../../aethyr/core/ids.coax";
 // What the API says about Everglade's rooms, asked every two seconds (#12714; coax/web/api/player.c
 // room_control): "pvp 0|1\nedit STAMP\nkick PID\n...".
 //   - pvp: the realm's row (off unless switched on); the rules let harm reach another player only

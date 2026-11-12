@@ -38,7 +38,7 @@
 #load "realms.coax";
 #load "galaxy.coax";
 #load "access.coax";
-#load "../../aethyr/loop.coax";   // the orbs' fixed steps: Aethyr's one clock (aethyr/book ch001)
+#load "../../aethyr/core/loop.coax";   // the orbs' fixed steps: Aethyr's one clock (aethyr/book ch001)
 
 VERTEX_FLOATS :: 16;   // x, y, along, across, length, core, light, glow, red, green, blue, mode, 0, 0, 0, 0
 MAX_VERTICES :: 40000;
@@ -151,7 +151,7 @@ VerseState :: struct {
   landed: bool;              // the page's step event is sent
   going: bool; going_at: f32; join_id: int; answered: bool;
   orbs: [ORBS] Orb; orb_n: int; orb_id: int; seeded: bool;
-  orb_steps: FrameClock;   // the orbs' steps (aethyr/loop.coax): 1/60 s, a frame counted for at most 0.1 s, at most 8
+  orb_steps: FrameClock;   // the orbs' steps (aethyr/core/loop.coax): 1/60 s, a frame counted for at most 0.1 s, at most 8
   hold: Orb; holding: bool; hold_at: f32;   // the orb being made under a press
   // the Agent orb: held (push to talk) by pointer guide_id; what voice.js last said
   guide_held: bool; guide_id: int; guide_on: bool; guide_at: f32;
@@ -913,7 +913,7 @@ orb_step :: (s: [] VerseState, w: f32, h: f32) {
 lo_i :: (a: int, b: int) -> int { if a < b { return a; } return b; }
 
 // The orbs at 60 steps a second whatever the frame rate, and drawn.
-ORB_STEP_NS :: 16666667;      // 1/60 s on the clock (aethyr/loop.coax)
+ORB_STEP_NS :: 16666667;      // 1/60 s on the clock (aethyr/core/loop.coax)
 ORB_FRAME_NS :: 100000000;    // the longest frame that counts: 0.1 s
 draw_orbs :: (s: [] VerseState, out: [] f32, at: int, dt: f32) -> int {
   k := hi(s[0].dpr, 0.5); w := s[0].width / k; h := s[0].height / k;

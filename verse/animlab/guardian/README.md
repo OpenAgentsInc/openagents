@@ -10,7 +10,7 @@ weighted to the canonical right hand. Original upper-arm and forearm keys
 raise it; a hand reach holds the upper pose. The two hooded stand-ins use
 original recoil keys. The static gate post is a separate original prop rig.
 The guardian bird is procedural geometry, with deterministic wing keys.
-The scene's voice cue drives its stand-in face through `aethyr/speak.coax`.
+The scene's voice cue drives its stand-in face through `aethyr/audio/speak.coax`.
 
 ## Prepare private files
 

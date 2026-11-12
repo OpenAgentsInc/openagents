@@ -1,4 +1,4 @@
-#load "../../../aethyr/ids.coax";
+#load "../../../aethyr/core/ids.coax";
 // What a player's HP is when they leave an Everglade room, kept so a reload is not a free heal
 // (#12715, spec section 7). The server owns HP (everglade5e-room-rules.coax), so the server reports
 // it: each ticketed seat's HP (its ticket's player id, room-ticket.coax) is noted when the seat

@@ -2,7 +2,7 @@
 // functions a realm's ground shader and Aethyr's CPU reference both call, so the GPU and the
 // checks evaluate one set of equations. Each lowers to WGSL as `coax_p_<name>`.
 //
-// Materials (aethyr/terrain-tile.coax, `aethyr.terrain.materials.v1`): a procedural albedo is
+// Materials (aethyr/world/terrain-tile.coax, `aethyr.terrain.materials.v1`): a procedural albedo is
 //   t      = w1 noise(f1 p + o1) + w2 noise(f2 p + o2)        (p the world x, z in metres)
 //            + ws w_of / (w_of + w_against)                    (a share of the point's layers, 0 if none)
 //   gain   = g0 + g1 noise(f3 p + o3)
@@ -109,7 +109,7 @@
 
 // Value noise on the integer lattice: render_noise2 at the four corners, smoothed (3t^2 - 2t^3).
 // a + (b - a) t, as aethyr/gpu/shader.coax's mix, under its own name: a realm that loads this beside
-// another `mix` (aethyr/points.coax's) reads one meaning.
+// another `mix` (aethyr/core/points.coax's) reads one meaning.
 aethyr_terrain_mix :: (a:f32,b:f32,t:f32)->f32 #export_c #effects(all) {return a+(b-a)*t;}
 aethyr_terrain_noise :: (x:f32,z:f32)->f32 #export_c #effects(all) {
  ix:=floor(x);iz:=floor(z);

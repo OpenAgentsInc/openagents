@@ -38,18 +38,18 @@
 #load "access.coax";   // who may make a realm: BUILD YOUR OWN REALM hides on make 0
 #load "../../verse/edit/edit.coax";   // the board, settings and cards every realm shares
 #load "../../verse/style-preset.coax";
-#load "../../aethyr/figure.coax" as fig;   // the figures: you, the villagers, the characters
+#load "../../aethyr/anim/figure.coax" as fig;   // the figures: you, the villagers, the characters
 #load "myrealm-shapes.coax";   // the round things: figures and owls
 #load "../../aethyr/forge/record.coax";   // a publish's reply (record.proto)
 #load "../../aethyr/forge/doc.coax";   // the realm document and its edits (aethyr/forge/edit.coax): a move, undo, the bodies and replies (realm.proto)
 #load "myrealm-things.coax";   // the site: walls, a centre, paving and paths (0096; myrealm-site.coax)
 #load "myrealm-site.coax";   // the land, buildings and more animals, fliers, plants and props (0088)   // a painterly or flat realm's look (docs/verse/art-styles.md)
-#load "../../aethyr/budget.coax";
+#load "../../aethyr/core/budget.coax";
 #load "../../aethyr/talk/wire.coax";   // the NPC ask's one codec (E4, #13247)
 #load "myrealm-a11y.coax";   // the page's controls as real ones (host.js mirrors them): keyboard and screen reader
-#load "../../aethyr/input.coax";   // a controller's stick and buttons: the engine's one input path (realm_pad)
-#load "../../aethyr/loop.coax";    // the walking's fixed steps: Aethyr's one clock (aethyr/book ch001)
-#load "../../aethyr/walk.coax" as pc;   // the shared walker's capsule push out of what stands (aethyr/collide.coax)
+#load "../../aethyr/core/input.coax";   // a controller's stick and buttons: the engine's one input path (realm_pad)
+#load "../../aethyr/core/loop.coax";    // the walking's fixed steps: Aethyr's one clock (aethyr/book ch001)
+#load "../../aethyr/move/walk.coax" as pc;   // the shared walker's capsule push out of what stands (aethyr/physics/collide.coax)
 #load "myrealm-room.coax";   // who else is here (/api/playtest/presence/made-<slug>), an agent's seat tagged AGENT
 
 VERTEX_FLOATS :: 16;   // x, y, along, across, length, core, light, glow, red, green, blue, mode, 0, 0, 0, 0
@@ -188,7 +188,7 @@ MyRealm :: struct {
   stick: bool; stick_id: int; stick_x0: f32; stick_y0: f32; stick_dx: f32; stick_dy: f32;
   turning: bool; turn_id: int; turn_x: f32;
   walked: f32; you_walked: f32; you_pace: f32;
-  // The walking's fixed steps (aethyr/loop.coax): where the last step left you (sim_*) and where the
+  // The walking's fixed steps (aethyr/core/loop.coax): where the last step left you (sim_*) and where the
   // one before did (prev_*); x, y, z and yaw above are drawn between them, and shown_* is what was
   // drawn, so a move made outside the steps (a drag, a teleport) carries into them.
   clock: FrameClock;
@@ -247,7 +247,7 @@ MyRealm :: struct {
   moving: int;             // the entity picked to move, -1 none
   server_undo: int;        // steps the server can undo (the spec's "undo N"; book chapter 52)
   server_redo: int;        // steps the server can redo (the spec's "redo N"; migration 0111)
-  pad_x: f32; pad_y: f32; pad_mended: int; pad_jump: InputPress;   // a controller, through aethyr/input.coax (realm_pad)
+  pad_x: f32; pad_y: f32; pad_mended: int; pad_jump: InputPress;   // a controller, through aethyr/core/input.coax (realm_pad)
   base: [1] ForgeDoc;      // the server's document as last taken: a save's revision moves on past changes that left the moves alone
   kept: [OUTBOX] u8; kept_n: int; kept_seen: bool; kept_due: bool;   // unsaved moves kept in this browser (host.js action 4)
   forge_status: int; forge_what: int;   // the last save, publish or fork: its HTTP status and which
@@ -1331,7 +1331,7 @@ lantern_post :: (s: [] MyRealm, x: f32, z: f32) {
   solid(s, x, z, 0.2);
 }
 
-// A figure (myrealm-shapes.coax person_figure: a aethyr/figure.coax person, bone by bone) facing yaw;
+// A figure (myrealm-shapes.coax person_figure: a aethyr/anim/figure.coax person, bone by bone) facing yaw;
 // seen from above (top-down) a size larger, and you on a bright ring. look picks its skin, hair and
 // trousers; pace 0 stands, 1 walks, phase is how far through its strides.
 PERSON_RGB :: [12] f32.[0.35, 0.55, 0.42,  0.62, 0.42, 0.78,  0.36, 0.5, 0.82,  0.8, 0.62, 0.3];
@@ -1590,7 +1590,7 @@ walk_to :: (s: [] MyRealm, x: f32, z: f32, dx: f32, dz: f32) -> Spot {
   p := Spot.{x = x + dx, z = z + dz};
   if s[0].flying { return kept_in(p); }
   if s[0].y > 1.2 { return kept_in(seg_push(s, p)); }   // a jump clears what is low, never a wall
-  // The shared walker pushes you out of the solids (aethyr/walk.coax move_across), then the walls
+  // The shared walker pushes you out of the solids (aethyr/move/walk.coax move_across), then the walls
   // and the ground's edge hold you; twice, for a push that lands you in another.
   from := Spot.{x = x, z = z}; mx := dx; mz := dz;
   for pass: 0..<2 {
@@ -1635,7 +1635,7 @@ water_in :: (s: [] MyRealm, x: f32, z: f32) -> f32 {
   return s[0].water_r - sqrt(wx * wx + wz * wz);
 }
 
-// One frame of walking on Aethyr's clock (aethyr/loop.coax): the frame's time is clamped and owed,
+// One frame of walking on Aethyr's clock (aethyr/core/loop.coax): the frame's time is clamped and owed,
 // the steps due run (eight at most), and you are drawn between the last two, so where you walk
 // depends on the time walked, never on the frame rate.
 realm_step :: (s: [] MyRealm, dt: f32) {
@@ -1669,7 +1669,7 @@ walk_step :: (s: [] MyRealm, step: f32) {
   if (s[0].held & HOLD_LEFT) != 0 { turn -= 1; }
   if (s[0].held & HOLD_RIGHT) != 0 { turn += 1; }
   if s[0].stick { ahead -= s[0].stick_dy; turn += s[0].stick_dx; }
-  ahead += s[0].pad_y; turn += s[0].pad_x;   // a controller's stick (realm_pad), past aethyr/input.coax's dead zone
+  ahead += s[0].pad_y; turn += s[0].pad_x;   // a controller's stick (realm_pad), past aethyr/core/input.coax's dead zone
   ahead = clamp(ahead, -1, 1); turn = clamp(turn, -1, 1);
   if s[0].camera == CAM_TOP || s[0].camera == CAM_SIDE {
     // the screen's way: right is east, up is north (2D: only left and right; up jumps)
@@ -4052,7 +4052,7 @@ answered :: (s: [] MyRealm, t: [] Track, id: int, text: string) {
 }
 
 // ---------------------------------------------------------------------------------------------
-// The frame budget (aethyr/budget.coax, book chapter 16): what one frame of a made realm may use.
+// The frame budget (aethyr/core/budget.coax, book chapter 16): what one frame of a made realm may use.
 // The vertex limit is under the vertex buffer, so a frame its writers clip fails the check.
 MYREALM_BUDGET :: FrameBudget.{steps = 8, vertices = 2000, draws = 0, bytes = 2490368};
 

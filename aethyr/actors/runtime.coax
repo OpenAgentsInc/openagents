@@ -1,17 +1,17 @@
 // Phase orchestration: all facts/decisions/requests enter checked shared gates.
 #module "aethyr.actors.runtime";
 #load "pool.coax";
-#load "../assets.coax" as assets;
+#load "../core/assets.coax" as assets;
 #load "model.coax";
-#load "../nav/grid.coax" as navigation;
-#load "../query-scene.coax" as scene;
-#load "../query-filter.coax" as filters;
-#load "../query.coax" as queries;
-#load "../space.coax" as spatial;
+#load "../world/nav/grid.coax" as navigation;
+#load "../physics/query-scene.coax" as scene;
+#load "../physics/query-filter.coax" as filters;
+#load "../physics/query.coax" as queries;
+#load "../core/space.coax" as spatial;
 #load "../ai/stimulus.coax" as senses;
 #load "../ai/decide.coax" as decisions;
-#load "../entity.coax" as entities;
-#load "../walk.coax" as walking;
+#load "../core/entity.coax" as entities;
+#load "../move/walk.coax" as walking;
 #authority;
 #load "tests/runtime.coax";
 #load "tests/runtime-edges.coax";

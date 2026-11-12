@@ -7,8 +7,8 @@
 #load "../behavior.coax";
 #load "../behavior-plan.coax";
 #load "../../state/declarations.coax" as state;
-#load "../../loop.coax" as clock;
-#load "../../entity.coax" as entities;
+#load "../../core/loop.coax" as clock;
+#load "../../core/entity.coax" as entities;
 #load "../../render/registry.coax" as gpu;
 ActorTrial :: struct {rows:[64][104]int;count:int;}
 actor_trial_run :: (out:[]ActorTrial,fps:int)->int #export_c #effects(all) {

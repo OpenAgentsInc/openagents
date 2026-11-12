@@ -47,13 +47,13 @@ memorial, with its photos, its story and notes from those who knew it.
 
 - [villa.coax](../../apps/openagents-web/villa.coax): the layout, the
   controls, the flight
-  ([aethyr/cinematic.coax](../../aethyr/cinematic.coax)), the HUD; it walks
-  with [aethyr/player.coax](../../aethyr/player.coax), sees through
-  [aethyr/camera.coax](../../aethyr/camera.coax)'s free orbit (pulled in where
+  ([aethyr/cam/cinematic.coax](../cam/cinematic.coax)), the HUD; it walks
+  with [aethyr/move/player.coax](../move/player.coax), sees through
+  [aethyr/cam/camera.coax](../cam/camera.coax)'s free orbit (pulled in where
   a tombstone, hedge or tree is in the way), and stands on
-  [aethyr/terrain.coax](../../aethyr/terrain.coax)'s ground and paths.
+  [aethyr/world/terrain.coax](../world/terrain.coax)'s ground and paths.
 - Its look: [verse/look.coax](../../verse/look.coax) for the outline,
-  [aethyr/particles.coax](../../aethyr/particles.coax) for the trail; flat
+  [aethyr/render/particles.coax](../render/particles.coax) for the trail; flat
   style since October 30.
 - Pets: uploads through [coax/web/uploads.js](../../coax/web/uploads.js)
   (action 30, messages 52 and 53) to `/api/villa/pets/<id>/files`; each

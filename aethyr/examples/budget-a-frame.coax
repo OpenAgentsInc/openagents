@@ -1,5 +1,5 @@
 // book:begin example
-#load "../budget.coax";
+#load "../core/budget.coax";
 #import "Basic";
 
 // A realm with a vertex buffer of 36 vertices (six quads) declares 30, and draws 2, 5, 7 and

@@ -3,7 +3,7 @@
 #load "project-policy.coax";
 #load "bundle.coax";
 #load "cut-document.coax";
-#load "../speak.coax";
+#load "../audio/speak.coax";
 #load "voice-source.coax";
 #load "project-checks.coax";
 #authority;

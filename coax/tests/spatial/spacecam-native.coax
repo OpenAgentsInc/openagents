@@ -1,4 +1,4 @@
-#load "../../../aethyr/spacecam.coax";
+#load "../../../aethyr/cam/spacecam.coax";
 SCN_relative :: (camera:SpaceCam,point:D3)->D3 #export_c #effects(all) {
  return spacecam_relative(camera,point);
 }

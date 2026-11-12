@@ -3,7 +3,7 @@
 // and in a page on its frame alike. One NavAgent a creature, one NavTune a kind, and one
 // NavWindow any number of creatures share, one plan at a time.
 //
-//   path      around what stands in the way: a walking grid (aethyr/nav/grid.coax) laid over the
+//   path      around what stands in the way: a walking grid (aethyr/world/nav/grid.coax) laid over the
 //             few metres between the creature and its goal, filled by the zone's own test of
 //             where a body may stand (or, aethyr/ai/steer-colliders.coax, the world's colliders
 //             and terrain), searched, and pulled taut to the furthest corner it can see
@@ -25,7 +25,7 @@
 //   coax/bin/coax test aethyr/ai/steer.coax --library
 #module "aethyr.ai.steer";
 #authority;
-#load "../nav/grid.coax";
+#load "../world/nav/grid.coax";
 
 // book:begin steer
 NAV_STEER_SIDE :: 40;          // cells along a window's side at most

@@ -4,7 +4,7 @@
 // asks cam_track_at for the shot at its own game time (whole game steps, for coax/web/clip.coax), so
 // two recordings give the same frames.
 //
-// The flight follows aethyr/cinematic.coax's rules: Catmull-Rom through the keys, eased per key, a
+// The flight follows aethyr/cam/cinematic.coax's rules: Catmull-Rom through the keys, eased per key, a
 // cut where a key says so (the same easing curves and spline, kept here on plain numbers because a
 // track is its own module and points.coax joins whichever module loads it). A track adds what a stage needs on top: rows as data, a clock that is game
 // time rather than the wall, and a sky clock (the day it is at each moment) so a stage can sweep a

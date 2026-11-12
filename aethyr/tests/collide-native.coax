@@ -1,4 +1,4 @@
-#load "../collide.coax";
+#load "../physics/collide.coax";
 
 // Native-only verification adapter. Its arrays are fixed by the C harness.
 collision_checked :: (boxes: [] f32, bodies: [] f32, floors: [] f32, input: [] f32,

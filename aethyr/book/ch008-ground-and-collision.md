@@ -2,7 +2,7 @@
 
 > **Status: implemented.** Profile: **native f32 meshes and capsule contacts**.
 > The checked ground, ray, sphere-contact and walking-capsule modules live in
-> `aethyr/`. `aethyr/terrain.coax` and the real fixed-step controller use them;
+> `aethyr/`. `aethyr/world/terrain.coax` and the real fixed-step controller use them;
 > each walking realm declares its collision profile. This profile qualifies
 > native arithmetic, state publication and the existing C boundaries. Whole-realm
 > coordinate migration remains in [chapter 64](ch064-every-realm-runs-on-aethyr.md).
@@ -26,7 +26,7 @@ corner. Zero `rows` means `n` rows. The caller supplies `(n + 1)(rows + 1)`
 heights, ordered from the south. These are the same descriptor defaults and
 field order that the existing terrain C interface uses:
 
-<!-- source: aethyr/ground.coax types -->
+<!-- source: aethyr/physics/ground.coax types -->
 ```jai
 Ground :: struct {
   n: int = 64; cell: f32 = 1.5; west: f32 = -48; south: f32 = -48;
@@ -61,7 +61,7 @@ when the origin is large or spacing is not exactly representable. Intervals
 and interpolation use f64; the public height and slopes are f32. An exact
 stored vertex is copied, including a negative zero.
 
-<!-- source: aethyr/ground.coax sample -->
+<!-- source: aethyr/physics/ground.coax sample -->
 ```jai
 // A point beyond the rectangle reads its nearest edge. At the exact north/east edge the
 // last cell has fraction 1, not an epsilon below it, so every stored vertex is exact.
@@ -155,7 +155,7 @@ is independent of the player's physical step.
 
 ## Resolve the capsule
 
-`aethyr/collide.coax` owns the resolution. `CollideProfile` defaults to a radius
+`aethyr/physics/collide.coax` owns the resolution. `CollideProfile` defaults to a radius
 of 0.3 m, a height of 1.8 m, a step height of 0.55 m, three passes and at most
 0.15 m horizontal travel. Its segment-degeneracy epsilon is fixed at 10⁻⁶.
 The admitted pass range is 1–16; each shape table holds at most 4,096 complete
@@ -212,7 +212,7 @@ Everglade faces retain their floor-relative controller/drawing adapters from
 [chapter 2](ch002-spaces-and-units.md); their full coordinate migration belongs
 to chapter 64.
 
-`aethyr/collision-profiles.coax` declares the same supported numeric profile
+`aethyr/physics/collision-profiles.coax` declares the same supported numeric profile
 for these realm families:
 
 | Family | Accepted identities |
@@ -231,9 +231,9 @@ and preserves the input Player. The old C exports retain their signatures.
 Trusted direct helpers such as `move_across` retain their larger-move contract;
 new runtime movement uses the checked fixed-step entry.
 
-The resolver reads bodies but never pushes them back. `aethyr/contact.coax`
+The resolver reads bodies but never pushes them back. `aethyr/physics/contact.coax`
 owns explicit rigid-body impulse and force calls. `verse/demolish.coax`
-resolves debris contacts and publishes floor views. `aethyr/throw.coax` owns
+resolves debris contacts and publishes floor views. `aethyr/physics/throw.coax` owns
 throwing and fetching. None of these connections implies an automatic
 walker-to-rigid-body impulse.
 
@@ -245,12 +245,12 @@ terrain:
 
 <!-- source: aethyr/examples/ground-and-contacts.coax example -->
 ```jai
-#load "../ground.coax" as ground;
-#load "../collide.coax" as contact;
-#load "../query.coax" as queries;
-#load "../space.coax" as world;
+#load "../physics/ground.coax" as ground;
+#load "../physics/collide.coax" as contact;
+#load "../physics/query.coax" as queries;
+#load "../core/space.coax" as world;
 #load "../../coax/lib/quantity.coax" as units;
-#load "../../aethyr/walk.coax" as walker;
+#load "../move/walk.coax" as walker;
 #import "Basic";
 
 main :: () {

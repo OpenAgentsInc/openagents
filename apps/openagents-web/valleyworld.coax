@@ -7,9 +7,9 @@
 #load "../../verse/valley/detail-runtime.coax";
 #load "../../verse/valley/detail-cluster-policy.coax";
 #load "../../verse/valley/detail-clusters.coax";
-#load "../../aethyr/frame-pacing.coax";
-#load "../../aethyr/ground.coax" as ground;
-#load "../../aethyr/query.coax" as query;
+#load "../../aethyr/core/frame-pacing.coax";
+#load "../../aethyr/physics/ground.coax" as ground;
+#load "../../aethyr/physics/query.coax" as query;
 VW_RIG_BYTES :: 10142528;
 WORLD_BUDGET :: FrameBudget.{steps=8,vertices=3000000000,draws=65542,bytes=8000000000};
 #test "World budget covers the oracle's entire source scene in both passes" {m:=[1]BudgetMeter.[budget_meter(WORLD_BUDGET)];budget_measure(m[..],407418897*6+(522009+2957442)*2+CANYON_HUD,65542,8000000000);#assert budget_ok(m[0]);}

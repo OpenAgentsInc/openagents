@@ -11,11 +11,11 @@
 #load "../everglade/world/housewright.coax" as hw;
 #load "experimental-village-data.coax";
 #load "experimental-scene-colliders.coax";
-#load "../aethyr/stand.coax" as stand;
-#load "../aethyr/collide.coax" as collision;
-#load "../aethyr/query.coax" as query;
-#load "../aethyr/space.coax" as space;
-#load "../aethyr/visibility.coax" as vis;   // what an eye sees through the village (#13073)
+#load "../aethyr/physics/stand.coax" as stand;
+#load "../aethyr/physics/collide.coax" as collision;
+#load "../aethyr/physics/query.coax" as query;
+#load "../aethyr/core/space.coax" as space;
+#load "../aethyr/physics/visibility.coax" as vis;   // what an eye sees through the village (#13073)
 
 EV_WALLS :: 1024;
 EV_FLOORS :: 16;

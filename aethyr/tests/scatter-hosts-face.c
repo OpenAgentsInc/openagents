@@ -1,4 +1,4 @@
-/* The browser side of aethyr/scatter.coax's host check: aethyr/tests/scatter-hosts.coax's one
+/* The browser side of aethyr/world/scatter.coax's host check: aethyr/tests/scatter-hosts.coax's one
    export, for coax/web/replay-hosts.coax. */
 #include "scatter-hosts.h"
 #include <stdint.h>

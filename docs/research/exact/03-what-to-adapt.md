@@ -332,7 +332,7 @@ both report nothing scheduled.
 
 **5. Drive scripts are replay streams.**
 Driver input goes through the same input stream that replay records
-(`aethyr/replay.coax`). A drive script and a replay recording are then the
+(`aethyr/core/replay.coax`). A drive script and a replay recording are then the
 same file, `replay-hosts.coax` checks drive scripts across hosts for free,
 and a playtest recording can become a test.
 

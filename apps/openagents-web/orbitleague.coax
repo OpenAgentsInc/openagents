@@ -3,9 +3,9 @@
 // the camera, the HUD, the clips and the frame. The game's rules, its match
 // state and the room's wire are orbitleague-game.coax, which the room server
 // loads without the page (#13347); the physics is the engine's space primitives
-// (docs/verse/space.md): aethyr/vehicle.coax drives the cars, aethyr/contact.coax
-// answers every touch, aethyr/gravity.coax says which way is down, and
-// aethyr/thrust.coax burns the boost.
+// (docs/verse/space.md): aethyr/physics/vehicle.coax drives the cars, aethyr/physics/contact.coax
+// answers every touch, aethyr/physics/gravity.coax says which way is down, and
+// aethyr/physics/thrust.coax burns the boost.
 //
 // The first playable: you (blue) against one bot (magenta), a five-minute
 // match, a goal at each end of a flat box arena. Every 90 seconds of play the
@@ -26,7 +26,7 @@
 #load "../../aethyr/ui/font.coax";
 #load "ui.coax";
 #load "orbitleague-game.coax";   // the game without its page: the match, the arenas, the bot, the physics, the room's wire
-#load "../../aethyr/budget.coax";
+#load "../../aethyr/core/budget.coax";
 
 VERTEX_FLOATS :: 16;   // x, y, along, across, length, core, light, glow, red, green, blue, mode, 0, 0, 0, 0
 MAX_VERTICES :: 24000;
@@ -2354,7 +2354,7 @@ lag_frame :: (room: [] OrbitLeague, c: [] OrbitLeague, cars: [] RigidBody, echo:
 }
 
 // ---------------------------------------------------------------------------------------------
-// The frame budget (aethyr/budget.coax, book chapter 16): what one frame of Orbit League may use.
+// The frame budget (aethyr/core/budget.coax, book chapter 16): what one frame of Orbit League may use.
 // The vertex limit is under the vertex buffer, so a frame its writers clip fails the check.
 ORBITLEAGUE_BUDGET :: FrameBudget.{steps = 8, vertices = 5000, draws = 0, bytes = 2031616};
 

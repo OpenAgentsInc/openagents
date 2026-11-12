@@ -3,7 +3,7 @@
 #load "chat.coax";
 #load "startup.coax";
 #load "linux-policy.coax";
-#load "../../aethyr/points.coax";
+#load "../../aethyr/core/points.coax";
 FGL_VERTICES :: 64000;
 ForgeLinux :: struct {
   initialized:bool;opened:bool;busy:bool;ready:bool;visible:bool=true;held:bool;route:int;

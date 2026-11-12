@@ -52,7 +52,7 @@ binds are copied from Male_Peasant.gltf, so people.py rebinds it exactly.
 
 --render DIR draws turnarounds into DIR (front, three-quarter, back) of each look (Cultist,
 Fanatic, Warlock, Darian), each in the people rig's idle and a few clip frames (walk, run, spell,
-slash, die), with the male head and hands the pack draws, posed as aethyr/skin.coax poses them.
+slash, die), with the male head and hands the pack draws, posed as aethyr/anim/skin.coax poses them.
 
 Sources: the Quaternius Modular Character Outfits - Fantasy and Universal Base Characters (CC0
 1.0), under ~/Downloads as verse/packs/everglade.json names them; the robes themselves are

@@ -5,7 +5,7 @@
    its steps: the town's lifts, falls and turns came out a little apart in the two hosts, and a fall
    on the edge of a 10-foot band, or a guard's sight on the edge of its cone, then parted the two
    towns. These use only +, -, *, /, floor, fmod and the bits of a double, which IEEE 754 defines
-   exactly, as aethyr/math.coax does (INVARIANTS.md "A simulation step uses strict math"), so the
+   exactly, as aethyr/core/math.coax does (INVARIANTS.md "A simulation step uses strict math"), so the
    two hosts compute the same bits. The hosts build with -ffp-contract=off and -fno-builtin-NAME for
    each of these, so no a * b + c is fused and no call is folded or merged (sin and cos into
    __sincos_stret) behind them. Each float function works in double and rounds once.
@@ -27,7 +27,7 @@ static double rm_double(uint64_t b) { double x; memcpy(&x, &b, sizeof x); return
 static int rm_nan(double x) { return x != x; }
 static int rm_inf(double x) { return x == INFINITY || x == -INFINITY; }
 
-/* sin and cos of r in [-pi/4, pi/4], by their series to r^13 and r^14 (aethyr/math.coax) */
+/* sin and cos of r in [-pi/4, pi/4], by their series to r^13 and r^14 (aethyr/core/math.coax) */
 static double rm_sin_near(double r) {
   double z = r * r;
   return r + r * z * (-1.0 / 6 + z * (1.0 / 120 + z * (-1.0 / 5040 + z * (1.0 / 362880 + z * (-1.0 / 39916800 + z * (1.0 / 6227020800.0))))));

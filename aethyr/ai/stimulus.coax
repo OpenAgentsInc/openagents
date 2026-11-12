@@ -1,5 +1,5 @@
 // What a creature senses and what it knows (book chapter 75). A creature senses on the realm's
-// fixed step (aethyr/loop.coax's ticks, 1/64 s each), never on frame time, so it senses the same
+// fixed step (aethyr/core/loop.coax's ticks, 1/64 s each), never on frame time, so it senses the same
 // at any frame rate. Each sense gives a typed stimulus: sight (a flat range, an eye height above
 // the feet and a line of sight through chapter 7's query_clear, query_ray's hit or miss, so boxes,
 // capsules and heightfields all hide), sound (a flat range per source, as the watch's WATCH_HEAR) and touch (a flat reach).
@@ -12,7 +12,7 @@
 
 #module "aethyr.ai.stimulus";
 #authority;
-#load "../query.coax";
+#load "../physics/query.coax";
 #load "../tests/stimulus-oracle.coax";   // the checks' brute-force line of sight
 
 // book:begin senses

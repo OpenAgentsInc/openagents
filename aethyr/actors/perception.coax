@@ -3,8 +3,8 @@
 // The runtime adapter constructs these only from current filtered semantic rays.
 #load "choices.coax";
 #load "../ai/stimulus.coax" as senses;
-#load "../space.coax" as spatial;
-#load "../entity.coax" as entities;
+#load "../core/space.coax" as spatial;
+#load "../core/entity.coax" as entities;
 #authority;
 ActorCandidate :: struct {id:int;generation:int;x:int;y:int;z:int;eligible:bool=true;clear:bool;}
 ActorPerception :: struct {tick:int= -1;target:int;generation:int;last_seen:int= -1;lost:int;seen:bool;alert:bool;culled:bool;reason:int;memory:senses.Memory;}

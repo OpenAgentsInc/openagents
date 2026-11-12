@@ -2,12 +2,12 @@
 // existing unmoduled image decoder keeps one owner in a composed host.
 // A plan is not successful decoding or permission to publish an asset.
 #authority;
-#load "../assets.coax" as assets;
+#load "../core/assets.coax" as assets;
 #load "../render/host-layers.coax";
 #load "../render/registry.coax" as gpu;
 #load "../audio/host-wav.coax" as wav;
-#load "../query.coax" as queries;
-#load "../space.coax" as points;
+#load "../physics/query.coax" as queries;
+#load "../core/space.coax" as points;
 #load "cells.coax" as cells;
 #load "../forge/vertices.coax" as packed;
 

@@ -1,6 +1,6 @@
 // Authored flights produce chapter 10's CameraShot and share the camera blend.
 #authority;
-#load "../cinematic.coax";
+#load "../cam/cinematic.coax";
 #load "legacy.coax";
 
 #test "a typed flight preserves the authored shot and hands back to the live camera" {

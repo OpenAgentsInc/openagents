@@ -84,7 +84,7 @@ walk_distance :: (w:CcWalk,t:f32)->f32 {
   return ifx d>w.length then w.length else d;
 }
 walk_heading :: (w:CcWalk,d:f32)->f32 {a:=walk_point(w,d-0.5);b:=walk_point(w,d+0.5);return walk_atan2(b[0]-a[0],b[2]-a[2]);}
-// The angle of (x, y) from +x in [-pi, pi], within 2e-5 rad (aethyr/points.coax's polynomial).
+// The angle of (x, y) from +x in [-pi, pi], within 2e-5 rad (aethyr/core/points.coax's polynomial).
 walk_atan2 :: (y:f32,x:f32)->f32 {
   ax:=abs(x);ay:=abs(y);if ax==0 && ay==0 {return 0;}t:=ifx ay>ax then ax/ay else ay/ax;q:=t*t;
   a:=t*(0.99997726+q*(-0.33262347+q*(0.19354346+q*(-0.11643287+q*(0.05265332+q*-0.01172120)))));

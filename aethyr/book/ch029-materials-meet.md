@@ -45,7 +45,7 @@ applies; its total must be zero.
 
 ## What it builds
 
-- `aethyr/sim/couple.coax`: interface collection and exchange for
+- `aethyr/physics/sim/couple.coax`: interface collection and exchange for
   rigid–SPH, rigid–MPM, rigid–PBD, rigid–FEM and MPM–SPH, with the ledger.
 - Fixtures: a cube dropped into water, a sphere sinking into sand, a cloth
   draped over a rigid table, a finger pressing a pad.

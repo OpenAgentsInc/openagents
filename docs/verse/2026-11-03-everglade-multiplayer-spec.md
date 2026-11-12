@@ -179,7 +179,7 @@ see different results.
 
 | State | Where | Shared today? |
 | --- | --- | --- |
-| Your position, yaw, gait | `aethyr/player.coax`, `everglade-face.c` | Yes, 1 Hz, as a cone figure |
+| Your position, yaw, gait | `aethyr/move/player.coax`, `everglade-face.c` | Yes, 1 Hz, as a cone figure |
 | Your animation clip (idle, walk, run, jump, swing) | `figure`, `everglade.coax:2954`; clips in `verse/everglade/ranger.coax:14` | No |
 | Townsfolk positions and routines | `verse/everglade/folk.coax`, `routines.coax`; `folk_clock`, `everglade.coax:2707` | Same only by construction: a pure function of the seed and the page's `now`. Clock skew between machines shows as different spots |
 | Townsfolk HP, knock-downs, deaths, frogs | `everglade-watch.coax`, `everglade-abilities.coax`, `everglade-circle.coax` | No |
@@ -192,7 +192,7 @@ see different results.
 | Broken buildings, debris, rubble, burning | `everglade-spells.coax`, `everglade-rubble.coax:24`, `everglade-fire.coax`; [everglade.md](everglade.md) line 661: "nothing broken is saved or shared" | No |
 | R (REBUILD) | `sp_rebuild`, `everglade-spells.coax:478` | No |
 | The trees outside the city | `everglade-forest.coax` | No |
-| The flock that follows you | `aethyr/flock.coax` | No |
+| The flock that follows you | `aethyr/anim/flock.coax` | No |
 | Weather | `weather_facts`, `everglade.coax:3074`: seeded with `EG_WEATHER_SEED` and the page's `now` | Same only by construction, as the folk |
 | Time of day | `folk_clock`; the realm's `clock: cycle` | Same only by construction |
 | Admin edits (Aethyrforge, voice edits, placed things) | `everglade-forge.coax`, `everglade-edit.coax`, `verse/edit/edit.coax` | Published to `/api/playtest/world/<id>`. Other pages see them on reload; only an owner's page rereads the spec every second (`verse/edit/edit.coax:589`) |
@@ -225,7 +225,7 @@ host election or host migration.
     the city's plan, walls, bodies and ground heights, and every step that
     today takes one `you: Point` takes the room's players;
   - **one shared movement module** (`everglade-move.coax`, new): the
-    character controller (`aethyr/player.coax`) plus what
+    character controller (`aethyr/move/player.coax`) plus what
     `everglade-face.c` does around it today (footing and pace, the river's
     swim, flow and breath, Ray of Frost's slow, the spell lifts, the
     bridge deck, the city's edge, `everglade_hold`), moved from the C face

@@ -1,5 +1,5 @@
 #load "../probe-data.coax";
-#load "../../assets.coax" as assets;
+#load "../../core/assets.coax" as assets;
 #test "all weighted priority duration cooldown and sleep transitions match the independent trace hash" #steps 200000000 #traversal 2000000000 {
  p:=actor_probe_parameters();brain:ActorBrain;words:[4096]int;n:=0;
  for tick:0..<128 {input:=actor_probe_input(tick);choice:=actor_choose(p,brain,ActorKnowledge.{tick=tick,flags=input.flags,culled=input.culled},2026,7);#assert choice.status==ACTOR_OK;brain=choice.brain;

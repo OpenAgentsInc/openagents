@@ -1,7 +1,7 @@
 // Recorded retained source bytes for bounded host replay. A received or
 // zero-filled failed allocation has its own digest, not the manifest's.
 #authority;
-#load "../assets.coax" as assets;
+#load "../core/assets.coax" as assets;
 RECORDED_SOURCE_MAX :: 4096;
 RECORDED_SOURCE_EVENTS :: 64;
 RECORDED_SOURCE_SCHEMA :: "aethyr.recorded-source.v1";

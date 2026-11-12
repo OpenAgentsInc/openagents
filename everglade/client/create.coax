@@ -2,7 +2,7 @@
 // at its glade, where the path begins, in this mode: a studio camera on your character, the wardrobe
 // and the CLASS row down the left (on a phone, at the bottom), and your keys and pointer on the
 // wardrobe. What you pick is your character in the world as you pick it (s[0].creator, the record
-// aethyr/character-appearance.coax reads), drawn by Everglade II's renderer in its own light.
+// aethyr/character/character-appearance.coax reads), drawn by Everglade II's renderer in its own light.
 // USE IN EVERGLADE keeps the record (action 16, the browser's shared copy, message 17 says it was
 // kept), puts /worlds/everglade2 in the address bar (action 19) and plays the run: the controls fade,
 // the camera swings round behind you, you run out of the glade and down the path on your own while
@@ -28,7 +28,7 @@ E2C_SAVE :: 16;          // host.js: keep the outbox as the shared character rec
 E2C_KEPT :: 17;
 E2C_ADDRESS :: 19;       // host.js: this same-origin path in the address bar (history.replaceState), nothing loaded
 E2C_DRUID :: 3;          // the CLASS row starts at the druid, as Everglade's did
-E2C_CLASSES :: 12;       // the SRD 5.2.1's, in fivebar.coax's order (aethyr/character-appearance.coax CA_CLASSES)
+E2C_CLASSES :: 12;       // the SRD 5.2.1's, in fivebar.coax's order (aethyr/character/character-appearance.coax CA_CLASSES)
 E2C_CLASS_NAMES :: [12] string.["BARBARIAN", "BARD", "CLERIC", "DRUID", "FIGHTER", "MONK", "PALADIN", "RANGER", "ROGUE", "SORCERER", "WARLOCK", "WIZARD"];
 E2C_PANEL_BOTTOM :: 730.0;   // the glass panel's foot on a desktop (everglade/scene/gpu/character-glade.coax cg_ui_cover)
 // The arrival through Everglade's portal from the homepage (newland-portal.coax: its button,

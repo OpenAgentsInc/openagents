@@ -10,9 +10,9 @@
 #load "../../aethyr/render/grid-cull.coax" as gcull;   // the open field draws only the cells its view can see (meadow_cull)
 #load "../../verse/everglade2/meadow-grid.coax" as grid;   // the open field's scatter grids (verse/everglade2/meadow.coax)
 #load "../../verse/experimental-village.coax" as village;
-#load "../../aethyr/follow.coax" as follow;
-#load "../../aethyr/query.coax" as query;
-#load "../../aethyr/space.coax" as world;
+#load "../../aethyr/cam/follow.coax" as follow;
+#load "../../aethyr/physics/query.coax" as query;
+#load "../../aethyr/core/space.coax" as world;
 #load "charactercreator-font.coax";
 #load "../hud/fonts.coax";   // Everglade's HUD faces: Spectral to read, Cinzel for names and places
 #load "../../aethyr/ui/hud-menu.coax";   // the engine's HUD style layer (hud-style.coax) and widgets; Everglade draws in FANTASY (docs/verse/hud-styles.md)
@@ -24,7 +24,7 @@
 #load "../../verse/experimental-aribeth.coax" as aribeth;
 #load "charactercreator-walk.coax";
 #load "charactercreator-crew.coax";   // the builders at the build sites (#13108)
-#load "../../aethyr/character-appearance.coax" as appearance;
+#load "../../aethyr/character/character-appearance.coax" as appearance;
 VERTEX_FLOATS :: 16;
 #load "bodies.coax" as figs;
 #load "../../aethyr/action/attach-overlap.coax" as overlap;   // a held item through the body (#13073)
@@ -72,7 +72,7 @@ Creator :: struct {
   field_clear:[4]f32;   // a zone's clearing on the open field (x0, z0, x1, z1, metres): the meadow scatters no rocks inside it; all 0, none
   field_band:f32; field_keep:f32;   // with a clearing: rocks stand only in a band this wide round it (0: everywhere past it), this share of them
   view:[16]f32; view_w:f32; view_h:f32; view_ok:bool;   // the frame's view as cc_view wrote it (u[16..<32], the picture's width), for meadow_cull
-  q_grass:f32 = 1; q_fine:f32 = 1; q_scenery:f32 = 1; q_understory:f32 = 1;   // the graphics quality's knobs (aethyr/quality.coax): the grass's reach (and the share of the glade's seeds drawn), its finest tier's share, the rocks' reach, the small pieces' reach (flowers, plants, clover, mushrooms)
+  q_grass:f32 = 1; q_fine:f32 = 1; q_scenery:f32 = 1; q_understory:f32 = 1;   // the graphics quality's knobs (aethyr/core/quality.coax): the grass's reach (and the share of the glade's seeds drawn), its finest tier's share, the rocks' reach, the small pieces' reach (flowers, plants, clover, mushrooms)
   gfx:[40]u8; gfx_n:int; gfx_box:Box;   // the graphics control's words beside the frame rate ("GFX AUTO · MED"; none: not shown) and where it was drawn
   flat:bool;   // a zone on level ground (the Bitcoin Lab's Grid): the open field's rules with no meadow drawn, the ground at 0 everywhere (cc_ground) and no coordinates in the corner
   range_first:int; range_count:int; range_word:int; range_on:bool;   // the Archery Range's mesh ("C glade/range", everglade/range/place.coax), drawn where a zone stands it (range_on)
@@ -96,7 +96,7 @@ Creator :: struct {
   orbit:f32;         // a check's camera turn round you (radians), apart from your aim: side and back frames
   swing_at:f32 = -100; swing_clip:int = -1;   // your last blow and the clip it plays
   ml:[1]mlook.Mouselook;   // Experimental's mouselook (aethyr/cam/mouselook.coax); the studio never asks for it
-  dev_below:f32;   // CSS px under the ANIMATIONS browser kept for Experimental's CLASSES column (everglade/zone-combat.coax)   // the SRD 5.2.1 class the record keeps (CC3, aethyr/character-appearance.coax), -1 none (CC2)
+  dev_below:f32;   // CSS px under the ANIMATIONS browser kept for Experimental's CLASSES column (everglade/zone-combat.coax)   // the SRD 5.2.1 class the record keeps (CC3, aethyr/character/character-appearance.coax), -1 none (CC2)
   crews:[CC_CREWS]CcCrew;   // the build sites' builders (charactercreator-crew.coax)
   pile_first:[hw.HW_STOCKS]int; pile_count:[hw.HW_STOCKS]int; pile_word:int; pile_n:int;   // their piles ("C glade/pile<row>")
   walk:CcWalk;   // the walk into Everglade after USE IN EVERGLADE (charactercreator-walk.coax)

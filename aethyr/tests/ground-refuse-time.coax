@@ -1,5 +1,5 @@
 // Must not compile: a time value is not an x coordinate in metres.
-#load "../ground.coax";
+#load "../physics/ground.coax";
 #load "../../coax/lib/quantity.coax" as units;
 main :: () {
   g: Ground;

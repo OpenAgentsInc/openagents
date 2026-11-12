@@ -63,7 +63,7 @@ Tracked areas with no row, and what each is (verified against the tree):
   (`cast.coax`). A thin C and Swift layer owns storage and
 ```
 
-`verse/player.coax` does not exist. The file is `aethyr/player.coax`.
+`verse/player.coax` does not exist. The file is `aethyr/move/player.coax`.
 
 `README.md:188-189`, under `## Try it`:
 
@@ -169,7 +169,7 @@ prints nothing.
 ### Step 2: Fix the README
 
 1. In the `verse/` bullet, change `` (`player.coax`) `` to
-   `` (`aethyr/player.coax`) ``.
+   `` (`aethyr/move/player.coax`) ``.
 2. Under `## Try it`, replace the first command line with these two:
 
    ```sh
@@ -180,7 +180,7 @@ prints nothing.
    Keep the comment column aligned with the lines below it.
 
 **Verify**: `grep -c 'coax/build.sh test' README.md` prints `0`, and
-`grep -c 'aethyr/player.coax' README.md` prints `1`.
+`grep -c 'aethyr/move/player.coax' README.md` prints `1`.
 
 ### Step 3: Bring the transcript index to 293
 

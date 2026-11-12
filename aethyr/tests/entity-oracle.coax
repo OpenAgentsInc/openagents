@@ -1,4 +1,4 @@
-// The oracle for aethyr/entity.coax's checks: a store's backing for tests, and a reference
+// The oracle for aethyr/core/entity.coax's checks: a store's backing for tests, and a reference
 // model that keeps (EntityId, value) pairs in a plain list ordered by ID, with no slots,
 // generations or free list. Only the checks call it.
 

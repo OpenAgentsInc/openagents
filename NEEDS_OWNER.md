@@ -294,7 +294,7 @@ coderos-4080 can't run it.
 
 ## Ice Cream Man's camera on Aethyr's follow: approve the look (#12609, 2026-11-02)
 
-Ice Cream Man's boom camera now runs on `aethyr/follow.coax`, one step per
+Ice Cream Man's boom camera now runs on `aethyr/cam/follow.coax`, one step per
 rules step. The same bot round (`#seed=4&bot`) was drawn before and after,
 frame for frame:
 `docs/verification/data/icecream-boom-2026-11-02/side-by-side/` (before on

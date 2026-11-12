@@ -1,5 +1,5 @@
 // book:begin example
-#load "../nav/grid.coax";
+#load "../world/nav/grid.coax";
 #import "Basic";
 
 // The chapter's 6 by 5 grid: a wall down column 2 with a gap in the top row. One flow field

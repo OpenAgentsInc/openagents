@@ -21,7 +21,7 @@
 //              part_file, rebinds it onto the rig's male rest pose).
 //   metahuman  a MetaHuman export's DNA meshes, dumped by OpenRigLogic's dna_dump --skin
 //              (scripts in the export's tree; see ph_metahuman.coax), each joint folded onto the
-//              rig's 65 (aethyr/mannequin.coax mannequin_fold) and posed from MetaHuman's A pose
+//              rig's 65 (aethyr/anim/mannequin.coax mannequin_fold) and posed from MetaHuman's A pose
 //              into the rig's T pose.
 //
 // The pack's entries: the catalog (text), the vertices, the indices (u32), then the layers
@@ -46,7 +46,7 @@
 //                                 have none
 //   F FIRST COUNT BYTES           a face rig (ph_face.coax): its vertices' range in the vertex
 //                                 buffer, and its block's length; the block follows the text
-//                                 after a NUL (aethyr/facerig.coax reads it)
+//                                 after a NUL (aethyr/anim/facerig.coax reads it)
 //
 // A vertex is 32 bytes (vertex() below): position (x, y, z unorm16 across SPAN from LOW), its
 // piece's material, the normal and tangent (octahedral, 2 x unorm16 each), the bitangent's

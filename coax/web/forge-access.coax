@@ -12,7 +12,7 @@
 //               after a save, reopened, nothing is unsaved
 //   3 GUEST     with no key the realm opens as a visitor: no owner's controls; W walks; a controller
 //               (navigator.getGamepads, a stand-in pad) walks and its button jumps, through
-//               aethyr/input.coax
+//               aethyr/core/input.coax
 // Every step is checked from the page's state (coaxial.guardProbe: myrealm.coax realm_probe), the
 // DOM the host mirrors, and the server's database, not from pictures.
 //
@@ -444,7 +444,7 @@ tool_main :: () -> int #export_c #effects(all) {
   sw := fa_eval_int(c[..], f[..], "(__pad.b = false, 1)");
   fa_pump(c[..], f[..], 400);
   xd := fa_probe(c[..], f[..], 10); zd := fa_probe(c[..], f[..], 11);
-  fa_ok(c[..], f[..], "a controller's stick walks a guest (aethyr/input.coax)", pd == 1 && fa_moved(xb, zb, xc, zc) > 50, fa_moved(xb, zb, xc, zc));
+  fa_ok(c[..], f[..], "a controller's stick walks a guest (aethyr/core/input.coax)", pd == 1 && fa_moved(xb, zb, xc, zc) > 50, fa_moved(xb, zb, xc, zc));
   fa_ok(c[..], f[..], "let go, the controller stands still", st == 1 && sw == 1 && fa_moved(xc, zc, xd, zd) < 30, fa_moved(xc, zc, xd, zd));
   fa_ok(c[..], f[..], "every page request was answered", !f[0].bad, 0);
 

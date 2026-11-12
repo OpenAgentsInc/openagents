@@ -1,5 +1,5 @@
 // Common source-skeleton aliases, shared by BVH and glTF.
-#load "../mannequin.coax";
+#load "mannequin.coax";
 #authority;
 ai_bvh_map :: (name:string)->int #effects(all) {
  names:=[24]string.["Hips","Spine","Spine1","Spine2","Neck","Head","LeftShoulder","LeftArm","LeftForeArm","LeftHand","RightShoulder","RightArm","RightForeArm","RightHand","LeftUpLeg","LeftLeg","LeftFoot","LeftToeBase","RightUpLeg","RightLeg","RightFoot","RightToeBase","LHipJoint","RHipJoint"];

@@ -1,10 +1,10 @@
 // Sound in space (aethyr/book/ch068-sound-in-the-world.md, "Sound in space"): a source's
 // gain, pan and delay from where the listener stands and looks. The listener is the
-// camera's shot (aethyr/points.coax: eye and the point it looks at, +Y up, and facing +Z
+// camera's shot (aethyr/core/points.coax: eye and the point it looks at, +Y up, and facing +Z
 // your right is -X). This is drawing-side arithmetic, not simulation state, so it may use
 // sqrt; a replay never reads it.
 //   coax/bin/coax test aethyr/audio/space.coax --library
-#load "../points.coax";
+#load "../core/points.coax";
 #load "attenuation.coax";
 
 

@@ -17,8 +17,8 @@ animelab 190000
 belt 320000
 builder 100000
 # WorldBuilder on Aethyrforge's edit log (aethyr/forge/edit.coax), EditBuf (components/core/edit.coax) and the control kit (components/kit/controls.coax, verse_skin, gpu_draw, #13226): 122,449 bytes measured on Linux; about 6% room.
-# ... and with the ground (#13225): an Aethyr terrain tile (aethyr/terrain-tile.coax), the engine's brushes (aethyr/terrain-edit.coax),
-# the forge log's land steps, the exact ground ray (aethyr/ground-query.coax), the brush bar and the view's framing (#13224): 166,099 bytes measured on Linux; about 5% room.
+# ... and with the ground (#13225): an Aethyr terrain tile (aethyr/world/terrain-tile.coax), the engine's brushes (aethyr/world/terrain-edit.coax),
+# the forge log's land steps, the exact ground ray (aethyr/physics/ground-query.coax), the brush bar and the view's framing (#13224): 166,099 bytes measured on Linux; about 5% room.
 # ... and it is an Everglade zone too (worldbuilder-walk.coax, everglade/zone.coax, #13225): your character on the shared controller, as the
 # Archery Range (2,819,466) and Bitcoin Lab are: 2,918,884 bytes measured on Linux; about 4% room.
 worldbuilder 3050000
@@ -93,7 +93,7 @@ fairy 695000
 # The fantasy HUD in Everglade Experimental (aethyr/ui/hud-style.coax, hud-menu.coax, hud-sight.coax and
 # everglade/hud/): the portrait, bar tray, plates that show only while their body does, and the 5E Lab's
 # straight-alpha switch: 2,751,223 bytes measured before sight. Plates on the engine's visibility service
-# (aethyr/visibility.coax through hud-sight.coax) and captions fitted to their slots: 2,781,170 bytes
+# (aethyr/physics/visibility.coax through hud-sight.coax) and captions fitted to their slots: 2,781,170 bytes
 # measured on the remote hosts. Experimental on Everglade's side bar and the touch-sized CLASSES picker
 # (#13092): 2,834,070 bytes; about 3% headroom. The riders' straddle checked against the horse's and dragon's
 # bodies and the horse-archer stage (#13113): 2,923,469 bytes; about 1% headroom. The red dragon's Fire
@@ -118,11 +118,11 @@ bitcoin-lab-walk 2950000
 # word list), scrypt and NFKC for key backup, Negentropy and the rest: 3,520,351 bytes measured;
 # about 3% headroom.
 nostr-lab-walk 3630000
-# Everglade II's graphics governor (aethyr/quality.coax), frame-rate counter and ground-pressed look-up
+# Everglade II's graphics governor (aethyr/core/quality.coax), frame-rate counter and ground-pressed look-up
 # brought it to 300,331 bytes; Character Create's studio and run in its world (everglade/client/create.coax,
 # #13023) to 319,706; about 6% headroom.
 # main reached 342,695 bytes; the two-handed blend rules add 8: 342,703 measured; about 2% headroom.
-# The glade's admitted terrain tile, material table and canopy bake (aethyr/terrain-tile.coax with its
+# The glade's admitted terrain tile, material table and canopy bake (aethyr/world/terrain-tile.coax with its
 # SHA-256 identity, aethyr/render/bake.coax, #12995): 359,019 measured; about 4% headroom.
 # Texel-snapped shadow tiles (aethyr/render/cascades.coax) and rank-faded pieces (#13023): 365,055 measured;
 # about 5% headroom.
@@ -161,7 +161,7 @@ nostr-lab-walk 3630000
 # ground outline, the death-save line, the Esc menu's Change character and its V line, the Ranger's held bow
 # through charactercreator held_pieces, the guard's arrows; the guard's and monsters' own hit marks went to
 # floats): 916,653 bytes measured with the fantasy HUD, inside the same budget.
-# Plates on the engine's visibility service (aethyr/visibility.coax through hud-sight.coax) and the side bar
+# Plates on the engine's visibility service (aethyr/physics/visibility.coax through hud-sight.coax) and the side bar
 # and world layout in the game layer: 926,788 bytes measured on the remote hosts; about 3% headroom.
 # Main at 4ca2379f0e already measured 956,592 bytes, over 955,000. The shared plates (aethyr/ui/hud-plates.coax:
 # reach, order, lift or fold, and everglade/hud/parts.coax eg_plates, #13088) take Everglade II to 958,822;
@@ -289,6 +289,6 @@ nights 180000
 portallab 80000
 
 # Painted Village: the page, the village (road and plaza) and Aethyr's village, plaza and flora generators, with their solids
-# and Aethyr's walking capsule (aethyr/collide.coax); 161,781 bytes as the dev build writes it; about 25% room for the next scenes.
+# and Aethyr's walking capsule (aethyr/physics/collide.coax); 161,781 bytes as the dev build writes it; about 25% room for the next scenes.
 painted 200000
 splice 200000

@@ -1,7 +1,7 @@
 // Seeded fleet characters: the API fixture and the socket client use one codec.
 #module "coax.room.raid.identity";
 #authority;
-#load "../../../aethyr/ids.coax";
+#load "../../../aethyr/core/ids.coax";
 #load "../../lib/json/json.coax";
 
 #test "raid identities include their town and exact seat domain" {

@@ -1,6 +1,6 @@
 # 26. Sand, snow and clay on a grid
 
-> **Status: partly implemented.** [`aethyr/sim/mpm.coax`](../../aethyr/sim/mpm.coax)
+> **Status: partly implemented.** [`aethyr/physics/sim/mpm.coax`](../physics/sim/mpm.coax)
 > (449 mutants: 437 killed, 12 marked equivalent with their reason)
 > runs MLS-MPM with APIC transfers in 2D on a dense grid, on the CPU in f64
 > (profile `mpm-mls-2d-f64-v1`), with neo-Hookean, fixed corotated and
@@ -50,7 +50,7 @@ Time steps obey `Δt ≤ C Δx / (|v|_max + c)`.
 
 ## What runs today
 
-[`aethyr/sim/mpm.coax`](../../aethyr/sim/mpm.coax) keeps up to 4096
+[`aethyr/physics/sim/mpm.coax`](../physics/sim/mpm.coax) keeps up to 4096
 particles (`Mpm`) over a grid of up to 64 by 64 cells on the unit square.
 Each particle carries its position, velocity, affine matrix `C` and
 deformation gradient `F`. `mpm_step` scatters mass and momentum to the
@@ -150,7 +150,7 @@ squat one runs about 17% short.
 The checks run with:
 
 ```shell
-coax/bin/coax test aethyr/sim/mpm.coax --library
+coax/bin/coax test aethyr/physics/sim/mpm.coax --library
 ```
 
 They compare each material's stress with central differences of its energy,

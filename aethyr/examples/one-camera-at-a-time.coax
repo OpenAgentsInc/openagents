@@ -1,5 +1,5 @@
 // book:begin example
-#load "../player.coax";
+#load "../move/player.coax";
 #import "Basic";
 
 // The cameras read the walker and never move it. One walk into a wall and a jump, with the

@@ -2,7 +2,7 @@
 // This is a teaching fixture, not an alternate realm simulation or pixel renderer.
 #load "../../verse/planetary-villa/arrival.coax";
 #load "../shot/closeup.coax";
-#load "../replay.coax";
+#load "../core/replay.coax";
 
 take_live :: ()->CameraShot {return CameraShot.{eye=world_point(-17,2,-30),at=world_point(-17,1,-23)};}
 take_distance :: (a:WorldPoint,b:WorldPoint)->f32 {x:=a.x-b.x;y:=a.y-b.y;z:=a.z-b.z;return sqrt(x*x+y*y+z*z);}

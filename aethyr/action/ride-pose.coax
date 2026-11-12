@@ -1,5 +1,5 @@
 // The rider's pose (everglade/docs/mounts-spec.md): astride a mount's back, keyed on a skinned rig
-// (aethyr/skin.coax) as the bow's draw is (bow-pose.coax), so any realm can bake it once. No
+// (aethyr/anim/skin.coax) as the bow's draw is (bow-pose.coax), so any realm can bake it once. No
 // library has a riding clip for the Universal Animation Library's rig. From whatever stance the rig
 // stands in, each leg's hip stays put while two-bone IK swings the thigh out and forward round the
 // mount's barrel, bends the knee forward and hangs the lower leg down its side, the foot level in

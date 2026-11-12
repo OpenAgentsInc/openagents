@@ -1,7 +1,7 @@
 // A sprint: a burst of speed over your run for a moment, that spends a set distance (a ruleset's Dash:
 // the SRD 5.2.1 Dash, Cunning Action's, Step of the Wind's, each extra movement equal to your Speed).
 // Nothing here moves you: a realm scales its controller's pace by sprint_rate (Experimental:
-// everglade/zone.coax zone_move_scale into aethyr/walk-scaled.coax, which takes as many collision steps a
+// everglade/zone.coax zone_move_scale into aethyr/move/walk-scaled.coax, which takes as many collision steps a
 // tick as the speed needs, so a sprint stops at the walls a run stops at) and runs you along the
 // sprint's heading. This module owns
 //
@@ -56,14 +56,14 @@ sprint_extra :: (t: f32, gain: f32, run: f32) -> f32 {
   return a * gain * run;
 }
 // The facing that keys kx, ky (or a thumb, -1 to 1: x right, y ahead) push you, with the camera at
-// yaw (aethyr/walk.coax wish; you face atan2(x, z)).
+// yaw (aethyr/move/walk.coax wish; you face atan2(x, z)).
 sprint_push_face :: (yaw: f32, kx: f32, ky: f32) -> f32 {
   size := sqrt(kx * kx + ky * ky);
   if size == 0 { return 0; }
   mx := kx / size; mz := -ky / size; c := cos(yaw); sn := sin(yaw);
   return sprint_atan2(mx * c + mz * sn, -mx * sn + mz * c);
 }
-// The angle of (x, y) from +X, in [-PI, PI] (aethyr/points.coax's, within 2e-5 rad).
+// The angle of (x, y) from +X, in [-PI, PI] (aethyr/core/points.coax's, within 2e-5 rad).
 sprint_atan2 :: (y: f32, x: f32) -> f32 {
   ax := abs(x); ay := abs(y);
   if ax == 0 && ay == 0 { return 0; }

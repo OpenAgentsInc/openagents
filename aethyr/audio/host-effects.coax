@@ -2,7 +2,7 @@
 // and Web Audio execute these parameters; the mixer still chooses all cues.
 #module "aethyr.audio.host.effects";
 #load "../render/media-commands.coax" as audio_numbers;
-#load "../points.coax";
+#load "../core/points.coax";
 #authority;
 AudioHostEffect :: struct {kind:int;name:string;id:string;gain:f32;pan:f32;delay:f32;lowpass:f32;rate:f32=1;wet:f32;}
 AudioHostWords :: struct {ok:bool;count:int;words:[8]string;}

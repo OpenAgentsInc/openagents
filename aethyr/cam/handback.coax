@@ -9,8 +9,8 @@
 //
 //   coax/bin/coax test aethyr/cam/handback.coax --library
 
-#load "../camera.coax";
-#load "../points.coax";
+#load "camera.coax";
+#load "../core/points.coax";
 
 CamOutcome :: enum u8 { resume; reset_behind; retain; }
 CamCutPhase :: enum u8 { off; entering; playing; handing; done; }

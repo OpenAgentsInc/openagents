@@ -31,7 +31,7 @@ The samplers draw from the counter-based generator `cr_draw` in
 [chapter 53](ch053-choosing-the-next-token.md) samples tokens with, so a seed
 fixes every point. The Aethyr engine's spatial
 queries ([Aethyr chapter 7](../../aethyr/book/ch007-ask-the-world-where-things-are.md),
-[`query.coax`](../../aethyr/query.coax)) answer related questions about
+[`query.coax`](../../aethyr/physics/query.coax)) answer related questions about
 boxes and capsules, but in binary32 world units and with first-hit rather
 than nearest-point semantics, so this chapter writes its own binary64
 geometry and uses Aethyr's design only as a model.

@@ -1,7 +1,7 @@
 // Shared Ocarina Lab physical tuning. Absolute native launch equations remain unrecovered.
 #module "ocarina.locomotion";
 #load "controller.coax";
-#load "../../aethyr/locomotion.coax" as tuning;
+#load "../../aethyr/move/locomotion.coax" as tuning;
 // Carrier endpoints in the admitted original 30-fps Move_Walk and Move_Run clips.
 OCL_WALK_SPEED :: 0.64f32; OCL_RUN_SPEED :: 2.2500002f32; OCL_ROLL_SPEED :: 5.625f32;
 #test "Link profile preserves Lab gravity acceleration jump height and captured flip speed" {

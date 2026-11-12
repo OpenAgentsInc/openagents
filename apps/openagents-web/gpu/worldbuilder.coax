@@ -131,7 +131,7 @@ worldbuilder_shares :: (packed:f32)->V3 {
   return v3(c/255.0f32,b/255.0f32,a/255.0f32);
 }
 // The ground's vertex: six a cell, two triangles split from its south-west corner to its
-// north-east one (aethyr/terrain-tile.coax), its normal from the samples either side.
+// north-east one (aethyr/world/terrain-tile.coax), its normal from the samples either side.
 worldbuilder_ground_vs :: (id:u32,u:[]f32,ground:[]V4)->WorldbuilderS {
   ox:[6]int=[6]int.[0,1,1,0,0,1];
   oz:[6]int=[6]int.[0,1,0,0,1,1];

@@ -1,4 +1,4 @@
-#load "../../../aethyr/ids.coax";
+#load "../../../aethyr/core/ids.coax";
 #load "../../../aethyr/net/relay-wire.coax";   // the relay's own frames, the one codec the pages read them with (#13245)
 // The room server's relay (room-relay): rooms for any game, keyed by the game and a room code,
 // that carry each player's text frames to the others unread. The games on their own paths

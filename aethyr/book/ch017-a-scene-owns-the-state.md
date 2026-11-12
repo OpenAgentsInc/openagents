@@ -1,6 +1,6 @@
 # 17. A scene owns the state
 
-> **Status: partly implemented.** [`aethyr/sim/scene.coax`](../../aethyr/sim/scene.coax)
+> **Status: partly implemented.** [`aethyr/physics/sim/scene.coax`](../physics/sim/scene.coax)
 > (`#authority`, 207 mutants, all killed) runs the scene's container on the
 > CPU in f64: a `Scene_Spec` of shapes, materials and appearances, admission
 > against a published compatibility matrix, a build into per-solver arrays
@@ -103,7 +103,7 @@ for 1,000 steps.
 
 <!-- source: aethyr/examples/scene-three-shapes.coax example -->
 ```jai
-#load "../sim/scene.coax";
+#load "../physics/sim/scene.coax";
 #import "Basic";
 
 // A plane, a 1 m box of density 500 at 2 m, and a 0.5 m sphere of particles at 4 m.
@@ -190,7 +190,7 @@ Each line maps to a piece of the design above:
 
 ## What it builds
 
-- Built: [`aethyr/sim/scene.coax`](../../aethyr/sim/scene.coax) holds
+- Built: [`aethyr/physics/sim/scene.coax`](../physics/sim/scene.coax) holds
   `Scene_Spec`, entity handles, `scene_build`, `scene_step`, the slice
   accessors, the compatibility matrix and the build-time refusals in one
   `#authority` file. Reset is a value copy of `Scene`, which holds no views.

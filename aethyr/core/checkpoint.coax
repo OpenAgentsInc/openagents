@@ -1,0 +1,359 @@
+// Versioned checkpoints and a journal for a realm's simulation (GitHub #12848, book chapter 36).
+// A checkpoint is the realm's state at a step boundary, in words, behind a header that pins what
+// must match for the state to mean the same thing again: the schema of this format, the engine
+// build, the content, the rules, the execution profile, the owner's generation, the step, the
+// session's seed and initial digest, and the replay gate's channels (aethyr/core/replay.coax). It ends
+// in a checksum over every word, so a checkpoint cut short or changed is refused. Two slots take
+// turns (checkpoint_slot): a crash while writing one leaves the other whole.
+//
+// The journal is what happened after: each accepted external event (controls, model answers,
+// network updates) and each step's digest, one entry at a time, each with its own checksum, so a
+// crash mid-entry loses that entry only. Restoring reads the newest whole checkpoint, loads its
+// state, takes the journal's events into a replay session and runs the steps again in replay mode:
+// no remote call is made, and each step's digest is compared with the journal's.
+//
+// The recovery point is the last journal entry published: a realm that publishes its entries
+// every step loses at most that step. The restore time is reading one checkpoint and replaying
+// the steps since it: with a checkpoint every CHECKPOINT_EVERY steps, at most that many.
+// An owner whose generation is below the fence (a newer owner took the realm) is refused at
+// restore, and its journal entries after a newer owner's are dropped.
+//
+// Deterministic scope: the same pins on the same execution profile replay bit for bit (the
+// realm's strict float profile, as aethyr/core/replay.coax states). A different engine, content,
+// rules or profile is refused, not approximated. Effects in durable domains outside the realm
+// (a character's XP, a save) are not rolled back with it: each carries an operation id from
+// checkpoint_op, the same on replay, and the domain applies an id once.
+//   coax/bin/coax test aethyr/core/checkpoint.coax --library
+//   coax/bin/coax mutate aethyr/core/checkpoint.coax --library
+
+#module "aethyr.checkpoint";
+#authority;
+#load "replay.coax";
+
+// book:begin checkpoint-format
+CHECKPOINT_MAGIC :: 1095126833;   // "ACK1"
+CHECKPOINT_SCHEMA :: 1;           // this format; a change to it is a new number
+CHECKPOINT_EVERY :: 640;          // steps between checkpoints a realm takes: 10 s at 64 a second
+CK_HEADER :: 12;                  // words before the channels
+CK_CHANNEL :: 4;                  // words a replay channel takes
+
+// What a checkpoint pins besides the format: a realm passes its own build's values.
+CheckpointPins :: struct { engine: int; content: int; rules: int; profile: int; }
+
+// What reading a checkpoint or the journal says.
+CK_OK :: 0;
+CK_EMPTY :: 1;        // nothing there
+CK_TORN :: 2;         // cut short, changed, or not a checkpoint: its checksum or magic is wrong
+CK_SCHEMA :: 3;       // another version of this format
+CK_BUILD :: 4;        // another engine, content, rules or profile
+CK_FENCED :: 5;       // written by an owner older than the fence
+CK_ROOM :: 6;         // the buffer can't hold it
+
+CheckpointRead :: struct {
+  status: int;
+  owner: int; tick: int; seed: int; initial: int; cursor: int;   // cursor: journal events before `tick`
+  state: int; words: int;   // where the realm's state starts in the buffer, and its length
+}
+// book:end checkpoint-format
+
+ck_sum :: (b: [] int) -> int #effects(all) {
+  h := 2166136261;
+  for i: 0..<b.count { h = replay_mix_wide(h, b[i]); }
+  return h;
+}
+// Which slot the next checkpoint goes to: the one not holding the newest.
+checkpoint_slot :: (count: int) -> int #effects(all) { return count % 2; }
+
+// book:begin checkpoint-write
+// Writes a checkpoint of session `s` at its current step (a step boundary: no event for this step
+// taken yet) with the realm's `state`, into `out`. Returns the words written, or 0 if `out` is too
+// small. The checksum is the last word: a write cut before it reads as torn.
+checkpoint_write :: (out: [] int, pins: CheckpointPins, owner: int, s: ReplaySession, state: [] int) -> int #effects(all) {
+  n := CK_HEADER + REPLAY_SOURCES * CK_CHANNEL + state.count + 1;
+  if out.count < n { return 0; }
+  h := [CK_HEADER] int.[CHECKPOINT_MAGIC, CHECKPOINT_SCHEMA, pins.engine, pins.content, pins.rules, pins.profile, owner,
+    replay_tick(s), replay_seed(s), s.n[REPLAY_INITIAL], replay_events(s), state.count];
+  for i: 0..<CK_HEADER { out[i] = h[i]; }
+  k := CK_HEADER;
+  for c: 0..<REPLAY_SOURCES {
+    ch := s.channels[c];
+    out[k] = ch.epoch; out[k + 1] = ch.last; out[k + 2] = ch.asked; out[k + 3] = ch.answered; k += CK_CHANNEL;
+  }
+  for i: 0..<state.count { out[k + i] = state[i]; }
+  out[n - 1] = ck_sum(out[0..<n - 1]);
+  return n;
+}
+// book:end checkpoint-write
+
+// book:begin checkpoint-read
+// Reads the checkpoint in the first `n` words of `b`, as this build (`pins`) and with the owners'
+// fence (the newest owner generation the realm's directory has issued).
+checkpoint_read :: (b: [] int, n: int, pins: CheckpointPins, fence: int) -> CheckpointRead #effects(all) {
+  out: CheckpointRead;
+  if n <= 0 { out.status = CK_EMPTY; return out; }
+  if n > b.count || n < CK_HEADER + REPLAY_SOURCES * CK_CHANNEL + 1 || b[0] != CHECKPOINT_MAGIC { out.status = CK_TORN; return out; }
+  words := b[11];
+  if n != CK_HEADER + REPLAY_SOURCES * CK_CHANNEL + words + 1 || b[n - 1] != ck_sum(b[0..<n - 1]) { out.status = CK_TORN; return out; }
+  if b[1] != CHECKPOINT_SCHEMA { out.status = CK_SCHEMA; return out; }
+  if b[2] != pins.engine || b[3] != pins.content || b[4] != pins.rules || b[5] != pins.profile { out.status = CK_BUILD; return out; }
+  if b[6] < fence { out.status = CK_FENCED; return out; }
+  return CheckpointRead.{status = CK_OK, owner = b[6], tick = b[7], seed = b[8], initial = b[9], cursor = b[10],
+    state = CK_HEADER + REPLAY_SOURCES * CK_CHANNEL, words = words};
+}
+// Of two slots' reads, the one to restore: the newer whole one; 0 or 1, or -1 if neither is.
+checkpoint_pick :: (a: CheckpointRead, b: CheckpointRead) -> int #effects(all) {
+  if a.status != CK_OK && b.status != CK_OK { return -1; }
+  if a.status != CK_OK { return 1; }
+  if b.status != CK_OK { return 0; }
+  return ifx b.tick > a.tick then 1 else 0;
+}
+// book:end checkpoint-read
+
+// book:begin journal
+// A journal entry: an accepted event, or a step's digest, with the owner that wrote it and a
+// checksum. JOURNAL_ENTRY words each.
+JOURNAL_EVENT :: 1;
+JOURNAL_MARK :: 2;
+JOURNAL_ENTRY :: 18;   // kind, owner, tick, source, request, epoch, ten words, the mark, the checksum
+
+journal_put :: (j: [] int, at: int, kind: int, owner: int, e: ReplayEvent, mark: int) -> int #effects(all) {
+  if at < 0 || at + JOURNAL_ENTRY > j.count { return 0; }
+  j[at] = kind; j[at + 1] = owner; j[at + 2] = e.tick; j[at + 3] = e.source; j[at + 4] = e.request; j[at + 5] = e.epoch;
+  for w: 0..<REPLAY_WORDS { j[at + 6 + w] = e.words[w]; }
+  j[at + 16] = mark;
+  j[at + 17] = ck_sum(j[at..<at + 17]);
+  return JOURNAL_ENTRY;
+}
+// Appends an accepted event at word `at`: the words written, 0 if no room.
+journal_event :: (j: [] int, at: int, owner: int, e: ReplayEvent) -> int #effects(all) { return journal_put(j, at, JOURNAL_EVENT, owner, e, 0); }
+// Appends step `tick`'s digest.
+journal_mark :: (j: [] int, at: int, owner: int, tick: int, digest: int) -> int #effects(all) { return journal_put(j, at, JOURNAL_MARK, owner, ReplayEvent.{tick = tick}, digest); }
+
+JournalRead :: struct { events: int; marks: int; fenced: int; torn: bool; }
+// Reads the first `n` words of journal `j` into session `s` (its events and marks, from the
+// start), for owners at or above `fence`. It stops at the first entry cut short or changed: what
+// follows a torn entry was never published. An entry from an owner older than one already read
+// is a write after the realm moved on, and is dropped.
+journal_read :: (j: [] int, n: int, fence: int, s: ReplaySession) -> JournalRead #effects(all) {
+  out: JournalRead;
+  newest := fence;
+  at := 0;
+  while at + JOURNAL_ENTRY <= n && at + JOURNAL_ENTRY <= j.count {
+    if j[at + 17] != ck_sum(j[at..<at + 17]) || (j[at] != JOURNAL_EVENT && j[at] != JOURNAL_MARK) { out.torn = true; return out; }
+    owner := j[at + 1];
+    if owner < newest { out.fenced += 1; at += JOURNAL_ENTRY; continue; }
+    newest = owner;
+    if j[at] == JOURNAL_EVENT {
+      if out.events >= s.events.count { out.torn = true; return out; }
+      e := ReplayEvent.{tick = j[at + 2], source = j[at + 3], request = j[at + 4], epoch = j[at + 5]};
+      for w: 0..<REPLAY_WORDS { e.words[w] = j[at + 6 + w]; }
+      s.events[out.events] = e; out.events += 1;
+    } else {
+      t := j[at + 2];
+      if t < 0 || t >= s.marks.count { out.torn = true; return out; }
+      s.marks[t] = j[at + 16];
+      if t >= out.marks { out.marks = t + 1; }   // the highest step marked, plus one
+    }
+    at += JOURNAL_ENTRY;
+  }
+  if at < n { out.torn = true; }
+  return out;
+}
+// book:end journal
+
+// book:begin restore
+// Sets session `s` (whose events and marks journal_read filled) to replay from checkpoint `r`:
+// the gate's channels as the checkpoint has them, the step, the first event to take, the seed.
+// Every step it runs from here is compared with the journal's mark for it.
+checkpoint_resume :: (s: ReplaySession, b: [] int, r: CheckpointRead, j: JournalRead) -> bool #effects(all) {
+  if r.status != CK_OK || r.cursor > j.events || s.n.count < REPLAY_COUNTERS || s.channels.count < REPLAY_SOURCES { return false; }
+  for c: 0..<REPLAY_SOURCES {
+    k := CK_HEADER + c * CK_CHANNEL;
+    s.channels[c] = ReplayChannel.{epoch = b[k], last = b[k + 1], asked = b[k + 2], answered = b[k + 3]};
+  }
+  for i: REPLAY_DIVERGED..<REPLAY_COUNTERS { s.n[i] = 0; }   // the counters below are all set here
+  s.n[REPLAY_MODE] = REPLAY_PLAYING;
+  s.n[REPLAY_TICK] = r.tick;
+  s.n[REPLAY_EVENTS] = j.events;
+  s.n[REPLAY_CURSOR] = r.cursor;
+  s.n[REPLAY_INITIAL] = r.initial;
+  s.n[REPLAY_SEED] = r.seed;
+  s.n[REPLAY_MARKS] = j.marks;
+  s.n[REPLAY_SEEN] = 2166136261;
+  return true;
+}
+// An effect in a durable domain outside the realm (XP, a save, a grant): its id from the owner's
+// generation, the step and the effect's index in the step. A replay makes the same id, so the
+// domain, which applies each id once, is not changed twice.
+checkpoint_op :: (owner: int, tick: int, k: int) -> int #effects(all) { return replay_mix_wide(replay_mix_wide(replay_mix_wide(2166136261, owner), tick), k); }
+// book:end restore
+
+// ---- checks
+#load "../tests/checkpoint-oracle.coax";
+
+#test "checkpoint: a restore from the newest checkpoint replays every step to the crash, with no model and no second grant" {
+  c: [1] CoCapture; co_capture(c[..], DO_HOSTILE, 3);
+  #assert c[0].taken == 2 && c[0].slot_n[0] > 0 && c[0].slot_n[1] > 0 && c[0].ledger[0].applied > 0;
+  out: [1] CoRestore;
+  co_restore(c[..], out[..], c[0].journal_n, CO_PINS, 3, 3, false, c[0].ledger[..]);
+  #assert out[0].slot == 1 && out[0].tick == 2 * CO_EVERY && out[0].matched && out[0].diverged == -1 && out[0].same_state;
+  #assert out[0].run[0].sent == 0 && out[0].run[0].from_model > 0 && !out[0].journal.torn && out[0].journal.marks == CO_CRASH;
+  // every grant the replay made was one the domain had already applied
+  #assert c[0].ledger[0].repeats == out[0].run[0].from_model && c[0].ledger[0].applied == c[0].ledger[0].n;
+  // a wrong state is found at the checkpoint's own step, though the creature walks back to its
+  // goal by the crash: the per-step digests catch what the end state hides
+  bad: [1] CoRestore; l: [1] CoLedger;
+  co_restore(c[..], bad[..], c[0].journal_n, CO_PINS, 3, 3, true, l[..]);
+  #assert !bad[0].matched && bad[0].diverged == 2 * CO_EVERY;
+}
+
+#test "checkpoint: every word of the format, the journal and a resume" {
+  // a session with its channels, step and counters set by hand
+  bk: [1] ReplayBacking; s := replay_backing(bk[..]);
+  replay_record(s, 52, 51);   // initial 52, seed 51
+  for c: 0..<REPLAY_SOURCES { s.channels[c] = ReplayChannel.{epoch = 10 + c, last = 20 + c, asked = 30 + c, answered = 40 + c}; }
+  s.n[REPLAY_TICK] = 7; s.n[REPLAY_EVENTS] = 2;
+  pins := CheckpointPins.{engine = 61, content = 62, rules = 63, profile = 64};
+  state := [3] int.[5, 6, 7];
+  n := CK_HEADER + REPLAY_SOURCES * CK_CHANNEL + 4;
+  out: [64] int;
+  #assert checkpoint_write(out[0..<n - 1], pins, 9, s, state[..]) == 0 && checkpoint_write(out[0..<n], pins, 9, s, state[..]) == n;
+  want := [CK_HEADER] int.[CHECKPOINT_MAGIC, CHECKPOINT_SCHEMA, 61, 62, 63, 64, 9, 7, 51, 52, 2, 3];
+  for i: 0..<CK_HEADER { #assert out[i] == want[i]; }
+  for c: 0..<REPLAY_SOURCES { for w: 0..<CK_CHANNEL { #assert out[CK_HEADER + c * CK_CHANNEL + w] == 10 * (w + 1) + c; } }
+  for i: 0..<3 { #assert out[n - 4 + i] == 5 + i; }
+  h := 2166136261;
+  for i: 0..<n - 1 { h = replay_mix_wide(h, out[i]); }
+  #assert out[n - 1] == h;
+  r := checkpoint_read(out[0..<n], n, pins, 9);
+  #assert r.status == CK_OK && r.owner == 9 && r.tick == 7 && r.seed == 51 && r.initial == 52 && r.cursor == 2 && r.state == n - 4 && r.words == 3;
+  // a checkpoint claiming more words than its buffer holds is torn, not read past
+  #assert checkpoint_read(out[0..<n - 1], n, pins, 0).status == CK_TORN;
+  // an empty state is the smallest checkpoint
+  e: [64] int; m := checkpoint_write(e[..], pins, 9, s, state[0..<0]);
+  #assert m == CK_HEADER + REPLAY_SOURCES * CK_CHANNEL + 1 && checkpoint_read(e[0..<m], m, pins, 9).status == CK_OK && checkpoint_read(e[..], m - 1, pins, 9).status == CK_TORN;
+  // picking: a whole one over a torn one, the newer of two, the first of equals
+  ok7 := CheckpointRead.{status = CK_OK, tick = 7}; ok9 := CheckpointRead.{status = CK_OK, tick = 9}; torn := CheckpointRead.{status = CK_TORN, tick = 99};
+  #assert checkpoint_pick(torn, ok7) == 1 && checkpoint_pick(ok7, torn) == 0 && checkpoint_pick(ok9, ok7) == 0 && checkpoint_pick(ok7, ok9) == 1 && checkpoint_pick(ok7, ok7) == 0;
+  // a journal entry, word by word
+  j: [64] int;
+  ev := ReplayEvent.{tick = 3, source = REPLAY_MODEL, request = 4, epoch = 5};
+  for w: 0..<REPLAY_WORDS { ev.words[w] = 100 + w; }
+  #assert journal_event(j[..], 0, 8, ev) == JOURNAL_ENTRY && journal_mark(j[..], JOURNAL_ENTRY, 8, 6, 777) == JOURNAL_ENTRY;
+  #assert j[0] == JOURNAL_EVENT && j[1] == 8 && j[2] == 3 && j[3] == REPLAY_MODEL && j[4] == 4 && j[5] == 5 && j[6] == 100 && j[15] == 109 && j[16] == 0;
+  #assert j[JOURNAL_ENTRY] == JOURNAL_MARK && j[JOURNAL_ENTRY + 2] == 6 && j[JOURNAL_ENTRY + 16] == 777;
+  hj := 2166136261;
+  for i: 0..<17 { hj = replay_mix_wide(hj, j[i]); }
+  #assert j[17] == hj && journal_event(j[..], -1, 8, ev) == 0 && journal_event(j[..], 64 - JOURNAL_ENTRY + 1, 8, ev) == 0 && journal_event(j[..], 64 - JOURNAL_ENTRY, 8, ev) == JOURNAL_ENTRY;
+  // read back: the event's every field and the mark; an exact fit; past the buffer is not read
+  bk2: [1] ReplayBacking; s2 := replay_backing(bk2[..]);
+  jr := journal_read(j[..], 2 * JOURNAL_ENTRY, 0, s2);
+  #assert jr.events == 1 && jr.marks == 7 && !jr.torn && s2.events[0].tick == 3 && s2.events[0].source == REPLAY_MODEL && s2.events[0].request == 4 && s2.events[0].epoch == 5 && s2.events[0].words[9] == 109 && s2.marks[6] == 777;
+  #assert journal_read(j[0..<JOURNAL_ENTRY], 2 * JOURNAL_ENTRY, 0, s2).torn;
+  exact := journal_read(j[0..<JOURNAL_ENTRY], JOURNAL_ENTRY, 0, s2);
+  #assert exact.events == 1 && !exact.torn && checkpoint_read(out[..], 1, pins, 0).status == CK_TORN;
+  // a mark for an earlier step after a later one keeps the count at the later
+  #assert journal_mark(j[..], 2 * JOURNAL_ENTRY, 8, 2, 5) == JOURNAL_ENTRY && journal_read(j[..], 3 * JOURNAL_ENTRY, 0, s2).marks == 7;
+  // a mark out of the session's range, and more events than the session holds, are torn
+  bad: [64] int;
+  #assert journal_mark(bad[..], 0, 8, -1, 5) == JOURNAL_ENTRY && journal_read(bad[..], JOURNAL_ENTRY, 0, s2).torn;
+  #assert journal_mark(bad[..], 0, 8, s2.marks.count, 5) == JOURNAL_ENTRY && journal_read(bad[..], JOURNAL_ENTRY, 0, s2).torn;
+  #assert journal_mark(bad[..], 0, 8, s2.marks.count - 1, 5) == JOURNAL_ENTRY && !journal_read(bad[..], JOURNAL_ENTRY, 0, s2).torn;
+  one_ev: [1] ReplayEvent; one_mk: [8] int; one_ch: [REPLAY_SOURCES] ReplayChannel; one_n: [REPLAY_COUNTERS] int;
+  small := ReplaySession.{events = one_ev[..], marks = one_mk[..], channels = one_ch[..], n = one_n[..]};
+  two: [64] int;
+  #assert journal_event(two[..], 0, 8, ev) == JOURNAL_ENTRY && journal_event(two[..], JOURNAL_ENTRY, 8, ev) == JOURNAL_ENTRY;
+  #assert !journal_read(two[..], JOURNAL_ENTRY, 0, small).torn && journal_read(two[..], 2 * JOURNAL_ENTRY, 0, small).torn;
+  // resume: every counter but the restored ones cleared, the channels as written
+  bk3: [1] ReplayBacking; s3 := replay_backing(bk3[..]);
+  for i: 0..<REPLAY_COUNTERS { s3.n[i] = 99; }
+  jr = journal_read(j[..], 2 * JOURNAL_ENTRY, 0, s3);
+  #assert checkpoint_resume(s3, out[..], r, JournalRead.{events = 2, marks = 7});
+  #assert s3.n[REPLAY_MODE] == REPLAY_PLAYING && s3.n[REPLAY_TICK] == 7 && s3.n[REPLAY_EVENTS] == 2 && s3.n[REPLAY_CURSOR] == 2 && s3.n[REPLAY_INITIAL] == 52;
+  #assert s3.n[REPLAY_SEED] == 51 && s3.n[REPLAY_MARKS] == 7 && s3.n[REPLAY_SEEN] == 2166136261 && s3.n[0] == REPLAY_PLAYING && s3.n[REPLAY_DIVERGED] == 0 && s3.n[REPLAY_COUNTERS - 1] == 0;
+  for c: 0..<REPLAY_SOURCES { #assert s3.channels[c].epoch == 10 + c && s3.channels[c].last == 20 + c && s3.channels[c].asked == 30 + c && s3.channels[c].answered == 40 + c; }
+  // and each reason it refuses
+  #assert !checkpoint_resume(s3, out[..], torn, jr) && !checkpoint_resume(s3, out[..], r, JournalRead.{events = 1});
+  short_n: [REPLAY_COUNTERS - 1] int; short_ch: [REPLAY_SOURCES - 1] ReplayChannel;
+  #assert !checkpoint_resume(ReplaySession.{events = s3.events, marks = s3.marks, channels = s3.channels, n = short_n[..]}, out[..], r, JournalRead.{events = 2});
+  #assert !checkpoint_resume(ReplaySession.{events = s3.events, marks = s3.marks, channels = short_ch[..], n = s3.n}, out[..], r, JournalRead.{events = 2});
+  // an outside effect's id, from its owner, step and index
+  #assert checkpoint_op(1, 2, 3) == replay_mix_wide(replay_mix_wide(replay_mix_wide(2166136261, 1), 2), 3);
+}
+
+#test "checkpoint: a torn newest checkpoint falls back to the older one and a longer journal" {
+  for cut: 0..<3 {
+    c: [1] CoCapture; co_capture(c[..], DO_SLOW, 0);
+    if cut == 0 { c[0].slot_n[1] -= 1; }                          // the last word never written
+    if cut == 1 { c[0].slots[1][CK_HEADER + REPLAY_SOURCES * CK_CHANNEL + 3] += 1; }   // a state word changed
+    if cut == 2 { c[0].slots[1][0] = 0; }                          // not a checkpoint
+    #assert checkpoint_read(c[0].slots[1][..], c[0].slot_n[1], CO_PINS, 0).status == CK_TORN;
+    out: [1] CoRestore; l: [1] CoLedger;
+    co_restore(c[..], out[..], c[0].journal_n, CO_PINS, 0, 0, false, l[..]);
+    #assert out[0].slot == 0 && out[0].tick == CO_EVERY && out[0].matched && out[0].same_state;
+  }
+  // neither whole: nothing to restore, and why
+  c: [1] CoCapture; co_capture(c[..], DO_PROMPT, 0);
+  c[0].slots[0][5] += 1; c[0].slot_n[1] = 0;
+  out: [1] CoRestore; l: [1] CoLedger;
+  co_restore(c[..], out[..], c[0].journal_n, CO_PINS, 0, 0, false, l[..]);
+  #assert out[0].slot == -1 && out[0].status == CK_TORN;
+  #assert checkpoint_read(c[0].slots[1][..], 0, CO_PINS, 0).status == CK_EMPTY && checkpoint_read(c[0].slots[1][..], -1, CO_PINS, 0).status == CK_EMPTY;
+  #assert checkpoint_read(c[0].slots[0][..], CO_SLOT + 1, CO_PINS, 0).status == CK_TORN && checkpoint_read(c[0].slots[0][..], CK_HEADER, CO_PINS, 0).status == CK_TORN;
+}
+
+#test "checkpoint: a journal cut mid-entry restores to its last whole step" {
+  c: [1] CoCapture; co_capture(c[..], DO_HOSTILE, 0);
+  n := c[0].journal_n - JOURNAL_ENTRY - 5;   // the last mark gone, and five words of the entry before it
+  out: [1] CoRestore; l: [1] CoLedger;
+  co_restore(c[..], out[..], n, CO_PINS, 0, 0, false, l[..]);
+  #assert out[0].journal.torn && out[0].journal.marks < CO_CRASH && out[0].journal.marks > 2 * CO_EVERY && out[0].matched;
+  // a changed word inside an entry stops the read there
+  c[0].journal[JOURNAL_ENTRY * 3 + 7] += 1;
+  b: [1] CoRestore;
+  co_restore(c[..], b[..], c[0].journal_n, CO_PINS, 0, 0, false, l[..]);
+  #assert b[0].journal.torn && b[0].journal.events + b[0].journal.marks <= 3 && !b[0].matched;
+  // an entry of an unknown kind is not one
+  j: [JOURNAL_ENTRY] int; e: ReplayEvent;
+  #assert journal_put(j[..], 0, 9, 0, e, 0) == JOURNAL_ENTRY && journal_put(j[..], 1, JOURNAL_EVENT, 0, e, 0) == 0 && journal_put(j[..], -1, JOURNAL_EVENT, 0, e, 0) == 0;
+  bk: [1] ReplayBacking; s := replay_backing(bk[..]);
+  #assert journal_read(j[..], JOURNAL_ENTRY, 0, s).torn;
+}
+
+#test "checkpoint: another schema, build or profile, and an old owner, are refused" {
+  c: [1] CoCapture; co_capture(c[..], DO_PROMPT, 2);
+  b := c[0].slots[1][..]; n := c[0].slot_n[1];
+  #assert checkpoint_read(b, n, CO_PINS, 2).status == CK_OK && checkpoint_read(b, n, CO_PINS, 2).owner == 2 && checkpoint_read(b, n, CO_PINS, 2).tick == 2 * CO_EVERY;
+  for k: 0..<4 {
+    p := CO_PINS;
+    if k == 0 { p.engine += 1; } if k == 1 { p.content += 1; } if k == 2 { p.rules += 1; } if k == 3 { p.profile += 1; }
+    #assert checkpoint_read(b, n, p, 2).status == CK_BUILD;
+  }
+  #assert checkpoint_read(b, n, CO_PINS, 3).status == CK_FENCED;
+  b[1] = CHECKPOINT_SCHEMA + 1; b[n - 1] = ck_sum(b[0..<n - 1]);
+  #assert checkpoint_read(b, n, CO_PINS, 2).status == CK_SCHEMA;
+  out: [1] CoRestore; l: [1] CoLedger;
+  co_restore(c[..], out[..], c[0].journal_n, CO_PINS, 3, 3, false, l[..]);
+  #assert out[0].slot == -1 && out[0].status == CK_FENCED;
+  bad: [4] int;
+  #assert checkpoint_write(bad[..], CO_PINS, 0, do_session(c[0].run[..]), bad[0..<0]) == 0;
+}
+
+#test "checkpoint: journal entries an old owner writes after a newer owner's are dropped" {
+  bk: [1] ReplayBacking; s := replay_backing(bk[..]);
+  j: [JOURNAL_ENTRY * 6] int; at := 0;
+  e := ReplayEvent.{tick = 0, source = REPLAY_NETWORK, request = 1};
+  at += journal_mark(j[..], at, 1, 0, 100);
+  at += journal_event(j[..], at, 2, e);          // the new owner
+  at += journal_mark(j[..], at, 2, 1, 101);
+  at += journal_mark(j[..], at, 1, 2, 999);      // the old owner, still writing
+  at += journal_mark(j[..], at, 2, 2, 102);
+  r := journal_read(j[..], at, 0, s);
+  #assert !r.torn && r.fenced == 1 && r.events == 1 && r.marks == 3 && bk[0].marks[2] == 102 && bk[0].marks[0] == 100;
+  // from a fence of 2, the first owner's entries are dropped too
+  r2 := journal_read(j[..], at, 2, s);
+  #assert r2.fenced == 2 && r2.marks == 3;
+  #assert checkpoint_op(1, 5, 0) == checkpoint_op(1, 5, 0) && checkpoint_op(1, 5, 0) != checkpoint_op(2, 5, 0);
+  #assert checkpoint_op(1, 5, 0) != checkpoint_op(1, 6, 0) && checkpoint_op(1, 5, 0) != checkpoint_op(1, 5, 1);
+  #assert checkpoint_slot(0) == 0 && checkpoint_slot(1) == 1 && checkpoint_slot(2) == 0;
+}

@@ -1,7 +1,7 @@
 // Bounded authored dialogue. Text is display data, never a simulation command.
 #module "aethyr.talk.character";
 #authority;
-#load "../ids.coax";
+#load "../core/ids.coax";
 #load "../../coax/lib/nostr/json.coax";
 
 // book:begin character

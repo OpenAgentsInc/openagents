@@ -45,7 +45,7 @@
 // Creative Commons Attribution 4.0 International License, available at
 // https://creativecommons.org/licenses/by/4.0/legalcode.
 #load "shared/fivebar.coax";
-#load "../aethyr/walk-substep-policy.coax" as xtravel;
+#load "../aethyr/move/walk-substep-policy.coax" as xtravel;
 #load "../rules/srd/press-budget.coax";
 #load "shared/class-kit.coax";   // the class kits, their aim and sounds, shared with Everglade II and its room (#13058)
 #load "client/class-look.coax";  // their looks, the spells' colours and the bar's boxes, shared with Everglade II
@@ -58,7 +58,7 @@
 #load "../verse/experimental-village.coax" as xvillage;   // its walls, for what a plate's sight crosses
 #load "../aethyr/action/action.coax" as act;
 #load "../aethyr/action/sensor.coax" as sense;
-#load "../aethyr/query.coax" as aq;
+#load "../aethyr/physics/query.coax" as aq;
 #load "../aethyr/cam/attention.coax" as attn;   // the cone spell's monster is the shared attention answer (#12994)
 #load "../aethyr/cam/mouselook.coax" as xlook;   // the mouselook camera, whose reticle is the bow's
 #load "../aethyr/action/floats.coax" as fl;   // the numbers over whoever a blow struck, shared with Everglade II (#13104)
@@ -155,7 +155,7 @@ XcCombat :: struct {
   own_kit: bool;                    // the page has one class of its own and no CLASSES picker (the Archery Range)
   bow_hits: int; bow_misses: int; bow_far: int;
 }
-XC_TICK :: 64.0;           // aethyr/loop.coax: ticks a second
+XC_TICK :: 64.0;           // aethyr/core/loop.coax: ticks a second
 XC_BLADE_R :: 0.12;        // m: a blade's sensor radius
 XC_BLADE_TIP :: [5]f32.[1.0,1.25,0.9,0.6,0.6];   // m from the weapon's origin to its tip (CC_KITS order; the bow never swings)
 XC_WINDOW :: 6;            // ticks the sensor is open either side of the swing's impact
@@ -396,7 +396,7 @@ xc_stops_step :: (s: [] EgZone) {
 xc_aim :: (s: [] EgZone, a: FbAb) -> XcAim {
   cr := s[0].creator[..]; h := cr[0].hostiles[..];
   m := xd_reach(s, a, xc_aim_kind(s, a));
-  m.fx = sin(cr[0].player_face); m.fz = cos(cr[0].player_face);   // aethyr/walk.coax: you face atan2(x, z)
+  m.fx = sin(cr[0].player_face); m.fz = cos(cr[0].player_face);   // aethyr/move/walk.coax: you face atan2(x, z)
   if m.kind == XC_AIM_SELF { return m; }
   best := 1e9f32;
   for i: 0..<XC_FOES {
@@ -1400,7 +1400,7 @@ xc_look :: (s: [] EgZone, a: FbAb, foe: int, ax: f32, az: f32) {
 // ---- the screen: where a point in the world falls (charactercreator.coax camera's uniforms)
 XcAt :: struct { x: f32; y: f32; ok: bool; }
 // Whether a body standing at (bx, foot, bz), tall m, shows from the camera: the engine's visibility
-// service (aethyr/visibility.coax, through aethyr/ui/hud-sight.coax) with the meadow's heights under the
+// service (aethyr/physics/visibility.coax, through aethyr/ui/hud-sight.coax) with the meadow's heights under the
 // line and the village's, castle's and dungeon's walls near it as boxes.
 // The walls near the line from the eye to (bx, bz), lifted to world heights, and the meadow under it.
 XcSightIn :: struct { eye: [3] f32; near: [1] xvillage.EvNear; land: [cc.HUD_SIGHT_LAND] f32; nl: int; }

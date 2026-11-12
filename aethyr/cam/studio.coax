@@ -7,8 +7,8 @@
 //
 //   coax/bin/coax test aethyr/cam/studio.coax --library
 
-#load "../camera.coax";
-#load "../points.coax";
+#load "camera.coax";
+#load "../core/points.coax";
 #load "handback.coax";
 
 // 0 to 1, eased in and out (smoothstep).

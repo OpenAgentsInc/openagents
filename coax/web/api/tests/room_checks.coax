@@ -1,4 +1,4 @@
-#load "../../../../aethyr/ids.coax";
+#load "../../../../aethyr/core/ids.coax";
 // The rooms' API checks, run by test.sh after test.py against the same API and database:
 //   admission  when the rooms are full (#12796; migrations/0126_room_admission.sql, player.c room_ticket)
 //   chat       Everglade room chat's moderation (migrations/0121_room_chat_moderation.sql)

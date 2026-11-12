@@ -1,5 +1,5 @@
 // Source-order leaf partitioning. No simplification, reordering or runtime LOD.
-#load "../../points.coax";
+#load "../../core/points.coax";
 #authority;
 CLUSTER_VERTICES :: 64;
 CLUSTER_TRIANGLES :: 124;

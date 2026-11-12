@@ -1,0 +1,126 @@
+// Version 2 frame-input adapter. Player and the original C controller API
+// retain their layout; pending controls belong to this explicit sidecar.
+#module "aethyr.walk_control";
+#load "walk.coax" as walk;
+#load "../core/input.coax";
+#load "../core/loop.coax";
+#load "flight.coax";
+#load "../physics/collision-profiles.coax" as realm_collision;
+WalkControlV2 :: struct {input:InputBuffer;heading:f32;have_heading:bool;}
+
+walk_control_feed :: (c:[]WalkControlV2,key_x:f32,key_y:f32,pad_x:f32,pad_y:f32,run:bool,jump:bool,look_x:f32,look_y:f32) {
+  x:=input_axis(key_x);y:=input_axis(key_y);
+  px:=input_axis(pad_x);py:=input_axis(pad_y);pad:=Intent.{mended=px.mended+py.mended};
+  if input_finite(pad_x) && input_finite(pad_y) && sqrt(px.value*px.value+py.value*py.value)>INPUT_DEAD_ZONE {pad.move_x=px.value;pad.move_y=py.value;}
+  i:=Intent.{move_x=x.value,move_y=y.value,run=run,jump=jump,mended=x.mended+y.mended+pad.mended};
+  if pad.move_x!=0 || pad.move_y!=0 {i.move_x=pad.move_x;i.move_y=pad.move_y;}
+  i=input_amounts(i,look_x,look_y,0);c[0].input=input_feed(c[0].input,i);
+}
+// An absolute camera heading is a level, distinct from relative look
+// amounts. Keep the latest level until a physical step consumes it.
+walk_control_heading :: (c:[]WalkControlV2,p:walk.Player,heading:f32) {
+  if !input_finite(heading) {c[0].input.mended+=1;return;}
+  c[0].heading=heading;c[0].have_heading=true;
+}
+walk_control_tap :: (c:[]WalkControlV2) {held:=c[0].input.jump.held;c[0].input.jump=input_press(c[0].input.jump);c[0].input.jump.held=held;}
+walk_control_flying :: (c:[]WalkControlV2,p:walk.Player,key_x:f32,key_y:f32,pad_x:f32,pad_y:f32,run:bool,jump:bool,taps:int,wings:bool,dive:bool)->walk.Player {
+  before:=c[0].input.jump.pressed;
+  walk_control_feed(c,key_x,key_y,pad_x,pad_y,run,jump,0,0);
+  if taps>0 && c[0].input.jump.pressed==before {walk_control_tap(c);}
+  next:=p;next.wings=wings;next.dive_held=dive;return next;
+}
+walk_control_zoom :: (c:[]WalkControlV2,amount:f32) {
+  i:=input_amounts(Intent.{},0,0,amount);c[0].input.zoom+=i.zoom;c[0].input.mended+=i.mended;
+}
+walk_control_advance :: (c:[]WalkControlV2,w:walk.World,p:walk.Player,frame:f32)->walk.AdvanceTrace {
+  schedule:=walk.walk_schedule(p.clock,frame);out:=walk.AdvanceTrace.{player=p};
+  if !schedule.ok {return walk.advance_traced(w,p,frame);}
+  next:=p;next.clock=schedule.clock;c[0].input=input_frame(c[0].input,schedule.count);out.count=schedule.count;
+  for step:0..<schedule.count {
+    next=walk_control_once(c,w,next);out.targets[step]=walk.walk_target(next);
+  }
+  next.clock=loop_ran(next.clock);out.player=next;return out;
+}
+walk_control_once :: (c:[]WalkControlV2,w:walk.World,p:walk.Player)->walk.Player {
+  sample:=input_sample(c[0].input);c[0].input=sample.buffer;a:=sample.actions;next:=p;
+  if c[0].have_heading {next.theta=c[0].heading;c[0].have_heading=false;}
+  next=walk.walk_input(next,0,0,a.move_x,a.move_y,a.run,false,a.look_x,a.look_y);
+  if a.jump {next.jumps=input_press(next.jumps);}
+  next.jump_held=c[0].input.jump.held;next.jumps.held=next.jump_held;
+  next=walk.walk_zoom(next,a.zoom);return walk.history_step(w,next);
+}
+walk_control_realm :: (c:[]WalkControlV2,p:walk.Player,frame:f32,bodies:[]f32,walls:[]f32,floors:[]f32,realm:string)->walk.AdvanceTrace {
+  declaration:=realm_collision.collision_profile_lookup(realm);
+  if declaration.status!=realm_collision.CollisionProfileStatus.ok {return walk.walk_advance_in_realm_traced(p,frame,bodies,walls,floors,realm);}
+  world:=walk.World.{bodies=bodies,walls=walls,floors=floors,collision=declaration.profile,flight=flight_profile_lookup(realm)};
+  return walk_control_advance(c,world,p,frame);
+}
+
+#test "look and a short jump wait for the first physical step" {
+  c:[1]WalkControlV2;p:=walk.walk_place(0,0,0,0);w:walk.World;
+  walk_control_feed(c[..],0,1,0,0,true,true,0.3,0.1);
+  short:=walk_control_advance(c[..],w,p,0.001).player;
+  #assert short.theta==p.theta && short.phi==p.phi && short.jumps.taken==0 && c[0].input.jump.waiting==1;
+  walk_control_feed(c[..],0,1,0,0,true,false,0,0);
+  moved:=walk_control_advance(c[..],w,short,0.015).player;
+  #assert abs(walk.wrap_angle(moved.theta-p.theta)-0.3)<0.000001;
+  #assert moved.jumps.taken==1 && moved.vel.y>0 && c[0].input.jump.waiting==0 && !moved.jumps.held && !moved.jump_held;
+}
+#test "three steps split look and zoom and agree with three individual samples" {
+  a:[1]WalkControlV2;b:[1]WalkControlV2;p:=walk.walk_place(0,0,0,0);q:=p;w:walk.World;
+  walk_control_feed(a[..],0,1,0,0,true,true,0.375,0);walk_control_zoom(a[..],-0.375);
+  trace:=walk_control_advance(a[..],w,p,3*walk.STEP);p=trace.player;
+  #assert trace.count==3;
+  for i:0..<3 {
+    walk_control_feed(b[..],0,1,0,0,true,i==0,0.125,0);walk_control_zoom(b[..],-0.125);
+    q=walk_control_advance(b[..],w,q,walk.STEP).player;
+    #assert trace.targets[i].feet.x==q.pos.x && trace.targets[i].feet.y==q.pos.y && trace.targets[i].feet.z==q.pos.z;
+  }
+  #assert p.pos.x==q.pos.x && p.pos.z==q.pos.z && p.vel.y==q.vel.y && p.theta==q.theta && p.dist==q.dist && p.max_dist==q.max_dist && p.max_dist<walk.CAM_MAX;
+  #assert p.jumps.taken==1 && q.jumps.taken==1 && a[0].input.look_x==0 && a[0].input.zoom==0;
+}
+#test "absolute heading levels replace across zero-step frames" {
+  c:[1]WalkControlV2;p:=walk.walk_place(0,0,0,0);
+  walk_control_heading(c[..],p,p.theta+0.2);walk_control_heading(c[..],p,p.theta+0.3);
+  #assert c[0].input.look_x==0 && c[0].heading==p.theta+0.3 && c[0].have_heading;
+  w:walk.World;q:=walk_control_advance(c[..],w,p,walk.STEP).player;
+  #assert q.theta==walk.wrap_angle(p.theta+0.3) && !c[0].have_heading;
+}
+
+#test "flying taps retain their held level and invalid amounts are counted" {
+  c:[1]WalkControlV2;p:=walk.walk_place(0,0,0,0);
+  p=walk_control_flying(c[..],p,0,1,0,0,true,false,1,true,true);
+  #assert c[0].input.jump.waiting==1 && !c[0].input.jump.held && p.wings && p.dive_held && c[0].input.move_y==1 && c[0].input.run;
+  p=walk_control_flying(c[..],p,0,1,0,0,true,true,1,false,false);
+  #assert c[0].input.jump.waiting==2 && c[0].input.jump.held && !p.wings && !p.dive_held;
+  p=walk_control_flying(c[..],p,0,1,0,0,true,true,1,true,false);
+  #assert c[0].input.jump.waiting==3;
+  p=walk_control_flying(c[..],p,0,1,0,0,true,true,0,true,false);#assert c[0].input.jump.waiting==3;
+  w:walk.World;p=walk_control_advance(c[..],w,p,walk.STEP).player;#assert p.jump_held && p.jumps.held;
+  released:[1]WalkControlV2;walk_control_tap(released[..]);#assert released[0].input.jump.waiting==1 && !released[0].input.jump.held;
+  bad:=1000000.0f32;walk_control_heading(c[..],p,bad);walk_control_zoom(c[..],bad);
+  #assert c[0].input.mended==2 && c[0].input.zoom==0 && !c[0].have_heading;
+}
+#test "realm and frame refusal leave the pending input owned by its next valid step" {
+  c:[1]WalkControlV2;p:=walk.walk_place(0,0,0,0);empty:[1]f32;
+  walk_control_feed(c[..],0,1,0,0,true,true,0.2,0);
+  refused:=walk_control_realm(c[..],p,walk.STEP,empty[0..<0],empty[0..<0],empty[0..<0],"unknown");
+  #assert refused.count==0 && c[0].input.jump.waiting==1 && c[0].input.look_x==0.2;
+  bad:=p;bad.clock.step_ns=1;w:walk.World;
+  refused=walk_control_advance(c[..],w,bad,walk.STEP);#assert refused.count==0 && c[0].input.jump.waiting==1;
+  admitted:=walk_control_realm(c[..],p,walk.STEP,empty[0..<0],empty[0..<0],empty[0..<0],"garden");
+  #assert admitted.count==1 && admitted.player.jumps.taken==1 && c[0].input.jump.waiting==0;
+}
+#test "keys and stick share the exact dead zone and mended-axis rule" {
+  c:[1]WalkControlV2;
+  walk_control_feed(c[..],2,-2,0.2,0,false,false,0,0);
+  #assert c[0].input.move_x==1 && c[0].input.move_y==-1 && c[0].input.mended==2 && !c[0].input.run;
+  walk_control_feed(c[..],1,1,0.21,-0.4,true,false,0,0);
+  #assert c[0].input.move_x==0.21 && c[0].input.move_y==-0.4 && c[0].input.run;
+  walk_control_feed(c[..],1,1,0.4,0,false,false,0,0);#assert c[0].input.move_x==0.4 && c[0].input.move_y==0;
+  walk_control_feed(c[..],1,1,0,-0.4,false,false,0,0);#assert c[0].input.move_x==0 && c[0].input.move_y==-0.4;
+  bad:=1000000.0f32;
+  walk_control_feed(c[..],bad,0.5,bad,0.9,false,false,bad,bad);
+  #assert c[0].input.move_x==0 && c[0].input.move_y==0.5 && c[0].input.mended==6 && c[0].input.look_x==0 && c[0].input.look_y==0;
+  only_y:[1]WalkControlV2;walk_control_feed(only_y[..],0,0,0,bad,false,false,0,0);#assert only_y[0].input.mended==1;
+}

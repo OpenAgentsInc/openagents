@@ -1,6 +1,6 @@
 // Backpressure and acknowledgment policy for character resume profile 2.
 #authority;
-#load "../ids.coax";
+#load "../core/ids.coax";
 CF_CAP :: 256; CF_EVERY :: 5000; CF_BOUND :: 30000; CF_RESPONSE :: 6000;
 #test "checkpoint flow: gameplay has a strict accepted-capture age bound, including initial and reversed clocks" {
   #assert CF_CAP==256&&CF_EVERY==5000&&CF_BOUND==30000&&CF_RESPONSE==6000;

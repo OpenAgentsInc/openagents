@@ -1576,7 +1576,7 @@ coverage and all 5,040 serialized state words are qualified separately in
 
 ## Aethyr realms step on one fixed clock whatever the frame rate
 
-A realm's simulation advances only in whole fixed steps from `aethyr/loop.coax`'s
+A realm's simulation advances only in whole fixed steps from `aethyr/core/loop.coax`'s
 `FrameClock`, which keeps time in integer nanoseconds. A frame's time is refused
 when it is not a time, clamped to `max_frame_ns`, and at most `max_steps` run;
 the backlog past that is dropped and counted, never carried into later frames.
@@ -1584,13 +1584,13 @@ A step, clamp or cap that is zero or negative, as in a clock read from zeroed
 memory, takes its declared default, so a clock never freezes.
 Drawing mixes the last two steps by `loop_alpha` and never steps physics. So
 the same per-step inputs give the same states, bit for bit, at any frame rate.
-Checks: `aethyr/loop.coax` (step count follows the time fed at 30, 60, 120 and
-144 FPS; mutation 0 survivors) and `aethyr/walk.coax` ("a run and jump has the
+Checks: `aethyr/core/loop.coax` (step count follows the time fed at 30, 60, 120 and
+144 FPS; mutation 0 survivors) and `aethyr/move/walk.coax` ("a run and jump has the
 same states at 30, 60, 120 and 144 FPS", "a jump drawn at 60 FPS has no stutter").
-A realm's flight is the walker's per-step hook (`aethyr/flight.coax`), never
+A realm's flight is the walker's per-step hook (`aethyr/move/flight.coax`), never
 a face's per-frame change to the player's speed, and a realm camera that
 eases (Hecate's Cemetery's free orbit, Ice Cream Man's follow) eases once per
-fixed step; Hecate's is drawn between the last two. Checks: `aethyr/walk.coax` ("a flight of beats,
+fixed step; Hecate's is drawn between the last two. Checks: `aethyr/move/walk.coax` ("a flight of beats,
 climbs, glides and a dive has the same states at 30, 60, 120 and 144 FPS and
 on uneven frames"), `apps/openagents-web/villa.coax` ("Hecate's camera eases
 on the fixed step ..."), `verse/icecream/play.coax` ("the camera steps with the
@@ -1600,18 +1600,18 @@ the same camera every step").
 ## A realm's frame time is what its clock counts, and no frame runs past 8 steps
 
 No realm keeps its own frame clamp or step accumulator. Every fixed step runs
-on an `aethyr/loop.coax` `FrameClock`, and everything a realm moves outside
+on an `aethyr/core/loop.coax` `FrameClock`, and everything a realm moves outside
 its steps (animation, its room's timing) moves by `loop_counted` or
 `loop_counts`: the frame's time after that clock's refusal, clamp and drop.
 The page faces of the haunted house, Fairy Forest, the Garden, Everglade and
 the villa move their realm by `verse_player_counts` and hand the player the
 frame itself. No clock in a realm runs more steps in one frame than the
-realm's declared budget (`steps = 8`, `aethyr/budget.coax`); time past the
-cap is dropped and counted on the clock, never run later. `aethyr/loop.coax`
+realm's declared budget (`steps = 8`, `aethyr/core/budget.coax`); time past the
+cap is dropped and counted on the clock, never run later. `aethyr/core/loop.coax`
 declares no `#export_c` procedure, because realms' libraries load it more
 than once (Everglade's player, debris and river).
-Checks: `aethyr/loop.coax` ("a frame counts for its time, refused, clamped
-and dropped as the steps are"), `aethyr/walk.coax` ("a face's frame time is
+Checks: `aethyr/core/loop.coax` ("a frame counts for its time, refused, clamped
+and dropped as the steps are"), `aethyr/move/walk.coax` ("a face's frame time is
 what the player's clock counts, and runs at most 8 steps"),
 `verse/deadgears/ecs.coax`, `verse/demolish.coax` ("the steps are Aethyr's
 clock's ..."), Hold the Stair ("frames run at most its budget's steps,
@@ -1648,11 +1648,11 @@ end-to-end migration of every world coordinate.
 
 The current avatar renderers consume the interpolated feet for a frame, not
 the last fixed step alone. Realms whose controller steps on a flat floor use
-`feet_in_world` (`aethyr/points.coax`) to apply the terrain or bridge origin
+`feet_in_world` (`aethyr/core/points.coax`) to apply the terrain or bridge origin
 once; that world point is shared by the figure and camera. Everglade's wading
 origin is relative, while its swimming height is already absolute.
 
-The Grid converts feet, eye and aim through `aethyr/space.coax`'s
+The Grid converts feet, eye and aim through `aethyr/core/space.coax`'s
 `world_to_grid` on all three axes. Remote visitors retain and ease their
 admitted height with their horizontal position; drawing never replaces it
 with the floor. Checks: `aethyr/tests/check_drawn_feet.py` observes the nine
@@ -1664,15 +1664,15 @@ replace every legacy vector ABI or establish f64 world coordinates.
 
 ## Each input press is taken by exactly one fixed step
 
-Realm input reaches the simulation through `aethyr/input.coax`. Keys and the
+Realm input reaches the simulation through `aethyr/core/input.coax`. Keys and the
 touch stick map to one `Intent` with one run rule and one dead zone. A press
 (jump, act) is counted when it happens and taken by the first fixed step that
 samples after it: a frame that runs no step keeps it, and a frame that runs
 several gives it to one. At most `INPUT_MAX_WAITING` presses wait; more are
 counted as lost, never kept. Values that aren't numbers, and axes past full
-travel, are refused or clamped and counted. Checks: `aethyr/input.coax`
+travel, are refused or clamped and counted. Checks: `aethyr/core/input.coax`
 ("every press is taken by exactly one step, the one the model names";
-mutation 0 survivors) and `aethyr/walk.coax` ("a press in a frame with no
+mutation 0 survivors) and `aethyr/move/walk.coax` ("a press in a frame with no
 step jumps on the next one, and a frame of two jumps once", "the keyboard
 and the touch stick drive the same session to the same states").
 
@@ -1691,18 +1691,18 @@ Generated C uses distinct records with the integer's size and alignment;
 its new `coax-c-id-lp64-v1` header schema includes the ordering opt-in.
 Existing header schemas retain their identity. Device output refuses E0962.
 
-`aethyr/ids.coax` defines the shared seat, entity, character, item and
+`aethyr/core/ids.coax` defines the shared seat, entity, character, item and
 owner-generation domains. Codec adapters construct/extract them; a decoded
 wrapper grants no liveness or permission. Entity liveness requires a
 canonical `Handle(Entity)` word and the live slot's generation. Handle construction
 refuses out-of-range components. Stable entity ID exhaustion refuses before
 reserving a slot. Checks: `coax/tests/nominal-ids.py`, compiler parser/checker
-checks and zero-survivor mutation gates, and `aethyr/entity.coax`'s decoded
+checks and zero-survivor mutation gates, and `aethyr/core/entity.coax`'s decoded
 handle and exhaustion checks. Store IDs remain session-local.
 
 ## Entities change only at the step's flush
 
-An entity in `aethyr/entity.coax` has a handle (slot and generation) for use
+An entity in `aethyr/core/entity.coax` has a handle (slot and generation) for use
 inside a step and an `EntityId` from the store's counter for saves, the
 network and edits; nothing durable stores a handle. `entity_spawn` and
 `entity_despawn` are commands: `entity_flush` applies the despawns in slot
@@ -1711,14 +1711,14 @@ a step sees the same entities and a spawned entity takes part from the next
 step; despawning a spawn that is still waiting cancels it. A despawn raises
 the slot's generation, so a stale handle never reaches the slot's next
 owner; a slot whose generation would wrap is retired, not reused. Checks:
-`aethyr/entity.coax` ("a store matches a plain list of IDs and values after
+`aethyr/core/entity.coax` ("a store matches a plain list of IDs and values after
 every flush", "despawning while walking: every live entity is visited once,
 and none after its flush", "IDs survive save, load and replay", "despawning
 a waiting spawn cancels it"; mutation 0 survivors).
 
 ## External events enter a step only from the session's record
 
-Every external event a session on `aethyr/replay.coax` accepts (a frame's
+Every external event a session on `aethyr/core/replay.coax` accepts (a frame's
 controls, a model's answer, a network update) is one `ReplayEvent` with its
 apply tick, source, request number, epoch and payload. Only the gate,
 `replay_offer`, accepts one: it refuses a duplicate (a model request already
@@ -1730,7 +1730,7 @@ never the sender's tick. A step applies only what `replay_take` hands it, in
 live play and in replay alike, so a replay consumes the recorded decisions
 and makes no remote call (`replay_ask` says when to send). A record starts
 with the constructed state's digest; `replay_play` refuses a replay from any
-other state. Checks: `aethyr/replay.coax` ("delayed, duplicate and stale
+other state. Checks: `aethyr/core/replay.coax` ("delayed, duplicate and stale
 events: a live session and its replay agree at every step", "a planted fault
 is found at the step it starts"; mutation 0 survivors).
 
@@ -1756,12 +1756,12 @@ without inspecting host-libm bits. See `coax/strict-math.md`.
 
 A step's state must have the same bits natively and in the browser, so a
 step keeps its qualified `math_sin`, `math_cos` and `math_pow` profile from
-`aethyr/math.coax`. Coax's CPU `sin`, `cos`, `exp` and `log` now have their own
+`aethyr/core/math.coax`. Coax's CPU `sin`, `cos`, `exp` and `log` now have their own
 fixed profile (#12917); `tan` and `pow` still use host libm, and GPU math is
 target-specific. A new deterministic implementation does not silently replace
 the engine's recorded arithmetic. Drawing may use either. Random draws
-in a step come from `aethyr/rand.coax` (seed, stream, counter). Checks:
-`aethyr/math.coax` (sampled comparisons use a scaled tolerance with a near-zero
+in a step come from `aethyr/core/rand.coax` (seed, stream, counter). Checks:
+`aethyr/core/math.coax` (sampled comparisons use a scaled tolerance with a near-zero
 floor, not a universal ULP theorem; f64 kernels against pinned Python values;
 mutation 0 survivors) and `coax/web/replay-hosts.coax`
 (the recorded walk's session digests, and the recorded Grid session's digest
@@ -1824,8 +1824,8 @@ input step, avoiding asynchronous frame origins at collisions. Evidence:
 
 ## Every walking realm asks one ground question
 
-The walking controller's floor comes from `aethyr/query.coax`:
-`floor_under` in `aethyr/walk.coax` is one `query_stand` call over the
+The walking controller's floor comes from `aethyr/physics/query.coax`:
+`floor_under` in `aethyr/move/walk.coax` is one `query_stand` call over the
 realm's colliders (flat or heightfield ground, walls as boxes, bodies as
 capsules, and floors). The actual fixed step consumes `query_ground_checked`;
 the trusted `floor_under` adapter retains the permissive query. The step height
@@ -1834,10 +1834,10 @@ can stand on (`QUERY_STEEP`, 55 degrees) and the floor pad
 (`QUERY_FLOOR_PAD`, 0.15 m) are defined there once; the walker reads them
 from it. Every shape is solid, so a ray or sweep that starts inside one hits
 it at t = 0, and ties go to the earlier collider (the ground, then boxes,
-then capsules, by index). Checks: `aethyr/query.coax` (rays, sweeps and
+then capsules, by index). Checks: `aethyr/physics/query.coax` (rays, sweeps and
 overlaps against the containment oracle in `aethyr/tests/query-oracle.coax`;
 root-only mutation 388/388 killed, with separate ground/ray/contact receipts)
-and `aethyr/walk.coax` ("jumping onto, landing on
+and `aethyr/move/walk.coax` ("jumping onto, landing on
 and walking off a ledge is the same in every realm").
 
 ## Terrain and capsule publication carry checked receipts
@@ -1855,12 +1855,12 @@ engine-owned native/Wasm journey and explicit legacy-adapter inventory are in
 `docs/verification/aethyr-query-12989/README.md`; whole-realm migration and
 chapter 70's full wave/force/render implementation are separate scopes.
 
-`aethyr/ground.coax` samples the actual rounded f32 mesh vertices, split on
+`aethyr/physics/ground.coax` samples the actual rounded f32 mesh vertices, split on
 the south-west/north-east diagonal. Exact stored vertices retain their bits.
 Its metre-quantity boundary refuses invalid dimensions, spacing, coordinates,
 sampled heights and gradients. Beyond the mesh, consumers zero the gradient
 on each clamped axis before forming the constant continuation's normal.
-`aethyr/terrain.coax` retains its Ground C layout and delegates sampling to it.
+`aethyr/world/terrain.coax` retains its Ground C layout and delegates sampling to it.
 
 `query.coax` admits at most 16 heightfields. The exact ray and sphere-contact
 helpers have explicit cell budgets; exhaustion is a refusal, never a miss.
@@ -1874,7 +1874,7 @@ Player step publishes only an accepted collision and ground result. Refusal
 preserves its incoming physical/control state and queued jump; its scheduler
 still consumes the assigned time. Diagnostics report the refusal and a
 saturating count. Realm identity admission comes from
-`aethyr/collision-profiles.coax`; unknown identities preserve the Player before
+`aethyr/physics/collision-profiles.coax`; unknown identities preserve the Player before
 advancing its clock. Trusted direct large-move helpers retain their separate
 contract. These endpoint contacts do not imply general CCD or two-way rigid
 impulses. Evidence and independent native scopes are recorded in
@@ -1890,7 +1890,7 @@ current recorded session agrees at every step natively and in Wasm. Evidence:
 
 ## Walking profiles and route followers share the realm's paid steps
 
-`aethyr/walk.coax` owns the walking controller; `aethyr/player.coax` retains
+`aethyr/move/walk.coax` owns the walking controller; `aethyr/move/player.coax` retains
 its published C signatures as thin adapters. Input's legacy `input_runs` C
 export remains; production pages reach one copy. The coupled Dead Gears and
 Player boundary probe explicitly prefixes one duplicate helper copy in a
@@ -1903,7 +1903,7 @@ the paid step interval refuses before accepting new frame time. Nonpositive cloc
 
 `advance_traced` returns temporary chronological post-step targets, including
 unchanged poses on refused physical steps. It adds no persistent Player field
-or Grid digest word. `aethyr/follower.coax` consumes the paid clock and those
+or Grid digest word. `aethyr/move/follower.coax` consumes the paid clock and those
 targets once, checking cursor continuity before integer arithmetic. It owns
 no timer. The Garden and villa's actual faces use this path; restoring a
 Player resets the realm's cursor. These floor-relative adapters apply the
@@ -1948,32 +1948,32 @@ walking realms keep their existing profile. Source tuning never bypasses
 paid 1/64 s steps, capsule collision or queued input. Source numbers qualify
 this scalar port, not the complete Unreal camera, ability or AnimBP runtime.
 
-The walking controller's camera (`aethyr/walk.coax`, every walking realm and
-Dead Gears' `camera_room`) moves only through `aethyr/follow.coax`: the look
+The walking controller's camera (`aethyr/move/walk.coax`, every walking realm and
+Dead Gears' `camera_room`) moves only through `aethyr/cam/follow.coax`: the look
 and zoom (`follow_look`, `follow_zoom`), one step of the spring and the room
 (`follow_track`), and the eye drawn between the last two steps (`follow_at`,
 `follow_eye`). No other code eases that camera. `follow_room` reads a realm's
 `Colliders` and never changes them, the camera pulls in at once and backs out
 by a closed form in the step's time, and its direction uses strict math.
-Checks: `aethyr/follow.coax` (mutation 0 survivors) and `verse/gridwalk.coax`
+Checks: `aethyr/cam/follow.coax` (mutation 0 survivors) and `verse/gridwalk.coax`
 ("the Grid's camera follows a walk, a run and a jump at 60 FPS without a
 jump").
 
 ## The camera only reads the player, and every camera makes one shot
 
-The player's step (`step` in `aethyr/walk.coax`) never moves the camera.
+The player's step (`step` in `aethyr/move/walk.coax`) never moves the camera.
 The camera steps after it (`camera_step`, run by `step_once` in
 `steps_in`) and changes only the camera's fields (`target`, `spring_vel`,
 `dist`), so the player is the same, bit for bit, whether the camera steps
 every step, never, or twice a step. Every camera answers with one
-`CameraShot` (`aethyr/shot.coax`) built from state already drawn between
+`CameraShot` (`aethyr/cam/shot.coax`) built from state already drawn between
 steps: third and first person (`follow_shot`, `follow_first_shot`), top down
-(`shot_top`), the free orbit (`shot_orbit`, which `aethyr/camera.coax` draws
+(`shot_top`), the free orbit (`shot_orbit`, which `aethyr/cam/camera.coax` draws
 through) and the dive (`shot_dive`, where a time that isn't a number is a
-cut). No camera steps physics. Checks: `aethyr/walk.coax` ("the player is
+cut). No camera steps physics. Checks: `aethyr/move/walk.coax` ("the player is
 the same whether its camera steps every step, never, or twice a step", "each
-view mode is its own shot of the frame drawn"), `aethyr/shot.coax` and
-`aethyr/follow.coax` (mutation 0 survivors).
+view mode is its own shot of the frame drawn"), `aethyr/cam/shot.coax` and
+`aethyr/cam/follow.coax` (mutation 0 survivors).
 
 The checked `cam/` query companion reads separate semantic body/sight views.
 Attention rechecks the retained selection's epoch and entities; a query refusal
@@ -1988,7 +1988,7 @@ numerical fixture and remaining playable adoption are recorded in
 realm already uses these adapters.
 
 An engine module that two libraries a page links both load
-(`aethyr/space.coax` and `aethyr/shot.coax`, which a realm's engine and the
+(`aethyr/core/space.coax` and `aethyr/cam/shot.coax`, which a realm's engine and the
 player both reach) declares no `#export_c` procedure: each library would
 define the symbol, and the page fails to link. Check: the site build
 (`apps/openagents-web/build.sh`) links every realm.
@@ -1996,14 +1996,14 @@ define the symbol, and the page fails to link. Check: the site build
 ## A realm's frame stays within its declared budget
 
 Every realm's engine file in `apps/openagents-web/` declares a
-`FrameBudget` (`aethyr/budget.coax`): the steps, vertices, draw records and
+`FrameBudget` (`aethyr/core/budget.coax`): the steps, vertices, draw records and
 host bytes one frame may use. Its vertex limit is below the realm's vertex
 buffer, so a frame the quad writers clip at a full buffer is over budget. A
 `BudgetMeter` takes a request whole or refuses it; a frame that passes any
 limit fails the realm's check. A realm that outgrows its budget raises the
 declaration, or its buffer, in the same change; it never clips silently.
 Checks: each realm's "... frames fit its declared budget" (three frames at
-each of three screens), and `aethyr/budget.coax`'s planted overflow
+each of three screens), and `aethyr/core/budget.coax`'s planted overflow
 (mutation 0 survivors).
 
 ## A device's texture layers take Coax's format and size tier
@@ -2027,13 +2027,13 @@ survivors, one equivalent at the cap's boundary) and the encoder's
 
 ## An asset is its content hash, and a pack is admitted whole or not at all
 
-An Aethyr asset's identity is the SHA-256 of its bytes (`aethyr/assets.coax`,
+An Aethyr asset's identity is the SHA-256 of its bytes (`aethyr/core/assets.coax`,
 `#authority`), never its name or path. `asset_admit` hashes every entry of a
 pack before taking anything: an entry that doesn't hash to its table's id,
 new bytes past the registry's declared limit, or more new assets than free
 slots refuses the whole pack and changes nothing held. Bytes already held are
 shared and counted once; the last `asset_release` frees them. Checks:
-`aethyr/assets.coax` (a planted edited texture, the limit to the byte, a
+`aethyr/core/assets.coax` (a planted edited texture, the limit to the byte, a
 seeded model of uses; mutation 0 survivors with `--root-only`).
 
 A realm opting into browser pack digest gate v1 admits the complete received
@@ -2163,7 +2163,7 @@ See `docs/verification/aethyr-streaming-12990/walk-callback-retirement.md`.
 
 The web Grid's simulation (`verse/gridwalk.coax`) is one `GridWalk`: you,
 the phone's thumbs, the input buffer and the session's record
-(`aethyr/replay.coax`). The page's C face hands it the devices' input and
+(`aethyr/core/replay.coax`). The page's C face hands it the devices' input and
 the frame's time once a frame and draws what it reads back; the face does
 not clamp time, step the player or keep the player. Each frame's controls
 are one `REPLAY_ACTIONS` event, and a fixed step applies only the events
@@ -4322,13 +4322,13 @@ varints, and emits existing HudInvocation bytes. Native adapters only transfer
 bytes; the resource and invocation have no second hand-written wire codec.
 The home is the Grid seen from high above, slowly orbiting, with only the Start
 bar over it (`verse_home_hud_frame`). Start dollies the camera down to land
-behind you; `aethyr/camera.coax` owns the overview orbit and the dolly path
+behind you; `aethyr/cam/camera.coax` owns the overview orbit and the dolly path
 (eased, from behind and above, never below where it lands, a cut under
 reduced motion; a tap hurries it). Controls, the hotbar and the balance appear
 only once it lands. The balance sits top right as whole sats with no grouping
 (`₿1234`, or `₿–` with the reason spoken while there is none) and opens the wallet.
 `verse/grid.coax` owns its projection and line art,
-`aethyr/sticks.coax` the move/look/jump touch policy; `aethyr/walk.coax` owns walking and camera state behind the `aethyr/player.coax` C facade; `verse/cast.coax` admits the bundled `Cast.bin`, blends your
+`aethyr/core/sticks.coax` the move/look/jump touch policy; `aethyr/move/walk.coax` owns walking and camera state behind the `aethyr/move/player.coax` C facade; `verse/cast.coax` admits the bundled `Cast.bin`, blends your
 character's clips and poses you and the robots. The native adapter only routes
 the Start invocation there, passes numbers between the libraries each frame
 and binds the buffers Coax admitted. A cast whose offsets, indices, joints or
@@ -4345,8 +4345,8 @@ jumping, and keeps the camera out of it. The hotbar is aethyr's HUD slot:
 Dance_Loop while you stand); walking or jumping ends it. The Grid has no
 buildings, peers or network use yet.
 
-Check: `coax/build.sh test`, `coax test verse/grid.coax`, `aethyr/camera.coax`,
-`aethyr/player.coax` and `verse/cast.coax`, `verse/test_cast.sh` (the
+Check: `coax/build.sh test`, `coax test verse/grid.coax`, `aethyr/cam/camera.coax`,
+`aethyr/move/player.coax` and `verse/cast.coax`, `verse/test_cast.sh` (the
 real Cast.bin under ASan/UBSan, with corrupted copies refused, and you
 walking into the Foreman's leg and stopping),
 `PROTOC=... python3 verse/test_home.py`, the sanitizer harness and the iOS
@@ -6192,7 +6192,7 @@ POSIX process CPU clock before any numbers are recorded.
 
 ## Everglade's legacy GPU host bounds unfinished frames
 
-`aethyr/frame-pacing.coax` admits a frame only with a nonnegative count below
+`aethyr/core/frame-pacing.coax` admits a frame only with a nonnegative count below
 two. Everglade exports that Coax decision to `coax/web/host.js`, which checks
 before simulation or GPU writes and completes submissions at queue fences.
 Skipped callbacks retain elapsed simulation time. Pending counts belong to
@@ -6730,7 +6730,7 @@ layer share, one named material's weight against another's at the point. Such
 a share names two other known materials, the shares add to one, and any share
 makes the table's identity "ATM2". A table without shares keeps its "ATM1"
 identity unchanged.
-Checks: `aethyr/terrain-tile.coax` "a layer share names two other known
+Checks: `aethyr/world/terrain-tile.coax` "a layer share names two other known
 materials ...", `aethyr/render/terrain-shade.coax` "a layer share is one weight
 against the other ...", `verse/everglade2/ground.coax` "the table draws the
 pack's ground colours ...", `everglade/client/gpu/everglade2.coax` "the

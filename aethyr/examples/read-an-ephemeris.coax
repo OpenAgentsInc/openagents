@@ -1,7 +1,7 @@
 // Book chapter 39: JPL Horizons tables read with their labels, a UTC time
 // carried to TDB, Mars seen from the Earth with light time and aberration
 // against Horizons' own corrected states, a turning frame, and the error of
-// aethyr/orbit.coax's mean-element ephemeris measured against DE441.
+// aethyr/physics/orbit.coax's mean-element ephemeris measured against DE441.
 #load "../space/frames.coax";
 #import "Basic";
 

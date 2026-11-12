@@ -20,7 +20,7 @@
 // rounds from the last: roots on page 0, and a page's parents are always on lower pages, the rule
 // aethyr/render/geometry/residency.coax keeps. dag_draw is the draw rule over installed pages.
 //   coax/bin/coax test aethyr/render/geometry/dag.coax
-#load "../../points.coax";
+#load "../../core/points.coax";
 #load "residency.coax";
 
 DAG_SOURCE :: 16384;   // source triangles at most

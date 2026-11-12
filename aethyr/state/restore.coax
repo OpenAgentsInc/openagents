@@ -3,7 +3,7 @@
 // Tickets own snapshot words; no asynchronous borrow of an input buffer survives.
 #load "variants.coax";
 #load "codec.coax";
-#load "../assets.coax" as assets;
+#load "../core/assets.coax" as assets;
 #authority;
 STATE_RESTORE_LOAD :: 1; STATE_RESTORE_RETRY :: 2;
 StateRestoreTicket :: struct {

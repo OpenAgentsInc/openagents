@@ -7,7 +7,7 @@
 // thrash. It asks for loads nearest first, at most CELL_LOADS at once and CELL_RESIDENT resident,
 // and refuses (and counts) what the budget can't take; a refused cell is asked again next step.
 //
-// A load finishes outside the step and comes back as an external event (aethyr/replay.coax's
+// A load finishes outside the step and comes back as an external event (aethyr/core/replay.coax's
 // envelope, REPLAY_NETWORK from the loader): cell_complete admits it at the next step boundary
 // only when it is the cell's current request (a cell unloaded and asked again refuses the old
 // answer), the digest is the manifest's, and the cell is still wanted. A failed load returns the
@@ -16,7 +16,7 @@
 // rather than step without their ground. Authoritative state is not content: it lives in the
 // cell's store, not in the pack.
 //
-// Entities keep their persistent ids (aethyr/entity.coax) and state across unload and reload:
+// Entities keep their persistent ids (aethyr/core/entity.coax) and state across unload and reload:
 // cell_sleep saves a cell's entities into its store when it leaves simulate, and cell_wake gives
 // them back, bit for bit. An entity belongs to the cell its position is in.
 //
@@ -39,7 +39,7 @@
 
 #module "aethyr.world.cells";
 #authority;
-#load "../replay.coax";
+#load "../core/replay.coax";
 
 // book:begin cells-profile
 CELL_SIZE :: 64.0;           // metres on a side

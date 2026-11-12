@@ -3,7 +3,7 @@
 > **Status: partly implemented.** Every realm in `realms.json` is measured
 > the same way. [coax/web/realm-perf.coax](../../coax/web/realm-perf.coax)
 > times each one in headless Chrome at three sizes and judges every case by
-> one rule: [aethyr/frame-report.coax](../../aethyr/frame-report.coax), the
+> one rule: [aethyr/core/frame-report.coax](../core/frame-report.coax), the
 > 60 FPS rule and the frame statistics as one checked module, together with
 > the record of one frame's stages. Goldens compare each page's frame, read
 > back from the GPU, in 8 px blocks
@@ -43,7 +43,7 @@ it is the frame with at most k frames shorter than it and more than k at
 most as long. Counting both ways leaves no tie for a sort's comparison to
 round:
 
-<!-- source: aethyr/frame-report.coax rule -->
+<!-- source: aethyr/core/frame-report.coax rule -->
 ```jai
 FRAME_P95_MAX :: 17500;    // microseconds: the 95th percentile frame at most this
 FRAME_MAX :: 33000;        // and no frame longer than this
@@ -237,7 +237,7 @@ GPU. A report holds when every stage is a time, the steps are at most the
 8 a frame may run, and the stages leave at most 0.5 ms of the frame
 unaccounted:
 
-<!-- source: aethyr/frame-report.coax report -->
+<!-- source: aethyr/core/frame-report.coax report -->
 ```jai
 // One frame's own time (from the frame's start to its submit), in microseconds, by stage.
 FRAME_STAGES :: 4;
@@ -275,7 +275,7 @@ same walk without:
 
 <!-- source: aethyr/examples/profile-a-frame.coax example -->
 ```jai
-#load "../frame-report.coax";
+#load "../core/frame-report.coax";
 #load "../../verse/gridwalk.coax";
 #import "Basic";
 
@@ -380,12 +380,12 @@ holds.
 
 ## Checks
 
-- `coax/bin/coax test aethyr/frame-report.coax --library`: 4 of 4. The
+- `coax/bin/coax test aethyr/core/frame-report.coax --library`: 4 of 4. The
   percentiles, late frames and the rule; the rule's edges (17.5 ms at the
   95th percentile and 33 ms at most hold, a microsecond more doesn't; a late
   frame is over 20 ms, not at it; rounding of the frame rate); a run of 100
   frames with no two alike, shuffled; and a frame's report.
-- `coax/bin/coax mutate aethyr/frame-report.coax --library`: 86 mutants,
+- `coax/bin/coax mutate aethyr/core/frame-report.coax --library`: 86 mutants,
   86 killed.
 - `coax/bin/coax test coax/web/realm-perf.coax --library`: 153 of 153,
   with the rule's checks now on `frame_stats`. A run longer than its
@@ -412,7 +412,7 @@ holds.
 
 ## What exists today
 
-- [aethyr/frame-report.coax](../../aethyr/frame-report.coax): the 60 FPS
+- [aethyr/core/frame-report.coax](../core/frame-report.coax): the 60 FPS
   rule, frame statistics and a frame's report.
 - [coax/web/realm-perf.coax](../../coax/web/realm-perf.coax): every realm's
   60 FPS cases, from `realms.json`.

@@ -10,7 +10,7 @@
 //              offsets, and the tool stops if the transcript isn't the line. A take is kept by its
 //              key (text, voice, mood, settings, this tool's version) and voiced again only with
 //              --revoice N (the Nth cue, from 1).
-//   2. align   aethyr/speak.coax: the words' times and the take's loudness into a viseme track.
+//   2. align   aethyr/audio/speak.coax: the words' times and the take's loudness into a viseme track.
 //   3. render  MetaHuman Lab's speaking stage (?stage=speak&track=...) recorded by
 //              `tool.sh clip --fps 60 --frames DIR`, headless, 720 px square, its pack the cast
 //              entry's (an ID the owner-local ~/.openagents/verse/private-build/speak/packs.txt
@@ -32,7 +32,7 @@
 #load "../lib/sys/proc.coax";
 #load "../lib/json/json.coax";
 #load "../lib/text/base64.coax";
-#load "../../aethyr/speak.coax";
+#load "../../aethyr/audio/speak.coax";
 #load "../../aethyr/ui/font.coax";
 
 SPEAK_VERSION :: "speak-1";

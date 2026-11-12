@@ -52,7 +52,7 @@ built.
 
 ## What it builds
 
-- `aethyr/sim/camera.coax` and observation shaders; tensor outputs
+- `aethyr/physics/sim/camera.coax` and observation shaders; tensor outputs
   with stated layouts.
 - A fixture rendering 4,096 environments × 2 cameras at 128 × 128.
 

@@ -1,12 +1,12 @@
 // book:begin example
-#load "../walk.coax";
+#load "../move/walk.coax";
 #import "Basic";
 
 cm :: (m: f32) -> int { return cast(int) (m * 100 + ifx m < 0 then -0.5f32 else 0.5f32); }
 
 // The seven walking realms, by the names their collision profiles are declared under
-// (aethyr/collision-profiles.coax), each stepping the one walker, aethyr/walk.coax, on the one
-// clock, aethyr/loop.coax. The same 300 frames in each, close to the session that
+// (aethyr/physics/collision-profiles.coax), each stepping the one walker, aethyr/move/walk.coax, on the one
+// clock, aethyr/core/loop.coax. The same 300 frames in each, close to the session that
 // aethyr/tests/cross-realm.coax plays: walk, run from frame 44, jump at 60, run onto a 0.4 m step
 // and off it, jump again at 200, walk, stop. Then the same at 30 FPS, which takes the same steps.
 REALMS :: [7] string.["the-grid", "haunted-house", "garden", "fairy-forest", "everglade", "hecates-cemetery", "dead-gears"];

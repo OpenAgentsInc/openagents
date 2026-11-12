@@ -36,7 +36,7 @@ EGS_ROOM :: AuRoom.{reference = 5, cutoff = 85};
 EGS_QUIET :: 0.004;         // a line below this gain isn't sent
 EGS_BED :: 0.16;            // the town's bed at full volume, under your footsteps
 EGS_STRIDE :: 0.8;          // metres a footfall walking
-EGS_STRIDE_RUN :: 1.25;     // and running (aethyr/skin.coax: a run starts at 5 m/s)
+EGS_STRIDE_RUN :: 1.25;     // and running (aethyr/anim/skin.coax: a run starts at 5 m/s)
 EGS_VOLUME :: 70;           // percent, until this browser keeps another
 EGS_STONES :: 3;            // stone sounds a frame plays at most (a collapse brings down many pieces at once)
 // a weapon's damage on the wire (e hit KIND: the SRD engine's, rules/srd/engine.coax RS_*)

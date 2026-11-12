@@ -1,7 +1,7 @@
 // Internal VGP1 mesh pages. Content identity, decoded bytes and admission stay
 // in Coax; the browser only transports the authored hex files over bounded HTTP.
 #load "parent.coax";
-#load "../../assets.coax";
+#load "../../core/assets.coax";
 #authority;
 GEOMETRY_PAGE_BYTES :: 16+PARENT_VERTICES*12+PARENT_INDICES*4;
 GeometryPage :: struct {data:[GEOMETRY_PAGE_BYTES]u8;bytes:int;key:AssetId;}

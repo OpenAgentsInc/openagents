@@ -1,6 +1,6 @@
 // Supported class: one convex, horizontal-boundary triangle fan, in any
 // source triangle order. Boundary edges are extracted and retained exactly.
-#load "../../points.coax";
+#load "../../core/points.coax";
 #authority;
 PARENT_VERTICES :: 256;
 PARENT_INDICES :: 768;

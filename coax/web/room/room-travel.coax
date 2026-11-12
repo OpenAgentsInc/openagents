@@ -1,4 +1,4 @@
-#load "../../../aethyr/ids.coax";
+#load "../../../aethyr/core/ids.coax";
 // A player's travel from one everglade room to another (#12850): the room server's side of
 // aethyr/session/travel.coax, for two rooms of one realm. The page asks with
 //   T SEQ CODE        go to the instance CODE (everglade-wire.coax)

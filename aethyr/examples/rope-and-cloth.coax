@@ -1,8 +1,8 @@
-// Book chapter 25: aethyr/sim/pbd.coax's XPBD constraints. A mass on one
+// Book chapter 25: aethyr/physics/sim/pbd.coax's XPBD constraints. A mass on one
 // compliant link rings at the period of a spring of stiffness 1 / alpha
 // whatever the substep count; a hanging rope settles onto the catenary
 // through its ends; a cloth falls onto a sphere and stays outside it.
-#load "../sim/pbd.coax";
+#load "../physics/sim/pbd.coax";
 #import "Basic";
 
 r6 :: (x: f64) -> f64 { return floor(x * 1000000.0 + 0.5) / 1000000.0; }

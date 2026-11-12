@@ -4,9 +4,9 @@
 #authority;
 #load "modes.coax";
 #load "eye.coax" as body;
-#load "../query-scene.coax" as scene;
-#load "../query.coax" as queries;
-#load "../space.coax" as spatial;
+#load "../physics/query-scene.coax" as scene;
+#load "../physics/query.coax" as queries;
+#load "../core/space.coax" as spatial;
 
 CamCentredSelected :: struct {value:CamCentred;eye:body.CamEye;}
 CamShotSelected :: struct {shot:Shot;eye:body.CamEye;}

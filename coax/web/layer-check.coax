@@ -694,7 +694,7 @@ LC_T_ALLOW :: "# seed\naethyr-up aethyr/net/latency.coax -> everglade/shared/eve
   #assert !lc_parse("a.coax:3:// #load \"x.coax\";").ok && !lc_parse("a.coax:3:#load \"\";").ok && !lc_parse("a.coax:x:#load \"b.coax\";").ok && !lc_parse("").ok;
   o: [256] u8;
   #assert lc_resolve("aethyr/net", "../../everglade/shared/everglade-wire.coax", o[..]) == "everglade/shared/everglade-wire.coax";
-  #assert lc_resolve("aethyr", "walk.coax", o[..]) == "aethyr/walk.coax" && lc_resolve("aethyr/a", "./b/../c.coax", o[..]) == "aethyr/a/c.coax";
+  #assert lc_resolve("aethyr/move", "walk.coax", o[..]) == "aethyr/move/walk.coax" && lc_resolve("aethyr/a", "./b/../c.coax", o[..]) == "aethyr/a/c.coax";
   #assert lc_resolve("a", "../../b.coax", o[..]) == "" && lc_resolve("a", "/Users/x/b.coax", o[..]) == "";
   #assert lc_dir("aethyr/net/latency.coax") == "aethyr/net" && lc_dir("a.coax") == "";
   #assert lc_cmp("aethyr/a", "aethyr/b") < 0 && lc_cmp("aethyr/a", "aethyr/a") == 0 && lc_cmp("aethyr/a/b", "aethyr/a") > 0;
@@ -702,7 +702,7 @@ LC_T_ALLOW :: "# seed\naethyr-up aethyr/net/latency.coax -> everglade/shared/eve
 #test "support code: tests, checks, tools, examples, the book and programs" {
   #assert lc_support_path("aethyr/tests/walk.coax") && lc_support_path("aethyr/render/tools/bake.coax") && lc_support_path("aethyr/examples/one-press.coax") && lc_support_path("aethyr/book/tools/x.coax") && lc_support_path("aethyr/lab/physics-lab.coax") && lc_support_path("aethyr/space/fixtures/a.coax");
   #assert lc_support_path("aethyr/anim/bundle-checks.coax") && lc_support_path("aethyr/actors/checks.coax") && lc_support_path("aethyr/host/check-browser.coax") && lc_support_path("aethyr/a_test.coax");
-  #assert !lc_support_path("aethyr/walk.coax") && !lc_support_path("aethyr/render/checker.coax") && !lc_support_path("aethyr/contest/a.coax") && !lc_support_path("aethyr/toolsy/a.coax");
+  #assert !lc_support_path("aethyr/move/walk.coax") && !lc_support_path("aethyr/render/checker.coax") && !lc_support_path("aethyr/contest/a.coax") && !lc_support_path("aethyr/toolsy/a.coax");
   #assert lc_support("aethyr/host/build-x.coax", LC_T_TOOLS) && !lc_support("aethyr/host/build", LC_T_TOOLS);
   #assert lc_in_tests("aethyr/tests/a.coax") && lc_in_tests("coax/lib/test/a.coax") && !lc_in_tests("aethyr/tests.coax") && !lc_in_tests("aethyr/latest/a.coax");
 }
@@ -711,7 +711,7 @@ LC_T_ALLOW :: "# seed\naethyr-up aethyr/net/latency.coax -> everglade/shared/eve
   #assert lc_rule("aethyr/ui/draw.coax", "verse/hud/frame.coax") == LC_UP_AETHYR && lc_rule("aethyr/a.coax", "everglade/zone.coax") == LC_UP_AETHYR && lc_rule("aethyr/a.coax", "coax/web/wasm-chrome.coax") == LC_UP_AETHYR;
   #assert lc_rule("aethyr/a.coax", "coax/lib/json/json.coax") == 0 && lc_rule("aethyr/a.coax", "psionic/lib/a.coax") == 0 && lc_rule("aethyr/a.coax", "aethyr/b.coax") == 0;
   #assert lc_rule("everglade/zone.coax", "apps/openagents-web/hud.coax") == LC_UP_EVERGLADE && lc_rule("everglade/zone.coax", "verse/everglade/a.coax") == 0 && lc_rule("everglade/zone.coax", "aethyr/a.coax") == 0;
-  #assert lc_rule("aethyr/walk.coax", "aethyr/tests/walk-fixture.coax") == LC_TESTS && lc_rule("everglade/a.coax", "coax/lib/tests/x.coax") == LC_TESTS && lc_rule("coax/web/api/a.coax", "coax/web/api/tests/x.coax") == LC_TESTS && lc_rule("coax/web/room/a.coax", "coax/web/room/tests/x.coax") == LC_TESTS && lc_rule("pay/a.coax", "coax/tests/x.coax") == LC_TESTS && lc_rule("pay/a.coax", "coax/lib/x.coax") == 0;
+  #assert lc_rule("aethyr/move/walk.coax", "aethyr/tests/walk-fixture.coax") == LC_TESTS && lc_rule("everglade/a.coax", "coax/lib/tests/x.coax") == LC_TESTS && lc_rule("coax/web/api/a.coax", "coax/web/api/tests/x.coax") == LC_TESTS && lc_rule("coax/web/room/a.coax", "coax/web/room/tests/x.coax") == LC_TESTS && lc_rule("pay/a.coax", "coax/tests/x.coax") == LC_TESTS && lc_rule("pay/a.coax", "coax/lib/x.coax") == 0;
   // the other trees are not judged here
   #assert lc_rule("rules/srd/a-probes.coax", "verse/experimental-hostiles.coax") == LC_UP_AETHYR && lc_rule("rules/srd/a.coax", "aethyr/tests/x.coax") == LC_TESTS && lc_rule("rules/srd/a.coax", "aethyr/core/math.coax") == 0;
   #assert lc_rule("verse/a.coax", "apps/b.coax") == 0 && lc_rule("coax/lib/a.coax", "coax/lib/tests/b.coax") == 0;
@@ -730,7 +730,7 @@ LC_T_ALLOW :: "# seed\naethyr-up aethyr/net/latency.coax -> everglade/shared/eve
   #assert lc_judge(cast(string) joined[0..<n], LC_T_TOOLS, LC_T_ALLOW, fresh[..], LC_T_QUIET, f2[..]) == 1 && f2[LC_UP_AETHYR] == 2;
   // and a product module that loads a test file, and a game file that loads the web app
   f3: [LC_RULES] int;
-  #assert lc_judge("aethyr/walk.coax:26:#load \"tests/walk-fixture.coax\";\neverglade/dash.coax:2:#load \"../apps/a/b.coax\";\n", "", "", fresh[..], LC_T_QUIET, f3[..]) == 2 && f3[LC_TESTS] == 1 && f3[LC_UP_EVERGLADE] == 1;
+  #assert lc_judge("aethyr/move/walk.coax:26:#load \"tests/walk-fixture.coax\";\neverglade/dash.coax:2:#load \"../apps/a/b.coax\";\n", "", "", fresh[..], LC_T_QUIET, f3[..]) == 2 && f3[LC_TESTS] == 1 && f3[LC_UP_EVERGLADE] == 1;
   // the same path loaded twice is one load; an absolute path is not judged
   f4: [LC_RULES] int;
   #assert lc_judge("aethyr/a.coax:1:#load \"../verse/b.coax\";\naethyr/a.coax:2:#load \"../verse/b.coax\";\naethyr/a.coax:3:#load \"/x/verse/b.coax\";\n", "", "", fresh[..], LC_T_QUIET, f4[..]) == 1 && f4[LC_UP_AETHYR] == 1;
@@ -767,14 +767,14 @@ LC_T_ALLOW :: "# seed\naethyr-up aethyr/net/latency.coax -> everglade/shared/eve
   ctxs := lc_parse_contexts(ctext);
   #assert ctxs.ok && ctxs.n == 6;
   // longest prefix wins: aethyr/rules/srd/ belongs to combat-rules, not engine; coax/lib/bitcoin/ to payments, not toolchain
-  #assert ctxs.ctxs[lc_context_of(ctxs, "aethyr/walk.coax")].slug == "engine";
+  #assert ctxs.ctxs[lc_context_of(ctxs, "aethyr/move/walk.coax")].slug == "engine";
   #assert ctxs.ctxs[lc_context_of(ctxs, "aethyr/rules/srd/dice.coax")].slug == "combat-rules";
   #assert ctxs.ctxs[lc_context_of(ctxs, "coax/lib/bitcoin/tx.coax")].slug == "payments";
   #assert ctxs.ctxs[lc_context_of(ctxs, "coax/lib/json/json.coax")].slug == "toolchain";
   #assert ctxs.ctxs[lc_context_of(ctxs, "everglade/server/legacy/v1.coax")].slug == "world";
   #assert lc_context_of(ctxs, "docs/x.coax") < 0;
   // allowed cross-context load (room-session -> combat-rules) and same-context load pass
-  ok_loads := "aethyr/session/turn.coax:3:#load \"../rules/srd/dice.coax\";\naethyr/session/turn.coax:4:#load \"seat.coax\";\neverglade/server/legacy/v1.coax:2:#load \"../../../aethyr/walk.coax\";\n";
+  ok_loads := "aethyr/session/turn.coax:3:#load \"../rules/srd/dice.coax\";\naethyr/session/turn.coax:4:#load \"seat.coax\";\neverglade/server/legacy/v1.coax:2:#load \"../../../aethyr/move/walk.coax\";\n";
   used: [8] bool; found: [LC_RULES] int;
   #assert lc_judge_with_contexts(ok_loads, "", "", ctxs, used[..], LC_T_QUIET, found[..]) == 0 && found[LC_CONTEXT] == 0;
   // disallowed cross-context load (room-session -> payments) fails without an allowlist line

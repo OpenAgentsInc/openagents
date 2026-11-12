@@ -11,7 +11,7 @@ The service gives each NPC five behaviours:
 
 - **Path.** It walks round what stands in the way. When a step is held back, it lays a walking grid
   (a window of up to 40 by 40 cells, 0.5 m each) over the NPC and its goal, searches it with the
-  flow field from [`aethyr/nav/grid.coax`](../../aethyr/nav/grid.coax), and pulls the way taut to
+  flow field from [`aethyr/world/nav/grid.coax`](../../aethyr/world/nav/grid.coax), and pulls the way taut to
   the furthest corner it can see. That corner is its aim until the next plan.
 - **Pursue.** It aims at where the target will be, not where it is: the target's velocity, smoothed
   over the last ticks, times the time to get there (at most `lead` seconds).

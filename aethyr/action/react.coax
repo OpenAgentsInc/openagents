@@ -16,7 +16,7 @@
 //   coax/bin/coax test aethyr/action/react.coax --library
 
 #module "aethyr.action.react";
-#load "../space.coax";
+#load "../core/space.coax";
 
 REACT_STOPS :: 16;            // hit stops in force at once
 REACT_PRESENT :: 16;          // presentation events queued a step

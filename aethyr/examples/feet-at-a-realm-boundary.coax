@@ -1,6 +1,6 @@
 // book:begin example
-#load "../points.coax";
-#load "../space.coax" as engine;
+#load "../core/points.coax";
+#load "../core/space.coax" as engine;
 #import "Basic";
 
 main :: () {

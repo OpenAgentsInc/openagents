@@ -1,5 +1,5 @@
 // book:begin example
-#load "../player.coax";
+#load "../move/player.coax";
 #import "Basic";
 
 // A player constructed natively takes its declared defaults. WebAssembly memory starts

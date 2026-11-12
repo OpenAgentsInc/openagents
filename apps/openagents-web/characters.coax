@@ -1,9 +1,9 @@
 // The characters realm, openagents.com/worlds/characters: the Verse
-// engine's figures (aethyr/figure.coax) in a night garden, drawn by
+// engine's figures (aethyr/anim/figure.coax) in a night garden, drawn by
 // characters.wgsl. Two shadow visitors (soft silhouettes, black, fuzzy at
 // the edge and lit only at the rim), a lit one to compare, a dog and a fox;
 // tap or click a figure to choose it, then its gait (STAND, WALK, TROT for
-// an animal, RUN), its look (SOFT or LIT), an emote (aethyr/motion.coax: a
+// an animal, RUN), its look (SOFT or LIT), an emote (aethyr/anim/motion.coax: a
 // person's WAVE, BOW, CHEER, SHRUG, DANCE; an animal's SIT, LIE, DIG,
 // FETCH, BOW, WAG), played over its gait, and its SHAPE: a slider for each
 // of its build's numbers, its pattern and its colours. An agent sets the
@@ -17,8 +17,8 @@
 
 #load "../../aethyr/ui/font.coax";
 #load "../../coax/web/analytics.coax";
-#load "../../aethyr/motion.coax";
-#load "../../aethyr/budget.coax";
+#load "../../aethyr/anim/motion.coax";
+#load "../../aethyr/core/budget.coax";
 
 VERTEX_FLOATS :: 16;   // x, y, along, across, length, core, light, glow, red, green, blue, mode, 0, 0, 0, 0
 MAX_VERTICES :: 24000;
@@ -763,7 +763,7 @@ coaxial_chars_cursor :: (c: [] Chars) -> int #export_c #effects(all) { return if
 }
 
 // ---------------------------------------------------------------------------------------------
-// The frame budget (aethyr/budget.coax, book chapter 16): what one frame of the characters realm may use.
+// The frame budget (aethyr/core/budget.coax, book chapter 16): what one frame of the characters realm may use.
 // The vertex limit is under the vertex buffer, so a frame its writers clip fails the check.
 CHARS_BUDGET :: FrameBudget.{steps = 8, vertices = 6000, draws = 0, bytes = 1900544};
 

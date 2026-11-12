@@ -1,6 +1,6 @@
 // The engine-owned fixture's once-per-instance external credit. This is a
 // domain model, not a wallet or server XP adapter. It is never in FST1/retry.
-#load "../checkpoint.coax" as checkpoints;
+#load "../core/checkpoint.coax" as checkpoints;
 #authority;
 StateCredit :: struct {operation:int;credits:int #counter;}
 state_credit_key :: ()->int #effects(all) {return checkpoints.checkpoint_op(1,0,10);}

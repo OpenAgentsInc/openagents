@@ -1,4 +1,4 @@
-// The archer's pose: a bow drawn on a skinned rig (aethyr/skin.coax), as keyed poses a realm bakes
+// The archer's pose: a bow drawn on a skinned rig (aethyr/anim/skin.coax), as keyed poses a realm bakes
 // once and blends by draw strength (docs/verse/bow-combat.md). No library has bow clips for the
 // Universal Animation Library's rig, so the pose is made here, on top of whatever stance the rig
 // stands in:
@@ -12,7 +12,7 @@
 // turned to its grip. Frame f of BOW_POSE_FRAMES: f < BOW_POSE_DRAWS the draw at f / (BOW_POSE_DRAWS
 // - 1), then the release's two.
 //   coax/bin/coax test aethyr/action/bow-pose.coax --library
-#load "../skin.coax";
+#load "../anim/skin.coax";
 
 BOW_POSE_DRAWS :: 11;
 BOW_POSE_FRAMES :: 13;

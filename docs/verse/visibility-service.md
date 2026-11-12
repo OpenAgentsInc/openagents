@@ -1,6 +1,6 @@
 # Visibility service
 
-GitHub #13073. Engine module: `aethyr/visibility.coax`.
+GitHub #13073. Engine module: `aethyr/physics/visibility.coax`.
 
 Health bars showed through hills and walls because each zone asked "can I see
 that?" in its own way, or not at all. The visibility service gives every
@@ -45,7 +45,7 @@ Each answer is a `Visibility`:
    a vertical target stands over the same flat path, so one profile serves
    them all. A line hides when it passes more than `VIS_TERRAIN_SKIN` (5 cm)
    under a sampled height.
-2. The colliders. The service calls `query_clear` from `aethyr/query.coax`,
+2. The colliders. The service calls `query_clear` from `aethyr/physics/query.coax`,
    so boxes, capsules, heightfield meshes and the flat ground all hide.
 
 A hit within the target's `slack` (30 cm by default) of a point is the
@@ -86,7 +86,7 @@ and off screen count as hidden.
 
 | Layer | Owns | Files |
 | --- | --- | --- |
-| Engine | The query, both sources, the settle state; the overlap geometry | `aethyr/visibility.coax`, `aethyr/action/attach-overlap.coax` |
+| Engine | The query, both sources, the settle state; the overlap geometry | `aethyr/physics/visibility.coax`, `aethyr/action/attach-overlap.coax` |
 | Game | The world's colliders and land for a line; posing an item for the check | `verse/experimental-dungeon.coax` (`dg_sight`), `verse/experimental-village.coax` (`ev_sight`), `charactercreator.coax` (`cc_bow_sweep`) |
 | Zone | Wiring: which eye, which target, which hold | the zone's HUD and combat files |
 

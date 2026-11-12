@@ -1,4 +1,4 @@
-#load "../entity.coax";
+#load "../core/entity.coax";
 #import "Basic";
 
 entity_id_admission :: () -> bool {

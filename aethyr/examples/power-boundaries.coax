@@ -1,5 +1,5 @@
 #import "Basic";
-#load "../math.coax";
+#load "../core/math.coax";
 
 // book:begin example
 main :: () {

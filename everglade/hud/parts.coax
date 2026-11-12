@@ -332,7 +332,7 @@ eg_fps :: (ui: [] UitTrace, f: FpsCounter, out: [] f32, at: int, w: f32, h: f32,
   return fps_draw(ui, f, out, p, w, h, k);
 }
 // The frame rate with the graphics control to its left on the one plaque ("GFX AUTO · MED  60 FPS",
-// aethyr/quality-page.coax qp_label); box gets where a tap or a click takes the control. With no
+// aethyr/core/quality-page.coax qp_label); box gets where a tap or a click takes the control. With no
 // words it is the frame rate alone (eg_fps) and box is empty.
 eg_fps_gfx :: (ui: [] UitTrace, f: FpsCounter, gfx: string, out: [] f32, at: int, w: f32, h: f32, k: f32, box: [] Box) -> int {
   box[0] = Box.{};

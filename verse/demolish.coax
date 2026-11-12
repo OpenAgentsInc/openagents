@@ -30,7 +30,7 @@
 //   and it lands on what still stands, so a roof whose walls went on one side
 //   sags onto the other and slides off. It breaks into chunks when it leans
 //   past 62 degrees (a roof 50), strikes something hard, or has fallen 6 s.
-// - Physics: bodies are aethyr/rigid.coax's, stepped at a fixed 60 Hz, with
+// - Physics: bodies are aethyr/physics/rigid.coax's, stepped at a fixed 60 Hz, with
 //   box contacts by impulses at the corners (restitution, Coulomb friction)
 //   against the ground, the pieces still standing (a roof by its slopes),
 //   and each other (a chunk's corners in another's box, both ways, found on a
@@ -55,7 +55,7 @@
 //   and carried by the current, and lodges where it comes to rest or after
 //   DEMO_FLOAT_LIFE s; coming in fast it raises a splash event.
 //
-// - Standing (aethyr/stand.coax): every standing piece's top is a floor you
+// - Standing (aethyr/physics/stand.coax): every standing piece's top is a floor you
 //   come down onto and walk on (demo_stand): a box's top face, a roof's two
 //   slopes either side of its ridge, a tower roof's cone (demo_set_top), and
 //   each sleeping chunk's or loose piece's top face, so a roof blown away no
@@ -67,11 +67,11 @@
 // demo_dust_at and demo_bit_at the dust and splinters.
 //   coax/bin/coax test --library verse/demolish.coax --steps 2000000000
 
-#load "../aethyr/points.coax";
-#load "../aethyr/rigid.coax";
-#load "../aethyr/terrain.coax";
-#load "../aethyr/stand.coax";
-#load "../aethyr/loop.coax";   // the steps are Aethyr's one clock's
+#load "../aethyr/core/points.coax";
+#load "../aethyr/physics/rigid.coax";
+#load "../aethyr/world/terrain.coax";
+#load "../aethyr/physics/stand.coax";
+#load "../aethyr/core/loop.coax";   // the steps are Aethyr's one clock's
 
 DEMO_PIECES :: 6000;
 DEMO_MESHES :: 96;
@@ -82,7 +82,7 @@ DEMO_BODIES :: DEMO_CHUNKS + DEMO_LOOSE;
 DEMO_EVENTS :: 32;         // breaks and landings this frame, for dust
 DEMO_HZ :: 60.0;
 DEMO_MAX_STEPS :: 6;       // a quarter-second frame steps at most 0.1 s; a longer backlog is dropped
-DEMO_STEP_NS :: 16666667;  // 1/60 s on the clock (aethyr/loop.coax)
+DEMO_STEP_NS :: 16666667;  // 1/60 s on the clock (aethyr/core/loop.coax)
 DEMO_SUP_CAP :: 48;       // supports a piece keeps at most
 DEMO_CELL :: 8.0;          // the support search's grid
 DEMO_GRID :: 40;           // cells a side (320 m)
@@ -228,11 +228,11 @@ DemoWorld :: struct {
   // each chunk's cell: DEMO_PLANES planes (x y z d: inside where x·p ≤ d) in its piece's mesh space
   cell: [DEMO_BODIES * DEMO_CELL_FLOATS] f32;
   chunk_cap: int; loose_cap: int;
-  // a realm's graphics quality (aethyr/quality.coax, demo_caps): the most chunks one break makes,
+  // a realm's graphics quality (aethyr/core/quality.coax, demo_caps): the most chunks one break makes,
   // the dust and splinters alive at once, and how long a splinter lies (0: the whole budget)
   cut_cap: int; dust_cap: int; bit_cap: int; bit_life: f32;
   clock: f64; tick: u64;
-  steps: FrameClock;   // the fixed steps (aethyr/loop.coax): 1/60 s, a frame clamped to 0.25 s, at most 6
+  steps: FrameClock;   // the fixed steps (aethyr/core/loop.coax): 1/60 s, a frame clamped to 0.25 s, at most 6
   seed: int;
   events: [DEMO_EVENTS] DemoEvent; event_n: int;
   linked: bool;
@@ -345,7 +345,7 @@ demo_tier :: (w: [] DemoWorld, small_screen: bool) {
   w[0].chunk_cap = ifx small_screen then DEMO_CHUNKS / 2 else DEMO_CHUNKS;
   w[0].loose_cap = ifx small_screen then DEMO_LOOSE / 2 else DEMO_LOOSE;
 }
-// The budgets a realm's graphics quality sets (aethyr/quality.coax): `debris` of the chunks and
+// The budgets a realm's graphics quality sets (aethyr/core/quality.coax): `debris` of the chunks and
 // loose pieces alive at once and of the chunks a break makes, `fine` of the dust and splinters and
 // of a splinter's time lying, each a share from 0 to 1. A break still breaks, into fewer and
 // bigger chunks; past the chunk budget the oldest rubble lying still goes first (demo_free_body),
@@ -586,7 +586,7 @@ demo_link :: (w: [] DemoWorld) {
   w[0].linked = true;
 }
 
-// ---- standing on what stands (aethyr/stand.coax)
+// ---- standing on what stands (aethyr/physics/stand.coax)
 
 demo_set_top :: (w: [] DemoWorld, i: int, kind: int) {
   if i < 0 || i >= w[0].n { return; }
@@ -691,7 +691,7 @@ demo_stand :: (w: [] DemoWorld, x: f32, z: f32, below: f32, pad: f32) -> StandHi
 }
 // The floors within `reach` of (x, z) (pieces still standing, rubble lying still), lowered by `base`,
 // into out from floor `at` on, at most up to its end: for a walker that takes a list
-// (aethyr/player.coax World.floors). Returns how many floors out holds now.
+// (aethyr/move/player.coax World.floors). Returns how many floors out holds now.
 demo_stand_near :: (w: [] DemoWorld, x: f32, z: f32, reach: f32, base: f32, out: [] f32, at: int) -> int {
   n := at;
   cap := out.count / STAND_FLOATS;

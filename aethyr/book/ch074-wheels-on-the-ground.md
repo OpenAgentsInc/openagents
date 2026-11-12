@@ -1,8 +1,8 @@
 # 74. Wheels on the ground
 
 > **Status: unimplemented — design draft.** Today
-> [`aethyr/vehicle.coax`](../../aethyr/vehicle.coax) drives Orbit League's
-> cars: one rigid body from [`aethyr/rigid.coax`](../../aethyr/rigid.coax),
+> [`aethyr/physics/vehicle.coax`](../physics/vehicle.coax) drives Orbit League's
+> cars: one rigid body from [`aethyr/physics/rigid.coax`](../physics/rigid.coax),
 > four suspension rays, tyres inside the friction circle, sticky wheels,
 > jumps and dodges, against a list of planes. It is a game-layer module
 > that only Orbit League loads. This chapter plans a vehicle controller on
@@ -61,12 +61,12 @@ and the same replay, so a car race replays exactly.
 
 ## What exists today
 
-- [aethyr/vehicle.coax](../../aethyr/vehicle.coax): the controller, with
+- [aethyr/physics/vehicle.coax](../physics/vehicle.coax): the controller, with
   `#test` checks that a roadster settles level, reaches top speed, steers,
   brakes, jumps, dodges, drifts, sticks to a wall when fast and falls off
   when slow, and that the same inputs give the same path bit for bit.
-- [aethyr/contact.coax](../../aethyr/contact.coax) and
-  [aethyr/rigid.coax](../../aethyr/rigid.coax): the chassis box against planes,
+- [aethyr/physics/contact.coax](../physics/contact.coax) and
+  [aethyr/physics/rigid.coax](../physics/rigid.coax): the chassis box against planes,
   and the rigid body.
 - [docs/verse/space.md](../../docs/verse/space.md): the space primitives
   table that lists the vehicle beside gravity, thrust and orbits.
@@ -82,7 +82,7 @@ and the same replay, so a car race replays exactly.
 
 The chapter is done when:
 
-- Every `#test` in today's `aethyr/vehicle.coax` passes against the Aethyr
+- Every `#test` in today's `aethyr/physics/vehicle.coax` passes against the Aethyr
   modules.
 - A car on a heightfield ground and on a box arena takes its wheel contacts
   from the shared query module, with the same answers the character gets.

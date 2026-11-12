@@ -1,5 +1,5 @@
 // book:begin example
-#load "../query.coax";
+#load "../physics/query.coax";
 #import "Basic";
 
 // One scene and the four questions: a 0.5 m step and a 0.6 m wall on the ground, and a post

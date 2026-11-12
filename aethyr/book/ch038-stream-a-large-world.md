@@ -62,10 +62,10 @@ order.
   small props drawn within `LOD_NEAR` 52 m, shrubs within `LOD_FAR` 72 m, a
   phone at 0.7 of those, re-chosen only after the eye moves `LOD_STEP`
   2.5 m.
-- [aethyr/spacecam.coax](../../aethyr/spacecam.coax): a floating-origin
+- [aethyr/cam/spacecam.coax](../cam/spacecam.coax): a floating-origin
   camera in f64 with zoom over twelve decades, checked by "a hull at 5 AU
   draws to the pixel".
-- [aethyr/rigid.coax](../../aethyr/rigid.coax): island sleep (`SLEEP_LINEAR`,
+- [aethyr/physics/rigid.coax](../physics/rigid.coax): island sleep (`SLEEP_LINEAR`,
   `SLEEP_TIME`) that streaming reuses at cell edges.
 - [coax/web/host.js](../../coax/web/host.js): one streamed pack per page with
   progress messages (605), and later assets (sounds, particles, fonts)

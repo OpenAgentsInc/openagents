@@ -1,4 +1,4 @@
-#load "../../../aethyr/ids.coax";
+#load "../../../aethyr/core/ids.coax";
 // Optional observation adapters. Socket ownership comes from the production
 // seat lookup; observation state retires with RmConn, never with a seat index.
 #test "latency adapter follows actual input admission and final queued D without altering gameplay (#12840)" #steps 4000000000 {

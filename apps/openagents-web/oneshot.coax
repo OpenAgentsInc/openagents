@@ -26,8 +26,8 @@
 #load "../../coax/web/socket.coax";
 #load "../../aethyr/net/relay-wire.coax";   // the relay's frames y, j, l and m: the one codec (#13245)
 #load "oneshot-table.coax";
-#load "../../aethyr/shot.coax" as ash;
-#load "../../aethyr/space.coax" as asp;
+#load "../../aethyr/cam/shot.coax" as ash;
+#load "../../aethyr/core/space.coax" as asp;
 
 VERTEX_FLOATS :: 16;
 MAX_VERTICES :: 160000;

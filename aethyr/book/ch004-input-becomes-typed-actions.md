@@ -1,10 +1,10 @@
 # 4. Input becomes typed actions
 
-> Engine-core task: `ec-input` (#12609). [input.coax](../input.coax)
-> defines typed actions. [walk-control.coax](../walk-control.coax) adds
+> Engine-core task: `ec-input` (#12609). [input.coax](../core/input.coax)
+> defines typed actions. [walk-control.coax](../move/walk-control.coax) adds
 > `WalkControlV2`: frame input waits for physical steps, presses survive
 > zero-step frames, and relative look/zoom split across a frame's steps.
-> The versioned C adapter in [player.coax](../player.coax) is used by the
+> The versioned C adapter in [player.coax](../move/player.coax) is used by the
 > Haunted House/sandbox, Garden, Villa, Fairy Forest and 5E MMO faces; Dead
 > Gears calls the same core directly. Grid walking already samples its own
 > replay-backed buffer. Absolute camera headings are levels; Everglade's
@@ -67,7 +67,7 @@ These constants and functions set the rules that every device follows:
 `InputAxis.mended` and `Intent.mended` count the values that Aethyr refused
 or clamped, so a device that sends bad values shows up in the counts.
 
-<!-- source: aethyr/input.coax rules -->
+<!-- source: aethyr/core/input.coax rules -->
 ```jai
 INPUT_DEAD_ZONE :: 0.2;          // stick travel that counts as no input
 INPUT_RUN_BY_DEFAULT :: true;    // the owner's rule (2026-10-29): moving runs, Shift walks
@@ -107,7 +107,7 @@ At most `INPUT_MAX_WAITING` (4) presses wait. Aethyr counts any press past
 that in `lost` and doesn't keep it. At 64 steps a second, five presses
 within one step's 15.6 ms don't happen in normal play.
 
-<!-- source: aethyr/input.coax press -->
+<!-- source: aethyr/core/input.coax press -->
 ```jai
 // A press-type control: held now, and presses not yet taken by a step.
 InputPress :: struct {
@@ -147,7 +147,7 @@ An `Intent` is one frame's controls. `input_keys` builds it from the keyboard,
 and `input_stick` builds it from the touch stick or a pad. Both apply the
 same rules, so the same play gives the same `Intent`.
 
-<!-- source: aethyr/input.coax intent -->
+<!-- source: aethyr/core/input.coax intent -->
 ```jai
 // One frame's controls, from any device: the move axes (x right, y forward, each in
 // [-1, 1]), run, jump and act held, and look (radians: + turns left and looks up) and zoom
@@ -195,7 +195,7 @@ Aethyr counts it in `untimed`.
 `input_blur` handles a lost focus. It releases every level at once, and keeps
 the presses that were already made.
 
-<!-- source: aethyr/input.coax buffer -->
+<!-- source: aethyr/core/input.coax buffer -->
 ```jai
 // What the steps read: levels as last fed, edges waiting, and look and zoom gathered.
 InputBuffer :: struct {
@@ -263,7 +263,7 @@ one steps:
 
 <!-- source: aethyr/examples/one-press.coax example -->
 ```jai
-#load "../input.coax";
+#load "../core/input.coax";
 #import "Basic";
 
 // A tap shorter than a frame, fed to frames that run 0, 2 and 1 steps: the press waits for
@@ -315,12 +315,12 @@ step 1 doesn't. The two steps of frame 1 split the 0.3 rad look.
 `verse_player_input` is the controller's entry point for one frame's
 controls. It records a jump as a press with `input_level`:
 
-<!-- source: aethyr/walk.coax input -->
+<!-- source: aethyr/move/walk.coax input -->
 ```jai
 // This frame's controls, as InputIntent carries them: keyboard axes (-1, 0,
 // 1), stick axes in [-1, 1] (x right, y forward), run and jump held, and look
 // deltas in radians (positive turns left and looks up). A jump is a press, not a hold:
-// it is counted here and taken by the first fixed step after it (aethyr/input.coax), so a
+// it is counted here and taken by the first fixed step after it (aethyr/core/input.coax), so a
 // frame that runs no step keeps it and a frame that runs two jumps once. This v1
 // single-sample primitive applies look immediately. Frame-driven consumers use
 // walk-control.coax's versioned sidecar; the Grid samples before calling here.
@@ -346,7 +346,7 @@ walk_input :: (p: Player, key_x: f32, key_y: f32, pad_x: f32, pad_y: f32,
 Each fixed step first takes a waiting press. If you are on the ground, you
 jump:
 
-<!-- source: aethyr/walk.coax take -->
+<!-- source: aethyr/move/walk.coax take -->
 ```jai
 // One fixed step. It first takes a waiting jump press: from the ground, it jumps.
 step_body :: (w: World, given: Player, dt: f32) -> Player #effects(all) {
@@ -386,7 +386,7 @@ gives each press, in order, to the first step that samples after it. It
 counts a press that finds four presses already waiting as lost. The buffer
 must give each press to the same step as the model.
 
-<!-- source: aethyr/input.coax oracle -->
+<!-- source: aethyr/core/input.coax oracle -->
 ```jai
 #forall "every press is taken by exactly one step, the one the model names" seed: 0..<64 {
   rng := seed * 7919 + 12345;   // a small LCG on int, mod 2^31
@@ -430,9 +430,9 @@ The controller's checks cover these cases:
 - A session on the keyboard and the same session on the touch stick give the
   same `Intent` every frame, and the player passes through the same states.
 
-<!-- source: aethyr/walk.coax presses -->
+<!-- source: aethyr/move/walk.coax presses -->
 ```jai
-// The input contract (aethyr/input.coax, #12609): a press is taken by exactly one step. At
+// The input contract (aethyr/core/input.coax, #12609): a press is taken by exactly one step. At
 // 144 FPS most frames run no step: a press in one of them jumps on the next step, not never.
 // A frame that runs two steps jumps once, not twice.
 #test "a press in a frame with no step jumps on the next one, and a frame of two jumps once" {
@@ -479,12 +479,12 @@ The controller's checks cover these cases:
 ```
 
 ```shell
-coax/bin/coax test aethyr/input.coax --library
-coax/bin/coax mutate aethyr/input.coax
-coax/bin/coax test aethyr/player.coax --library
+coax/bin/coax test aethyr/core/input.coax --library
+coax/bin/coax mutate aethyr/core/input.coax
+coax/bin/coax test aethyr/move/player.coax --library
 ```
 
-`aethyr/input.coax` has nine checks. They cover:
+`aethyr/core/input.coax` has nine checks. They cover:
 
 - clamping, refusing, and counting bad values;
 - the run rule and the dead zone;
@@ -496,7 +496,7 @@ coax/bin/coax test aethyr/player.coax --library
 - the model check above;
 - the total look of a drag at 30, 60, 120, and 144 FPS.
 
-`coax mutate` makes 126 mutants of `aethyr/input.coax`, and the checks kill all
+`coax mutate` makes 126 mutants of `aethyr/core/input.coax`, and the checks kill all
 126.
 
 ## Menus, focus and keyboard activation

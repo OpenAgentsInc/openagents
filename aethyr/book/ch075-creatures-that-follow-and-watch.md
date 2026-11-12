@@ -7,12 +7,12 @@
 > keeps a creature's knowledge in a bounded `Memory` that forgets after a
 > stated number of ticks and counts what it refuses. Following on the
 > realm's fixed step is shared too:
-> [aethyr/follower.coax](../../aethyr/follower.coax) steps the grounded
+> [aethyr/move/follower.coax](../move/follower.coax) steps the grounded
 > follower and the fetching dog once per tick of
 > [chapter 1](ch001-a-frame-has-a-fixed-step.md)'s clock. The example plays a
 > guard and a dog for 480 ticks at 30, 60 and 144 FPS and with uneven frames,
 > and the four digests are equal. The flock
-> ([aethyr/flock.coax](../../aethyr/flock.coax)) keeps its own f32
+> ([aethyr/anim/flock.coax](../anim/flock.coax)) keeps its own f32
 > accumulator and reads its target once a frame, so it isn't the same at
 > every frame rate; the example shows that. Actor Lab now adopts bounded
 > compiled choices, semantic sight, knowledge and model gates (below).
@@ -39,7 +39,7 @@ A creature's `Senses` are its sight range, its eye height above its feet, its
 touch reach and how many ticks it remembers a stimulus. The defaults are the
 Everglade watch's (`WATCH_SIGHT`, 34 m, and `WATCH_EYE`, 1.6 m, in
 `verse/everglade/watch.coax`). A tick is one step of
-[aethyr/loop.coax](../../aethyr/loop.coax), 1/64 s, so the default `forget`
+[aethyr/core/loop.coax](../core/loop.coax), 1/64 s, so the default `forget`
 of 128 ticks is 2 s. Every stimulus says what kind it is, whom it is of (the
 realm's entity number), where, and on which tick:
 
@@ -240,7 +240,7 @@ were.
 
 ## Following on the fixed step
 
-[aethyr/follower.coax](../../aethyr/follower.coax) is the dog of Hecate's
+[aethyr/move/follower.coax](../move/follower.coax) is the dog of Hecate's
 Cemetery on the realm's clock. `follower_step` takes one tick of
 `follower_step_seconds()` (1/64 s) and never a frame's time. It walks at
 2.6 m/s, runs at 5.2 m/s, accelerates at 14 m/s² and turns at 9 a second
@@ -415,7 +415,7 @@ would change Everglade's companion, so it is left as it is (see below).
   (`verse/everglade/watch.coax`: `watch_sees`, `WATCH_HEAR`, the wanted
   state) and its guards still sense in their own code. Moving them changes
   Everglade, which the owner is changing now.
-- **The flock on the fixed step.** `aethyr/flock.coax` on loop.coax's ticks,
+- **The flock on the fixed step.** `aethyr/anim/flock.coax` on loop.coax's ticks,
   reading its target per tick, with Everglade's companion golden unchanged.
 - **Remaining authored behavior.** Actor Lab now uses bounded compiled guards,
   weighted choices, cooldowns and interruption. Everglade's beat/combat rules
@@ -439,10 +439,10 @@ would change Everglade's companion, so it is left as it is (see below).
   bounded knowledge/choice scheduling and native/Wasm journey receipts.
 - [aethyr/ai/stimulus.coax](../../aethyr/ai/stimulus.coax): senses, stimuli
   and memory, used by this chapter's example.
-- [aethyr/follower.coax](../../aethyr/follower.coax): the follower and the
+- [aethyr/move/follower.coax](../move/follower.coax): the follower and the
   fetching dog on the realm's clock, used by Hecate's Cemetery
   ([apps/openagents-web/villa.coax](../../apps/openagents-web/villa.coax)).
-- [aethyr/flock.coax](../../aethyr/flock.coax): the following flock, used by
+- [aethyr/anim/flock.coax](../anim/flock.coax): the following flock, used by
   Everglade's bird companion (`eg-companion`) and the made-realm `flock`
   feature.
 - [verse/everglade/watch.coax](../../verse/everglade/watch.coax): the town

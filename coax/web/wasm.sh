@@ -152,7 +152,7 @@ fi
 # closure (coax/web/tool.sh wasm-size sources), so a unit whose closure didn't
 # change since an earlier build, in any checkout or release tree, isn't compiled
 # again (Everglade's C takes ten minutes or more: its closure has an #authority
-# unit, aethyr/ground.coax, so its compile runs every check in it). A unit with
+# unit, aethyr/physics/ground.coax, so its compile runs every check in it). A unit with
 # an #import_proto isn't cached. An object is kept under what its compile reads:
 # clang's version and flags and the bytes of every file the preprocessor opens
 # for it (clang -M: the C, its headers, the sysroot's), so the same C compiles

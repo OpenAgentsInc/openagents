@@ -55,7 +55,7 @@ cloud with a far city's lamps in its gaps.
   balustrade's line, so it never looks in from outside.
 
 You walk the chamber with the controller every web realm uses
-(`aethyr/walk.coax`: its fixed step, run, jump and follow camera) and the
+(`aethyr/move/walk.coax`: its fixed step, run, jump and follow camera) and the
 web's keys:
 
 | Input | What it does |
@@ -138,7 +138,7 @@ What it isn't yet:
 
 Two things to know when you change it:
 
-- `charactercreator.coax` and `aethyr/walk.coax` can't be loaded into one
+- `charactercreator.coax` and `aethyr/move/walk.coax` can't be loaded into one
   unit (each declares an `atan2`), so the scene and the model are two units.
 - The web's character code passes large structures by value, so the app
   links with a 512 MB main-thread stack.

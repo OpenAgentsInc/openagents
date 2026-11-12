@@ -1,7 +1,7 @@
 // 5E Lab's figures (fivelab.coax): the Quaternius people Everglade's NPCs are made of (the
 // Universal Base Characters and the Modular Character Outfits - Fantasy parts in Everglade's pack,
 // rebound by verse/tools/people.py onto two skeletons, CC0), dressed by class, played by the
-// Universal Animation Library's clips (verse/everglade/people-rig.coax, aethyr/skin.coax).
+// Universal Animation Library's clips (verse/everglade/people-rig.coax, aethyr/anim/skin.coax).
 //
 // Two hundred and more figures at once, so nothing is posed per figure on the CPU: bd_bake samples
 // each clip once, 30 frames a second, into one store of skinning matrices (three rows of four a
@@ -22,9 +22,9 @@
 #module "openagents.fivelab.bodies";
 
 #load "../../verse/everglade/people-rig.coax";
-// Player mode's camera (fivelab.coax lab_chase_step): Everglade's follow camera, aethyr/camera.coax's free
+// Player mode's camera (fivelab.coax lab_chase_step): Everglade's follow camera, aethyr/cam/camera.coax's free
 // orbit. It loads here, not in fivelab.coax, as it shares points.coax with the figures' skin.
-#load "../../aethyr/camera.coax";
+#load "../../aethyr/cam/camera.coax";
 // Aethyr's shared camera modes and cinematic hand-back (#12994), in the same module as the orbit.
 #load "../../aethyr/cam/modes.coax";
 #load "../../aethyr/cam/handback.coax";
@@ -856,7 +856,7 @@ BD_CAM :: BdCam.{ex = 0, ey = 10, ez = -15, fx = 0, fy = -0.3162278, fz = 0.9486
   #assert bd_row(true, BD_RIDE, BD_SEATS - 1) * 4 + BD_ROWS * 4 == BD_BAKE_FLOATS && BD_OWN_FRAMES[TWOHAND_CLIPS + 1] == BD_SEATS;
 }
 
-#test "a baked frame is the clip's pose as aethyr/skin.coax plays it" #steps 400000000 {
+#test "a baked frame is the clip's pose as aethyr/anim/skin.coax plays it" #steps 400000000 {
   d: [1] People;
   people_load(d[..]);
   out: [BD_ROWS * 4 * 2] f32;

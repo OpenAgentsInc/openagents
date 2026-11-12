@@ -1,7 +1,7 @@
 # Speaking characters for videos
 
 Status: MVP built, 2026-11-04 (#12798). `coax/web/tool.sh speak CUES OUT.mp4`
-(`coax/web/speak.coax`, with the alignment and performance in `aethyr/speak.coax`) runs every step
+(`coax/web/speak.coax`, with the alignment and performance in `aethyr/audio/speak.coax`) runs every step
 below with these limits:
 
 - **Voice.** Only Google is wired, with Chirp 3 HD. Its voices take no `pitch`, so a mood sets only
@@ -125,7 +125,7 @@ frames, it falls under the [binding rules](#rules).
 
 ### 3. Perform
 
-The performance module (`aethyr/speak.coax`) turns the viseme track into face-rig controls frame by
+The performance module (`aethyr/audio/speak.coax`) turns the viseme track into face-rig controls frame by
 frame:
 
 - **Mouth.** Each viseme is a set of raw controls (jaw, lips and tongue), blended with
@@ -285,7 +285,7 @@ they apply here:
 3. **Publishing.** A promo video shows a render, not the asset, and publishing renders falls under
    the same settled rule as showing MetaHumans on openagents.com. The licence questions still open
    in metahuman-support.md (a custom engine, the revenue threshold) apply to the video too.
-4. **No Epic trademarks in names.** The module is `aethyr/speak.coax` and the stage is `speak`.
+4. **No Epic trademarks in names.** The module is `aethyr/audio/speak.coax` and the stage is `speak`.
 5. **Voices.** Voices are stock provider voices, or ones you design in the provider's voice
    designer. No voice is cloned from a real person without that person's written consent.
 

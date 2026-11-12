@@ -15,9 +15,9 @@
 //   coax/bin/coax test aethyr/cam/attention.coax --library
 
 #module "aethyr.cam.attention";
-#load "../space.coax";
-#load "../query.coax";
-#load "../query-scene.coax" as scene;
+#load "../core/space.coax";
+#load "../physics/query.coax";
+#load "../physics/query-scene.coax" as scene;
 #authority;
 #load "tests/attention-world.coax";
 #load "tests/attention.coax";

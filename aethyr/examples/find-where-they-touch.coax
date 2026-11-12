@@ -1,9 +1,9 @@
-// Book chapter 21: the narrow phase of aethyr/sim/narrow.coax. It prints
+// Book chapter 21: the narrow phase of aethyr/physics/sim/narrow.coax. It prints
 // one contact for each kind of pair and the path that answered it, checks
 // GJK and EPA against the closed forms on boxes given as hulls, shows a
 // resting box's four contact points, and catches a fast ball before it
 // passes through a thin plate.
-#load "../sim/narrow.coax";
+#load "../physics/sim/narrow.coax";
 #import "Basic";
 
 // book:begin example

@@ -91,7 +91,7 @@ cg_meadow_vs :: (id:u32,instance:u32,m:FivelabObj,u:[]f32,vertices:[]u32)->Fivel
  i:=instance&65535;kit:=cast(int)m.a.x;side:=cast(u32)m.a.z;iz:=i/side;ix:=i-iz*side;half:=side/2;
  origin:=f32(E2_MEADOW_ORIGIN);ex:=u[16];ez:=u[18];
  // the graphics quality's reach (b.y) and the finest grass tier's share (b.z), 1 where the record gives none
- // (charactercreator.coax scene, aethyr/quality.coax): at 1 these are the full meadow, number for number
+ // (charactercreator.coax scene, aethyr/core/quality.coax): at 1 these are the full meadow, number for number
  reach:=ifx m.b.y>0.0f32 then m.b.y else 1.0f32;fine:=ifx m.b.z>0.0f32 then m.b.z else 1.0f32;
  if (kit==33) {
   t:=cast(int)m.a.y;c:=e2_field_cell(t);

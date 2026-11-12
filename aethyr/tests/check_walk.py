@@ -59,7 +59,7 @@ def frozen_tree(work, commit):
         for dependency in re.findall(rb'^\s*#load\s+"([^"\n]+)"', data, re.M):
             materialize(str((destination.parent / dependency.decode()).resolve().relative_to(mirror)))
 
-    materialize('aethyr/player.coax')
+    materialize('aethyr/move/player.coax')
     target = mirror / ADAPTER
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_bytes((ROOT / ADAPTER).read_bytes())
@@ -71,8 +71,8 @@ def frozen_tree(work, commit):
 
 def old_scalar_fields(mirror):
     """Inventory every declared old Player field independently of the C serializer."""
-    owners = {'Player':'aethyr/player.coax', 'Vec3':'aethyr/player.coax',
-              'InputPress':'aethyr/input.coax', 'FrameClock':'aethyr/loop.coax'}
+    owners = {'Player':'aethyr/move/player.coax', 'Vec3':'aethyr/move/player.coax',
+              'InputPress':'aethyr/core/input.coax', 'FrameClock':'aethyr/core/loop.coax'}
 
     def fields(type_name, prefix=''):
         source = re.sub(r'//[^\n]*', '', (mirror/owners[type_name]).read_text())

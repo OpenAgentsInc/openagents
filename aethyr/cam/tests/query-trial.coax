@@ -2,9 +2,9 @@
 // attention or geometry outside the paid fixed-step loop.
 #load "../semantic.coax";
 #load "../attention.coax" as attention;
-#load "../../loop.coax" as clock;
-#load "../../query-filter.coax" as filters;
-#load "../../entity.coax" as entities;
+#load "../../core/loop.coax" as clock;
+#load "../../physics/query-filter.coax" as filters;
+#load "../../core/entity.coax" as entities;
 #load "world.coax" as fixture;
 
 CameraTrial :: struct {rows:[64][28]int;count:int;}

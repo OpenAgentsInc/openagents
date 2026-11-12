@@ -11,7 +11,7 @@ fallback.
 ```sh
 coax/remote/remote.sh run -- coax/web/wasm.sh apps/openagents-web/fivelab.coax \
   apps/openagents-web/fivelab-face.c apps/openagents-web/build/fivelab.wasm \
-  apps/openagents-web/everglade-step.coax aethyr/sticks.coax
+  apps/openagents-web/everglade-step.coax aethyr/core/sticks.coax
 coax/remote/remote.sh run -- coax/bin/coax test apps/openagents-web/fivelab.coax
 coax/remote/remote.sh status        # hosts, free slots, spend
 ```
@@ -231,7 +231,7 @@ To drive pages headless, fetch main's pages and rebuild only what you changed:
 coax/remote/pages.sh origin/main
 coax/remote/remote.sh run -- coax/web/wasm.sh apps/openagents-web/fivelab.coax \
   apps/openagents-web/fivelab-face.c apps/openagents-web/build/fivelab.wasm \
-  apps/openagents-web/everglade-step.coax aethyr/sticks.coax
+  apps/openagents-web/everglade-step.coax aethyr/core/sticks.coax
 ```
 
 Don't run a full `apps/openagents-web/build.sh` for this.

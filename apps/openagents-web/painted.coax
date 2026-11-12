@@ -25,7 +25,7 @@
 //   coax/bin/coax test apps/openagents-web/painted.coax --steps 2000000000
 
 #load "../../aethyr/ui/font.coax";
-#load "../../aethyr/loop.coax";
+#load "../../aethyr/core/loop.coax";
 #load "../../verse/painted/village-road.coax";
 
 VERTEX_FLOATS :: 16;

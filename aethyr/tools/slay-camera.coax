@@ -1,5 +1,5 @@
 #module "aethyr.tools.slaycamera";
-#load "../points.coax";
+#load "../core/points.coax";
 
 #test "source camera axes retain Unreal forward/right/up through the axis reflection" {
  a:=ss_camera_axes(0,0,0);#assert a[0].x==1 && a[0].y==0 && a[1].z==1 && a[2].y==1;

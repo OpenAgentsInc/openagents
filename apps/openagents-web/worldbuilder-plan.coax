@@ -14,11 +14,11 @@
 // edit's things, the newest thing of a name, the grid's middle) and a side as the camera sees it
 // (left, right, toward you, away from you, around): a thing placed beside another stands clear of
 // it, its footprint and the other's apart plus the distance asked. Several are spread over a disc,
-// each kept off the others and off what stands there already, from a seeded draw (aethyr/rand.coax),
+// each kept off the others and off what stands there already, from a seeded draw (aethyr/core/rand.coax),
 // so the same edits on the same world give the same world.
 //   coax/bin/coax test apps/openagents-web/worldbuilder-plan.coax
 
-#load "../../aethyr/rand.coax";
+#load "../../aethyr/core/rand.coax";
 #load "../../aethyr/forge/edit.coax";
 #load "worldbuilder-land.coax";
 

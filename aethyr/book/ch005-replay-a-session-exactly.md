@@ -1,10 +1,10 @@
 # 5. Replay a session exactly
 
 > Engine-core task: `ec-replay` (#12609). The module is
-> [aethyr/replay.coax](../replay.coax), with its small test realm in
+> [aethyr/core/replay.coax](../core/replay.coax), with its small test realm in
 > [aethyr/tests/replay-oracle.coax](../tests/replay-oracle.coax). Random
-> streams are in [aethyr/rand.coax](../rand.coax) and strict sine, cosine
-> and powers in [aethyr/math.coax](../math.coax).
+> streams are in [aethyr/core/rand.coax](../core/rand.coax) and strict sine, cosine
+> and powers in [aethyr/core/math.coax](../core/math.coax).
 
 A session is a function of a short record: the digest of its constructed
 state ([chapter 3](ch003-state-starts-from-its-defaults.md)), a seed, and
@@ -57,7 +57,7 @@ Every external event is a `ReplayEvent`:
 - `words`: the accepted payload, ten 64-bit words. Floats travel as their
   bits.
 
-<!-- source: aethyr/replay.coax envelope -->
+<!-- source: aethyr/core/replay.coax envelope -->
 ```jai
 // Where an event comes from. Controls and network updates are streams, latest-wins: the gate
 // accepts only a number past the last one it accepted from that source. Model answers reply to
@@ -94,7 +94,7 @@ A `ReplaySession` is views of the realm's own arrays, like an
 events in the order the gate accepted them, one state digest per step, a
 gate per source, and the counters.
 
-<!-- source: aethyr/replay.coax session -->
+<!-- source: aethyr/core/replay.coax session -->
 ```jai
 // The session's counters, at these places in `n` (REPLAY_COUNTERS of them).
 REPLAY_MODE :: 0;        // REPLAY_RECORDING or REPLAY_PLAYING
@@ -102,7 +102,7 @@ REPLAY_TICK :: 1;        // steps run: the next step's number
 REPLAY_EVENTS :: 2;      // events in the record
 REPLAY_CURSOR :: 3;      // the next event a step takes
 REPLAY_INITIAL :: 4;     // the constructed state's digest (chapter 3)
-REPLAY_SEED :: 5;        // the session's seed (aethyr/rand.coax)
+REPLAY_SEED :: 5;        // the session's seed (aethyr/core/rand.coax)
 REPLAY_MARKS :: 6;       // marks kept: one state digest a step
 REPLAY_SEEN :: 7;        // every step digest seen so far, as one number
 REPLAY_DIVERGED :: 8;    // a replay's first step whose digest differs, plus one; 0 if none
@@ -131,7 +131,7 @@ that the replay just constructed, and refuses to start if it differs. A
 replay from a state built some other way fails before its first step, not
 somewhere in the middle.
 
-<!-- source: aethyr/replay.coax begin -->
+<!-- source: aethyr/core/replay.coax begin -->
 ```jai
 // A new recording: the constructed state's digest first, then the seed.
 replay_record :: (s: ReplaySession, initial: int, seed: int) {
@@ -195,7 +195,7 @@ A delayed event isn't refused. It applies at the step after it arrives, and
 the record says which step that is. The replay applies it at that step
 without waiting for anything.
 
-<!-- source: aethyr/replay.coax gate -->
+<!-- source: aethyr/core/replay.coax gate -->
 ```jai
 // A request to a model: its number and the epoch it belongs to, and whether to send it. A
 // replay asks too, so the numbers match, but sends nothing: the answer is in the record.
@@ -269,7 +269,7 @@ step, the realm passes its state digest to `replay_stepped`. A recording
 keeps the digest as that step's mark. A replay compares the digest with the
 mark and keeps the first step that differs.
 
-<!-- source: aethyr/replay.coax step -->
+<!-- source: aethyr/core/replay.coax step -->
 ```jai
 // The next event this step applies, if any: call it until `ok` is false, before the step.
 // A replay passes, and counts, any recorded event for a step already run.
@@ -330,7 +330,7 @@ seed, every event, and every step digest seen. A recording and a replay that
 matches it give the same number. Two hosts that run the same session give the
 same number only if every step's state is the same on both.
 
-<!-- source: aethyr/replay.coax digest -->
+<!-- source: aethyr/core/replay.coax digest -->
 ```jai
 // One event as one number.
 replay_event_digest :: (h: int, e: ReplayEvent) -> int {
@@ -387,7 +387,7 @@ Coax's CPU `sin`, `cos`, `exp` and `log` now use fixed kernels (#12917).
 The engine keeps its own qualified arithmetic profile and recorded digests;
 `pow` still uses host libm unless the engine calls its explicit `math_pow`.
 
-`aethyr/math.coax` gives `math_sin`, `math_cos` and `math_pow` built only
+`aethyr/core/math.coax` gives `math_sin`, `math_cos` and `math_pow` built only
 from those explicitly rounded operations:
 
 - Sine and cosine reduce the angle to a quarter turn in `f64`, with
@@ -445,21 +445,21 @@ largest finite bits: 2139095039
 underflow: 0.0
 ```
 
-`aethyr/player.coax` now calls these in its step, and the walk gives the same
+`aethyr/move/player.coax` now calls these in its step, and the walk gives the same
 digests on both hosts. A step qualified under this replay profile calls
-`aethyr/math.coax` rather than the host's transcendental functions. Other
+`aethyr/core/math.coax` rather than the host's transcendental functions. Other
 realm migrations remain below. Drawing can use either, because what it
 computes isn't part of a step's state.
 
 ## Random streams
 
-A draw from `aethyr/rand.coax` is a pure function of a seed, a stream and a
+A draw from `aethyr/core/rand.coax` is a pure function of a seed, a stream and a
 counter. Give each system or entity its own stream and count its own draws.
 Then a new system, or one that draws more or less, doesn't shift another
 stream's numbers. The record keeps the seed, and the counters are part of
 the realm's state.
 
-<!-- source: aethyr/rand.coax rand -->
+<!-- source: aethyr/core/rand.coax rand -->
 ```jai
 RAND_LOW :: 4294967295;   // the low 32 bits
 
@@ -560,7 +560,7 @@ answer applied more than a step after its request. The replay must then
 match at every step and send nothing. A copy of the record, replayed on a
 second session store, must match too.
 
-<!-- source: aethyr/replay.coax check -->
+<!-- source: aethyr/core/replay.coax check -->
 ```jai
 #forall "delayed, duplicate and stale events: a live session and its replay agree at every step" seed: 0..<8 {
   b: [1] ReplayBacking; s := replay_backing(b[..]);
@@ -612,19 +612,19 @@ The other checks cover:
 - a frame's `Intent` crossing the envelope bit for bit.
 
 ```shell
-coax/bin/coax test aethyr/replay.coax --library
-coax/bin/coax mutate aethyr/replay.coax --library --root-only
-coax/bin/coax test aethyr/rand.coax --library
-coax/bin/coax test aethyr/math.coax --library
+coax/bin/coax test aethyr/core/replay.coax --library
+coax/bin/coax mutate aethyr/core/replay.coax --library --root-only
+coax/bin/coax test aethyr/core/rand.coax --library
+coax/bin/coax test aethyr/core/math.coax --library
 python3 aethyr/tests/rand_oracle.py
 coax/web/tool.sh replay-hosts
 ```
 
 | What | Result (2026-10-31) |
 | --- | --- |
-| `aethyr/replay.coax` mutants killed | 321 of 321 |
-| `aethyr/rand.coax` mutants killed | 50 of 50 |
-| `aethyr/math.coax` mutants killed | 154 of 154 |
+| `aethyr/core/replay.coax` mutants killed | 321 of 321 |
+| `aethyr/core/rand.coax` mutants killed | 50 of 50 |
+| `aethyr/core/math.coax` mutants killed | 154 of 154 |
 | Recorded walk, native and wasm session digests | equal (662099296) |
 | Same walk with the host's `sin`, `cos` and `pow` | parts at step 105 |
 
@@ -646,10 +646,10 @@ record transfer in both directions.
 ## Adoption and record exchange
 
 - [Grid walking](../../verse/gridwalk.coax) records sampled input, including
-  look and zoom. The shared [version 2 walker adapter](../walk-control.coax)
+  look and zoom. The shared [version 2 walker adapter](../move/walk-control.coax)
   supplies the same step-buffering semantics to frame-driven walker faces.
   The original `Player` C layout and legacy single-sample entry stay compatible.
-- [replay-wire.coax](../replay-wire.coax) encodes accepted events and step
+- [replay-wire.coax](../core/replay-wire.coax) encodes accepted events and step
   marks as `AETHYR01`: a version/profile, initial-state digest, seed, bounded
   counts, little-endian words and SHA-256. It admits the whole record before
   modifying destination storage and refuses malformed metadata, order,
@@ -659,7 +659,7 @@ record transfer in both directions.
   digest. It then makes a different browser record and transfers those bytes
   back to native replay. Neither receiver dispatches inference. A planted
   divergence reports step 150. The codec's 218-mutant gate has zero survivors.
-- [decision-trace.coax](../decision-trace.coax) binds each accepted model
+- [decision-trace.coax](../core/decision-trace.coax) binds each accepted model
   choice to all six local ticket identities, sequence, deadline and application
   time in a `REPLAY_MODEL` envelope. The
   [guard adapters](../../verse/everglade/guard-replay.coax) run the actual
@@ -684,7 +684,7 @@ every paid-step canonical digest, completion record, position bit and final
 actor value must agree. Browser-input replay keeps its existing profile.
 This fixture does not replay GPU effects or qualify all failure histories.
 
-> `aethyr/replay.coax` implements this contract, as the sections above
+> `aethyr/core/replay.coax` implements this contract, as the sections above
 > describe. Where the module differs from the text below:
 >
 > - `order` is the event's place in the record: events for a tick are in
@@ -700,7 +700,7 @@ This fixture does not replay GPU effects or qualify all failure histories.
 >   up as a divergent step.
 > - Streams (controls, network updates) are latest-wins, so a stream update
 >   older than the last accepted one is stale even in the same epoch.
-> - The checks below are in `aethyr/replay.coax` and
+> - The checks below are in `aethyr/core/replay.coax` and
 >   `aethyr/tests/replay-oracle.coax`, except "no calls in replay", where the
 >   remote counts its calls instead of failing on them.
 
@@ -782,5 +782,5 @@ include `entity_digest`; that is a later integration, not a prerequisite for
 recording this session. From Coax: R15 strict math and R16 deterministic
 replay and snapshots ([Coax roadmap](../../coax/ROADMAP.md)), and
 determinism ([Coax chapter 16](../../coax/book/ch16-determinism.md)).
-`aethyr/math.coax` does in Aethyr what R15's strict profile will do in the
+`aethyr/core/math.coax` does in Aethyr what R15's strict profile will do in the
 compiler.

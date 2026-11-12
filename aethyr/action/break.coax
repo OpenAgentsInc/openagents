@@ -19,8 +19,8 @@
 
 #module "aethyr.action.break";
 #load "react.coax";
-#load "../space.coax";
-#load "../query.coax";
+#load "../core/space.coax";
+#load "../physics/query.coax";
 
 BREAK_DEBRIS_MAX :: 64;     // pieces one break may launch
 ATTACH_MAX :: 16;           // attachments in one table

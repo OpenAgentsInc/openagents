@@ -21,8 +21,8 @@
 //   coax/bin/coax test apps/openagents-web/splatlab.coax
 
 #load "../../aethyr/ui/font.coax";
-#load "../../aethyr/loop.coax";
-#load "../../aethyr/points.coax";
+#load "../../aethyr/core/loop.coax";
+#load "../../aethyr/core/points.coax";
 
 VERTEX_FLOATS :: 16;
 MAX_VERTICES :: 30000;

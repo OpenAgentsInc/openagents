@@ -639,7 +639,7 @@ ForgeSceneState :: struct {
   land_n: int;      // bytes of `land` the land steps hold
   land_rev: int;    // changes whenever the land does (an edit, an undo, a redo)
 }
-// The land is optional: a scene on a terrain tile (aethyr/terrain-tile.coax) hands its samples
+// The land is optional: a scene on a terrain tile (aethyr/world/terrain-tile.coax) hands its samples
 // (`land_side` a side: heights by rows from the south, four material ids and four weights a sample)
 // and `land`, the bytes its land steps keep. A land step is the rectangle of samples an edit changed,
 // as they were before it; undo swaps them with the land's, so the same bytes then hold the edit for redo.

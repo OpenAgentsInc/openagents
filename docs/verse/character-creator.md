@@ -119,7 +119,7 @@ The source license is CC0 1.0 Universal (`License_Source.txt`).
 coax/bin/coax test --library everglade/client/client.coax --only "create:"
 coax/bin/coax test --library aethyr/render/adoption.coax
 cd apps/openagents-web && ../../coax/web/wasm.sh everglade/client/client.coax everglade2-face.c \
-  build/everglade2.wasm everglade-step.coax ../../aethyr/sticks.coax
+  build/everglade2.wasm everglade-step.coax ../../aethyr/core/sticks.coax
 bun coax/web/realms.ts
 coax/web/serve.sh apps/openagents-web --listen 127.0.0.1:8873
 ```
@@ -140,7 +140,7 @@ replace the active player until explicitly saved. PLAYER SAVED confirms the
 write; RETRY SAVE reports refused browser storage and never navigates away.
 
 The versioned origin-wide key is `aethyr.player.appearance.v1`. Its bounded
-payload is the CC2 or CC3 record, parsed by `aethyr/character-appearance.coax`
+payload is the CC2 or CC3 record, parsed by `aethyr/character/character-appearance.coax`
 in both the creator and Everglade. Invalid records leave live choices intact.
 This is browser-local appearance, independent of login identity, quest saves,
 room permissions, movement or inventory. The class it carries sets your bar in

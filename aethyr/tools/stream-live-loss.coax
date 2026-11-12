@@ -1,7 +1,7 @@
 // Actual RAF-driven player: GPU replacement time cannot become simulation dt.
 // tool.sh: stack-gib 1
 #load "../../coax/web/wasm-chrome.coax";
-#load "../assets.coax" as assets;
+#load "../core/assets.coax" as assets;
 tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args; if !args_load(a[..]) || args_count(a[..]) != 3 { tool_errln("usage: stream-live-loss BASE SCENE_JSON NEW_REPORT"); return 2; }
   if fs_exists(args_at(a[..], 2)) { return 2; }

@@ -1,8 +1,8 @@
 // Private scan payload v1: VSM1, vertex/index counts, version=1; p,n,RGB f32 then u32 indices.
 // The caller pins SHA-256 before any decode. Failed decode never alters the live mesh.
 #load "../../aethyr/render/geometry/indexed.coax";
-#load "../../aethyr/assets.coax";
-#load "../../aethyr/binary-words.coax";
+#load "../../aethyr/core/assets.coax";
+#load "../../aethyr/core/binary-words.coax";
 #authority;
 SCAN_VERTICES :: 8192;
 SCAN_INDICES :: 32766;
@@ -28,7 +28,7 @@ scan_decode :: (s:[]Scan,b:[]u8) #effects(all) {
   scan_put(b[..],28,f32_bits(2));#assert !scan_read(s[..],b[..]);scan_put(b[..],28,0);
   scan_put(b[..],132,1);#assert !scan_read(s[..],b[..]);
 }
-// Structural parsing is separate from content identity/admission (aethyr/assets.coax).
+// Structural parsing is separate from content identity/admission (aethyr/core/assets.coax).
 // The caller supplies scratch, never the retained live mesh.
 scan_read :: (candidate:[]Scan,b:[]u8)->bool #effects(all) {
   if !scan_header(b) {return false;}

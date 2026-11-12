@@ -327,8 +327,8 @@ meshes and nothing (`MassRepresentation`), and replication by client
 
 **What Aethyr has.** Entities with slot-and-generation handles, `EntityId`s
 for saves and the network, and spawns and despawns applied at the step's
-flush (`aethyr/entity.coax`). Structure-of-arrays physics
-(`aethyr/sim/rigid.coax`). Bounded actor profiles (`aethyr/actors/`).
+flush (`aethyr/core/entity.coax`). Structure-of-arrays physics
+(`aethyr/physics/sim/rigid.coax`). Bounded actor profiles (`aethyr/actors/`).
 
 **The gap.** No shared archetype storage or query layer for crowds, and no
 simulation or representation LOD.
@@ -438,7 +438,7 @@ way abilities push bodies. Skip predicted rigid-body physics for now.
 
 **Why.** It's the "no one-off zone code" rule applied to netcode, and it is
 what #12845 asks for. Coax's `#authority` checks and our deterministic math
-(`aethyr/math.coax`, the same bits natively and in the browser) make
+(`aethyr/core/math.coax`, the same bits natively and in the browser) make
 resimulation safer for us than for Unreal. Predicted rigid bodies are
 expensive and Everglade doesn't need them yet.
 
@@ -498,8 +498,8 @@ resim caches (`EvolutionResimCache.h`) and the Chaos Visual Debugger
 (`Plugins/ChaosVD`), which records solver frames for playback.
 
 **What Aethyr has.**
-- Rigid bodies in f64 under three named integrators (`aethyr/sim/rigid.coax`).
-- PBD, SPH, MPM and grid fluids (`aethyr/sim/`).
+- Rigid bodies in f64 under three named integrators (`aethyr/physics/sim/rigid.coax`).
+- PBD, SPH, MPM and grid fluids (`aethyr/physics/sim/`).
 - Kinematic capsule collision (`collide.coax`).
 - A Physics Lab that measures our kernels against pinned Rapier and Jolt
   references (`aethyr/lab/`).
@@ -576,7 +576,7 @@ Runtime generation is scheduled around streaming sources
 
 **What Aethyr has.** Seeded scatter on a jittered grid. Each cell's draws
 are keyed by realm seed, layer ID, generator version and grid coordinates,
-with keep-outs as data, placed whole or refused (`aethyr/scatter.coax`,
+with keep-outs as data, placed whole or refused (`aethyr/world/scatter.coax`,
 chapter 80). The architecture kit generates buildings and flora from
 parameters (`aethyr/arch/`). Staged build sites (`world/build-site.coax`).
 
@@ -638,7 +638,7 @@ confirms the choice.
 
 **What Aethyr has.**
 - Assets identified by the SHA-256 of their bytes, admitted whole or refused
-  (`aethyr/assets.coax`).
+  (`aethyr/core/assets.coax`).
 - Content-addressed shader packages (`render/build.coax`,
   `render/package.coax`).
 - VPK1 packs with licence checks (`aethyr/forge/pack.coax`, chapter 53).
@@ -675,12 +675,12 @@ scrub through. Network Prediction has its own trace (`-trace=np`), and
 ChaosVD records physics.
 
 **What Aethyr has.**
-- Frame statistics and the 60 FPS rule (`aethyr/frame-report.coax`).
+- Frame statistics and the 60 FPS rule (`aethyr/core/frame-report.coax`).
 - Every realm measured in headless Chrome (`coax/web/realm-perf.coax`) and
   frame-time tooling (`coax/web/frametime.ts`, using `timestamp-query`).
 - A netcode overlay (`aethyr/net/stats.coax`, Everglade II `?net`).
 - Diagnostic trace capacity (`aethyr/host/diagnostic-trace.coax`).
-- Exact replay (`aethyr/replay.coax`).
+- Exact replay (`aethyr/core/replay.coax`).
 
 Chapter 83 lists the gaps: "stage timers in the page's frame, the HUD
 overlay that draws them, and the overlay's cost."
@@ -789,7 +789,7 @@ agent context the way MCP tool search does.
 - Rooms reached directly over WebSocket or WebTransport, with no relay
   (`net/transport.coax`).
 - An offline room in a Worker (chapter 95).
-- Phones as first-class targets (`aethyr/quality.coax`).
+- Phones as first-class targets (`aethyr/core/quality.coax`).
 - Compressed-texture detection (`coax/web/host.js`) and texture tiers
   (`docs/verse/2026-11-07-texture-formats.md`).
 - Native Metal and Vulkan hosts (`render/metal-host.coax`,
@@ -849,8 +849,8 @@ sessions, and we have them. What we lack is the one command that proves
 |---|---|---|---|
 | Language | C++ engine, Blueprints and Verse for gameplay, HLSL shaders, Python and MCP for tools; UE6 removes Blueprints and Actors to get to fewer | Coax for gameplay, shaders (WGSL and SPIR-V), tools and tests | One language agents learn once, with one checker |
 | Web | A native engine ported late: wasm64, 1–4 GB heap, a UDP relay, the mobile renderer, iOS not working | Web-first; small modules; native hosts share the same Coax | Players click a link; phones are a design target |
-| Correctness | Unit and functional tests; rules are code reviewed by people | `#authority` files with zero surviving mutants, `#forall`, refusal fixtures (`aethyr/refusals.coax`) | Agent-written code is checked by machine, not by trust |
-| Determinism | Not a goal; network prediction resimulates within tolerance | Same bits natively and in the browser (`aethyr/math.coax`), counter-based random streams (`rand.coax`), exact replay with digests (`replay.coax`) | Replay is the debugger, the test oracle and the proof |
+| Correctness | Unit and functional tests; rules are code reviewed by people | `#authority` files with zero surviving mutants, `#forall`, refusal fixtures (`aethyr/core/refusals.coax`) | Agent-written code is checked by machine, not by trust |
+| Determinism | Not a goal; network prediction resimulates within tolerance | Same bits natively and in the browser (`aethyr/core/math.coax`), counter-based random streams (`rand.coax`), exact replay with digests (`replay.coax`) | Replay is the debugger, the test oracle and the proof |
 | Refusal | Clamp and warn, best effort | Budgets that refuse whole (`budget.coax`, `assets.coax`, every admission) | No hidden limits, as the owner requires |
 | Binary size | A Development build's code is about 913 MiB (Wasm docs) | Per-realm wasm modules | First image in seconds on a phone |
 | Asset identity | Paths and GUIDs, with derived-data keys beside them | SHA-256 of bytes is the identity | Caching, dedupe and integrity come free |

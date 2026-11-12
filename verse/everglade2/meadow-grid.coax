@@ -30,7 +30,7 @@ e2_meadow_grid_outer :: (kit: int, tier: int) -> f32 {
 // The share of a field's tufts that stand d metres from the eye, field.coax's four tiers together:
 // all of them out to E2_FIELD_NEAR (16 m), a quarter left every E2_FIELD_STEP (12 m) past it, and
 // the last tier's 1/64 fading to none by E2_FIELD_FAR (140 m). g, the quality's grass reach
-// (aethyr/quality.coax `grass`), scales every distance, as e2_field_start_r and e2_field_out_r do.
+// (aethyr/core/quality.coax `grass`), scales every distance, as e2_field_start_r and e2_field_out_r do.
 // A page whose grass isn't drawn in field.coax's tiers thins its own by it, so every grass in the
 // engine falls off with distance the same way (charactercreator.coax grass_cull, #13147).
 e2_meadow_density :: (d: f32, g: f32) -> f32 {

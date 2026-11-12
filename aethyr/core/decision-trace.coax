@@ -1,0 +1,178 @@
+// Accepted model decisions at the simulation boundary. This versioned
+// component trace keeps concrete local ticket identities in each envelope.
+#module "aethyr.decision_trace";
+#load "replay.coax";
+#load "replay-wire.coax";
+#load "../../psionic/lib/game/decision.coax";
+#authority;
+DECISION_TRACE_PROFILE :: 2;
+DecisionTraceV1 :: struct {
+  events:[64]ReplayEvent;marks:[64]int;channels:[REPLAY_SOURCES]ReplayChannel;n:[REPLAY_COUNTERS]int;
+  initialized:bool;local:int;request:int;epoch:int;
+}
+DrBegin :: struct {result:GdBegin;live:bool;}
+DrTracked :: struct {ok:bool;live:bool;}
+dr_session :: (trace:[]DecisionTraceV1)->ReplaySession #effects(all) {
+  return ReplaySession.{events=trace[0].events[..],marks=trace[0].marks[..],channels=trace[0].channels[..],n=trace[0].n[..]};
+}
+dr_context :: (c:GdContext)->int #effects(all) {
+  h:=2166136261;for v:[6]int.[c.epoch,c.actor,c.generation,c.revision,c.policy,c.options] {h=replay_mix_wide(h,v);}return h;
+}
+dr_begin :: (trace:[]DecisionTraceV1,state:[]GdState,c:GdContext,now:int,timeout:int)->DrBegin #effects(all) {
+  if trace[0].initialized && trace[0].n[REPLAY_EVENTS]>=64 {return DrBegin.{result=GdBegin.{code=GdCode.bounds}};}
+  b:=gd_begin(state,c,now,timeout);if b.code!=GdCode.ok {return DrBegin.{result=b};}
+  tracked:=dr_started(trace,b.ticket);#assert tracked.ok;
+  return DrBegin.{result=b,live=tracked.live};
+}
+// A pure consumer can first run its existing admission on a private copy,
+// then bind the concrete lease here before publishing that copy's send flag.
+dr_started :: (trace:[]DecisionTraceV1,ticket:GdTicket)->DrTracked #effects(all) {
+  if trace[0].initialized && trace[0].n[REPLAY_EVENTS]>=64 {return DrTracked.{};}
+  s:=dr_session(trace);
+  if !trace[0].initialized {replay_record(s,dr_context(ticket.context),0);trace[0].initialized=true;}
+  ask:=replay_ask(s,REPLAY_MODEL);
+  trace[0].local=ticket.sequence;trace[0].request=ask.request;trace[0].epoch=ask.epoch;
+  return DrTracked.{ok=true,live=ask.live};
+}
+dr_words :: (ticket:GdTicket,action:int,now:int)->[10]int #effects(all) {
+  c:=ticket.context;
+  return [10]int.[c.epoch,c.actor,c.generation,c.revision,c.policy,c.options,action,ticket.expires_ms,now,ticket.sequence];
+}
+dr_mark :: (event:ReplayEvent)->int #effects(all) {h:=2166136261;for word:event.words {h=replay_mix_wide(h,word);}return h;}
+// Stage only the current recorded answer. The consumer still runs all of
+// its ordinary eligibility/revocation checks before dr_take can publish it.
+dr_stage :: (trace:[]DecisionTraceV1,state:[]GdState,now:int) #effects(all) {
+  if !trace[0].initialized {return;}s:=dr_session(trace);
+  if !replay_playing(s) || state[0].phase!=GD_WAITING {return;}
+  cursor:=s.n[REPLAY_CURSOR];if cursor>=s.n[REPLAY_EVENTS] {return;}
+  event:=s.events[cursor];
+  if event.words[8]!=now || event.words[9]!=state[0].sequence {return;}
+  staged:=gd_offer(state,state[0].sequence,now,event.words[6]);
+}
+dr_take :: (trace:[]DecisionTraceV1,state:[]GdState,c:GdContext,now:int,legal:int)->GdChoice #effects(all) {
+  if !trace[0].initialized || trace[0].local!=state[0].sequence {return GdChoice.{code=GdCode.stale};}
+  s:=dr_session(trace);copy:=[1]GdState.[state[0]];event:ReplayEvent;
+  if replay_playing(s) {
+    cursor:=s.n[REPLAY_CURSOR];
+    if cursor>=s.n[REPLAY_EVENTS] {return GdChoice.{code=GdCode.waiting};}
+    event=s.events[cursor];
+    if event.tick!=replay_tick(s) || event.source!=REPLAY_MODEL || event.request!=trace[0].request || event.epoch!=trace[0].epoch {return GdChoice.{code=GdCode.stale};}
+    expected:=dr_words(state[0].ticket,event.words[6],now);
+    for word,i:expected {if word!=event.words[i] {return GdChoice.{code=GdCode.stale};}}
+    if copy[0].phase==GD_WAITING {
+      if gd_offer(copy[..],state[0].sequence,now,event.words[6])!=GdCode.ok {return GdChoice.{code=GdCode.stale};}
+    }
+    if copy[0].action!=event.words[6] {return GdChoice.{code=GdCode.stale};}
+  }
+  candidate:=gd_take(copy[..],state[0].sequence,c,now,legal);
+  if candidate.code!=GdCode.ok {return candidate;}
+  if !replay_playing(s) {
+    event=ReplayEvent.{source=REPLAY_MODEL,request=trace[0].request,epoch=trace[0].epoch,words=dr_words(state[0].ticket,candidate.action,now)};
+    if replay_offer(s,event)!=REPLAY_ACCEPTED {return GdChoice.{code=GdCode.bounds};}
+  }
+  taken:=replay_take(s);#assert taken.ok;
+  // Commit the accepted event before publishing the chosen action or retiring
+  // its concrete local lease. Replay executes no inference or transport.
+  state[0]=copy[0];replay_stepped(s,dr_mark(taken.event));return candidate;
+}
+dr_save :: (trace:[]DecisionTraceV1,out:[]u8,overlap:bool)->int #effects(all) {
+  if !trace[0].initialized {return 0;}
+  return arc_encode(dr_session(trace),DECISION_TRACE_PROFILE,out,overlap);
+}
+dr_load :: (trace:[]DecisionTraceV1,bytes:[]u8,c:GdContext,overlap:bool)->bool #effects(all) {
+  if trace[0].initialized {return false;}
+  r:=arc_read(bytes,DECISION_TRACE_PROFILE);
+  if !r.ok || r.initial!=dr_context(c) {return false;}
+  s:=dr_session(trace);
+  if !arc_decode(bytes,DECISION_TRACE_PROFILE,s,overlap) {return false;}
+  #assert replay_play(s,dr_context(c));
+  trace[0].initialized=true;return true;
+}
+
+#test "real ticket admission records before retirement and replays without an inference capability" {
+  live:[1]DecisionTraceV1;state:[1]GdState;c:=GdContext.{epoch=1,actor=2,generation=3,revision=4,policy=1,options=1};
+  b:=dr_begin(live[..],state[..],c,100,8000);#assert b.live && b.result.code==GdCode.ok;
+  #assert gd_offer(state[..],1,101,2)==GdCode.ok;
+  chosen:=dr_take(live[..],state[..],c,102,7);#assert chosen.code==GdCode.ok && chosen.action==2 && state[0].phase==0;
+  s:=dr_session(live[..]);#assert replay_events(s)==1 && s.events[0].source==REPLAY_MODEL && s.events[0].words[9]==1;
+  // Independently calculated FNV-1a over little-endian low/high u32 words.
+  #assert dr_context(c)==1188850665 && dr_mark(s.events[0])==2310595104 && replay_seed(s)==0;
+  bytes:[1024]u8;n:=dr_save(live[..],bytes[..],false);#assert n==200;
+  replay:[1]DecisionTraceV1;other:[1]GdState;#assert dr_load(replay[..],bytes[0..<n],c,false);
+  b=dr_begin(replay[..],other[..],c,100,8000);#assert !b.live && b.result.code==GdCode.ok;
+  dr_stage(replay[..],other[..],101);#assert other[0].phase==GD_WAITING;
+  dr_stage(replay[..],other[..],102);#assert other[0].phase==GD_READY;
+  result:=dr_take(replay[..],other[..],c,102,7);#assert result.code==GdCode.ok && result.action==2 && other[0].phase==0;
+  #assert replay_matched(dr_session(replay[..]));
+  direct:[1]DecisionTraceV1;pending:[1]GdState;#assert dr_load(direct[..],bytes[0..<n],c,false);
+  start:=dr_begin(direct[..],pending[..],c,100,8000);#assert !start.live;
+  result=dr_take(direct[..],pending[..],c,102,7);#assert result.code==GdCode.ok && result.action==2;
+}
+#test "staging cannot borrow a live trace or read past its last event" {
+  trace:[1]DecisionTraceV1;state:[1]GdState;c:=GdContext.{epoch=1,policy=1,options=1};
+  b:=dr_begin(trace[..],state[..],c,0,100);#assert b.live;
+  trace[0].n[REPLAY_EVENTS]=1;trace[0].events[0]=ReplayEvent.{source=REPLAY_MODEL,request=1,words=dr_words(state[0].ticket,1,2)};
+  dr_stage(trace[..],state[..],2);#assert state[0].phase==GD_WAITING;
+  trace[0].n[REPLAY_MODE]=REPLAY_PLAYING;trace[0].n[REPLAY_CURSOR]=64;trace[0].n[REPLAY_EVENTS]=64;
+  dr_stage(trace[..],state[..],2);#assert state[0].phase==GD_WAITING;
+}
+#test "a second concrete lease retains changed replay epoch and high context words" {
+  trace:[1]DecisionTraceV1;state:[1]GdState;c:=GdContext.{epoch=1,actor=2,generation=3,revision=4,policy=1,options=1};
+  b:=dr_begin(trace[..],state[..],c,0,100);#assert b.live;
+  #assert gd_offer(state[..],1,1,1)==GdCode.ok && dr_take(trace[..],state[..],c,2,7).code==GdCode.ok;
+  s:=dr_session(trace[..]);replay_new_epoch(s,REPLAY_MODEL);
+  c.actor=4294967297;c.generation=4294967298;c.revision=4294967299;
+  b=dr_begin(trace[..],state[..],c,100,100);#assert b.live && trace[0].epoch==1;
+  #assert gd_offer(state[..],2,101,2)==GdCode.ok;
+  choice:=dr_take(trace[..],state[..],c,102,7);#assert choice.code==GdCode.ok && choice.action==2;
+  #assert s.events[1].request==2 && s.events[1].epoch==1 && s.events[1].tick==1 && replay_tick(s)==2;
+  for field:0..<6 {
+    changed:=c;if field==0 {changed.epoch+=4294967296;}if field==1 {changed.actor+=4294967296;}
+    if field==2 {changed.generation+=4294967296;}if field==3 {changed.revision+=4294967296;}
+    if field==4 {changed.policy+=4294967296;}if field==5 {changed.options+=4294967296;}
+    #assert dr_context(changed)!=dr_context(c);
+  }
+}
+#test "load admission preserves an active owner and refuses wrong initial state malformed bytes and aliases" {
+  live:[1]DecisionTraceV1;state:[1]GdState;c:=GdContext.{epoch=1,policy=1,options=1};bytes:[1024]u8;
+  #assert dr_save(live[..],bytes[..],false)==0;
+  dr_stage(live[..],state[..],0);#assert state[0].phase==0;
+  b:=dr_begin(live[..],state[..],c,0,100);#assert b.live;
+  #assert gd_offer(state[..],1,1,1)==GdCode.ok && dr_take(live[..],state[..],c,2,7).code==GdCode.ok;
+  n:=dr_save(live[..],bytes[..],false);#assert n==200 && dr_save(live[..],bytes[..],true)==0;
+  fresh:[1]DecisionTraceV1;wrong:=c;wrong.actor=1;
+  #assert !dr_load(fresh[..],bytes[0..<n],wrong,false) && !fresh[0].initialized && fresh[0].n[REPLAY_EVENTS]==0;
+  #assert !dr_load(fresh[..],bytes[0..<n-1],c,false) && !dr_load(fresh[..],bytes[0..<n],c,true);
+  #assert dr_load(fresh[..],bytes[0..<n],c,false) && !dr_load(fresh[..],bytes[0..<n],c,false);
+  blocked:[1]GdState;live[0].n[REPLAY_EVENTS]=64;
+  #assert dr_begin(live[..],blocked[..],c,0,1).result.code==GdCode.bounds && blocked[0].sequence==0;
+  #assert !dr_started(live[..],state[0].ticket).ok;
+  invalid:[1]DecisionTraceV1;
+  #assert dr_begin(invalid[..],blocked[..],c,-1,1).result.code==GdCode.bounds && !invalid[0].initialized;
+}
+#test "each replay identity time field and legal mask is rechecked before the lease retires" {
+  live:[1]DecisionTraceV1;state:[1]GdState;c:=GdContext.{epoch=1,actor=2,generation=3,revision=4,policy=1,options=1};
+  b:=dr_begin(live[..],state[..],c,0,100);#assert b.live;
+  #assert gd_offer(state[..],1,1,2)==GdCode.ok && dr_take(live[..],state[..],c,2,7).code==GdCode.ok;
+  bytes:[1024]u8;n:=dr_save(live[..],bytes[..],false);
+  for fault:0..<16 {
+    trace:[1]DecisionTraceV1;local:[1]GdState;#assert dr_load(trace[..],bytes[0..<n],c,false);
+    started:=dr_begin(trace[..],local[..],c,0,100);#assert !started.live;
+    if fault<10 {trace[0].events[0].words[fault]+=1;}
+    if fault==6 {trace[0].events[0].words[6]=9;}
+    if fault==10 {trace[0].events[0].tick=1;}if fault==11 {trace[0].events[0].source=0;}
+    if fault==12 {trace[0].events[0].request=2;}if fault==13 {trace[0].events[0].epoch=1;}
+    if fault==14 {trace[0].n[REPLAY_EVENTS]=0;}if fault==15 {#assert gd_offer(local[..],1,1,0)==GdCode.ok;}
+    chosen:=dr_take(trace[..],local[..],c,2,7);#assert chosen.code!=GdCode.ok && local[0].phase!=0;
+  }
+}
+#test "illegal stale expired unrecordable and mismatched decisions never retire the live lease" {
+  c:=GdContext.{epoch=1,policy=1,options=1};
+  for failure:0..<5 {
+    trace:[1]DecisionTraceV1;state:[1]GdState;b:=dr_begin(trace[..],state[..],c,0,100);#assert b.live;
+    #assert gd_offer(state[..],1,1,2)==GdCode.ok;context:=c;now:=2;legal:=7;
+    if failure==0 {legal=1;}if failure==1 {context.revision+=1;}if failure==2 {now=100;}
+    if failure==3 {trace[0].n[REPLAY_EVENTS]=64;}if failure==4 {trace[0].local=2;}
+    #assert dr_take(trace[..],state[..],context,now,legal).code!=GdCode.ok && state[0].phase==GD_READY;
+  }
+}

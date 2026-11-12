@@ -13,7 +13,7 @@
 #load "ui.coax";
 #load "../../coax/web/analytics.coax";
 #load "../../verse/edit/edit.coax";   // EDIT for its owner and admins (docs/verse/realm-edit.md)
-#load "../../aethyr/budget.coax";
+#load "../../aethyr/core/budget.coax";
 
 VERTEX_FLOATS :: 16;   // x, y, along, across, length, core, light, glow, red, green, blue, mode, 0, 0, 0, 0
 MAX_VERTICES :: 16000;
@@ -811,7 +811,7 @@ h_playing_facts :: (f: [] f32) {
 }
 
 // ---------------------------------------------------------------------------------------------
-// The frame budget (aethyr/budget.coax, book chapter 16): what one frame of Ice Cream Man may use.
+// The frame budget (aethyr/core/budget.coax, book chapter 16): what one frame of Ice Cream Man may use.
 // The vertex limit is under the vertex buffer, so a frame its writers clip fails the check.
 ICE_BUDGET :: FrameBudget.{steps = 8, vertices = 3000, draws = 0, bytes = 1179648};
 

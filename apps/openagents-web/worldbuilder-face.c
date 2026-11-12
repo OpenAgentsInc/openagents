@@ -34,8 +34,8 @@ static float bake[6453720];
 static float zone_strokes[250000 * 16];   // the zone's own strokes (everglade/zone.coax MAX_VERTICES, VERTEX_FLOATS): made, never drawn
 static uint32_t baked, frames;
 static int64_t figure_draws;
-static coax_t_Player player;   // your body (aethyr/walk.coax)
-static coax_t_Sticks sticks;   // a phone's thumb (aethyr/sticks.coax)
+static coax_t_Player player;   // your body (aethyr/move/walk.coax)
+static coax_t_Sticks sticks;   // a phone's thumb (aethyr/core/sticks.coax)
 static double now;
 static float width, height, dpr;
 static coax_t_Drive drive;     // the agent driver's (aethyr/agent/drive.coax): the zone holds a view of it
@@ -123,7 +123,7 @@ EXPORT("coaxial_blur") void coaxial_blur(uint32_t state) { wbw_blur(walk(state))
 EXPORT("coaxial_focus") void coaxial_focus(uint32_t state) { (void)state; }
 static uint32_t pointer(uint32_t state, float x, float y, int32_t phase, int32_t kind, int32_t id, int32_t button) {
   bool used = wbw_pointer(walk(state), x, y, phase, kind, id, button);
-  // the finger the zone says is the thumb's moves the stick (aethyr/sticks.coax)
+  // the finger the zone says is the thumb's moves the stick (aethyr/core/sticks.coax)
   if (zone_thumb(zone(state))) sticks = verse_sticks_world_touch(sticks, id, phase, x, y, width, height, dpr, now);
   drain(state);
   return used ? 1u : 0u;

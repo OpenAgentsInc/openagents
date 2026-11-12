@@ -1,7 +1,7 @@
 // Compose platform focus/visibility facts around the published session
 // lifecycle. The profile owns actions; this carrier owns admitted-frame time.
 #load "../session/lifecycle.coax";
-#load "../frame-pacing-policy.coax";
+#load "../core/frame-pacing-policy.coax";
 #authority;
 HostLifecycle :: struct {profile:[1]LifeState;focused:bool=true;shown:bool=true;last_us:int=-1;}
 HostFrameOffer :: struct {admit:bool;dt:f64;}

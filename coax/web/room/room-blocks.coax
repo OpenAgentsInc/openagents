@@ -1,4 +1,4 @@
-#load "../../../aethyr/ids.coax";
+#load "../../../aethyr/core/ids.coax";
 // The Everglade rooms' side of interest management (room-interest.coax, #12789): each tick's table
 // of entities put into the grid, each seat's pick handed to the send path, and who each seat blocks
 // (#12714: the page's K frame, kept by player id, as the masks the picks withhold those players by).

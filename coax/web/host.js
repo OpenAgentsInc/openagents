@@ -1018,7 +1018,7 @@ async function openDevice(made = () => {}) {
   if (!navigator.gpu) return null;
   let adapter = await navigator.gpu.requestAdapter();
   if (!adapter) return null;
-  // the GPU's facts for the graphics quality's device class (aethyr/quality.coax quality_gpu):
+  // the GPU's facts for the graphics quality's device class (aethyr/core/quality.coax quality_gpu):
   // in every later pageFacts, and told to the app now (message 613)
   gpuFacts = { gpu_vendor: String(adapter.info?.vendor || "").toLowerCase().slice(0, 32), gpu_arch: String(adapter.info?.architecture || "").toLowerCase().slice(0, 32),
     gpu_fallback: (adapter.info?.isFallbackAdapter ?? adapter.isFallbackAdapter) ? 1 : 0 };
@@ -2778,7 +2778,7 @@ function observeSize() {
 // 9 times the pixels of the page, and a scene's shaders run on each. The app's action 6 names a new
 // one and coaxial_quality(state, 0|1|2|3) tells the app the one in force; kept in localStorage
 // verse.quality. AUTO (3) caps nothing: the app's governor sets its pixels (coaxial_pixel_budget,
-// aethyr/quality.coax). Goldens always draw HIGH.
+// aethyr/core/quality.coax). Goldens always draw HIGH.
 const QUALITY = ["high", "medium", "low", "auto"], QUALITY_CAP = [Infinity, 1.5, 1, Infinity];
 let quality = (() => {
   try { const q = QUALITY.indexOf(localStorage.getItem("verse.quality")); if (q >= 0) return q; } catch {}
@@ -2924,7 +2924,7 @@ function frame(now) {
 
 // A controller (a module that exports coaxial_pad): the first pad's left stick (x right, y
 // forward), its first button, and every button as bits (bit b for button b), once a frame; the
-// module decides what they do (myrealm: aethyr/input.coax; Everglade: its settings record,
+// module decides what they do (myrealm: aethyr/core/input.coax; Everglade: its settings record,
 // everglade-access.coax). A pad gone sends one still frame.
 let padLive = false;
 function padPoll() {

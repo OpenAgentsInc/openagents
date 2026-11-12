@@ -143,7 +143,7 @@ is ground.
 - **A draw stands them.** After `arch_scene_solids`, every `arch_draw` writes
   its part's solids where its records stand it (`ArchScene.placed`).
 - **`solids.coax` walks among them** with Aethyr's walking capsule
-  (`aethyr/collide.coax`: 0.3 m round, 1.8 m tall). A top up to 0.55 m above
+  (`aethyr/physics/collide.coax`: 0.3 m round, 1.8 m tall). A top up to 0.55 m above
   your feet is a step, so steps and terraces are climbed and a wall is not.
 
 ```coax

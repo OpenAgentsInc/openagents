@@ -2,8 +2,8 @@
 // action permissions. Consumers deduplicate (source,generation,tick,kind).
 #module "aethyr.actors.signals";
 #load "pool.coax";
-#load "../entity.coax" as entities;
-#load "../walk.coax" as walking;
+#load "../core/entity.coax" as entities;
+#load "../move/walk.coax" as walking;
 #authority;
 ACTOR_NOTICE_FEAR :: 1; ACTOR_NOTICE_INTEREST :: 2;
 ActorAttributes :: struct {valid:bool;moving:bool;interacting:bool;interruptible:bool;controlled:bool;airborne:bool;}

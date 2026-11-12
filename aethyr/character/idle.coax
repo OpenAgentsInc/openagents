@@ -7,11 +7,11 @@
 // The pack names nothing for this, so the world declares which face targets blink, which joints
 // are the eyes and which joint breathes (CharacterIdleRig); character_idle_bind finds them by exact
 // name in the pack's face (its target and rig joint names). A name the pack doesn't have leaves that
-// part off. Draws come from aethyr/rand.coax under the declared seed, so a replay gets the same blinks.
+// part off. Draws come from aethyr/core/rand.coax under the declared seed, so a replay gets the same blinks.
 //   each fixed step: character_step(c[..],packs[..],dt), then character_idle_step(idle[..],c[..],packs[..],dt)
 #load "character.coax";
-#load "../rand.coax";
-#load "../math.coax";
+#load "../core/rand.coax";
+#load "../core/math.coax";
 
 // Seconds a blink takes, closing and opening.
 CHARACTER_BLINK :: 0.16f32;

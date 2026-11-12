@@ -1,6 +1,6 @@
 // Lab composition of Aethyr's existing rigid/contact/SAT kernels with caller-owned large storage.
 #load "physics-record.coax";
-#load "../sim/narrow.coax";
+#load "../physics/sim/narrow.coax";
 
 #test "physics lab Aethyr: broad phase includes a rotated box pair and orders ties by stable ID" {
   b:[3]RigidBody;order:[3]int;tmp:[3]int;

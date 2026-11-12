@@ -1,12 +1,12 @@
 # 18. Rigid bodies and time steps
 
-> **Status: partly implemented.** [`aethyr/sim/rigid.coax`](../../aethyr/sim/rigid.coax)
+> **Status: partly implemented.** [`aethyr/physics/sim/rigid.coax`](../physics/sim/rigid.coax)
 > (122 mutants: 119 killed, 3 marked equivalent with their reason) steps a
 > batch of free rigid bodies on the CPU in f64 under three named
 > profiles: explicit Euler, semi-implicit Euler and an implicit gyroscopic
 > step. Its checks measure each profile on free fall, a symmetric top, the
 > intermediate-axis flip against the Jacobi elliptic solution, energy and
-> momentum, and step halving, and agree with [`aethyr/rigid.coax`](../../aethyr/rigid.coax).
+> momentum, and step halving, and agree with [`aethyr/physics/rigid.coax`](../physics/rigid.coax).
 > Device kernels, f32 profiles, sleeping and moving chapter 17's scene onto
 > these arrays are not built yet.
 
@@ -62,7 +62,7 @@ The attitude update multiplies by the exponential of the rotation
 
 ## What runs today
 
-[`aethyr/sim/rigid.coax`](../../aethyr/sim/rigid.coax) holds up to 64
+[`aethyr/physics/sim/rigid.coax`](../physics/sim/rigid.coax) holds up to 64
 bodies as a `Rigid_Set`: arrays of position, attitude, linear velocity,
 body-frame angular velocity, mass and inverse mass, principal moments and
 their inverses, and a world-frame force and torque that each step clears.
@@ -164,14 +164,14 @@ damping it; the implicit step's flip interval is 7×10⁻⁸ s from
 The checks run with:
 
 ```shell
-coax/bin/coax test aethyr/sim/rigid.coax --library
+coax/bin/coax test aethyr/physics/sim/rigid.coax --library
 ```
 
 They pin free fall to `x₀ + v₀t + ½gt² ± ½gΔt t` per profile, keep static
 bodies still, match momentum changes to impulses, measure precession and the
 flip interval, show explicit energy growth against implicit dissipation,
 halve the energy error by halving the step (all three profiles are first
-order), and match `aethyr/rigid.coax`'s RK4 attitude to 10⁻⁶ after 1,000
+order), and match `aethyr/physics/rigid.coax`'s RK4 attitude to 10⁻⁶ after 1,000
 steps.
 
 ## The design in Aethyr
@@ -214,7 +214,7 @@ reports its own error budget rather than inheriting the CPU's.
 - Intermediate-axis spin: the flip period against the Jacobi elliptic
   solution, and `|L|` and energy drift reported per profile over 10⁵ steps.
 - Momentum ledger: total momentum changes only by named external impulses.
-- Agreement with `aethyr/rigid.coax` on shared cases within a stated
+- Agreement with `aethyr/physics/rigid.coax` on shared cases within a stated
   tolerance; device kernels against the CPU profile within theirs.
 - Step-halving: error falls at the integrator's stated order.
 

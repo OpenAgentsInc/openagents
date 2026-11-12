@@ -1,5 +1,5 @@
 // book:begin example
-#load "../follow.coax";
+#load "../cam/follow.coax";
 #import "Basic";
 
 // The follow camera on its own: its target chasing a point 1 m away on the spring, a wall

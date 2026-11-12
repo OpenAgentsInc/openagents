@@ -1,9 +1,9 @@
-// Book chapter 23: aethyr/sim/particles.coax samples a block of water and a
+// Book chapter 23: aethyr/physics/sim/particles.coax samples a block of water and a
 // ball into particles, sorts them into cells and finds every particle's
 // neighbors within h. It prints each cloud's mass, its neighbor counts, the
 // distance tests the cells needed against all n (n - 1) pairs, and the
 // particles whose neighbor lists overflowed.
-#load "../sim/particles.coax";
+#load "../physics/sim/particles.coax";
 #import "Basic";
 
 // book:begin example

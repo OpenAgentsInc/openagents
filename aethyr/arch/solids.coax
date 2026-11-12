@@ -1,8 +1,8 @@
 // Aethyr's architecture kit, its solids as colliders: every part a generator writes carries the
 // shapes that block a walker (aethyr/arch/mesh.coax arch_solid_box, arch_solid_round), a scene
 // stands them with its records (aethyr/arch/place.coax), and this hands them to Aethyr's queries
-// (aethyr/query.coax Colliders) and walks among them with Aethyr's walking capsule
-// (aethyr/collide.coax). So a world built from the kit can't be walked through, and whatever is
+// (aethyr/physics/query.coax Colliders) and walks among them with Aethyr's walking capsule
+// (aethyr/physics/collide.coax). So a world built from the kit can't be walked through, and whatever is
 // low enough to step onto (a stair, a kerb, a terrace reached by its steps) is ground.
 //
 //   arch_colliders     the placed solids as boxes, capsules and hulls
@@ -18,7 +18,7 @@
 #load "place.coax";
 #load "solid.coax";
 #load "flora.coax";
-#load "../collide.coax";
+#load "../physics/collide.coax";
 
 ARCH_HULL_BOX :: QUERY_HULL_HEAD + 6 * QUERY_HULL_FACE;        // floats a turned box takes
 ARCH_ROUND_SIDES :: 12;

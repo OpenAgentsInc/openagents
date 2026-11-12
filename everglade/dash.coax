@@ -4,7 +4,7 @@
 // feel moves `dash` (class-feel.coax xf_moves); a zone starts the sprint from the pipeline's yes.
 // Everglade spends that movement at once, as the engine's sprint (aethyr/action/sprint.coax): the
 // extra is your Speed in feet as metres (0.3048 m a foot), over Everglade's run, 7.5 m/s at Speed
-// 30 (aethyr/locomotion.coax run_speed, scaled by Speed/30: rs_walk_scale), so 0.25 m/s a foot.
+// 30 (aethyr/move/locomotion.coax run_speed, scaled by Speed/30: rs_walk_scale), so 0.25 m/s a foot.
 // Speed 30: 9.14 m more than the run's 13.5 m in the sprint's 1.8 s, at up to 1.91 times the run.
 // A creature the world moves (Everglade II's path guard) runs at its run times eg_dash_rate from the
 // moment it takes the Dash action, so it gains the same distance a player does.

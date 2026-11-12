@@ -1,4 +1,4 @@
-/* The browser side of aethyr/replay.coax's host check: aethyr/tests/replay-walk.coax's one
+/* The browser side of aethyr/core/replay.coax's host check: aethyr/tests/replay-walk.coax's one
    export, for coax/web/replay-hosts.coax. */
 #include "replay-walk.h"
 #include <stdint.h>

@@ -613,7 +613,7 @@ hash. Coax owns import, simplification, packing and validation. Preserve the
 existing VPK1 contract; use small cell packs under its limits or introduce a
 new version for paged geometry rather than changing VPK1 in place.
 
-Use shared `aethyr/assets.coax`, `aethyr/forge/pack.coax` and renderer ledger
+Use shared `aethyr/core/assets.coax`, `aethyr/forge/pack.coax` and renderer ledger
 admission. A pack is admitted whole; progressive residency is composed from
 separately admitted packs/pages. Put reusable caches under `~/.openagents/`
 with explicit overrides, not an app-private location. Missing optional art

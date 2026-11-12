@@ -46,7 +46,7 @@ profile with a tolerance, not bitwise.
 
 ## What it builds
 
-- `aethyr/sim/record.coax`: writer, reader, recompute, bisect.
+- `aethyr/physics/sim/record.coax`: writer, reader, recompute, bisect.
 - A recording of each part fixture checked in as a small regression corpus.
 
 ## Acceptance checks and oracles

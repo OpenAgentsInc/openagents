@@ -90,7 +90,7 @@ size as a rendered size.
 `dt` is elapsed monotonic seconds since the last admitted producer frame,
 with zero on the first frame or after a clock restart. It is not an FPS
 estimate, wall-clock time or a separately clamped simulation delta.
-`aethyr/loop.coax` owns fixed-step refusal, clamp, budget, dropped backlog
+`aethyr/core/loop.coax` owns fixed-step refusal, clamp, budget, dropped backlog
 and interpolation. A host never steps simulation to catch up with display
 refresh. The room's authoritative 30 Hz clock continues while the local
 world is covered or suspended.

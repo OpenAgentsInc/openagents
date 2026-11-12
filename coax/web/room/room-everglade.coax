@@ -1,5 +1,5 @@
 #load "../../../everglade/shared/everglade-link-wire.coax";
-#load "../../../aethyr/ids.coax";
+#load "../../../aethyr/core/ids.coax";
 #load "../../../everglade/shared/move.coax";   // Everglade II's rooms' world (#13053, room-world.c world2_*)
 #load "../../../everglade/shared/class-kit.coax";
 #load "../../../aethyr/session/seat-class.coax";   // a seat's class and level: the ticket's, never a hello's level (#13259)

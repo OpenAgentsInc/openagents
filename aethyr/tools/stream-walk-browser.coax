@@ -1,7 +1,7 @@
 // Drive the actual HTTP/WebGPU consumer in muted headless Chrome.
 // tool.sh: stack-gib 1
 #load "../../coax/web/wasm-chrome.coax";
-#load "../assets.coax" as assets;
+#load "../core/assets.coax" as assets;
 #load "../../coax/lib/image/pillow.coax";
 #load "../render/tests/compare-frames-policy.coax" as comparison;
 #load "stream-walk-faults.coax";

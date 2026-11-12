@@ -12,7 +12,7 @@
 NET_GAME :: "belt-2200";
 NET_RATE :: 20.0;         // ticks a real second
 NET_STEP_NS :: 50000000;  // one tick, 1 / NET_RATE s, in nanoseconds
-NET_CATCH_UP :: 6;        // ticks one frame may run; a longer wait drops the rest (aethyr/loop.coax)
+NET_CATCH_UP :: 6;        // ticks one frame may run; a longer wait drops the rest (aethyr/core/loop.coax)
 NET_CHECK :: 40;          // two seconds
 NET_SNAP :: 8192;
 N_GO :: 0; N_FLEET :: 1; N_BUILD :: 2; N_REFINERY :: 3; N_SPEED :: 4; N_NEW :: 5;
@@ -126,7 +126,7 @@ net_frame :: (s: [] Belt, real: f64) {
   lr_frame(L, real);
   lr_snapshot_send(L, s[0].snap[..]);
   if L[0].note_new { L[0].note_new = false; say(s, cast(string) L[0].note[0..<L[0].note_n]); }
-  // The ticks run on Aethyr's clock (aethyr/loop.coax): NET_STEP_NS each, at most NET_CATCH_UP a
+  // The ticks run on Aethyr's clock (aethyr/core/loop.coax): NET_STEP_NS each, at most NET_CATCH_UP a
   // frame. A tick waiting on the partner (lr_may_step) stays owed for the next frame.
   nc := loop_accept(s[0].net_clock, real);
   ran := 0;

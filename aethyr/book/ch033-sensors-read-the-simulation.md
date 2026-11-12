@@ -43,7 +43,7 @@ so in their provenance (R20).
 
 ## What it builds
 
-- `aethyr/sim/sensors.coax`: joint, IMU, force/torque, contact,
+- `aethyr/physics/sim/sensors.coax`: joint, IMU, force/torque, contact,
   tactile, lidar and depth ray casting, noise and delay models.
 
 ## Acceptance checks and oracles

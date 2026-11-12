@@ -1,6 +1,6 @@
 // Independent wire vectors are specified by state_wire_vector in the Python
 // oracle. These deliberately raw records test encoding, not world admission.
-#load "../../input.coax" as inputs;
+#load "../../core/input.coax" as inputs;
 #forall "canonical zero-scalar wire vectors pin every byte with both Boolean values" bit: 0..<2 #steps 30000000 {
   flag := bit == 1; s: [1] SwWalk; b: [1] SwStateBytes;
   zero_clock := clock.FrameClock.{step_ns = 0, max_frame_ns = 0, max_steps = 0};

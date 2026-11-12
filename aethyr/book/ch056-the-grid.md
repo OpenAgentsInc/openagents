@@ -43,11 +43,11 @@ phone's thumbs, and the record (chapter 5) with the state it starts from:
 GridWalk :: struct {
   profile: int = GW_PROFILE;
   you: pc.Player;
-  input: InputBuffer;        // what the steps read (aethyr/input.coax)
-  thumbs: Sticks;            // the phone's fingers (aethyr/sticks.coax)
+  input: InputBuffer;        // what the steps read (aethyr/core/input.coax)
+  thumbs: Sticks;            // the phone's fingers (aethyr/core/sticks.coax)
   prev_theta: f32;           // the camera's turn when the last step began, for drawing
   prev_phi: f32;
-  // the record (aethyr/replay.coax) and the state it starts from
+  // the record (aethyr/core/replay.coax) and the state it starts from
   start: pc.Player;
   start_input: InputBuffer;
   events: [GW_EVENTS] ReplayEvent;
@@ -191,7 +191,7 @@ throughout, Shift (run) for the first 90 frames, Space on frames 120 and 190.
 - **Steps.** 240 frames of 1/60 s are 4 s. At 64 steps a second that is
   4 × 64 = 256 steps.
 - **A jump.** The controller leaves the ground at `JUMP` = 7.5 m/s against
-  `GRAVITY` = 24 m/s² ([aethyr/walk.coax](../walk.coax)). Continuously, the
+  `GRAVITY` = 24 m/s² ([aethyr/move/walk.coax](../move/walk.coax)). Continuously, the
   peak is 7.5² / (2 × 24) = 1.17 m and the time in the air is
   2 × 7.5 / 24 = 0.625 s, 37.5 frames. Two jumps keep the feet off the floor
   for about 75 frames. Fixed 1/64 s steps and drawing between steps give a
@@ -288,7 +288,7 @@ push, changed, is caught at the step where that frame's input is first read.
   `grid.cpp` drew it (lines every 4 m to 264 m, street lines midway between
   24 m lots, fading from 6 m to 110 m, a ring at your feet, the Pylon
   terminal 4 m ahead), drawn from the touch sticks of
-  [aethyr/sticks.coax](../sticks.coax).
+  [aethyr/core/sticks.coax](../core/sticks.coax).
 - [apps/openagents-web/newland-walk.coax](../../apps/openagents-web/newland-walk.coax)
   over [newland.coax](../../apps/openagents-web/newland.coax): the homepage's
   places, trees, roads, Pylons and people walked; a click opens the

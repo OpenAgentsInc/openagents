@@ -1,6 +1,6 @@
 // Character Create's classes in Everglade (#13024): the twelve classes of the SRD 5.2.1, each a level 1
 // character with one slot of its own on the bar, picked on Character Create's CLASS row and kept in
-// the character record (aethyr/character-appearance.coax CC3). The SRD 5e engine rolls each use
+// the character record (aethyr/character/character-appearance.coax CC3). The SRD 5e engine rolls each use
 // (fivebar.coax fb_cl_ability, the room's everglade5e-room-rules.coax, the local host's offline);
 // this file is the page's side of it:
 //   - the bar: the class's slot 1 and Repair on R. A caster's slot 1 is a cantrip (Vicious Mockery,

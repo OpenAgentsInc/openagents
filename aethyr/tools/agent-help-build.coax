@@ -5,8 +5,8 @@
 #load "../../coax/lib/sys/fs.coax";
 #load "../../coax/lib/net/ws.coax";
 #load "../anim/cut-document.coax";
-#load "../capture-profile.coax";
-#load "../character-appearance.coax" as appearance;
+#load "../render/capture-profile.coax";
+#load "../character/character-appearance.coax" as appearance;
 #load "../../verse/everglade/edits.coax";
 
 HelpText :: struct {data:[131072]u8;n:int;bad:bool;}

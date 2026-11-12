@@ -1,0 +1,170 @@
+// Semantic selection over the existing query kernels, GitHub #12989.
+// Membership is a query property. It is never a collision-pair permission.
+#module "aethyr.query.filter";
+#authority;
+#load "query.coax";
+#load "../core/entity.coax" as entities;
+#load "../core/ids.coax";
+#load "../../coax/lib/handle.coax";
+
+QUERY_CATEGORIES :: cast(u32) 65535;
+QUERY_METADATA_MAX :: 256;
+QUERY_SURFACES_MAX :: 64;
+ColliderRef :: struct { id: int; generation: int; }
+QueryRole :: enum u8 { solid; sensor; trigger; fluid; }
+PhysicalSurface :: struct {
+  id: int;
+  friction_policy: int;
+  restitution_policy: int;
+  footstep: int;
+  reaction: int;
+  traversability: u32;
+  fluid_kind: int;
+  density: f32;
+  buoyancy: f32;
+  drag: f32;
+}
+// Policy zero is the engine's default (friction 1, restitution 0).
+// Nonzero references resolve through the world-owned admitted response table.
+SurfaceResponse :: struct { id: int; friction: f32 = 1; restitution: f32; }
+QueryCollider :: struct {
+  ref: ColliderRef;
+  shape: QueryShape;
+  index: int;
+  entity: Handle(entities.Entity);
+  surface: int;
+  categories: u32 = 1;
+  role: QueryRole;
+}
+QueryFilter :: struct {
+  include: u32 = QUERY_CATEGORIES;
+  exclude: u32;
+  ignore_entity: Handle(entities.Entity);
+  ignore_collider: ColliderRef;
+  solids: bool = true;
+  sensors: bool = true;
+}
+
+// Checks precede the implementation. Threshold endpoints and mixed masks
+// are intentional: broad happy-path tests do not qualify admission policy.
+#test "query filters select membership, role and exact ignored identities independently" {
+  a := QueryCollider.{ref = ColliderRef.{id = 7, generation = 2}, categories = 3};
+  f: QueryFilter;
+  #assert query_filter_ok(f) && query_filter_accepts(f, a);
+  f.include = 4; #assert !query_filter_accepts(f, a);
+  f.include = 2; #assert query_filter_accepts(f, a);
+  f.exclude = 1; #assert !query_filter_accepts(f, a);
+  f.exclude = 0; f.ignore_collider = ColliderRef.{id = 7, generation = 1};
+  #assert query_filter_accepts(f, a);
+  f.ignore_collider.generation = 2; #assert !query_filter_accepts(f, a);
+  f.ignore_collider = ColliderRef.{}; f.solids = false;
+  #assert !query_filter_accepts(f, a);
+  for role: 1..<4 {
+    a.role = cast(QueryRole) role; #assert query_filter_accepts(f, a);
+    f.sensors = false; #assert !query_filter_accepts(f, a); f.sensors = true;
+  }
+  a.entity = entities.entity_handle(3, EntityGeneration.{value = 2});
+  f.ignore_entity = entities.entity_handle(3, EntityGeneration.{value = 1});
+  #assert query_filter_accepts(f, a);
+  f.ignore_entity = a.entity; #assert !query_filter_accepts(f, a);
+  #assert collider_ref_equal(a.ref, ColliderRef.{id = 7, generation = 2});
+  #assert !collider_ref_equal(a.ref, ColliderRef.{id = 8, generation = 2});
+}
+#test "filter masks and ignored references refuse malformed values" {
+  f: QueryFilter;
+  f.include = 65536; #assert !query_filter_ok(f);
+  f.include = 0; #assert query_filter_ok(f);
+  f.exclude = 65536; #assert !query_filter_ok(f);
+  f.exclude = 0; f.ignore_collider.id = -1; #assert !query_filter_ok(f);
+  f.ignore_collider.id = 0; f.ignore_collider.generation = 1; #assert !query_filter_ok(f);
+  f.ignore_collider.id = 1; f.ignore_collider.generation = 0; #assert !query_filter_ok(f);
+  f.ignore_collider.generation = 1; #assert query_filter_ok(f);
+  f.ignore_collider.generation = -1; #assert !query_filter_ok(f);
+  f.ignore_collider = ColliderRef.{};
+  f.ignore_entity = Handle(entities.Entity).{value = 1}; #assert !query_filter_ok(f);
+}
+#test "physical surfaces separate rendering, reactions and buoyancy from resistance" {
+  s := PhysicalSurface.{id = 1, footstep = 2, reaction = 3};
+  #assert query_surface_ok(s);
+  s.fluid_kind = 1; s.density = 1000; s.drag = 8;
+  #assert query_surface_ok(s) && s.buoyancy == 0;
+  s.buoyancy = 1; #assert query_surface_ok(s);
+  table := [2] PhysicalSurface.[PhysicalSurface.{id = 2}, s];
+  #assert query_surfaces_ok(table[..]);
+  #assert query_surface_index(table[..], 1) == 1 && query_surface_index(table[..], 2) == 0;
+  #assert query_surface_index(table[..], 3) == -1;
+  table[0].id = 1; #assert !query_surfaces_ok(table[..]);
+  table[0].id = 0; #assert !query_surfaces_ok(table[..]);
+  big: [65] PhysicalSurface; #assert !query_surfaces_ok(big[..]);
+  #assert !query_surfaces_ok(table[0..<0]);
+}
+#test "surface and mask capacities admit exact endpoints and reject the next element" {
+  #assert query_filter_ok(QueryFilter.{exclude = QUERY_CATEGORIES});
+  all: [65] PhysicalSurface;
+  for i: 0..<65 { all[i] = PhysicalSurface.{id = i + 1, traversability = QUERY_CATEGORIES}; }
+  #assert query_surfaces_ok(all[0..<1]) && query_surfaces_ok(all[0..<64]);
+  #assert !query_surfaces_ok(all[..]);
+  s := PhysicalSurface.{id = 1, fluid_kind = 1, density = 1000000};
+  #assert !query_surface_ok(s);
+  s.density = 1000; s.buoyancy = -0.1; #assert !query_surface_ok(s);
+  s.buoyancy = 1.1; #assert !query_surface_ok(s);
+}
+#forall "surface admission refuses each invalid field without inventing material meaning" field: 0..<18 {
+  s := PhysicalSurface.{id = 1};
+  if field == 0 { s.id = 0; }
+  if field == 1 { s.friction_policy = -1; }
+  if field == 2 { s.restitution_policy = -1; }
+  if field == 3 { s.footstep = -1; }
+  if field == 4 { s.reaction = -1; }
+  if field == 5 { s.traversability = 65536; }
+  if field == 6 { s.fluid_kind = -1; }
+  if field == 7 { s.density = -1; }
+  if field == 8 { s.buoyancy = -1; }
+  if field == 9 { s.buoyancy = 1.01; }
+  if field == 10 { s.drag = -1; }
+  if field == 11 { s.density = 1000000; }
+  if field == 12 { s.drag = 1000000; }
+  if field == 13 { s.fluid_kind = 1; }
+  if field == 14 { s.density = 1; }
+  if field == 15 { s.drag = 1; }
+  if field == 16 { s.buoyancy = 1; }
+  if field == 17 { s.fluid_kind = 1; s.density = 1000; s.drag = 0.0 / 0.0; }
+  #assert !query_surface_ok(s);
+}
+
+collider_ref_equal :: (a: ColliderRef, b: ColliderRef) -> bool #effects(all) {
+  return a.id == b.id && a.generation == b.generation;
+}
+collider_ref_ok :: (r: ColliderRef) -> bool #effects(all) { return r.id > 0 && r.generation > 0; }
+query_filter_ok :: (f: QueryFilter) -> bool #effects(all) {
+  return f.include <= QUERY_CATEGORIES && f.exclude <= QUERY_CATEGORIES &&
+    ((f.ignore_collider.id == 0 && f.ignore_collider.generation == 0) || collider_ref_ok(f.ignore_collider)) &&
+    (f.ignore_entity.value == 0 || entities.entity_canonical(f.ignore_entity));
+}
+query_filter_accepts :: (f: QueryFilter, c: QueryCollider) -> bool #effects(all) {
+  if (c.categories & f.include) == 0 || (c.categories & f.exclude) != 0 { return false; }
+  if c.role == QueryRole.solid { if !f.solids { return false; } }
+  else { if !f.sensors { return false; } }
+  if f.ignore_entity.value != 0 && f.ignore_entity == c.entity { return false; }
+  return !collider_ref_equal(f.ignore_collider, c.ref);
+}
+query_surface_ok :: (s: PhysicalSurface) -> bool #effects(all) {
+  if s.id <= 0 || s.friction_policy < 0 || s.restitution_policy < 0 || s.footstep < 0 || s.reaction < 0 ||
+      s.traversability > QUERY_CATEGORIES || s.fluid_kind < 0 { return false; }
+  if !query_finite(s.density) || s.density < 0 || !query_finite(s.drag) || s.drag < 0 ||
+      !(s.buoyancy >= 0 && s.buoyancy <= 1) { return false; }
+  if s.fluid_kind == 0 { return s.density == 0 && s.drag == 0 && s.buoyancy == 0; }
+  return s.density > 0;
+}
+query_surface_index :: (surfaces: [] PhysicalSurface, id: int) -> int #effects(all) {
+  for i: 0..<surfaces.count { if surfaces[i].id == id { return i; } }
+  return -1;
+}
+query_surfaces_ok :: (surfaces: [] PhysicalSurface) -> bool #effects(all) {
+  if surfaces.count < 1 || surfaces.count > QUERY_SURFACES_MAX { return false; }
+  for i: 0..<surfaces.count {
+    if !query_surface_ok(surfaces[i]) { return false; }
+    for j: 0..<i { if surfaces[j].id == surfaces[i].id { return false; } }
+  }
+  return true;
+}

@@ -1,6 +1,6 @@
 // Bounded declared facts, profile 1. Names are retained identity, never hashes.
 #module "aethyr.state";
-#load "../assets.coax" as assets;
+#load "../core/assets.coax" as assets;
 #authority;
 STATE_FIELDS :: 32;
 STATE_BOOL :: 0; STATE_INT :: 1; STATE_SCALAR :: 2; STATE_VECTOR :: 3; STATE_ENTITY :: 4; STATE_CONTENT :: 5;

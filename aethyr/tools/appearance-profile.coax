@@ -1,5 +1,5 @@
 // Holds the player appearance profile (proto/aethyr/player-appearance-v1.json, #13250 step E9) to
-// the one codec every page loads, aethyr/character-appearance.coax (ca_save, ca_restore):
+// the one codec every page loads, aethyr/character/character-appearance.coax (ca_save, ca_restore):
 //   - each "records" entry: ca_save writes exactly its text from its values, ca_restore gives the
 //     values back from the text, and the text's bytes sit where "layout" says;
 //   - each "read_only" entry (CC1, and records the reader corrects): ca_restore gives its values,
@@ -8,7 +8,7 @@
 //   - the sizes, the class count and the level count are the codec's.
 // Usage: coax/web/tool.sh aethyr/tools/appearance-profile.coax proto/aethyr/player-appearance-v1.json
 #import "Basic";
-#load "../character-appearance.coax" as appearance;
+#load "../character/character-appearance.coax" as appearance;
 #load "../../coax/lib/json/json.coax";
 #load "../../coax/lib/sys/tool.coax";
 #load "../../coax/lib/sys/fs.coax";
@@ -95,7 +95,7 @@ app_check :: (raw: string) -> bool #effects(all) {
   d := doc[0];
   tb: [3][256] u8;
   if app_str(d, jv_get(d, 0, "identity"), tb[0][..]) != APP_ID { return app_fail("identity", APP_ID); }
-  if app_str(d, jv_get(d, 0, "codec"), tb[0][..]) != "aethyr/character-appearance.coax" { return app_fail("codec", ""); }
+  if app_str(d, jv_get(d, 0, "codec"), tb[0][..]) != "aethyr/character/character-appearance.coax" { return app_fail("codec", ""); }
   if jv_int(d, jv_get(d, 0, "classes"), -1) != appearance.CA_CLASSES || jv_int(d, jv_get(d, 0, "levels"), -1) != appearance.CA_LEVELS { return app_fail("classes or levels", ""); }
   if app_size(d, "CC1") != 54 || app_size(d, "CC2") != 56 || app_size(d, "CC3") != 57 || app_size(d, "CC4") != 58 || jv_len(d, jv_get(d, 0, "sizes")) != 4 { return app_fail("sizes", ""); }
   if jv_len(d, jv_get(d, 0, "layout")) != 16 { return app_fail("layout", ""); }

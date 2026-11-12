@@ -56,7 +56,7 @@ deadgears_step :: (w: *DeadGears, a: Actions) {
 ## What exists today
 
 - [verse/deadgears/ecs.coax](../../verse/deadgears/ecs.coax): component
-  masks over `aethyr/entity.coax`'s `EntityStore` (spawns join at the step's
+  masks over `aethyr/core/entity.coax`'s `EntityStore` (spawns join at the step's
   flush, as everywhere in Aethyr), `ecs_clock_frame`, per-system `Stats`.
   A rules check drives the same input through 30, 60, 120 and 144 FPS and
   uneven frames and finds the same fight at every fixed step.

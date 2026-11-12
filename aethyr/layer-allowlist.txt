@@ -11,7 +11,7 @@
 # The engine loads from a realm, a page or the game
 aethyr-up aethyr/anim/echo-pack.coax -> verse/valley/scan.coax
 aethyr-up aethyr/anim/write.coax -> verse/tools/humans/ph_num.coax
-aethyr-up aethyr/character-appearance.coax -> everglade/scene/charactercreator-parts.coax  # its target moved from apps/openagents-web/ to everglade/scene/; the load itself is as old (#13268)
+aethyr-up aethyr/character/character-appearance.coax -> everglade/scene/charactercreator-parts.coax  # its target moved from apps/openagents-web/ to everglade/scene/; the load itself is as old (#13268)
 aethyr-up aethyr/fx/gpu-puff.coax -> verse/everglade/gpu-fx.coax
 aethyr-up aethyr/net/latency.coax -> everglade/shared/everglade-wire.coax  # its target moved from apps/openagents-web/ to everglade/shared/; the load itself is as old (#13346)
 aethyr-up aethyr/render/carriers/belt.coax -> apps/openagents-web/belt.coax
@@ -79,13 +79,13 @@ tests aethyr/cam/attention.coax -> aethyr/cam/tests/attention-world.coax
 tests aethyr/cam/attention.coax -> aethyr/cam/tests/attention.coax
 tests aethyr/cam/eye.coax -> aethyr/cam/tests/eye.coax
 tests aethyr/cam/semantic.coax -> aethyr/cam/tests/semantic.coax
-tests aethyr/checkpoint.coax -> aethyr/tests/checkpoint-oracle.coax
-tests aethyr/collide.coax -> aethyr/tests/collide-oracle.coax
-tests aethyr/entity.coax -> aethyr/tests/entity-oracle.coax
-tests aethyr/follower.coax -> aethyr/tests/follower-oracle.coax
-tests aethyr/ground-contact.coax -> aethyr/tests/ground-contact-oracle.coax
-tests aethyr/ground-query.coax -> aethyr/tests/ground-ray-oracle.coax
-tests aethyr/ground.coax -> aethyr/tests/ground-oracle.coax
+tests aethyr/core/checkpoint.coax -> aethyr/tests/checkpoint-oracle.coax  # a file moved into aethyr/'s layer folders; the load itself is as old (#13270)
+tests aethyr/physics/collide.coax -> aethyr/tests/collide-oracle.coax  # a file moved into aethyr/'s layer folders; the load itself is as old (#13270)
+tests aethyr/core/entity.coax -> aethyr/tests/entity-oracle.coax  # a file moved into aethyr/'s layer folders; the load itself is as old (#13270)
+tests aethyr/move/follower.coax -> aethyr/tests/follower-oracle.coax  # a file moved into aethyr/'s layer folders; the load itself is as old (#13270)
+tests aethyr/physics/ground-contact.coax -> aethyr/tests/ground-contact-oracle.coax  # a file moved into aethyr/'s layer folders; the load itself is as old (#13270)
+tests aethyr/physics/ground-query.coax -> aethyr/tests/ground-ray-oracle.coax  # a file moved into aethyr/'s layer folders; the load itself is as old (#13270)
+tests aethyr/physics/ground.coax -> aethyr/tests/ground-oracle.coax  # a file moved into aethyr/'s layer folders; the load itself is as old (#13270)
 tests aethyr/host/audio-bank-browser-conformance.coax -> aethyr/host/tests/browser-audio-span-observations.coax
 tests aethyr/host/build-linux-action-packet.coax -> aethyr/render/tests/qualification-files.coax
 tests aethyr/host/http-conformance.coax -> aethyr/host/tests/http-target-observations.coax
@@ -94,12 +94,12 @@ tests aethyr/host/media-notice-json.coax -> aethyr/host/tests/media-notice-json-
 tests aethyr/host/socket-context-conformance.coax -> aethyr/host/tests/socket-context-observations.coax
 tests aethyr/host/socket-tls-conformance.coax -> aethyr/host/tests/socket-tls-observations.coax
 tests aethyr/host/transport-conformance.coax -> aethyr/host/tests/transport-observations.coax
-tests aethyr/locomotion-source.coax -> aethyr/tests/locomotion-source-oracle.coax
-tests aethyr/math.coax -> aethyr/tests/math-oracle.coax
-tests aethyr/nav/grid.coax -> aethyr/tests/nav-oracle.coax
-tests aethyr/query-scene.coax -> aethyr/tests/query-semantic-fixture.coax
-tests aethyr/query.coax -> aethyr/tests/query-heightfield.coax
-tests aethyr/query.coax -> aethyr/tests/query-oracle.coax
+tests aethyr/move/locomotion-source.coax -> aethyr/tests/locomotion-source-oracle.coax  # a file moved into aethyr/'s layer folders; the load itself is as old (#13270)
+tests aethyr/core/math.coax -> aethyr/tests/math-oracle.coax  # a file moved into aethyr/'s layer folders; the load itself is as old (#13270)
+tests aethyr/world/nav/grid.coax -> aethyr/tests/nav-oracle.coax  # a file moved into aethyr/'s layer folders; the load itself is as old (#13270)
+tests aethyr/physics/query-scene.coax -> aethyr/tests/query-semantic-fixture.coax  # a file moved into aethyr/'s layer folders; the load itself is as old (#13270)
+tests aethyr/physics/query.coax -> aethyr/tests/query-heightfield.coax  # a file moved into aethyr/'s layer folders; the load itself is as old (#13270)
+tests aethyr/physics/query.coax -> aethyr/tests/query-oracle.coax  # a file moved into aethyr/'s layer folders; the load itself is as old (#13270)
 tests aethyr/render/active-lanes.coax -> aethyr/render/tests/active-lanes-checks.coax
 tests aethyr/render/asset-staging-policy.coax -> aethyr/render/tests/asset-staging-checks.coax
 tests aethyr/render/bake.coax -> aethyr/render/tests/bake-fixtures.coax
@@ -151,7 +151,7 @@ tests aethyr/render/resources.coax -> aethyr/render/tests/resources-checks.coax
 tests aethyr/render/sans-profile.coax -> aethyr/render/tests/sans-profile-checks.coax
 tests aethyr/render/staging-policy.coax -> aethyr/render/tests/staging-policy-checks.coax
 tests aethyr/render/texture-codec.coax -> aethyr/render/tests/texture-codec-checks.coax
-tests aethyr/replay.coax -> aethyr/tests/replay-oracle.coax
+tests aethyr/core/replay.coax -> aethyr/tests/replay-oracle.coax  # a file moved into aethyr/'s layer folders; the load itself is as old (#13270)
 tests aethyr/session/character-checkpoint.coax -> aethyr/session/tests/character-checkpoint-fixture.coax
 tests aethyr/session/control.coax -> aethyr/tests/control-oracle.coax
 tests aethyr/session/travel.coax -> aethyr/tests/travel-oracle.coax
@@ -164,10 +164,10 @@ tests aethyr/state/lifecycle.coax -> aethyr/state/tests/lifecycle.coax
 tests aethyr/state/restore.coax -> aethyr/state/tests/restore.coax
 tests aethyr/state/variants.coax -> aethyr/state/tests/variants-matrix.coax
 tests aethyr/state/variants.coax -> aethyr/state/tests/variants.coax
-tests aethyr/terrain-tile.coax -> aethyr/tests/terrain-tile-oracle.coax
-tests aethyr/walk.coax -> aethyr/tests/echo-walk-checks.coax
-tests aethyr/walk.coax -> aethyr/tests/player-collision-checks.coax
-tests aethyr/walk.coax -> aethyr/tests/walk-tuning-checks.coax
+tests aethyr/world/terrain-tile.coax -> aethyr/tests/terrain-tile-oracle.coax  # a file moved into aethyr/'s layer folders; the load itself is as old (#13270)
+tests aethyr/move/walk.coax -> aethyr/tests/echo-walk-checks.coax  # a file moved into aethyr/'s layer folders; the load itself is as old (#13270)
+tests aethyr/move/walk.coax -> aethyr/tests/player-collision-checks.coax  # a file moved into aethyr/'s layer folders; the load itself is as old (#13270)
+tests aethyr/move/walk.coax -> aethyr/tests/walk-tuning-checks.coax  # a file moved into aethyr/'s layer folders; the load itself is as old (#13270)
 tests aethyr/world/cells.coax -> aethyr/tests/cells-oracle.coax
 tests aethyr/world/owners.coax -> aethyr/tests/owners-oracle.coax
 tests aethyr/world/resource-cost.coax -> aethyr/world/tests/resource-cost-fixture.coax
@@ -185,14 +185,14 @@ tests everglade/server/battle.coax -> everglade/server/tests/battle-fixture.coax
 context aethyr/anim/document.coax -> coax/lib/nostr/json.coax  # seeded (#13317)
 context aethyr/anim/json.coax -> coax/lib/nostr/json.coax  # seeded (#13317)
 context aethyr/audio/host-convolution.coax -> psionic/lib/spectral.coax  # seeded (#13317)
-context aethyr/decision-trace.coax -> psionic/lib/game/decision.coax  # seeded (#13317)
+context aethyr/core/decision-trace.coax -> psionic/lib/game/decision.coax  # seeded (#13317)
 context aethyr/fx/battle.coax -> rules/srd/battle.coax  # seeded (#13317)
 context aethyr/fx/spell-light.coax -> rules/srd/battle.coax  # seeded (#13317)
 context aethyr/host/http-target.coax -> coax/lib/nostr/json.coax  # seeded (#13317)
 context aethyr/host/lifecycle.coax -> aethyr/session/lifecycle.coax  # seeded (#13317)
 context aethyr/host/pack-stream.coax -> aethyr/forge/pack.coax  # seeded (#13317)
 context aethyr/host/page-stream.coax -> aethyr/forge/page-pack.coax  # seeded (#13317)
-context aethyr/session/ledger.coax -> aethyr/ids.coax  # seeded (#13317)
+context aethyr/session/ledger.coax -> aethyr/core/ids.coax  # seeded (#13317)
 context aethyr/session/ledger.coax -> aethyr/session/control.coax  # seeded (#13317)
 context aethyr/session/resume-envelope.coax -> coax/lib/nostr/block/fi-base64url.coax  # seeded (#13317)
 context aethyr/session/seat-ticket.coax -> coax/lib/nostr/block/fi-base64url.coax  # seeded (#13317)
@@ -214,7 +214,7 @@ context coax/lib/x402/x402.coax -> coax/lib/nostr/json.coax  # seeded (#13317)
 context coax/web/api/agent-attest.coax -> coax/lib/nostr/nipoa.coax  # seeded (#13317)
 context coax/web/api/anime-director-policy.coax -> aethyr/anim/direction-select.coax  # seeded (#13317)
 context coax/web/api/anime-director-policy.coax -> coax/lib/nostr/json.coax  # seeded (#13317)
-context coax/web/api/checkpoint-policy.coax -> aethyr/ids.coax  # seeded (#13317)
+context coax/web/api/checkpoint-policy.coax -> aethyr/core/ids.coax  # seeded (#13317)
 context coax/web/api/checkpoint-resume-policy.coax -> aethyr/session/resume-payload.coax  # seeded (#13317)
 context coax/web/api/coax_probe.coax -> coax/lib/nostr/json.coax  # seeded (#13317)
 context coax/web/api/mesh-policy.coax -> coax/lib/nostr/json.coax  # seeded (#13317)

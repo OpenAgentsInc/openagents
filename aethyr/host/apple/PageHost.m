@@ -458,7 +458,7 @@ typedef struct { MTLPixelFormat format; BOOL blend; MTLBlendFactor src, dst, src
  state = (A)stateBytes.mutableBytes; x.state_init(state);
  [self readPlayer];
  NSString *kept = [self kept:@"verse.quality"]; NSUInteger qi = [@[@"high", @"medium", @"low", @"auto"] indexOfObject:kept];
- // nothing kept: AUTO, the realm's governor sets the pixels (aethyr/quality.coax); a touch screen starts at medium, as host.js starts a phone
+ // nothing kept: AUTO, the realm's governor sets the pixels (aethyr/core/quality.coax); a touch screen starts at medium, as host.js starts a phone
  quality = qi == NSNotFound ? (c.touch ? 1 : 3) : (int)qi;
  if (!c.offline) {
   net = [PHNet new]; net.host = self;

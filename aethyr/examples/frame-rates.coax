@@ -1,5 +1,5 @@
 // book:begin example
-#load "../loop.coax";
+#load "../core/loop.coax";
 #import "Basic";
 
 // Five seconds fed at four frame rates, then a three-second stall: how many fixed steps

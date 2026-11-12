@@ -1,4 +1,4 @@
-#load "../walk.coax";
+#load "../move/walk.coax";
 #import "Basic";
 
 // The hand calculation is independent of the measured peak: gravity is

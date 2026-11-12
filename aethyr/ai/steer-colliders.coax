@@ -1,4 +1,4 @@
-// The steering service's window filled from a realm's colliders and terrain (aethyr/query.coax):
+// The steering service's window filled from a realm's colliders and terrain (aethyr/physics/query.coax):
 // for zones that hold their world as Colliders, the window's cells need no test of the zone's own.
 // A cell is open when a body stands there: ground under it that holds it (query_stand from its
 // feet, so a box low enough to step onto is a floor and a heightfield's land is the ground) and
@@ -6,7 +6,7 @@
 //   coax/bin/coax test aethyr/ai/steer-colliders.coax --library
 #module "aethyr.ai.steer_colliders";
 #authority;
-#load "../query.coax";
+#load "../physics/query.coax";
 #load "steer.coax";
 
 NAV_COLLIDERS_IDS :: 8;   // colliders a cell's test lists at most: more is a crowd, so closed

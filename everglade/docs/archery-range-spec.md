@@ -132,7 +132,7 @@ the start).
 | DOWN (right side, while the dragon flies) | The dragon lands |
 | MOUNT, DISMOUNT (right side, beside a mount) | The same as E |
 
-The stick is the engine's (`aethyr/sticks.coax`), the one Everglade II walks
+The stick is the engine's (`aethyr/core/sticks.coax`), the one Everglade II walks
 on. Which finger is the thumb's, and JUMP, UP and DOWN, are the zone's
 ([`everglade/zone-touch.coax`](../zone-touch.coax)), so Everglade
 Experimental has them too. FOOT, HORSE, DRAGON and RESET are the range's. A
@@ -175,7 +175,7 @@ in the range. The range's module is an Everglade zone with the range on it.
 | The archer: the frame of a draw, the reticle's sight line, each arrow's flight and what it meets, a finger's draw, the reticle on a draw | [`aethyr/action/archery.coax`](../../aethyr/action/archery.coax) | Engine |
 | A static target a projectile strikes | [`aethyr/action/target.coax`](../../aethyr/action/target.coax) | Engine |
 | A zone's own colliders | [`aethyr/world/props.coax`](../../aethyr/world/props.coax) | Engine |
-| The crosshair, the camera over the shoulder, the walker | `aethyr/cam/reticle.coax`, `aethyr/cam/boom.coax`, `aethyr/walk.coax` | Engine |
+| The crosshair, the camera over the shoulder, the walker | `aethyr/cam/reticle.coax`, `aethyr/cam/boom.coax`, `aethyr/move/walk.coax` | Engine |
 | Mounting, riding and flying | `aethyr/action/mount.coax`, `aethyr/action/flight.coax`, `aethyr/action/ride-pose.coax` | Engine |
 | The butts' and faces' meshes | [`aethyr/world/build-site-mesh.coax`](../../aethyr/world/build-site-mesh.coax) | Engine |
 | The HUD panel and hit numbers | `aethyr/ui/hud-menu.coax`, `aethyr/action/floats.coax` | Engine |

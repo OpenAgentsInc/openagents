@@ -2,7 +2,7 @@
 // compatibility, bounded memory and crash-loop admission are checked here.
 #module "aethyr.host.rescue";
 #authority;
-#load "../assets.coax" as assets;
+#load "../core/assets.coax" as assets;
 RP_OK :: 1; RP_INVALID :: 2; RP_LAYOUT :: 3; RP_SIZE :: 4; RP_TIER :: 5; RP_IDENTITY :: 6;
 RP_MIN :: 2097152; RP_MAX :: 8388608; RP_LAYOUT_V1 :: 1; RP_SETTLE :: 300;
 #test "exact build content manifest and snapshot identities admit both bounded tiers" {

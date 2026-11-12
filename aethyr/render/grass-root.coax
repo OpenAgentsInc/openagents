@@ -85,7 +85,7 @@ grass_root_possible :: (v:[]f32,x0:f32,x1:f32,y0:f32,y1:f32,z0:f32,z1:f32)->bool
  return true;
 }
 
-#load "../ground.coax" as gr_ground;
+#load "../physics/ground.coax" as gr_ground;
 GrassRootRanges :: struct { n:int;first:[128]int;count:[128]int; }
 #test "cell ranges preserve instance IDs, merge adjacent rows and keep the near ring" {
  out:[1]GrassRootRanges;v:[16]f32;h:[25]f32;

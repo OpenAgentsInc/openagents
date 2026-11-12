@@ -1,10 +1,10 @@
-// Book chapter 20: the three broad-phase methods of aethyr/sim/broad.coax on
+// Book chapter 20: the three broad-phase methods of aethyr/physics/sim/broad.coax on
 // random, clustered and stacked scenes of 32, 64 and 128 bodies. Each scene
 // prints its candidate pairs, whether the three methods returned the same
 // sorted list, and the box tests each made; then sweep and prune runs over a
 // slowly moving scene and prints its insertion-sort swaps per step.
-#load "../sim/broad.coax";
-#load "../rand.coax";
+#load "../physics/sim/broad.coax";
+#load "../core/rand.coax";
 #import "Basic";
 
 // book:begin example

@@ -1,4 +1,4 @@
-// Dead Gears' rules on Aethyr's entities (aethyr/entity.coax, with the
+// Dead Gears' rules on Aethyr's entities (aethyr/core/entity.coax, with the
 // component bits in ecs.coax), ported from
 // aethyr-demo's src/dead_gears_rules.cpp: waves of mutants, the cutter and
 // its three modes (Sever, Head, Core), reloads, cover, telekinetic Lift and
@@ -142,7 +142,7 @@ Event :: struct { kind: int; who: Handle(Entity); n: int; amount: f32; at: Point
 // Everything a fight is, as storage. A host allocates one (zeros) and
 // binds it; a test declares one.
 DgStore :: struct {
-  // aethyr/entity.coax's EntityStore, then the component bits beside it
+  // aethyr/core/entity.coax's EntityStore, then the component bits beside it
   gen: [DG_CAP] int; live: [DG_CAP] bool; born: [DG_CAP] bool; doomed: [DG_CAP] bool;
   ids: [DG_CAP] int; free: [DG_CAP] int; spawns: [DG_CAP] int; n: [ENTITY_COUNTERS] int;
   mask: [DG_CAP] int; dropping: [DG_CAP] int;
@@ -2415,7 +2415,7 @@ spawn_crowd :: (g: Game) {
 // ---- frame rate: the fixed steps don't depend on it
 //
 // The same input, a function of the fixed step (what a host hands each step,
-// aethyr/input.coax), driven through frames of 30, 60, 120 and 144 FPS and an
+// aethyr/core/input.coax), driven through frames of 30, 60, 120 and 144 FPS and an
 // uneven run of frame times. A reference store takes one fixed step at a time
 // with no frames at all and keeps each step's digest (dg_digest: the entity
 // store's digest, the State and every live entity's fields, bit for bit).
