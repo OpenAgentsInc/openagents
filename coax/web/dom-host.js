@@ -90,10 +90,14 @@ function apply(at, length) {
       let style = document.getElementById("coaxial-style");
       if (!style) { style = document.createElement("style"); style.id = "coaxial-style"; document.head.appendChild(style); }
       style.textContent = str();
-    } else if (op === 10) { els[u16()].value = str(); }
+    } else if (op === 10) { const el = els[u16()]; el.value = str(); fit(el); }
     else throw new Error(`${app}: unknown command ${op}`);
   }
 }
+
+// A field as tall as its text, where the browser can't do it itself (CSS field-sizing). The most is the stylesheet's.
+const grows = CSS.supports("field-sizing", "content");
+function fit(el) { if (!grows && el.tagName === "TEXTAREA") { el.style.height = "auto"; el.style.height = el.scrollHeight + "px"; } }
 
 function clear() { root.replaceChildren(); els = []; for (const el of [...frames.keys()]) unframe(el); }
 
@@ -148,7 +152,7 @@ async function start() {
     const slot = slotOf(e.target, "button[data-slot]");
     if (slot >= 0) send(1, slot);
   });
-  root.addEventListener("input", (e) => { const slot = slotOf(e.target, "textarea[data-slot]"); if (slot >= 0) send(2, slot, e.target.value); });
+  root.addEventListener("input", (e) => { const slot = slotOf(e.target, "textarea[data-slot]"); if (slot >= 0) { fit(e.target); send(2, slot, e.target.value); } });
   root.addEventListener("keydown", (e) => {
     if (e.key !== "Enter" || e.shiftKey || e.isComposing) return;
     const slot = slotOf(e.target, "textarea[data-slot]");

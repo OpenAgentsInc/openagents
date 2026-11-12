@@ -38,6 +38,8 @@ MONO_STAGGER :: 0.035;
 MONO_STAGGER_MOST :: 0.6;      // the last of many still starts within this
 MONO_TEXT_MOST :: 0.7;
 MONO_TEXT_RATE :: 70.0;        // characters a second
+// A field grows with what is typed, to this many lines; past them it scrolls. The stylesheet says the same.
+MONO_FIELD_LINES :: 8;
 
 mc :: (out: [] u8, at: int, s: string) -> int {
   n := at;
@@ -102,6 +104,8 @@ mono_css :: (out: [] u8) -> int {
   n = mc(out, n, ".lk:hover,.lk:focus-visible{color:#fff;outline:none}");
   // field and composer
   n = mc(out, n, "textarea{display:block;width:100%;resize:none;border:0;outline:0;background:none;color:var(--ink);font:14px/1.6 var(--sans);padding:0}");
+  // a field is as tall as its text, to eight lines (MONO_FIELD_LINES), then it scrolls
+  n = mc(out, n, "textarea{field-sizing:content;min-height:1.6em;max-height:calc(8*1.6em);overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--line-dim) transparent}");
   n = mc(out, n, "textarea::placeholder{color:var(--ink-faint)}");
   n = mc(out, n, ".field{padding:10px 12px;max-width:420px;width:100%;--frame-bg:transparent}");
   n = mc(out, n, ".field:focus-within{--frame-line:var(--line-bright);--frame-deco:var(--line-bright)}");
