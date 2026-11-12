@@ -109,9 +109,12 @@ archery-range 2850000
 # lesson (the book's SHA-256, hex and base64), the pixel face and the stations' quads. Measured below.
 bitcoin-lab-walk 2950000
 # Nostr Lab's walk (nostr-lab-walk.coax): the same lab walk (verse/lab-walk.coax) with the Nostr
-# lesson, which signs its event at run time (event_sign.coax, secp256k1's tables): 2,941,282 bytes
-# measured on the remote hosts; about 3% headroom.
-nostr-lab-walk 3030000
+# lesson, which signs its event at run time (event_sign.coax, secp256k1's tables): 2,941,282 bytes.
+# Its 31 NIP stations (nostr-lab-cards.coax, #13366) each run that NIP's library code in the page:
+# the relay's admission and store, NIP-44, gift wrap, zaps, Wallet Connect, seed words (the BIP-39
+# word list), scrypt and NFKC for key backup, Negentropy and the rest: 3,481,470 bytes measured;
+# about 3% headroom.
+nostr-lab-walk 3590000
 # Everglade II's graphics governor (aethyr/quality.coax), frame-rate counter and ground-pressed look-up
 # brought it to 300,331 bytes; Character Create's studio and run in its world (everglade2-create.coax,
 # #13023) to 319,706; about 6% headroom.

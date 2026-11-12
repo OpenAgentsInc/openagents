@@ -624,8 +624,8 @@
       "orbit": { "r": 0.47, "a": 2.75, "size": 0.018 },
       "realm": {
         "slug": "nostr-lab", "title": "Nostr Lab",
-        "description": "An unlisted walk on the Grid through Nostr's basics: a key pair, an event taking shape, its bytes into SHA-256 for the ID, and a BIP-340 signature that one changed letter breaks.",
-        "alt": "Your Everglade character on a glowing Grid lane beside lit stations showing a public key and npub, a Nostr event's fields and its ID out of SHA-256",
+        "description": "An unlisted walk on the Grid through Nostr from scratch: a key pair, an event, its ID and its signature, then a station for each NIP, from relays and encrypted group chat to Lightning zaps, each worked out live in Coax.",
+        "alt": "Your Everglade character on a glowing Grid lane beside lit stations showing a public key and npub, a Nostr event's fields and its ID out of SHA-256, with more stations for each NIP down the lane",
         "module": "nostr-lab-walk", "slot": "nostr-lab", "style": "painterly", "clock": "fixed:0.5",
         "golden": { "lit": 0.02, "settle": 3000, "blocks": 6 },
         "ui_font_src": "/realms/everglade2/assets/fonts/Spectral-Medium.ttf", "ui_font_family": "EvergladeSpectral", "ui_title_font_src": "/realms/everglade2/assets/fonts/Cinzel.ttf", "ui_title_font_family": "EvergladeCinzel", "ui_title_font_weight": "600",

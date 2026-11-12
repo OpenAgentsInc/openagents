@@ -1,0 +1,60 @@
+// Nostr Lab's cards, in the walk's order after its first four stations (nostr-lab-walk.coax): which
+// lesson file works each one out.
+//   coax/bin/coax test apps/openagents-web/nostr-lab-cards.coax
+#run_steps 250000000;   // secp256k1's signing tables, built at compile time (event_sign.coax)
+#load "nostr-lab-relays.coax";
+#load "nostr-lab-private.coax";
+#load "nostr-lab-lightning.coax";
+#load "nostr-lab-keys.coax";
+#load "nostr-lab-social.coax";
+#load "nostr-lab-apps.coax";
+#load "nostr-lab-agents.coax";
+
+NLAB_CARDS :: NLR_COUNT + NLP_COUNT + NLL_COUNT + NLK_COUNT + NLS_COUNT + NLA_COUNT + NLG_COUNT;
+// Card k (0 and up), filled. False when its lesson stopped, or k names none.
+nostr_lab_card :: (k0: int, c: [] NostrCard) -> bool {
+  k := k0; if k < 0 { return nc_stop(c, 98); }
+  if k < NLR_COUNT { return nlr_card(k, c); } k -= NLR_COUNT;
+  if k < NLP_COUNT { return nlp_card(k, c); } k -= NLP_COUNT;
+  if k < NLL_COUNT { return nll_card(k, c); } k -= NLL_COUNT;
+  if k < NLK_COUNT { return nlk_card(k, c); } k -= NLK_COUNT;
+  if k < NLS_COUNT { return nls_card(k, c); } k -= NLS_COUNT;
+  if k < NLA_COUNT { return nla_card(k, c); } k -= NLA_COUNT;
+  if k < NLG_COUNT { return nlg_card(k, c); } k -= NLG_COUNT;
+  return nc_stop(c, 98);
+}
+
+// Cards from..<to through nostr_lab_card: each finishes, with its boxes, rows and the line for what held.
+nlab_test_cards :: (from: int, to: int) -> bool {
+  for k: from..<to {
+    c: [1] NostrCard; if !nostr_lab_card(k, c[..]) { return false; }
+    if !c[0].ready || c[0].stopped != 0 || c[0].nodes < 2 || c[0].rows < 3 || c[0].good.count == 0 { return false; }
+    for r: 0..<c[0].rows { if c[0].row[r].label_n == 0 || c[0].row[r].n == 0 { return false; } }
+  }
+  return true;
+}
+#test "nostr lab cards: the cards for relays finish, each with its boxes, rows and the line for what held" #steps 20000000000 #traversal 2000000000 {
+  #assert nlab_test_cards(0, 0 + NLR_COUNT);
+}
+#test "nostr lab cards: the cards for private messages finish, each with its boxes, rows and the line for what held" #steps 20000000000 #traversal 2000000000 {
+  #assert nlab_test_cards(NLR_COUNT, NLR_COUNT + NLP_COUNT);
+}
+#test "nostr lab cards: the cards for Lightning finish, each with its boxes, rows and the line for what held" #steps 20000000000 #traversal 2000000000 {
+  #assert nlab_test_cards(NLR_COUNT + NLP_COUNT, NLR_COUNT + NLP_COUNT + NLL_COUNT);
+}
+#test "nostr lab cards: the cards for keys finish, each with its boxes, rows and the line for what held" #steps 20000000000 #traversal 2000000000 {
+  #assert nlab_test_cards(NLR_COUNT + NLP_COUNT + NLL_COUNT, NLR_COUNT + NLP_COUNT + NLL_COUNT + NLK_COUNT);
+}
+#test "nostr lab cards: the cards for what people post finish, each with its boxes, rows and the line for what held" #steps 20000000000 #traversal 2000000000 {
+  #assert nlab_test_cards(NLR_COUNT + NLP_COUNT + NLL_COUNT + NLK_COUNT, NLR_COUNT + NLP_COUNT + NLL_COUNT + NLK_COUNT + NLS_COUNT);
+}
+#test "nostr lab cards: the cards for what people build finish, each with its boxes, rows and the line for what held" #steps 20000000000 #traversal 2000000000 {
+  #assert nlab_test_cards(NLR_COUNT + NLP_COUNT + NLL_COUNT + NLK_COUNT + NLS_COUNT, NLR_COUNT + NLP_COUNT + NLL_COUNT + NLK_COUNT + NLS_COUNT + NLA_COUNT);
+}
+#test "nostr lab cards: the cards for agents finish, each with its boxes, rows and the line for what held" #steps 20000000000 #traversal 2000000000 {
+  #assert nlab_test_cards(NLR_COUNT + NLP_COUNT + NLL_COUNT + NLK_COUNT + NLS_COUNT + NLA_COUNT, NLR_COUNT + NLP_COUNT + NLL_COUNT + NLK_COUNT + NLS_COUNT + NLA_COUNT + NLG_COUNT);
+}
+#test "nostr lab cards: a number past the last card, or below the first, names none" {
+  #assert NLAB_CARDS == NLR_COUNT + NLP_COUNT + NLL_COUNT + NLK_COUNT + NLS_COUNT + NLA_COUNT + NLG_COUNT;
+  c: [1] NostrCard; #assert !nostr_lab_card(NLAB_CARDS, c[..]) && c[0].stopped == 98 && !nostr_lab_card(-1, c[..]) && c[0].stopped == 98;
+}

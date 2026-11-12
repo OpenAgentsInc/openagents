@@ -1,0 +1,626 @@
+// Nostr Lab's lessons for keys and logging in: seed words (NIP-06), encrypted key backup (49), remote signing (46), HTTP auth (98) and names (05).
+// Each card is worked out at run time by coax/lib/nostr/ (nostr-lab-card.coax says what a card is).
+//
+//   NIP-06 (nostr/book ch046; nip06.coax): NIP-06's first published test words to the key at
+//   m/44'/1237'/0'/0/0, its public key and npub.
+//   NIP-49 (ch047; scrypt_nip49.coax, xchacha20_poly1305.coax, bech32-core.coax): a test key locked
+//   with a password as an ncryptsec string, read back and unlocked.
+//   NIP-46 (ch048; nip46.coax): an app asks a remote signer, over an encrypted kind 24133 event, to
+//   sign a note with a key the app never holds.
+//   NIP-98 (ch049; nip98_sign.coax signs, coax/web/api/nip98.coax is the server's own check): a
+//   kind 27235 event as an Authorization header for one URL, method and body.
+//   NIP-05 (ch045; nip05.coax): a profile's name split, the URL it is looked up at, and a test
+//   server's answer matched to the profile's key.
+//
+// Every key is a published test key: BIP-340 vector 1, and the secrets 1, 2, 3 and 9 the book's
+// examples use. No card shows a secret key. Where a host would draw random bytes (salts, nonces,
+// BIP-340 aux values, request IDs) the lessons use fixed values, so a card reads the same every time.
+//   coax/bin/coax test apps/openagents-web/nostr-lab-keys.coax --only "nostr lab"
+#run_steps 250000000;   // secp256k1's signing tables, built at compile time (event_sign.coax)
+#load "nostr-lab-card.coax";
+#load "../../coax/lib/nostr/nip06.coax";
+#load "../../coax/lib/crypto/scrypt_nip49.coax";
+#load "../../coax/lib/crypto/xchacha20_poly1305.coax";
+#load "../../coax/lib/text/nfkc.coax";
+#load "../../coax/lib/nostr/nip46.coax";
+#load "../../coax/lib/nostr/nip98_sign.coax";
+#load "../../coax/web/api/nip98.coax";
+#load "../../coax/lib/nostr/nip05.coax";
+
+NLK_COUNT :: 5;
+
+NLK_KEY_HEX :: "b7e151628aed2a6abf7158809cf4f3c762e7160f38b4da56a784d9045190cfef";   // BIP-340 vector 1: a published test key
+NLK_T0 :: 1794441600;   // 12 November 2026, 00:00 UTC
+
+// A test secret from hex, and its x-only public key. False when the library refuses either.
+nlk_secret :: (hex: string, key: [] u8, x: [] u8) -> bool {
+  d := hex_decode_checked(hex, key, false); if d.error != NC_OK || d.written != 32 { return false; }
+  pub: [33] u8; if !bip32_public(key, pub[..]) { return false; }
+  for i: 0..<32 { x[i] = pub[1 + i]; }
+  return true;
+}
+nlk_same :: (a: [] u8, b: [] u8) -> bool { return a.count == b.count && cb_ct_equal(a, b) == CB_MAX64; }
+// Text as bytes in out; the count, or -1 when it doesn't fit.
+nlk_bytes :: (out: [] u8, t: string) -> int { if t.count > out.count { return -1; } for i: 0..<t.count { out[i] = t[i]; } return t.count; }
+// An event signed with key, whole: its length, or 0 or less. The aux value is fixed here; a host draws 32 random bytes.
+nlk_sign :: (key: [] u8, created_at: int, kind: int, tags: string, content: string, out: [] u8) -> int {
+  aux: [32] u8; aux[31] = 1; work: [1] NostrSignWork; scratch: [8192] u8; r := EVENT_MORE; calls := 0;
+  while r == EVENT_MORE && calls < 256 {
+    r = nostr_event_sign_step(key, aux[..], created_at, kind, tags, content, work[..], scratch[..], out, false);
+    calls += 1;
+  }
+  return r;
+}
+
+// ---- NIP-06: twelve words make your Nostr key
+
+NLK_WORDS :: "leader monkey parrot ring guide accident before fence cannon height naive bean";       // NIP-06's first test vector: public, never a real phrase
+NLK_WORDS_BAD :: "leader monkey parrot ring guide accident before fence cannon height naive beauty"; // its last word changed: the checksum is wrong
+// What NIP-06 publishes for those words (nostr/nips/official/06.md).
+NLK_06_PUB :: "17162c921dc4d2518f9a101db33695df1afb56ab82f5ff3e5da6eec3ca5cd917";
+NLK_06_NPUB :: "npub1zutzeysacnf9rru6zqwmxd54mud0k44tst6l70ja5mhv8jjumytsd2x7nu";
+
+Nlk06 :: struct {
+  pub: [32] u8;
+  npub: [80] u8; npub_n: int;
+  path: [32] u8; path_n: int;      // "m/44'/1237'/0'/0/0", written from the library's NIP06_PATH
+  words: int;                      // how many words the phrase has
+  wrong: bool;                     // nip06_key took the phrase with the changed last word
+  wrong_zero: bool;                // and it left no key behind
+}
+// Works the NIP-06 lesson out. 0, or the step that stopped.
+nlk_06 :: (f: [] Nlk06) -> int {
+  // words to entropy (the checksum), to the seed (PBKDF2, 2048 rounds of HMAC-SHA512), down the path
+  key: [32] u8; if !nip06_key(NLK_WORDS, key[..]) { return 1; }
+  pub: [33] u8; if !bip32_public(key[..], pub[..]) { return 2; }
+  for i: 0..<32 { f[0].pub[i] = pub[1 + i]; }
+  f[0].npub_n = nip06_npub(key[..], f[0].npub[..]); if f[0].npub_n < 0 { return 3; }
+  secure_zero(key[..]);
+  f[0].words = 1; for ch: NLK_WORDS { if ch == ' ' { f[0].words += 1; } }
+  // the path, from the indexes the library derives along
+  path := NIP06_PATH; n := nlk_bytes(f[0].path[..], "m");
+  for step: path {
+    hardened := step >= BIP32_HARDENED;
+    f[0].path[n] = '/'; n = text_put_int(f[0].path[..], n + 1, ifx hardened then step - BIP32_HARDENED else step);
+    if hardened { f[0].path[n] = '\''; n += 1; }
+  }
+  f[0].path_n = n;
+  // the same words with the last one changed
+  bad: [32] u8; for i: 0..<32 { bad[i] = 7; }
+  f[0].wrong = nip06_key(NLK_WORDS_BAD, bad[..]);
+  f[0].wrong_zero = true; for i: 0..<32 { if bad[i] != 0 { f[0].wrong_zero = false; } }
+  return 0;
+}
+nlk_card_06 :: (c: [] NostrCard) -> bool {
+  f: [1] Nlk06; at := nlk_06(f[..]); if at != 0 { return nc_stop(c, at); }
+  // the public key is the one NIP-06 publishes for these words
+  want: [32] u8; d := hex_decode_checked(NLK_06_PUB, want[..], false);
+  if d.error != NC_OK || !nlk_same(want[..], f[0].pub[..]) { return nc_stop(c, 4); }
+  if f[0].wrong || !f[0].wrong_zero { return nc_stop(c, 5); }
+  nc_nodes(c, "WORDS", "SEED", "KEY", "");
+  ok := nc_row(c, "TEST WORDS", NLK_WORDS, NC_PLAIN);
+  ok = ok && nc_row_int(c, "WORDS TO SEED", BIP39_ROUNDS, "ROUNDS OF HMAC-SHA512", NC_PLAIN);
+  ok = ok && nc_row(c, "PATH", cast(string) f[0].path[0..<f[0].path_n], NC_PLAIN);
+  ok = ok && nc_row(c, "SECRET KEY", "HIDDEN", NC_SECRET);
+  ok = ok && nc_row_hex(c, "PUBLIC KEY", f[0].pub[..], NC_KEY);
+  ok = ok && nc_row(c, "NPUB", cast(string) f[0].npub[0..<f[0].npub_n], NC_KEY);
+  if !ok { return nc_stop(c, 6); }
+  return nc_done(c, "MATCHES THE NIP-06 TEST VECTOR", "WRONG LAST WORD: REFUSED");
+}
+
+// ---- NIP-49: lock the key with a password
+
+NLK_PASSWORD :: "nostr";
+NLK_PASSWORD_BAD :: "Nostr";
+// scrypt's cost here is 2^4 steps over 16 KB, the book's own small case, so the card works in one
+// frame. NIP-49's examples use log_n 16 (64 MiB) and up; the card says so.
+NLK_LOG_N :: 4;
+NLK_LOG_N_REAL :: 16;
+NLK_49_BYTES :: 91;      // version, log_n, salt 16, nonce 24, key-security byte, ciphertext 32, tag 16
+NLK_49_TEXT :: 162;      // "ncryptsec1", 146 five-bit words, 6 of checksum
+NLK_49_SECURITY :: 2;    // the key-security byte: 2, "the client does not track this"
+
+Nlk49 :: struct {
+  pub: [32] u8;                      // the public key of the key that was locked
+  text: [NLK_49_TEXT] u8; text_n: int; // the ncryptsec string
+  log_n: int; version: int;          // read back from the string
+  opened: bool; same: bool;          // the right password opened it, to the same 32 bytes
+  back_pub: [32] u8;                 // the public key of what came back
+  wrong: bool;                       // the wrong password opened it
+  wrong_zero: bool;                  // and nothing was written
+}
+// scrypt (r 8, p 1, N 2^log_n) of an NFKC-normalized password, in the caller's memory.
+nlk_scrypt :: (password: string, salt: [] u8, log_n: int, memory: [] u8, out: [] u8) -> bool {
+  marks: [64] u32; normal: [64] u8;
+  n := un_nfkc(password, marks[..], normal[..], false); if n.error != UN_OK { return false; }
+  state: [1] Nip49Scrypt;
+  if !nip49_scrypt_start(state[..], normal[0..<n.written], salt, memory, log_n, false) { return false; }
+  while state[0].romix[0].phase != ROMIX_DONE && nip49_scrypt_step(state[..], memory, ROMIX_MAX_STEP, false) {}
+  return nip49_scrypt_finish(state[..], out, false);
+}
+// The 91 bytes an ncryptsec string carries, read from its five-bit words. False for another prefix,
+// a bad checksum or another length.
+nlk_49_read :: (text: string, out: [] u8) -> bool {
+  h := b32_inspect(text, true); if h.error != NC_OK || text[0..<h.hrp] != "ncryptsec" { return false; }
+  bytes := n19_byte_count(h.words, b32_digit(b32_lower(text[h.hrp + h.words])));
+  if bytes != NLK_49_BYTES || out.count != NLK_49_BYTES { return false; }
+  source := N19_Source.{input = text, start = h.hrp + 1, count = bytes, encoded = true};
+  for i: 0..<bytes { out[i] = n19_byte(source, i); }
+  return true;
+}
+// Unlocks the 91 bytes with a password: the scrypt key again, then XChaCha20-Poly1305 with the
+// key-security byte as associated data. False, with out untouched, when the tag does not match.
+nlk_49_open :: (p: [] u8, password: string, out: [] u8) -> bool {
+  log_n := cast(int) p[1]; if p[0] != 2 || nip49_scrypt_cost(log_n) == 0 || log_n > NLK_LOG_N { return false; }
+  memory: [1024 << NLK_LOG_N] u8; sk: [32] u8;
+  if !nlk_scrypt(password, p[2..<18], log_n, memory[0..<1024 << log_n], sk[..]) { return false; }
+  ok := xcp_open(sk[..], p[18..<42], p[42..<43], p[43..<91], out, false);
+  secure_zero(sk[..]);
+  return ok;
+}
+// Works the NIP-49 lesson out. 0, or the step that stopped.
+nlk_49 :: (f: [] Nlk49) -> int {
+  key: [32] u8; if !nlk_secret(NLK_KEY_HEX, key[..], f[0].pub[..]) { return 1; }
+  // Lock. The salt and nonce are fixed here; a host draws 16 and 24 random bytes for every backup.
+  p: [NLK_49_BYTES] u8; p[0] = 2; p[1] = NLK_LOG_N; p[42] = NLK_49_SECURITY;
+  for i: 0..<16 { p[2 + i] = cast(u8) (0x49 + i); }
+  for i: 0..<24 { p[18 + i] = cast(u8) (0xa0 + i); }
+  memory: [1024 << NLK_LOG_N] u8; sk: [32] u8;
+  if !nlk_scrypt(NLK_PASSWORD, p[2..<18], NLK_LOG_N, memory[..], sk[..]) { return 2; }
+  if !xcp_seal(sk[..], p[18..<42], p[42..<43], key[..], p[43..<91], false) { return 3; }
+  secure_zero(sk[..]);
+  e := bech32_encode_checked("ncryptsec", cast(string) p[..], true, f[0].text[..], true, false);
+  if e.error != NC_OK || e.written != NLK_49_TEXT { return 4; }
+  f[0].text_n = e.written;
+  // Read the string back and unlock it with the right password
+  q: [NLK_49_BYTES] u8; if !nlk_49_read(cast(string) f[0].text[0..<f[0].text_n], q[..]) { return 5; }
+  f[0].version = cast(int) q[0]; f[0].log_n = cast(int) q[1];
+  back: [32] u8;
+  f[0].opened = nlk_49_open(q[..], NLK_PASSWORD, back[..]);
+  f[0].same = f[0].opened && nlk_same(back[..], key[..]);
+  if f[0].opened {
+    pub: [33] u8; if !bip32_public(back[..], pub[..]) { return 6; }
+    for i: 0..<32 { f[0].back_pub[i] = pub[1 + i]; }
+  }
+  // and with the wrong one
+  none: [32] u8;
+  f[0].wrong = nlk_49_open(q[..], NLK_PASSWORD_BAD, none[..]);
+  f[0].wrong_zero = true; for i: 0..<32 { if none[i] != 0 { f[0].wrong_zero = false; } }
+  secure_zero(key[..]); secure_zero(back[..]);
+  return 0;
+}
+nlk_card_49 :: (c: [] NostrCard) -> bool {
+  f: [1] Nlk49; at := nlk_49(f[..]); if at != 0 { return nc_stop(c, at); }
+  if f[0].version != 2 || f[0].log_n != NLK_LOG_N { return nc_stop(c, 7); }
+  if !f[0].opened || !f[0].same || !nlk_same(f[0].back_pub[..], f[0].pub[..]) { return nc_stop(c, 8); }
+  if f[0].wrong || !f[0].wrong_zero { return nc_stop(c, 9); }
+  // "4 HERE, 16 OR MORE IN REAL USE"
+  after: [NC_TEXT] u8; n := nlk_bytes(after[..], "HERE, "); n = text_put_int(after[..], n, NLK_LOG_N_REAL);
+  n += nlk_bytes(after[n..<NC_TEXT], " OR MORE IN REAL USE");
+  nc_nodes(c, "KEY", "PASSWORD", "BACKUP", "");
+  ok := nc_row(c, "SECRET KEY", "HIDDEN", NC_SECRET);
+  ok = ok && nc_row_hex(c, "ITS PUBLIC", f[0].pub[..], NC_KEY);
+  ok = ok && nc_row(c, "TEST PASSWORD", NLK_PASSWORD, NC_PLAIN);
+  ok = ok && nc_row_int(c, "SCRYPT LOG N", f[0].log_n, cast(string) after[0..<n], NC_PLAIN);
+  ok = ok && nc_row(c, "BACKUP", cast(string) f[0].text[0..<f[0].text_n], NC_NOISE);
+  ok = ok && nc_row_hex(c, "UNLOCKS TO", f[0].back_pub[..], NC_GOOD);
+  if !ok { return nc_stop(c, 10); }
+  return nc_done(c, "RIGHT PASSWORD: THE SAME KEY", "WRONG PASSWORD: REFUSED");
+}
+
+// ---- NIP-46: a signer elsewhere signs
+
+NLK_APP_HEX :: "0000000000000000000000000000000000000000000000000000000000000001";      // the app's own key
+NLK_SIGNER_HEX :: "0000000000000000000000000000000000000000000000000000000000000002";   // the remote signer's key
+NLK_USER_HEX :: "0000000000000000000000000000000000000000000000000000000000000003";     // the user's key: only the signer holds it
+NLK_STRANGER_HEX :: "0000000000000000000000000000000000000000000000000000000000000009"; // an app the signer never approved
+// The token the signer hands the app: the signer's public key, a relay and a one-use secret.
+NLK_BUNKER :: "bunker://c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5?relay=wss%3A%2F%2Frelay.example.com&secret=s3cret";
+NLK_NOTE :: "signed by a signer elsewhere";
+
+Nlk46 :: struct {
+  signer: [32] u8; relay: [64] u8; relay_n: int;   // read from the bunker:// URI
+  app_x: [32] u8; user_x: [32] u8;
+  request: [2048] u8; request_n: int;              // the event the app sends
+  request_kind: int; cipher_from: int; cipher_to: int;
+  method: int; asked_kind: int;                    // what the signer read once it decrypted
+  note: [1024] u8; note_n: int;                    // the signed event, as the app got it back
+  verified: bool; signed_by: [32] u8; id: [32] u8; signed_kind: int; content_ok: bool;
+  denied: int;                                     // the signer's answer to the same request from a stranger's key
+  unknown: int;                                    // the app's answer to a response for an ID it never sent
+}
+nlk_str :: (t: string) -> N46Str { s: N46Str; for i: 0..<t.count { s.b[i] = t[i]; } s.n = t.count; return s; }
+// One request the app records and the signer decides and answers, read and written as NIP-46's
+// JSON but with no event around it. Connect and get_public_key go this way here, to keep the card
+// to one encrypted round trip; in use every request is an encrypted kind 24133 event.
+nlk_ask :: (cl: [] N46Client, b: [] N46Bunker, app_x: [32] u8, method: int, id: string, params: [] string, result: string, now: int) -> bool {
+  if n46_ask(cl, method, id, now, 60) != N46_OK { return false; }
+  t: [1] N46Id; if !n46_token(id, t[..]) { return false; }
+  call: N46Call; call.error = N46_OK; call.method = method; call.id = t[0]; call.nparams = params.count;
+  for k: 0..<params.count { call.params[k] = nlk_str(params[k]); }
+  plain: [1024] u8; n := n46_request_json(call, plain[..]); if n < 0 { return false; }
+  if n46_admit(b, app_x, n46_request(cast(string) plain[0..<n])).error != N46_OK { return false; }
+  r: N46Reply; r.id = t[0]; r.has_result = true; r.result = nlk_str(result);
+  n = n46_response_json(r, plain[..]); if n < 0 { return false; }
+  return n46_take(cl, b[0].key, n46_response(cast(string) plain[0..<n]), now + 1).error == N46_OK;
+}
+// Works the NIP-46 lesson out. 0, or the step that stopped.
+nlk_46 :: (f: [] Nlk46) -> int {
+  u := n46_uri(NLK_BUNKER); if u.error != N46_OK || u.flow != N46_BUNKER || u.nrelays != 1 { return 1; }
+  f[0].signer = u.peer; relay := u.relays[0];
+  f[0].relay_n = nlk_bytes(f[0].relay[..], cast(string) relay.b[0..<relay.n]); if f[0].relay_n < 0 { return 2; }
+  app: [32] u8; signer: [32] u8; user: [32] u8; stranger: [32] u8; stranger_x: [32] u8;
+  if !nlk_secret(NLK_APP_HEX, app[..], f[0].app_x[..]) || !nlk_secret(NLK_USER_HEX, user[..], f[0].user_x[..]) { return 3; }
+  if !nlk_secret(NLK_STRANGER_HEX, stranger[..], stranger_x[..]) { return 4; }
+  d := hex_decode_checked(NLK_SIGNER_HEX, signer[..], false); if d.error != NC_OK || d.written != 32 { return 5; }
+  // the signer: its key as the token names it, the token's secret, and what its user lets an app do
+  b: [1] N46Bunker; b[0].key = u.peer; b[0].secret = u.secret; b[0].offer = n46_perms("sign_event:1");
+  if b[0].offer.error != N46_OK { return 6; }
+  cl := [1] N46Client.[n46_client(u, NLK_T0, 60)];
+  // connect with the secret, then ask whose key this signer signs with
+  peer := u.peer; hex: [64] u8; user_hex: [64] u8; secret := u.secret;
+  if hex_encode_checked(cast(string) peer[..], hex[..], false).error != NC_OK { return 7; }
+  if hex_encode_checked(cast(string) f[0].user_x[..], user_hex[..], false).error != NC_OK { return 7; }
+  connect := [3] string.[cast(string) hex[..], cast(string) secret.b[0..<secret.n], "sign_event:1"]; none: [1] string;
+  if !nlk_ask(cl[..], b[..], f[0].app_x, M_CONNECT, "c1", connect[..], "ack", NLK_T0) { return 8; }
+  if !nlk_ask(cl[..], b[..], f[0].app_x, M_PUBKEY, "k1", none[0..<0], cast(string) user_hex[..], NLK_T0 + 2) { return 9; }
+  if cl[0].state != C_READY || !n46_same(cl[0].user, f[0].user_x) { return 10; }
+
+  // The app: a sign_event request for a kind 1 note, encrypted to the signer, in a kind 24133 event.
+  // The NIP-44 nonces are fixed here; each side draws 32 random bytes for every message.
+  note: [512] u8; nn := n46_sign_params(1, NLK_T0, "[]", NLK_NOTE, note[..]); if nn < 0 { return 11; }
+  if n46_ask(cl[..], M_SIGN, "s1", NLK_T0 + 4, 60) != N46_OK { return 12; }
+  t: [1] N46Id; if !n46_token("s1", t[..]) { return 12; }
+  call: N46Call; call.error = N46_OK; call.method = M_SIGN; call.id = t[0]; call.nparams = 1;
+  call.params[0] = nlk_str(cast(string) note[0..<nn]);
+  plain: [2048] u8; pn := n46_request_json(call, plain[..]); if pn < 0 { return 13; }
+  ck: [32] u8; if n46_key(app[..], cl[0].signer, ck[..]) != N46_OK { return 14; }
+  nonce: [32] u8; for i: 0..<32 { nonce[i] = 0x46; }
+  sealed: [4096] u8; o := n46_seal(ck[..], nonce[..], cast(string) plain[0..<pn], sealed[..]); if o.error != N46_OK { return 15; }
+  tags: [80] u8; tn := n46_tags(cl[0].signer, tags[..]);
+  f[0].request_n = nlk_sign(app[..], NLK_T0 + 4, N46_EVENT, cast(string) tags[0..<tn], cast(string) sealed[0..<o.n], f[0].request[..]);
+  if f[0].request_n <= 0 { return 16; }
+
+  // The signer: the event verifies and names it, the content opens with its own key, the request
+  // comes from an app with a session that may ask for kind 1.
+  scratch: [8192] u8;
+  req := nostr_event_verify_vartime(cast(string) f[0].request[0..<f[0].request_n], scratch[..], false);
+  if !req.verified || n46_event(req, b[0].key) != N46_OK { return 17; }
+  f[0].request_kind = req.kind; f[0].cipher_from = req.content_from; f[0].cipher_to = req.content_to;
+  sk: [32] u8; if n46_key(signer[..], req.public_key, sk[..]) != N46_OK { return 18; }
+  opened: [2048] u8; op := n46_open(sk[..], req.original[req.content_from..<req.content_to], opened[..]);
+  if op.error != N46_OK { return 19; }
+  got := n46_request(cast(string) opened[0..<op.n]);
+  a := n46_admit(b[..], req.public_key, got); if a.error != N46_OK { return 20; }
+  f[0].method = a.method; f[0].asked_kind = a.kind;
+  // the same request from a key with no session
+  f[0].denied = n46_admit(b[..], stranger_x, got).error;
+  // it signs the note with the user's key and answers under the request's ID
+  first := got.params[0]; p := cast(string) first.b[0..<first.n];
+  m := n46_template(p); if m.error != N46_OK { return 21; }
+  content: [256] u8; cn := json_unescape(p[m.content_from..<m.content_to], content[..]); if cn < 0 { return 22; }
+  inner: [1024] u8;
+  inn := nlk_sign(user[..], m.created_at, m.kind, p[m.tags_from..<m.tags_to], cast(string) content[0..<cn], inner[..]);
+  if inn <= 0 { return 23; }
+  r: N46Reply; r.id = got.id; r.has_result = true; r.result = nlk_str(cast(string) inner[0..<inn]);
+  pn = n46_response_json(r, plain[..]); if pn < 0 { return 24; }
+  for i: 0..<32 { nonce[i] = 0x47; }
+  o = n46_seal(sk[..], nonce[..], cast(string) plain[0..<pn], sealed[..]); if o.error != N46_OK { return 25; }
+  tn = n46_tags(req.public_key, tags[..]);
+  response: [4096] u8;
+  sn := nlk_sign(signer[..], NLK_T0 + 5, N46_EVENT, cast(string) tags[0..<tn], cast(string) sealed[0..<o.n], response[..]);
+  if sn <= 0 { return 26; }
+
+  // The app: the response verifies, names the app, opens, comes from the signer and answers "s1".
+  res := nostr_event_verify_vartime(cast(string) response[0..<sn], scratch[..], false);
+  if !res.verified || n46_event(res, f[0].app_x) != N46_OK { return 27; }
+  op = n46_open(ck[..], res.original[res.content_from..<res.content_to], opened[..]); if op.error != N46_OK { return 28; }
+  reply := n46_response(cast(string) opened[0..<op.n]);
+  take := n46_take(cl[..], res.public_key, reply, NLK_T0 + 6); if take.error != N46_OK || take.method != M_SIGN { return 29; }
+  result := reply.result;
+  f[0].note_n = nlk_bytes(f[0].note[..], cast(string) result.b[0..<result.n]); if f[0].note_n < 0 { return 30; }
+  // and it checks the signed event itself
+  ev := nostr_event_verify_vartime(cast(string) f[0].note[0..<f[0].note_n], scratch[..], false);
+  f[0].verified = ev.verified; f[0].signed_by = ev.public_key; f[0].id = ev.id; f[0].signed_kind = ev.kind;
+  if ev.error == NE_OK {
+    cn = json_unescape(ev.original[ev.content_from..<ev.content_to], content[..]);
+    f[0].content_ok = cn >= 0 && cast(string) content[0..<cn] == NLK_NOTE;
+  }
+  // a response to a request the app never sent
+  f[0].unknown = n46_take(cl[..], cl[0].signer, n46_response("{\"id\":\"zz\",\"result\":\"pong\"}"), NLK_T0 + 7).error;
+  secure_zero(ck[..]); secure_zero(sk[..]);
+  return 0;
+}
+nlk_card_46 :: (c: [] NostrCard) -> bool {
+  f: [1] Nlk46; at := nlk_46(f[..]); if at != 0 { return nc_stop(c, at); }
+  if f[0].request_kind != N46_EVENT || f[0].method != M_SIGN || f[0].asked_kind != 1 { return nc_stop(c, 31); }
+  // signed with the user's key, which is not the app's, and it is the note the app asked for
+  if !f[0].verified || f[0].signed_kind != 1 || !f[0].content_ok { return nc_stop(c, 32); }
+  if !nlk_same(f[0].signed_by[..], f[0].user_x[..]) || nlk_same(f[0].signed_by[..], f[0].app_x[..]) { return nc_stop(c, 33); }
+  if f[0].denied != N46_DENIED { return nc_stop(c, 34); }
+  if f[0].unknown != N46_UNKNOWN { return nc_stop(c, 35); }
+  // "sign_event, kind 1": the method's name and the kind as the signer read them
+  asks: [NC_TEXT] u8; n := nlk_bytes(asks[..], N46_METHODS[f[0].method]);
+  n += nlk_bytes(asks[n..<NC_TEXT], ", kind "); n = text_put_int(asks[..], n, f[0].asked_kind);
+  nc_nodes(c, "APP", "RELAY", "SIGNER", "");
+  ok := nc_row_hex(c, "SIGNER KEY", f[0].signer[..], NC_KEY);
+  ok = ok && nc_row(c, "VIA RELAY", cast(string) f[0].relay[0..<f[0].relay_n], NC_PLAIN);
+  ok = ok && nc_row(c, "KIND 24133", cast(string) f[0].request[f[0].cipher_from..<f[0].cipher_to], NC_NOISE);
+  ok = ok && nc_row(c, "SIGNER READS", cast(string) asks[0..<n], NC_PLAIN);
+  ok = ok && nc_row_hex(c, "SIGNED BY", f[0].signed_by[..], NC_KEY);
+  ok = ok && nc_row_hex(c, "EVENT ID", f[0].id[..], NC_VALUE);
+  if !ok { return nc_stop(c, 36); }
+  return nc_done(c, "SIGNED ELSEWHERE AND VERIFIED", "UNKNOWN APP KEY: REFUSED");
+}
+
+// ---- NIP-98: sign a web request
+
+NLK_URL :: "https://openagents.com/api/auth/key";    // the route a key logs in at (docs/web-log-in.md)
+NLK_URL_OTHER :: "https://example.com/api/auth/key"; // the same request, replayed at another site
+NLK_METHOD :: "POST";
+NLK_BODY :: "{}";
+NLK_98_HEADER :: 2048;
+
+Nlk98 :: struct {
+  header: [NLK_98_HEADER] u8; header_n: int;   // the Authorization header's value: "Nostr " and base64
+  accepted: Nip98; out: [N98_OUT] u8;          // the server's answer, and what it read: ID, key, u, method, payload
+  edge: int;                                   // its answer at exactly 60 seconds
+  other_url: int; other_method: int; old: int; // and to another URL, another method, and 61 seconds
+}
+// Works the NIP-98 lesson out. 0, or the step that stopped.
+nlk_98 :: (f: [] Nlk98) -> int {
+  key: [32] u8; d := hex_decode_checked(NLK_KEY_HEX, key[..], false); if d.error != NC_OK || d.written != 32 { return 1; }
+  // You: one event for this URL, method and body. The aux value and the nonce tag are fixed here;
+  // a host draws both at random for every request.
+  aux: [32] u8; aux[31] = 1; nonce: [16] u8; for i: 0..<16 { nonce[i] = cast(u8) (0x98 + i); }
+  body: [16] u8; bn := nlk_bytes(body[..], NLK_BODY); if bn < 0 { return 2; }
+  f[0].header_n = n98s_header(key[..], aux[..], nonce[..], NLK_T0, NLK_URL, NLK_METHOD, body[0..<bn], true, f[0].header[..]);
+  secure_zero(key[..]);
+  if f[0].header_n <= 0 { return 3; }
+  header := cast(string) f[0].header[0..<f[0].header_n];
+  // The server, 30 seconds later: the API's own check
+  work: [N98_WORK] u8; scrap: [N98_OUT] u8;
+  f[0].accepted = nip98_check_coax(header, NLK_METHOD, NLK_URL, body[0..<bn], NLK_T0 + 30, work[..], f[0].out[..]);
+  // the same header at another URL, and 61 seconds after it was signed
+  f[0].other_url = nip98_check_coax(header, NLK_METHOD, NLK_URL_OTHER, body[0..<bn], NLK_T0 + 30, work[..], scrap[..]).error;
+  f[0].old = nip98_check_coax(header, NLK_METHOD, NLK_URL, body[0..<bn], NLK_T0 + 61, work[..], scrap[..]).error;
+  return 0;
+}
+// The other two edges, which the checks run and the card does not need: another method, and exactly 60 seconds.
+nlk_98_edges :: (f: [] Nlk98) {
+  header := cast(string) f[0].header[0..<f[0].header_n]; body: [16] u8; bn := nlk_bytes(body[..], NLK_BODY);
+  work: [N98_WORK] u8; scrap: [N98_OUT] u8;
+  f[0].other_method = nip98_check_coax(header, "GET", NLK_URL, body[0..<bn], NLK_T0 + 30, work[..], scrap[..]).error;
+  f[0].edge = nip98_check_coax(header, NLK_METHOD, NLK_URL, body[0..<bn], NLK_T0 + 60, work[..], scrap[..]).error;
+}
+nlk_card_98 :: (c: [] NostrCard) -> bool {
+  f: [1] Nlk98; at := nlk_98(f[..]); if at != 0 { return nc_stop(c, at); }
+  r := f[0].accepted;
+  if r.error != N98_OK || r.kind != N98S_KIND || r.payload != 64 { return nc_stop(c, 4); }
+  if f[0].other_url != N98_URL { return nc_stop(c, 5); }
+  if f[0].old != N98_TIME { return nc_stop(c, 6); }
+  // what the server read from the event it verified
+  pub: [32] u8; d := hex_decode_checked(cast(string) f[0].out[64..<128], pub[..], false);
+  if d.error != NC_OK || d.written != 32 { return nc_stop(c, 7); }
+  nc_nodes(c, "YOU", "REQUEST", "SERVER", "");
+  ok := nc_row_int(c, "KIND", r.kind, "HTTP AUTH", NC_PLAIN);
+  ok = ok && nc_row(c, "U TAG", cast(string) f[0].out[N98_OUT_U..<N98_OUT_U + r.u], NC_PLAIN);
+  ok = ok && nc_row(c, "METHOD TAG", cast(string) f[0].out[N98_OUT_METHOD..<N98_OUT_METHOD + r.method], NC_PLAIN);
+  ok = ok && nc_row(c, "BODY HASH", cast(string) f[0].out[N98_OUT_PAYLOAD..<N98_OUT_PAYLOAD + r.payload], NC_VALUE);
+  ok = ok && nc_row(c, "AUTHORIZATION", cast(string) f[0].header[0..<f[0].header_n], NC_VALUE);
+  ok = ok && nc_row_hex(c, "SIGNED BY", pub[..], NC_KEY);
+  if !ok { return nc_stop(c, 8); }
+  return nc_done(c, "THE SERVER ACCEPTS THE REQUEST", "OTHER URL OR TOO OLD: REFUSED");
+}
+
+// ---- NIP-05: a name matched to a key
+
+NLK_PROFILE :: "{\"name\":\"you\",\"nip05\":\"you@openagents.com\"}";   // the kind 0 profile's content
+// What a test server answers at the name's URL: this stands for the HTTP response; the lesson makes no request.
+NLK_SERVER_DOC :: "{\"names\":{\"you\":\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\"}}";
+// The same answer naming another key (secret 3's).
+NLK_SERVER_OTHER :: "{\"names\":{\"you\":\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\"}}";
+
+Nlk05 :: struct {
+  profile: [512] u8; profile_n: int;   // the signed kind 0 event
+  verified: bool; pub: [32] u8;        // its signature, its key
+  name: [64] u8; name_n: int;          // its "nip05" value
+  url: [128] u8; url_n: int;           // where that name is looked up
+  match: int; other: int;              // nip05.coax's answers to the two documents
+}
+// Works the NIP-05 lesson out. 0, or the step that stopped.
+nlk_05 :: (f: [] Nlk05) -> int {
+  key: [32] u8; d := hex_decode_checked(NLK_KEY_HEX, key[..], false); if d.error != NC_OK || d.written != 32 { return 1; }
+  f[0].profile_n = nlk_sign(key[..], NLK_T0, 0, "[]", NLK_PROFILE, f[0].profile[..]);
+  secure_zero(key[..]);
+  if f[0].profile_n <= 0 { return 2; }
+  // a reader: the profile verifies, and its content names an address
+  scratch: [1024] u8; content: [256] u8;
+  e := nostr_event_verify_vartime(cast(string) f[0].profile[0..<f[0].profile_n], scratch[..], false);
+  f[0].verified = e.verified; f[0].pub = e.public_key; if e.error != NE_OK || e.kind != 0 { return 3; }
+  cn := json_unescape(e.original[e.content_from..<e.content_to], content[..]); if cn < 0 { return 4; }
+  f[0].name_n = nip05_from_metadata(cast(string) content[0..<cn], f[0].name[..]); if f[0].name_n < 0 { return 5; }
+  id := nip05_parse(cast(string) f[0].name[0..<f[0].name_n]); if id.error != N5_OK { return 6; }
+  f[0].url_n = nip05_url(id, f[0].url[..]); if f[0].url_n < 0 { return 7; }
+  // the server's answer (status 200) against the profile's key
+  f[0].match = nip05_check(id, 200, NLK_SERVER_DOC, f[0].pub[..]);
+  f[0].other = nip05_check(id, 200, NLK_SERVER_OTHER, f[0].pub[..]);
+  return 0;
+}
+nlk_card_05 :: (c: [] NostrCard) -> bool {
+  f: [1] Nlk05; at := nlk_05(f[..]); if at != 0 { return nc_stop(c, at); }
+  if !f[0].verified { return nc_stop(c, 8); }
+  if f[0].match != N5_OK { return nc_stop(c, 9); }
+  if f[0].other != N5_MISMATCH { return nc_stop(c, 10); }
+  id := nip05_parse(cast(string) f[0].name[0..<f[0].name_n]); if id.error != N5_OK { return nc_stop(c, 11); }
+  // "you, openagents.com": the two parts as nip05_parse split them
+  parts: [NC_TEXT] u8; n := nlk_bytes(parts[..], id.local); if n < 0 || n + 2 + id.domain.count > NC_TEXT { return nc_stop(c, 11); }
+  n += nlk_bytes(parts[n..<NC_TEXT], ", "); n += nlk_bytes(parts[n..<NC_TEXT], id.domain);
+  // the URL in two rows, so the face shows all of it: the site, then the path and the name asked for
+  site := N5_PREFIX.count + id.domain.count; if site >= f[0].url_n { return nc_stop(c, 11); }
+  nc_nodes(c, "PROFILE", "SERVER", "KEY", "");
+  ok := nc_row(c, "NAME", cast(string) f[0].name[0..<f[0].name_n], NC_PLAIN);
+  ok = ok && nc_row(c, "NAME, DOMAIN", cast(string) parts[0..<n], NC_PLAIN);
+  ok = ok && nc_row(c, "LOOKED UP AT", cast(string) f[0].url[0..<site], NC_PLAIN);
+  ok = ok && nc_row(c, "PATH", cast(string) f[0].url[site..<f[0].url_n], NC_PLAIN);
+  ok = ok && nc_row(c, "TEST SERVER", NLK_SERVER_DOC, NC_VALUE);
+  ok = ok && nc_row_hex(c, "PROFILE KEY", f[0].pub[..], NC_KEY);
+  if !ok { return nc_stop(c, 12); }
+  return nc_done(c, "THE NAME AND THE KEY MATCH", "ANOTHER KEY: REFUSED");
+}
+
+// Card k of this file (0 and up), filled. False when the lesson stopped (c[0].stopped says where).
+nlk_card :: (k: int, c: [] NostrCard) -> bool {
+  if k == 0 { return nlk_card_06(c); }
+  if k == 1 { return nlk_card_49(c); }
+  if k == 2 { return nlk_card_46(c); }
+  if k == 3 { return nlk_card_98(c); }
+  if k == 4 { return nlk_card_05(c); }
+  return nc_stop(c, 98);
+}
+
+// ---- checks
+
+// A card that finished: its boxes, its rows, both lines, all within the face's limits.
+nlk_card_ok :: (c: [] NostrCard, rows: int) -> bool {
+  if !c[0].ready || c[0].stopped != 0 || c[0].nodes < 3 || c[0].rows != rows { return false; }
+  if c[0].good.count == 0 || c[0].bad.count == 0 || c[0].good.count > NC_LINE || c[0].bad.count > NC_LINE { return false; }
+  for r: 0..<c[0].rows { if c[0].row[r].label_n == 0 || c[0].row[r].n == 0 { return false; } }
+  return true;
+}
+// Whether part appears anywhere in s.
+nlk_has :: (s: string, part: string) -> bool {
+  if part.count > s.count { return false; }
+  for i: 0..<s.count - part.count + 1 { if s[i..<i + part.count] == part { return true; } }
+  return false;
+}
+#test "nostr lab keys: NIP-06, the test words give the published key and npub by the path, and a wrong last word gives none" #steps 20000000000 {
+  c: [1] NostrCard; #assert nlk_card(0, c[..]) && nlk_card_ok(c[..], 6);
+  f: [1] Nlk06; #assert nlk_06(f[..]) == 0 && f[0].words == 12;
+  // NIP-06's published public key and npub for these words
+  hex: [64] u8; #assert hex_encode_checked(cast(string) f[0].pub[..], hex[..], false).error == NC_OK;
+  #assert cast(string) hex[..] == NLK_06_PUB && cast(string) f[0].npub[0..<f[0].npub_n] == NLK_06_NPUB;
+  // the same key one level at a time: the seed, the master key, then each index of the path
+  seed: [64] u8; key: [32] u8; chain: [32] u8; k: [32] u8; ch: [32] u8;
+  #assert bip39_seed(NLK_WORDS, seed[..]) && bip32_master(seed[..], key[..], chain[..]);
+  path := [5] int.[44 + BIP32_HARDENED, 1237 + BIP32_HARDENED, BIP32_HARDENED, 0, 0];
+  for step: path { #assert bip32_child(key[..], chain[..], step, k[..], ch[..]); for j: 0..<32 { key[j] = k[j]; chain[j] = ch[j]; } }
+  pub: [33] u8; #assert bip32_public(key[..], pub[..]) && nlk_same(pub[1..<33], f[0].pub[..]);
+  // the npub decodes back to the public key
+  back: [32] u8; #assert nip19_decode_checked(cast(string) f[0].npub[0..<f[0].npub_n], back[..], false).error == NC_OK && nlk_same(back[..], f[0].pub[..]);
+  // the wrong last word: the checksum refuses it, and no key is left
+  e: [16] u8; #assert bip39_entropy(NLK_WORDS, e[..]) && !bip39_entropy(NLK_WORDS_BAD, e[..]) && !f[0].wrong && f[0].wrong_zero;
+  // the card: the path, no secret, the npub
+  #assert nc_text(c[..], 1) == "2048 ROUNDS OF HMAC-SHA512" && nc_text(c[..], 2) == "m/44'/1237'/0'/0/0" && nc_text(c[..], 3) == "HIDDEN";
+  #assert nc_text(c[..], 5)[0..<39] == NLK_06_NPUB[0..<39];
+  for r: 0..<6 { #assert !nlk_has(nc_text(c[..], r), "7f7ff03d"); }
+}
+#test "nostr lab keys: NIP-49, the ncryptsec string unlocks to the same key with the password, and to nothing with another" #steps 20000000000 {
+  c: [1] NostrCard; #assert nlk_card(1, c[..]) && nlk_card_ok(c[..], 6);
+  f: [1] Nlk49; #assert nlk_49(f[..]) == 0;
+  text := cast(string) f[0].text[0..<f[0].text_n];
+  // the string: bech32 with the prefix ncryptsec and 146 words, which are 91 bytes
+  hrp: [16] u8; words: [160] u8; b := bech32_decode_checked(text, hrp[..], words[..], true, false);
+  #assert b.error == NC_OK && cast(string) hrp[0..<b.hrp_written] == "ncryptsec" && b.written == 146 && text.count == 162;
+  p: [NLK_49_BYTES] u8; #assert nlk_49_read(text, p[..]);
+  for i: 0..<146 { #assert b32_word(cast(string) p[..], true, i) == words[i]; }
+  #assert p[0] == 2 && p[1] == NLK_LOG_N && p[42] == NLK_49_SECURITY && f[0].version == 2 && f[0].log_n == NLK_LOG_N;
+  // the test key, and the ciphertext is not it
+  key: [32] u8; pub: [32] u8; #assert nlk_secret(NLK_KEY_HEX, key[..], pub[..]) && nlk_same(pub[..], f[0].pub[..]);
+  #assert !nlk_same(p[43..<75], key[..]);
+  // unlock here with scrypt run again, the AEAD called directly
+  memory: [1024 << NLK_LOG_N] u8; sk: [32] u8; back: [32] u8;
+  #assert nlk_scrypt(NLK_PASSWORD, p[2..<18], NLK_LOG_N, memory[..], sk[..]);
+  #assert xcp_open(sk[..], p[18..<42], p[42..<43], p[43..<91], back[..], false) && nlk_same(back[..], key[..]);
+  #assert f[0].opened && f[0].same && nlk_same(f[0].back_pub[..], pub[..]);
+  // the wrong password gives another scrypt key, the tag fails, and nothing is written
+  wk: [32] u8; none: [32] u8; #assert nlk_scrypt(NLK_PASSWORD_BAD, p[2..<18], NLK_LOG_N, memory[..], wk[..]) && !nlk_same(wk[..], sk[..]);
+  #assert !xcp_open(wk[..], p[18..<42], p[42..<43], p[43..<91], none[..], false) && !f[0].wrong && f[0].wrong_zero;
+  // a changed key-security byte fails the tag too, and one changed letter fails the checksum
+  sec := [1] u8.[1]; #assert !xcp_open(sk[..], p[18..<42], sec[..], p[43..<91], none[..], false);
+  typo: [NLK_49_TEXT] u8; for i: 0..<NLK_49_TEXT { typo[i] = text[i]; } typo[20] = ifx text[20] == 'q' then cast(u8) 'p' else cast(u8) 'q';
+  #assert !nlk_49_read(cast(string) typo[..], p[..]);
+  // the card: no secret, the small cost said out loud, the same public key before and after
+  #assert nc_text(c[..], 0) == "HIDDEN" && nc_text(c[..], 3) == "4 HERE, 16 OR MORE IN REAL USE" && nc_text(c[..], 1) == nc_text(c[..], 5);
+  #assert nc_text(c[..], 4)[0..<10] == "ncryptsec1";
+  for r: 0..<6 { #assert !nlk_has(nc_text(c[..], r), "b7e15162"); }
+}
+#test "nostr lab keys: NIP-46, the signer signs the app's note with the user's key, and refuses a stranger's key" #steps 20000000000 {
+  c: [1] NostrCard; #assert nlk_card(2, c[..]) && nlk_card_ok(c[..], 6);
+  f: [1] Nlk46; #assert nlk_46(f[..]) == 0;
+  // the token's key is the signer's secret's public key
+  signer: [32] u8; signer_x: [32] u8; #assert nlk_secret(NLK_SIGNER_HEX, signer[..], signer_x[..]) && nlk_same(signer_x[..], f[0].signer[..]);
+  #assert cast(string) f[0].relay[0..<f[0].relay_n] == "wss://relay.example.com";
+  // the request: a verified kind 24133 event by the app, to the signer, whose content is NIP-44 and not the note
+  scratch: [8192] u8; request := cast(string) f[0].request[0..<f[0].request_n];
+  req := nostr_event_verify_vartime(request, scratch[..], false);
+  #assert req.verified && req.kind == 24133 && nlk_same(req.public_key[..], f[0].app_x[..]) && req.tags == 1;
+  t := nostr_tag(req, 0); #assert t.error == NT_OK && t.type == NT_P && nlk_same(t.pubkey[..], signer_x[..]);
+  #assert !nlk_has(request, NLK_NOTE) && !nlk_has(request, "sign_event") && request[req.content_from] == 'A';
+  // the signer's key opens it to a sign_event request for the note
+  sk: [32] u8; #assert n46_key(signer[..], req.public_key, sk[..]) == N46_OK;
+  opened: [2048] u8; o := n46_open(sk[..], request[req.content_from..<req.content_to], opened[..]);
+  #assert o.error == N46_OK;
+  call := n46_request(cast(string) opened[0..<o.n]);
+  #assert call.error == N46_OK && call.method == M_SIGN && n46_is(call.id, "s1") && f[0].method == M_SIGN && f[0].asked_kind == 1;
+  // a stranger's key does not open it
+  stranger: [32] u8; stranger_x: [32] u8; #assert nlk_secret(NLK_STRANGER_HEX, stranger[..], stranger_x[..]);
+  wk: [32] u8; #assert n46_key(stranger[..], req.public_key, wk[..]) == N46_OK;
+  #assert n46_open(wk[..], request[req.content_from..<req.content_to], opened[..]).error == N46_CIPHER;
+  // the signed event: verified, kind 1, the note, by the user's key and not the app's
+  ev := nostr_event_verify_vartime(cast(string) f[0].note[0..<f[0].note_n], scratch[..], false);
+  user: [32] u8; user_x: [32] u8; #assert nlk_secret(NLK_USER_HEX, user[..], user_x[..]);
+  #assert ev.verified && ev.kind == 1 && ev.created_at == NLK_T0 && nlk_same(ev.public_key[..], user_x[..]) && !nlk_same(ev.public_key[..], f[0].app_x[..]);
+  #assert f[0].verified && f[0].content_ok && nlk_same(f[0].id[..], ev.id[..]) && nostr_verify_vartime(ev.id[..], user_x[..], ev.signature[..]);
+  // the refusals
+  #assert f[0].denied == N46_DENIED && f[0].unknown == N46_UNKNOWN;
+  // the card
+  #assert nc_text(c[..], 1) == "wss://relay.example.com" && nc_text(c[..], 3) == "sign_event, kind 1" && nc_text(c[..], 0) != nc_text(c[..], 4);
+  for r: 0..<6 { #assert !nlk_has(nc_text(c[..], r), "s3cret"); }
+}
+#test "nostr lab keys: NIP-98, the server accepts the header for its URL, method and body, and refuses another URL, method or minute" #steps 20000000000 {
+  c: [1] NostrCard; #assert nlk_card(3, c[..]) && nlk_card_ok(c[..], 6);
+  f: [1] Nlk98; #assert nlk_98(f[..]) == 0; nlk_98_edges(f[..]);
+  header := cast(string) f[0].header[0..<f[0].header_n];
+  // the header is "Nostr " and the base64 of a verified kind 27235 event with the u and method tags
+  #assert header[0..<6] == "Nostr ";
+  event: [2048] u8; d := base64_decode_checked(header[6..<header.count], event[..], false); #assert d.error == NC_OK;
+  scratch: [2048] u8; e := nostr_event_verify_vartime(cast(string) event[0..<d.written], scratch[..], false);
+  #assert e.verified && e.kind == 27235 && e.created_at == NLK_T0 && e.content_from == e.content_to;
+  tags := e.original[e.tags_from..<e.tags_to];
+  #assert nlk_has(tags, "[\"u\",\"https://openagents.com/api/auth/key\"]") && nlk_has(tags, "[\"method\",\"POST\"]");
+  // the payload tag is SHA-256 of the body
+  body: [16] u8; bn := nlk_bytes(body[..], NLK_BODY); h: [32] u8; hex: [64] u8;
+  #assert sha256_hash_checked(body[0..<bn], h[..], false) == SHA_OK && hex_encode_checked(cast(string) h[..], hex[..], false).error == NC_OK;
+  #assert cast(string) f[0].out[N98_OUT_PAYLOAD..<N98_OUT_PAYLOAD + 64] == cast(string) hex[..] && nlk_has(tags, cast(string) hex[..]);
+  // the server's answers
+  #assert f[0].accepted.error == N98_OK && f[0].edge == N98_OK;
+  #assert f[0].other_url == N98_URL && f[0].other_method == N98_METHOD && f[0].old == N98_TIME;
+  // and to another body
+  work: [N98_WORK] u8; out: [N98_OUT] u8; other := [2] u8.['[', ']'];
+  #assert nip98_check_coax(header, NLK_METHOD, NLK_URL, other[..], NLK_T0 + 30, work[..], out[..]).error == N98_PAYLOAD;
+  // the card
+  #assert nc_text(c[..], 0) == "27235 HTTP AUTH" && nc_text(c[..], 1) == NLK_URL && nc_text(c[..], 2) == "POST";
+  #assert nc_text(c[..], 4)[0..<9] == "Nostr eyJ";
+}
+#test "nostr lab keys: NIP-05, the profile's name is looked up at its domain, and the answer must name the profile's key" #steps 20000000000 {
+  c: [1] NostrCard; #assert nlk_card(4, c[..]) && nlk_card_ok(c[..], 6);
+  f: [1] Nlk05; #assert nlk_05(f[..]) == 0 && f[0].verified;
+  key: [32] u8; pub: [32] u8; #assert nlk_secret(NLK_KEY_HEX, key[..], pub[..]) && nlk_same(pub[..], f[0].pub[..]);
+  #assert cast(string) f[0].name[0..<f[0].name_n] == "you@openagents.com";
+  #assert cast(string) f[0].url[0..<f[0].url_n] == "https://openagents.com/.well-known/nostr.json?name=you";
+  id := nip05_parse("you@openagents.com");
+  #assert id.error == N5_OK && id.local == "you" && id.domain == "openagents.com";
+  #assert f[0].match == N5_OK && f[0].other == N5_MISMATCH;
+  // the same answer under a redirect, a missing page, or for another name is refused too
+  #assert nip05_check(id, 301, NLK_SERVER_DOC, pub[..]) == N5_REDIRECT && nip05_check(id, 404, NLK_SERVER_DOC, pub[..]) == N5_STATUS;
+  #assert nip05_check(nip05_parse("me@openagents.com"), 200, NLK_SERVER_DOC, pub[..]) == N5_UNKNOWN;
+  // the card
+  #assert nc_text(c[..], 0) == "you@openagents.com" && nc_text(c[..], 1) == "you, openagents.com";
+  #assert nc_text(c[..], 2) == "https://openagents.com" && nc_text(c[..], 3) == "/.well-known/nostr.json?name=you";
+  // the answer's row and the key's row start with the same digits
+  #assert nc_text(c[..], 4)[17..<39] == nc_text(c[..], 5)[0..<22];
+}
+#test "nostr lab keys: a card number past the last stops" {
+  c: [1] NostrCard; #assert !nlk_card(NLK_COUNT, c[..]) && c[0].stopped == 98 && !nlk_card(-1, c[..]);
+}

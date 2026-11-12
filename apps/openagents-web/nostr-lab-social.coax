@@ -1,0 +1,466 @@
+// Nostr Lab's lessons for what people post: follow lists (NIP-02), threads and reactions (10, 25), articles (23), lists (51) and relay-based groups (29).
+// Each card is worked out at run time by coax/lib/nostr/ (nostr-lab-card.coax says what a card is).
+//
+//   0  NIP-02 follows: a kind 3 list read tag by tag, a newer list that replaces it in the relay's
+//      store, and an older list arriving late, which the store refuses as superseded.
+//   1  NIP-10 threads with NIP-25 reactions: a note, a reply whose tags n10_reply_tags writes, and a
+//      kind 7 like; a like with no e tag refuses.
+//   2  NIP-23 articles: a kind 30023 article, its address, an edit at the same address that becomes
+//      the current version; an article with no d tag refuses.
+//   3  NIP-51 lists: a kind 10003 bookmark list with one public item and one sealed to the owner's
+//      own key with NIP-44; another key cannot open it.
+//   4  NIP-29 groups: the relay's side of one group: create, join, post, a moderator's delete; a
+//      post from someone who is not a member refuses.
+//
+// The keys are BIP-340's published test vectors 0 to 3, the ones the book's examples sign with, and
+// the secret 1: never real keys. No card shows a secret key. Every signature uses a zero aux and the
+// NIP-44 seal a fixed nonce, so a card is the same on every run; a real client takes fresh random
+// bytes for both.
+//   coax/bin/coax test apps/openagents-web/nostr-lab-social.coax --only "nostr lab"
+#run_steps 250000000;   // secp256k1's signing tables, built at compile time (event_sign.coax)
+// The relay's store (nostr/relay/).
+#load "../../nostr/relay/store_core.coax";
+
+#load "nostr-lab-card.coax";
+#load "../../coax/lib/nostr/event_sign.coax";
+#load "../../coax/lib/nostr/follows.coax";
+#load "../../coax/lib/nostr/nip25.coax";
+#load "../../coax/lib/nostr/nip23.coax";
+#load "../../coax/lib/nostr/nip51-private.coax";
+#load "../../coax/lib/nostr/nip29.coax";
+
+NLS_COUNT :: 5;
+
+// Published test keys. Alice is BIP-340 vector 0 (the secret 3), Bob vector 1, Carol vector 2 and
+// Mallory vector 3; NLS_ONE is the secret 1, the other key of the book's lists example.
+NLS_ALICE :: "0000000000000000000000000000000000000000000000000000000000000003";
+NLS_BOB :: "b7e151628aed2a6abf7158809cf4f3c762e7160f38b4da56a784d9045190cfef";
+NLS_MALLORY :: "0b432b2677937381aef05bb02a66ecd012773062cf3fa2549e44f58ed2401710";
+NLS_ONE :: "0000000000000000000000000000000000000000000000000000000000000001";
+NLS_ALICE_PUB :: "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9";
+NLS_BOB_PUB :: "dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659";
+NLS_CAROL_PUB :: "dd308afec5777e13121fa72b9cc1b7cc0139715309b086c960e18fd969774eb8";
+// The relay's key in the groups lesson: the public key of the secret 2, as in the book's example.
+NLS_RELAY_PUB :: "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5";
+NLS_T0 :: 1794441600;   // 12 November 2026, 00:00 UTC
+NLS_EVENT :: 2048;      // room for one signed event
+
+// Signs one event with a test key into out: its length, or -1. The aux is zero, so the event is the
+// same on every run.
+nls_sign :: (key_hex: string, created: int, kind: int, tags: string, content: string, out: [] u8) -> int {
+  key: [32] u8; aux: [32] u8;
+  d := hex_decode_checked(key_hex, key[..], false); if d.error != NC_OK || d.written != 32 { return -1; }
+  work: [1] NostrSignWork; scratch: [4096] u8; n := EVENT_MORE; calls := 0;
+  while n == EVENT_MORE && calls < 256 {
+    n = nostr_event_sign_step(key[..], aux[..], created, kind, tags, content, work[..], scratch[..], out, false);
+    calls += 1;
+  }
+  for i: 0..<32 { key[i] = 0; }
+  return ifx n > 0 then n else -1;
+}
+// Signs an event into out and reads it back with its ID recomputed and its signature checked.
+// The answer's verified is false when any of that failed.
+nls_event :: (key_hex: string, created: int, kind: int, tags: string, content: string, out: [] u8) -> NostrEvent {
+  none: NostrEvent;
+  n := nls_sign(key_hex, created, kind, tags, content, out); if n <= 0 { return none; }
+  scratch: [4096] u8;
+  return nostr_event_verify_vartime(cast(string) out[0..<n], scratch[..], false);
+}
+nls_ok :: (e: NostrEvent) -> bool { return e.error == NE_OK && e.verified; }
+nls_key :: (hex: string) -> [32] u8 { k: [32] u8; d := hex_decode_checked(hex, k[..], false); return k; }
+
+// ---- 0. NIP-02: follow lists
+
+NLS_FOLLOWS_OLD :: "[[\"p\",\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\",\"wss://relay.example.com\",\"bob\"]]";
+NLS_FOLLOWS_NEW :: "[[\"p\",\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\",\"wss://relay.example.com\",\"bob\"],[\"p\",\"dd308afec5777e13121fa72b9cc1b7cc0139715309b086c960e18fd969774eb8\",\"\",\"carol\"]]";
+NLS_HOUR :: 3600;
+
+// The store's record of a verified event.
+nls_rec :: (e: NostrEvent) -> RsdRec {
+  c: RsdRec;
+  c.id = e.id; c.author = e.public_key; c.kind = e.kind; c.created = e.created_at; c.expiry = -1;
+  c.tags_from = e.tags_from; c.tags_to = e.tags_to;
+  return c;
+}
+nls_admit :: (s: [] RsdStore, e: NostrEvent) -> int { return ns_store_admit(s, nls_rec(e), e.original, e.verified); }
+// How many of a kind 3 event's tags read as follows.
+nls_follow_count :: (e: NostrEvent) -> int {
+  n := 0; for i: 0..<e.tags { if nostr_follow(e, i).error == FL_OK { n += 1; } }
+  return n;
+}
+// The store's one live record, or -1 when it has none or several.
+nls_live :: (s: [] RsdStore, now: int) -> int {
+  at := -1; n := 0;
+  for i: 0..<s[0].n { if ns_store_visible(s, i, now) { at = i; n += 1; } }
+  return ifx n == 1 then at else -1;
+}
+nls_follows :: (c: [] NostrCard) -> bool {
+  ob: [NLS_EVENT] u8; nb: [NLS_EVENT] u8; lb: [NLS_EVENT] u8;
+  old := nls_event(NLS_ALICE, NLS_T0, FL_KIND_FOLLOWS, NLS_FOLLOWS_OLD, "", ob[..]); if !nls_ok(old) { return nc_stop(c, 1); }
+  new := nls_event(NLS_ALICE, NLS_T0 + NLS_HOUR, FL_KIND_FOLLOWS, NLS_FOLLOWS_NEW, "", nb[..]); if !nls_ok(new) { return nc_stop(c, 2); }
+  // a list signed an hour before the first, which reaches the relay last
+  late := nls_event(NLS_ALICE, NLS_T0 - NLS_HOUR, FL_KIND_FOLLOWS, NLS_FOLLOWS_OLD, "", lb[..]); if !nls_ok(late) { return nc_stop(c, 3); }
+  // the first list, read: who is followed, where to find them, what the signer calls them
+  f := nostr_follow(old, 0);
+  if f.error != FL_OK || !f.has_relay || f.petname_n == 0 { return nc_stop(c, 4); }
+  if nls_follow_count(old) != 1 || nls_follow_count(new) != 2 { return nc_stop(c, 5); }
+  // the relay's store: the newer list retires the older, and the late one is refused
+  arena: [3 * NLS_EVENT] u8; recs: [4] RsdRec; s: [1] RsdStore; s[0].arena = arena[..]; s[0].recs = recs[..];
+  now := NLS_T0 + 2 * NLS_HOUR;
+  if nls_admit(s[..], old) != NSS_ACCEPT { return nc_stop(c, 6); }
+  if nls_admit(s[..], new) != NSS_ACCEPT { return nc_stop(c, 7); }
+  live := nls_live(s[..], now);
+  if live < 0 || !ns_equal32(s[0].recs[live].id, new.id) { return nc_stop(c, 8); }
+  refused := nls_admit(s[..], late) == NSS_SUPERSEDED;
+  live = nls_live(s[..], now);
+  if !refused || live < 0 || !ns_equal32(s[0].recs[live].id, new.id) { return nc_stop(c, 9); }
+
+  nc_nodes(c, "ALICE", "RELAY", "READER", "");
+  ok := nc_row_int(c, "KIND", old.kind, "", NC_PLAIN);
+  ok = ok && nc_row_hex(c, "FOLLOWS", f.pubkey[..], NC_KEY);
+  ok = ok && nc_row(c, "RELAY HINT", cast(string) f.relay[0..<f.relay_n], NC_PLAIN);
+  ok = ok && nc_row(c, "PETNAME", cast(string) f.petname[0..<f.petname_n], NC_PLAIN);
+  ok = ok && nc_row_int(c, "NEWER LIST", nls_follow_count(new), "P TAGS", NC_PLAIN);
+  ok = ok && nc_row_int(c, "RELAY KEEPS", s[0].live, "LIST: THE NEWER ONE", NC_GOOD);
+  if !ok { return nc_stop(c, 10); }
+  return nc_done(c, "NEWER LIST REPLACED THE OLD", "OLDER LIST ARRIVED LATE: REFUSED");
+}
+
+// ---- 1. NIP-10 threads and NIP-25 reactions
+
+NLS_NOTE :: "Nostr From Scratch is out";
+NLS_REPLY :: "reading it now";
+
+// A like's tags: the event liked, its author and its kind. skip_e leaves the e tag out, which no
+// client should do.
+nls_like_tags :: (target: NostrEvent, skip_e: bool, out: [] u8) -> int {
+  n := json_raw(out, 0, "[");
+  if !skip_e { n = json_raw(out, n, "[\"e\","); n = n10_hex(out, n, target.id); n = json_raw(out, n, "],"); }
+  n = json_raw(out, n, "[\"p\","); n = n10_hex(out, n, target.public_key);
+  n = json_raw(out, n, "],[\"k\",\""); n = json_write_int(out, n, target.kind);
+  return json_raw(out, n, "\"]]");
+}
+// The first p tag's key into out; false when the event has none.
+nls_first_p :: (e: NostrEvent, out: [] u8) -> bool {
+  for i: 0..<e.tags {
+    t := nostr_tag(e, i);
+    if t.error == NT_OK && t.type == NT_P { for k: 0..<32 { out[k] = t.pubkey[k]; } return true; }
+  }
+  return false;
+}
+nls_threads :: (c: [] NostrCard) -> bool {
+  b0: [NLS_EVENT] u8; b1: [NLS_EVENT] u8; b2: [NLS_EVENT] u8; b3: [NLS_EVENT] u8; tags: [512] u8;
+  note := nls_event(NLS_ALICE, NLS_T0, 1, "[]", NLS_NOTE, b0[..]); if !nls_ok(note) { return nc_stop(c, 20); }
+  // Bob's reply: the library writes its tags (a marked e tag for the root, a p tag for the author)
+  rt := n10_reply_tags(note, "", tags[..]); if rt.status != N10_OK { return nc_stop(c, 21); }
+  reply := nls_event(NLS_BOB, NLS_T0 + 60, 1, cast(string) tags[0..<rt.n], NLS_REPLY, b1[..]); if !nls_ok(reply) { return nc_stop(c, 22); }
+  th := n10_thread(reply);
+  if th.status != N10_OK || th.scheme != N10_MARKED || !th.is_reply { return nc_stop(c, 23); }
+  if !ns_equal32(th.root, note.id) || !ns_equal32(th.parent, note.id) { return nc_stop(c, 24); }
+  p: [32] u8; if !nls_first_p(reply, p[..]) || !ns_equal32(p, note.public_key) { return nc_stop(c, 25); }
+  // Bob's like of the note
+  ln := nls_like_tags(note, false, tags[..]); if ln <= 0 { return nc_stop(c, 26); }
+  like := nls_event(NLS_BOB, NLS_T0 + 120, 7, cast(string) tags[0..<ln], "+", b2[..]); if !nls_ok(like) { return nc_stop(c, 27); }
+  r := n25_reaction(like);
+  if r.status != N25_OK || r.value != N25_LIKE || !ns_equal32(r.target, note.id) { return nc_stop(c, 28); }
+  if !r.has_author || !ns_equal32(r.author, note.public_key) || r.kind != 1 { return nc_stop(c, 29); }
+  set: [3] NostrEvent; set[0] = note; set[1] = reply; set[2] = like;
+  tally := n25_tally(set[..], note.id);
+  if tally.likes != 1 || tally.dislikes != 0 || tally.refused != 0 { return nc_stop(c, 30); }
+  // a like that names no event: signed well, and still not a reaction to anything
+  bn := nls_like_tags(note, true, tags[..]); if bn <= 0 { return nc_stop(c, 31); }
+  lost := nls_event(NLS_BOB, NLS_T0 + 180, 7, cast(string) tags[0..<bn], "+", b3[..]); if !nls_ok(lost) { return nc_stop(c, 32); }
+  if n25_reaction(lost).status != N25_MISSING { return nc_stop(c, 33); }
+
+  nc_nodes(c, "NOTE", "REPLY", "LIKE", "");
+  ok := nc_row_hex(c, "NOTE ID", note.id[..], NC_VALUE);
+  ok = ok && nc_row_hex(c, "REPLY ROOT", th.root[..], NC_VALUE);
+  ok = ok && nc_row_hex(c, "REPLY PARENT", th.parent[..], NC_VALUE);
+  ok = ok && nc_row_hex(c, "REPLY P TAG", p[..], NC_KEY);
+  ok = ok && nc_row(c, "KIND 7 SAYS", cast(string) r.content[0..<r.content_n], NC_PLAIN);
+  ok = ok && nc_row_hex(c, "LIKE TARGET", r.target[..], NC_VALUE);
+  if !ok { return nc_stop(c, 34); }
+  return nc_done(c, "REPLY AND LIKE POINT AT THE NOTE", "A LIKE WITH NO E TAG: REFUSED");
+}
+
+// ---- 2. NIP-23: articles
+
+NLS_D :: "nostr-from-scratch";
+NLS_TITLE :: "Nostr From Scratch";
+NLS_TITLE_EDIT :: "Nostr From Scratch, second edition";
+NLS_DAY :: 86400;
+
+nls_articles :: (c: [] NostrCard) -> bool {
+  b1: [NLS_EVENT] u8; b2: [NLS_EVENT] u8; b3: [NLS_EVENT] u8; tb: [256] u8;
+  m: N23Meta; m.d = NLS_D; m.title = NLS_TITLE; m.published_at = NLS_T0;
+  t := nip23_tags(m, tb[..]); if t.error != N23_OK { return nc_stop(c, 40); }
+  v1 := nls_event(NLS_ALICE, NLS_T0, N23_ARTICLE, cast(string) tb[0..<t.n], "# Chapter 1\nKeys.", b1[..]); if !nls_ok(v1) { return nc_stop(c, 41); }
+  // the edit a day later: the same d tag and first publication, a new title and text
+  m.title = NLS_TITLE_EDIT;
+  t = nip23_tags(m, tb[..]); if t.error != N23_OK { return nc_stop(c, 42); }
+  v2 := nls_event(NLS_ALICE, NLS_T0 + NLS_DAY, N23_ARTICLE, cast(string) tb[0..<t.n], "# Chapter 1\nKeys and events.", b2[..]); if !nls_ok(v2) { return nc_stop(c, 43); }
+  f1: [512] u8; f2: [512] u8;
+  a1 := nip23_read(v1, f1[..]); a2 := nip23_read(v2, f2[..]);
+  if a1.error != N23_OK || a2.error != N23_OK || !a1.has_published || a1.published_at != a2.published_at { return nc_stop(c, 44); }
+  // both versions have one address, kind:author:d
+  ad1: [160] u8; ad2: [160] u8;
+  n1 := nip23_address(a1.kind, v1.public_key, n23_text(a1.d, f1[..]), ad1[..]);
+  n2 := nip23_address(a2.kind, v2.public_key, n23_text(a2.d, f2[..]), ad2[..]);
+  if n1 <= 0 || n2 <= 0 || cast(string) ad1[0..<n1] != cast(string) ad2[0..<n2] { return nc_stop(c, 45); }
+  // which is current: the edit, in whichever order the two arrive, and the first while it is alone
+  set: [2] NostrEvent; set[0] = v1; set[1] = v2; back: [2] NostrEvent; back[0] = v2; back[1] = v1;
+  d := n23_text(a1.d, f1[..]);
+  cur := nip23_current(set[..], N23_ARTICLE, v1.public_key, d);
+  if cur != 1 || nip23_current(back[..], N23_ARTICLE, v1.public_key, d) != 0 || nip23_current(set[0..<1], N23_ARTICLE, v1.public_key, d) != 0 { return nc_stop(c, 46); }
+  fc: [512] u8; ac := nip23_read(set[cur], fc[..]); if ac.error != N23_OK { return nc_stop(c, 47); }
+  // an article with no d tag has no address to be edited at
+  bare := nls_event(NLS_ALICE, NLS_T0, N23_ARTICLE, "[[\"title\",\"No address\"]]", "x", b3[..]); if !nls_ok(bare) { return nc_stop(c, 48); }
+  fb: [512] u8; if nip23_read(bare, fb[..]).error != N23_NO_D { return nc_stop(c, 49); }
+
+  nc_nodes(c, "AUTHOR", "RELAY", "READER", "");
+  ok := nc_row_int(c, "KIND", a1.kind, "", NC_PLAIN);
+  ok = ok && nc_row(c, "D TAG", d, NC_PLAIN);
+  ok = ok && nc_row(c, "ADDRESS", cast(string) ad1[0..<n1], NC_VALUE);
+  ok = ok && nc_row(c, "TITLE", n23_text(a1.title, f1[..]), NC_PLAIN);
+  ok = ok && nc_row(c, "EDITED TITLE", n23_text(ac.title, fc[..]), NC_PLAIN);
+  ok = ok && nc_row_int(c, "CURRENT", cur + 1, "OF 2 VERSIONS", NC_GOOD);
+  if !ok { return nc_stop(c, 50); }
+  return nc_done(c, "SAME ADDRESS: THE EDIT REPLACED IT", "NO D TAG: REFUSED AS AN ARTICLE");
+}
+
+// ---- 3. NIP-51: lists
+
+NLS_BOOKMARKS :: 10003;
+// One public bookmark (NIP-51's example note) and one private (NIP-23's example note).
+NLS_PUBLIC :: "[[\"e\",\"d78ba0d5dce22bfff9db0a9e996c9ef27e2c91051de0c4e1da340e0326b4941e\"]]";
+NLS_PRIVATE :: "[[\"e\",\"b3e392b11f5d4f28321cedd09303a748acfd0487aea5a7450b3481c60b6e4f87\"]]";
+
+nls_lists :: (c: [] NostrCard) -> bool {
+  secret := nls_key(NLS_ALICE); me: [1] NlSelf; ew: [1] EcdhScratch; w: [1] NlWork;
+  got := nl_self(secret[..], ew[..], me[..]);
+  for i: 0..<32 { secret[i] = 0; }
+  if got != NL_OK { return nc_stop(c, 60); }
+  // A fixed nonce, 00 01 .. 1f, so the card is the same on every run. A real write takes 32 fresh
+  // random bytes.
+  nonce: [32] u8; for i: 0..<32 { nonce[i] = cast(u8) i; }
+  content: [512] u8;
+  s := nl_seal(NLS_BOOKMARKS, me[0], NLS_PUBLIC, NLS_PRIVATE, nonce[..], w[..], content[..]);
+  if s.error != NL_OK || s.private_n != 1 { nl_self_forget(me[..]); return nc_stop(c, 61); }
+  sealed := cast(string) content[0..<s.written];
+  eb: [NLS_EVENT] u8;
+  e := nls_event(NLS_ALICE, NLS_T0, NLS_BOOKMARKS, NLS_PUBLIC, sealed, eb[..]); if !nls_ok(e) { nl_self_forget(me[..]); return nc_stop(c, 62); }
+  // anyone: the public item, and that the rest is NIP-44 ciphertext
+  l := nl_read(e);
+  if l.error != NL_OK || l.public_n != 1 || l.cipher != NL_C_NIP44 || l.opened || l.private_n != 0 { nl_self_forget(me[..]); return nc_stop(c, 63); }
+  // the owner: the private item
+  plain: [512] u8;
+  lo := nl_open(l, e, me[0], false, w[..], plain[..]);
+  nl_self_forget(me[..]);
+  if lo.error != NL_OK || !lo.opened || lo.private_n != 1 || lo.hidden != NLS_PRIVATE { return nc_stop(c, 64); }
+  pub := nl_item(lo, e, 0); priv := nl_item(lo, e, 1);
+  if pub.error != NL_OK || pub.is_private || pub.tag.type != NT_E { return nc_stop(c, 65); }
+  if priv.error != NL_OK || !priv.is_private || priv.tag.type != NT_E { return nc_stop(c, 66); }
+  // another key: the list is not theirs to open, and their NIP-44 key with the owner fails the MAC
+  other_secret := nls_key(NLS_ONE); other: [1] NlSelf;
+  got = nl_self(other_secret[..], ew[..], other[..]);
+  if got != NL_OK { return nc_stop(c, 67); }
+  plain2: [512] u8;
+  refused := nl_open(l, e, other[0], false, w[..], plain2[..]);
+  nl_self_forget(other[..]);
+  if refused.error != NL_NOT_OWNER || refused.opened { return nc_stop(c, 68); }
+  ck: [32] u8; wk: [1024] u8;
+  made := nip44_conversation_key_from_keys_checked(other_secret[..], e.public_key[..], ew[..], ck[..], false);
+  for i: 0..<32 { other_secret[i] = 0; }
+  if made != NIP44_OK { return nc_stop(c, 69); }
+  dec := nip44_decrypt_checked(NIP44_COMPAT, ck[..], sealed, wk[..], plain2[..], false);
+  for i: 0..<32 { ck[i] = 0; }
+  if dec.error != NIP44_MAC { return nc_stop(c, 70); }
+
+  nc_nodes(c, "OWNER", "RELAY", "OWNER", "");
+  ok := nc_row_int(c, "KIND", e.kind, "", NC_PLAIN);
+  ok = ok && nc_row_hex(c, "PUBLIC E TAG", pub.tag.id[..], NC_VALUE);
+  ok = ok && nc_row(c, "CONTENT", e.original[e.content_from..<e.content_to], NC_NOISE);
+  ok = ok && nc_row_int(c, "RELAY READS", l.private_n, "PRIVATE ITEMS", NC_PLAIN);
+  ok = ok && nc_row_hex(c, "OWNER OPENS", priv.tag.id[..], NC_SECRET);
+  ok = ok && nc_row(c, "ANOTHER KEY", "MAC CHECK FAILS", NC_BAD);
+  if !ok { return nc_stop(c, 71); }
+  return nc_done(c, "OWNER OPENED THE PRIVATE PART", "ANOTHER KEY: CANNOT OPEN IT");
+}
+
+// ---- 4. NIP-29: groups
+
+NLS_GROUP :: "[[\"h\",\"pizza\"]]";
+NLS_GROUP_RULES :: "[[\"h\",\"pizza\"],[\"name\",\"Pizza Lovers\"],[\"restricted\"]]";
+NLS_POST_KIND :: 9;     // a group chat message; to nip29.coax every kind outside 9000 to 9022 is a post
+
+nls_ref :: (id: [32] u8) -> [4] u8 { r: [4] u8; for i: 0..<4 { r[i] = id[i]; } return r; }
+nls_groups :: (c: [] NostrCard) -> bool {
+  relay := nls_key(NLS_RELAY_PUB); g: [1] G29Group;
+  b0: [NLS_EVENT] u8; b1: [NLS_EVENT] u8; b2: [NLS_EVENT] u8; b3: [NLS_EVENT] u8; b4: [NLS_EVENT] u8; b5: [NLS_EVENT] u8;
+  // Alice creates the group and is its admin; then she lets only members post
+  made := nls_event(NLS_ALICE, NLS_T0, G29_CREATE_GROUP, NLS_GROUP, "", b0[..]); if !nls_ok(made) { return nc_stop(c, 80); }
+  if g29_admit(g[..], made, relay) != G29_OK || g[0].n != 1 || g[0].members[0].roles_n != 1 || !g29_is(g[0].members[0].roles[0], "admin") { return nc_stop(c, 81); }
+  rules := nls_event(NLS_ALICE, NLS_T0 + 60, G29_EDIT_METADATA, NLS_GROUP_RULES, "", b1[..]); if !nls_ok(rules) { return nc_stop(c, 82); }
+  if g29_admit(g[..], rules, relay) != G29_OK || !g[0].restricted || g[0].closed { return nc_stop(c, 83); }
+  // Bob asks to join, and posts
+  join := nls_event(NLS_BOB, NLS_T0 + 120, G29_JOIN, NLS_GROUP, "", b2[..]); if !nls_ok(join) { return nc_stop(c, 84); }
+  if g29_admit(g[..], join, relay) != G29_OK || g[0].n != 2 || g29_member(g[0], join.public_key) != 1 { return nc_stop(c, 85); }
+  members := g[0].n;
+  post := nls_event(NLS_BOB, NLS_T0 + 180, NLS_POST_KIND, NLS_GROUP, "who wants pizza?", b3[..]); if !nls_ok(post) { return nc_stop(c, 86); }
+  pr := g29_read(post);
+  if pr.status != G29_OK || !pr.has_h || g29_admit(g[..], post, relay) != G29_OK || !g29_known(g[0], nls_ref(post.id)) { return nc_stop(c, 87); }
+  // Mallory, who never joined, posts: refused, and the group is as it was
+  out := nls_event(NLS_MALLORY, NLS_T0 + 240, NLS_POST_KIND, NLS_GROUP, "free pizza, click here", b4[..]); if !nls_ok(out) { return nc_stop(c, 88); }
+  if g29_admit(g[..], out, relay) != G29_NOT_MEMBER || g[0].n != 2 || g29_known(g[0], nls_ref(out.id)) { return nc_stop(c, 89); }
+  // Alice, the admin, removes Bob's post
+  tags: [256] u8;
+  n := json_raw(tags[..], 0, "[[\"h\",\"pizza\"],[\"e\","); n = n10_hex(tags[..], n, post.id); n = json_raw(tags[..], n, "]]");
+  if n <= 0 { return nc_stop(c, 90); }
+  gone := nls_event(NLS_ALICE, NLS_T0 + 300, G29_DELETE_EVENT, cast(string) tags[0..<n], "", b5[..]); if !nls_ok(gone) { return nc_stop(c, 91); }
+  gr := g29_read(gone);
+  if gr.status != G29_OK || !gr.has_e || !ns_equal32(gr.e, post.id) { return nc_stop(c, 92); }
+  if g29_admit(g[..], gone, relay) != G29_OK || g29_known(g[0], nls_ref(post.id)) { return nc_stop(c, 93); }
+
+  nc_nodes(c, "MEMBER", "RELAY", "GROUP", "");
+  ok := nc_row(c, "GROUP H TAG", cast(string) pr.h.b[0..<pr.h.n], NC_PLAIN);
+  ok = ok && nc_row_hex(c, "ADMIN", g[0].members[0].key[..], NC_KEY);
+  ok = ok && nc_row_int(c, "JOIN 9021", members, "MEMBERS", NC_GOOD);
+  ok = ok && nc_row_hex(c, "POST ID", post.id[..], NC_VALUE);
+  ok = ok && nc_row_hex(c, "9005 REMOVES", gr.e[..], NC_VALUE);
+  ok = ok && nc_row(c, "OUTSIDER POST", "NOT A MEMBER", NC_BAD);
+  if !ok { return nc_stop(c, 94); }
+  return nc_done(c, "JOINED, POSTED, POST REMOVED", "NOT A MEMBER: POST REFUSED");
+}
+
+// Card k of this file (0 and up), filled. False when the lesson stopped (c[0].stopped says where).
+nls_card :: (k: int, c: [] NostrCard) -> bool {
+  if k == 0 { return nls_follows(c); }
+  if k == 1 { return nls_threads(c); }
+  if k == 2 { return nls_articles(c); }
+  if k == 3 { return nls_lists(c); }
+  if k == 4 { return nls_groups(c); }
+  return nc_stop(c, 97);
+}
+
+// ---- checks
+
+// Whether a row shows these bytes the way nc_row_hex writes them.
+nls_t_shows :: (c: [] NostrCard, k: int, hex: string) -> bool {
+  t := nc_text(c, k);
+  return t.count == 41 && t[0..<24] == hex[0..<24] && t[27..<41] == hex[50..<64];
+}
+nls_t_has :: (s: string, part: string) -> bool {
+  for i: 0..<s.count - part.count + 1 { if s[i..<i + part.count] == part { return true; } }
+  return false;
+}
+nls_t_card :: (k: int, c: [] NostrCard, nodes: int, rows: int) -> bool {
+  if !nls_card(k, c) || !c[0].ready || c[0].stopped != 0 || c[0].nodes != nodes || c[0].rows != rows { return false; }
+  if c[0].good.count == 0 || c[0].bad.count == 0 { return false; }
+  for r: 0..<rows { if c[0].row[r].label_n == 0 || c[0].row[r].n == 0 { return false; } }
+  return true;
+}
+
+#test "nostr lab social: a follow list reads, the newer replaces it, and an older one arriving late is refused" #steps 2000000000 {
+  c: [1] NostrCard; #assert nls_t_card(0, c[..], 3, 6);
+  #assert nc_text(c[..], 0) == "3" && nls_t_shows(c[..], 1, NLS_BOB_PUB);
+  #assert nc_text(c[..], 2) == "wss://relay.example.com" && nc_text(c[..], 3) == "bob";
+  #assert nc_text(c[..], 4) == "2 P TAGS" && nc_text(c[..], 5) == "1 LIST: THE NEWER ONE";
+  #assert c[0].good == "NEWER LIST REPLACED THE OLD" && c[0].bad == "OLDER LIST ARRIVED LATE: REFUSED";
+  // the other way round, in a store of its own: the newer list first, and the older never gets in
+  ob: [NLS_EVENT] u8; nb: [NLS_EVENT] u8;
+  old := nls_event(NLS_ALICE, NLS_T0, 3, NLS_FOLLOWS_OLD, "", ob[..]); new := nls_event(NLS_ALICE, NLS_T0 + NLS_HOUR, 3, NLS_FOLLOWS_NEW, "", nb[..]);
+  #assert nls_ok(old) && nls_ok(new);
+  alice := nls_key(NLS_ALICE_PUB); #assert ns_equal32(old.public_key, alice) && ns_equal32(new.public_key, alice);
+  arena: [2 * NLS_EVENT] u8; recs: [4] RsdRec; s: [1] RsdStore; s[0].arena = arena[..]; s[0].recs = recs[..];
+  #assert nls_admit(s[..], new) == NSS_ACCEPT && nls_admit(s[..], old) == NSS_SUPERSEDED && s[0].live == 1;
+  #assert ns_equal32(s[0].recs[nls_live(s[..], NLS_T0 + 2 * NLS_HOUR)].id, new.id);
+  // NIP-01's rule itself, and the second follow of the newer list
+  a: NsMeta; a.id = new.id; a.created = new.created_at; b: NsMeta; b.id = old.id; b.created = old.created_at;
+  #assert ns_newer(a, b) && !ns_newer(b, a);
+  f := nostr_follow(new, 1); carol := nls_key(NLS_CAROL_PUB);
+  #assert f.error == FL_OK && ns_equal32(f.pubkey, carol) && !f.has_relay && cast(string) f.petname[0..<f.petname_n] == "carol";
+  // an event that does not verify is never stored
+  forged := new; forged.verified = false; fresh: [1] RsdStore; fa: [NLS_EVENT] u8; fr: [2] RsdRec; fresh[0].arena = fa[..]; fresh[0].recs = fr[..];
+  #assert nls_admit(fresh[..], forged) == NSS_UNVERIFIED && fresh[0].n == 0;
+}
+#test "nostr lab social: a reply and a like name the note, and a like with no e tag is refused" #steps 2000000000 {
+  c: [1] NostrCard; #assert nls_t_card(1, c[..], 3, 6);
+  // the note's ID, the reply's root and parent and the like's target are one value
+  id := nc_text(c[..], 0); #assert id.count == 41 && nc_text(c[..], 1) == id && nc_text(c[..], 2) == id && nc_text(c[..], 5) == id;
+  #assert nls_t_shows(c[..], 3, NLS_ALICE_PUB) && nc_text(c[..], 4) == "+";
+  #assert c[0].good == "REPLY AND LIKE POINT AT THE NOTE" && c[0].bad == "A LIKE WITH NO E TAG: REFUSED";
+  // signed again: the same note, and the tree n10_parents builds from the two
+  b0: [NLS_EVENT] u8; b1: [NLS_EVENT] u8; tags: [512] u8; hex: [64] u8;
+  note := nls_event(NLS_ALICE, NLS_T0, 1, "[]", NLS_NOTE, b0[..]); #assert nls_ok(note);
+  #assert hex_encode_checked(cast(string) note.id[..], hex[..], false).error == NC_OK && nls_t_shows(c[..], 0, cast(string) hex[..]);
+  rt := n10_reply_tags(note, "", tags[..]); #assert rt.status == N10_OK && nls_t_has(cast(string) tags[0..<rt.n], "\"root\"");
+  reply := nls_event(NLS_BOB, NLS_T0 + 60, 1, cast(string) tags[0..<rt.n], NLS_REPLY, b1[..]); #assert nls_ok(reply);
+  set: [2] NostrEvent; set[0] = note; set[1] = reply; parent: [2] int; n10_parents(set[..], parent[..]);
+  #assert parent[0] == N10_TOP && parent[1] == 0 && !n10_thread(note).is_reply;
+  // the like's tags, with and without the e tag, read without a signature
+  eb: [NLS_EVENT] u8;
+  n := nls_like_tags(note, false, tags[..]); #assert n > 0;
+  r := n25_reaction(n25_event(7, cast(string) tags[0..<n], "+", eb[..])); #assert r.status == N25_OK && ns_equal32(r.target, note.id) && r.kind == 1;
+  n = nls_like_tags(note, true, tags[..]); #assert n > 0 && !nls_t_has(cast(string) tags[0..<n], "\"e\"");
+  #assert n25_reaction(n25_event(7, cast(string) tags[0..<n], "+", eb[..])).status == N25_MISSING;
+}
+#test "nostr lab social: an article's edit takes its address, and one with no d tag is refused" #steps 2000000000 {
+  c: [1] NostrCard; #assert nls_t_card(2, c[..], 3, 6);
+  #assert nc_text(c[..], 0) == "30023" && nc_text(c[..], 1) == NLS_D;
+  // the address row is cut to fit: kind, a colon and the start of the author's key
+  ad := nc_text(c[..], 2); #assert ad.count == NC_TEXT && ad[0..<6] == "30023:" && ad[6..<39] == NLS_ALICE_PUB[0..<33] && ad[39..<42] == "...";
+  #assert nc_text(c[..], 3) == NLS_TITLE && nc_text(c[..], 4) == NLS_TITLE_EDIT && nc_text(c[..], 5) == "2 OF 2 VERSIONS";
+  #assert c[0].good == "SAME ADDRESS: THE EDIT REPLACED IT" && c[0].bad == "NO D TAG: REFUSED AS AN ARTICLE";
+  // the whole address reads back as an a tag's value: kind, author and d
+  alice := nls_key(NLS_ALICE_PUB); full: [160] u8;
+  n := nip23_address(N23_ARTICLE, alice, NLS_D, full[..]); #assert n == 6 + 64 + 1 + NLS_D.count;
+  a := nt_address(cast(string) full[0..<n]);
+  #assert a.error == NT_OK && a.type == NT_A && a.address_kind == 30023 && ns_equal32(a.pubkey, alice) && cast(string) a.d[0..<a.d_n] == NLS_D;
+  // the writer refuses an article with no d too, and a kind that is not addressable has no address
+  m: N23Meta; m.title = NLS_TITLE; tb: [256] u8; #assert nip23_tags(m, tb[..]).error == N23_NO_D;
+  #assert nip23_address(1, alice, NLS_D, full[..]) == -1;
+}
+#test "nostr lab social: a bookmark list's private part opens for its owner and for no other key" #steps 2000000000 {
+  c: [1] NostrCard; #assert nls_t_card(3, c[..], 3, 6);
+  #assert nc_text(c[..], 0) == "10003" && nls_t_shows(c[..], 1, "d78ba0d5dce22bfff9db0a9e996c9ef27e2c91051de0c4e1da340e0326b4941e");
+  #assert nc_text(c[..], 3) == "0 PRIVATE ITEMS" && nls_t_shows(c[..], 4, "b3e392b11f5d4f28321cedd09303a748acfd0487aea5a7450b3481c60b6e4f87");
+  #assert c[0].good == "OWNER OPENED THE PRIVATE PART" && c[0].bad == "ANOTHER KEY: CANNOT OPEN IT";
+  // The same seal with the owner's keys as nip51-private.coax's checks hold them (worked out in
+  // Python, not here): the content row is the start of that payload, and neither bookmark is in it.
+  me := nl_t_me3(); w: [1] NlWork; content: [512] u8; nonce: [32] u8; for i: 0..<32 { nonce[i] = cast(u8) i; }
+  s := nl_seal(NLS_BOOKMARKS, me, NLS_PUBLIC, NLS_PRIVATE, nonce[..], w[..], content[..]); #assert s.error == NL_OK;
+  sealed := cast(string) content[0..<s.written]; shown := nc_text(c[..], 2);
+  #assert shown.count == NC_TEXT && shown[0..<39] == sealed[0..<39] && shown[0..<2] == "Ag";   // base64 of NIP-44's version byte, 2
+  #assert !nls_t_has(sealed, "b3e392b1") && !nls_t_has(sealed, "d78ba0d5");
+  // NIP-44 itself: the owner's conversation key gives the private items back, and a key one bit
+  // away fails the MAC
+  ck := me.ck; wk: [1024] u8; plain: [512] u8;
+  d := nip44_decrypt_checked(NIP44_COMPAT, ck[..], sealed, wk[..], plain[..], false);
+  #assert d.error == NIP44_OK && cast(string) plain[0..<d.written] == NLS_PRIVATE;
+  ck[0] ^= 1; #assert nip44_decrypt_checked(NIP44_COMPAT, ck[..], sealed, wk[..], plain[..], false).error == NIP44_MAC;
+  // a private tag a bookmark list does not hold is never sealed
+  #assert nl_seal(NLS_BOOKMARKS, me, NLS_PUBLIC, "[[\"word\",\"x\"]]", nonce[..], w[..], content[..]).error == NL_TAG;
+}
+#test "nostr lab social: a group admits a join, a post and its admin's delete, and refuses an outsider's post" #steps 2000000000 {
+  c: [1] NostrCard; #assert nls_t_card(4, c[..], 3, 6);
+  #assert nc_text(c[..], 0) == "pizza" && nls_t_shows(c[..], 1, NLS_ALICE_PUB) && nc_text(c[..], 2) == "2 MEMBERS";
+  // the delete names the post by its ID
+  #assert nc_text(c[..], 3).count == 41 && nc_text(c[..], 4) == nc_text(c[..], 3) && nc_text(c[..], 5) == "NOT A MEMBER";
+  #assert c[0].good == "JOINED, POSTED, POST REMOVED" && c[0].bad == "NOT A MEMBER: POST REFUSED";
+  // A second group, worked separately: a member with no role cannot delete, an unverified event
+  // never gets in, and before the group says "restricted" an outsider's post is admitted.
+  relay := nls_key(NLS_RELAY_PUB); g: [1] G29Group; b0: [NLS_EVENT] u8; b1: [NLS_EVENT] u8; b2: [NLS_EVENT] u8; b3: [NLS_EVENT] u8; tags: [256] u8;
+  made := nls_event(NLS_ALICE, NLS_T0, G29_CREATE_GROUP, NLS_GROUP, "", b0[..]); #assert nls_ok(made);
+  forged := made; forged.verified = false; #assert g29_admit(g[..], forged, relay) == G29_EVENT && !g[0].exists;
+  #assert g29_admit(g[..], made, relay) == G29_OK && g29_admit(g[..], made, relay) == G29_EXISTS;
+  join := nls_event(NLS_BOB, NLS_T0 + 120, G29_JOIN, NLS_GROUP, "", b1[..]); #assert nls_ok(join);
+  #assert g29_admit(g[..], join, relay) == G29_OK && g29_admit(g[..], join, relay) == G29_DUPLICATE;
+  out := nls_event(NLS_MALLORY, NLS_T0 + 240, NLS_POST_KIND, NLS_GROUP, "free pizza, click here", b2[..]); #assert nls_ok(out);
+  #assert g29_admit(g[..], out, relay) == G29_OK && g29_known(g[0], nls_ref(out.id));
+  n := json_raw(tags[..], 0, "[[\"h\",\"pizza\"],[\"e\","); n = n10_hex(tags[..], n, out.id); n = json_raw(tags[..], n, "]]");
+  del := nls_event(NLS_BOB, NLS_T0 + 300, G29_DELETE_EVENT, cast(string) tags[0..<n], "", b3[..]); #assert nls_ok(del);
+  #assert g29_admit(g[..], del, relay) == G29_NOT_ALLOWED && g29_known(g[0], nls_ref(out.id));
+}
+#test "nostr lab social: a card number past the last stops" {
+  c: [1] NostrCard; #assert !nls_card(NLS_COUNT, c[..]) && c[0].stopped == 97 && !nls_card(-1, c[..]);
+}

@@ -1,0 +1,144 @@
+// Walks Nostr Lab's whole lane in muted headless Chrome, as a player does (W held, the page stepped a
+// frame at a time on its own clock), and at every station checks that you are at it and that its
+// lesson finished, then writes a picture of it from the GPU's own bytes. No private simulation: the
+// page is the built realm, its values the ones its Coax worked out in the browser.
+//   coax/web/tool.sh nostr-lab-check [BASE_URL] [OUT_DIR] [--size WxH] [--scale N] [--dwell SECONDS]
+//       [--from N] [--to N] [--frames] [--stand METRES] [--turn PIXELS] [--lift PIXELS]
+// --stand is how far before a station's face you stop (9). --turn drags the follow camera that many
+// pixels toward the station while you stand there, and back before you walk on; --lift drags it down
+// (the camera looks up).
+// OUT_DIR gets station-01.png and on. --from and --to walk only those stations (1 and up; the walk
+// starts before station --from). --frames also writes every frame of the walk as
+// OUT_DIR/frames/f00000.jpg and on, 30 a second, for a video:
+//   ffmpeg -framerate 30 -i OUT_DIR/frames/f%05d.jpg -c:v libx264 -pix_fmt yuv420p OUT.mp4
+// It exits 1, naming the station, when a lesson stopped or the walk did not reach it.
+#import "Basic";
+#load "lab-check-cdp.coax";
+
+NLC_FPS :: 30;
+
+NlcRun :: struct { frames: bool; dir: string; frame: int; w: int; h: int; stand: int; turn: int; lift: int; }
+
+nlc_cat :: (b: [] u8, n0: int, t: string) -> int { n := n0; for i: 0..<t.count { if n < b.count { b[n] = t[i]; n += 1; } } return n; }
+// The frame's file under dir: "frames/f00012.jpg".
+nlc_frame_path :: (r: [] NlcRun, out: [] u8) -> string {
+  name: [32] u8; n := nlc_cat(name[..], 0, "frames/f");
+  d: [8] u8; m := ws_digits(d[..], 0, r[0].frame); for k: m..<5 { name[n] = '0'; n += 1; }
+  n = nlc_cat(name[..], n, cast(string) d[0..<m]); n = nlc_cat(name[..], n, ".jpg");
+  return fs_join(r[0].dir, cast(string) name[0..<n], out);
+}
+// Steps the page `frames` frames; with --frames, a picture of each.
+nlc_step :: (c: [] Cdp, r: [] NlcRun, frames: int) -> bool {
+  if r[0].frames {
+    for k: 0..<frames {
+      path: [4096] u8;
+      if !lab_check_capture(c, nlc_frame_path(r, path[..]), NLC_FPS, true) { return false; }
+      r[0].frame += 1;
+    }
+    return true;
+  }
+  b: [96] u8; n := nlc_cat(b[..], 0, "coaxialClipStep("); n = ws_digits(b[..], n, frames); n = nlc_cat(b[..], n, ","); n = ws_digits(b[..], n, NLC_FPS); n = nlc_cat(b[..], n, ").then(v=>v===1)");
+  return lab_check_eval(c, cast(string) b[0..<n]);
+}
+// The pointer, pressed (1), moved (0) or let go (2) at x, y.
+nlc_mouse :: (c: [] Cdp, kind: int, x: int, y: int) -> bool {
+  b: [192] u8; n := nlc_cat(b[..], 0, "{\"type\":\""); n = nlc_cat(b[..], n, ifx kind == 1 then "mousePressed" else ifx kind == 2 then "mouseReleased" else "mouseMoved");
+  n = nlc_cat(b[..], n, "\",\"x\":"); n = ws_digits(b[..], n, x); n = nlc_cat(b[..], n, ",\"y\":"); n = ws_digits(b[..], n, y);
+  n = nlc_cat(b[..], n, ",\"button\":\"left\",\"buttons\":"); n = nlc_cat(b[..], n, ifx kind == 2 then "0" else "1"); n = nlc_cat(b[..], n, ",\"clickCount\":1}");
+  return cdp_call(c, "Input.dispatchMouseEvent", cast(string) b[0..<n], 30000) >= 0;
+}
+// Turns the follow camera as a player does: a drag of dx, dy pixels from the screen's middle, over ten frames.
+nlc_turn :: (c: [] Cdp, r: [] NlcRun, dx: int, dy: int) -> bool {
+  if dx == 0 && dy == 0 { return true; }
+  x0 := r[0].w / 2; y0 := r[0].h * 2 / 3;
+  if !nlc_mouse(c, 1, x0, y0) || !nlc_step(c, r, 1) { return false; }
+  for k: 1..<11 { if !nlc_mouse(c, 0, x0 + dx * k / 10, y0 + dy * k / 10) || !nlc_step(c, r, 1) { return false; } }
+  return nlc_mouse(c, 2, x0 + dx, y0 + dy) && nlc_step(c, r, 1);
+}
+nlc_probe :: (c: [] Cdp, f: int) -> int {
+  b: [48] u8; n := nlc_cat(b[..], 0, "coaxial.guardProbe("); n = ws_digits(b[..], n, f); n = nlc_cat(b[..], n, ")");
+  return lab_check_value(c, cast(string) b[0..<n]);
+}
+nlc_station_path :: (dir: string, i: int, out: [] u8) -> string {
+  name: [32] u8; n := nlc_cat(name[..], 0, "station-"); if i + 1 < 10 { name[n] = '0'; n += 1; }
+  n = ws_digits(name[..], n, i + 1); n = nlc_cat(name[..], n, ".png");
+  return fs_join(dir, cast(string) name[0..<n], out);
+}
+
+nlc_run :: (c: [] Cdp, r: [] NlcRun, url: string, w: int, h: int, scale: int, dwell_frames: int, from: int, to: int) -> bool {
+  unused1 := cdp_call(c, "Page.enable", "", 30000);
+  mb: [160] u8; n := nlc_cat(mb[..], 0, "{\"width\":"); n = ws_digits(mb[..], n, w); n = nlc_cat(mb[..], n, ",\"height\":"); n = ws_digits(mb[..], n, h);
+  n = nlc_cat(mb[..], n, ",\"deviceScaleFactor\":"); n = ws_digits(mb[..], n, scale); n = nlc_cat(mb[..], n, ",\"mobile\":false}");
+  unused2 := cdp_call(c, "Emulation.setDeviceMetricsOverride", cast(string) mb[0..<n], 30000);
+  unused3 := lab_check_param(c, "Page.addScriptToEvaluateOnNewDocument", "source", "globalThis.coaxialClip=true;globalThis.coaxialRenderCapture=true;globalThis.coaxialRenderCaptureFormat='rgba8unorm';globalThis.labErrors=[];const ce=console.error;console.error=(...a)=>{labErrors.push(a.map(String).join(' '));ce(...a)}");
+  if !lab_check_param(c, "Page.navigate", "url", url) { return false; }
+  ready := false; until := proc_now_ms() + 120000;
+  while proc_now_ms() < until {
+    if lab_check_eval(c, "(async()=>!!globalThis.coaxial?.ready && (await globalThis.coaxialClipStep?.(1,Infinity))===1 && coaxial.sceneReady===true)()") { ready = true; break; }
+    proc_sleep(200);
+  }
+  if !ready { tool_errln("Nostr Lab: the page did not become ready"); return false; }
+  adapter: [256] u8; print("Nostr Lab: ready, %, WebGPU adapter: %\n", url, cdp_adapter(c, adapter[..]));
+  if !nlc_step(c, r, 10) { return false; }
+  stations := nlc_probe(c, 4);
+  if stations < 1 || stations > 100 { tool_errln("Nostr Lab: the walk names no stations (coaxial.guardProbe(4))"); return false; }
+  last := ifx to >= 1 && to <= stations then to else stations;
+  for i: from - 1..<last {
+    stand := nlc_probe(c, 200 + i) + r[0].stand;
+    left := i % 2 == 0;   // the stations stand left, right, left ... (nostr-lab-walk.coax NW_STATION_SIDE)
+    // walk: W held until you stand before the station
+    if nlc_probe(c, 1) > stand {
+      if !lab_check_key(c, "w", "KeyW", true) { return false; }
+      steps := 0;
+      while nlc_probe(c, 1) > stand && steps < 4000 { if !nlc_step(c, r, 2) { return false; } steps += 1; }
+      if !lab_check_key(c, "w", "KeyW", false) { return false; }
+      if steps >= 4000 { print("Nostr Lab: station %: the walk did not reach it (z % mm, wanted % mm; x % mm; you are at station %)\n", i + 1, nlc_probe(c, 1), stand, nlc_probe(c, 2), nlc_probe(c, 0) + 1); return false; }
+    }
+    // stand, and look at the station: the lesson works itself out and plays
+    if !nlc_turn(c, r, ifx left then -r[0].turn else r[0].turn, r[0].lift) { return false; }
+    if !nlc_step(c, r, dwell_frames) { return false; }
+    at := nlc_probe(c, 0);
+    if at != i { print("Nostr Lab: station %: the walk says you are at station %\n", i + 1, at + 1); return false; }
+    state := ifx i >= 4 then nlc_probe(c, 100 + i - 4) else 1;
+    path: [4096] u8; out := nlc_station_path(r[0].dir, i, path[..]);
+    if !lab_check_capture(c, out, NLC_FPS, false) { print("Nostr Lab: station %: no picture\n", i + 1); return false; }
+    if state != 1 { print("Nostr Lab: station %: its lesson is not finished (state %: 0 not worked out, below 0 the step it stopped at); picture %\n", i + 1, state, out); return false; }
+    print("Nostr Lab: station % of %: lesson finished, % quads, picture %\n", i + 1, stations, nlc_probe(c, 3), out);
+    if !nlc_turn(c, r, ifx left then r[0].turn else -r[0].turn, -r[0].lift) { return false; }
+  }
+  v := cdp_evaluate(c, "JSON.stringify(globalThis.labErrors)");
+  if v >= 0 && jv_raw(c[0].doc[0], v) != "[]" { print("Nostr Lab: the page's console errors: %\n", jv_raw(c[0].doc[0], v)); return false; }
+  return true;
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args; if !args_load(a[..]) { return 2; }
+  base := ifx args_count(a[..]) > 0 then args_at(a[..], 0) else "http://127.0.0.1:8800";
+  r: [1] NlcRun; r[0].dir = ifx args_count(a[..]) > 1 then args_at(a[..], 1) else "/tmp/nostr-lab-check";
+  wh := args_size(args_value(a[..], "--size", "1920x1080"));
+  scale := args_number(args_value(a[..], "--scale", "1")); dwell := args_number(args_value(a[..], "--dwell", "6"));
+  from := args_number(args_value(a[..], "--from", "1")); to := args_number(args_value(a[..], "--to", "0"));
+  stand := args_number(args_value(a[..], "--stand", "9")); turn := args_number(args_value(a[..], "--turn", "0")); lift := args_number(args_value(a[..], "--lift", "0"));
+  if !wh.ok || !scale.ok || !dwell.ok || !from.ok || !to.ok || !stand.ok || !turn.ok || !lift.ok || from.value < 1.0 {
+    tool_errln("usage: coax/web/tool.sh nostr-lab-check [BASE_URL] [OUT_DIR] [--size WxH] [--scale N] [--dwell SECONDS] [--from N] [--to N] [--frames] [--stand METRES] [--turn PIXELS] [--lift PIXELS]");
+    return 2;
+  }
+  r[0].frames = args_has(a[..], "--frames"); r[0].w = wh.w; r[0].h = wh.h;
+  r[0].stand = cast(int) (stand.value * 1000.0); r[0].turn = cast(int) turn.value; r[0].lift = cast(int) lift.value;
+  unused := fs_mkdir(r[0].dir);
+  if r[0].frames { fp: [4096] u8; unused2 := fs_mkdir(fs_join(r[0].dir, "frames", fp[..])); }
+  page: [16] u8; pn := nlc_cat(page[..], 0, "?at="); pn = ws_digits(page[..], pn, cast(int) from.value);
+  rel: [64] u8; rn := nlc_cat(rel[..], 0, "worlds/nostr-lab"); if from.value > 1.0 { rn = nlc_cat(rel[..], rn, cast(string) page[0..<pn]); }
+  url: [4096] u8; joined := fs_join(base, cast(string) rel[0..<rn], url[..]);
+  c: [1] Cdp;
+  if !cdp_launch_background(c[..], wh.w, wh.h, "nostr-lab-check-") { tool_errln(cdp_error(c[..])); return 1; }
+  good := nlc_run(c[..], r[..], joined, wh.w, wh.h, cast(int) scale.value, cast(int) (dwell.value * cast(f64) NLC_FPS), cast(int) from.value, cast(int) to.value);
+  if !good {
+    v := cdp_evaluate(c[..], "JSON.stringify({path:location.pathname,text:document.body.innerText.slice(0,400),errors:globalThis.labErrors,lost:globalThis.coaxial?.renderDeviceLost,cards:Array.from({length:40},(_,i)=>globalThis.coaxial?.guardProbe?.(100+i))})");
+    if v >= 0 { print("%\n", jv_raw(c[0].doc[0], v)); }
+  }
+  cdp_close(c[..]);
+  if !good { tool_errln("Nostr Lab walkthrough failed"); return 1; }
+  print("Nostr Lab: the whole walk, every lesson finished\n");
+  return 0;
+}

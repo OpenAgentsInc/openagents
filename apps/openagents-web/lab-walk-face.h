@@ -14,6 +14,7 @@
 //   LAB_DEFAULT          its default constructor
 //   LAB_FRAME, LAB_POINTER, LAB_POINTER_BUTTONS, LAB_MESSAGE   the world's exports
 //   LAB_TAG              four letters for its layout's hash
+//   LAB_PROBE            (optional) the world's probe, for checks: coaxial.guardProbe(field)
 #include "Everglade-step.h"
 #include "Sticks.h"
 #include "face-address.h"
@@ -207,6 +208,10 @@ EXPORT("coaxial_media_capacity") uint32_t coaxial_media_capacity(cx_face_addr st
 EXPORT("coaxial_drive_out") cx_face_addr coaxial_drive_out(cx_face_addr state) { return (cx_face_addr)(uintptr_t)zone_drive_out(zone(state)).data; }
 EXPORT("coaxial_drive_out_len") uint32_t coaxial_drive_out_len(cx_face_addr state) { return (uint32_t)zone_drive_out(zone(state)).count; }
 // Read-only observations for headless checks.
+#ifdef LAB_PROBE
+// What a check reads of the walk and the world (lab-walk.coax lab_probe, and the world's own fields).
+EXPORT("coaxial_guard_probe") int32_t coaxial_guard_probe(cx_face_addr state,int32_t field) {return (int32_t)LAB_PROBE(at(state),field);}
+#endif
 EXPORT("coaxial_field_probe") int32_t coaxial_field_probe(cx_face_addr state,int32_t field) {return (int32_t)zone_probe(zone(state),field);}
 
 EXPORT("coaxial_player_appearance_v1") uint32_t coaxial_player_appearance_v1(void) { return 1u; }

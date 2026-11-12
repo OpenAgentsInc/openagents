@@ -1,24 +1,8 @@
 // Muted headless walkthrough of the actual realm. No private game simulation.
 // coax/web/tool.sh bitcoin-lab-check [BASE_URL] [OUT_DIR]
 #import "Basic";
-#load "../lib/net/cdp.coax";
+#load "lab-check-cdp.coax";
 
-lab_check_eval :: (c:[]Cdp,script:string)->bool {
-  n:=cdp_evaluate(c,script);return n>=0 && jv_raw(c[0].doc[0],n)=="true";
-}
-lab_check_value :: (c:[]Cdp,script:string)->int {
-  n:=cdp_evaluate(c,script);return ifx n<0 then -1000000000 else jv_int(c[0].doc[0],n,-1000000000);
-}
-lab_check_key :: (c:[]Cdp,key:string,code:string,down:bool)->bool {
-  bytes:[1024]u8;o:[1]Jo;jo_start(o[..],bytes[..]);jo_obj(o[..]);
-  jo_key(o[..],"type");jo_str(o[..],ifx down then "keyDown" else "keyUp");
-  jo_key(o[..],"key");jo_str(o[..],key);jo_key(o[..],"code");jo_str(o[..],code);jo_end(o[..]);
-  return cdp_call(c,"Input.dispatchKeyEvent",jo_text(o[..]),30000)>=0;
-}
-lab_check_param :: (c:[]Cdp,method:string,key:string,value:string)->bool {
-  bytes:[8192]u8;o:[1]Jo;jo_start(o[..],bytes[..]);jo_obj(o[..]);jo_key(o[..],key);jo_str(o[..],value);jo_end(o[..]);
-  return cdp_call(c,method,jo_text(o[..]),30000)>=0;
-}
 lab_check_run :: (c:[]Cdp,url:string,out:string,phone:bool)->bool {
   unused1:=cdp_call(c,"Page.enable","",30000);
   metrics:=ifx phone then "{\"width\":390,\"height\":844,\"deviceScaleFactor\":1,\"mobile\":true}" else "{\"width\":1440,\"height\":900,\"deviceScaleFactor\":1,\"mobile\":false}";
@@ -75,10 +59,8 @@ lab_check_run :: (c:[]Cdp,url:string,out:string,phone:bool)->bool {
   print("Bitcoin Lab: keyboard chapters and pointer station selection\n");
   // Readable fallback and noindex; all 125 source links, exact status labels.
   if !lab_check_eval(c,"(async()=>{let h=await(await fetch('/worlds/bitcoin-lab')).text();let d=new DOMParser().parseFromString(h,'text/html');return document.querySelector('meta[name=robots]')?.content==='noindex, nofollow' && d.querySelectorAll('tbody tr').length===125 && [...d.querySelectorAll('tbody tr')].filter(r=>r.textContent.includes('partly implemented')).length===3})()") {return false;}
-  if !lab_check_eval(c,"(async()=>{coaxial.captureFrame();await coaxialClipStep(1,60);for(let i=0;i<100&&!coaxial.renderCapture;i++)await new Promise(r=>setTimeout(r,10));return coaxial.renderCapture?.format==='rgba8unorm'})()") {return false;}
   // Encode the actual GPU bytes; no DOM recreation of the realm or pixel editing.
-  v:=cdp_evaluate(c,"(async()=>{let r=coaxial.renderCapture,c=new OffscreenCanvas(r.width,r.height);c.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(r.bytes),r.width,r.height),0,0);let b=new Uint8Array(await(await c.convertToBlob({type:'image/png'})).arrayBuffer()),s='';for(let i=0;i<b.length;i+=32768)s+=String.fromCharCode(...b.subarray(i,i+32768));return btoa(s)})()");
-  if v<0 {return false;}png:[16777216]u8;n:=b64_decode(jv_raw(c[0].doc[0],v),png[..]);if n<=0 || !fs_write(out,cast(string)png[0..<n]) {return false;}
+  if !lab_check_capture(c,out,60,false) {return false;}
   print("Bitcoin Lab: screenshot %\n",out);
   if !lab_check_key(c,"Escape","Escape",true) {return false;}
   until=proc_now_ms()+5000;

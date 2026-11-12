@@ -1,41 +1,91 @@
-// Nostr Lab (openagents.com/worlds/nostr-lab, unlisted): Nostr's keys, events, IDs and signatures as a
-// short walk on the Grid, for Episode 295. You walk your own character down one lit lane past four
-// stations:
+// Nostr Lab (openagents.com/worlds/nostr-lab, unlisted): Nostr from scratch as a walk on the Grid, for
+// Episode 295. You walk your own character down one lit lane past its stations. The first four build
+// an event from nothing, each drawn by its own procedure here:
 //   1 a key pair: the secret key's 32 bytes, never shown, and the public key it makes, as hex and npub
 //   2 an event: a kind 1 note taking shape field by field
 //   3 the ID: the event's NIP-01 bytes into SHA-256, the ID out
 //   4 the signature: BIP-340 over the ID, valid; one letter of the content changed, and it fails
-// Every value is worked out at run time by coax/lib/nostr/ and the shared crypto (nostr-lab-lesson.coax).
+// Then one station a NIP (NW_NAME): relays, private messages, Lightning, keys, what people build on
+// it, and one NIP each of Block's and OpenAgents'. Each of those is a card (nostr-lab-card.coax): who
+// sends what to whom, the values, what held and what was refused, filled by the lesson files
+// (nostr-lab-cards.coax) and drawn by nw_card.
+// Every value is worked out at run time by coax/lib/nostr/ and the shared crypto.
 //
 // The walking, the camera, the HUD, WORLDS, the slabs, the skyline and the Grid are the lab walk's
 // (verse/lab-walk.coax), shared with Bitcoin Lab; this module names the stations and draws their
 // lessons. Its C face is nostr-lab-walk-face.c over lab-walk-face.h.
-//   coax/remote/remote.sh run -- coax/bin/coax test --library apps/openagents-web/nostr-lab-walk.coax --only "nostr lab walk"
+//   coax/bin/coax test --library apps/openagents-web/nostr-lab-walk.coax --only "nostr lab walk"
+//   coax/web/tool.sh nostr-lab-check BASE_URL OUT_DIR    the whole walk in headless Chrome, a picture a station
 #run_steps 250000000;   // secp256k1's signing tables, built at compile time (event_sign.coax)
 #load "../../verse/lab-walk.coax";
 #load "nostr-lab-lesson.coax";
+#load "nostr-lab-cards.coax";
 
-NW_STATIONS :: 4;
-NW_STATION_Z :: [NW_STATIONS] f32.[-10, -25, -40, -55];
-NW_STATION_SIDE :: [NW_STATIONS] f32.[-1, 1, -1, 1];
-NW_NAME :: [NW_STATIONS] string.["KEY PAIR", "AN EVENT", "THE ID", "THE SIGNATURE"];
+NW_OWN :: 4;                         // the first stations, each drawn by its own procedure below
+NW_STATIONS :: NW_OWN + NLAB_CARDS;    // then one station a card (nostr-lab-cards.coax), a NIP each
+NW_STATION_Z :: [NW_STATIONS] f32.[-10, -25, -40, -55, -70, -85, -100, -115, -130, -145, -160, -175, -190, -205, -220, -235, -250, -265, -280, -295, -310, -325, -340, -355, -370, -385, -400, -415, -430, -445, -460, -475, -490, -505, -520];
+NW_STATION_SIDE :: [NW_STATIONS] f32.[-1, 1, -1, 1, -1, 1, -1, 1, -1, 1, -1, 1, -1, 1, -1, 1, -1, 1, -1, 1, -1, 1, -1, 1, -1, 1, -1, 1, -1, 1, -1, 1, -1, 1, -1];
+NW_NAME :: [NW_STATIONS] string.[
+  "KEY PAIR", "AN EVENT", "THE ID", "THE SIGNATURE",
+  "NIP-01 A RELAY", "NIP-11 RELAY INFO", "NIP-42 RELAY LOGIN", "NIP-65 TWO RELAYS",
+  "NIP-09 DELETE", "NIP-77 SYNC", "NIP-13 PROOF OF WORK", "NIP-44 ENCRYPTION",
+  "NIP-59 GIFT WRAP", "NIP-17 GROUP CHAT", "NIP-57 ZAPS", "NIP-47 WALLET CONNECT",
+  "NIP-75 ZAP GOALS", "NIP-A3 PAY TARGETS", "NIP-06 SEED WORDS", "NIP-49 KEY BACKUP",
+  "NIP-46 REMOTE SIGNER", "NIP-98 HTTP AUTH", "NIP-05 NAMES", "NIP-02 FOLLOWS",
+  "NIP-10 THREADS", "NIP-23 ARTICLES", "NIP-51 LISTS", "NIP-29 GROUPS",
+  "NIP-34 GIT", "NIP-90 JOBS", "NIP-58 BADGES", "NIP-88 POLLS",
+  "NIP-50 SEARCH", "NIP-OA AGENT KEYS", "NIP-PYLON",
+];
 NW_LINE :: [NW_STATIONS] string.[
   "A secret key makes a public key. Only the public one is shown.",
   "An event: your public key, a time, a kind, tags and content.",
   "The event's bytes go into SHA-256. The ID comes out.",
   "The key signs the ID. Change one letter and it fails.",
+  "Send the event to a relay. It answers OK. Ask for it back.",
+  "A relay says what it is and which NIPs it serves.",
+  "The relay sends a challenge. You sign it.",
+  "Your relay list says where to find you. Lose one, lose nothing.",
+  "Ask a relay to delete an event, or let one expire.",
+  "Two relays compare what they hold and send only what is missing.",
+  "Count a nonce up until the ID starts with enough zeros.",
+  "A message between two keys. The relay sees noise.",
+  "Seal the message, then wrap it with a one-time key.",
+  "One message to Bob and Carol: a wrapped copy each.",
+  "A zap: a request, a Lightning invoice, a receipt.",
+  "An app asks a wallet to pay, over encrypted events.",
+  "A goal fills as zap receipts are counted.",
+  "A profile's payment targets. Bitcoin and Lightning only.",
+  "Twelve words make your Nostr key.",
+  "Lock the key with a password. A wrong one is refused.",
+  "A signer elsewhere signs. The app never holds the key.",
+  "Sign a web request: how you log in to openagents.com.",
+  "A name like you@openagents.com, matched to a key.",
+  "Your follow list. The newest one replaces the old.",
+  "A note, a reply and a like, linked by tags.",
+  "An article you can edit: same address, newer event.",
+  "A bookmark list with a public part and a private part.",
+  "A group the relay runs: join, post, moderate.",
+  "A repository, an issue and its status.",
+  "Ask a machine for work, get a result, pay for it.",
+  "A badge defined, awarded and worn.",
+  "A poll, and one vote per key.",
+  "Ask a relay to search, and to count.",
+  "An owner's key authorizes an agent's key.",
+  "A Pylon announces itself. Its buyer signs a receipt for the work.",
 ];
-NW_INTRO :: "Walk the lane: a key, an event, its ID, its signature.";
+NW_INTRO :: "Walk the lane: a key, an event, a relay, then a station for each NIP.";
 NW_PURPLE :: LabRgb.{r = 0.85, g = 0.42, b = 1.35};   // Nostr's colour, for the public key
 
 NostrWalk :: struct {
   w: [1] LabWalk;
   lesson: [1] NostrLesson;
+  card: [NLAB_CARDS] NostrCard;       // the stations after the first four, each filled before you reach it (nw_fill)
+  last_x: f32; last_z: f32; still: int;   // where you were last frame, and for how many frames you have stood there
 }
 // The walk's stations and words: set on every call in, so a fresh state has them.
 nw_conf :: (nk: [] NostrWalk) -> [] LabWalk {
   w := nk[0].w[..];
-  if w[0].n == 0 { lab_conf(w, "NOSTR LAB", NW_INTRO, "NOSTR: KEYS, EVENTS, IDS AND SIGNATURES", "NOSTR", NW_STATION_Z[..], NW_STATION_SIDE[..], NW_NAME[..], NW_LINE[..]); }
+  if w[0].n == 0 { w[0].look = true; lab_conf(w, "NOSTR LAB", NW_INTRO, "NOSTR FROM SCRATCH: KEYS, EVENTS, RELAYS AND NIPS", "NOSTR FROM SCRATCH", NW_STATION_Z[..], NW_STATION_SIDE[..], NW_NAME[..], NW_LINE[..]); }
   return w;
 }
 
@@ -83,10 +133,10 @@ nw_event :: (nk: [] NostrWalk, i: int, lit: f32) {
     if f >= shown { continue; }
     v := top - f32(f + 1) * step; n := 0; key := "";
     if f == 0 { key = "\"pubkey\": "; n = lab_str(b[..], 0, "\""); n = lab_str(b[..], n, cast(string) l.pub_hex[0..<16]); n = lab_str(b[..], n, "...\","); }
-    else if f == 1 { key = "\"created_at\": "; n = lab_int(b[..], 0, NL_CREATED); n = lab_str(b[..], n, ","); }
-    else if f == 2 { key = "\"kind\": "; n = lab_int(b[..], 0, NL_KIND); n = lab_str(b[..], n, ","); }
-    else if f == 3 { key = "\"tags\": "; n = lab_str(b[..], 0, NL_TAGS); n = lab_str(b[..], n, ","); }
-    else { key = "\"content\": "; n = lab_str(b[..], 0, "\""); n = lab_str(b[..], n, NL_CONTENT); n = lab_str(b[..], n, "\","); }
+    else if f == 1 { key = "\"created_at\": "; n = lab_int(b[..], 0, NLB_CREATED); n = lab_str(b[..], n, ","); }
+    else if f == 2 { key = "\"kind\": "; n = lab_int(b[..], 0, NLB_KIND); n = lab_str(b[..], n, ","); }
+    else if f == 3 { key = "\"tags\": "; n = lab_str(b[..], 0, NLB_TAGS); n = lab_str(b[..], n, ","); }
+    else { key = "\"content\": "; n = lab_str(b[..], 0, "\""); n = lab_str(b[..], n, NLB_CONTENT); n = lab_str(b[..], n, "\","); }
     fresh := f == newest && t < 0.4 + 0.9 * f32(NW_FIELDS) + 0.6;
     nw_field(w, x0, z, u, v, h, key, cast(string) b[0..<n], LAB_CYAN, ifx fresh then LAB_ORANGE else ifx f == 0 then NW_PURPLE else LAB_GOLD, ifx fresh then 1.5 else 1.0);
   }
@@ -134,11 +184,11 @@ nw_sig :: (nk: [] NostrWalk, i: int, lit: f32) {
   changed := nw_changed(w, t);
   // the content, its changed letter lit
   hc := 0.22f32; adv := hc * 6 / 7; key := "\"content\": \""; u := 0.6f32;
-  content := ifx changed then cast(string) l.changed_content[0..<l.changed_content_n] else NL_CONTENT;
+  content := ifx changed then cast(string) l.changed_content[0..<l.changed_content_n] else NLB_CONTENT;
   lab_say(w, key, x0, z, u, 1.75, hc, LAB_CYAN, 1.0);
   cu := u + f32(key.count) * adv;
   for k: 0..<content.count {
-    hit := changed && k == NL_CHANGE_AT;
+    hit := changed && k == NLB_CHANGE_AT;
     if hit { lab_face_z(w, x0 + cu + f32(k) * adv + adv * 0.42, 1.75 + hc * 0.5, z + 0.012, adv * 0.6, hc * 0.75, lab_scale(LAB_ORANGE, 0.3), 0.3, 1.3, 1); }
     lab_say(w, content[k..<k + 1], x0, z + 0.01, cu + f32(k) * adv, 1.75, hc, ifx hit then LAB_WHITE else LAB_GOLD, ifx hit then 1.8 else 1.1);
   }
@@ -155,9 +205,64 @@ nw_sig :: (nk: [] NostrWalk, i: int, lit: f32) {
   }
 }
 
+// 5 and on: a card (nostr-lab-card.coax). The strip of boxes with a light running along it, the rows
+// typed in one after another as you arrive, then what held and what was refused.
+nw_tone :: (tone: int) -> LabRgb {
+  if tone == NC_KEY { return NW_PURPLE; } if tone == NC_VALUE { return LAB_GOLD; } if tone == NC_NOISE { return lab_scale(LAB_CYAN, 0.55); }
+  if tone == NC_GOOD { return LAB_GREEN; } if tone == NC_BAD { return LAB_RED; } if tone == NC_SECRET { return LAB_ORANGE; }
+  return LAB_ICE;
+}
+NW_ROW_EVERY :: 0.45f32;   // seconds between one row starting and the next
+NW_ROW_TOP :: 2.76f32; NW_ROW_STEP :: 0.385f32; NW_ROW_LEFT :: 0.45f32; NW_VALUE_H :: 0.175f32; NW_LABEL_UP :: 0.225f32; NW_LABEL_H :: 0.125f32;   // the first row's value from the floor, a row's height, the rows' left edge, a value's letter height, its label above it and the label's letter height
+nw_rows_done :: (rows: int) -> f32 { return 0.3 + NW_ROW_EVERY * f32(rows) + 0.4; }
+nw_card :: (nk: [] NostrWalk, i: int, lit: f32) {
+  w := nk[0].w[..]; x0 := lab_left(w, i); z := lab_face(w, i); t := lab_anim(w, i); now := lab_clock(w);
+  c := nk[0].card[i - NW_OWN..<i - NW_OWN + 1];
+  if !c[0].ready {
+    if c[0].stopped != 0 {
+      b: [40] u8; n := lab_str(b[..], 0, "LESSON STOPPED AT STEP "); n = lab_int(b[..], n, c[0].stopped);
+      lab_say_mid(w, cast(string) b[0..<n], x0, z, LAB_PANEL_W * 0.5, 1.9, 0.22, LAB_RED, 1.2);
+    } else { lab_say_mid(w, "WORKING IT OUT", x0, z, LAB_PANEL_W * 0.5, 1.9, 0.22, LAB_DIM, 1.0); }
+    return;
+  }
+  // the strip: the boxes, a beam between each two, a light running from the first to the last
+  nn := c[0].nodes; y := 3.4f32; hw := 0.66f32;
+  if nn > 0 {
+    span := LAB_PANEL_W / f32(nn);
+    for k: 0..<nn {
+      cx := x0 + span * (f32(k) + 0.5);
+      lab_face_z(w, cx, y, z + 0.01, hw, 0.17, lab_scale(LAB_CYAN, 0.12), 0.3 + 0.15 * lit, 1.2, 1);
+      lab_say_mid(w, c[0].node[k], x0, z + 0.01, span * (f32(k) + 0.5), y - 0.075, 0.15, LAB_ICE, 1.3);
+      if k + 1 < nn { lab_beam(w, lab_v(cx + hw + 0.04, y, z + 0.015), lab_v(cx + span - hw - 0.04, y, z + 0.015), 0.035, LAB_CYAN, 1.4, false); }
+    }
+    if nn > 1 {
+      run := now * 0.45 - floor(now * 0.45); a := x0 + span * 0.5 + hw; e := x0 + span * (f32(nn) - 0.5) - hw;
+      lab_lamp(w, a + (e - a) * run, y, z + 0.02, 0.13, LAB_ORANGE, 2.2);
+    }
+  }
+  // the rows: each a small label with its value under it, the value as large as 42 letters fit
+  for k: 0..<c[0].rows {
+    at := t - 0.3 - NW_ROW_EVERY * f32(k); if at <= 0 { break; }
+    v := NW_ROW_TOP - NW_ROW_STEP * f32(k); r := c[0].row[k];
+    lab_say(w, cast(string) r.label[0..<r.label_n], x0, z, NW_ROW_LEFT, v + NW_LABEL_UP, NW_LABEL_H, LAB_CYAN, 1.05);
+    lab_say(w, nw_typed(cast(string) r.text[0..<r.n], cast(int) (at * 110)), x0, z, NW_ROW_LEFT, v, NW_VALUE_H, nw_tone(r.tone), 1.25);
+  }
+  // what held, then what was refused
+  done := nw_rows_done(c[0].rows);
+  if t > done { lab_say_mid(w, c[0].good, x0, z, LAB_PANEL_W * 0.5, 0.42, 0.21, LAB_GREEN, 1.4 + lit); }
+  if t > done + 0.9 && c[0].bad.count > 0 { lab_say_mid(w, c[0].bad, x0, z, LAB_PANEL_W * 0.5, 0.12, 0.19, LAB_RED, 1.3 + lit); }
+}
+
+// Which stations' faces are listed: the ones you can read from where you are. Every slab is listed.
+nw_shown :: (nk: [] NostrWalk, i: int) -> bool {
+  w := nk[0].w[..]; z := w[0].z[0].creator[0].player_z;
+  return ifx i < NW_OWN then lab_near(w, i, z, 80, 25) else lab_near(w, i, z, 36, 16);
+}
 nw_station :: (nk: [] NostrWalk, i: int) {
   lit := lab_station(nk[0].w[..], i);
-  if i == 0 { nw_keys(nk, i, lit); } else if i == 1 { nw_event(nk, i, lit); } else if i == 2 { nw_id(nk, i, lit); } else { nw_sig(nk, i, lit); }
+  if !nw_shown(nk, i) { return; }
+  if i == 0 { nw_keys(nk, i, lit); } else if i == 1 { nw_event(nk, i, lit); } else if i == 2 { nw_id(nk, i, lit); } else if i == 3 { nw_sig(nk, i, lit); }
+  else { nw_card(nk, i, lit); }
 }
 nw_list :: (nk: [] NostrWalk, u: [] f32) {
   w := nw_conf(nk);
@@ -165,9 +270,28 @@ nw_list :: (nk: [] NostrWalk, u: [] f32) {
   if nk[0].lesson[0].ready { for i: 0..<NW_STATIONS { nw_station(nk, i); } }
   lab_list_end(w);
 }
+// Works out at most one card a frame. Working one out takes long enough to hold a frame, so it is
+// done while you stand still (reading a station) for the nearest unfilled station within 150 m ahead;
+// one you are about to reach (24 m) is worked out at once, moving or not. True when it worked one out.
+NW_STILL :: 6;        // frames without a step before a card is worked out ahead of need
+NW_AT_ONCE :: 24.0f32; NW_AHEAD :: 150.0f32;
+nw_fill :: (nk: [] NostrWalk) -> bool {
+  w := nk[0].w[..]; cr := w[0].z[0].creator[0]; z := cr.player_z;
+  moved := abs(cr.player_x - nk[0].last_x) + abs(z - nk[0].last_z) > 0.002;
+  nk[0].last_x = cr.player_x; nk[0].last_z = z;
+  if moved { nk[0].still = 0; } else if nk[0].still < NW_STILL { nk[0].still += 1; }
+  for i: NW_OWN..<NW_STATIONS {
+    c := nk[0].card[i - NW_OWN..<i - NW_OWN + 1];
+    if c[0].ready || c[0].stopped != 0 { continue; }
+    if !lab_near(w, i, z, ifx nk[0].still >= NW_STILL then NW_AHEAD else NW_AT_ONCE, 20) { continue; }
+    _ := nostr_lab_card(i - NW_OWN, c);
+    return true;
+  }
+  return false;
+}
 nw_stand :: (nk: [] NostrWalk) {
   w := nw_conf(nk);
-  _ := nl_ready(nk[0].lesson[..]);
+  _ := nlb_ready(nk[0].lesson[..]);
   none: [6] f32; lab_stand(w, none[..], 0);
 }
 
@@ -177,13 +301,20 @@ nostr_frame :: (nk: [] NostrWalk, out: [] f32, u: [] f32, width: f32, height: f3
   if !s[0].creator[0].on { w[0].quad_n = 0; return 0; }
   if !w[0].stood { nw_stand(nk); }
   n := lab_frame(w, out, u, width, height, dpr, dt, still);
+  if zone_world(s) { _ := nw_fill(nk); }
   if u.count >= 32 { nw_list(nk, u); }
   return n;
 }
 nostr_pointer :: (nk: [] NostrWalk, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c #effects(all) { return lab_pointer(nw_conf(nk), x, y, phase, kind, id); }
 nostr_pointer_buttons :: (nk: [] NostrWalk, x: f32, y: f32, phase: int, kind: int, id: int, button: int) -> bool #export_c #effects(all) { return lab_pointer_buttons(nw_conf(nk), x, y, phase, kind, id, button); }
-// On a local page, ?at=N stands you before station N (1 to 4) for shots and clips.
+// On a local page, ?at=N stands you before station N (1 to NW_STATIONS) for shots and clips.
 nostr_message :: (nk: [] NostrWalk, kind: int, t: string) #export_c #effects(all) { _ := lab_message(nw_conf(nk), kind, t); }
+// What a check reads (coax/web/nostr-lab-check.coax): the walk's fields (lab-walk.coax lab_probe), and
+// 100 + k card k's state: 1 filled, 0 not yet, minus the step its lesson stopped at.
+nostr_probe :: (nk: [] NostrWalk, f: int) -> int #export_c #effects(all) {
+  if f >= 100 && f < 100 + NLAB_CARDS { c := nk[0].card[f - 100]; return ifx c.ready then 1 else -c.stopped; }
+  return lab_probe(nw_conf(nk), f);
+}
 
 // ---- checks
 nw_test_lab :: (nk: [] NostrWalk) {
@@ -191,18 +322,18 @@ nw_test_lab :: (nk: [] NostrWalk) {
   w[0].z[0].creator[0].width = 1280; w[0].z[0].creator[0].height = 720; w[0].z[0].creator[0].scale = 1;
   nostr_message(nk, HOST_PAGE, "url=https://openagents.com/worlds/nostr-lab\n");
 }
-#test "nostr lab walk: the page stands a level, bare zone with four stations down the lane" #steps 2000000000 {
+#test "nostr lab walk: the page stands a level, bare zone with its stations down the lane" #steps 2000000000 {
   nk: [1] NostrWalk; nw_test_lab(nk[..]); w := nk[0].w[..]; s := w[0].z[..];
   #assert w[0].on && s[0].creator[0].flat && s[0].bare && s[0].put_z == w[0].start_z;
-  #assert w[0].n == NW_STATIONS && w[0].name[3] == "THE SIGNATURE" && w[0].title == "NOSTR LAB";
+  #assert w[0].n == NW_STATIONS && NW_STATIONS <= LAB_MAX && w[0].name[3] == "THE SIGNATURE" && w[0].name[NW_STATIONS - 1] == "NIP-PYLON" && w[0].title == "NOSTR LAB";
   for k: 1..<NW_STATIONS { #assert NW_STATION_Z[k] < NW_STATION_Z[k - 1] - 10; }
   nw_stand(nk[..]); p := w[0].z[0].creator[0].props[0];
-  #assert p.n == NW_STATIONS + LAB_TOWERS && !wprops.props_inside(p, 0, 1, NW_STATION_Z[0]);
+  #assert p.n == LAB_SOLID + LAB_TOWERS && !wprops.props_inside(p, 0, 1, NW_STATION_Z[0]);
   #assert nk[0].lesson[0].ready;
 }
 #test "nostr lab walk: every station lists its lesson's live values as glyphs, in budget" #steps 2000000000 {
   nk: [1] NostrWalk; nw_test_lab(nk[..]); nw_stand(nk[..]); w := nk[0].w[..];
-  for i: 0..<NW_STATIONS { w[0].near_at[i] = -30; }   // as if you came to each a while ago: every value shown
+  for i: 0..<NW_OWN { w[0].near_at[i] = -30; }   // as if you came to each a while ago: every value shown
   w[0].z[0].creator[0].clock = 0;
   u: [64] f32; u[16] = 0; u[17] = 2.5; u[18] = w[0].start_z + 4; w[0].z[0].creator[0].player_z = w[0].start_z;
   nw_list(nk[..], u[..]);
@@ -214,4 +345,58 @@ nw_test_lab :: (nk: [] NostrWalk) {
 #test "nostr lab walk: at the signature the content swaps to its changed letter and back" {
   w: [1] LabWalk;
   #assert !nw_changed(w[..], 0) && !nw_changed(w[..], 2.4) && !nw_changed(w[..], 2.5 + NW_SWAP * 0.5) && nw_changed(w[..], 2.5 + NW_SWAP * 1.5) && !nw_changed(w[..], 2.5 + NW_SWAP * 2.5);
+}
+// A card as a lesson fills one, with every row and both lines: what the walk's checks draw.
+nw_test_card :: (c: [] NostrCard) {
+  nc_nodes(c, "ALICE", "SEAL", "GIFT WRAP", "BOB");
+  for k: 0..<NC_ROWS { _ := nc_row(c, "A LABEL HERE.", "012345678901234567890123456789012345678901", k); }
+  _ := nc_done(c, "EVERY COPY OPENS FOR ITS READER", "AN OUTSIDER'S KEY OPENS NONE");
+}
+#test "nostr lab walk: a card's station draws its boxes, rows and both lines, and a far one draws only its slab" #steps 2000000000 {
+  nk: [1] NostrWalk; nw_test_lab(nk[..]); nw_stand(nk[..]); w := nk[0].w[..]; at := NW_OWN + 6;
+  for k: 0..<NLAB_CARDS { nw_test_card(nk[0].card[k..<k + 1]); }
+  w[0].z[0].creator[0].player_z = NW_STATION_Z[at] + 8; w[0].z[0].creator[0].clock = 0;
+  u: [64] f32; u[16] = 0; u[17] = 2.5; u[18] = NW_STATION_Z[at] + 12;
+  // before you came to it: the strip only. After: every row, and both lines.
+  #assert nw_shown(nk[..], at) && nw_shown(nk[..], at + 1) && !nw_shown(nk[..], at + 2) && nw_shown(nk[..], at - 1) && !nw_shown(nk[..], at - 2) && !nw_shown(nk[..], 0);
+  nw_list(nk[..], u[..]); bare := w[0].quad_n;
+  for i: 0..<NW_STATIONS { w[0].near_at[i] = -30; }
+  nw_list(nk[..], u[..]); full := w[0].quad_n;
+  // three stations' rows and lines came with it: 6 rows of 13 + 42 letters and two lines, less the blanks
+  #assert bare > 300 && full > bare + 3 * 6 * 40 && full < LAB_QUADS - 1500 && w[0].build[0].g_n < LAB_GROUPS;
+  // the walk's whole length stays in budget with every card filled, wherever you stand
+  for i: 0..<NW_STATIONS {
+    w[0].z[0].creator[0].player_z = NW_STATION_Z[i] + 6; u[18] = NW_STATION_Z[i] + 10; nw_list(nk[..], u[..]);
+    #assert w[0].quad_n > 300 && w[0].quad_n < LAB_QUADS - 1000;
+  }
+  #assert nw_rows_done(6) > 0.3 + NW_ROW_EVERY * 5 && nw_tone(NC_BAD).r > nw_tone(NC_BAD).g && nw_tone(NC_GOOD).g > nw_tone(NC_GOOD).r;
+  // the layout: the longest value ends inside the slab, the last row stands clear of the two lines, the first clear of the strip
+  #assert NW_ROW_LEFT + lab_text_w(NC_TEXT, NW_VALUE_H) < LAB_PANEL_W - 0.3 && lab_text_w(NC_LINE, 0.21) < LAB_PANEL_W - 0.3;
+  #assert NW_ROW_TOP - NW_ROW_STEP * f32(NC_ROWS - 1) > 0.42 + 0.21 + 0.1 && NW_ROW_TOP + NW_LABEL_UP + NW_LABEL_H < 3.4 - 0.17 && NW_LABEL_UP > NW_VALUE_H + 0.04 && NW_LABEL_UP + NW_LABEL_H < NW_ROW_STEP && lab_text_w(NC_NODE, 0.15) < 2 * 0.66;
+}
+#test "nostr lab walk: a card is worked out while you stand still or just before you reach it, one a frame" #steps 20000000000 #traversal 2000000000 {
+  nk: [1] NostrWalk; nw_test_lab(nk[..]); nw_stand(nk[..]); w := nk[0].w[..]; cr := w[0].z[0].creator[..];
+  // walking from the lane's start: the first card's station is 76 m on, and none is worked out
+  for k: 0..<20 { cr[0].player_z = w[0].start_z - 0.1 * f32(k + 1); #assert !nw_fill(nk[..]); }
+  #assert !nk[0].card[0].ready && nk[0].card[0].stopped == 0 && nk[0].still == 0;
+  // standing still: after NW_STILL frames the nearest one ahead is worked out, then the next, one a call
+  for k: 0..<NW_STILL - 1 { #assert !nw_fill(nk[..]); }
+  #assert nw_fill(nk[..]) && nk[0].card[0].ready && !nk[0].card[1].ready;
+  #assert nw_fill(nk[..]) && nk[0].card[1].ready && !nk[0].card[2].ready;
+  // walking again: nothing more is worked out ahead of need ...
+  cr[0].player_z -= 1; #assert !nw_fill(nk[..]) && !nk[0].card[2].ready;
+  // ... until a station is 24 m on: its card is worked out at once
+  cr[0].player_z = NW_STATION_Z[NW_OWN + 2] + NW_AT_ONCE + 1; #assert !nw_fill(nk[..]);
+  cr[0].player_z = NW_STATION_Z[NW_OWN + 2] + NW_AT_ONCE - 1; #assert nw_fill(nk[..]) && nk[0].card[2].ready && !nk[0].card[3].ready;
+  // a stopped card is not tried again, and draws its step, never a value
+  c := nk[0].card[3..<4]; _ := nc_stop(c, 7); cr[0].player_z = NW_STATION_Z[NW_OWN + 3] + 8;
+  #assert nw_fill(nk[..]) && nk[0].card[4].ready && nk[0].card[3].stopped == 7;
+  for i: 0..<NW_STATIONS { w[0].near_at[i] = -30; }
+  u: [64] f32; u[16] = 0; u[17] = 2.5; u[18] = NW_STATION_Z[NW_OWN + 3] + 12; nw_list(nk[..], u[..]); #assert w[0].quad_n > 300;
+}
+#test "nostr lab walk: a check reads each card's state and the walk's fields" #steps 2000000000 {
+  nk: [1] NostrWalk; nw_test_lab(nk[..]); nw_stand(nk[..]);
+  #assert nostr_probe(nk[..], 4) == NW_STATIONS && nostr_probe(nk[..], 200 + NW_OWN) == cast(int) (NW_STATION_Z[NW_OWN] * 1000) && nostr_probe(nk[..], 100) == 0;
+  nw_test_card(nk[0].card[2..<3]); _ := nc_stop(nk[0].card[3..<4], 7);
+  #assert nostr_probe(nk[..], 102) == 1 && nostr_probe(nk[..], 103) == -7 && nostr_probe(nk[..], 100 + NLAB_CARDS) == -1;
 }

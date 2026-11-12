@@ -7,5 +7,6 @@
 #define LAB_POINTER nostr_pointer
 #define LAB_POINTER_BUTTONS nostr_pointer_buttons
 #define LAB_MESSAGE nostr_message
+#define LAB_PROBE nostr_probe
 #define LAB_TAG 0x4e535452u
 #include "lab-walk-face.h"

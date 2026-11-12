@@ -1,0 +1,819 @@
+// Nostr Lab's lessons for relays: sending and reading back (NIP-01), relay information (11), relay login (42), relay lists (65), deleting and expiring (09, 40), Negentropy sync (77) and proof of work (13).
+// Each card is worked out at run time by coax/lib/nostr/ (nostr-lab-card.coax says what a card is).
+//
+// The relay in these lessons is the library's own, in process: a client frame is read by
+// message_server.coax, routed by relay_route.coax, admitted by relay_server.coax (the ID, the policy,
+// then the signature), stored and queried by store.coax with store_delete.coax's tombstones, and
+// answered with message_server.coax's writers. Only the socket and the clock are replaced, as the
+// book's examples replace them (nostr/examples/relay-admit.coax, delete-expire-vanish.coax). The
+// store is store.coax's small one, without the deployed relay's indexes (relay_store.coax).
+// The client's side is message.coax (the frames it writes and reads), relay.coax and nip42.coax.
+//
+// Keys are BIP-340's published test vectors 1 (Alice) and 2 (Bob), the ones the book's examples sign
+// with: never a real key. No card shows a secret key. The clock, the aux bytes and the login
+// challenge's bytes are fixed here, where a host would take them from its clock and its randomness.
+//   coax/bin/coax test apps/openagents-web/nostr-lab-relays.coax --only "nostr lab"
+#run_steps 250000000;   // secp256k1's signing tables, built at compile time (event_sign.coax)
+// The relay's own files (nostr/relay/, with store.coax beside the library): kept together.
+#load "../../coax/lib/nostr/store.coax";
+#load "../../nostr/relay/store_delete.coax";
+#load "../../nostr/relay/relay_route.coax";
+#load "../../nostr/relay/message_server.coax";
+// The rest of the library.
+#load "../../coax/lib/nostr/event_sign.coax";
+#load "../../coax/lib/nostr/message.coax";
+#load "../../coax/lib/nostr/nip42-event.coax";
+#load "../../coax/lib/nostr/outbox.coax";
+#load "../../coax/lib/nostr/nip77.coax";
+#load "../../coax/lib/nostr/nip13.coax";
+#load "nostr-lab-card.coax";
+
+NLR_COUNT :: 7;
+NLR_ALICE_KEY :: "b7e151628aed2a6abf7158809cf4f3c762e7160f38b4da56a784d9045190cfef";   // BIP-340 vector 1: a published test key
+NLR_ALICE_PUB :: "dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659";   // and the public key it makes
+NLR_BOB_KEY :: "c90fdaa22168c234c4c6628b80dc1cd129024e088a67cc74020bbea63b14e5c9";     // BIP-340 vector 2
+NLR_AUX :: "0000000000000000000000000000000000000000000000000000000000000001";         // fixed: a host passes 32 random bytes
+NLR_NOW :: 1794441600;                        // every clock here: 12 November 2026, 00:00 UTC
+NLR_RELAY_URL :: "wss://relay.example.com";   // the lab relay's own address
+NLR_SUB :: "lab";                             // the subscription ID the client asks under
+NLR_POW_BITS :: 10;                           // the proof of work asked for: about a thousand hashes
+NLR_POW_TRIES :: 20000;                       // the miner gives up after this many
+
+// ---- shared: text, signing, the lab relay ------------------------------------------------
+
+// out[0..<n] as text; "" when a writer refused (n below 1).
+nlr_text :: (out: [] u8, n: int) -> string { if n < 1 { return ""; } return cast(string) out[0..<n]; }
+// One event signed with a test key into out: its JSON, or "" when the signer refused.
+nlr_sign :: (key_hex: string, created_at: int, kind: int, tags: string, content: string, out: [] u8) -> string {
+  key: [32] u8; aux: [32] u8;
+  d := hex_decode_checked(key_hex, key[..], false); if d.error != NC_OK || d.written != 32 { return ""; }
+  d = hex_decode_checked(NLR_AUX, aux[..], false); if d.error != NC_OK || d.written != 32 { return ""; }
+  work: [1] NostrSignWork; scratch: [2048] u8; result := EVENT_MORE; calls := 0;
+  while result == EVENT_MORE && calls < 256 {
+    result = nostr_event_sign_step(key[..], aux[..], created_at, kind, tags, content, work[..], scratch[..], out, false);
+    calls += 1;
+  }
+  for i: 0..<32 { key[i] = 0; }
+  return nlr_text(out, result);
+}
+// The event with the first letter of its content changed (lower case to upper), byte for byte
+// otherwise: "" when it has no such letter.
+nlr_change :: (event: string, out: [] u8) -> string {
+  key := "\"content\":\""; at := -1;
+  for i: 0..<event.count - key.count + 1 { if at < 0 && event[i..<i + key.count] == key { at = i + key.count; } }
+  if at < 0 || at >= event.count || event.count > out.count || event[at] < 'a' || event[at] > 'z' { return ""; }
+  for i: 0..<event.count { out[i] = event[i]; }
+  out[at] = event[at] - 32;
+  return cast(string) out[0..<event.count];
+}
+// 32 bytes as 64 lowercase hex letters in out, as text; "" when it doesn't fit.
+nlr_hex32 :: (bytes: [] u8, out: [] u8) -> string {
+  r := hex_encode_checked(cast(string) bytes, out, false);
+  if r.error != NC_OK || r.written != 64 { return ""; }
+  return cast(string) out[0..<64];
+}
+nlr_same32 :: (a: [32] u8, b: [32] u8) -> bool { for i: 0..<32 { if a[i] != b[i] { return false; } } return true; }
+
+// What the lab relay holds: store.coax's store with room for six events, and store_delete.coax's
+// tombstones (what deletion requests have named).
+NlrRelay :: struct {
+  arena: [4096] u8; recs: [6] RsdRec; s: [1] RsdStore;
+  tombs: [6] NsdTomb; tb: [1] NsdTombs; work: [6] NsdTomb;
+  scratch: [4096] u8;   // the ID preimage
+}
+nlr_relay_init :: (r: [] NlrRelay) {
+  r[0].s[0] = RsdStore.{}; r[0].s[0].arena = r[0].arena[..]; r[0].s[0].recs = r[0].recs[..];
+  r[0].tb[0] = NsdTombs.{}; r[0].tb[0].t = r[0].tombs[..];
+}
+// One event as the relay takes it (coax/relay/relay.coax's ry_event, with no file): read it and
+// recompute its ID, the policy at the clock `now`, the signature, then the tombstones and the store.
+// The relay's reason: RS_ACCEPT when it was stored. This relay asks no login for writes.
+nlr_admit :: (r: [] NlrRelay, event: string, now: int) -> RsAdmit {
+  a := rs_admit_read(event, now, false, false, r[0].scratch[..]);
+  if a.reason == RS_ACCEPT { a = rs_admit_verified(a, nostr_event_verify_vartime(event, r[0].scratch[..], false)); }
+  if a.reason != RS_ACCEPT { return a; }
+  a.reason = nsd_admit(r[0].s[..], r[0].tb[..], rsd_rec(a), event, rsd_verified(a, event), NLR_RELAY_URL, r[0].work[..]);
+  return a;
+}
+// How many events of one kind the relay would serve at the clock `now`; idx[0] is the newest.
+nlr_held :: (r: [] NlrRelay, kind: int, now: int, idx: [] int) -> int {
+  kinds := [1] int.[kind]; f: NostrFilter; f.has_kinds = true; f.kinds = kinds[..];
+  return rsd_query(r[0].s[..], f, now, idx);
+}
+// One text frame from a client, answered: the replies are written one after another into out, and
+// ends[k] is where reply k stops. How many replies, or -1 when out or ends is too small.
+//   EVENT: one OK (or a NOTICE for what is not an event at all).
+//   REQ: an EVENT for each stored match, newest first, then EOSE; or one CLOSED.
+//   anything else this lab relay does not take: a NOTICE.
+nlr_relay :: (r: [] NlrRelay, frame: string, now: int, out: [] u8, ends: [] int) -> int {
+  if ends.count < 1 { return -1; }
+  m := ms_read(frame);
+  route := rr_message(m.error, m.type, m.has_sub);
+  if route.action == RR_EVENT {
+    a := nlr_admit(r, frame[m.event_from..<m.event_to], now);
+    if a.reason == RS_BAD_EVENT {
+      ends[0] = ms_write_notice(rs_prefix(RS_BAD_EVENT), rs_text(RS_BAD_EVENT), out);
+      return ifx ends[0] > 0 then 1 else -1;
+    }
+    id := a.e.id; extra := rr_store_extra(a.reason);
+    prefix := ifx extra then rr_store_prefix(a.reason) else rs_prefix(a.reason);
+    text := ifx extra then rr_store_text(a.reason) else rs_text(a.reason);
+    ends[0] = ms_write_ok(id[..], !extra && rs_accepted(a.reason), prefix, text, out);
+    return ifx ends[0] > 0 then 1 else -1;
+  }
+  if route.action == RR_REQ {
+    mm := m; sub := cast(string) mm.sub[0..<mm.sub_n];
+    v := rr_req_filters(m.filters);
+    if v == RS_ACCEPT { v = rs_req(m, frame); }
+    if v != RS_ACCEPT {
+      ends[0] = ms_write_closed(sub, rs_prefix(v), rs_text(v), out);
+      return ifx ends[0] > 0 then 1 else -1;
+    }
+    at := 0; n := 0;
+    // this client sends one filter; several would need relay_route.coax's rr_take to send a match once
+    for k: 0..<m.filters {
+      strs: [64] string; ints: [16] int; tags: [8] NostrTagFilter; bytes: [1024] u8;
+      sp: [1] FrSpace; sp[0] = FrSpace.{strs = strs[..], ints = ints[..], tags = tags[..], bytes = bytes[..]};
+      f: [1] NostrFilter;
+      if rs_filter(frame, m, k, f[..], sp[..]) != FR_OK { return -1; }
+      idx: [6] int; q := rsd_query(r[0].s[..], f[0], now, idx[..]);
+      for i: 0..<q {
+        if n >= ends.count { return -1; }
+        w := ms_write_event(sub, rsd_text(r[0].s[..], idx[i]), out[at..<out.count]);
+        if w < 1 { return -1; }
+        at += w; ends[n] = at; n += 1;
+      }
+    }
+    if n >= ends.count { return -1; }
+    w := ms_write_eose(sub, out[at..<out.count]);
+    if w < 1 { return -1; }
+    ends[n] = at + w;
+    return n + 1;
+  }
+  reason := ifx route.action == RR_NOTICE then route.reason else RS_VERB;
+  ends[0] = ms_write_notice(rs_prefix(reason), rs_text(reason), out);
+  return ifx ends[0] > 0 then 1 else -1;
+}
+// An OK frame with the middle of its ID left out, so the answer fits a row:
+// ["OK","5f3a2b1c...",true,""]. "" when the frame is too short to be one.
+nlr_ok_short :: (frame: string, out: [] u8) -> string {
+  if frame.count < 72 { return ""; }
+  n := json_raw(out, 0, frame[0..<15]); n = json_raw(out, n, "..."); n = json_raw(out, n, frame[71..<frame.count]);
+  return nlr_text(out, n);
+}
+
+// ---- 0. NIP-01: a relay -----------------------------------------------------------------
+
+NLR_NOTE :: "hello relay";
+// The note the first lesson sends: Alice's kind 1.
+nlr_note :: (out: [] u8) -> string { return nlr_sign(NLR_ALICE_KEY, NLR_NOW, 1, "[]", NLR_NOTE, out); }
+// The filter the client asks with: every kind 1 note.
+nlr_ask :: (out: [] u8) -> string {
+  kinds := [1] int.[1]; f: NostrFilter; f.has_kinds = true; f.kinds = kinds[..];
+  filters := [1] NostrFilter.[f];
+  return nlr_text(out, nostr_message_write_req(NLR_SUB, filters[..], out, false));
+}
+nlr_card_relay :: (c: [] NostrCard) -> bool {
+  nc_nodes(c, "CLIENT", "RELAY", "READER", "");
+  eb: [512] u8; note := nlr_note(eb[..]); if note.count == 0 { return nc_stop(c, 1); }
+  scratch: [1024] u8; e := nostr_event_read(note, scratch[..], false); if e.error != NE_OK { return nc_stop(c, 2); }
+  r: [1] NlrRelay; nlr_relay_init(r[..]); ends: [4] int;
+  // the client sends the event; the relay answers OK true with the event's ID
+  fb: [640] u8; sent := nlr_text(fb[..], nostr_message_write_event(note, fb[..], false)); if sent.count == 0 { return nc_stop(c, 3); }
+  ob: [256] u8; if nlr_relay(r[..], sent, NLR_NOW, ob[..], ends[..]) != 1 { return nc_stop(c, 4); }
+  ok_frame := cast(string) ob[0..<ends[0]];
+  ok := nostr_message_read(ok_frame);
+  if ok.error != NM_OK || ok.type != NM_ACCEPT || !ok.accepted || !nlr_same32(ok.id, e.id) { return nc_stop(c, 5); }
+  // the client asks for kind 1 notes; the relay sends the stored event and then EOSE
+  qb: [128] u8; ask := nlr_ask(qb[..]); if ask.count == 0 { return nc_stop(c, 6); }
+  ab: [1024] u8; if nlr_relay(r[..], ask, NLR_NOW, ab[..], ends[..]) != 2 { return nc_stop(c, 7); }
+  back := cast(string) ab[0..<ends[0]]; eose := cast(string) ab[ends[0]..<ends[1]];
+  bm := nostr_message_read(back);
+  if bm.error != NM_OK || bm.type != NM_EVENT || !json_is(nm_text(bm, bm.sub), NLR_SUB) { return nc_stop(c, 8); }
+  if back[bm.event.from..<bm.event.to] != note { return nc_stop(c, 9); }
+  em := nostr_message_read(eose);
+  if em.error != NM_OK || em.type != NM_EOSE || !json_is(nm_text(em, em.sub), NLR_SUB) { return nc_stop(c, 10); }
+  // the reader trusts no relay: it verifies the signature of what came back itself
+  v := nostr_message_event_verify_vartime(back, scratch[..], false);
+  if v.error != NE_OK || !v.verified || !nlr_same32(v.id, e.id) { return nc_stop(c, 11); }
+  // the same event with one letter changed: the relay recomputes the ID and refuses it
+  cb: [512] u8; changed := nlr_change(note, cb[..]); if changed.count == 0 { return nc_stop(c, 12); }
+  cf: [640] u8; bad_sent := nlr_text(cf[..], nostr_message_write_event(changed, cf[..], false)); if bad_sent.count == 0 { return nc_stop(c, 13); }
+  xb: [256] u8; if nlr_relay(r[..], bad_sent, NLR_NOW, xb[..], ends[..]) != 1 { return nc_stop(c, 14); }
+  no := nostr_message_read(cast(string) xb[0..<ends[0]]);
+  if no.error != NM_OK || no.type != NM_ACCEPT || no.accepted { return nc_stop(c, 15); }
+  if no.prefix < 1 || no.prefix > 8 || NM_PREFIXES[no.prefix - 1] != "invalid" { return nc_stop(c, 16); }
+  idx: [6] int; if nlr_held(r[..], 1, NLR_NOW, idx[..]) != 1 { return nc_stop(c, 17); }
+  why: [128] u8; wn := json_unescape(nm_text(no, no.message), why[..]); if wn < 1 { return nc_stop(c, 18); }
+  sb: [64] u8; short := nlr_ok_short(ok_frame, sb[..]); if short.count == 0 { return nc_stop(c, 19); }
+  if !nc_row(c, "CLIENT SENDS", sent, NC_PLAIN) || !nc_row(c, "RELAY ANSWERS", short, NC_GOOD)
+    || !nc_row(c, "CLIENT ASKS", ask, NC_PLAIN) || !nc_row(c, "RELAY SENDS", back, NC_PLAIN)
+    || !nc_row(c, "THEN", eose, NC_PLAIN) || !nc_row(c, "CHANGED COPY", cast(string) why[0..<wn], NC_BAD) { return nc_stop(c, 20); }
+  return nc_done(c, "STORED, READ BACK, SIGNATURE HOLDS", "ONE LETTER CHANGED: RELAY REFUSED");
+}
+
+// ---- 1. NIP-11: relay information ----------------------------------------------------------
+
+NLR_INFO_ACCEPT :: "Accept: application/nostr+json";   // the header that asks for the document
+// What a client reads from a NIP-11 document with json.coax: the fields this lesson shows. The
+// library has no reader for the document (the book's chapter 37 example carries its own); this one
+// follows that example. A field the document leaves out stays -1.
+NlrInfo :: struct {
+  ok: bool;
+  name: [64] u8; name_n: int;
+  nips: [32] int; nips_n: int;
+  max_subs: int = -1; min_pow: int = -1;
+}
+nlr_info_has :: (i: NlrInfo, nip: int) -> bool { for k: 0..<i.nips_n { if i.nips[k] == nip { return true; } } return false; }
+nlr_info_read :: (doc: string) -> NlrInfo {
+  i: NlrInfo;
+  j: [1] Json; json_start(j[..], doc);
+  if json_next(j[..]) != JSON_OBJECT { return i; }
+  t := json_next(j[..]);
+  while t == JSON_STRING {
+    key := json_text(j[..]);
+    v := json_next(j[..]);
+    if json_is(key, "supported_nips") {
+      if v != JSON_ARRAY { return i; }
+      v = json_next(j[..]);
+      while v == JSON_NUMBER {
+        n := json_int(json_text(j[..]));
+        if !n.ok || n.value < 1 || i.nips_n >= 32 { return i; }
+        i.nips[i.nips_n] = n.value; i.nips_n += 1;
+        v = json_next(j[..]);
+      }
+      if v != JSON_ARRAY_END { return i; }
+    } else if json_is(key, "limitation") {
+      if v != JSON_OBJECT { return i; }
+      v = json_next(j[..]);
+      while v == JSON_STRING {
+        field := json_text(j[..]);
+        w := json_next(j[..]);
+        subs := json_is(field, "max_subscriptions"); is_pow := json_is(field, "min_pow_difficulty");
+        if subs || is_pow {
+          n := json_int(json_text(j[..]));
+          if w != JSON_NUMBER || !n.ok || n.value < 0 { return i; }
+          if subs { i.max_subs = n.value; } else { i.min_pow = n.value; }
+        } else if w == JSON_ERROR { return i; }
+        else if (w == JSON_OBJECT || w == JSON_ARRAY) && !json_skip(j[..]) { return i; }
+        v = json_next(j[..]);
+      }
+      if v != JSON_OBJECT_END { return i; }
+    } else if v == JSON_STRING && json_is(key, "name") {
+      i.name_n = json_unescape(json_text(j[..]), i.name[..]);
+      if i.name_n < 0 { return i; }
+    } else if v == JSON_ERROR { return i; }
+    else if (v == JSON_OBJECT || v == JSON_ARRAY) && !json_skip(j[..]) { return i; }
+    t = json_next(j[..]);
+  }
+  if t != JSON_OBJECT_END || json_next(j[..]) != JSON_END { return i; }
+  i.ok = true;
+  return i;
+}
+// The relay's answer to a GET with the NIP-11 Accept header (coax/relay/relay.coax's ry_http, the
+// socket replaced by out): the whole HTTP response, or "" when the request is not routed to NIP-11.
+nlr_info_serve :: (accept: string, out: [] u8) -> string {
+  rb: [256] u8;
+  n := json_raw(rb[..], 0, "GET / HTTP/1.1\r\nHost: relay.example.com\r\n"); n = json_raw(rb[..], n, accept); n = json_raw(rb[..], n, "\r\n\r\n");
+  if n < 1 { return ""; }
+  h := wss_request(cast(string) rb[0..<n]);
+  if rr_http(h.status) != RR_H_NIP11 { return ""; }
+  return nlr_text(out, wss_http_write("200 OK", "application/nostr+json", rr_nip11_base(false), out));
+}
+// Where an HTTP response's body starts: after the first empty line. -1 when there is none.
+nlr_http_body :: (response: string) -> int {
+  for i: 0..<response.count - 3 { if response[i..<i + 4] == "\r\n\r\n" { return i + 4; } }
+  return -1;
+}
+nlr_card_info :: (c: [] NostrCard) -> bool {
+  nc_nodes(c, "CLIENT", "RELAY", "", "");
+  hb: [1536] u8; response := nlr_info_serve(NLR_INFO_ACCEPT, hb[..]); if response.count == 0 { return nc_stop(c, 1); }
+  at := nlr_http_body(response); if at < 0 { return nc_stop(c, 2); }
+  line := 0; while line < response.count && response[line] != '\r' { line += 1; }
+  doc := response[at..<response.count];
+  i := nlr_info_read(doc); if !i.ok || i.name_n < 1 || i.nips_n < 1 { return nc_stop(c, 3); }
+  // what the document says is what the relay's code enforces: it lists NIP-11, and its limit on
+  // subscriptions is the constant rs_sub_open is called with
+  if !nlr_info_has(i, 1) || !nlr_info_has(i, 11) || i.max_subs != RS_MAX_SUBS || i.min_pow != -1 || nlr_info_has(i, 13) { return nc_stop(c, 4); }
+  // a relay started with proof of work on: the library adds NIP-13 and the difficulty it asks
+  pb: [1536] u8; pn := rr_nip11_pow(doc, NLR_POW_BITS, pb[..]); if pn < 1 { return nc_stop(c, 5); }
+  p := nlr_info_read(cast(string) pb[0..<pn]);
+  if !p.ok || p.min_pow != NLR_POW_BITS || !nlr_info_has(p, 13) || p.nips_n != i.nips_n + 1 { return nc_stop(c, 6); }
+  // a document cut short: the reader refuses it, and so does the library's writer
+  cut := doc[0..<doc.count - 1];
+  if nlr_info_read(cut).ok || json_valid(cut) || rr_nip11_pow(cut, NLR_POW_BITS, pb[..]) != -1 { return nc_stop(c, 7); }
+  // a request without the header gets no document
+  xb: [1536] u8; if nlr_info_serve("Accept: text/html", xb[..]).count != 0 { return nc_stop(c, 8); }
+  nb: [128] u8; n := 0;
+  for k: 0..<i.nips_n { if k > 0 { n = json_raw(nb[..], n, " "); } n = json_write_int(nb[..], n, i.nips[k]); }
+  if n < 1 { return nc_stop(c, 9); }
+  if !nc_row(c, "CLIENT ASKS", NLR_INFO_ACCEPT, NC_PLAIN) || !nc_row(c, "RELAY ANSWERS", response[0..<line], NC_GOOD)
+    || !nc_row(c, "NAME", cast(string) i.name[0..<i.name_n], NC_PLAIN) || !nc_row(c, "NIPS SERVED", cast(string) nb[0..<n], NC_VALUE)
+    || !nc_row_int(c, "MAX SUBS", i.max_subs, "AT ONCE, AS ENFORCED", NC_VALUE)
+    || !nc_row_int(c, "WITH POW ON", p.min_pow, "BITS ASKED, NIP 13 LISTED", NC_VALUE) { return nc_stop(c, 10); }
+  return nc_done(c, "DOCUMENT SERVED AND READ BACK", "A DOCUMENT CUT SHORT: REFUSED");
+}
+
+// ---- 2. NIP-42: relay login ----------------------------------------------------------------
+
+// A relay's login challenge: 32 bytes as hex (relay_route.coax's rr_challenge). The bytes are fixed
+// here (seed, seed + 7, ...); a relay takes them from the host's randomness for each connection.
+nlr_challenge :: (seed: int, bytes: [] u8, out: [] u8) -> string {
+  for i: 0..<bytes.count { bytes[i] = cast,trunc(u8) (seed + 7 * i); }
+  return nlr_text(out, rr_challenge(bytes, out));
+}
+// The relay's side of one connection: its URL and the challenge it sent, and the keys it admitted.
+NlrLogin :: struct { n42: [1] Nip42; auth: [1] RrAuth; }
+// Opens the connection: the ["AUTH", challenge] frame the relay sends, or "".
+nlr_login_open :: (l: [] NlrLogin, url: string, challenge: string, out: [] u8) -> string {
+  rr_auth_reset(l[0].auth[..]);
+  if nip42_init(l[0].n42[..], url) != N42_OK { return ""; }
+  f := nip42_issue(l[0].n42[..], 1, challenge, out);
+  if f.error != N42_OK { return ""; }
+  return nlr_text(out, f.written);
+}
+// One ["AUTH", event] frame from the client (coax/relay/relay.coax's ry_auth): the signature and
+// nip42.coax's check against this connection's challenge and URL, then relay_route.coax keeps the
+// key. The answer: RR_A_OK or the refusal, or -1 when the frame is not an AUTH.
+nlr_login_answer :: (l: [] NlrLogin, frame: string, now: int) -> int {
+  m := ms_read(frame);
+  if rr_message(m.error, m.type, m.has_sub).action != RR_AUTH { return -1; }
+  scratch: [2048] u8;
+  a := nip42_admit(l[0].n42[..], 1, now, frame[m.event_from..<m.event_to], scratch[..], false);
+  key := a.public_key;
+  return rr_auth(l[0].auth[..], a.error, key[..]);
+}
+nlr_card_login :: (c: [] NostrCard) -> bool {
+  nc_nodes(c, "RELAY", "YOU", "RELAY", "");
+  // the relay opens the connection with a challenge
+  bytes: [32] u8; hb: [64] u8; challenge := nlr_challenge(1, bytes[..], hb[..]); if challenge.count != 64 { return nc_stop(c, 1); }
+  relay: [1] NlrLogin; ib: [128] u8; issued := nlr_login_open(relay[..], NLR_RELAY_URL, challenge, ib[..]); if issued.count == 0 { return nc_stop(c, 2); }
+  // you: the connection is open, the challenge arrives, and the answer is a kind 22242 event
+  // naming this relay and this challenge, signed with your key
+  conn: [1] Relay; mine: [1] Nip42;
+  g := rl_start(conn[..], 0); if !rl_opened(conn[..], g, 0) { return nc_stop(c, 3); }
+  if nip42_init(mine[..], NLR_RELAY_URL) != N42_OK { return nc_stop(c, 4); }
+  if nip42_input(conn[..], mine[..], g, issued) != RL_AUTH { return nc_stop(c, 5); }
+  tb: [512] u8; t := nip42_template(mine[..], g, NLR_NOW, tb[..]); if t.error != N42_OK { return nc_stop(c, 6); }
+  eb: [1024] u8; event := nlr_sign(NLR_ALICE_KEY, t.created_at, t.kind, t.tags, t.content, eb[..]); if event.count == 0 { return nc_stop(c, 7); }
+  scratch: [2048] u8; fb: [1200] u8;
+  s := nip42_send(conn[..], mine[..], g, NLR_NOW, event, scratch[..], fb[..], false); if s.error != N42_OK { return nc_stop(c, 8); }
+  answer := cast(string) fb[0..<s.written];
+  e := nostr_event_read(event, scratch[..], false); if e.error != NE_OK || e.kind != N42_AUTH_KIND { return nc_stop(c, 9); }
+  // the relay checks the signature, the relay tag and the challenge tag, and keeps the key
+  if nlr_login_answer(relay[..], answer, NLR_NOW) != RR_A_OK { return nc_stop(c, 10); }
+  key := e.public_key; if !rr_authed_as(relay[0].auth[..], key[..]) { return nc_stop(c, 11); }
+  id := e.id; ob: [256] u8; ok_frame := nlr_text(ob[..], ms_write_ok(id[..], true, "", "", ob[..])); if ok_frame.count == 0 { return nc_stop(c, 12); }
+  ok := nostr_message_read(ok_frame); if ok.error != NM_OK || ok.type != NM_ACCEPT || !ok.accepted { return nc_stop(c, 13); }
+  if rl_input(conn[..], g, RlIn.{kind = RL_IN_OK, id = ok.id, accepted = true}) != RL_AUTH || conn[0].auth != RA_OK { return nc_stop(c, 14); }
+  // the same answer replayed on a connection with another challenge: refused, and no key is kept
+  bytes2: [32] u8; hb2: [64] u8; challenge2 := nlr_challenge(101, bytes2[..], hb2[..]); if challenge2.count != 64 || challenge2 == challenge { return nc_stop(c, 15); }
+  later: [1] NlrLogin; ib2: [128] u8; if nlr_login_open(later[..], NLR_RELAY_URL, challenge2, ib2[..]).count == 0 { return nc_stop(c, 16); }
+  replay := nlr_login_answer(later[..], answer, NLR_NOW);
+  if replay != RR_A_CHALLENGE || rr_authed(later[0].auth[..]) { return nc_stop(c, 17); }
+  // and sent to another relay that happens to issue the same challenge: refused by its URL
+  other: [1] NlrLogin; if nlr_login_open(other[..], "wss://other.example.com", challenge, ib2[..]).count == 0 { return nc_stop(c, 18); }
+  if nlr_login_answer(other[..], answer, NLR_NOW) != RR_A_RELAY || rr_authed(other[0].auth[..]) { return nc_stop(c, 19); }
+  sb: [64] u8; short := nlr_ok_short(ok_frame, sb[..]); if short.count == 0 { return nc_stop(c, 20); }
+  if !nc_row_hex(c, "CHALLENGE", bytes[..], NC_VALUE) || !nc_row_int(c, "ANSWER KIND", e.kind, "LOGIN EVENT", NC_PLAIN)
+    || !nc_row(c, "ITS TAGS", t.tags, NC_PLAIN) || !nc_row_hex(c, "SIGNED BY", key[..], NC_KEY)
+    || !nc_row(c, "RELAY ANSWERS", short, NC_GOOD) || !nc_row(c, "REPLAYED", rr_auth_text(replay), NC_BAD) { return nc_stop(c, 21); }
+  return nc_done(c, "CHALLENGE SIGNED, LOGIN ACCEPTED", "OLD ANSWER, NEW CHALLENGE: REFUSED");
+}
+
+// ---- 3. NIP-65: two relays ------------------------------------------------------------------
+
+// Alice's relay list: she writes to r1 and r2, and reads what mentions her at r3.
+NLR_LIST :: "[[\"r\",\"wss://r1.example\",\"write\"],[\"r\",\"wss://r2.example\",\"write\"],[\"r\",\"wss://r3.example\",\"read\"]]";
+NLR_LIST_BAD :: "[[\"r\",\"wss://r1.example\",\"both\"]]";   // "both" is not a marker
+NLR_TWO_NOTE :: "on two relays";
+// Relay k of a list, copied into out.
+nlr_list_url :: (l: Nip65List, k: int, out: [] u8) -> string {
+  ll := l; for i: 0..<ll.url_n[k] { out[i] = ll.url[k * N65_URL_MOST + i]; }
+  return cast(string) out[0..<ll.url_n[k]];
+}
+// Relay r of the outbox pool, copied into out.
+nlr_pool_url :: (o: [] Outbox, r: int, out: [] u8) -> string {
+  for i: 0..<o[0].url_n[r] { out[i] = o[0].url[r * N65_URL_MOST + i]; }
+  return cast(string) out[0..<o[0].url_n[r]];
+}
+// The newest kind 1 note by one author that a relay serves: found, and its ID.
+NlrFound :: struct { found: bool; id: [32] u8; }
+nlr_read_author :: (r: [] NlrRelay, author_hex: string, now: int) -> NlrFound {
+  out: NlrFound;
+  kinds := [1] int.[1]; authors := [1] string.[author_hex];
+  f: NostrFilter; f.has_kinds = true; f.kinds = kinds[..]; f.has_authors = true; f.authors = authors[..];
+  idx: [6] int;
+  if rsd_query(r[0].s[..], f, now, idx[..]) < 1 { return out; }
+  out.found = true; out.id = r[0].s[0].recs[idx[0]].id;
+  return out;
+}
+nlr_card_two :: (c: [] NostrCard) -> bool {
+  nc_nodes(c, "ALICE", "RELAY 1", "RELAY 2", "READER");
+  // Alice signs her relay list; a reader verifies it and reads the r tags
+  lb: [768] u8; list := nlr_sign(NLR_ALICE_KEY, NLR_NOW - 60, N65_KIND_RELAYS, NLR_LIST, "", lb[..]); if list.count == 0 { return nc_stop(c, 1); }
+  scratch: [2048] u8; le := nostr_event_verify_vartime(list, scratch[..], false); if le.error != NE_OK || !le.verified { return nc_stop(c, 2); }
+  l := nip65_read(le); if l.error != N65_OK || l.count != 3 { return nc_stop(c, 3); }
+  wb: [128] u8; wn := 0; rb: [128] u8; rn := 0; ub: [N65_URL_MOST] u8;
+  for k: 0..<l.count {
+    url := nlr_list_url(l, k, ub[..]);
+    if l.write[k] { if wn > 0 { wn = json_raw(wb[..], wn, " "); } wn = json_raw(wb[..], wn, url); }
+    if l.read[k] { if rn > 0 { rn = json_raw(rb[..], rn, " "); } rn = json_raw(rb[..], rn, url); }
+  }
+  if wn < 1 || rn < 1 { return nc_stop(c, 4); }
+  // the outbox model: to read Alice, ask the relays she writes to (two of them, for when one is lost)
+  o: [1] Outbox; a := ob_author(o[..], le.public_key, l); if a != 0 { return nc_stop(c, 5); }
+  follows := [1] int.[a]; p := ob_cover(o[..], follows[..], 2, 8);
+  if p.error != OB_OK || p.count != 2 || p.got[a] != 2 { return nc_stop(c, 6); }
+  for k: 0..<2 { if (o[0].author[a].write & (cast(u64) 1 << p.relay[k])) == 0 { return nc_stop(c, 7); } }
+  // Alice sends one note to both of her write relays; each admits and stores it
+  nb: [512] u8; note := nlr_sign(NLR_ALICE_KEY, NLR_NOW, 1, "[]", NLR_TWO_NOTE, nb[..]); if note.count == 0 { return nc_stop(c, 8); }
+  relays: [2] NlrRelay; held := 0; note_id: [32] u8;
+  for k: 0..<2 {
+    nlr_relay_init(relays[k..<k + 1]);
+    ad := nlr_admit(relays[k..<k + 1], note, NLR_NOW); if ad.reason != RS_ACCEPT { return nc_stop(c, 9); }
+    note_id = ad.e.id; held += 1;
+  }
+  ah: [64] u8; author := nlr_hex32(le.public_key[..], ah[..]); if author.count == 0 { return nc_stop(c, 10); }
+  mask: u64 = 0; for k: 0..<2 { mask |= cast(u64) 1 << p.relay[k]; }
+  // both relays up: the reader gets the note from each, and keeps it once
+  both: [1] ObSub; ob_sub_start(both[..], mask, 0, 3000);
+  for k: 0..<2 {
+    got := nlr_read_author(relays[k..<k + 1], author, NLR_NOW); if !got.found || !nlr_same32(got.id, note_id) { return nc_stop(c, 11); }
+    if ob_sub_event(both[..], p.relay[k], got.id) != (ifx k == 0 then OB_NEW else OB_DUP) { return nc_stop(c, 12); }
+    if !ob_sub_eose(both[..], p.relay[k]) { return nc_stop(c, 13); }
+  }
+  if !ob_caught_up(both[..]) || both[0].fresh != 1 || both[0].dups != 1 { return nc_stop(c, 14); }
+  // relay 1 lost: its connection closes with nothing read; the note still comes from relay 2
+  one: [1] ObSub; ob_sub_start(one[..], mask, 0, 3000);
+  if !ob_sub_closed(one[..], p.relay[0]) || ob_caught_up(one[..]) || one[0].fresh != 0 { return nc_stop(c, 15); }
+  got := nlr_read_author(relays[1..<2], author, NLR_NOW); if !got.found || !nlr_same32(got.id, note_id) { return nc_stop(c, 16); }
+  if ob_sub_event(one[..], p.relay[1], got.id) != OB_NEW || !ob_sub_eose(one[..], p.relay[1]) { return nc_stop(c, 17); }
+  if !ob_caught_up(one[..]) || one[0].fresh != 1 || one[0].state[p.relay[0]] != OB_CLOSED { return nc_stop(c, 18); }
+  // a list with a marker NIP-65 doesn't have is refused, and records no relays for its author
+  bad := ob_list(NLR_LIST_BAD); if bad.error != N65_MARKER || ob_author(o[..], le.public_key, bad) != -OB_LIST { return nc_stop(c, 19); }
+  if o[0].author[a].write != mask { return nc_stop(c, 20); }
+  lost: [N65_URL_MOST] u8; left: [N65_URL_MOST] u8;
+  if !nc_row_int(c, "KIND", le.kind, "RELAY LIST", NC_PLAIN) || !nc_row(c, "WRITES TO", cast(string) wb[0..<wn], NC_VALUE)
+    || !nc_row(c, "READS FROM", cast(string) rb[0..<rn], NC_VALUE) || !nc_row_int(c, "NOTE HELD ON", held, "RELAYS", NC_PLAIN)
+    || !nc_row(c, "LOST", nlr_pool_url(o[..], p.relay[0], lost[..]), NC_BAD)
+    || !nc_row(c, "STILL READ AT", nlr_pool_url(o[..], p.relay[1], left[..]), NC_GOOD) { return nc_stop(c, 21); }
+  return nc_done(c, "ONE RELAY LOST, NOTE STILL READ", "A LIST WITH A BAD MARKER: REFUSED");
+}
+
+// ---- 4. NIP-09 and NIP-40: delete and expire ---------------------------------------------------
+
+NLR_EXPIRES_IN :: 60;   // the expiring note's life, in seconds after NLR_NOW
+// [["e","<the event's ID>"]]: the tags of a deletion request for one event.
+nlr_delete_tags :: (id: [] u8, out: [] u8) -> string {
+  hb: [64] u8; hex := nlr_hex32(id, hb[..]); if hex.count == 0 { return ""; }
+  n := json_raw(out, 0, "[[\"e\","); n = json_write_string(out, n, hex);
+  return nlr_text(out, json_raw(out, n, "]]"));
+}
+// [["expiration","<time>"]]: NIP-40's tag.
+nlr_expire_tags :: (at: int, out: [] u8) -> string {
+  n := json_raw(out, 0, "[[\"expiration\",\""); n = json_write_int(out, n, at);
+  return nlr_text(out, json_raw(out, n, "\"]]"));
+}
+nlr_card_delete :: (c: [] NostrCard) -> bool {
+  nc_nodes(c, "ALICE", "RELAY", "READER", "");
+  r: [1] NlrRelay; nlr_relay_init(r[..]); idx: [6] int;
+  // Alice's note is stored and served
+  nb: [512] u8; note := nlr_sign(NLR_ALICE_KEY, NLR_NOW - 300, 1, "[]", "published by accident", nb[..]); if note.count == 0 { return nc_stop(c, 1); }
+  ad := nlr_admit(r[..], note, NLR_NOW); if ad.reason != RS_ACCEPT || nlr_held(r[..], 1, NLR_NOW, idx[..]) != 1 { return nc_stop(c, 2); }
+  id := ad.e.id; tb: [128] u8; tags := nlr_delete_tags(id[..], tb[..]); if tags.count == 0 { return nc_stop(c, 3); }
+  // Bob asks the relay to delete it: his request is a valid event, but the note is not his
+  bb: [640] u8; bobs := nlr_sign(NLR_BOB_KEY, NLR_NOW - 200, 5, tags, "", bb[..]); if bobs.count == 0 { return nc_stop(c, 4); }
+  bd := nlr_admit(r[..], bobs, NLR_NOW); if bd.reason != RS_ACCEPT || r[0].tb[0].last != 0 { return nc_stop(c, 5); }
+  after_bob := nlr_held(r[..], 1, NLR_NOW, idx[..]);
+  if after_bob != 1 || !nlr_same32(r[0].s[0].recs[idx[0]].id, id) { return nc_stop(c, 6); }
+  // Alice asks: the note is retired and no longer served
+  db: [640] u8; hers := nlr_sign(NLR_ALICE_KEY, NLR_NOW - 100, 5, tags, "", db[..]); if hers.count == 0 { return nc_stop(c, 7); }
+  dd := nlr_admit(r[..], hers, NLR_NOW); if dd.reason != RS_ACCEPT || r[0].tb[0].last != 1 { return nc_stop(c, 8); }
+  after_alice := nlr_held(r[..], 1, NLR_NOW, idx[..]); if after_alice != 0 { return nc_stop(c, 9); }
+  // a note with an expiration tag is served until that second, and not from it on
+  xt: [64] u8; expire := nlr_expire_tags(NLR_NOW + NLR_EXPIRES_IN, xt[..]); if expire.count == 0 { return nc_stop(c, 10); }
+  xb: [512] u8; brief := nlr_sign(NLR_ALICE_KEY, NLR_NOW - 50, 1, expire, "gone in a minute", xb[..]); if brief.count == 0 { return nc_stop(c, 11); }
+  xd := nlr_admit(r[..], brief, NLR_NOW); if xd.reason != RS_ACCEPT || xd.expiration != NLR_NOW + NLR_EXPIRES_IN { return nc_stop(c, 12); }
+  before := nlr_held(r[..], 1, NLR_NOW + NLR_EXPIRES_IN - 1, idx[..]);
+  after := nlr_held(r[..], 1, NLR_NOW + NLR_EXPIRES_IN, idx[..]);
+  if before != 1 || after != 0 { return nc_stop(c, 13); }
+  eb: [64] u8; n := json_write_int(eb[..], 0, before); n = json_raw(eb[..], n, " HELD BEFORE, "); n = json_write_int(eb[..], n, after); n = json_raw(eb[..], n, " HELD AFTER");
+  if n < 1 { return nc_stop(c, 14); }
+  if !nc_row_hex(c, "NOTE", id[..], NC_VALUE) || !nc_row(c, "KIND 5 TAGS", tags, NC_PLAIN)
+    || !nc_row_int(c, "AFTER BOB'S", after_bob, "NOTE HELD", NC_BAD) || !nc_row_int(c, "AFTER ALICE'S", after_alice, "NOTES HELD", NC_GOOD)
+    || !nc_row(c, "EXPIRES TAG", expire, NC_PLAIN) || !nc_row(c, "AT THAT TIME", cast(string) eb[0..<n], NC_GOOD) { return nc_stop(c, 15); }
+  return nc_done(c, "DELETED BY ITS AUTHOR, AND EXPIRED", "SOMEONE ELSE'S REQUEST: NO EFFECT");
+}
+
+// ---- 5. NIP-77: sync ---------------------------------------------------------------------------
+
+NLR_SYNC_NOTES :: 4;                       // notes 0, 1, 2 are on relay A and 1, 2, 3 on relay B
+NLR_SYNC_FILTER :: "{\"kinds\":[1]}";      // what the two relays compare
+// One relay's side of a sync: what it holds as Negentropy items (time, ID), sorted, and the
+// answers the opening side collects: the IDs it has that the other lacks, and the reverse.
+NlrSide :: struct { items: [NLR_SYNC_NOTES] NegItem; n: int; neg: [1] Neg; have: [NLR_SYNC_NOTES] NegId; need: [NLR_SYNC_NOTES] NegId; }
+// The two sides before the sync: four notes signed (two by Alice, two by Bob), their IDs
+// recomputed by the event reader, and shared out. False when the signer or reader refused.
+nlr_sync_sets :: (a: [] NlrSide, b: [] NlrSide, ids: [] NegId) -> bool {
+  contents := [NLR_SYNC_NOTES] string.["note one", "note two", "note three", "note four"];
+  a[0].n = 0; b[0].n = 0;
+  for i: 0..<NLR_SYNC_NOTES {
+    eb: [512] u8; scratch: [1024] u8;
+    event := nlr_sign(ifx i % 2 == 0 then NLR_ALICE_KEY else NLR_BOB_KEY, NLR_NOW - 40 + 10 * i, 1, "[]", contents[i], eb[..]);
+    if event.count == 0 { return false; }
+    e := nostr_event_read(event, scratch[..], false); if e.error != NE_OK { return false; }
+    ids[i].b = e.id;
+    if i < NLR_SYNC_NOTES - 1 { a[0].items[a[0].n] = NegItem.{created = e.created_at, id = e.id}; a[0].n += 1; }
+    if i > 0 { b[0].items[b[0].n] = NegItem.{created = e.created_at, id = e.id}; b[0].n += 1; }
+  }
+  neg_sort(a[0].items[0..<a[0].n]); neg_sort(b[0].items[0..<b[0].n]);
+  return true;
+}
+// What a finished sync cost: frames sent (both ways) and their bytes as JSON text.
+NlrSync :: struct { ok: bool; frames: int; bytes: int; open: [1024] u8; open_n: int; first: [512] u8; first_n: int; }
+// A opens a NIP-77 session with B and they answer each other until A is done (the book's chapter
+// 43 loop): every frame is written by nip77.coax, read back by the other side, and reconciled.
+nlr_sync_run :: (a: [] NlrSide, b: [] NlrSide) -> NlrSync {
+  out: NlrSync;
+  frame: [2560] u8; msg: [1024] u8; got: [1024] u8;
+  if neg_init(a[0].neg[..], a[0].items[0..<a[0].n], true, 0) != NEG_OK { return out; }
+  a[0].neg[0].have = a[0].have[..]; a[0].neg[0].need = a[0].need[..];
+  if neg_init(b[0].neg[..], b[0].items[0..<b[0].n], false, 0) != NEG_OK { return out; }
+  m := neg_initiate(a[0].neg[..], msg[..]); if m < 1 || m > out.first.count { return out; }
+  for i: 0..<m { out.first[i] = msg[i]; } out.first_n = m;
+  k := n77_write_open(frame[..], NLR_SUB, NLR_SYNC_FILTER, cast(string) msg[0..<m]); if k < 1 || k > out.open.count { return out; }
+  for i: 0..<k { out.open[i] = frame[i]; } out.open_n = k;
+  rounds := 0;
+  while rounds < 8 {
+    rounds += 1;
+    // relay B reads A's frame and answers over what it holds
+    f := n77_read(cast(string) frame[0..<k], got[..], got.count); if f.error != N77_OK { return out; }
+    if (rounds == 1) != (f.verb == N77_OPEN) || (rounds > 1 && f.verb != N77_MSG) { return out; }
+    out.frames += 1; out.bytes += k;
+    m = neg_reconcile(b[0].neg[..], cast(string) got[0..<f.msg_n], msg[..]); if m < 1 { return out; }
+    k = n77_write_msg(frame[..], NLR_SUB, cast(string) msg[0..<m]); if k < 1 { return out; }
+    // relay A reads the answer: 0 means it has nothing more to ask
+    f = n77_read(cast(string) frame[0..<k], got[..], got.count); if f.error != N77_OK || f.verb != N77_MSG { return out; }
+    out.frames += 1; out.bytes += k;
+    m = neg_reconcile(a[0].neg[..], cast(string) got[0..<f.msg_n], msg[..]); if m < 0 { return out; }
+    if m == 0 { out.ok = true; return out; }
+    k = n77_write_msg(frame[..], NLR_SUB, cast(string) msg[0..<m]); if k < 1 { return out; }
+  }
+  return out;
+}
+nlr_card_sync :: (c: [] NostrCard) -> bool {
+  nc_nodes(c, "RELAY A", "RELAY B", "", "");
+  a: [1] NlrSide; b: [1] NlrSide; ids: [NLR_SYNC_NOTES] NegId;
+  if !nlr_sync_sets(a[..], b[..], ids[..]) { return nc_stop(c, 1); }
+  s := nlr_sync_run(a[..], b[..]); if !s.ok { return nc_stop(c, 2); }
+  // A learned exactly the difference: it has note 0 and B doesn't; B has note 3 and A doesn't
+  if a[0].neg[0].have_n != 1 || a[0].neg[0].need_n != 1 { return nc_stop(c, 3); }
+  have := a[0].have[0].b; need := a[0].need[0].b;
+  if !nlr_same32(have, ids[0].b) || !nlr_same32(need, ids[NLR_SYNC_NOTES - 1].b) { return nc_stop(c, 4); }
+  // A's first message with its last byte missing: B refuses it
+  fresh: [1] Neg; xb: [1024] u8;
+  if neg_init(fresh[..], b[0].items[0..<b[0].n], false, 0) != NEG_OK { return nc_stop(c, 5); }
+  if neg_reconcile(fresh[..], cast(string) s.first[0..<s.first_n - 1], xb[..]) != -1 || fresh[0].error != NEG_SHORT { return nc_stop(c, 6); }
+  tb: [64] u8; n := json_write_int(tb[..], 0, s.frames); n = json_raw(tb[..], n, " MESSAGES, "); n = json_write_int(tb[..], n, s.bytes); n = json_raw(tb[..], n, " BYTES");
+  if n < 1 { return nc_stop(c, 7); }
+  if !nc_row_int(c, "RELAY A HOLDS", a[0].n, "NOTES", NC_PLAIN) || !nc_row_int(c, "RELAY B HOLDS", b[0].n, "NOTES", NC_PLAIN)
+    || !nc_row(c, "A OPENS WITH", cast(string) s.open[0..<s.open_n], NC_NOISE) || !nc_row_hex(c, "B LACKS", have[..], NC_VALUE)
+    || !nc_row_hex(c, "A LACKS", need[..], NC_VALUE) || !nc_row(c, "IT TOOK", cast(string) tb[0..<n], NC_GOOD) { return nc_stop(c, 8); }
+  return nc_done(c, "EACH SIDE LEARNED WHAT IT LACKS", "A MESSAGE CUT SHORT: REFUSED");
+}
+
+// ---- 6. NIP-13: proof of work --------------------------------------------------------------------
+
+NLR_POW_NOTE :: "mined in the lab";
+// The miner's run: nonces counted up from 0 over the unsigned event (nip13.coax hashes the event's
+// bytes for each; nothing is signed until a nonce is found). The final tags are left in tags.
+nlr_mine :: (tags: [] u8) -> N13Mine {
+  m: N13Mine; pub: [32] u8;
+  d := hex_decode_checked(NLR_ALICE_PUB, pub[..], false); if d.error != NC_OK || d.written != 32 { return m; }
+  return nip13_mine(pub, NLR_NOW, 1, "[]", NLR_POW_NOTE, NLR_POW_BITS, 0, NLR_POW_TRIES, tags);
+}
+// The nonce tag of a note that claims the target without the work: the first nonce whose ID falls
+// short of it (nonce 0, unless that one happens to be the mined one).
+nlr_unmined_tags :: (mined: int, out: [] u8) -> string {
+  return nlr_text(out, n13_tags("[]", ifx mined == 0 then 1 else 0, NLR_POW_BITS, out));
+}
+nlr_card_pow :: (c: [] NostrCard) -> bool {
+  nc_nodes(c, "MINER", "RELAY", "", "");
+  tb: [128] u8; m := nlr_mine(tb[..]); if m.error != N13_MINE_OK || m.difficulty < NLR_POW_BITS { return nc_stop(c, 1); }
+  tags := cast(string) tb[0..<m.tags_n];
+  // the mined note is signed once, and a relay that asks for the target admits it
+  eb: [640] u8; event := nlr_sign(NLR_ALICE_KEY, NLR_NOW, 1, tags, NLR_POW_NOTE, eb[..]); if event.count == 0 { return nc_stop(c, 2); }
+  scratch: [2048] u8;
+  a := nip13_admit(event, NLR_POW_BITS, scratch[..], false);
+  if a.error != N13_OK || a.difficulty != m.difficulty || a.target != NLR_POW_BITS || !nlr_same32(a.id, m.id) { return nc_stop(c, 3); }
+  v := nostr_event_verify_vartime(event, scratch[..], false); if v.error != NE_OK || !v.verified { return nc_stop(c, 4); }
+  // a note that claims the same target with a nonce that doesn't reach it: refused before any
+  // signature check, with the difficulty the relay counted
+  ub: [128] u8; unmined := nlr_unmined_tags(m.nonce, ub[..]); if unmined.count == 0 { return nc_stop(c, 5); }
+  xb: [640] u8; claim := nlr_sign(NLR_ALICE_KEY, NLR_NOW, 1, unmined, NLR_POW_NOTE, xb[..]); if claim.count == 0 { return nc_stop(c, 6); }
+  x := nip13_admit(claim, NLR_POW_BITS, scratch[..], false);
+  if x.error != N13_DIFFICULTY || x.target != NLR_POW_BITS || x.difficulty >= NLR_POW_BITS { return nc_stop(c, 7); }
+  why: [128] u8; wn := nip13_reason(x, why[..]); if wn < 1 { return nc_stop(c, 8); }
+  id := m.id;
+  if !nc_row_int(c, "ASKED FOR", a.required, "LEADING ZERO BITS", NC_PLAIN) || !nc_row_int(c, "NONCE FOUND", m.nonce, "", NC_VALUE)
+    || !nc_row_int(c, "AFTER", m.tries, "HASHES", NC_PLAIN) || !nc_row_hex(c, "ID", id[..], NC_VALUE)
+    || !nc_row_int(c, "RELAY COUNTS", a.difficulty, "ZERO BITS: ADMITTED", NC_GOOD)
+    || !nc_row(c, "NO WORK DONE", cast(string) why[0..<wn], NC_BAD) { return nc_stop(c, 9); }
+  return nc_done(c, "ID STARTS WITH ENOUGH ZERO BITS", "CLAIMED WORK NOT DONE: REFUSED");
+}
+
+// Card k of this file (0 and up), filled. False when the lesson stopped (c[0].stopped says where).
+nlr_card :: (k: int, c: [] NostrCard) -> bool {
+  if k == 0 { return nlr_card_relay(c); }
+  if k == 1 { return nlr_card_info(c); }
+  if k == 2 { return nlr_card_login(c); }
+  if k == 3 { return nlr_card_two(c); }
+  if k == 4 { return nlr_card_delete(c); }
+  if k == 5 { return nlr_card_sync(c); }
+  if k == 6 { return nlr_card_pow(c); }
+  return nc_stop(c, 99);
+}
+
+// ---- checks: each card against the library, worked out again apart from the card ---------------
+
+// A card's shape: finished, with its rows and both lines inside what a station's face holds.
+nlr_t_shape :: (c: [] NostrCard, nodes: int) -> bool {
+  if !c[0].ready || c[0].stopped != 0 || c[0].nodes != nodes || c[0].rows != NC_ROWS { return false; }
+  if c[0].good.count < 1 || c[0].good.count > NC_LINE || c[0].bad.count < 1 || c[0].bad.count > NC_LINE { return false; }
+  for k: 0..<c[0].nodes { if c[0].node[k].count < 1 || c[0].node[k].count > NC_NODE { return false; } }
+  for k: 0..<c[0].rows {
+    if c[0].row[k].label_n < 1 || c[0].row[k].n < 1 { return false; }
+    for ch: nc_text(c, k) { if ch < 32 || ch > 126 { return false; } }
+  }
+  return true;
+}
+// What nc_row_hex shows for these bytes.
+nlr_t_hex :: (bytes: [] u8, out: [] NostrCard) -> string {
+  out[0].rows = 0; ok := nc_row_hex(out, "X", bytes, NC_VALUE);
+  return nc_text(out, 0);
+}
+// Whether text starts with head.
+nlr_t_starts :: (text: string, head: string) -> bool { return text.count >= head.count && text[0..<head.count] == head; }
+
+#test "nostr lab relays: a relay stores the note, serves it back verified, and refuses a changed copy" #steps 4000000000 {
+  c: [1] NostrCard; #assert nlr_card(0, c[..]) && nlr_t_shape(c[..], 3);
+  // the note again, apart from the card: it verifies, the filter the client asks with matches it,
+  // and the frames on the card are the library's frames for it
+  eb: [512] u8; note := nlr_note(eb[..]); scratch: [1024] u8;
+  e := nostr_event_verify_vartime(note, scratch[..], false); #assert e.error == NE_OK && e.verified && e.kind == 1;
+  kinds := [1] int.[1]; f: NostrFilter; f.has_kinds = true; f.kinds = kinds[..]; #assert nf_match(f, e);
+  kinds[0] = 7; #assert !nf_match(f, e);
+  fb: [640] u8; fn := nostr_message_write_event(note, fb[..], false); #assert fn > 42;
+  #assert nlr_t_starts(nc_text(c[..], 0), "[\"EVENT\",{\"id\":\"") && nlr_t_starts(cast(string) fb[0..<fn], nc_text(c[..], 0)[0..<39]);
+  hb: [64] u8; hex := nlr_hex32(e.id[..], hb[..]);
+  #assert nlr_t_starts(nc_text(c[..], 1), "[\"OK\",\"") && nc_text(c[..], 1)[7..<15] == hex[0..<8] && nc_text(c[..], 1)[15..<28] == "...\",true,\"\"]";
+  #assert nc_text(c[..], 2) == "[\"REQ\",\"lab\",{\"kinds\":[1]}]";
+  #assert nlr_t_starts(nc_text(c[..], 3), "[\"EVENT\",\"lab\",{\"id\":\"") && nc_text(c[..], 4) == "[\"EOSE\",\"lab\"]";
+  // the changed copy: one byte differs, its ID no longer matches, its signature does not verify, and
+  // a relay that never saw the original refuses it too
+  cb: [512] u8; changed := nlr_change(note, cb[..]); #assert changed.count == note.count;
+  differ := 0; for i: 0..<note.count { if note[i] != changed[i] { differ += 1; } } #assert differ == 1;
+  #assert nostr_event_read(changed, scratch[..], false).error == NE_ID && !nostr_event_verify_vartime(changed, scratch[..], false).verified;
+  r: [1] NlrRelay; nlr_relay_init(r[..]); idx: [6] int;
+  #assert nlr_admit(r[..], changed, NLR_NOW).reason == RS_BAD_ID && nlr_held(r[..], 1, NLR_NOW, idx[..]) == 0;
+  #assert nlr_t_starts(nc_text(c[..], 5), "invalid: event id does not match") && c[0].row[5].tone == NC_BAD;
+  // the relay's other answers: the same note twice is a duplicate, and a second kind is not served to a kind 1 ask
+  #assert nlr_admit(r[..], note, NLR_NOW).reason == RS_ACCEPT && nlr_admit(r[..], note, NLR_NOW).reason == RS_DUP;
+  #assert nlr_held(r[..], 1, NLR_NOW, idx[..]) == 1 && nlr_held(r[..], 7, NLR_NOW, idx[..]) == 0;
+  out: [256] u8; ends: [4] int;
+  #assert nlr_relay(r[..], "[\"REQ\",\"lab\"]", NLR_NOW, out[..], ends[..]) == 1 && nlr_t_starts(cast(string) out[0..<ends[0]], "[\"CLOSED\",\"lab\",\"invalid:");
+  #assert nlr_relay(r[..], "[\"HELLO\"]", NLR_NOW, out[..], ends[..]) == 1 && nlr_t_starts(cast(string) out[0..<ends[0]], "[\"NOTICE\",");
+  #assert nlr_relay(r[..], "[\"EVENT\",{\"id\":1}]", NLR_NOW, out[..], ends[..]) == 1 && nlr_t_starts(cast(string) out[0..<ends[0]], "[\"NOTICE\",");
+}
+#test "nostr lab relays: the information document names the NIPs and limits the relay's code enforces" {
+  c: [1] NostrCard; #assert nlr_card(1, c[..]) && nlr_t_shape(c[..], 2);
+  hb: [1536] u8; response := nlr_info_serve(NLR_INFO_ACCEPT, hb[..]);
+  #assert nlr_t_starts(response, "HTTP/1.1 200 OK\r\nContent-Type: application/nostr+json\r\n") && nc_text(c[..], 1) == "HTTP/1.1 200 OK";
+  doc := response[nlr_http_body(response)..<response.count]; #assert doc == RR_NIP11 && json_valid(doc);
+  i := nlr_info_read(doc); #assert i.ok && i.max_subs == RS_MAX_SUBS && i.min_pow == -1;
+  #assert nc_text(c[..], 2) == cast(string) i.name[0..<i.name_n] && nlr_t_starts(nc_text(c[..], 2), "OpenAgents");
+  // every NIP on the card is in the document, in its order, and the list has no more
+  nips := nc_text(c[..], 3); at := 0;
+  for k: 0..<i.nips_n {
+    v := 0; while at < nips.count && nips[at] != ' ' { v = v * 10 + cast(int) (nips[at] - '0'); at += 1; }
+    at += 1; #assert v == i.nips[k];
+  }
+  #assert at == nips.count + 1 && nlr_info_has(i, 42) && nlr_info_has(i, 77) && !nlr_info_has(i, 13);
+  #assert nlr_t_starts(nc_text(c[..], 4), "32 ") && nlr_t_starts(nc_text(c[..], 5), "10 ");
+  // refusals: a cut document, a document that is not an object, and a request without the header
+  #assert !nlr_info_read(doc[0..<doc.count - 1]).ok && !nlr_info_read("[]").ok && !nlr_info_read("{\"supported_nips\":[0]}").ok;
+  #assert !nlr_info_read("{\"limitation\":{\"max_subscriptions\":\"many\"}}").ok && nlr_info_read("{\"x\":{\"y\":[1]},\"name\":\"n\"}").ok;
+  pb: [1536] u8; #assert rr_nip11_pow(doc[0..<doc.count - 1], NLR_POW_BITS, pb[..]) == -1 && rr_nip11_pow(doc, NLR_POW_BITS, pb[..]) > doc.count;
+  #assert nlr_info_serve("Accept: text/html", hb[..]).count == 0 && nlr_info_serve("X-Nothing: 1", hb[..]).count == 0;
+}
+#test "nostr lab relays: a signed challenge logs in, and the same answer fails another challenge or relay" #steps 4000000000 {
+  c: [1] NostrCard; #assert nlr_card(2, c[..]) && nlr_t_shape(c[..], 3);
+  // the same login apart from the card, with nip42.coax's own verdicts
+  bytes: [32] u8; hb: [64] u8; challenge := nlr_challenge(1, bytes[..], hb[..]); #assert challenge.count == 64;
+  x: [1] NostrCard; #assert nc_text(c[..], 0) == nlr_t_hex(bytes[..], x[..]) && nlr_t_starts(challenge, nc_text(c[..], 0)[0..<24]);
+  n: [1] Nip42; ib: [128] u8; #assert nip42_init(n[..], NLR_RELAY_URL) == N42_OK && nip42_issue(n[..], 1, challenge, ib[..]).error == N42_OK;
+  tb: [512] u8; t := nip42_template(n[..], 1, NLR_NOW, tb[..]); #assert t.error == N42_OK && t.kind == 22242;
+  #assert nc_text(c[..], 1) == "22242 LOGIN EVENT" && nlr_t_starts(t.tags, nc_text(c[..], 2)[0..<39]);
+  #assert nlr_t_starts(t.tags, "[[\"relay\",\"wss://relay.example.com\"],[\"challenge\",\"");
+  eb: [1024] u8; event := nlr_sign(NLR_ALICE_KEY, t.created_at, t.kind, t.tags, t.content, eb[..]); scratch: [2048] u8;
+  a := nip42_admit(n[..], 1, NLR_NOW, event, scratch[..], false); #assert a.error == N42_OK;
+  key := a.public_key; kh: [64] u8; #assert nlr_hex32(key[..], kh[..]) == NLR_ALICE_PUB && nc_text(c[..], 3) == nlr_t_hex(key[..], x[..]);
+  #assert nlr_t_starts(nc_text(c[..], 4), "[\"OK\",\"") && nc_text(c[..], 4)[15..<28] == "...\",true,\"\"]";
+  // refused: another challenge, another relay, a stale clock, and an answer signed for nothing
+  bytes2: [32] u8; hb2: [64] u8; n2: [1] Nip42;
+  #assert nip42_init(n2[..], NLR_RELAY_URL) == N42_OK && nip42_issue(n2[..], 1, nlr_challenge(101, bytes2[..], hb2[..]), ib[..]).error == N42_OK;
+  #assert nip42_admit(n2[..], 1, NLR_NOW, event, scratch[..], false).error == N42_CHALLENGE;
+  n3: [1] Nip42; #assert nip42_init(n3[..], "wss://other.example.com") == N42_OK && nip42_issue(n3[..], 1, challenge, ib[..]).error == N42_OK;
+  #assert nip42_admit(n3[..], 1, NLR_NOW, event, scratch[..], false).error == N42_RELAY;
+  #assert nip42_admit(n[..], 1, NLR_NOW + N42_WINDOW + 1, event, scratch[..], false).error == N42_TIME;
+  #assert nc_text(c[..], 5) == rr_auth_text(RR_A_CHALLENGE) && c[0].row[5].tone == NC_BAD;
+  l: [1] NlrLogin; #assert nlr_login_open(l[..], NLR_RELAY_URL, challenge, ib[..]).count > 0;
+  #assert nlr_login_answer(l[..], "[\"EVENT\",{}]", NLR_NOW) == -1 && !rr_authed(l[0].auth[..]);
+}
+#test "nostr lab relays: a relay list says where Alice writes, and one relay of two is enough to read her" #steps 4000000000 {
+  c: [1] NostrCard; #assert nlr_card(3, c[..]) && nlr_t_shape(c[..], 4);
+  l := ob_list(NLR_LIST); #assert l.error == N65_OK && l.count == 3;
+  #assert l.write[0] && l.write[1] && !l.write[2] && !l.read[0] && !l.read[1] && l.read[2];
+  #assert nc_text(c[..], 0) == "10002 RELAY LIST" && nc_text(c[..], 1) == "wss://r1.example wss://r2.example" && nc_text(c[..], 2) == "wss://r3.example";
+  #assert nc_text(c[..], 3) == "2 RELAYS" && nc_text(c[..], 4) == "wss://r1.example" && nc_text(c[..], 5) == "wss://r2.example";
+  // two relays apart from the card: each holds the note; with the first one emptied (lost), the
+  // second still serves it to a reader who asks for Alice, and nothing to one who asks for Bob
+  nb: [512] u8; note := nlr_sign(NLR_ALICE_KEY, NLR_NOW, 1, "[]", NLR_TWO_NOTE, nb[..]);
+  relays: [2] NlrRelay;
+  for k: 0..<2 { nlr_relay_init(relays[k..<k + 1]); #assert nlr_admit(relays[k..<k + 1], note, NLR_NOW).reason == RS_ACCEPT; }
+  nlr_relay_init(relays[0..<1]);
+  #assert !nlr_read_author(relays[0..<1], NLR_ALICE_PUB, NLR_NOW).found;
+  got := nlr_read_author(relays[1..<2], NLR_ALICE_PUB, NLR_NOW); #assert got.found;
+  scratch: [1024] u8; #assert nlr_same32(got.id, nostr_event_read(note, scratch[..], false).id);
+  #assert !nlr_read_author(relays[1..<2], "dd308afec5777e13121fa72b9cc1b7cc0139715309b086c960e18fd969774eb8", NLR_NOW).found;
+  // a subscription is not caught up while a relay it asked is silent, and a relay it didn't ask is ignored
+  s: [1] ObSub; ob_sub_start(s[..], 3, 0, 3000);
+  #assert !ob_caught_up(s[..]) && ob_sub_event(s[..], 5, got.id) == OB_NOT_ASKED && ob_sub_closed(s[..], 0) && !ob_caught_up(s[..]);
+  #assert ob_sub_event(s[..], 1, got.id) == OB_NEW && ob_sub_eose(s[..], 1) && ob_caught_up(s[..]);
+  #assert ob_list(NLR_LIST_BAD).error == N65_MARKER;
+}
+#test "nostr lab relays: the author's deletion removes the note, another's does not, and an expired note is gone" #steps 6000000000 {
+  c: [1] NostrCard; #assert nlr_card(4, c[..]) && nlr_t_shape(c[..], 3);
+  #assert nlr_t_starts(nc_text(c[..], 1), "[[\"e\",\"") && nc_text(c[..], 1)[7..<19] == nc_text(c[..], 0)[0..<12];
+  #assert nc_text(c[..], 2) == "1 NOTE HELD" && nc_text(c[..], 3) == "0 NOTES HELD";
+  #assert nc_text(c[..], 4) == "[[\"expiration\",\"1794441660\"]]" && nc_text(c[..], 5) == "1 HELD BEFORE, 0 HELD AFTER";
+  // apart from the card, in the other order: Alice's request first, then the note is refused as deleted
+  r: [1] NlrRelay; nlr_relay_init(r[..]); idx: [6] int; scratch: [1024] u8;
+  nb: [512] u8; note := nlr_sign(NLR_ALICE_KEY, NLR_NOW - 300, 1, "[]", "published by accident", nb[..]);
+  id := nostr_event_read(note, scratch[..], false).id; x: [1] NostrCard; #assert nc_text(c[..], 0) == nlr_t_hex(id[..], x[..]);
+  tb: [128] u8; tags := nlr_delete_tags(id[..], tb[..]);
+  db: [640] u8; hers := nlr_sign(NLR_ALICE_KEY, NLR_NOW - 100, 5, tags, "", db[..]);
+  #assert nlr_admit(r[..], hers, NLR_NOW).reason == RS_ACCEPT && nlr_admit(r[..], note, NLR_NOW).reason == NSD_DELETED;
+  #assert nlr_held(r[..], 1, NLR_NOW, idx[..]) == 0 && nlr_held(r[..], 5, NLR_NOW, idx[..]) == 1;
+  out: [256] u8; ends: [4] int; fb: [640] u8; fn := nostr_message_write_event(note, fb[..], false);
+  #assert nlr_relay(r[..], cast(string) fb[0..<fn], NLR_NOW, out[..], ends[..]) == 1;
+  ok := nostr_message_read(cast(string) out[0..<ends[0]]); #assert ok.error == NM_OK && ok.type == NM_ACCEPT && !ok.accepted && NM_PREFIXES[ok.prefix - 1] == "blocked";
+  // a note already past its expiration is refused on arrival
+  xt: [64] u8; xb: [512] u8; old := nlr_sign(NLR_ALICE_KEY, NLR_NOW - 50, 1, nlr_expire_tags(NLR_NOW - 10, xt[..]), "too late", xb[..]);
+  #assert nlr_admit(r[..], old, NLR_NOW).reason == RS_EXPIRED;
+}
+#test "nostr lab relays: Negentropy finds exactly the notes each relay lacks" #steps 6000000000 {
+  c: [1] NostrCard; #assert nlr_card(5, c[..]) && nlr_t_shape(c[..], 2);
+  a: [1] NlrSide; b: [1] NlrSide; ids: [NLR_SYNC_NOTES] NegId; #assert nlr_sync_sets(a[..], b[..], ids[..]) && a[0].n == 3 && b[0].n == 3;
+  #assert nc_text(c[..], 0) == "3 NOTES" && nc_text(c[..], 1) == "3 NOTES";
+  // the difference by a full comparison of the two sets
+  only_a := 0; only_b := 0; first_a: [32] u8; first_b: [32] u8;
+  for i: 0..<a[0].n { found := false; for j: 0..<b[0].n { if nlr_same32(a[0].items[i].id, b[0].items[j].id) { found = true; } } if !found { only_a += 1; first_a = a[0].items[i].id; } }
+  for i: 0..<b[0].n { found := false; for j: 0..<a[0].n { if nlr_same32(b[0].items[i].id, a[0].items[j].id) { found = true; } } if !found { only_b += 1; first_b = b[0].items[i].id; } }
+  #assert only_a == 1 && only_b == 1;
+  x: [1] NostrCard; #assert nc_text(c[..], 3) == nlr_t_hex(first_a[..], x[..]) && nc_text(c[..], 4) == nlr_t_hex(first_b[..], x[..]);
+  s := nlr_sync_run(a[..], b[..]); #assert s.ok && s.frames >= 2 && s.frames % 2 == 0 && s.bytes > s.open_n;
+  #assert a[0].neg[0].have_n == 1 && a[0].neg[0].need_n == 1 && nlr_same32(a[0].have[0].b, first_a) && nlr_same32(a[0].need[0].b, first_b);
+  open := cast(string) s.open[0..<s.open_n];
+  #assert nlr_t_starts(open, "[\"NEG-OPEN\",\"lab\",{\"kinds\":[1]},\"61") && nlr_t_starts(open, nc_text(c[..], 2)[0..<39]);
+  // two equal sets: nothing to send either way
+  #assert nlr_sync_sets(a[..], b[..], ids[..]); b[0] = a[0];
+  e := nlr_sync_run(a[..], b[..]); #assert e.ok && a[0].neg[0].have_n == 0 && a[0].neg[0].need_n == 0;
+  // refused: a message cut short, and a version byte this side does not speak
+  fresh: [1] Neg; xb: [1024] u8; #assert neg_init(fresh[..], b[0].items[0..<b[0].n], false, 0) == NEG_OK;
+  #assert neg_reconcile(fresh[..], cast(string) s.first[0..<s.first_n - 1], xb[..]) == -1 && fresh[0].error == NEG_SHORT;
+  #assert neg_reconcile(fresh[..], "P", xb[..]) == -1 && fresh[0].error == NEG_VERSION_BYTE;
+}
+#test "nostr lab relays: the mined nonce gives an ID with the zero bits asked for, and an unmined claim is refused" #steps 6000000000 {
+  c: [1] NostrCard; #assert nlr_card(6, c[..]) && nlr_t_shape(c[..], 2);
+  tb: [128] u8; m := nlr_mine(tb[..]); #assert m.error == N13_MINE_OK && m.tries == m.nonce + 1 && m.tries <= 4000;
+  // the ID's zero bits, counted here bit by bit
+  id := m.id; zeros := 0; done := false;
+  for i: 0..<32 { for bit: 0..<8 { if !done { if (id[i] & (cast(u8) 0x80 >> bit)) == 0 { zeros += 1; } else { done = true; } } } }
+  #assert zeros >= NLR_POW_BITS && zeros == m.difficulty && zeros == nip13_difficulty(id);
+  x: [1] NostrCard; #assert nc_text(c[..], 3) == nlr_t_hex(id[..], x[..]) && nlr_t_starts(nc_text(c[..], 3), "00");
+  #assert nlr_t_starts(nc_text(c[..], 0), "10 ") && c[0].row[4].tone == NC_GOOD;
+  // no earlier nonce reaches the target: the miner's count is the first that does
+  pub: [32] u8; #assert hex_decode_checked(NLR_ALICE_PUB, pub[..], false).written == 32;
+  if m.nonce > 0 { ob: [128] u8; #assert nip13_mine(pub, NLR_NOW, 1, "[]", NLR_POW_NOTE, NLR_POW_BITS, 0, m.nonce, ob[..]).error == N13_MINE_LIMIT; }
+  // the signed mined note carries the key the miner hashed with, and a stricter relay refuses it
+  eb: [640] u8; event := nlr_sign(NLR_ALICE_KEY, NLR_NOW, 1, cast(string) tb[0..<m.tags_n], NLR_POW_NOTE, eb[..]); scratch: [2048] u8;
+  e := nostr_event_read(event, scratch[..], false); #assert e.error == NE_OK && nlr_same32(e.id, id) && nlr_same32(e.public_key, pub);
+  #assert nip13_admit(event, NLR_POW_BITS, scratch[..], false).error == N13_OK;
+  #assert nip13_admit(event, m.difficulty + 1, scratch[..], false).error != N13_OK;
+  #assert nlr_t_starts(nc_text(c[..], 5), "pow: difficulty ") && c[0].row[5].tone == NC_BAD;
+}
+#test "nostr lab relays: a card number past the last stops" {
+  c: [1] NostrCard; #assert !nlr_card(NLR_COUNT, c[..]) && c[0].stopped == 99 && !nlr_card(-1, c[..]);
+}

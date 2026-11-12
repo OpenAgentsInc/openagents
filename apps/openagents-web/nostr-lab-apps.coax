@@ -1,0 +1,595 @@
+// Nostr Lab's lessons for what people build: Git (NIP-34), data vending machines (90), badges (58), polls (88), and search and count (50, 45).
+// Each card is worked out at run time by coax/lib/nostr/ (nostr-lab-card.coax says what a card is):
+// the events are signed here, read back with their ID and signature checked, and every row, and both
+// lines under the rows, come from what the NIP's library file answered about them.
+//
+// The keys are BIP-340's published test vectors 0 to 3 (the ones the book's examples sign with): never
+// a real key, and no card shows a secret key. Their public keys are written here as the vectors
+// publish them, and every signed event is checked to carry the one its signer's secret key makes.
+// The signer's aux bytes are fixed zeros so a card is the same every time; a client takes 32 fresh
+// random bytes for every signature.
+//   coax/bin/coax test apps/openagents-web/nostr-lab-apps.coax --only "nostr lab"
+#run_steps 250000000;   // secp256k1's signing tables, built at compile time (event_sign.coax)
+// The search and count card answers from a relay's store: nip50.coax and nip45.coax load
+// store_index.coax and, through it, the relay's server-only files. No other load here names them.
+#load "../../coax/lib/nostr/nip50.coax";
+#load "../../coax/lib/nostr/nip45.coax";
+#load "../../coax/lib/nostr/nip34-event.coax";
+#load "../../coax/lib/nostr/nip90.coax";
+#load "../../coax/lib/nostr/nip58.coax";
+#load "../../coax/lib/nostr/nip88.coax";
+#load "../../coax/lib/nostr/event_sign.coax";
+#load "nostr-lab-card.coax";
+
+NLA_COUNT :: 5;
+NLA_ALICE :: 0; NLA_BOB :: 1; NLA_CAROL :: 2; NLA_DAVE :: 3;
+// BIP-340 test vectors 0 to 3: published secret keys, and the x-only public keys the vectors give for them.
+NLA_SECRET :: [4] string.[
+  "0000000000000000000000000000000000000000000000000000000000000003",
+  "b7e151628aed2a6abf7158809cf4f3c762e7160f38b4da56a784d9045190cfef",
+  "c90fdaa22168c234c4c6628b80dc1cd129024e088a67cc74020bbea63b14e5c9",
+  "0b432b2677937381aef05bb02a66ecd012773062cf3fa2549e44f58ed2401710"];
+NLA_PUB :: [4] string.[
+  "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+  "dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659",
+  "dd308afec5777e13121fa72b9cc1b7cc0139715309b086c960e18fd969774eb8",
+  "25d1dff95105f5253c4022f628a996ad3a0d95fbf21d468a1b33f8c160d8f517"];
+NLA_T0 :: 1794441600;   // 12 November 2026, 00:00 UTC: every card's clock starts here
+NLA_EV :: 4096;         // room for one signed event
+
+// Person who's public key, as the test vectors publish it. Zeros when the hex doesn't read.
+nla_pub :: (who: int) -> [32] u8 {
+  k: [32] u8; zero: [32] u8;
+  d := hex_decode_checked(NLA_PUB[who], k[..], false);
+  if d.error != NC_OK || d.written != 32 { return zero; }
+  return k;
+}
+// An event signed by person who into out, then read back with its ID and signature checked, and its
+// public key checked against the published one. verified is false when any step refused.
+nla_sign :: (who: int, created_at: int, kind: int, tags: string, content: string, out: [] u8) -> NostrEvent {
+  bad: NostrEvent; key: [32] u8; aux: [32] u8;
+  d := hex_decode_checked(NLA_SECRET[who], key[..], false);
+  if d.error != NC_OK || d.written != 32 { return bad; }
+  work: [1] NostrSignWork; scratch: [NLA_EV] u8; n := EVENT_MORE; calls := 0;
+  while n == EVENT_MORE && calls < 256 {
+    n = nostr_event_sign_step(key[..], aux[..], created_at, kind, tags, content, work[..], scratch[..], out, false);
+    calls += 1;
+  }
+  for i: 0..<32 { key[i] = 0; }
+  if n <= 0 { return bad; }
+  e := nostr_event_verify_vartime(cast(string) out[0..<n], scratch[..], false);
+  if e.error != NE_OK || !e.verified || !n34_same(e.public_key, nla_pub(who)) { return bad; }
+  return e;
+}
+// A row's value put together from pieces. n is -1 once a piece didn't fit, and the text is then empty.
+NlaText :: struct { b: [128] u8; n: int; }
+nla_s :: (t: [] NlaText, s: string) { t[0].n = json_raw(t[0].b[..], t[0].n, s); }
+nla_i :: (t: [] NlaText, v: int) { t[0].n = json_write_int(t[0].b[..], t[0].n, v); }
+nla_text :: (t: [] NlaText) -> string { if t[0].n < 0 { return ""; } return cast(string) t[0].b[0..<t[0].n]; }
+// A row "KIND <kind><mid><text>": "KIND 30617: Nostr Lab".
+nla_row_kind :: (c: [] NostrCard, label: string, kind: int, mid: string, text: string, tone: int) -> bool {
+  t: [1] NlaText; nla_s(t[..], "KIND "); nla_i(t[..], kind); nla_s(t[..], mid); nla_s(t[..], text);
+  return t[0].n > 0 && nc_row(c, label, nla_text(t[..]), tone);
+}
+// An event's content, decoded, into out. "" when it doesn't fit.
+nla_content :: (e: NostrEvent, out: [] u8) -> string {
+  n := json_unescape(e.original[e.content_from..<e.content_to], out);
+  if n < 0 { return ""; }
+  return cast(string) out[0..<n];
+}
+// 32 bytes as 64 hex digits, appended to a tag list being written.
+nla_hex :: (out: [] u8, at: int, key: [32] u8) -> int { h := n34_hex32(key); return json_raw(out, at, cast(string) h[..]); }
+
+// ---- 0. NIP-34: a repository, an issue on it, and whose status decides the issue's state ------------
+
+NLA_REPO_D :: "nostr-lab";
+NLA_REPO_NAME :: "Nostr Lab";
+NLA_REPO_CLONE :: "https://git.example.com/nostr-lab.git";
+NLA_ISSUE_SUBJECT :: "The lab door sticks";
+NLA_STATE :: [4] string.["OPEN", "RESOLVED", "CLOSED", "DRAFT"];   // N34_STATE_OPEN and on
+
+NlaGit :: struct {
+  buf: [4][NLA_EV] u8; address: [128] u8; address_n: int;
+  repo: NostrEvent;           // 30617 by Alice, naming Bob a maintainer
+  issue: NostrEvent;          // 1621 by Carol
+  resolved: NostrEvent;       // 1631 by Bob, the maintainer
+  closed: NostrEvent;         // 1632 by Dave, who is neither: later than Bob's
+  both: N34State;             // the issue's state with both statuses
+  alone: N34State;            // and with only Dave's
+}
+// Signs the four events and asks nip34 for the issue's state. 0, or the step that stopped.
+nla_git_work :: (g: [] NlaGit) -> int {
+  bob := nla_pub(NLA_BOB); t: [1024] u8;
+  n := json_raw(t[..], 0, "[[\"d\","); n = json_write_string(t[..], n, NLA_REPO_D);
+  n = json_raw(t[..], n, "],[\"name\","); n = json_write_string(t[..], n, NLA_REPO_NAME);
+  n = json_raw(t[..], n, "],[\"clone\","); n = json_write_string(t[..], n, NLA_REPO_CLONE);
+  n = json_raw(t[..], n, "],[\"maintainers\",\""); n = nla_hex(t[..], n, bob); n = json_raw(t[..], n, "\"]]");
+  if n < 0 { return 1; }
+  g[0].repo = nla_sign(NLA_ALICE, NLA_T0, N34_KIND_REPO, cast(string) t[0..<n], "", g[0].buf[0][..]);
+  if !g[0].repo.verified { return 2; }
+  re := nt_event_of(g[0].repo); r := n34_repo(re);
+  if r.status != N34_OK || !r.d.found || !r.name.found || !r.clone.found { return 3; }
+  // the repository's address: its kind, its author and its d
+  a := json_raw(g[0].address[..], 0, "30617:"); a = nla_hex(g[0].address[..], a, g[0].repo.public_key);
+  a = json_raw(g[0].address[..], a, ":"); a = json_raw(g[0].address[..], a, nt_raw(re, r.d.v[0]));
+  if a < 0 { return 4; }
+  g[0].address_n = a; address := cast(string) g[0].address[0..<a];
+  n = json_raw(t[..], 0, "[[\"a\",\""); n = json_raw(t[..], n, address); n = json_raw(t[..], n, "\"],[\"p\",\"");
+  n = nla_hex(t[..], n, g[0].repo.public_key); n = json_raw(t[..], n, "\"],[\"subject\","); n = json_write_string(t[..], n, NLA_ISSUE_SUBJECT);
+  n = json_raw(t[..], n, "]]");
+  if n < 0 { return 5; }
+  g[0].issue = nla_sign(NLA_CAROL, NLA_T0 + 60, N34_KIND_ISSUE, cast(string) t[0..<n], "It opens on the second push.", g[0].buf[1][..]);
+  if !g[0].issue.verified { return 6; }
+  n = json_raw(t[..], 0, "[[\"e\",\""); n = nla_hex(t[..], n, g[0].issue.id); n = json_raw(t[..], n, "\",\"\",\"root\"],[\"p\",\"");
+  n = nla_hex(t[..], n, g[0].issue.public_key); n = json_raw(t[..], n, "\"],[\"a\",\""); n = json_raw(t[..], n, address); n = json_raw(t[..], n, "\"]]");
+  if n < 0 { return 7; }
+  g[0].resolved = nla_sign(NLA_BOB, NLA_T0 + 200, N34_KIND_OPEN + N34_STATE_RESOLVED, cast(string) t[0..<n], "Fixed.", g[0].buf[2][..]);
+  g[0].closed = nla_sign(NLA_DAVE, NLA_T0 + 300, N34_KIND_OPEN + N34_STATE_CLOSED, cast(string) t[0..<n], "Not a bug.", g[0].buf[3][..]);
+  if !g[0].resolved.verified || !g[0].closed.verified { return 8; }
+  set := [2] N34Signed.[nt_signed_of(g[0].resolved), nt_signed_of(g[0].closed)];
+  g[0].both = n34_resolve(nt_signed_of(g[0].repo), nt_signed_of(g[0].issue), set[..]);
+  g[0].alone = n34_resolve(nt_signed_of(g[0].repo), nt_signed_of(g[0].issue), set[1..<2]);
+  return 0;
+}
+nla_git :: (c: [] NostrCard) -> bool {
+  g: [1] NlaGit; at := nla_git_work(g[..]); if at != 0 { return nc_stop(c, at); }
+  re := nt_event_of(g[0].repo); r := n34_repo(re); ie := nt_event_of(g[0].issue); i := n34_issue(ie);
+  if i.status != N34_OK || !i.fields.subject.found || nt_raw(ie, i.repo) != cast(string) g[0].address[0..<g[0].address_n] { return nc_stop(c, 10); }
+  // held: Bob is a maintainer, and his status is the one that decides
+  b := g[0].both;
+  if !n34_maintainer(re, g[0].resolved.public_key) { return nc_stop(c, 11); }
+  if b.status != N34_OK || b.winner != 0 || b.counted != 1 || b.state != n34_status(nt_event_of(g[0].resolved)).state { return nc_stop(c, 12); }
+  // refused: Dave's later status is ignored beside Bob's, and alone it leaves the issue open
+  if n34_maintainer(re, g[0].closed.public_key) || b.ignored != 1 { return nc_stop(c, 13); }
+  al := g[0].alone;
+  if al.status != N34_OK || al.winner != -1 || al.counted != 0 || al.ignored != 1 || al.state != N34_STATE_OPEN { return nc_stop(c, 14); }
+  nc_nodes(c, "REPO", "ISSUE", "STATUS", "PAGE");
+  ok := nla_row_kind(c, "REPOSITORY", g[0].repo.kind, ": ", nt_raw(re, r.name.v[0]), NC_PLAIN);
+  ok = ok && nc_row(c, "CLONE", nt_raw(re, r.clone.v[0]), NC_PLAIN);
+  maintainer := g[0].resolved.public_key;
+  ok = ok && nc_row_hex(c, "MAINTAINER", maintainer[..], NC_KEY);
+  ok = ok && nla_row_kind(c, "ISSUE", g[0].issue.kind, ": ", nt_raw(ie, i.fields.subject.v[0]), NC_PLAIN);
+  ok = ok && nla_row_kind(c, "STATUS", g[0].resolved.kind, " BY THE MAINTAINER", "", NC_VALUE);
+  ok = ok && nc_row(c, "ISSUE IS", NLA_STATE[b.state], NC_GOOD);
+  if !ok { return nc_stop(c, 15); }
+  return nc_done(c, "THE MAINTAINER'S STATUS DECIDES", "A STRANGER'S CLOSE: NOT COUNTED");
+}
+
+// ---- 1. NIP-90: a job request, feedback asking for payment, and the result matched to the request ----
+
+NLA_QUESTION :: "What is the capital of France?";
+NLA_ANSWER :: "Paris";
+NLA_JOB_KIND :: 5050;   // text generation; its result is kind 6050
+NLA_BID :: 10000;       // millisats: the most Alice will pay
+NLA_PRICE :: 5000;      // what Bob's machine asks
+NLA_DEAR :: 20000;      // a price over the bid
+NLA_WAIT :: 600;        // Alice waits ten minutes for an answer
+// A test invoice: a regtest human-readable part stating 50n (5,000 millisats) and a placeholder data
+// part. It can't be paid, and nothing here pays.
+NLA_INVOICE :: "lnbcrt50n1pnostrlabtest";
+
+NlaJobs :: struct {
+  buf: [4][NLA_EV] u8; work: [NLA_EV] u8;
+  request: NostrEvent;      // 5050 by Alice, for Bob's machine
+  feedback: NostrEvent;     // 7000 by Bob: payment-required, 5,000 millisats
+  result: NostrEvent;       // 6050 by Bob, carrying the request
+  dear: NostrEvent;         // 7000 by Bob asking 20,000 millisats
+  paid: N90Job;             // Alice's job after the feedback
+  done: N90Job;             // and after the result
+  refused: N90Job;          // a new job given the dear feedback
+}
+nla_jobs_work :: (j: [] NlaJobs) -> int {
+  t: [NLA_EV] u8;
+  in := [1] N90In.[N90In.{data = NLA_QUESTION, type = N90_TEXT}];
+  none: [1] N90Pair; no_relay: [1] string; machine := [1][32] u8.[nla_pub(NLA_BOB)];
+  n := n90_request_tags(in[..], none[0..<0], "text/plain", NLA_BID, no_relay[0..<0], machine[..], false, t[..]);
+  if n <= 0 { return 1; }
+  j[0].request = nla_sign(NLA_ALICE, NLA_T0, NLA_JOB_KIND, cast(string) t[0..<n], "", j[0].buf[0][..]);
+  if !j[0].request.verified { return 2; }
+  n = n90_reply_tags(j[0].request, N90_PAYMENT_REQUIRED, "", "", NLA_PRICE, NLA_INVOICE, t[..]);
+  if n <= 0 { return 3; }
+  j[0].feedback = nla_sign(NLA_BOB, NLA_T0 + 5, N90_FEEDBACK, cast(string) t[0..<n], "", j[0].buf[1][..]);
+  if !j[0].feedback.verified { return 4; }
+  n = n90_reply_tags(j[0].request, -1, "", "", -1, "", t[..]);
+  if n <= 0 { return 5; }
+  j[0].result = nla_sign(NLA_BOB, NLA_T0 + 10, NLA_JOB_KIND + N90_RESULT_OFFSET, cast(string) t[0..<n], NLA_ANSWER, j[0].buf[2][..]);
+  if !j[0].result.verified { return 6; }
+  n = n90_reply_tags(j[0].request, N90_PAYMENT_REQUIRED, "", "", NLA_DEAR, "", t[..]);
+  if n <= 0 { return 7; }
+  j[0].dear = nla_sign(NLA_BOB, NLA_T0 + 6, N90_FEEDBACK, cast(string) t[0..<n], "", j[0].buf[3][..]);
+  if !j[0].dear.verified { return 8; }
+  start := n90_job(j[0].request, NLA_WAIT);
+  j[0].paid = n90_step(start, j[0].request, j[0].feedback, NLA_T0 + 5, j[0].work[..]);
+  j[0].done = n90_step(j[0].paid, j[0].request, j[0].result, NLA_T0 + 12, j[0].work[..]);
+  j[0].refused = n90_step(start, j[0].request, j[0].dear, NLA_T0 + 6, j[0].work[..]);
+  return 0;
+}
+nla_jobs :: (c: [] NostrCard) -> bool {
+  j: [1] NlaJobs; at := nla_jobs_work(j[..]); if at != 0 { return nc_stop(c, at); }
+  r := n90_request(j[0].request); f := n90_reply(j[0].feedback); s := n90_reply(j[0].result);
+  if r.error != N90_OK || r.ni != 1 || r.inputs[0].type != N90_TEXT || r.bid < 0 { return nc_stop(c, 10); }
+  if f.error != N90_OK || f.status < 0 || s.error != N90_OK { return nc_stop(c, 11); }
+  // held: the feedback and the result both answer this request, the price is within the bid, and
+  // Alice's job goes from payment required to done with this result
+  if n90_match(j[0].request, j[0].feedback, j[0].work[..]) != N90_OK || n90_match(j[0].request, j[0].result, j[0].work[..]) != N90_OK { return nc_stop(c, 12); }
+  p := n90_price(r.bid, f.amount, cast(string) f.bolt11[0..<f.bolt11_n]);
+  if p.error != N90_OK || f.bolt11_n == 0 || n90_invoice(cast(string) f.bolt11[0..<f.bolt11_n]) != p.msats { return nc_stop(c, 13); }
+  if j[0].paid.state != N90_PAY || j[0].paid.owed != p.msats || j[0].done.state != N90_DONE || !ns_equal32(j[0].done.result, j[0].result.id) { return nc_stop(c, 14); }
+  if !ns_equal32(s.request, j[0].request.id) { return nc_stop(c, 15); }
+  // refused: a price over the bid closes the job as too dear, and nothing is owed
+  if j[0].refused.state != N90_TOO_DEAR || j[0].refused.error != N90_OVER_BID || j[0].refused.owed >= 0 { return nc_stop(c, 16); }
+  nc_nodes(c, "CUSTOMER", "RELAY", "MACHINE", "");
+  question := r.inputs[0].data; answer: [64] u8; named := s.request;
+  ok := nla_row_kind(c, "JOB REQUEST", r.kind, ": ", cast(string) question.b[0..<question.n], NC_PLAIN);
+  ok = ok && nc_row_int(c, "BID", r.bid, "MSATS AT MOST", NC_PLAIN);
+  ok = ok && nla_row_kind(c, "FEEDBACK", f.kind, ": ", N90_STATUS_NAMES[f.status], NC_PLAIN);
+  ok = ok && nc_row_int(c, "PRICE", p.msats, "MSATS (TEST INVOICE, NOT PAID)", NC_PLAIN);
+  ok = ok && nla_row_kind(c, "RESULT", s.kind, ": ", nla_content(j[0].result, answer[..]), NC_GOOD);
+  ok = ok && nc_row_hex(c, "FOR REQUEST", named[..], NC_VALUE);
+  if !ok { return nc_stop(c, 17); }
+  return nc_done(c, "RESULT MATCHED TO ITS REQUEST", "PRICE OVER THE BID: NOT PAID");
+}
+
+// ---- 2. NIP-58: a badge defined, awarded and worn ----------------------------------------------
+
+NLA_BADGE_D :: "lab-walker";
+NLA_BADGE_NAME :: "Nostr Lab Walker";
+
+NlaBadges :: struct {
+  buf: [4][NLA_EV] u8;
+  definition: NostrEvent;   // 30009 by Alice, the issuer
+  award: NostrEvent;        // 8 by Alice, naming Bob
+  profile: NostrEvent;      // 10008 by Bob, listing the badge and its award
+  forged: NostrEvent;       // 8 by Dave, awarding Alice's badge to Bob
+  pair: [2] N58Pair;        // the profile's pairs with the award fetched
+  shown: N58Profile;
+  bare_pair: [2] N58Pair;   // and with no award fetched
+  bare: N58Profile;
+}
+nla_badges_work :: (b: [] NlaBadges) -> int {
+  t: [1024] u8;
+  n := json_raw(t[..], 0, "[[\"d\","); n = json_write_string(t[..], n, NLA_BADGE_D);
+  n = json_raw(t[..], n, "],[\"name\","); n = json_write_string(t[..], n, NLA_BADGE_NAME);
+  n = json_raw(t[..], n, "],[\"description\",\"Walked every station of Nostr Lab\"]]");
+  if n < 0 { return 1; }
+  b[0].definition = nla_sign(NLA_ALICE, NLA_T0, N58_KIND_DEFINITION, cast(string) t[0..<n], "", b[0].buf[0][..]);
+  if !b[0].definition.verified { return 2; }
+  // the award: the badge's address (30009, its issuer, its d) and the user it goes to
+  n = json_raw(t[..], 0, "[[\"a\",\"30009:"); n = nla_hex(t[..], n, b[0].definition.public_key); n = json_raw(t[..], n, ":");
+  n = json_raw(t[..], n, NLA_BADGE_D); n = json_raw(t[..], n, "\"],[\"p\",\""); n = nla_hex(t[..], n, nla_pub(NLA_BOB)); n = json_raw(t[..], n, "\"]]");
+  if n < 0 { return 3; }
+  b[0].award = nla_sign(NLA_ALICE, NLA_T0 + 60, N58_KIND_AWARD, cast(string) t[0..<n], "", b[0].buf[1][..]);
+  b[0].forged = nla_sign(NLA_DAVE, NLA_T0 + 90, N58_KIND_AWARD, cast(string) t[0..<n], "", b[0].buf[3][..]);
+  if !b[0].award.verified || !b[0].forged.verified { return 4; }
+  // the profile: the same address, then the award's id
+  n = json_raw(t[..], 0, "[[\"a\",\"30009:"); n = nla_hex(t[..], n, b[0].definition.public_key); n = json_raw(t[..], n, ":");
+  n = json_raw(t[..], n, NLA_BADGE_D); n = json_raw(t[..], n, "\"],[\"e\",\""); n = nla_hex(t[..], n, b[0].award.id); n = json_raw(t[..], n, "\"]]");
+  if n < 0 { return 5; }
+  b[0].profile = nla_sign(NLA_BOB, NLA_T0 + 120, N58_KIND_PROFILE, cast(string) t[0..<n], "", b[0].buf[2][..]);
+  if !b[0].profile.verified { return 6; }
+  fetched := [1] NostrEvent.[b[0].award];
+  b[0].shown = n58_profile(b[0].profile, fetched[..], b[0].pair[..]);
+  b[0].bare = n58_profile(b[0].profile, fetched[0..<0], b[0].bare_pair[..]);
+  return 0;
+}
+nla_badges :: (c: [] NostrCard) -> bool {
+  b: [1] NlaBadges; at := nla_badges_work(b[..]); if at != 0 { return nc_stop(c, at); }
+  d := n58_definition(b[0].definition); w := n58_award(b[0].award);
+  if d.status != N58_OK || d.name.n == 0 { return nc_stop(c, 10); }
+  // held: the award is signed by the badge's issuer and names Bob, and Bob's profile shows it
+  if w.status != N58_OK || w.awardees != 1 || !ns_equal32(w.address.pubkey, b[0].definition.public_key) { return nc_stop(c, 11); }
+  if !n58_names(b[0].award, b[0].profile.public_key) { return nc_stop(c, 12); }
+  s := b[0].shown;
+  if s.status != N58_OK || s.n != 1 || s.shown != 1 || b[0].pair[0].verdict != N58_SHOWN || !ns_equal32(b[0].pair[0].award, b[0].award.id) { return nc_stop(c, 13); }
+  // refused: the same award signed by a key that is not the issuer, and a profile whose award is not there
+  if n58_award(b[0].forged).status != N58_ISSUER { return nc_stop(c, 14); }
+  if b[0].bare.status != N58_OK || b[0].bare.n != 1 || b[0].bare.shown != 0 || b[0].bare_pair[0].verdict != N58_UNFETCHED { return nc_stop(c, 15); }
+  nc_nodes(c, "ISSUER", "AWARD", "PROFILE", "VIEWER");
+  name := d.name; issuer := w.address.pubkey; user := b[0].profile.public_key; t: [1] NlaText;
+  nla_i(t[..], s.shown); nla_s(t[..], " OF "); nla_i(t[..], s.n); nla_s(t[..], " LISTED");
+  ok := nla_row_kind(c, "BADGE", b[0].definition.kind, ": ", cast(string) name.b[0..<name.n], NC_PLAIN);
+  ok = ok && nc_row_hex(c, "ISSUER", issuer[..], NC_KEY);
+  ok = ok && nla_row_kind(c, "AWARD", b[0].award.kind, " SIGNED BY THE ISSUER", "", NC_VALUE);
+  ok = ok && nc_row_hex(c, "AWARDED TO", user[..], NC_KEY);
+  ok = ok && nla_row_kind(c, "PROFILE", b[0].profile.kind, " BY THE AWARDED KEY", "", NC_VALUE);
+  ok = ok && t[0].n > 0 && nc_row(c, "BADGES SHOWN", nla_text(t[..]), NC_GOOD);
+  if !ok { return nc_stop(c, 16); }
+  return nc_done(c, "AWARD BY THE ISSUER: BADGE SHOWN", "AWARD BY ANOTHER KEY: REFUSED");
+}
+
+// ---- 3. NIP-88: a poll, and one vote per key --------------------------------------------------
+
+NLA_POLL_QUESTION :: "Ship Nostr Lab today?";
+NLA_POLL_OPEN :: 3600;   // the poll ends an hour after it is asked
+NLA_VOTES :: 4;
+// The responses: Bob votes no, Carol yes, Bob again yes (his newer vote), and Dave no after the end.
+NLA_VOTE_BY :: [NLA_VOTES] int.[NLA_BOB, NLA_CAROL, NLA_BOB, NLA_DAVE];
+NLA_VOTE_AT :: [NLA_VOTES] int.[60, 120, 300, 7200];
+NLA_VOTE_FOR :: [NLA_VOTES] string.["no", "yes", "yes", "no"];
+
+NlaPolls :: struct {
+  buf: [1 + NLA_VOTES][NLA_EV] u8;
+  poll: NostrEvent;                 // 1068 by Alice
+  vote: [NLA_VOTES] NostrEvent;     // 1018
+  tally: N88Tally;
+}
+nla_polls_work :: (p: [] NlaPolls) -> int {
+  t: [1024] u8;
+  n := json_raw(t[..], 0, "[[\"option\",\"yes\",\"Yes\"],[\"option\",\"no\",\"No\"],[\"polltype\",\"singlechoice\"],[\"endsAt\",\"");
+  n = json_write_int(t[..], n, NLA_T0 + NLA_POLL_OPEN); n = json_raw(t[..], n, "\"]]");
+  if n < 0 { return 1; }
+  p[0].poll = nla_sign(NLA_ALICE, NLA_T0, N88_KIND_POLL, cast(string) t[0..<n], NLA_POLL_QUESTION, p[0].buf[0][..]);
+  if !p[0].poll.verified { return 2; }
+  for k: 0..<NLA_VOTES {
+    pick := [1] string.[NLA_VOTE_FOR[k]];
+    n = n88_response_tags(p[0].poll.id, pick[..], t[..]);
+    if n <= 0 { return 3; }
+    p[0].vote[k] = nla_sign(NLA_VOTE_BY[k], NLA_T0 + NLA_VOTE_AT[k], N88_KIND_RESPONSE, cast(string) t[0..<n], "", p[0].buf[1 + k][..]);
+    if !p[0].vote[k].verified { return 4 + k; }
+  }
+  p[0].tally = n88_tally(p[0].poll, p[0].vote[..]);
+  return 0;
+}
+nla_polls :: (c: [] NostrCard) -> bool {
+  p: [1] NlaPolls; at := nla_polls_work(p[..]); if at != 0 { return nc_stop(c, at); }
+  q := n88_poll(p[0].poll); t := p[0].tally;
+  if q.status != N88_OK || q.n != 2 || !q.single || !q.has_end || t.status != N88_OK { return nc_stop(c, 10); }
+  read := 0; for k: 0..<NLA_VOTES { if n88_response(p[0].vote[k]).status == N88_OK { read += 1; } }
+  if read != NLA_VOTES || t.refused != 0 || t.repeated != 0 { return nc_stop(c, 11); }
+  // held: Bob sent two votes and has one, his newer; every vote counted is one key's
+  if !n88_counts(p[0].vote[0], p[0].poll.id, q) || !n88_counts(p[0].vote[2], p[0].poll.id, q) || !n88_newer(p[0].vote[2], p[0].vote[0]) { return nc_stop(c, 12); }
+  total := 0; for k: 0..<q.n { total += t.counts[k]; }
+  if t.superseded != 1 || total + t.blank != t.voters || t.voters + t.superseded + t.late != read { return nc_stop(c, 13); }
+  // refused: Dave's vote is dated after endsAt, so it is not counted
+  if n88_counts(p[0].vote[3], p[0].poll.id, q) || p[0].vote[3].created_at <= q.ends_at || t.late != 1 { return nc_stop(c, 14); }
+  nc_nodes(c, "ASKER", "POLL", "VOTERS", "TALLY");
+  question: [64] u8; line: [1] NlaText; left: [1] NlaText;
+  for k: 0..<q.n {
+    label := q.options[k].label;
+    if k > 0 { nla_s(line[..], ", "); }
+    nla_s(line[..], cast(string) label.b[0..<label.n]); nla_s(line[..], " "); nla_i(line[..], t.counts[k]);
+  }
+  nla_i(left[..], t.superseded); nla_s(left[..], " OLDER VOTE, "); nla_i(left[..], t.late); nla_s(left[..], " LATE VOTE");
+  ok := nla_row_kind(c, "POLL", p[0].poll.kind, ": ", nla_content(p[0].poll, question[..]), NC_PLAIN);
+  ok = ok && nc_row_int(c, "ENDS AT", q.ends_at, "(UNIX TIME)", NC_PLAIN);
+  ok = ok && nc_row_int(c, "RESPONSES", read, "KIND 1018 EVENTS", NC_PLAIN);
+  ok = ok && nc_row_int(c, "VOTERS", t.voters, "KEYS", NC_KEY);
+  ok = ok && line[0].n > 0 && nc_row(c, "TALLY", nla_text(line[..]), NC_GOOD);
+  ok = ok && left[0].n > 0 && nc_row(c, "NOT COUNTED", nla_text(left[..]), NC_BAD);
+  if !ok { return nc_stop(c, 15); }
+  return nc_done(c, "ONE VOTE PER KEY: THE NEWEST", "VOTE AFTER THE END: NOT COUNTED");
+}
+
+// ---- 4. NIP-50 and NIP-45: ask a relay to search, and to count ----------------------------------
+
+NLA_NOTES :: 3;
+NLA_NOTE :: [NLA_NOTES] string.["Coax compiles Coax.", "Nostr relays, written in Coax", "nostr relay, nostr client, Coax"];
+// The filter a client sends in a REQ: two words, and an extension this relay does not know.
+NLA_SEARCH :: "{\"search\":\"nostr coax language:en\"}";
+NLA_SEARCH_BAD :: "{\"search\":5}";
+NLA_COUNT_REQ :: "[\"COUNT\",\"c\",{\"kinds\":[1]}]";
+NLA_NOW :: NLA_T0 + 600;   // the relay's clock
+
+// A relay's store of up to 8 records, chapter 36's index, the word index, and room for one request.
+NlaRelay :: struct {
+  note: [NLA_NOTES][1024] u8;
+  arena: [4096] u8; recs: [8] RsdRec; s: [1] RsdStore;
+  by_id: [8] int; by_ak: [8] int; by_time: [8] int; tag_key: [16] int; tag_rec: [16] int; ix: [1] NsiIndex;
+  key: [64] int; rec: [64] int; x: [1] N50Index;
+  strs: [16] string; ints: [8] int; tags: [4] NostrTagFilter; bytes: [256] u8; sp: [1] FrSpace;
+  f: [1] NostrFilter; search: [1] FrSearch; qbuf: [128] u8; q: [1] N50Query;
+  out: [8] int; score: [8] int; found: N50Result;
+  w: [1] N45Work; answer: [128] u8; answer_n: int;
+  buf: [1024] u8; scratch: [2048] u8;
+  bad_search: int;                 // what filter_read_search says to a search that is a number
+}
+nla_relay_work :: (r: [] NlaRelay) -> int {
+  r[0].s[0] = RsdStore.{}; r[0].s[0].arena = r[0].arena[..]; r[0].s[0].recs = r[0].recs[..];
+  r[0].ix[0] = NsiIndex.{by_id = r[0].by_id[..], by_ak = r[0].by_ak[..], by_time = r[0].by_time[..], tag_key = r[0].tag_key[..], tag_rec = r[0].tag_rec[..]};
+  r[0].x[0] = N50Index.{key = r[0].key[..], rec = r[0].rec[..]};
+  r[0].sp[0] = FrSpace.{strs = r[0].strs[..], ints = r[0].ints[..], tags = r[0].tags[..], bytes = r[0].bytes[..]};
+  // three notes by one key, through the relay's admission: read, signature, store
+  for k: 0..<NLA_NOTES {
+    e := nla_sign(NLA_BOB, NLA_T0 + 100 * k, 1, "[]", NLA_NOTE[k], r[0].note[k][..]);
+    if !e.verified { return 1 + k; }
+    a := rs_admit_verified(rs_admit_read(e.original, NLA_NOW, false, false, r[0].scratch[..]), e);
+    if a.reason != RS_ACCEPT || rsd_admit(r[0].s[..], a, e.original) != RS_ACCEPT { return 4 + k; }
+  }
+  if !nsi_build(r[0].s[..], r[0].ix[..]) || !n50_build(r[0].s[..], r[0].x[..], r[0].buf[..]) { return 7; }
+  // the search: the filter read, its search string parsed, the word index asked
+  if filter_read_search(NLA_SEARCH, r[0].f[..], r[0].sp[..], r[0].search[..]) != FR_OK || !r[0].search[0].has { return 8; }
+  if n50_parse(r[0].search[0].text, r[0].qbuf[..], r[0].q[..]) != N50_OK { return 9; }
+  r[0].found = n50_query(r[0].s[..], r[0].ix[..], r[0].x[..], r[0].f[0], r[0].q[0], NLA_NOW, r[0].buf[..], r[0].out[..], r[0].score[..]);
+  // the count: one COUNT frame through the relay's answer
+  r[0].answer_n = n45_answer(NLA_COUNT_REQ, r[0].s[..], r[0].ix[..], NLA_NOW, r[0].w[..], r[0].answer[..]);
+  if r[0].answer_n <= 0 { return 10; }
+  // a search that is not a string, read with a filter and space of its own
+  strs: [4] string; ints: [4] int; tags: [2] NostrTagFilter; bytes: [64] u8;
+  sp: [1] FrSpace; sp[0] = FrSpace.{strs = strs[..], ints = ints[..], tags = tags[..], bytes = bytes[..]};
+  f: [1] NostrFilter; q: [1] FrSearch;
+  r[0].bad_search = filter_read_search(NLA_SEARCH_BAD, f[..], sp[..], q[..]);
+  return 0;
+}
+// Record i's content, decoded into the relay's buffer.
+nla_note_text :: (r: [] NlaRelay, i: int) -> string {
+  n := json_unescape(n50_content(rsd_text(r[0].s[..], i)), r[0].buf[..]);
+  if n < 0 { return ""; }
+  return cast(string) r[0].buf[0..<n];
+}
+nla_relay_row :: (c: [] NostrCard, r: [] NlaRelay, label: string, k: int) -> bool {
+  t: [1] NlaText; nla_s(t[..], "SCORE "); nla_i(t[..], r[0].score[k]); nla_s(t[..], ": "); nla_s(t[..], nla_note_text(r, r[0].out[k]));
+  return t[0].n > 0 && nc_row(c, label, nla_text(t[..]), NC_GOOD);
+}
+nla_relay :: (c: [] NostrCard) -> bool {
+  r: [1] NlaRelay; at := nla_relay_work(r[..]); if at != 0 { return nc_stop(c, at); }
+  q := r[0].q[0]; found := r[0].found;
+  // held: two terms, two matches, the higher score first, each score what the note's own words give;
+  // and the count is every stored note of kind 1
+  if q.n != 2 || found.n != 2 || r[0].score[0] <= r[0].score[1] || r[0].score[1] <= 0 { return nc_stop(c, 11); }
+  for k: 0..<found.n { if n50_score(nla_note_text(r[..], r[0].out[k]), q) != r[0].score[k] { return nc_stop(c, 12); } }
+  counted := n45_read_response(cast(string) r[0].answer[0..<r[0].answer_n]);
+  if counted.error != N45_OK || counted.count != r[0].s[0].n || counted.count != NLA_NOTES { return nc_stop(c, 13); }
+  // refused: the extension it does not know is ignored, not searched for; a search that is a number is refused
+  if q.ignored != 1 || q.spam { return nc_stop(c, 14); }
+  for k: 0..<q.n { if q.terms[k] != "nostr" && q.terms[k] != "coax" { return nc_stop(c, 15); } }
+  if r[0].bad_search == FR_OK { return nc_stop(c, 16); }
+  nc_nodes(c, "CLIENT", "RELAY", "STORE", "");
+  ok := nc_row(c, "REQ FILTER", NLA_SEARCH, NC_PLAIN);
+  ok = ok && nc_row_int(c, "IGNORED", q.ignored, "UNKNOWN EXTENSION (language:en)", NC_BAD);
+  ok = ok && nla_relay_row(c, r[..], "BEST MATCH", 0);
+  ok = ok && nla_relay_row(c, r[..], "NEXT MATCH", 1);
+  ok = ok && nc_row(c, "COUNT REQUEST", NLA_COUNT_REQ, NC_PLAIN);
+  ok = ok && nc_row(c, "RELAY ANSWERS", cast(string) r[0].answer[0..<r[0].answer_n], NC_VALUE);
+  if !ok { return nc_stop(c, 17); }
+  return nc_done(c, "BEST MATCH FIRST, AND A COUNT", "A SEARCH THAT IS A NUMBER: REFUSED");
+}
+
+// Card k of this file (0 and up), filled. False when the lesson stopped (c[0].stopped says where).
+nla_card :: (k: int, c: [] NostrCard) -> bool {
+  if k == 0 { return nla_git(c); }
+  if k == 1 { return nla_jobs(c); }
+  if k == 2 { return nla_badges(c); }
+  if k == 3 { return nla_polls(c); }
+  if k == 4 { return nla_relay(c); }
+  return nc_stop(c, 99);
+}
+
+// ---- checks ---------------------------------------------------------------------------------
+
+// Every label, value, box and line of a filled card fits the face and is ASCII 32 to 126.
+nla_fits :: (c: [] NostrCard) -> bool {
+  if !c[0].ready || c[0].stopped != 0 || c[0].nodes < 2 || c[0].rows < 3 || c[0].good.count == 0 || c[0].bad.count == 0 { return false; }
+  for k: 0..<c[0].nodes { if c[0].node[k].count > NC_NODE { return false; } }
+  for k: 0..<c[0].rows {
+    v := nc_text(c, k); l := nc_label(c, k);
+    if v.count == 0 || l.count == 0 { return false; }
+    if v.count >= 3 && v[v.count - 3..<v.count] == "..." && v.count == NC_TEXT && c[0].row[k].tone != NC_KEY && c[0].row[k].tone != NC_VALUE { return false; }   // words cut short
+    for i: 0..<v.count { if v[i] < 32 || v[i] > 126 { return false; } }
+  }
+  return true;
+}
+// An event's text with the letter at `at` changed: the copy in out.
+nla_changed :: (e: NostrEvent, at: int, out: [] u8) -> string {
+  for i: 0..<e.original.count { out[i] = e.original[i]; }
+  out[at] = ifx out[at] == 'x' then 'y' else 'x';
+  return cast(string) out[0..<e.original.count];
+}
+
+#test "nostr lab apps: NIP-34, the maintainer's status decides the issue and a stranger's does not count" #steps 20000000000 {
+  c: [1] NostrCard; #assert nla_card(0, c[..]) && nla_fits(c[..]) && c[0].rows == 6;
+  #assert nc_text(c[..], 0) == "KIND 30617: Nostr Lab" && nc_text(c[..], 1) == NLA_REPO_CLONE && nc_text(c[..], 3) == "KIND 1621: The lab door sticks";
+  #assert nc_text(c[..], 2)[0..<24] == NLA_PUB[NLA_BOB][0..<24];   // the maintainer is BIP-340 vector 1's public key
+  #assert nc_text(c[..], 4) == "KIND 1631 BY THE MAINTAINER" && nc_text(c[..], 5) == "RESOLVED";
+  // the same events, asked again in other orders and sets
+  g: [1] NlaGit; #assert nla_git_work(g[..]) == 0;
+  repo := nt_signed_of(g[0].repo); issue := nt_signed_of(g[0].issue); bob := nt_signed_of(g[0].resolved); dave := nt_signed_of(g[0].closed);
+  #assert dave.created_at > bob.created_at;   // the stranger's status is the newer one, and still loses
+  swapped := [2] N34Signed.[dave, bob]; s := n34_resolve(repo, issue, swapped[..]);
+  #assert s.status == N34_OK && s.winner == 1 && s.state == N34_STATE_RESOLVED && s.counted == 1 && s.ignored == 1;
+  none: [1] N34Signed; s = n34_resolve(repo, issue, none[0..<0]);
+  #assert s.status == N34_OK && s.state == N34_STATE_OPEN && s.winner == -1;
+  // the issue's author may close her own issue: Carol is not a maintainer, but it is hers
+  #assert !n34_maintainer(repo.e, issue.public_key) && n34_maintainer(repo.e, bob.public_key) && !n34_maintainer(repo.e, dave.public_key);
+  // against a repository of the same name by another key, the issue is elsewhere
+  other := repo; other.public_key = dave.public_key;
+  #assert n34_resolve(other, issue, swapped[..]).status == N34_ELSEWHERE;
+  // one letter of the status changed: the event no longer verifies
+  copy: [NLA_EV] u8; scratch: [NLA_EV] u8;
+  #assert !nostr_event_verify_vartime(nla_changed(g[0].resolved, g[0].resolved.content_from, copy[..]), scratch[..], false).verified;
+}
+#test "nostr lab apps: NIP-90, the result embeds its request, and a price over the bid is not paid" #steps 20000000000 {
+  c: [1] NostrCard; #assert nla_card(1, c[..]) && nla_fits(c[..]) && c[0].rows == 6;
+  #assert nc_text(c[..], 0) == "KIND 5050: What is the capital of France?" && nc_text(c[..], 1) == "10000 MSATS AT MOST";
+  #assert nc_text(c[..], 2) == "KIND 7000: payment-required" && nc_text(c[..], 3) == "5000 MSATS (TEST INVOICE, NOT PAID)" && nc_text(c[..], 4) == "KIND 6050: Paris";
+  j: [1] NlaJobs; #assert nla_jobs_work(j[..]) == 0;
+  // the row names the request's own ID
+  d: [1] NostrCard; id := j[0].request.id; #assert nc_row_hex(d[..], "ID", id[..], NC_VALUE) && nc_text(c[..], 5) == nc_text(d[..], 0);
+  // the request the result carries is the request, byte for byte
+  half: [NLA_EV] u8; s := n90_reply(j[0].result);
+  n := n53_value(j[0].result, s.request_tag, 1, half[..]);
+  #assert n > 0 && cast(string) half[0..<n] == j[0].request.original;
+  // the invoice is a test one: regtest, and it states the feedback's amount
+  #assert NLA_INVOICE[0..<6] == "lnbcrt" && n90_invoice(NLA_INVOICE) == NLA_PRICE && n90_reply(j[0].feedback).amount == NLA_PRICE;
+  // refusals: the price over the bid, the result taken as another job's, and a result of another kind
+  #assert n90_price(NLA_BID, NLA_DEAR, "").error == N90_OVER_BID && n90_price(NLA_BID, NLA_PRICE, NLA_INVOICE).error == N90_OK;
+  #assert j[0].refused.state == N90_TOO_DEAR && j[0].done.state == N90_DONE && j[0].done.owed == NLA_PRICE;
+  other := j[0].request; other.id[0] ^= 1;
+  #assert n90_match(other, j[0].result, j[0].work[..]) == N90_E && n90_match(j[0].request, j[0].result, j[0].work[..]) == N90_OK;
+  wrong := j[0].request; wrong.kind = 5051;
+  #assert n90_match(wrong, j[0].result, j[0].work[..]) == N90_KIND;
+  // the result after the deadline is not taken
+  late := n90_step(n90_job(j[0].request, NLA_WAIT), j[0].request, j[0].result, NLA_T0 + NLA_WAIT + 1, j[0].work[..]);
+  #assert late.state == N90_EXPIRED;
+}
+#test "nostr lab apps: NIP-58, only the issuer's award puts a badge on a profile" #steps 20000000000 {
+  c: [1] NostrCard; #assert nla_card(2, c[..]) && nla_fits(c[..]) && c[0].rows == 6;
+  #assert nc_text(c[..], 0) == "KIND 30009: Nostr Lab Walker" && nc_text(c[..], 2) == "KIND 8 SIGNED BY THE ISSUER";
+  #assert nc_text(c[..], 1)[0..<24] == NLA_PUB[NLA_ALICE][0..<24] && nc_text(c[..], 3)[0..<24] == NLA_PUB[NLA_BOB][0..<24];
+  #assert nc_text(c[..], 4) == "KIND 10008 BY THE AWARDED KEY" && nc_text(c[..], 5) == "1 OF 1 LISTED";
+  b: [1] NlaBadges; #assert nla_badges_work(b[..]) == 0;
+  #assert n58_award(b[0].award).status == N58_OK && n58_award(b[0].forged).status == N58_ISSUER;
+  #assert n58_names(b[0].award, nla_pub(NLA_BOB)) && !n58_names(b[0].award, nla_pub(NLA_CAROL));
+  // a profile fetched with only the forged award shows nothing; with both, one badge
+  pair: [2] N58Pair; forged := [1] NostrEvent.[b[0].forged];
+  r := n58_profile(b[0].profile, forged[..], pair[..]);
+  #assert r.status == N58_OK && r.n == 1 && r.shown == 0 && pair[0].verdict == N58_UNFETCHED;
+  both := [2] NostrEvent.[b[0].forged, b[0].award];
+  r = n58_profile(b[0].profile, both[..], pair[..]);
+  #assert r.shown == 1 && pair[0].verdict == N58_SHOWN;
+  // the same profile under another owner's key: the award does not name that owner
+  carols := b[0].profile; carols.public_key = nla_pub(NLA_CAROL);
+  real := [1] NostrEvent.[b[0].award];
+  r = n58_profile(carols, real[..], pair[..]);
+  #assert r.shown == 0 && pair[0].verdict == N58_NOT_OWNER;
+}
+#test "nostr lab apps: NIP-88, a key's newest vote counts once and a late vote not at all" #steps 20000000000 {
+  c: [1] NostrCard; #assert nla_card(3, c[..]) && nla_fits(c[..]) && c[0].rows == 6;
+  #assert nc_text(c[..], 0) == "KIND 1068: Ship Nostr Lab today?" && nc_text(c[..], 2) == "4 KIND 1018 EVENTS";
+  #assert nc_text(c[..], 3) == "2 KEYS" && nc_text(c[..], 4) == "Yes 2, No 0" && nc_text(c[..], 5) == "1 OLDER VOTE, 1 LATE VOTE";
+  p: [1] NlaPolls; #assert nla_polls_work(p[..]) == 0;
+  // the tally does not depend on the order the votes arrive in
+  back: [NLA_VOTES] NostrEvent; for k: 0..<NLA_VOTES { back[k] = p[0].vote[NLA_VOTES - 1 - k]; }
+  t := n88_tally(p[0].poll, back[..]);
+  #assert t.counts[0] == 2 && t.counts[1] == 0 && t.voters == 2 && t.superseded == 1 && t.late == 1;
+  // without Bob's second vote his first counts: no, not yes
+  first := [2] NostrEvent.[p[0].vote[0], p[0].vote[1]];
+  t = n88_tally(p[0].poll, first[..]);
+  #assert t.counts[0] == 1 && t.counts[1] == 1 && t.voters == 2 && t.superseded == 0;
+  // the same response sent twice adds nothing
+  twice := [3] NostrEvent.[p[0].vote[1], p[0].vote[1], p[0].vote[1]];
+  t = n88_tally(p[0].poll, twice[..]);
+  #assert t.counts[0] == 1 && t.voters == 1;
+  // the late vote alone: nobody voted
+  late := [1] NostrEvent.[p[0].vote[3]];
+  t = n88_tally(p[0].poll, late[..]);
+  #assert t.voters == 0 && t.late == 1 && t.counts[0] == 0 && t.counts[1] == 0;
+}
+#test "nostr lab apps: NIP-50 and NIP-45, matches come best first and the count is the store's" #steps 20000000000 {
+  c: [1] NostrCard; #assert nla_card(4, c[..]) && nla_fits(c[..]) && c[0].rows == 6;
+  #assert nc_text(c[..], 0) == NLA_SEARCH && nc_text(c[..], 1) == "1 UNKNOWN EXTENSION (language:en)";
+  #assert nc_text(c[..], 2) == "SCORE 3: nostr relay, nostr client, Coax" && nc_text(c[..], 3) == "SCORE 2: Nostr relays, written in Coax";
+  #assert nc_text(c[..], 4) == NLA_COUNT_REQ && nc_text(c[..], 5) == "[\"COUNT\",\"c\",{\"count\":3}]";
+  r: [1] NlaRelay; #assert nla_relay_work(r[..]) == 0;
+  // the scores, counted by hand from the notes' words: nostr twice and coax once; nostr once and coax once
+  #assert n50_tf(NLA_NOTE[2], "nostr") == 2 && n50_tf(NLA_NOTE[2], "coax") == 1 && n50_tf(NLA_NOTE[1], "nostr") == 1 && n50_tf(NLA_NOTE[1], "coax") == 1;
+  #assert n50_tf(NLA_NOTE[0], "nostr") == 0 && r[0].out[0] == 2 && r[0].out[1] == 1;
+  // without the word index the relay gives the same answer
+  out: [8] int; score: [8] int;
+  s := n50_scan(r[0].s[..], r[0].ix[..], r[0].f[0], r[0].q[0], NLA_NOW, r[0].buf[..], out[..], score[..]);
+  #assert s.n == 2 && out[0] == r[0].out[0] && out[1] == r[0].out[1] && score[0] == r[0].score[0] && score[1] == r[0].score[1];
+  // the count against a full scan of the store with the COUNT's own filter
+  n := 0; for i: 0..<r[0].s[0].n { if ns_store_visible(r[0].s[..], i, NLA_NOW) && nf_match(r[0].w[0].filters[0], rsd_event(r[0].s[..], i)) { n += 1; } }
+  #assert n == NLA_NOTES && n45_read_response(cast(string) r[0].answer[0..<r[0].answer_n]).count == n;
+  // refusals: a search that is a number, and a COUNT with no subscription id
+  #assert r[0].bad_search == FR_TYPE;
+  reply: [256] u8; k := n45_answer("[\"COUNT\",\"\",{\"kinds\":[1]}]", r[0].s[..], r[0].ix[..], NLA_NOW, r[0].w[..], reply[..]);
+  #assert k > 0 && n45_read_response(cast(string) reply[0..<k]).error != N45_OK;
+}
+#test "nostr lab apps: a card number past the last stops, and no card shows a secret key" #steps 20000000000 {
+  c: [1] NostrCard; #assert !nla_card(NLA_COUNT, c[..]) && c[0].stopped == 99 && !nla_card(-1, c[..]);
+  // the secret keys' first twelve bytes, as a card would shorten them, are on no card's rows
+  for k: 0..<NLA_COUNT {
+    d: [1] NostrCard; #assert nla_card(k, d[..]);
+    for row: 0..<d[0].rows { v := nc_text(d[..], row); for who: 0..<4 { #assert v.count < 24 || v[0..<24] != NLA_SECRET[who][0..<24]; } }
+  }
+}

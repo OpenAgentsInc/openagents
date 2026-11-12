@@ -1,0 +1,473 @@
+// Nostr Lab's lessons for Lightning: zaps (NIP-57), Wallet Connect (47), zap goals (75) and payment targets (A3).
+// Each card is worked out at run time by coax/lib/nostr/ (nostr-lab-card.coax says what a card is).
+//
+// Nothing here pays. Every invoice is a TEST INVOICE: the library's own test writer (n57_invoice_for)
+// makes it with a zero signature, so no wallet would pay it, and the Wallet Connect lesson asks a test
+// wallet for a balance that is a constant of this file. Bitcoin and Lightning only.
+// The keys are published test keys (BIP-340's test vectors and the secret keys 1 and 2), the ones the
+// book's examples sign with: never a real key. No card shows a secret. Signing uses aux 0 and the
+// NIP-44 nonces are fixed bytes, so a card is the same every time; a real client takes fresh random
+// bytes for each.
+//   coax/bin/coax test apps/openagents-web/nostr-lab-lightning.coax --only "nostr lab"
+#run_steps 250000000;   // secp256k1's signing tables, built at compile time (event_sign.coax)
+#load "nostr-lab-card.coax";
+#load "../../coax/lib/nostr/event_sign.coax";
+#load "../../coax/lib/nostr/nip75.coax";   // loads nip57.coax
+#load "../../coax/lib/nostr/nip47.coax";
+#load "../../coax/lib/nostr/nipa3.coax";
+
+NLL_COUNT :: 4;
+
+// Secret keys: BIP-340 test vectors 0 to 3, then the secret keys 1 and 2. Published test values.
+NLL_ALICE_KEY :: "0000000000000000000000000000000000000000000000000000000000000003";
+NLL_BOB_KEY :: "b7e151628aed2a6abf7158809cf4f3c762e7160f38b4da56a784d9045190cfef";
+NLL_CAROL_KEY :: "c90fdaa22168c234c4c6628b80dc1cd129024e088a67cc74020bbea63b14e5c9";
+NLL_MALLORY_KEY :: "0b432b2677937381aef05bb02a66ecd012773062cf3fa2549e44f58ed2401710";
+NLL_SERVER_KEY :: "0000000000000000000000000000000000000000000000000000000000000001";   // Bob's LNURL server
+NLL_WALLET_KEY :: "0000000000000000000000000000000000000000000000000000000000000002";   // the wallet service
+// Public keys a reader already knows: whom Alice zaps, and the nostrPubkey Bob's LNURL server names.
+NLL_BOB_PUB :: "dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659";
+NLL_SERVER_PUB :: "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
+NLL_RELAY :: "wss://relay.example.com";
+NLL_T0 :: 1794441600;   // 12 November 2026, 00:00 UTC
+NLL_ZAP_MSAT :: 21000;
+NLL_GOAL_TAGS :: "[[\"relays\",\"wss://relay.example.com\"],[\"amount\",\"50000\"]]";
+NLL_CAROL_MSAT :: 30000;
+// The connection a wallet hands an app: the wallet's key (secret key 2's), a relay, and the secret
+// the app signs and encrypts with (secret key 1). The card never shows it.
+NLL_URI :: "nostr+walletconnect://c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5?relay=wss%3A%2F%2Frelay.example.com&secret=0000000000000000000000000000000000000000000000000000000000000001";
+NLL_BALANCE :: 21000;        // what the test wallet answers get_balance with, in millisats
+NLL_BUDGET :: 3000;          // millisats a day this connection may spend
+NLL_DAY :: 86400;
+NLL_ASK :: "lnbc50n1pexample";   // a 5000 msat invoice's amount part with a placeholder after it: not payable
+NLL_BALANCE_FIELD :: 10;     // "balance" in N47_KEYS, the bit F_BALANCE
+// NIP-A3's own example tags, with a Lightning address in place of its unknown type. The third target
+// is one this repository never pays to: it is there to be refused.
+NLL_PAYTO :: "[[\"payto\",\"bitcoin\",\"bc1qxq66e0t8d7ugdecwnmv58e90tpry23nc84pg9k\"],[\"payto\",\"lightning\",\"alice@example.com\"],[\"payto\",\"nano\",\"nano_1dctqbmqxfppo9pswbm6kg9d4s4mbraqn8i4m7ob9gnzz91aurmuho48jx3c\"]]";
+
+nll_key :: (hex: string, out: [] u8) -> bool {
+  d := hex_decode_checked(hex, out, false);
+  return d.error == NC_OK && d.written == out.count;
+}
+// An event signed with this key into out: its length, or -1.
+nll_sign :: (key: [] u8, at: int, kind: int, tags: string, content: string, out: [] u8) -> int {
+  aux: [32] u8; work: [1] NostrSignWork; scratch: [8192] u8; r := EVENT_MORE; calls := 0;
+  while r == EVENT_MORE && calls < 256 {
+    r = nostr_event_sign_step(key, aux[..], at, kind, tags, content, work[..], scratch[..], out, false);
+    calls += 1;
+  }
+  return ifx r > 0 then r else -1;
+}
+nll_sign_hex :: (key_hex: string, at: int, kind: int, tags: string, content: string, out: [] u8) -> int {
+  key: [32] u8; if !nll_key(key_hex, key[..]) { return -1; }
+  n := nll_sign(key[..], at, kind, tags, content, out);
+  for i: 0..<32 { key[i] = 0; }
+  return n;
+}
+// a, a number, b, a number, c: "" when it doesn't fit. A number below 0 is left out.
+nll_say :: (out: [] u8, a: string, v: int, b: string, w: int, c: string) -> string {
+  n := json_raw(out, 0, a); if v >= 0 { n = json_write_int(out, n, v); }
+  n = json_raw(out, n, b); if w >= 0 { n = json_write_int(out, n, w); }
+  n = json_raw(out, n, c);
+  if n < 0 { return ""; }
+  return cast(string) out[0..<n];
+}
+nll_same :: (a: [32] u8, b: [32] u8) -> bool { for i: 0..<32 { if a[i] != b[i] { return false; } } return true; }
+nll_sha :: (text: string, out: [] u8) -> bool {
+  b: [2048] u8; if text.count > b.count { return false; }
+  for i: 0..<text.count { b[i] = text[i]; }
+  return sha256_hash_checked(b[0..<text.count], out, false) == SHA_OK;
+}
+
+// ---- NIP-57: a zap
+
+// What the three parties write. Alice: the zap request. Bob's LNURL server: a test invoice whose
+// description hash is SHA-256 of the request, and the receipt. And a second receipt by the same
+// server whose invoice is for other bytes (the request with one letter of its content changed).
+NllZap :: struct {
+  request: [1024] u8; request_n: int;
+  invoice: [600] u8; invoice_n: int;
+  receipt: [4096] u8; receipt_n: int;
+  other_invoice: [600] u8; other_invoice_n: int;
+  other_receipt: [4096] u8; other_receipt_n: int;
+}
+// A zap request by key for msat to Bob, for the event goal when it isn't "": its length, or -1.
+nll_request :: (key_hex: string, at: int, msat: int, goal: string, content: string, out: [] u8) -> int {
+  relays := [1] string.[NLL_RELAY]; tags: [512] u8;
+  tn := n57_request_tags(relays[..], msat, "", NLL_BOB_PUB, goal, ifx goal.count > 0 then N75_KIND_GOAL else 0, tags[..]);
+  if tn <= 0 { return -1; }
+  return nll_sign_hex(key_hex, at, N57_KIND_REQUEST, cast(string) tags[0..<tn], content, out);
+}
+// The receipt a server signs for a request and an invoice: its length, or -1.
+nll_receipt :: (key_hex: string, at: int, request: string, sender: [32] u8, goal: string, invoice: string, out: [] u8) -> int {
+  tags: [3000] u8; hex: [64] u8;
+  t := n57_receipt_tags(NLL_BOB_PUB, goal, n57_hex(sender, hex[..]), invoice, request, "", tags[..]);
+  return nll_sign_hex(key_hex, at, N57_KIND_RECEIPT, t, "", out);
+}
+// The step that failed, 0 for none.
+nll_zap_make :: (z: [] NllZap) -> int {
+  z[0].request_n = nll_request(NLL_ALICE_KEY, NLL_T0 + 60, NLL_ZAP_MSAT, "", "Great post", z[0].request[..]);
+  if z[0].request_n <= 0 { return 1; }
+  request := cast(string) z[0].request[0..<z[0].request_n];
+  scratch: [2048] u8; q := nostr_event_read(request, scratch[..], false); if q.error != NE_OK { return 2; }
+  w: [400] u8;
+  inv := n57_invoice_for(request, NLL_ZAP_MSAT, w[..], z[0].invoice[..]); if inv.count == 0 { return 3; }
+  z[0].invoice_n = inv.count;
+  z[0].receipt_n = nll_receipt(NLL_SERVER_KEY, NLL_T0 + 70, request, q.public_key, "", inv, z[0].receipt[..]);
+  if z[0].receipt_n <= 0 { return 4; }
+  // other bytes: the request with the last letter of its content in upper case
+  other: [1024] u8; for i: 0..<request.count { other[i] = request[i]; }
+  at := q.content_to - 2; if at < q.content_from || other[at] < 'a' || other[at] > 'z' { return 5; }
+  other[at] -= 32;
+  inv2 := n57_invoice_for(cast(string) other[0..<request.count], NLL_ZAP_MSAT, w[..], z[0].other_invoice[..]); if inv2.count == 0 { return 6; }
+  z[0].other_invoice_n = inv2.count;
+  z[0].other_receipt_n = nll_receipt(NLL_SERVER_KEY, NLL_T0 + 71, request, q.public_key, "", inv2, z[0].other_receipt[..]);
+  if z[0].other_receipt_n <= 0 { return 7; }
+  return 0;
+}
+nll_zaps :: (c: [] NostrCard) -> bool {
+  z: [1] NllZap; made := nll_zap_make(z[..]); if made != 0 { return nc_stop(c, made); }
+  request := cast(string) z[0].request[0..<z[0].request_n]; invoice := cast(string) z[0].invoice[0..<z[0].invoice_n];
+  bob: [32] u8; server: [32] u8; if !nll_key(NLL_BOB_PUB, bob[..]) || !nll_key(NLL_SERVER_PUB, server[..]) { return nc_stop(c, 10); }
+  // the request: signed by Alice, and what the server must read in it
+  s1: [2048] u8; q := nostr_event_verify_vartime(request, s1[..], false); if q.error != NE_OK || !q.verified { return nc_stop(c, 11); }
+  zr := n57_request(q); if zr.status != N57R_OK || zr.msat != NLL_ZAP_MSAT || !nll_same(zr.recipient, bob) { return nc_stop(c, 12); }
+  // the invoice: its amount, and the hash it commits to is SHA-256 of the request
+  iv := n57_invoice(invoice); if iv.status != N57I_OK || !iv.has_description_hash || iv.msat != NLL_ZAP_MSAT { return nc_stop(c, 13); }
+  h: [32] u8; if !nll_sha(request, h[..]) { return nc_stop(c, 14); }
+  for i: 0..<32 { if h[i] != iv.description_hash[i] { return nc_stop(c, 15); } }
+  // the receipt: signed by the server, and it, the invoice and the request agree
+  s2: [8192] u8; e := nostr_event_verify_vartime(cast(string) z[0].receipt[0..<z[0].receipt_n], s2[..], false);
+  if e.error != NE_OK || !e.verified || !nll_same(e.public_key, server) { return nc_stop(c, 16); }
+  zap := n57_receipt(e, server, "");
+  if zap.status != N57_OK || zap.msat != NLL_ZAP_MSAT || !nll_same(zap.sender, q.public_key) { return nc_stop(c, 17); }
+  // refused: the same server's receipt whose invoice commits to other bytes
+  s3: [8192] u8; o := nostr_event_verify_vartime(cast(string) z[0].other_receipt[0..<z[0].other_receipt_n], s3[..], false);
+  if o.error != NE_OK || !o.verified { return nc_stop(c, 18); }
+  if n57_receipt(o, server, "").status != N57_HASH { return nc_stop(c, 19); }
+
+  nc_nodes(c, "ALICE", "SERVER", "READER", "");
+  t: [NC_TEXT] u8; ok := true;
+  ok = ok && nc_row(c, "ZAP REQUEST", nll_say(t[..], "KIND ", q.kind, ", ", zr.msat, " MSAT TO BOB"), NC_PLAIN);
+  ok = ok && nc_row_hex(c, "REQUEST ID", q.id[..], NC_VALUE);
+  ok = ok && nc_row(c, "TEST INVOICE", invoice, NC_PLAIN);
+  ok = ok && nc_row_hex(c, "INVOICE HASH", iv.description_hash[..], NC_VALUE);
+  ok = ok && nc_row(c, "RECEIPT", nll_say(t[..], "KIND ", e.kind, ", SIGNED BY THE SERVER", -1, ""), NC_PLAIN);
+  ok = ok && nc_row(c, "CHECKED", nll_say(t[..], "", zap.msat, " MSAT FROM ALICE", -1, ""), NC_GOOD);
+  if !ok { return nc_stop(c, 20); }
+  return nc_done(c, "RECEIPT, INVOICE, REQUEST AGREE", "INVOICE OF ANOTHER ZAP: REFUSED");
+}
+
+// ---- NIP-47: Wallet Connect
+
+// The two events on the relay: the app's request (kind 23194) and the wallet's response (kind 23195).
+NllConnect :: struct {
+  plain: [256] u8; plain_n: int;         // what the app asks, before encryption
+  request: [2048] u8; request_n: int;
+  response: [2048] u8; response_n: int;
+}
+// A fixed nonce: SHA-256 of a label, so the card is the same every time. A real client takes 32 fresh
+// random bytes for every message.
+nll_nonce :: (label: string) -> [32] u8 { n: [32] u8; ok := nll_sha(label, n[..]); return n; }
+nll_content :: (e: NostrEvent) -> string { return e.original[e.content_from..<e.content_to]; }
+// The step that failed, 0 for none.
+nll_connect_make :: (u: N47Uri, w: [] NllConnect) -> int {
+  // the app: get_balance, encrypted to the wallet with the connection's secret, signed with it
+  call: N47Call; call.error = N47_OK; call.method = N47_BALANCE;
+  w[0].plain_n = n47_request_json(call, w[0].plain[..]); if w[0].plain_n <= 0 { return 1; }
+  secret := u.secret; ck: [32] u8; if n47_key(secret[..], u.wallet, ck[..]) != N47_OK { return 2; }
+  nonce := nll_nonce("nostr lab: the app's request"); sealed: [1024] u8;
+  o := n47_seal(ck[..], nonce[..], cast(string) w[0].plain[0..<w[0].plain_n], sealed[..]); if o.error != N47_OK { return 3; }
+  tags: [512] u8; tn := n47_request_tags(u.wallet, 0, tags[..]); if tn <= 0 { return 4; }
+  w[0].request_n = nll_sign(secret[..], NLL_T0, N47_REQUEST, cast(string) tags[0..<tn], cast(string) sealed[0..<o.n], w[0].request[..]);
+  for i: 0..<32 { secret[i] = 0; ck[i] = 0; }
+  if w[0].request_n <= 0 { return 5; }
+  // the wallet: reads the request event, opens it with its own key, answers the balance
+  s1: [4096] u8; req := nostr_event_read(cast(string) w[0].request[0..<w[0].request_n], s1[..], false); if req.error != NE_OK { return 6; }
+  if n47_request_event(req, u.wallet, NLL_T0 + 1) != N47_OK { return 7; }
+  wkey: [32] u8; wk: [32] u8; if !nll_key(NLL_WALLET_KEY, wkey[..]) || n47_key(wkey[..], req.public_key, wk[..]) != N47_OK { return 8; }
+  opened: [512] u8; op := n47_open(wk[..], nll_content(req), opened[..]); if op.error != N47_OK { return 9; }
+  asked := n47_request(cast(string) opened[0..<op.n]); if asked.error != N47_OK || asked.method != N47_BALANCE { return 10; }
+  reply: N47Reply; reply.error = N47_OK; reply.method = asked.method; reply.f.have = F_BALANCE; reply.f.num[NLL_BALANCE_FIELD] = NLL_BALANCE;
+  answer: [512] u8; an := n47_response_json(reply, answer[..]); if an <= 0 { return 11; }
+  nonce = nll_nonce("nostr lab: the wallet's response");
+  o = n47_seal(wk[..], nonce[..], cast(string) answer[0..<an], sealed[..]); if o.error != N47_OK { return 12; }
+  tn = n47_response_tags(req, tags[..]); if tn <= 0 { return 13; }
+  w[0].response_n = nll_sign(wkey[..], NLL_T0 + 2, N47_RESPONSE, cast(string) tags[0..<tn], cast(string) sealed[0..<o.n], w[0].response[..]);
+  for i: 0..<32 { wkey[i] = 0; wk[i] = 0; }
+  if w[0].response_n <= 0 { return 14; }
+  return 0;
+}
+nll_connect :: (c: [] NostrCard) -> bool {
+  u := n47_uri(NLL_URI); if u.error != N47_OK || u.nrelays != 1 { return nc_stop(c, 1); }
+  w: [1] NllConnect; made := nll_connect_make(u, w[..]); if made != 0 { return nc_stop(c, 20 + made); }
+  // the app: both events verify, the response is the wallet's answer to this request, and it opens
+  s1: [4096] u8; s2: [4096] u8;
+  req := nostr_event_verify_vartime(cast(string) w[0].request[0..<w[0].request_n], s1[..], false);
+  res := nostr_event_verify_vartime(cast(string) w[0].response[0..<w[0].response_n], s2[..], false);
+  if req.error != NE_OK || !req.verified || res.error != NE_OK || !res.verified { return nc_stop(c, 2); }
+  if !nll_same(req.public_key, u.client) || req.kind != N47_REQUEST || res.kind != N47_RESPONSE { return nc_stop(c, 3); }
+  secret := u.secret; ck: [32] u8; if n47_key(secret[..], u.wallet, ck[..]) != N47_OK { return nc_stop(c, 4); }
+  for i: 0..<32 { secret[i] = 0; }
+  back: [512] u8; op := n47_open(ck[..], nll_content(res), back[..]); if op.error != N47_OK { return nc_stop(c, 5); }
+  reply := n47_response(cast(string) back[0..<op.n]);
+  if n47_match(req, res, u.wallet, N47_BALANCE, reply) != N47_OK || reply.code >= 0 || (reply.f.have & F_BALANCE) == 0 { return nc_stop(c, 6); }
+  // the ciphertext on the relay is not the question
+  sealed := nll_content(req); plain := cast(string) w[0].plain[0..<w[0].plain_n];
+  if sealed.count <= plain.count || sealed[0..<plain.count] == plain { return nc_stop(c, 7); }
+  // refused: a payload in the old NIP-04 form, and a payment over the connection's budget
+  junk: [128] u8;
+  if n47_open(ck[..], "zooMmtdlrlTCiIbfLqTqYrpCbTWrcVkP7RdcqCuM8TQ=?iv=obLD1OX2BxgpOktcbX6PkA==", junk[..]).error != N47_ENCRYPTION { return nc_stop(c, 8); }
+  for i: 0..<32 { ck[i] = 0; }
+  pay: N47Call; pay.error = N47_OK; pay.method = N47_PAY; pay.f.have = F_INVOICE;
+  for i: 0..<NLL_ASK.count { pay.f.str[0].b[i] = NLL_ASK[i]; } pay.f.str[0].n = NLL_ASK.count;
+  pj: [256] u8; pn := n47_request_json(pay, pj[..]); if pn <= 0 { return nc_stop(c, 9); }
+  spend := n47_spend(N47Budget.{limit = NLL_BUDGET, period = NLL_DAY, start = NLL_T0}, NLL_T0 + 1, n47_request(cast(string) pj[0..<pn]));
+  if spend.error != N47_QUOTA || spend.budget.spent != 0 || spend.msats <= NLL_BUDGET || n47_code(spend.error) != N47_C_QUOTA { return nc_stop(c, 10); }
+
+  nc_nodes(c, "APP", "RELAY", "WALLET", "");
+  t: [NC_TEXT] u8; t2: [NC_TEXT] u8; ok := true;
+  ok = ok && nc_row_hex(c, "WALLET KEY", u.wallet[..], NC_KEY);
+  ok = ok && nc_row(c, "SECRET", "HIDDEN", NC_SECRET);
+  ok = ok && nc_row(c, "APP ASKS", plain, NC_PLAIN);
+  ok = ok && nc_row(c, nll_say(t[..], "KIND ", req.kind, "", -1, ""), sealed, NC_NOISE);
+  ok = ok && nc_row(c, nll_say(t[..], "KIND ", res.kind, "", -1, ""), nll_say(t2[..], "BALANCE ", reply.f.num[NLL_BALANCE_FIELD], " MSAT, TEST WALLET", -1, ""), NC_GOOD);
+  ok = ok && nc_row(c, "BUDGET", nll_say(t[..], "PAY ", spend.msats, " MSAT, ", spend.budget.limit, " A DAY ALLOWED"), NC_BAD);
+  if !ok { return nc_stop(c, 11); }
+  return nc_done(c, "ASKED AND ANSWERED, ENCRYPTED", "OVER THE DAILY BUDGET: REFUSED");
+}
+
+// ---- NIP-75: a zap goal
+
+// Bob's goal, two zap requests for it (Alice's and Carol's), the server's receipt for each, and a
+// receipt for Alice's zap that Mallory signed.
+NllGoal :: struct {
+  goal: [1024] u8; goal_n: int;
+  request: [2][1024] u8; request_n: [2] int;
+  receipt: [3][4096] u8; receipt_n: [3] int;
+}
+// The step that failed, 0 for none.
+nll_goal_make :: (g: [] NllGoal) -> int {
+  g[0].goal_n = nll_sign_hex(NLL_BOB_KEY, NLL_T0, N75_KIND_GOAL, NLL_GOAL_TAGS, "A new microphone", g[0].goal[..]);
+  if g[0].goal_n <= 0 { return 1; }
+  s: [2048] u8; goal := nostr_event_read(cast(string) g[0].goal[0..<g[0].goal_n], s[..], false); if goal.error != NE_OK { return 2; }
+  hex: [64] u8; id := n57_hex(goal.id, hex[..]);
+  keys := [2] string.[NLL_ALICE_KEY, NLL_CAROL_KEY]; msat := [2] int.[NLL_ZAP_MSAT, NLL_CAROL_MSAT];
+  inv: [2][600] u8; inv_n: [2] int; sender: [2][32] u8; w: [400] u8;
+  for k: 0..<2 {
+    g[0].request_n[k] = nll_request(keys[k], NLL_T0 + 60 + 60 * k, msat[k], id, "", g[0].request[k][..]);
+    if g[0].request_n[k] <= 0 { return 3; }
+    request := cast(string) g[0].request[k][0..<g[0].request_n[k]];
+    q := nostr_event_read(request, s[..], false); if q.error != NE_OK { return 4; }
+    sender[k] = q.public_key;
+    made := n57_invoice_for(request, msat[k], w[..], inv[k][..]); if made.count == 0 { return 5; }
+    inv_n[k] = made.count;
+    g[0].receipt_n[k] = nll_receipt(NLL_SERVER_KEY, NLL_T0 + 70 + 60 * k, request, sender[k], id, made, g[0].receipt[k][..]);
+    if g[0].receipt_n[k] <= 0 { return 6; }
+  }
+  // Mallory's receipt for Alice's zap: the same tags, another signer
+  g[0].receipt_n[2] = nll_receipt(NLL_MALLORY_KEY, NLL_T0 + 200, cast(string) g[0].request[0][0..<g[0].request_n[0]], sender[0], id,
+    cast(string) inv[0][0..<inv_n[0]], g[0].receipt[2][..]);
+  if g[0].receipt_n[2] <= 0 { return 7; }
+  return 0;
+}
+nll_goals :: (c: [] NostrCard) -> bool {
+  g: [1] NllGoal; made := nll_goal_make(g[..]); if made != 0 { return nc_stop(c, made); }
+  server: [32] u8; if !nll_key(NLL_SERVER_PUB, server[..]) { return nc_stop(c, 10); }
+  s: [2048] u8; goal := nostr_event_verify_vartime(cast(string) g[0].goal[0..<g[0].goal_n], s[..], false);
+  if goal.error != NE_OK || !goal.verified { return nc_stop(c, 11); }
+  target := n75_goal(goal); if target.status != N75_OK || target.msat <= 0 { return nc_stop(c, 12); }
+  // what each request asks: the amounts the rows show
+  asked: [2] int; s2: [2048] u8;
+  for k: 0..<2 {
+    r := n57_request(nostr_event_read(cast(string) g[0].request[k][0..<g[0].request_n[k]], s2[..], false));
+    if r.status != N57R_OK || !r.has_event || !nll_same(r.event, goal.id) { return nc_stop(c, 13); }
+    asked[k] = r.msat;
+  }
+  // the receipts as a relay returns them; n75_tally checks each with n57_receipt, which verifies
+  // the zap request inside it
+  set: [3] NostrEvent; sb: [3][8192] u8;
+  for k: 0..<3 {
+    set[k] = nostr_event_read(cast(string) g[0].receipt[k][0..<g[0].receipt_n[k]], sb[k][..], false);
+    if set[k].error != NE_OK { return nc_stop(c, 14); }
+  }
+  now := NLL_T0 + 3600;
+  one := n75_tally(goal, set[0..<1], server, "", now);
+  if one.status != N75_OK || one.counted != 1 || one.msat != asked[0] || one.reached { return nc_stop(c, 15); }
+  all := n75_tally(goal, set[..], server, "", now);
+  if all.status != N75_OK || all.counted != 2 || all.msat != asked[0] + asked[1] || !all.reached { return nc_stop(c, 16); }
+  // refused: Mallory's receipt is the one that was not counted
+  if all.refused != 1 || all.other != 0 || all.duplicates != 0 || all.late != 0 || all.future != 0 { return nc_stop(c, 17); }
+  if n57_receipt(set[2], server, "").status != N57_SIGNER { return nc_stop(c, 18); }
+
+  nc_nodes(c, "ZAPPERS", "SERVER", "READER", "");
+  t: [NC_TEXT] u8; ok := true;
+  ok = ok && nc_row(c, "BOB'S GOAL", nll_say(t[..], "KIND ", goal.kind, ", ", target.msat, " MSAT"), NC_PLAIN);
+  ok = ok && nc_row_hex(c, "GOAL ID", goal.id[..], NC_VALUE);
+  ok = ok && nc_row(c, "ALICE ZAPS", nll_say(t[..], "", asked[0], " MSAT, TEST INVOICE", -1, ""), NC_PLAIN);
+  ok = ok && nc_row(c, "CAROL ZAPS", nll_say(t[..], "", asked[1], " MSAT, TEST INVOICE", -1, ""), NC_PLAIN);
+  ok = ok && nc_row(c, "COUNTED", nll_say(t[..], "", all.counted, " RECEIPTS, ", all.msat, " MSAT"), NC_VALUE);
+  ok = ok && nc_row(c, "REACHED", nll_say(t[..], "YES: ", all.msat, " OF ", target.msat, " MSAT"), NC_GOOD);
+  if !ok { return nc_stop(c, 19); }
+  return nc_done(c, "TWO RECEIPTS FILL THE GOAL", "NOT THE SERVER'S RECEIPT: REFUSED");
+}
+
+// ---- NIP-A3: payment targets
+
+// Alice's kind 10133 event into out: its length, or -1.
+nll_targets_make :: (out: [] u8) -> int { return nll_sign_hex(NLL_ALICE_KEY, NLL_T0, A3_LIST_KIND, NLL_PAYTO, "", out); }
+nll_targets :: (c: [] NostrCard) -> bool {
+  ev: [1024] u8; n := nll_targets_make(ev[..]); if n <= 0 { return nc_stop(c, 1); }
+  s: [2048] u8; e := nostr_event_verify_vartime(cast(string) ev[0..<n], s[..], false); if e.error != NE_OK || !e.verified { return nc_stop(c, 2); }
+  l := a3_list(e); if l.status != A3_OK || l.count != 3 { return nc_stop(c, 3); }
+  // the Bitcoin address checks (Bech32, mainnet, a version 0 program) and the Lightning address reads
+  btc := l.t[0]; ln := l.t[1]; other := l.t[2];
+  if btc.status != A3_OK || btc.form != A3_P2WPKH || ln.status != A3_OK || ln.form != A3_LN_ADDRESS || l.payable != 2 { return nc_stop(c, 4); }
+  u1: [128] u8; u2: [128] u8; u3: [128] u8;
+  n1 := a3_pay_uri(btc, u1[..]); n2 := a3_pay_uri(ln, u2[..]); if n1 <= 0 || n2 <= 0 { return nc_stop(c, 5); }
+  // refused: the third target is not Bitcoin, so it gets no payment link
+  if other.status != A3_NOT_BITCOIN || a3_pay_uri(other, u3[..]) != -1 { return nc_stop(c, 6); }
+
+  nc_nodes(c, "ALICE", "LIST", "READER", "");
+  t: [NC_TEXT] u8; ok := true;
+  ok = ok && nc_row(c, "ALICE'S LIST", nll_say(t[..], "KIND ", e.kind, ", ", l.count, " PAYTO TAGS"), NC_PLAIN);
+  ok = ok && nc_row(c, "BITCOIN", cast(string) btc.address.b[0..<btc.address.n], NC_VALUE);
+  ok = ok && nc_row(c, "CHECKED AS", nll_say(t[..], "SEGWIT VERSION ", btc.version, ", ", btc.n, " BYTE KEY HASH"), NC_PLAIN);
+  ok = ok && nc_row(c, "LIGHTNING", cast(string) u2[0..<n2], NC_VALUE);
+  ok = ok && nc_row(c, "OFFERED", nll_say(t[..], "", l.payable, " OF ", l.count, " TARGETS"), NC_GOOD);
+  ok = ok && nc_row(c, "THIRD TARGET", "NOT BITCOIN: NO PAYMENT LINK", NC_BAD);
+  if !ok { return nc_stop(c, 7); }
+  return nc_done(c, "BITCOIN AND LIGHTNING TARGETS READ", "A NON-BITCOIN TARGET: NOT OFFERED");
+}
+
+// Card k of this file (0 and up), filled. False when the lesson stopped (c[0].stopped says where).
+nll_card :: (k: int, c: [] NostrCard) -> bool {
+  if k == 0 { return nll_zaps(c); }
+  if k == 1 { return nll_connect(c); }
+  if k == 2 { return nll_goals(c); }
+  if k == 3 { return nll_targets(c); }
+  return nc_stop(c, 99);
+}
+
+// ---- checks
+
+// Every text on a card fits its face and is ASCII 32 to 126.
+nll_fits :: (c: [] NostrCard) -> bool {
+  if !c[0].ready || c[0].stopped != 0 || c[0].nodes < 2 || c[0].rows < 3 || c[0].rows > NC_ROWS { return false; }
+  if c[0].good.count == 0 || c[0].good.count > NC_LINE || c[0].bad.count == 0 || c[0].bad.count > NC_LINE { return false; }
+  for k: 0..<c[0].nodes { if c[0].node[k].count == 0 || c[0].node[k].count > NC_NODE { return false; } }
+  for k: 0..<c[0].rows {
+    v := nc_text(c, k); if v.count == 0 || nc_label(c, k).count == 0 { return false; }
+    for ch: v { if ch < 32 || ch > 126 { return false; } }
+  }
+  return true;
+}
+nll_starts :: (s: string, p: string) -> bool { return s.count >= p.count && s[0..<p.count] == p; }
+
+#test "nostr lab lightning: a zap's receipt, test invoice and request agree, and an invoice for other bytes is refused" #steps 4000000000 {
+  c: [1] NostrCard; #assert nll_card(0, c[..]) && nll_fits(c[..]) && c[0].rows == 6;
+  #assert nc_text(c[..], 0) == "KIND 9734, 21000 MSAT TO BOB" && nc_text(c[..], 4) == "KIND 9735, SIGNED BY THE SERVER";
+  #assert nc_text(c[..], 5) == "21000 MSAT FROM ALICE" && c[0].row[5].tone == NC_GOOD;
+  #assert nc_label(c[..], 2) == "TEST INVOICE" && nll_starts(nc_text(c[..], 2), "lnbc210n1");   // 210n: 210 * 100 msat
+  // the same events again (aux 0: the signer gives the same bytes), checked with the library directly
+  z: [1] NllZap; #assert nll_zap_make(z[..]) == 0;
+  request := cast(string) z[0].request[0..<z[0].request_n]; invoice := cast(string) z[0].invoice[0..<z[0].invoice_n];
+  s: [8192] u8; q := nostr_event_verify_vartime(request, s[..], false); #assert q.verified && q.kind == 9734;
+  alice: [32] u8; server: [32] u8; #assert nll_key("f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9", alice[..]) && nll_key(NLL_SERVER_PUB, server[..]);
+  #assert nll_same(q.public_key, alice);   // secret key 3's public key, BIP-340 vector 0
+  // the invoice's amount is the request's, its h field is SHA-256 of the request, and it has a zero signature
+  iv := n57_invoice(invoice); h: [32] u8; #assert nll_sha(request, h[..]);
+  #assert iv.status == N57I_OK && iv.msat == 21000 && x402_bolt11_msat(invoice) == 21000 && nll_same(iv.description_hash, h);
+  hrp: [90] u8; words: [N57_MAX_INVOICE] u8; d := bech32_decode_checked(invoice, hrp[..], words[..], true, false);
+  #assert d.error == NC_OK && d.written > 104; for i: d.written - 104..<d.written { #assert words[i] == 0; }
+  // the row shows that hash
+  r: [1] NostrCard; #assert nc_row_hex(r[..], "H", h[..], NC_VALUE) && nc_row_hex(r[..], "ID", q.id[..], NC_VALUE);
+  #assert nc_text(c[..], 3) == nc_text(r[..], 0) && nc_text(c[..], 1) == nc_text(r[..], 1);
+  // the receipt
+  e := nostr_event_verify_vartime(cast(string) z[0].receipt[0..<z[0].receipt_n], s[..], false);
+  #assert e.verified && e.kind == 9735 && nll_same(e.public_key, server);
+  zap := n57_receipt(e, server, ""); #assert zap.status == N57_OK && zap.msat == 21000 && nll_same(zap.sender, alice);
+  // the other receipt: a signed event by the same server, the same request inside, refused for its invoice's hash
+  o := nostr_event_verify_vartime(cast(string) z[0].other_receipt[0..<z[0].other_receipt_n], s[..], false);
+  #assert o.verified && nll_same(o.public_key, server);
+  other := n57_invoice(cast(string) z[0].other_invoice[0..<z[0].other_invoice_n]);
+  #assert other.status == N57I_OK && other.msat == 21000 && !nll_same(other.description_hash, h);
+  #assert n57_receipt(o, server, "").status == N57_HASH;
+  // and a receipt checked against another server's key is refused too
+  #assert n57_receipt(e, alice, "").status == N57_SIGNER;
+}
+#test "nostr lab lightning: wallet connect asks and answers under NIP-44, never shows the secret, and refuses over the budget" #steps 4000000000 {
+  c: [1] NostrCard; #assert nll_card(1, c[..]) && nll_fits(c[..]) && c[0].rows == 6;
+  #assert nc_text(c[..], 1) == "HIDDEN" && c[0].row[1].tone == NC_SECRET;
+  #assert nc_text(c[..], 2) == "{\"method\":\"get_balance\",\"params\":{}}";
+  #assert nc_label(c[..], 3) == "KIND 23194" && nc_label(c[..], 4) == "KIND 23195" && c[0].row[3].tone == NC_NOISE;
+  #assert nc_text(c[..], 4) == "BALANCE 21000 MSAT, TEST WALLET" && nc_text(c[..], 5) == "PAY 5000 MSAT, 3000 A DAY ALLOWED";
+  // no row carries the connection's secret, in hex or as the URI
+  for k: 0..<c[0].rows { v := nc_text(c[..], k); for i: 0..<v.count { #assert !nll_starts(v[i..<v.count], "00000000") && !nll_starts(v[i..<v.count], "secret"); } }
+  // the same two events again, checked with the library directly
+  u := n47_uri(NLL_URI); #assert u.error == N47_OK;
+  w: [1] NllConnect; #assert nll_connect_make(u, w[..]) == 0;
+  s1: [4096] u8; s2: [4096] u8;
+  req := nostr_event_verify_vartime(cast(string) w[0].request[0..<w[0].request_n], s1[..], false);
+  res := nostr_event_verify_vartime(cast(string) w[0].response[0..<w[0].response_n], s2[..], false);
+  #assert req.verified && req.kind == 23194 && res.verified && res.kind == 23195;
+  #assert nll_same(req.public_key, u.client) && nll_same(res.public_key, u.wallet);
+  // the request's content is NIP-44 ciphertext: the wallet's key opens it to the question, and the card's row shows its start
+  #assert nll_starts(nll_content(req), nc_text(c[..], 3)[0..<NC_TEXT - 3]);
+  wkey: [32] u8; wk: [32] u8; #assert nll_key(NLL_WALLET_KEY, wkey[..]) && n47_key(wkey[..], req.public_key, wk[..]) == N47_OK;
+  plain: [512] u8; o := n47_open(wk[..], nll_content(req), plain[..]);
+  #assert o.error == N47_OK && cast(string) plain[0..<o.n] == nc_text(c[..], 2);
+  // the app's key opens the answer; a third key opens neither
+  secret := u.secret; ck: [32] u8; #assert n47_key(secret[..], u.wallet, ck[..]) == N47_OK;
+  o = n47_open(ck[..], nll_content(res), plain[..]);
+  #assert o.error == N47_OK && cast(string) plain[0..<o.n] == "{\"result_type\":\"get_balance\",\"error\":null,\"result\":{\"balance\":21000}}";
+  third: [32] u8; tk: [32] u8; #assert nll_key(NLL_ALICE_KEY, third[..]) && n47_key(third[..], u.wallet, tk[..]) == N47_OK;
+  #assert n47_open(tk[..], nll_content(req), plain[..]).error == N47_CIPHER && n47_open(tk[..], nll_content(res), plain[..]).error == N47_CIPHER;
+  // the budget: 5000 msat is refused against 3000 a day and spends nothing; against 12000 it is allowed
+  ask := n47_request("{\"method\":\"pay_invoice\",\"params\":{\"invoice\":\"lnbc50n1pexample\"}}"); #assert ask.error == N47_OK;
+  no := n47_spend(N47Budget.{limit = 3000, period = 86400, start = NLL_T0}, NLL_T0 + 1, ask);
+  #assert no.error == N47_QUOTA && no.msats == 5000 && no.budget.spent == 0;
+  yes := n47_spend(N47Budget.{limit = 12000, period = 86400, start = NLL_T0}, NLL_T0 + 1, ask);
+  #assert yes.error == N47_OK && yes.budget.spent == 5000;
+}
+#test "nostr lab lightning: two receipts fill the goal, and a receipt the server didn't sign is not counted" #steps 6000000000 {
+  c: [1] NostrCard; #assert nll_card(2, c[..]) && nll_fits(c[..]) && c[0].rows == 6;
+  #assert nc_text(c[..], 0) == "KIND 9041, 50000 MSAT" && nc_text(c[..], 4) == "2 RECEIPTS, 51000 MSAT";
+  #assert nc_text(c[..], 5) == "YES: 51000 OF 50000 MSAT" && c[0].row[5].tone == NC_GOOD;
+  g: [1] NllGoal; #assert nll_goal_make(g[..]) == 0;
+  server: [32] u8; mallory: [32] u8; #assert nll_key(NLL_SERVER_PUB, server[..]) && nll_key("25d1dff95105f5253c4022f628a996ad3a0d95fbf21d468a1b33f8c160d8f517", mallory[..]);
+  s: [2048] u8; goal := nostr_event_verify_vartime(cast(string) g[0].goal[0..<g[0].goal_n], s[..], false);
+  #assert goal.verified && goal.kind == 9041 && n75_goal(goal).msat == 50000;
+  // every receipt is a signed event; the third is Mallory's (BIP-340 vector 3's public key)
+  set: [3] NostrEvent; sb: [3][8192] u8;
+  for k: 0..<3 { set[k] = nostr_event_verify_vartime(cast(string) g[0].receipt[k][0..<g[0].receipt_n[k]], sb[k][..], false); #assert set[k].verified && set[k].kind == 9735; }
+  #assert nll_same(set[0].public_key, server) && nll_same(set[1].public_key, server) && nll_same(set[2].public_key, mallory);
+  // each of the server's receipts is valid alone, for the amount its row shows
+  #assert n57_receipt(set[0], server, "").msat == 21000 && n57_receipt(set[0], server, "").status == N57_OK;
+  #assert n57_receipt(set[1], server, "").msat == 30000 && n57_receipt(set[1], server, "").status == N57_OK;
+  #assert n57_receipt(set[2], server, "").status == N57_SIGNER;
+  now := NLL_T0 + 3600;
+  // one receipt is not enough; two are; Mallory's adds nothing, alone or with the others
+  #assert !n75_tally(goal, set[0..<1], server, "", now).reached && !n75_tally(goal, set[1..<2], server, "", now).reached;
+  two := n75_tally(goal, set[0..<2], server, "", now); #assert two.reached && two.msat == 51000 && two.counted == 2 && two.refused == 0;
+  m := n75_tally(goal, set[2..<3], server, "", now); #assert m.msat == 0 && m.counted == 0 && m.refused == 1 && !m.reached;
+  all := n75_tally(goal, set[..], server, "", now); #assert all.msat == 51000 && all.counted == 2 && all.refused == 1;
+}
+#test "nostr lab lightning: the Bitcoin and Lightning targets are offered, and the target that is not Bitcoin gets no link" #steps 2000000000 {
+  c: [1] NostrCard; #assert nll_card(3, c[..]) && nll_fits(c[..]) && c[0].rows == 6;
+  #assert nc_text(c[..], 0) == "KIND 10133, 3 PAYTO TAGS" && nc_text(c[..], 1) == "bc1qxq66e0t8d7ugdecwnmv58e90tpry23nc84pg9k";
+  #assert nc_text(c[..], 2) == "SEGWIT VERSION 0, 20 BYTE KEY HASH" && nc_text(c[..], 3) == "lightning:alice@example.com";
+  #assert nc_text(c[..], 4) == "2 OF 3 TARGETS" && c[0].row[5].tone == NC_BAD;
+  // no row names money that is not Bitcoin
+  for k: 0..<c[0].rows { v := nc_text(c[..], k); for i: 0..<v.count { #assert !nll_starts(v[i..<v.count], "nano"); } }
+  ev: [1024] u8; n := nll_targets_make(ev[..]); #assert n > 0;
+  s: [2048] u8; e := nostr_event_verify_vartime(cast(string) ev[0..<n], s[..], false); #assert e.verified && e.kind == 10133;
+  l := a3_list(e); #assert l.status == A3_OK && l.count == 3 && l.payable == 2;
+  // the library reads each target the same way on its own
+  #assert a3_try("bitcoin", nc_text(c[..], 1)).status == A3_OK && a3_try("bitcoin", nc_text(c[..], 1)).form == A3_P2WPKH;
+  #assert a3_try("lightning", "alice@example.com").form == A3_LN_ADDRESS;
+  #assert l.t[2].status == A3_NOT_BITCOIN && a3_try("nano", "nano_1dctqbmqxfppo9pswbm6kg9d4s4mbraqn8i4m7ob9gnzz91aurmuho48jx3c").status == A3_NOT_BITCOIN;
+  uri: [128] u8; #assert a3_pay_uri(l.t[2], uri[..]) == -1 && a3_pay_uri(l.t[0], uri[..]) == 50;
+  // one letter of the address changed fails its checksum: the reader checks, it doesn't copy
+  #assert a3_try("bitcoin", "bc1qxq66e0t8d7ugdecwnmv58e90tpry23nc84pg9l").status == A3_CHECKSUM;
+}

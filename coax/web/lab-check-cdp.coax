@@ -1,0 +1,37 @@
+// What the lab walks' checks share (bitcoin-lab-check.coax, nostr-lab-check.coax): a script's answer
+// from the page, a key, and a picture of the frame the GPU drew.
+#load "../lib/net/cdp.coax";
+
+lab_check_eval :: (c:[]Cdp,script:string)->bool {
+  n:=cdp_evaluate(c,script);return n>=0 && jv_raw(c[0].doc[0],n)=="true";
+}
+lab_check_value :: (c:[]Cdp,script:string)->int {
+  n:=cdp_evaluate(c,script);return ifx n<0 then -1000000000 else jv_int(c[0].doc[0],n,-1000000000);
+}
+lab_check_key :: (c:[]Cdp,key:string,code:string,down:bool)->bool {
+  bytes:[1024]u8;o:[1]Jo;jo_start(o[..],bytes[..]);jo_obj(o[..]);
+  jo_key(o[..],"type");jo_str(o[..],ifx down then "keyDown" else "keyUp");
+  jo_key(o[..],"key");jo_str(o[..],key);jo_key(o[..],"code");jo_str(o[..],code);jo_end(o[..]);
+  return cdp_call(c,"Input.dispatchKeyEvent",jo_text(o[..]),30000)>=0;
+}
+lab_check_param :: (c:[]Cdp,method:string,key:string,value:string)->bool {
+  bytes:[8192]u8;o:[1]Jo;jo_start(o[..],bytes[..]);jo_obj(o[..]);jo_key(o[..],key);jo_str(o[..],value);jo_end(o[..]);
+  return cdp_call(c,method,jo_text(o[..]),30000)>=0;
+}
+// A picture of the next frame, from the GPU's own bytes (host.js captureFrame: the page was loaded with
+// coaxialRenderCapture and the rgba8unorm format), written to `out` as PNG, or JPEG when `jpeg`. It
+// steps the page one frame of 1/fps seconds. No DOM recreation of the realm and no pixel editing.
+lab_check_capture :: (c:[]Cdp,out:string,fps:int,jpeg:bool)->bool {
+  b:[512]u8;n:=0;
+  a:="(async()=>{coaxial.renderCapture=null;coaxial.captureFrame();await coaxialClipStep(1,";
+  for i:0..<a.count {b[n]=a[i];n+=1;}
+  n=ws_digits(b[..],n,fps);
+  e:=");for(let i=0;i<300&&!coaxial.renderCapture;i++)await new Promise(r=>setTimeout(r,10));return coaxial.renderCapture?.format==='rgba8unorm'})()";
+  for i:0..<e.count {b[n]=e[i];n+=1;}
+  if !lab_check_eval(c,cast(string)b[0..<n]) {return false;}
+  v:=cdp_evaluate(c,ifx jpeg then "(async()=>{let r=coaxial.renderCapture,c=new OffscreenCanvas(r.width,r.height);c.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(r.bytes),r.width,r.height),0,0);let b=new Uint8Array(await(await c.convertToBlob({type:'image/jpeg',quality:0.92})).arrayBuffer()),s='';for(let i=0;i<b.length;i+=32768)s+=String.fromCharCode(...b.subarray(i,i+32768));return btoa(s)})()"
+    else "(async()=>{let r=coaxial.renderCapture,c=new OffscreenCanvas(r.width,r.height);c.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(r.bytes),r.width,r.height),0,0);let b=new Uint8Array(await(await c.convertToBlob({type:'image/png'})).arrayBuffer()),s='';for(let i=0;i<b.length;i+=32768)s+=String.fromCharCode(...b.subarray(i,i+32768));return btoa(s)})()");
+  if v<0 {return false;}
+  png:[16777216]u8;m:=b64_decode(jv_raw(c[0].doc[0],v),png[..]);
+  return m>0 && fs_write(out,cast(string)png[0..<m]);
+}

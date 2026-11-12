@@ -1,0 +1,378 @@
+// Nostr Lab's lessons for private messages: encrypted payloads (NIP-44), gift wrap (59) and private group chat (17).
+// Each card is worked out at run time by coax/lib/nostr/ (nostr-lab-card.coax says what a card is).
+//
+//   NIP-44 (nostr/book ch014, ch020; nip44-key.coax, nip44.coax): Alice and Bob each derive the
+//   conversation key from their own secret and the other's public key; Alice encrypts, Bob decrypts.
+//   NIP-59 (ch025; nip59.coax): Alice's unsigned kind 14 rumor, sealed (kind 13, her key) and wrapped
+//   (kind 1059, a one-time key) for Bob, who unwraps it.
+//   NIP-17 (ch060; nip17.coax): one kind 14 message to Bob and Carol, a wrap for each and one for
+//   Alice, each opened by its addressee.
+//
+// Every key is a published test key, the ones the book's examples use: Alice is secret 3, Carol 7,
+// Dave 9, Bob is BIP-340 vector 1. No card shows a secret, or the conversation key.
+// Where a host would draw random bytes (NIP-44 nonces, one-time wrap keys, BIP-340 aux values, how far
+// back a seal and a wrap are dated) the lessons use fixed values, so a card reads the same every time.
+// Never do that with a real message.
+//
+// Stack: nip59.coax asks for NIP59_WORK (448 KB) of work, so the NIP-59 and NIP-17 cards each hold
+// one such buffer while they run.
+//   coax/bin/coax test apps/openagents-web/nostr-lab-private.coax --only "nostr lab"
+#run_steps 250000000;   // secp256k1's signing tables, built at compile time (event_sign.coax)
+#load "nostr-lab-card.coax";
+#load "../../coax/lib/nostr/nip17.coax";   // loads nip59.coax, nip44-key.coax, event_sign.coax
+
+NLP_COUNT :: 3;
+
+NLP_ALICE_HEX :: "0000000000000000000000000000000000000000000000000000000000000003";
+NLP_BOB_HEX :: "b7e151628aed2a6abf7158809cf4f3c762e7160f38b4da56a784d9045190cfef";   // BIP-340 vector 1
+NLP_CAROL_HEX :: "0000000000000000000000000000000000000000000000000000000000000007";
+NLP_DAVE_HEX :: "0000000000000000000000000000000000000000000000000000000000000009";    // the outsider
+NLP_ONE_TIME_HEX :: "0000000000000000000000000000000000000000000000000000000000000005"; // NIP-59's wrap key: fixed here, random in use
+NLP_NOW :: 1794441600;   // 12 November 2026, 00:00 UTC
+NLP_MESSAGE :: "Meet at nine.";
+NLP_GROUP_MESSAGE :: "Party at nine. Bring Carol.";
+NLP_INBOX :: "[[\"relay\",\"wss://inbox.example.com\"]]";   // each member's kind 10050 list: where their wraps go
+NLP_CHANGE_AT :: 60;     // the letter of the NIP-44 payload the lesson changes: one inside the ciphertext
+
+// A test secret from hex, and its x-only public key. False when the library refuses either.
+nlp_secret :: (hex: string, key: [] u8, x: [] u8) -> bool {
+  d := hex_decode_checked(hex, key, false); if d.error != NC_OK || d.written != 32 { return false; }
+  pub: [33] u8; if !bip32_public(key, pub[..]) { return false; }
+  for i: 0..<32 { x[i] = pub[1 + i]; }
+  return true;
+}
+nlp_same :: (a: [] u8, b: [] u8) -> bool { return a.count == b.count && cb_ct_equal(a, b) == CB_MAX64; }
+// Text as bytes in out; the count, or -1 when it doesn't fit.
+nlp_bytes :: (out: [] u8, t: string) -> int { if t.count > out.count { return -1; } for i: 0..<t.count { out[i] = t[i]; } return t.count; }
+
+// ---- NIP-44: a message between two keys
+
+Nlp44 :: struct {
+  alice_x: [32] u8; bob_x: [32] u8;
+  same: bool;                           // both sides derived the same conversation key
+  payload: [256] u8; payload_n: int;    // what Alice sends: version, nonce, ciphertext and MAC, as base64
+  back: [64] u8; back_n: int;           // what Bob decrypts
+  changed: u32;                         // NIP-44's answer to the payload with one letter changed
+  outsider: u32;                        // and to Carol's key
+}
+// Works the NIP-44 lesson out. 0, or the step that stopped.
+nlp_44 :: (f: [] Nlp44) -> int {
+  alice: [32] u8; bob: [32] u8; carol: [32] u8; carol_x: [32] u8;
+  if !nlp_secret(NLP_ALICE_HEX, alice[..], f[0].alice_x[..]) { return 1; }
+  if !nlp_secret(NLP_BOB_HEX, bob[..], f[0].bob_x[..]) { return 2; }
+  if !nlp_secret(NLP_CAROL_HEX, carol[..], carol_x[..]) { return 3; }
+  // each side: its own secret and the other's public key
+  work: [1] EcdhScratch; ka: [32] u8; kb: [32] u8; kc: [32] u8;
+  if nip44_conversation_key_from_keys_checked(alice[..], f[0].bob_x[..], work[..], ka[..], false) != NIP44_OK { return 4; }
+  if nip44_conversation_key_from_keys_checked(bob[..], f[0].alice_x[..], work[..], kb[..], false) != NIP44_OK { return 5; }
+  if nip44_conversation_key_from_keys_checked(carol[..], f[0].alice_x[..], work[..], kc[..], false) != NIP44_OK { return 6; }
+  f[0].same = nlp_same(ka[..], kb[..]);
+  // Alice encrypts. The nonce is fixed here; a host draws 32 random bytes for every message.
+  nonce: [32] u8; for i: 0..<32 { nonce[i] = 0x11; }
+  plain: [64] u8; n := nlp_bytes(plain[..], NLP_MESSAGE); if n < 1 { return 7; }
+  nwork: [512] u8;
+  e := nip44_encrypt_checked(NIP44_COMPAT, ka[..], nonce[..], plain[0..<n], nwork[..], f[0].payload[..], false);
+  if e.error != NIP44_OK || e.written <= NLP_CHANGE_AT { return 8; }
+  f[0].payload_n = e.written;
+  payload := cast(string) f[0].payload[0..<f[0].payload_n];
+  // Bob decrypts with the key he derived
+  d := nip44_decrypt_checked(NIP44_COMPAT, kb[..], payload, nwork[..], f[0].back[..], false);
+  if d.error != NIP44_OK { return 9; }
+  f[0].back_n = d.written;
+  // one letter of the payload changed, and Carol's key
+  edited: [256] u8; scrap: [64] u8;
+  for i: 0..<payload.count { edited[i] = payload[i]; }
+  edited[NLP_CHANGE_AT] = ifx payload[NLP_CHANGE_AT] == 'A' then cast(u8) 'B' else cast(u8) 'A';
+  f[0].changed = nip44_decrypt_checked(NIP44_COMPAT, kb[..], cast(string) edited[0..<payload.count], nwork[..], scrap[..], false).error;
+  f[0].outsider = nip44_decrypt_checked(NIP44_COMPAT, kc[..], payload, nwork[..], scrap[..], false).error;
+  secure_zero(ka[..]); secure_zero(kb[..]); secure_zero(kc[..]);
+  return 0;
+}
+nlp_card_44 :: (c: [] NostrCard) -> bool {
+  f: [1] Nlp44; at := nlp_44(f[..]); if at != 0 { return nc_stop(c, at); }
+  back := cast(string) f[0].back[0..<f[0].back_n];
+  if !f[0].same { return nc_stop(c, 10); }
+  if back != NLP_MESSAGE { return nc_stop(c, 11); }
+  if f[0].changed != NIP44_MAC { return nc_stop(c, 12); }
+  if f[0].outsider != NIP44_MAC { return nc_stop(c, 13); }
+  nc_nodes(c, "ALICE", "RELAY", "BOB", "");
+  ok := nc_row_hex(c, "ALICE KEY", f[0].alice_x[..], NC_KEY);
+  ok = ok && nc_row_hex(c, "BOB KEY", f[0].bob_x[..], NC_KEY);
+  ok = ok && nc_row(c, "SHARED KEY", "SAME ON BOTH SIDES", NC_SECRET);
+  ok = ok && nc_row(c, "ALICE WRITES", NLP_MESSAGE, NC_PLAIN);
+  ok = ok && nc_row(c, "RELAY SEES", cast(string) f[0].payload[0..<f[0].payload_n], NC_NOISE);
+  ok = ok && nc_row(c, "BOB READS", back, NC_GOOD);
+  if !ok { return nc_stop(c, 14); }
+  return nc_done(c, "BOB READS WHAT ALICE WROTE", "CHANGED OR WRONG KEY: REFUSED");
+}
+
+// ---- NIP-59: seal, then wrap
+
+Nlp59 :: struct {
+  alice_x: [32] u8; bob_x: [32] u8;
+  wrap: [4096] u8; wrap_n: int;         // the kind 1059 event: what goes to a relay
+  sent: Nip59Wrapped;                   // the wrapper's own account: the rumor's ID, the two times
+  wrap_kind: int; wrap_signer: [32] u8; // read back from the wrap
+  cipher_from: int; cipher_to: int;     // the wrap's content, in wrap
+  rumor: [2048] u8; opened: Nip59Opened;// what Bob unwraps
+  text: [128] u8; text_n: int;          // the rumor's content
+  wrong: u32;                           // NIP-59's answer to Carol's secret
+}
+// The fixed stand-in for one wrap's host entropy, with the one-time key from hex.
+nlp_fresh :: (f: [] Nip59Fresh, k: int, key_hex: string) -> bool {
+  d := hex_decode_checked(key_hex, f[k].wrap_key[..], false); if d.error != NC_OK || d.written != 32 { return false; }
+  b := 16 * (k + 1);
+  for i: 0..<32 {
+    f[k].seal_nonce[i] = cast(u8) (b + 1); f[k].wrap_nonce[i] = cast(u8) (b + 2);
+    f[k].seal_aux[i] = cast(u8) (b + 3); f[k].wrap_aux[i] = cast(u8) (b + 4);
+  }
+  f[k].seal_back = cast(u64) (3600 * (k + 1)); f[k].wrap_back = cast(u64) (90000 + 7000 * k);
+  return true;
+}
+// Works the NIP-59 lesson out. 0, or the step that stopped.
+nlp_59 :: (f: [] Nlp59) -> int {
+  alice: [32] u8; bob: [32] u8; carol: [32] u8; carol_x: [32] u8;
+  if !nlp_secret(NLP_ALICE_HEX, alice[..], f[0].alice_x[..]) { return 1; }
+  if !nlp_secret(NLP_BOB_HEX, bob[..], f[0].bob_x[..]) { return 2; }
+  if !nlp_secret(NLP_CAROL_HEX, carol[..], carol_x[..]) { return 3; }
+  // the rumor's tags: a p tag naming Bob
+  hex: [64] u8; tags: [80] u8;
+  h := hex_encode_checked(cast(string) f[0].bob_x[..], hex[..], false); if h.error != NC_OK || h.written != 64 { return 4; }
+  t := json_raw(tags[..], 0, "[[\"p\",\""); t = json_raw(tags[..], t, cast(string) hex[..]); t = json_raw(tags[..], t, "\"]]");
+  if t < 0 { return 5; }
+  fresh: [1] Nip59Fresh; if !nlp_fresh(fresh[..], 0, NLP_ONE_TIME_HEX) { return 6; }
+  // Alice: rumor, seal, wrap, in one call
+  work: [NIP59_WORK] u8;
+  f[0].sent = nip59_wrap_checked(alice[..], f[0].bob_x[..], NLP_NOW, N17_CHAT, cast(string) tags[0..<t], NLP_MESSAGE,
+                                 NIP59_WRAP_KIND, fresh[..], work[..], f[0].wrap[..], false);
+  if f[0].sent.error != NIP59_OK || f[0].sent.written <= 0 { return 7; }
+  f[0].wrap_n = f[0].sent.written;
+  wrap := cast(string) f[0].wrap[0..<f[0].wrap_n];
+  // what a relay can read of it: the kind, the signer, the content
+  scratch: [4096] u8;
+  e := nostr_event_read(wrap, scratch[..], false); if e.error != NE_OK { return 8; }
+  f[0].wrap_kind = e.kind; f[0].wrap_signer = e.public_key; f[0].cipher_from = e.content_from; f[0].cipher_to = e.content_to;
+  // Bob unwraps: both signatures, both decryptions, the rumor unsigned and by the seal's key
+  f[0].opened = nip59_unwrap_checked(bob[..], f[0].bob_x[..], wrap, work[..], f[0].rumor[..], false);
+  if f[0].opened.error != NIP59_OK { return 9; }
+  o := f[0].opened;
+  f[0].text_n = json_unescape(cast(string) f[0].rumor[o.content_from..<o.content_to], f[0].text[..]);
+  if f[0].text_n < 0 { return 10; }
+  // Carol's secret, even saying she is Bob
+  scrap: [2048] u8;
+  f[0].wrong = nip59_unwrap_checked(carol[..], f[0].bob_x[..], wrap, work[..], scrap[..], false).error;
+  return 0;
+}
+nlp_card_59 :: (c: [] NostrCard) -> bool {
+  f: [1] Nlp59; at := nlp_59(f[..]); if at != 0 { return nc_stop(c, at); }
+  o := f[0].opened;
+  if cast(string) f[0].text[0..<f[0].text_n] != NLP_MESSAGE { return nc_stop(c, 11); }
+  // the seal is Alice's; the wrap is by another key, the one Bob saw sign it
+  if !nlp_same(o.author[..], f[0].alice_x[..]) { return nc_stop(c, 12); }
+  if !nlp_same(o.wrap_key[..], f[0].wrap_signer[..]) || nlp_same(o.wrap_key[..], f[0].alice_x[..]) { return nc_stop(c, 13); }
+  if !nlp_same(o.rumor_id[..], f[0].sent.rumor_id[..]) { return nc_stop(c, 14); }
+  if o.kind != N17_CHAT || f[0].wrap_kind != NIP59_WRAP_KIND { return nc_stop(c, 15); }
+  if f[0].wrong != NIP59_WRAP_PAYLOAD { return nc_stop(c, 16); }
+  // "RUMOR 14 IN SEAL 13 IN WRAP 1059": the rumor's kind as Bob read it, the seal's as the unwrap
+  // demanded it, the wrap's as the relay reads it
+  k: [NC_TEXT] u8; n := nlp_bytes(k[..], "RUMOR "); n = text_put_int(k[..], n, o.kind);
+  n += nlp_bytes(k[n..<NC_TEXT], " IN SEAL "); n = text_put_int(k[..], n, NIP59_SEAL_KIND);
+  n += nlp_bytes(k[n..<NC_TEXT], " IN WRAP "); n = text_put_int(k[..], n, f[0].wrap_kind);
+  nc_nodes(c, "ALICE", "SEAL", "WRAP", "BOB");
+  ok := nc_row(c, "KINDS", cast(string) k[0..<n], NC_PLAIN);
+  ok = ok && nc_row_hex(c, "SEAL BY ALICE", o.author[..], NC_KEY);
+  ok = ok && nc_row_hex(c, "WRAP ONE-TIME", o.wrap_key[..], NC_KEY);
+  ok = ok && nc_row(c, "RELAY SEES", cast(string) f[0].wrap[f[0].cipher_from..<f[0].cipher_to], NC_NOISE);
+  ok = ok && nc_row(c, "BOB OPENS", cast(string) f[0].text[0..<f[0].text_n], NC_GOOD);
+  ok = ok && nc_row_hex(c, "RUMOR ID", o.rumor_id[..], NC_VALUE);
+  if !ok { return nc_stop(c, 17); }
+  return nc_done(c, "BOB OPENED IT: FROM ALICE", "WRONG KEY: CANNOT OPEN");
+}
+
+// ---- NIP-17: one message to a group, a wrapped copy each
+
+NLP_MEMBERS :: 3;        // Bob, Carol, and Alice's own copy: the plan's order
+Nlp17 :: struct {
+  x: [NLP_MEMBERS * 32] u8;                  // the members' public keys: Bob, Carol, Alice
+  wraps: [8192] u8; sent: N17Sent;           // the three kind 1059 events
+  kind: [NLP_MEMBERS] int;                   // each wrap's kind and signer, as a relay reads them
+  signer: [NLP_MEMBERS * 32] u8;
+  cipher_from: int; cipher_to: int;          // the first wrap's content, in wraps
+  got: [NLP_MEMBERS] N17Message;             // each member's own copy, opened
+  text: [NLP_MEMBERS * 64] u8; text_n: [NLP_MEMBERS] int;
+  outsider: [NLP_MEMBERS] int;               // NIP-17's answers to Dave's key on each wrap
+  outsider_wrap: [NLP_MEMBERS] u32;
+}
+// Works the NIP-17 lesson out. 0, or the step that stopped.
+nlp_17 :: (f: [] Nlp17) -> int {
+  key: [NLP_MEMBERS * 32] u8; dave: [32] u8; dave_x: [32] u8;
+  if !nlp_secret(NLP_BOB_HEX, key[0..<32], f[0].x[0..<32]) { return 1; }
+  if !nlp_secret(NLP_CAROL_HEX, key[32..<64], f[0].x[32..<64]) { return 2; }
+  if !nlp_secret(NLP_ALICE_HEX, key[64..<96], f[0].x[64..<96]) { return 3; }
+  if !nlp_secret(NLP_DAVE_HEX, dave[..], dave_x[..]) { return 4; }
+  // Who gets a wrap, and where. Each member's kind 10050 relay list is a record here; a client reads
+  // it from a signed event it has verified.
+  lists: [NLP_MEMBERS] NostrEvent;
+  for i: 0..<NLP_MEMBERS {
+    owner: [32] u8; for b: 0..<32 { owner[b] = f[0].x[i * 32 + b]; }
+    lists[i] = n17_list(owner, N17_RELAY_LIST, NLP_INBOX);
+  }
+  plan := nip17_plan(f[0].x[64..<96], f[0].x[0..<64], lists[..]);
+  if plan.error != N17_OK || plan.recipients != NLP_MEMBERS - 1 { return 5; }
+  // One-time wrap keys 11, 12 and 13: fixed here, random in use.
+  fresh: [NLP_MEMBERS] Nip59Fresh; one := [NLP_MEMBERS] string.[
+    "000000000000000000000000000000000000000000000000000000000000000b",
+    "000000000000000000000000000000000000000000000000000000000000000c",
+    "000000000000000000000000000000000000000000000000000000000000000d"];
+  for i: 0..<NLP_MEMBERS { if !nlp_fresh(fresh[..], i, one[i]) { return 6; } }
+  // Alice: one kind 14 rumor, sealed and wrapped three times. The p tags come from the plan.
+  work: [NIP59_WORK] u8;
+  f[0].sent = nip17_send(key[64..<96], plan, NLP_NOW, N17_CHAT, "[]", NLP_GROUP_MESSAGE, fresh[..], work[..], f[0].wraps[..], false);
+  if f[0].sent.error != N17_OK || f[0].sent.wraps != NLP_MEMBERS { return 7; }
+  s := f[0].sent; scratch: [4096] u8; rumor: [2048] u8;
+  for i: 0..<NLP_MEMBERS {
+    wrap := cast(string) f[0].wraps[s.at[i]..<s.at[i] + s.n[i]];
+    // what a relay reads of this wrap
+    e := nostr_event_read(wrap, scratch[..], false); if e.error != NE_OK { return 8; }
+    f[0].kind[i] = e.kind; for b: 0..<32 { f[0].signer[i * 32 + b] = e.public_key[b]; }
+    if i == 0 { f[0].cipher_from = s.at[0] + e.content_from; f[0].cipher_to = s.at[0] + e.content_to; }
+    // its addressee opens it
+    f[0].got[i] = nip17_open(key[i * 32..<i * 32 + 32], f[0].x[i * 32..<i * 32 + 32], wrap, work[..], rumor[..]);
+    if f[0].got[i].error != N17_OK { return 9; }
+    m := f[0].got[i];
+    f[0].text_n[i] = json_unescape(cast(string) rumor[m.content_from..<m.content_to], f[0].text[i * 64..<i * 64 + 64]);
+    if f[0].text_n[i] < 0 { return 10; }
+    // and Dave, who is not in the room, tries it
+    d := nip17_open(dave[..], dave_x[..], wrap, work[..], rumor[..]);
+    f[0].outsider[i] = d.error; f[0].outsider_wrap[i] = d.wrap_error;
+  }
+  return 0;
+}
+nlp_card_17 :: (c: [] NostrCard) -> bool {
+  f: [1] Nlp17; at := nlp_17(f[..]); if at != 0 { return nc_stop(c, at); }
+  alice_x := f[0].x[64..<96]; first := f[0].got[0];
+  for i: 0..<NLP_MEMBERS {
+    m := f[0].got[i];
+    // the same message, from Alice, in the same room of three, for every member
+    if cast(string) f[0].text[i * 64..<i * 64 + f[0].text_n[i]] != NLP_GROUP_MESSAGE { return nc_stop(c, 11); }
+    if m.kind != N17_CHAT || m.members != NLP_MEMBERS || !nlp_same(m.author[..], alice_x) { return nc_stop(c, 12); }
+    if !nlp_same(m.rumor_id[..], f[0].sent.rumor_id[..]) || !nlp_same(m.room[..], first.room[..]) { return nc_stop(c, 13); }
+    // every wrap is kind 1059 by its own key, none of them Alice's
+    if f[0].kind[i] != NIP59_WRAP_KIND || nlp_same(f[0].signer[i * 32..<i * 32 + 32], alice_x) { return nc_stop(c, 14); }
+    for k: 0..<i { if nlp_same(f[0].signer[i * 32..<i * 32 + 32], f[0].signer[k * 32..<k * 32 + 32]) { return nc_stop(c, 15); } }
+    // and none opens for Dave
+    if f[0].outsider[i] != N17_WRAP || f[0].outsider_wrap[i] != NIP59_RECIPIENT { return nc_stop(c, 16); }
+  }
+  nc_nodes(c, "ALICE", "3 WRAPS", "BOB", "CAROL");
+  ok := nc_row_int(c, "KIND", first.kind, "PRIVATE MESSAGE, NOT SIGNED", NC_PLAIN);
+  ok = ok && nc_row_int(c, "P TAGS", first.members - 1, "RECIPIENTS: BOB AND CAROL", NC_PLAIN);
+  ok = ok && nc_row_int(c, "WRAPS", f[0].sent.wraps, "OF KIND 1059, EACH A NEW KEY", NC_PLAIN);
+  ok = ok && nc_row(c, "RELAY SEES", cast(string) f[0].wraps[f[0].cipher_from..<f[0].cipher_to], NC_NOISE);
+  ok = ok && nc_row(c, "EACH OPENS", cast(string) f[0].text[0..<f[0].text_n[0]], NC_GOOD);
+  ok = ok && nc_row_hex(c, "ROOM ID", first.room[..], NC_VALUE);
+  if !ok { return nc_stop(c, 17); }
+  return nc_done(c, "BOB, CAROL AND ALICE READ IT", "OUTSIDER KEY OPENS NONE");
+}
+
+// Card k of this file (0 and up), filled. False when the lesson stopped (c[0].stopped says where).
+nlp_card :: (k: int, c: [] NostrCard) -> bool {
+  if k == 0 { return nlp_card_44(c); }
+  if k == 1 { return nlp_card_59(c); }
+  if k == 2 { return nlp_card_17(c); }
+  return nc_stop(c, 98);
+}
+
+// ---- checks
+
+// Whether part appears anywhere in s.
+nlp_has :: (s: string, part: string) -> bool {
+  if part.count > s.count { return false; }
+  for i: 0..<s.count - part.count + 1 { if s[i..<i + part.count] == part { return true; } }
+  return false;
+}
+// A card that finished: its boxes, its rows, both lines, all within the face's limits.
+nlp_card_ok :: (c: [] NostrCard, rows: int) -> bool {
+  if !c[0].ready || c[0].stopped != 0 || c[0].nodes < 3 || c[0].rows != rows { return false; }
+  if c[0].good.count == 0 || c[0].bad.count == 0 || c[0].good.count > NC_LINE || c[0].bad.count > NC_LINE { return false; }
+  for r: 0..<c[0].rows { if c[0].row[r].label_n == 0 || c[0].row[r].n == 0 { return false; } }
+  return true;
+}
+#test "nostr lab private: NIP-44, Bob's own derivation decrypts Alice's payload, and a changed letter or Carol's key fails the MAC" #steps 20000000000 {
+  c: [1] NostrCard; #assert nlp_card(0, c[..]) && nlp_card_ok(c[..], 6);
+  f: [1] Nlp44; #assert nlp_44(f[..]) == 0 && f[0].same;
+  // Bob's side again, by another path: raw ECDH (ecdh.coax), then HKDF-extract (nip44.coax)
+  bob: [32] u8; bob_x: [32] u8; #assert nlp_secret(NLP_BOB_HEX, bob[..], bob_x[..]) && nlp_same(bob_x[..], f[0].bob_x[..]);
+  work: [1] EcdhScratch; #assert ecdh_stage(bob[..], f[0].alice_x[..], work[..]) == EC_OK;
+  shared := work[0].staged; ck: [32] u8; #assert nip44_conversation_key_checked(shared[..], ck[..], false) == NIP44_OK;
+  payload := cast(string) f[0].payload[0..<f[0].payload_n];
+  #assert payload.count == nip44_payload_size(NIP44_COMPAT, NLP_MESSAGE.count) && payload[0] == 'A';   // version byte 2 leads the base64
+  nwork: [512] u8; back: [64] u8;
+  d := nip44_decrypt_checked(NIP44_COMPAT, ck[..], payload, nwork[..], back[..], false);
+  #assert d.error == NIP44_OK && cast(string) back[0..<d.written] == NLP_MESSAGE;
+  // the payload does not hold the message in the clear
+  for i: 0..<payload.count - NLP_MESSAGE.count + 1 { #assert payload[i..<i + NLP_MESSAGE.count] != NLP_MESSAGE; }
+  #assert f[0].changed == NIP44_MAC && f[0].outsider == NIP44_MAC;
+  // the card: the two public keys differ, the shared key is not shown, Bob reads the message
+  #assert nc_text(c[..], 0) != nc_text(c[..], 1) && nc_text(c[..], 2) == "SAME ON BOTH SIDES";
+  #assert nc_text(c[..], 3) == NLP_MESSAGE && nc_text(c[..], 5) == NLP_MESSAGE && c[0].row[4].tone == NC_NOISE;
+  #assert nc_text(c[..], 4)[0..<39] == payload[0..<39];
+}
+#test "nostr lab private: NIP-59, the wrap is kind 1059 by the one-time key, Bob unwraps Alice's rumor, and Carol cannot" #steps 20000000000 {
+  c: [1] NostrCard; #assert nlp_card(1, c[..]) && nlp_card_ok(c[..], 6);
+  f: [1] Nlp59; #assert nlp_59(f[..]) == 0;
+  wrap := cast(string) f[0].wrap[0..<f[0].wrap_n];
+  // the wrap is a valid signed event, kind 1059, signed by the one-time key and not by Alice
+  scratch: [4096] u8; e := nostr_event_verify_vartime(wrap, scratch[..], false);
+  #assert e.verified && e.kind == 1059;
+  one: [32] u8; one_x: [32] u8; #assert nlp_secret(NLP_ONE_TIME_HEX, one[..], one_x[..]);
+  #assert nlp_same(e.public_key[..], one_x[..]) && !nlp_same(e.public_key[..], f[0].alice_x[..]);
+  // its times are dated back, inside NIP-59's two days
+  #assert f[0].sent.seal_at < NLP_NOW && f[0].sent.wrap_at < NLP_NOW && e.created_at == f[0].sent.wrap_at && NLP_NOW - e.created_at < NIP59_WINDOW;
+  // neither the message nor Alice's key is readable in it
+  alice_hex: [64] u8; #assert hex_encode_checked(cast(string) f[0].alice_x[..], alice_hex[..], false).error == NC_OK;
+  #assert !nlp_has(wrap, NLP_MESSAGE) && !nlp_has(wrap, cast(string) alice_hex[..]);
+  // the rumor Bob holds: unsigned, kind 14, by Alice, with the ID the wrapper reported
+  o := f[0].opened; rumor := cast(string) f[0].rumor[0..<o.written];
+  #assert o.error == NIP59_OK && o.kind == 14 && nlp_same(o.author[..], f[0].alice_x[..]) && nlp_same(o.rumor_id[..], f[0].sent.rumor_id[..]);
+  #assert !nlp_has(rumor, "\"sig\"") && nlp_has(rumor, NLP_MESSAGE);
+  #assert cast(string) f[0].text[0..<f[0].text_n] == NLP_MESSAGE;
+  // Carol: refused when she claims Bob's key, and when she uses her own
+  #assert f[0].wrong == NIP59_WRAP_PAYLOAD;
+  carol: [32] u8; carol_x: [32] u8; #assert nlp_secret(NLP_CAROL_HEX, carol[..], carol_x[..]);
+  work: [NIP59_WORK] u8; out: [2048] u8;
+  #assert nip59_unwrap_checked(carol[..], carol_x[..], wrap, work[..], out[..], false).error == NIP59_RECIPIENT;
+  // the card
+  #assert nc_text(c[..], 0) == "RUMOR 14 IN SEAL 13 IN WRAP 1059" && nc_text(c[..], 1) != nc_text(c[..], 2) && nc_text(c[..], 4) == NLP_MESSAGE;
+}
+#test "nostr lab private: NIP-17, three wraps, each member opens the same message in the same room, and Dave opens none" #steps 20000000000 {
+  c: [1] NostrCard; #assert nlp_card(2, c[..]) && nlp_card_ok(c[..], 6);
+  f: [1] Nlp17; #assert nlp_17(f[..]) == 0 && f[0].sent.wraps == 3;
+  // the room is the three members' keys, whatever their order
+  keys: [96] u8; for i: 0..<32 { keys[i] = f[0].x[64 + i]; keys[32 + i] = f[0].x[i]; keys[64 + i] = f[0].x[32 + i]; }
+  room := n17_room(keys[..], 3);
+  scratch: [4096] u8;
+  for i: 0..<3 {
+    wrap := cast(string) f[0].wraps[f[0].sent.at[i]..<f[0].sent.at[i] + f[0].sent.n[i]];
+    // each wrap verifies, is kind 1059, and names its addressee in its p tag
+    e := nostr_event_verify_vartime(wrap, scratch[..], false);
+    #assert e.verified && e.kind == 1059 && e.tags == 1;
+    t := nostr_tag(e, 0); #assert t.error == NT_OK && t.type == NT_P && nlp_same(t.pubkey[..], f[0].x[i * 32..<i * 32 + 32]);
+    #assert !nlp_has(wrap, NLP_GROUP_MESSAGE);
+    m := f[0].got[i];
+    #assert m.error == N17_OK && m.kind == 14 && m.members == 3 && nlp_same(m.room[..], room[..]);
+    #assert nlp_same(m.author[..], f[0].x[64..<96]) && nlp_same(m.rumor_id[..], f[0].sent.rumor_id[..]);
+    #assert cast(string) f[0].text[i * 64..<i * 64 + f[0].text_n[i]] == NLP_GROUP_MESSAGE;
+    #assert f[0].outsider[i] == N17_WRAP && f[0].outsider_wrap[i] == NIP59_RECIPIENT;
+  }
+  // a member's key does not open another member's wrap either
+  bob: [32] u8; bob_x: [32] u8; #assert nlp_secret(NLP_BOB_HEX, bob[..], bob_x[..]);
+  work: [NIP59_WORK] u8; out: [2048] u8;
+  carols := cast(string) f[0].wraps[f[0].sent.at[1]..<f[0].sent.at[1] + f[0].sent.n[1]];
+  #assert nip17_open(bob[..], bob_x[..], carols, work[..], out[..]).error == N17_WRAP;
+  // the card
+  #assert nc_text(c[..], 0) == "14 PRIVATE MESSAGE, NOT SIGNED" && nc_text(c[..], 1) == "2 RECIPIENTS: BOB AND CAROL";
+  #assert nc_text(c[..], 2) == "3 OF KIND 1059, EACH A NEW KEY" && nc_text(c[..], 4) == NLP_GROUP_MESSAGE;
+}
+#test "nostr lab private: a card number past the last stops" {
+  c: [1] NostrCard; #assert !nlp_card(NLP_COUNT, c[..]) && c[0].stopped == 98 && !nlp_card(-1, c[..]);
+}

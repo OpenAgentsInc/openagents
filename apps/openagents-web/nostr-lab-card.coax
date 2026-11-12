@@ -1,0 +1,109 @@
+// Nostr Lab's card: what one station of the walk shows for one NIP (nostr-lab-walk.coax draws it). A
+// card is a strip of named boxes the data moves between (who sends, what it passes through, who
+// reads), up to six rows of a label and a value, and two lines under them: what held, and what was
+// refused. The lesson files (nostr-lab-relays.coax and the others) fill a card at run time from
+// coax/lib/nostr/: every value on a card is one the library worked out, and the two lines are set only
+// after the library gave that answer. A lesson that gets an answer it didn't expect stops (nc_stop)
+// and the station says so; it never shows a written-down value.
+//   coax/bin/coax test apps/openagents-web/nostr-lab-card.coax
+#load "../../coax/lib/nostr/hex.coax";
+#load "../../components/core/text.coax";
+
+NC_ROWS :: 6;       // the most rows a card has
+NC_LABEL :: 13;     // the most letters of a row's label
+NC_TEXT :: 42;      // the most letters of a row's value: what fits beside the label on a station's face
+NC_NODES :: 4;      // the most boxes in the strip
+NC_NODE :: 9;       // the most letters in a box
+NC_LINE :: 34;      // the most letters of the lines under the rows
+
+// A value's colour: what kind of thing it is.
+NC_PLAIN :: 0;      // words and JSON
+NC_KEY :: 1;        // a public key
+NC_VALUE :: 2;      // an ID, a hash, a signature: something worked out
+NC_NOISE :: 3;      // ciphertext: what a relay sees
+NC_GOOD :: 4;       // an answer that says yes
+NC_BAD :: 5;        // an answer that says no
+NC_SECRET :: 6;     // something the owner keeps
+
+NostrRow :: struct { label: [NC_LABEL] u8; label_n: int; text: [NC_TEXT] u8; n: int; tone: int; }
+NostrCard :: struct {
+  ready: bool;                         // filled: the walk draws it
+  stopped: int;                        // where the lesson stopped (nc_stop), 0 when it finished
+  node: [NC_NODES] string; nodes: int; // the strip's boxes, left to right
+  row: [NC_ROWS] NostrRow; rows: int;
+  good: string;                        // what held: "STORED AND READ BACK"
+  bad: string;                         // what was refused: "ONE LETTER CHANGED: REFUSED"
+}
+
+// The strip's boxes; "" ends them.
+nc_nodes :: (c: [] NostrCard, a: string, b: string, d: string, e: string) {
+  all := [NC_NODES] string.[a, b, d, e]; n := 0;
+  for k: 0..<NC_NODES { if all[k].count > 0 && n == k { c[0].node[n] = all[k]; n += 1; } }
+  c[0].nodes = n;
+}
+// A row: its label and its value. A value too long for the face keeps its start and ends "...".
+// False when the card is full.
+nc_row :: (c: [] NostrCard, label: string, text: string, tone: int) -> bool {
+  if c[0].rows >= NC_ROWS { return false; }
+  r := c[0].row[c[0].rows..<c[0].rows + 1];
+  ln := ifx label.count > NC_LABEL then NC_LABEL else label.count;
+  for i: 0..<ln { r[0].label[i] = label[i]; } r[0].label_n = ln;
+  if text.count <= NC_TEXT { for i: 0..<text.count { r[0].text[i] = text[i]; } r[0].n = text.count; }
+  else { for i: 0..<NC_TEXT - 3 { r[0].text[i] = text[i]; } for i: NC_TEXT - 3..<NC_TEXT { r[0].text[i] = '.'; } r[0].n = NC_TEXT; }
+  r[0].tone = tone; c[0].rows += 1;
+  return true;
+}
+// A row of bytes as lowercase hex. More than 21 bytes keep their first 12 and last 7: "0a1b...9f".
+nc_row_hex :: (c: [] NostrCard, label: string, bytes: [] u8, tone: int) -> bool {
+  h: [NC_TEXT] u8;
+  if bytes.count * 2 <= NC_TEXT {
+    r := hex_encode_checked(cast(string) bytes, h[..], false); if r.error != NC_OK { return false; }
+    return nc_row(c, label, cast(string) h[0..<r.written], tone);
+  }
+  a := hex_encode_checked(cast(string) bytes[0..<12], h[0..<24], false); if a.error != NC_OK { return false; }
+  h[24] = '.'; h[25] = '.'; h[26] = '.';
+  b := hex_encode_checked(cast(string) bytes[bytes.count - 7..<bytes.count], h[27..<41], false); if b.error != NC_OK { return false; }
+  return nc_row(c, label, cast(string) h[0..<41], tone);
+}
+// A row of a number and the word after it: "3 WRAPS".
+nc_row_int :: (c: [] NostrCard, label: string, v: int, after: string, tone: int) -> bool {
+  b: [NC_TEXT] u8; n := text_put_int(b[..], 0, v);
+  if after.count > 0 && n + 1 + after.count <= NC_TEXT { b[n] = ' '; n += 1; for i: 0..<after.count { b[n] = after[i]; n += 1; } }
+  return nc_row(c, label, cast(string) b[0..<n], tone);
+}
+// The lesson finished: the line for what held and the line for what was refused ("" for none).
+nc_done :: (c: [] NostrCard, good: string, bad: string) -> bool {
+  c[0].good = ifx good.count > NC_LINE then good[0..<NC_LINE] else good;
+  c[0].bad = ifx bad.count > NC_LINE then bad[0..<NC_LINE] else bad;
+  c[0].stopped = 0; c[0].ready = true; return true;
+}
+// The lesson stopped at step `at` (1 and up): the library gave an answer the lesson didn't expect.
+nc_stop :: (c: [] NostrCard, at: int) -> bool { c[0].stopped = ifx at < 1 then 1 else at; c[0].ready = false; return false; }
+// A row's value and label, as text.
+nc_text :: (c: [] NostrCard, k: int) -> string { return cast(string) c[0].row[k].text[0..<c[0].row[k].n]; }
+nc_label :: (c: [] NostrCard, k: int) -> string { return cast(string) c[0].row[k].label[0..<c[0].row[k].label_n]; }
+
+#test "nostr lab card: rows keep their label and value, and a long value ends in three dots" {
+  c: [1] NostrCard; nc_nodes(c[..], "ALICE", "RELAY", "BOB", "");
+  #assert c[0].nodes == 3 && c[0].node[1] == "RELAY";
+  #assert nc_row(c[..], "KIND", "1", NC_PLAIN) && nc_text(c[..], 0) == "1" && nc_label(c[..], 0) == "KIND";
+  long := "0123456789012345678901234567890123456789012345";   // 46 letters
+  #assert nc_row(c[..], "A LABEL THAT IS TOO LONG", long, NC_VALUE);
+  #assert nc_label(c[..], 1) == "A LABEL THAT " && c[0].row[1].n == NC_TEXT && nc_text(c[..], 1) == "012345678901234567890123456789012345678...";
+  #assert c[0].row[1].tone == NC_VALUE;
+}
+#test "nostr lab card: bytes show as hex, long ones by their first twelve and last seven" {
+  c: [1] NostrCard; b: [32] u8; for i: 0..<32 { b[i] = cast(u8) i; }
+  #assert nc_row_hex(c[..], "SHORT", b[0..<4], NC_VALUE) && nc_text(c[..], 0) == "00010203";
+  #assert nc_row_hex(c[..], "ID", b[..], NC_VALUE) && nc_text(c[..], 1) == "000102030405060708090a0b...191a1b1c1d1e1f";
+  #assert nc_row_hex(c[..], "21", b[0..<21], NC_VALUE) && c[0].row[2].n == 42;
+}
+#test "nostr lab card: a number with its word, a full card refuses a row, and done and stop set the state" {
+  c: [1] NostrCard;
+  #assert nc_row_int(c[..], "WRAPS", 3, "WRAPS", NC_PLAIN) && nc_text(c[..], 0) == "3 WRAPS";
+  #assert nc_row_int(c[..], "N", 0, "", NC_PLAIN) && nc_text(c[..], 1) == "0";
+  for k: 2..<NC_ROWS { #assert nc_row(c[..], "X", "Y", NC_PLAIN); }
+  #assert !nc_row(c[..], "X", "Y", NC_PLAIN) && c[0].rows == NC_ROWS;
+  #assert !nc_stop(c[..], 4) && c[0].stopped == 4 && !c[0].ready;
+  #assert nc_done(c[..], "STORED AND READ BACK", "") && c[0].ready && c[0].stopped == 0 && c[0].good == "STORED AND READ BACK" && c[0].bad.count == 0;
+}

@@ -1,0 +1,294 @@
+// Nostr Lab's lessons for agents: Block's NIP-OA (an owner key authorizes an agent key) and OpenAgents' NIP-PYLON (a beacon and a signed receipt).
+// Each card is worked out at run time by coax/lib/nostr/ (nostr-lab-card.coax says what a card is);
+// the Pylon card by the units NIP-PYLON's chapter (nostr/book ch082) names, which live in psionic/lib/.
+//
+// The keys are the secret keys 1, 2 and 3: published test values, the ones NIP-OA's own test vectors
+// and the book's examples sign with. Never a real key; no card shows a secret. Signing uses aux 0, so
+// a card is the same every time; a real signer takes fresh random bytes.
+// The Pylon card is a lesson, not the market: the pylon, its beacon, the job and the receipt are test
+// values signed here. Under NIP-PYLON the buyer signs the receipt (kind 3201) for the pylon's work,
+// and the pylon may not sign one for itself.
+//   coax/bin/coax test apps/openagents-web/nostr-lab-agents.coax --only "nostr lab"
+#run_steps 250000000;   // secp256k1's signing tables, built at compile time (event_sign.coax)
+#load "nostr-lab-card.coax";
+#load "../../coax/lib/nostr/event_sign.coax";
+#load "../../coax/lib/nostr/nipoa.coax";
+#load "../../coax/lib/crypto/bip32.coax";          // the public key of a secret key
+#load "../../psionic/lib/mesh/receipt.coax";       // loads psionic/lib/pylon/host.coax and beacon.coax
+
+NLG_COUNT :: 2;
+
+NLG_OWNER_KEY :: 1; NLG_AGENT_KEY :: 2; NLG_OTHER_KEY :: 3;   // NIP-OA's test keys, and one more
+NLG_T :: 1794441600;                             // 12 November 2026, 00:00 UTC
+NLG_CONDITIONS :: "kind=1&created_at<1794445200";  // what the owner allows: notes, for one hour
+NLG_NOTE :: "posted by an agent";
+NLG_BUYER_KEY :: 1; NLG_PYLON_KEY :: 3;          // their public keys are MR_BUYER and PB_KEY
+NLG_STRANGER_KEY :: 2;                           // a key that is neither
+NLG_SOON :: 10; NLG_LATE :: 301;                 // seconds after the beacon at which a reader gets it
+
+// A secret key of 31 zero bytes and then b. Test keys only.
+nlg_key :: (b: int) -> [32] u8 { k: [32] u8; k[31] = cast(u8) b; return k; }
+// The x-only public key of a secret key into out (32 bytes).
+nlg_public :: (key: [] u8, out: [] u8) -> bool {
+  pub: [33] u8; if out.count != 32 || !bip32_public(key, pub[..]) { return false; }
+  for i: 0..<32 { out[i] = pub[i + 1]; }
+  return true;
+}
+// An event signed with test key b into out: its length, or -1.
+nlg_sign :: (b: int, at: int, kind: int, tags: string, content: string, out: [] u8) -> int {
+  key := nlg_key(b); aux: [32] u8; work: [1] NostrSignWork; scratch: [8192] u8; r := EVENT_MORE; calls := 0;
+  while r == EVENT_MORE && calls < 256 {
+    r = nostr_event_sign_step(key[..], aux[..], at, kind, tags, content, work[..], scratch[..], out, false);
+    calls += 1;
+  }
+  for i: 0..<32 { key[i] = 0; }
+  return ifx r > 0 then r else -1;
+}
+// a, a number, b, a number, c: "" when it doesn't fit. A number below 0 is left out.
+nlg_say :: (out: [] u8, a: string, v: int, b: string, w: int, c: string) -> string {
+  n := json_raw(out, 0, a); if v >= 0 { n = json_write_int(out, n, v); }
+  n = json_raw(out, n, b); if w >= 0 { n = json_write_int(out, n, w); }
+  n = json_raw(out, n, c);
+  if n < 0 { return ""; }
+  return cast(string) out[0..<n];
+}
+nlg_same :: (a: [32] u8, b: [32] u8) -> bool { for i: 0..<32 { if a[i] != b[i] { return false; } } return true; }
+nlg_hex :: (k: [32] u8, out: [] u8) -> string {
+  own := k; r := hex_encode_checked(cast(string) own[..], out, false);
+  if r.error != NC_OK || r.written != 64 { return ""; }
+  return cast(string) out[0..<64];
+}
+
+// ---- NIP-OA: an owner's key authorizes an agent's key
+
+// The agent's note carrying the owner's auth tag, and the same tag on a note another key signed.
+NlgAuth :: struct {
+  tags: [512] u8; tags_n: int;         // [["auth",owner,conditions,signature]]
+  event: [1024] u8; event_n: int;
+  copied: [1024] u8; copied_n: int;
+}
+// The owner signs SHA-256 of "nostr:agent-auth:<agent>:<conditions>"; the agent puts the tag on its
+// event. The step that failed, 0 for none.
+nlg_auth_make :: (a: [] NlgAuth) -> int {
+  owner_key := nlg_key(NLG_OWNER_KEY); agent_key := nlg_key(NLG_AGENT_KEY);
+  owner: [32] u8; agent: [32] u8;
+  if !nlg_public(owner_key[..], owner[..]) || !nlg_public(agent_key[..], agent[..]) { return 1; }
+  hash: [32] u8; if !noa_hash(agent, NLG_CONDITIONS, hash[..]) { return 2; }
+  sig: [64] u8; aux: [32] u8; work: [1] SignWork; status := SIGN_MORE; calls := 0;
+  while status == SIGN_MORE && calls < 256 { status = schnorr_sign_step(owner_key[..], aux[..], hash[..], work[..], sig[..], false); calls += 1; }
+  for i: 0..<32 { owner_key[i] = 0; agent_key[i] = 0; }
+  if status != SIGN_DONE { return 3; }
+  n := json_raw(a[0].tags[..], 0, "["); n = noa_write_tag(owner, NLG_CONDITIONS, sig, a[0].tags[..], n); n = json_raw(a[0].tags[..], n, "]");
+  if n <= 0 { return 4; }
+  a[0].tags_n = n; tags := cast(string) a[0].tags[0..<n];
+  a[0].event_n = nlg_sign(NLG_AGENT_KEY, NLG_T, 1, tags, NLG_NOTE, a[0].event[..]); if a[0].event_n <= 0 { return 5; }
+  a[0].copied_n = nlg_sign(NLG_OTHER_KEY, NLG_T, 1, tags, NLG_NOTE, a[0].copied[..]); if a[0].copied_n <= 0 { return 6; }
+  return 0;
+}
+nlg_auth :: (c: [] NostrCard) -> bool {
+  a: [1] NlgAuth; made := nlg_auth_make(a[..]); if made != 0 { return nc_stop(c, made); }
+  // the keys a reader expects, from the secret keys
+  owner_key := nlg_key(NLG_OWNER_KEY); agent_key := nlg_key(NLG_AGENT_KEY); owner: [32] u8; agent: [32] u8;
+  if !nlg_public(owner_key[..], owner[..]) || !nlg_public(agent_key[..], agent[..]) { return nc_stop(c, 10); }
+  for i: 0..<32 { owner_key[i] = 0; agent_key[i] = 0; }
+  // the agent's event verifies as the agent's own, and its tag is the owner's signature over this
+  // agent's key and these conditions, which the event keeps
+  s: [2048] u8; e := nostr_event_verify_vartime(cast(string) a[0].event[0..<a[0].event_n], s[..], false);
+  if e.error != NE_OK || !e.verified || !nlg_same(e.public_key, agent) { return nc_stop(c, 11); }
+  claim := noa_check(e);
+  if claim.status != NOA_OK || !nlg_same(claim.owner, owner) || nlg_same(claim.owner, e.public_key) { return nc_stop(c, 12); }
+  conditions := cast(string) claim.conditions[0..<claim.n]; if conditions != NLG_CONDITIONS { return nc_stop(c, 13); }
+  // refused: the same tag on an event another key signed. The event itself verifies; the tag doesn't
+  s2: [2048] u8; o := nostr_event_verify_vartime(cast(string) a[0].copied[0..<a[0].copied_n], s2[..], false);
+  if o.error != NE_OK || !o.verified || nlg_same(o.public_key, agent) { return nc_stop(c, 14); }
+  if noa_check(o).status != NOA_SIGNATURE { return nc_stop(c, 15); }
+
+  nc_nodes(c, "OWNER", "AGENT", "READER", "");
+  t: [NC_TEXT] u8; ok := true;
+  ok = ok && nc_row_hex(c, "OWNER KEY", claim.owner[..], NC_KEY);
+  ok = ok && nc_row_hex(c, "AGENT KEY", e.public_key[..], NC_KEY);
+  ok = ok && nc_row(c, "OWNER ALLOWS", conditions, NC_PLAIN);
+  ok = ok && nc_row_hex(c, "OWNER SIGNED", claim.sig[..], NC_VALUE);
+  ok = ok && nc_row(c, "AGENT'S NOTE", nlg_say(t[..], "KIND ", e.kind, " AT ", e.created_at, ": ALLOWED"), NC_GOOD);
+  ok = ok && nc_row(c, "ANOTHER KEY", "SAME TAG: NOT SIGNED FOR THAT KEY", NC_BAD);
+  if !ok { return nc_stop(c, 16); }
+  return nc_done(c, "THIS AGENT ACTS FOR THIS OWNER", "TAG COPIED BY ANOTHER KEY: REFUSED");
+}
+
+// ---- NIP-PYLON: a beacon and a receipt
+
+// The pylon's beacon (kind 30200), the buyer's receipt (kind 3201) for one job, and the receipt's
+// same tags and content signed by another key.
+NlgPylon :: struct {
+  beacon: [4096] u8; beacon_n: int;
+  receipt: [4096] u8; receipt_n: int;
+  other: [4096] u8; other_n: int;
+}
+// The receipt the buyer writes: one accepted job on the test pylon, with the library's fixture digests.
+nlg_receipt :: () -> MrReceipt {
+  return MrReceipt.{ok = true, buyer = MR_BUYER, provider = PB_KEY, pylon = "studio-gpu", request = MR_REQUEST,
+    request_digest = MR_REQUEST_DIGEST, result_digest = MR_RESULT_DIGEST, started_at = NLG_T + 100, finished_at = NLG_T + 102, created_at = NLG_T + 103};
+}
+// The step that failed, 0 for none.
+nlg_pylon_make :: (p: [] NlgPylon) -> int {
+  // the beacon: the library's test pylon (one GPU, one free slot), observed now and valid 300 s
+  lanes: [1] string; services: [1] PbService; settlement: [1] string;
+  b := pb_fixture(lanes[..], services[..], settlement[..]);
+  b.observed_at = NLG_T; b.valid_until = pb_valid_until(NLG_T, PB_WINDOW); b.since = NLG_T - 20000;
+  content: [2048] u8; cn := pb_content(b, content[..]); if cn <= 0 { return 1; }
+  x: [64] u8; if !ph_digest(cast(string) content[0..<cn], x[..]) { return 2; }
+  // pb_write gives the unsigned event; the signer takes its tags and content
+  template: [4096] u8; tn := pb_write(b, PbAuth.{}, cast(string) content[0..<cn], cast(string) x[..], template[..]); if tn <= 0 { return 3; }
+  tags := mf_get(cast(string) template[0..<tn], "tags"); if !tags.ok || tags.token != JSON_ARRAY { return 4; }
+  p[0].beacon_n = nlg_sign(NLG_PYLON_KEY, b.observed_at, PB_KIND, tags.raw, cast(string) content[0..<cn], p[0].beacon[..]);
+  if p[0].beacon_n <= 0 { return 5; }
+  // the receipt: the buyer's statement that the pylon finished its job
+  r := nlg_receipt(); body: [MR_BODY_MAX] u8; bn := mr_body(r, body[..]); if bn <= 0 { return 6; }
+  rt: [1024] u8; rn := mr_tags(r, cast(string) body[0..<bn], rt[..]); if rn <= 0 { return 7; }
+  p[0].receipt_n = nlg_sign(NLG_BUYER_KEY, r.created_at, MR_KIND, cast(string) rt[0..<rn], cast(string) body[0..<bn], p[0].receipt[..]);
+  if p[0].receipt_n <= 0 { return 8; }
+  p[0].other_n = nlg_sign(NLG_STRANGER_KEY, r.created_at, MR_KIND, cast(string) rt[0..<rn], cast(string) body[0..<bn], p[0].other[..]);
+  if p[0].other_n <= 0 { return 9; }
+  return 0;
+}
+// What a reader holds after verifying one event: its signer as hex, its tags, its content unescaped.
+NlgOpened :: struct { ok: bool; e: NostrEvent; signer: [64] u8; content: [2048] u8; content_n: int; }
+nlg_open :: (event: string, o: [] NlgOpened) -> bool {
+  scratch: [8192] u8; e := nostr_event_verify_vartime(event, scratch[..], false);
+  o[0].e = e; if e.error != NE_OK || !e.verified { return false; }
+  if nlg_hex(e.public_key, o[0].signer[..]).count != 64 { return false; }
+  o[0].content_n = json_unescape(event[e.content_from..<e.content_to], o[0].content[..]); if o[0].content_n < 0 { return false; }
+  o[0].ok = true; return true;
+}
+nlg_tags :: (o: [] NlgOpened) -> string { return o[0].e.original[o[0].e.tags_from..<o[0].e.tags_to]; }
+nlg_body :: (o: [] NlgOpened) -> string { return cast(string) o[0].content[0..<o[0].content_n]; }
+nlg_pylon :: (c: [] NostrCard) -> bool {
+  p: [1] NlgPylon; made := nlg_pylon_make(p[..]); if made != 0 { return nc_stop(c, made); }
+  // the beacon: signed by the pylon's key, and it reads as NIP-PYLON says a beacon must
+  ob: [1] NlgOpened; if !nlg_open(cast(string) p[0].beacon[0..<p[0].beacon_n], ob[..]) { return nc_stop(c, 10); }
+  signer := cast(string) ob[0].signer[..]; if signer != PB_KEY { return nc_stop(c, 11); }
+  b := ph_read_beacon(ob[0].e.kind, signer, nlg_tags(ob[..]), nlg_body(ob[..])); if b.code != PbCode.ok { return nc_stop(c, 12); }
+  // freshness is the reader's to judge, by the reader's own clock
+  none := PbHeld.{};
+  soon := pb_fresh(b, b.observed_at + NLG_SOON, none);
+  if soon != PbFresh.fresh || !pb_routable(b, soon) || pb_show(b, soon) != PbShow.online { return nc_stop(c, 13); }
+  // refused: the same beacon read 301 s after it was made is stale, and is not used
+  late := pb_fresh(b, b.observed_at + NLG_LATE, none);
+  if late != PbFresh.stale || pb_routable(b, late) || pb_show(b, late) != PbShow.unknown { return nc_stop(c, 14); }
+  // the receipt: signed by the buyer it names, for this pylon
+  or: [1] NlgOpened; if !nlg_open(cast(string) p[0].receipt[0..<p[0].receipt_n], or[..]) { return nc_stop(c, 15); }
+  r := mr_read(or[0].e.kind, cast(string) or[0].signer[..], or[0].e.created_at, nlg_tags(or[..]), nlg_body(or[..]));
+  if !r.ok || r.buyer != cast(string) or[0].signer[..] || r.provider != signer || r.pylon != b.pylon { return nc_stop(c, 16); }
+  // refused: the receipt's bytes signed by a key that is not the buyer it names
+  oo: [1] NlgOpened; if !nlg_open(cast(string) p[0].other[0..<p[0].other_n], oo[..]) { return nc_stop(c, 17); }
+  if mr_read(oo[0].e.kind, cast(string) oo[0].signer[..], oo[0].e.created_at, nlg_tags(oo[..]), nlg_body(oo[..])).ok { return nc_stop(c, 18); }
+
+  nc_nodes(c, "PYLON", "BUYER", "READER", "");
+  t: [NC_TEXT] u8; ok := true; n := 0;
+  ok = ok && nc_row_hex(c, "TEST PYLON", ob[0].e.public_key[..], NC_KEY);
+  n = json_raw(t[..], 0, "KIND "); n = json_write_int(t[..], n, ob[0].e.kind); n = json_raw(t[..], n, ", "); n = json_raw(t[..], n, b.pylon);
+  n = json_raw(t[..], n, ", "); n = json_raw(t[..], n, pb_status_name(b.status));
+  ok = ok && n > 0 && nc_row(c, "BEACON", cast(string) t[0..<ifx n > 0 then n else 0], NC_PLAIN);
+  n = json_raw(t[..], 0, b.family); n = json_raw(t[..], n, ", "); n = json_write_int(t[..], n, b.memory_gb); n = json_raw(t[..], n, " GB, ");
+  n = json_write_int(t[..], n, b.free); n = json_raw(t[..], n, " OF "); n = json_write_int(t[..], n, b.total); n = json_raw(t[..], n, " SLOTS FREE");
+  ok = ok && n > 0 && nc_row(c, "IT OFFERS", cast(string) t[0..<ifx n > 0 then n else 0], NC_PLAIN);
+  ok = ok && nc_row(c, nlg_say(t[..], "READ AT +", NLG_SOON, "S", -1, ""), "FRESH", NC_GOOD);
+  ok = ok && nc_row(c, nlg_say(t[..], "READ AT +", NLG_LATE, "S", -1, ""), nlg_say(t[NC_LABEL..<NC_TEXT], "STALE: ", PB_WINDOW, " S IS THE LIMIT", -1, ""), NC_BAD);
+  ok = ok && nc_row(c, "RECEIPT", nlg_say(t[..], "KIND ", or[0].e.kind, ", SIGNED BY THE BUYER", -1, ""), NC_VALUE);
+  if !ok { return nc_stop(c, 19); }
+  return nc_done(c, "BEACON FRESH, RECEIPT VERIFIED", "BEACON 301 S OLD: STALE, NOT USED");
+}
+
+// Card k of this file (0 and up), filled. False when the lesson stopped (c[0].stopped says where).
+nlg_card :: (k: int, c: [] NostrCard) -> bool {
+  if k == 0 { return nlg_auth(c); }
+  if k == 1 { return nlg_pylon(c); }
+  return nc_stop(c, 99);
+}
+
+// ---- checks
+
+// Every text on a card fits its face and is ASCII 32 to 126.
+nlg_fits :: (c: [] NostrCard) -> bool {
+  if !c[0].ready || c[0].stopped != 0 || c[0].nodes < 2 || c[0].rows < 3 || c[0].rows > NC_ROWS { return false; }
+  if c[0].good.count == 0 || c[0].good.count > NC_LINE || c[0].bad.count == 0 || c[0].bad.count > NC_LINE { return false; }
+  for k: 0..<c[0].nodes { if c[0].node[k].count == 0 || c[0].node[k].count > NC_NODE { return false; } }
+  for k: 0..<c[0].rows {
+    v := nc_text(c, k); if v.count == 0 || nc_label(c, k).count == 0 { return false; }
+    for ch: v { if ch < 32 || ch > 126 { return false; } }
+  }
+  return true;
+}
+
+#test "nostr lab agents: the owner's tag verifies on the agent's event, and not on another key's, a later one or another kind" #steps 6000000000 {
+  c: [1] NostrCard; #assert nlg_card(0, c[..]) && nlg_fits(c[..]) && c[0].rows == 6;
+  #assert nc_text(c[..], 2) == "kind=1&created_at<1794445200" && nc_text(c[..], 4) == "KIND 1 AT 1794441600: ALLOWED";
+  #assert c[0].row[4].tone == NC_GOOD && c[0].row[5].tone == NC_BAD;
+  // the keys the rows show are NIP-OA's test keys: secret key 1's and secret key 2's public keys
+  owner: [32] u8; agent: [32] u8; r: [1] NostrCard;
+  #assert ne_lower_hex("79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798", owner[..]);
+  #assert ne_lower_hex("c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5", agent[..]);
+  #assert nc_row_hex(r[..], "O", owner[..], NC_KEY) && nc_row_hex(r[..], "A", agent[..], NC_KEY);
+  #assert nc_text(c[..], 0) == nc_text(r[..], 0) && nc_text(c[..], 1) == nc_text(r[..], 1);
+  // the same events again (aux 0: the signer gives the same bytes), checked with the library directly
+  a: [1] NlgAuth; #assert nlg_auth_make(a[..]) == 0;
+  s: [2048] u8; e := nostr_event_verify_vartime(cast(string) a[0].event[0..<a[0].event_n], s[..], false); #assert e.verified;
+  at := noa_attribute(e); #assert at.authorized && at.status == NOA_OK && nlg_same(at.owner, owner) && nlg_same(at.author, agent);
+  // the owner's signature is BIP-340 over SHA-256 of "nostr:agent-auth:<agent>:<conditions>", and the row shows it
+  claim := noa_read(e); hash: [32] u8; #assert claim.status == NOA_UNCHECKED && noa_hash(agent, NLG_CONDITIONS, hash[..]);
+  #assert nlg_same(claim.hash, hash) && nostr_verify_vartime(hash[..], owner[..], claim.sig[..]);
+  #assert nc_row_hex(r[..], "S", claim.sig[..], NC_VALUE) && nc_text(c[..], 3) == nc_text(r[..], 2);
+  // it is not a signature for another agent key, nor for other conditions
+  other: [32] u8; #assert noa_hash(owner, NLG_CONDITIONS, other[..]) && !nostr_verify_vartime(other[..], owner[..], claim.sig[..]);
+  #assert noa_hash(agent, "kind=1&created_at<1794445201", other[..]) && !nostr_verify_vartime(other[..], owner[..], claim.sig[..]);
+  // the tag on another key's event: a valid event, a refused tag, no owner reported
+  o := nostr_event_verify_vartime(cast(string) a[0].copied[0..<a[0].copied_n], s[..], false);
+  #assert o.verified && !nlg_same(o.public_key, agent) && noa_check(o).status == NOA_SIGNATURE && !noa_attribute(o).authorized;
+  // the agent's own event outside the conditions: an hour later, and a kind the owner didn't allow
+  tags := cast(string) a[0].tags[0..<a[0].tags_n]; ev: [1024] u8;
+  n := nlg_sign(NLG_AGENT_KEY, 1794445200, 1, tags, NLG_NOTE, ev[..]); #assert n > 0;
+  #assert noa_check(nostr_event_verify_vartime(cast(string) ev[0..<n], s[..], false)).status == NOA_OUTSIDE;
+  n = nlg_sign(NLG_AGENT_KEY, NLG_T, 7, tags, "+", ev[..]); #assert n > 0;
+  #assert noa_check(nostr_event_verify_vartime(cast(string) ev[0..<n], s[..], false)).status == NOA_OUTSIDE;
+  // and the owner's own event with the tag is refused: an owner doesn't authorize itself
+  n = nlg_sign(NLG_OWNER_KEY, NLG_T, 1, tags, NLG_NOTE, ev[..]); #assert n > 0;
+  #assert noa_check(nostr_event_verify_vartime(cast(string) ev[0..<n], s[..], false)).status == NOA_SELF;
+}
+#test "nostr lab agents: a pylon's beacon reads and is fresh for 300 s, and the buyer's receipt verifies only under the buyer's key" #steps 6000000000 {
+  c: [1] NostrCard; #assert nlg_card(1, c[..]) && nlg_fits(c[..]) && c[0].rows == 6;
+  #assert nc_label(c[..], 0) == "TEST PYLON" && nc_text(c[..], 1) == "KIND 30200, studio-gpu, online";
+  #assert nc_text(c[..], 2) == "gpu, 16 GB, 1 OF 1 SLOTS FREE";
+  #assert nc_label(c[..], 3) == "READ AT +10S" && nc_text(c[..], 3) == "FRESH" && c[0].row[3].tone == NC_GOOD;
+  #assert nc_label(c[..], 4) == "READ AT +301S" && nc_text(c[..], 4) == "STALE: 300 S IS THE LIMIT" && c[0].row[4].tone == NC_BAD;
+  #assert nc_text(c[..], 5) == "KIND 3201, SIGNED BY THE BUYER";
+  // the same events again, checked with the library directly
+  p: [1] NlgPylon; #assert nlg_pylon_make(p[..]) == 0;
+  ob: [1] NlgOpened; #assert nlg_open(cast(string) p[0].beacon[0..<p[0].beacon_n], ob[..]);
+  #assert cast(string) ob[0].signer[..] == PB_KEY && ob[0].e.kind == 30200 && ob[0].e.created_at == NLG_T;
+  // the x tag is SHA-256 of the content, and the beacon's content is what the writer writes
+  x: [64] u8; #assert ph_digest(nlg_body(ob[..]), x[..]) && pt_tag(nlg_tags(ob[..]), "x").v[1] == cast(string) x[..];
+  b := ph_read_beacon(ob[0].e.kind, PB_KEY, nlg_tags(ob[..]), nlg_body(ob[..]));
+  #assert b.code == PbCode.ok && b.status == PbStatus.online && b.total == 1 && b.free == 1 && b.observed_at == NLG_T && b.valid_until == NLG_T + 300;
+  // fresh up to 300 s by the reader's clock, stale from 301, and not accepted from more than 30 s in the future
+  none := PbHeld.{};
+  #assert pb_fresh(b, NLG_T + 10, none) == PbFresh.fresh && pb_fresh(b, NLG_T + 300, none) == PbFresh.fresh;
+  #assert pb_fresh(b, NLG_T + 301, none) == PbFresh.stale && !pb_routable(b, pb_fresh(b, NLG_T + 301, none));
+  #assert pb_fresh(b, NLG_T - 31, none) == PbFresh.future;
+  // the beacon read as another key's is refused: its services name the pylon's key
+  #assert ph_read_beacon(ob[0].e.kind, MR_BUYER, nlg_tags(ob[..]), nlg_body(ob[..])).code != PbCode.ok;
+  // one digit of the beacon's signature changed: the event no longer verifies
+  bad: [4096] u8; for i: 0..<p[0].beacon_n { bad[i] = p[0].beacon[i]; }
+  at := p[0].beacon_n - 3; bad[at] = ifx bad[at] == '0' then cast(u8) '1' else cast(u8) '0';
+  ox: [1] NlgOpened; #assert !nlg_open(cast(string) bad[0..<p[0].beacon_n], ox[..]);
+  // the receipt: the buyer's key (secret key 1's), admitted, for this pylon and its beacon's slug
+  or: [1] NlgOpened; #assert nlg_open(cast(string) p[0].receipt[0..<p[0].receipt_n], or[..]);
+  #assert cast(string) or[0].signer[..] == MR_BUYER && or[0].e.kind == 3201;
+  r := mr_read(or[0].e.kind, MR_BUYER, or[0].e.created_at, nlg_tags(or[..]), nlg_body(or[..]));
+  #assert r.ok && r.buyer == MR_BUYER && r.provider == PB_KEY && r.pylon == b.pylon && r.finished_at == NLG_T + 102;
+  // the same bytes signed by secret key 2: a valid event, refused as a receipt
+  oo: [1] NlgOpened; #assert nlg_open(cast(string) p[0].other[0..<p[0].other_n], oo[..]);
+  #assert cast(string) oo[0].signer[..] == "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5";
+  #assert !mr_read(oo[0].e.kind, cast(string) oo[0].signer[..], oo[0].e.created_at, nlg_tags(oo[..]), nlg_body(oo[..])).ok;
+  // and the pylon can't write a receipt for its own job
+  self := nlg_receipt(); self.buyer = PB_KEY; body: [MR_BODY_MAX] u8; #assert mr_body(self, body[..]) == -1;
+}
