@@ -36,6 +36,7 @@
 MC_OUTPUT_HEAD :: 6000;          // bytes of a command's output kept from its start
 MC_OUTPUT_TAIL :: 6000;          // and from its end
 MC_BRIEF_OUTPUT :: 160;          // a compacted command's output: this much of its start and of its end
+MC_BRIEF_RATIONALE :: 1200;      // a compacted step's rationale: the model's own notes, which it is told stay (loop.coax MC_SYSTEM)
 MC_LOG_BYTES :: 147456;          // the recent steps' JSON
 MC_ACTION_ROOM :: 49152;         // free log a new step starts with; else the older steps are compacted
 MC_KEEP_RECENT :: 24576;         // the recent steps kept whole by a compaction, at most
@@ -185,7 +186,7 @@ mc_action_begin :: (st: [] McState, rationale: string) {
   c := json_raw(mc_croom(st), cat, ",{\"step\":");
   c = json_write_int(mc_croom(st), c, st[0].steps);
   c = json_raw(mc_croom(st), c, ",\"rationale\":");
-  c = mc_write_cut(mc_croom(st), c, rationale, 300, 0);
+  c = mc_write_cut(mc_croom(st), c, rationale, MC_BRIEF_RATIONALE, 0);
   c = json_raw(mc_croom(st), c, ",\"results\":[");
   if c < 0 { c = json_raw(mc_croom(st), cat, ",{\"step\":0,\"rationale\":\"\",\"results\":["); }
   st[0].act_at[st[0].nacts] = at; st[0].cact_at[st[0].nacts] = cat; st[0].open = st[0].nacts; st[0].nacts += 1;
@@ -440,6 +441,22 @@ mc_through_earlier :: (j: string) -> int {
   #assert cl_str(ar[..], j, "earlier.0.results.0.command") == "grep -rn x ." && cl_int(j, "earlier.0.results.0.exit").value == 0;
   #assert cl_str(ar[..], j, "earlier.0.results.0.output").count < 400 && cl_int(j, "earlier.0.results.1.bytes").value == 12000;
   #assert cl_str(ar[..], j, "earlier.0.results.1.view") == "f.txt" && cl_raw(j, "earlier.0.results.1.content").count == 0;
+}
+
+#test "a compacted step keeps its rationale up to 1,200 bytes: the notes the model is told stay" {
+  t: [1] McStateTest; st: [1] McState;
+  mc_state_init(st[..], t[0].b[..], "{}", "x", "{}");
+  note: [1500] u8; for i: 0..<note.count { note[i] = cast(u8) ('a' + i % 26); }
+  mc_action_begin(st[..], cast(string) note[0..<1200]); mc_action_end(st[..]);
+  mc_action_begin(st[..], cast(string) note[..]); mc_action_end(st[..]);
+  mc_action_begin(st[..], "next"); mc_action_end(st[..]);
+  mc_compact(st[..], st[0].nlog - st[0].act_at[2]);
+  j := mc_state_json(st[..], t[0].out[..]);
+  ab: [4096] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+  #assert json_valid(j) && st[0].nearly == 2 && cl_str(ar[..], j, "earlier.0.rationale") == cast(string) note[0..<1200];
+  ar[0].at = 0;
+  cut := cl_str(ar[..], j, "earlier.1.rationale");
+  #assert cut.count > 1200 && cut.count < 1260 && cast(string) cut[0..<1200] == cast(string) note[0..<1200];     // its start, then the line that says how much was left out
 }
 
 #test "a compacted step keeps its edits, refusals and missing files, and its rationale's start" {
