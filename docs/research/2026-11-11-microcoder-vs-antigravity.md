@@ -49,6 +49,10 @@ Carbon (added 2026-11-12, before its runs): a Carbon arm with 2 runs per task
 (`gemini-4-carbon`, `us`, both harnesses at their low default; Microcoder at
 the Argon round 4 build).
 
+Carbon arm: 3 runs per task (added 2026-11-12, before any Carbon run ended).
+The run count rose from 2 to 3 because the owner raised the budget to $200
+for round 4 and Carbon together. Three runs match the Argon round 4 verdict.
+
 The final runs are at Argon low in `us`. A second setting (Flash low or
 Carbon low) runs if the budget allows. With two runs a task, a difference of
 one or two passes is within noise; the report gives counts, not rates.
