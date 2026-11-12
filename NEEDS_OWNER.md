@@ -1,5 +1,9 @@
 # Owner actions
 
+## Microcoder's read budget (#13325, 2026-11-12)
+
+- **Say if this should be undone.** `coax/lib/agent/native-profile.coax` is an `#authority` file. A journaled Microcoder run could make 128 effects, and a file view counted as one. It now counts views apart: 512 views a run, with commands and edits still at 128, model calls at 64 and the 15-minute limit unchanged. The cause was a real run (issue #13263 on Carbon) that read 75 files and ran 53 commands, all searching, and was refused before its first edit. The coordinator asked for the change and said the owner was being told; no owner sign-off is recorded. `coax mutate` on the file: 146 mutants, 146 killed. To undo it, revert the commit titled "Microcoder: file views are counted apart from commands".
+
 ## Apps, components and OpenAgents for Linux (#13153, 2026-11-10)
 
 - **What #13153 could not do from the Linux machine is #13156**: the Mac, iOS and Android hosts, who may use `/chat`, and trying an input method, a real keyboard and a real microphone in the Linux window.

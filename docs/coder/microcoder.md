@@ -145,6 +145,7 @@ output size. A run ends as one of:
 | `no_capacity` | Every gateway in the plan refused or failed before the first token |
 | `stopped` | The user pressed STOP |
 | `idle` | Three steps with no commands, no views and no reply |
+| `failed` | A journaled run (Coder) hit a limit, and the ending says which: 64 model calls, 128 commands and edits, 512 file views, or 15 minutes. Or the journal refused |
 
 ### What the Lab shows
 

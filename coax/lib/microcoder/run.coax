@@ -131,7 +131,9 @@ McRun :: struct {
   ceiling:int=3;
   journal: [] JfWriter;
   deadline: int;
-  effects: int;
+  effects: int;                  // commands and edits run (native-profile.coax NP_EFFECTS a run)
+  reads: int;                    // files viewed, counted apart (NP_READS a run)
+  refused: string;               // which limit refused the last effect, "" when it was not a limit
   gated: bool;                   // each command waits for mc_run_answer: the host's hooks and approvals decide
   ask_ticket:int;
   asking: bool; ask_i: int;      // the pending action's command waiting for an answer
@@ -160,7 +162,7 @@ MC_RUN_MS :: 900000;
 // (gw_plan_add its attempts first); effort "" leaves it to the provider.
 mc_run_start :: (r: [] McRun, p: [] GwPlan, bench: [] GwBench, cwd: string, effort: string) {
   r[0].p = p; r[0].bench = bench; r[0].cwd = cwd; r[0].effort = effort; r[0].ended = false;
-  r[0].journal=p[0].journal;r[0].deadline=0;now:=cxproc_now_ms();if now>=0 && now<=9223372036854475807 {r[0].deadline=now+MC_RUN_MS;}r[0].effects=0;
+  r[0].journal=p[0].journal;r[0].deadline=0;now:=cxproc_now_ms();if now>=0 && now<=9223372036854475807 {r[0].deadline=now+MC_RUN_MS;}r[0].effects=0;r[0].reads=0;r[0].refused="";
   r[0].seeded = false;
   if !r[0].seed { mc_run_call(r); }       // a seeded run's first poll looks things up, then calls
 }
@@ -209,7 +211,7 @@ mc_run_seed :: (r: [] McRun, out: [] McRunEvent) -> int {
 
 mc_run_call :: (r: [] McRun) {
   if r[0].journal.count>0 && !np_budget(true,r[0].l[0].steps,cxproc_now_ms(),r[0].deadline) {
-    r[0].l[0].ending=MC_END_FAILED;r[0].l[0].why="run budget exhausted";return;
+    r[0].l[0].ending=MC_END_FAILED;r[0].l[0].why=mc_run_limit(MC_LIMIT_CALL,r[0].l[0].steps,cxproc_now_ms(),r[0].deadline);return;
   }
   req := mc_request(r[0].l[..]);
   if r[0].effort.count > 0 { req.effort = r[0].effort; }
@@ -250,7 +252,7 @@ mc_run_poll :: (r: [] McRun, out: [] McRunEvent) -> int {
   if r[0].ended || r[0].asking { return 0; }
   if r[0].l[0].ending==MC_END_FAILED {return mc_run_end(r,out,0);}
   if r[0].seed && !r[0].seeded { return mc_run_seed(r, out); }
-  if r[0].journal.count>0 && cxproc_now_ms()>=r[0].deadline {gw_plan_stop(r[0].p);return mc_run_failed(r,out,0);}
+  if r[0].journal.count>0 && cxproc_now_ms()>=r[0].deadline {gw_plan_stop(r[0].p);r[0].refused="time limit reached: a run has 15 minutes";return mc_run_failed(r,out,0);}
   l := r[0].l[..];
   k := 0;
   ev: [8] GwEvent;
@@ -282,17 +284,47 @@ mc_run_poll :: (r: [] McRun, out: [] McRunEvent) -> int {
 
 // The live journal owns every effect ticket. Any uncertain completion ends
 // the run; a later call never silently retries the pending operation.
+// A view inside the workspace changes nothing, so views spend a budget of their own (NP_READS)
+// and commands and edits keep theirs (NP_EFFECTS): GitHub #13325.
 mc_run_intent :: (r:[]McRun,kind:AjKind,target:string)->bool {
-  if !np_tool_admit(r[0].ceiling,kind==AjKind.command_intent) {return false;}
+  r[0].refused="";
+  view:=kind==AjKind.view_intent;
+  if !np_tool_admit(r[0].ceiling,kind==AjKind.command_intent) {r[0].refused="this run may not run commands: its effect ceiling is frozen below them";return false;}
   if r[0].journal.count==0 {return true;}
   now:=cxproc_now_ms();
-  if !np_budget(false,r[0].effects,now,r[0].deadline) || r[0].deadline-now<1000 {return false;}
+  within:=ifx view then np_read_budget(r[0].reads,now,r[0].deadline) else np_budget(false,r[0].effects,now,r[0].deadline);
+  if !within || r[0].deadline-now<1000 {
+    r[0].refused=mc_run_limit(ifx view then MC_LIMIT_READ else MC_LIMIT_EFFECT,ifx view then r[0].reads else r[0].effects,now,r[0].deadline-1000);
+    return false;
+  }
   if !jf_intent(r[0].journal,kind,target) {return false;}
-  r[0].effects+=1;return true;
+  if view {r[0].reads+=1;} else {r[0].effects+=1;}
+  return true;
 }
+
+// Which limit a refused call, command or view ran into, for the ending: the count's own
+// (model calls, commands and edits, views) or the run's time.
+MC_LIMIT_CALL :: 0; MC_LIMIT_EFFECT :: 1; MC_LIMIT_READ :: 2;
+mc_run_limit :: (what:int,used:int,now:int,deadline:int)->string {
+  if what==MC_LIMIT_CALL && used>=NP_MODEL_CALLS {return "model call limit reached: a run has 64 model calls";}
+  if what==MC_LIMIT_EFFECT && used>=NP_EFFECTS {return "command limit reached: a run has 128 commands and edits";}
+  if what==MC_LIMIT_READ && used>=NP_READS {return "read limit reached: a run has 512 file views";}
+  if now>=deadline {return "time limit reached: a run has 15 minutes";}
+  return "run budget refused";
+}
+#test "an ending names the limit that was hit: model calls, commands, views or time" {
+  #assert mc_run_limit(MC_LIMIT_CALL,64,0,10)=="model call limit reached: a run has 64 model calls" && mc_run_limit(MC_LIMIT_CALL,63,10,10)=="time limit reached: a run has 15 minutes";
+  #assert mc_run_limit(MC_LIMIT_EFFECT,128,0,10)=="command limit reached: a run has 128 commands and edits" && mc_run_limit(MC_LIMIT_EFFECT,127,11,10)=="time limit reached: a run has 15 minutes";
+  #assert mc_run_limit(MC_LIMIT_READ,512,0,10)=="read limit reached: a run has 512 file views" && mc_run_limit(MC_LIMIT_READ,128,0,10)=="run budget refused";
+  #assert mc_run_limit(MC_LIMIT_READ,511,9,10)=="run budget refused" && mc_run_limit(MC_LIMIT_READ,0,10,10)=="time limit reached: a run has 15 minutes";
+  #assert MC_RUN_MS==900000 && NP_MODEL_CALLS==64 && NP_EFFECTS==128 && NP_READS==512;     // the numbers the messages give
+}
+// A run that fails on a limit says which; any other refusal (the journal) keeps the warning
+// that an effect may be outstanding.
 mc_run_failed :: (r:[]McRun,out:[]McRunEvent,k:int)->int {
   r[0].l[0].ending=MC_END_FAILED;
-  r[0].l[0].why="frozen capability, journal or run budget refused; an outstanding effect may have happened; inspect before retrying";
+  r[0].l[0].why=ifx r[0].refused.count>0 then r[0].refused else "the journal refused; an outstanding effect may have happened; inspect before retrying";
+  r[0].refused="";
   r[0].asking=false;return mc_run_end(r,out,k);
 }
 
@@ -300,7 +332,7 @@ mc_run_failed :: (r:[]McRun,out:[]McRunEvent,k:int)->int {
 mc_run_one :: (r: [] McRun, out: [] McRunEvent, k: int, command: string) -> int {
   if !mc_run_intent(r,AjKind.command_intent,command) {return mc_run_failed(r,out,k);}
   seconds:=MC_COMMAND_SECONDS;
-  if r[0].journal.count>0 {left:=(r[0].deadline-cxproc_now_ms())/1000;if left<seconds {seconds=left;}if seconds<1 {return mc_run_failed(r,out,k);}}
+  if r[0].journal.count>0 {left:=(r[0].deadline-cxproc_now_ms())/1000;if left<seconds {seconds=left;}if seconds<1 {r[0].refused="time limit reached: a run has 15 minutes";return mc_run_failed(r,out,k);}}
   res := mc_run_command_profile(r[0].cwd, command, seconds, r[0].tb[0].out[..],r[0].profile);
   metadata:[128]u8;m:=json_raw(metadata[..],0,"exit=");m=json_write_int(metadata[..],m,res.exit);
   m=json_raw(metadata[..],m,ifx res.timed_out then " timed_out=true" else " timed_out=false");

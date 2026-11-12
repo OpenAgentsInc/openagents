@@ -26,9 +26,30 @@ np_tool_admit :: (ceiling:int,command:bool)->bool #effects(all) {
 
 // Both profiles that confine a workspace and the explicit full-access
 // profile retain the owned loop's model/effect/time budgets.
+NP_MODEL_CALLS :: 64;
+NP_EFFECTS :: 128;
+NP_READS :: 512;
 np_budget :: (model:bool,used:int,now:int,deadline:int)->bool #effects(all) {
-  limit:=ifx model then 64 else 128;
+  limit:=ifx model then NP_MODEL_CALLS else NP_EFFECTS;
   return used>=0 && used<limit && now>=0 && now<deadline;
+}
+// A view of a file inside the workspace changes nothing, so views are counted
+// apart from commands and edits, with a limit of their own (GitHub #13325: a
+// run that had read 75 files and run 53 commands, 128 effects together, was
+// refused its next read before it had made one edit). Commands and edits
+// keep NP_EFFECTS; model calls and the deadline are unchanged.
+np_read_budget :: (used:int,now:int,deadline:int)->bool #effects(all) {
+  return used>=0 && used<NP_READS && now>=0 && now<deadline;
+}
+#forall "a view needs remaining count and time, counted apart from commands" used:-1..<515,now:-1..<4 {
+  expected:=used>=0 && used<=511 && now>=0 && now<=1;
+  #assert np_read_budget(used,now,2)==expected;
+}
+#test "the limits: 64 model calls, 128 commands and edits, 512 views; read extremes refuse rather than overflow" {
+  #assert NP_MODEL_CALLS==64 && NP_EFFECTS==128 && NP_READS==512;
+  #assert np_read_budget(128,0,1) && np_read_budget(511,0,1) && !np_read_budget(512,0,1) && !np_budget(false,128,0,1);
+  #assert !np_read_budget(0,0,0) && !np_read_budget(0,0,-1) && !np_read_budget(-1,0,1) && !np_read_budget(0,-1,1);
+  #assert np_read_budget(511,9223372036854775806,9223372036854775807) && !np_read_budget(0,9223372036854775807,9223372036854775807);
 }
 #forall "a call needs remaining count and time independently of approval" model:bool,used:-1..<130,now:-1..<4 {
   limit:=ifx model then 64 else 128;
