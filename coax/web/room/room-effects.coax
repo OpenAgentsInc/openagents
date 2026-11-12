@@ -8,11 +8,6 @@
   rm_eg_strikes_taken(v[..],k,-1);rm_eg_strikes_taken(v[..],k,3);#assert v[0].eg[k].strike_n==2;
   rm_eg_strikes_taken(v[..],k,2);#assert v[0].eg[k].strike_n==0;
 }
-#test "overload: accepted world transfers keep a reserved player region before further casts (#12841)" #steps 2000000000 {
-  v:[1]RmServer;k:=rc_test_room(v[..],"pair-e2-stage-effects",1,false);
-  for n:0..<EG_PLAYER_STRIKES{v[0].eg[k].strikes[n]=EgStrike.{by=0,slot=EG_WL_BLAST};}v[0].eg[k].strike_n=EG_PLAYER_STRIKES;
-  #assert !rc_hear(v[..],k, SeatId.{value = 0},1,EG_WL_DOOR,0,0,0,-1,0)&&v[0].eg[k].cast_order==0;
-}
 rm_effect_sources::()->int #export_c #effects(all) {return EFFECT_HOUSE+1;}
 // Free slots are a snapshot after this world's impacts step. Waiting casts and
 // staged transfers still own slots; they cannot be spent a second time.

@@ -180,7 +180,6 @@ rm_eg_rules :: (v: [] RmServer, k: int) #export_c #effects(all) {
   e2_guard_after(v,k); e2_monsters_after(v,k);
   e2_rest_tell_all(v, k); e2_kit_tell_all(v, k);
   fg_hits(v,k);
-  rc_tick_last(v, k);
   eg_engine_events(v, k);
   eg_sky_tick(v, k);   // the weather turned: everyone hears it (room-sky.coax)
   ev_tick(v, k);       // its world event (room-events.coax)

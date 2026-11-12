@@ -202,7 +202,6 @@ eg_left :: (v: [] RmServer, r: int, seat_id: SeatId) { seat := seat_id.value;
   if k < 0 || seat < 0 || seat >= EG_SEATS { return; }
   ck_capture(v, k, seat_id); rv_note_seat(v, k, seat_id);   // its HP kept for its player (room-vitals.coax, #12715)
   v[0].vit.flush = true;      // and posted at the host's next second; the note stays until a receipt covers it (#12793)
-  rc_left(v, k, seat_id);   // publish the old lifetime's stops before invalidating it
   v[0].eg[k].seat[seat].live = false; v[0].eg[k].seat[seat].conn = -1; v[0].eg[k].seat[seat].held = false;
   e5rr_leave(v[0].eg[k].rules[..], seat);
   v[0].eg[k].im_blk[seat] = ImBlockList.{}; im_seat_reset(v[0].eg[k].im[..], seat_id); im_room_blocks(v, k);

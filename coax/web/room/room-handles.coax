@@ -20,23 +20,17 @@ rm_eg_strike_current :: (v:[]RmServer,k:int,q:int)->bool #export_c #effects(all)
   strike:=v[0].eg[k].strikes[q];
   return strike.by<0 || (handle_slot(strike.owner)==strike.by && eg_seat_ref_live(v,k,strike.owner));
 }
-#test "handles: a socket rejoin keeps its character; a new character in the same seat cannot inherit an old cast" #steps 2000000000 {
+#test "handles: a socket rejoin keeps its character; a new character in the same seat is a new handle" #steps 2000000000 {
   v:[1]RmServer;k:=rc_test_room(v[..],"pair-e2-handles",2,false);r:=v[0].eg[k].relay;
   old:=eg_seat_ref(v[..],k,SeatId.{value=0});
   #assert handle_present(old) && eg_seat_ref_live(v[..],k,old);
   eg_rejoin(v[..],r,0,SeatId.{value=0});
   #assert eg_seat_ref(v[..],k,SeatId.{value=0})==old;
-  #assert rc_hear(v[..],k,SeatId.{value=0},7,0,1,0,1,-1,0);
-  saved:=v[0].eg[k].casts[0];#assert saved.owner==old;
   eg_left(v[..],r,SeatId.{value=0});eg_join(v[..],r,0,SeatId.{value=0});
   fresh:=eg_seat_ref(v[..],k,SeatId.{value=0});
   #assert fresh!=old && handle_slot(fresh)==handle_slot(old);
   switch eg_seat_get(v[..],k,old) {case none {} case some(wrong) {#assert false;}}
   switch eg_seat_get(v[..],k,fresh) {case none {#assert false;} case some(current) {#assert current[0].live;}}
-  #assert !rc_owner_live(v[..],k,saved) && !rc_ready(v[..],k,saved);
-  v[0].eg[k].casts[0]=saved;v[0].eg[k].casts[0].phase=RC_FLIGHT;
-  strikes:=v[0].eg[k].strike_n;rc_strike(v[..],k,0);
-  #assert !v[0].eg[k].casts[0].on && v[0].eg[k].strike_n==strikes;
   #assert rm_eg_seat_owner(v[..],k,SeatId.{value=0})==fresh.value;
   #assert !handle_present(eg_seat_ref(v[..],-1,SeatId.{value=0})) && !handle_present(eg_seat_ref(v[..],EG_ROOMS,SeatId.{value=0}));
   #assert !handle_present(eg_seat_ref(v[..],k,SeatId.{value= -1})) && !handle_present(eg_seat_ref(v[..],k,SeatId.{value=EG_SEATS}));

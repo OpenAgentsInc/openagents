@@ -1,105 +1,17 @@
 #load "../../../aethyr/ids.coax";
-// How an Everglade room resolves casts under latency (GitHub #12790, epic #12718; the rules, written:
-// docs/verse/2026-11-04-everglade-cast-rules.md). A cast (C SEQ SLOT AX AY AZ TGT) the room heard and
-// that passed its first checks (room-everglade.coax eg_heard_cast) goes through four phases, each a
-// tick of the server's own clock; no clock of the page's is read:
-//   RC_WAIT    heard, waiting for the inputs the page sent before it (CR_WAIT ticks at most), so its
-//              checks see the caster where the page did when it pressed;
-//   start      the checks (cooldown, dead, range with CR_SLACK, line of sight); refused: r SEQ WHY to
-//              the caster only; taken: e cast to everyone near;
-//   RC_BAR     its cast bar (Everglade's four only, CR_BAR): a caster dead or held stops it;
-//   release    the checks again (range with CR_SLACK_END, line of sight, its target alive); failed:
-//              e stop SS SLOT WHY to everyone near;
-//   RC_FLIGHT  released, its strike rolled at its due tick, at its target if it still stands, else
-//              where the target was; it lands though its caster fell or was held in flight (#13120).
-// A tick's order (rm_eg_end): starts, heals due, the world's harm, the rules' step (the creatures'
-// turns), stops, releases, harm due. So a heal and a killing blow in one tick: the heal first; an
-// interrupt and a release in one tick: the interrupt; two strikes at one raider: the earlier start,
-// then the one heard first (cr_before).
-// The line of sight is the world's (everglade-cast-sight.coax), which the host's C holds: before
-// rm_eg_end it asks rm_eg_sights for the questions, answers each (rm_eg_sight_is), and an unanswered
-// one is clear (a check with no world).
+// What is left of v1's cast queue in the room (GitHub #12790; its rules, docs/verse/2026-11-04-everglade-cast-rules.md):
+// Everglade II casts go through everglade/server/casts.coax eg_e2_cast, so the queue's phases left with
+// v1 (#13267). Kept: the world's harm each tick, the line-of-sight questions the host's world answers
+// (rm_eg_sights, rm_eg_sight, rm_eg_sight_is: Everglade II's aid, familiar and monsters ask them), and
+// the test rooms. The EgCast array and RC_* phases go with the seat record trim (P1.1 step 3).
 
 RC_WAIT :: 1; RC_BAR :: 2; RC_FLIGHT :: 3;
 #load "hurt-budget.coax";
 
-// ---- hearing
-#load "cast-budget.coax";
-
-// A cast that passed its first checks: it waits for the inputs before it. False: no room for it.
-rc_hear :: (v: [] RmServer, k: int, seat_id: SeatId, seq: int, slot: int, ax: f32, ay: f32, az: f32, tgt: int, mode: int) -> bool { seat := seat_id.value;
-  owner:=eg_seat_ref(v,k,seat_id);
-  if !handle_present(owner) {return false;}
-  target_owner:Handle(EvergladeSeat);
-  if tgt>=EG_TGT_SEAT && tgt<EG_TGT_SEAT+EG_SEATS {target_owner=eg_seat_ref(v,k,SeatId.{value=tgt-EG_TGT_SEAT});}
-  free := -1;
-  owned := 0;
-  for q: 0..<EG_CASTS {
-    c := v[0].eg[k].casts[q];
-    if !c.on && free < 0 { free = q; }
-    if c.on && c.seat == seat { owned += 1; }
-  }
-  if free < 0 || !cb_admit(owned) || !re_may_start(v,k, seat_id,slot,-1) { return false; }
-  v[0].eg[k].cast_order += 1;
-  v[0].eg[k].casts[free] = EgCast.{on = true, owner=owner, target_owner=target_owner, seat = seat, slot = slot, x = ax, y = ay, z = az, tgt = tgt, seq = seq, mode = mode,
-                                   phase = RC_WAIT, heard = v[0].eg[k].tick, queued_ms=v[0].mono_ms, order = v[0].eg[k].cast_order};
-  return true;
-}
-// Whether cast c may start now (cr_ready on its seat's queue).
-rc_ready :: (v: [] RmServer, k: int, c: EgCast) -> bool {
-  if !rc_owner_live(v,k,c) {return false;}
-  st := v[0].eg[k].seat[c.seat];
-  if !st.live || !st.placed { return false; }
-  first := ifx st.q_n > 0 then st.q[0].seq else 0;
-  return cr_ready(c.seq, first, st.q_n, c.heard, v[0].eg[k].tick);
-}
-rc_owner_live :: (v:[]RmServer,k:int,c:EgCast)->bool {
-  return c.seat>=0 && c.seat<EG_SEATS && handle_slot(c.owner)==c.seat && eg_seat_ref_live(v,k,c.owner);
-}
-rc_target_live :: (v:[]RmServer,k:int,c:EgCast)->bool {
-  if c.tgt<EG_TGT_SEAT || c.tgt>=EG_TGT_SEAT+EG_SEATS {return true;}
-  return handle_slot(c.target_owner)==c.tgt-EG_TGT_SEAT && eg_seat_ref_live(v,k,c.target_owner);
-}
-
-// ---- where a cast lands
-
-// A cast's named target (a seat or a summoned creature): whether it still stands, and where.
-RcAt :: struct { named: bool; up: bool; x: f32; y: f32; z: f32; }
-rc_target :: (v: [] RmServer, k: int, tgt: int) -> RcAt {
-  if tgt >= EG_TGT_SEAT && tgt < EG_TGT_SEAT + EG_SEATS {
-    s := tgt - EG_TGT_SEAT;
-    st := v[0].eg[k].seat[s];
-    o: [E5RR_OUT_FLOATS] f32;
-    e5rr_seat_out(v[0].eg[k].rules[..], s, o[..]);
-    return RcAt.{named = true, up = st.live && st.placed && o[4] < 0.5, x = st.pose.x, y = st.pose.y, z = st.pose.z};
-  }
-  if tgt > E5RR_TGT_BEAST {
-    i := e5rr_beast_of_tgt(v[0].eg[k].rules[..], tgt);
-    if i < 0 { return RcAt.{named = true}; }
-    bt := v[0].eg[k].rules[0].beasts[i - E5RR_BEAST0];
-    c := v[0].eg[k].rules[0].b[0].c[i];
-    return RcAt.{named = true, up = !c.dead && c.hp > 0, x = bt.x, y = bt.y, z = bt.z};
-  }
-  return RcAt.{};
-}
-// Where cast c lands now: its named target while it stands, else its point.
-rc_landing :: (v: [] RmServer, k: int, c: EgCast) -> EgPose {
-  t := rc_target(v, k, c.tgt);
-  if t.named && t.up { return EgPose.{x = t.x, y = t.y, z = t.z}; }
-  return EgPose.{x = c.x, y = c.y, z = c.z};
-}
-// The spell's range (m) for slot `slot`'s entry: Everglade's own four the old bar's 140 m.
-rc_range :: (slot: int, a: FbAb) -> f32 {
-  if slot < EG_SP_SLOTS { return 140.0; }
-  return f32(rs_spell(a.sp).range_ft) * 0.3048;
-}
-// Whether cast c's range is checked (a spell aimed away from its caster).
-rc_ranged :: (a: FbAb) -> bool { return a.kind == FB_SPELL && a.tg != FB_SELF; }
-
 // ---- line of sight (the host's world answers)
 
-// The questions for this tick (after the seats' steps, before rm_eg_end): each cast to start or to be
-// released now asks whether its caster sees where it lands. How many.
+// The questions for this tick (after the seats' steps, before rm_eg_end): Everglade II's aid, monsters
+// and familiar ask whether one sees another. How many.
 rm_eg_sights :: (v: [] RmServer, k: int) -> int #export_c #effects(all) {
   if !rm_eg_live(v, k) { return 0; }
   fg_sync(v,k);   // resolve changed NPC orders before sampling reaction sight
@@ -115,174 +27,6 @@ rm_eg_sight_is :: (v: [] RmServer, k: int, q: int, clear: bool) #export_c #effec
   e2_aid_seen(v,k,q,clear); e2_familiar_seen(v,k,q,clear); e2_monster_seen(v,k,q,clear); return;
 }
 
-// ---- the phases
-
-// Cast q starts: the checks, then e cast for everyone near, and its world effects.
-rc_start :: (v: [] RmServer, k: int, q: int) {
-  c := v[0].eg[k].casts[q];
-  if !rc_owner_live(v,k,c) {v[0].eg[k].casts[q].on=false;return;}
-  if !rc_target_live(v,k,c) {rc_stop(v,k,q,CR_GONE);return;}
-  seat := c.seat; slot := c.slot; seq := c.seq;
-  st := v[0].eg[k].seat[seat..<seat + 1];
-  a := e5rr_entry(v[0].eg[k].rules[..], slot);
-  t := v[0].eg[k].tick;
-  why := CR_OK;
-  o: [E5RR_OUT_FLOATS] f32;
-  e5rr_seat_out(v[0].eg[k].rules[..], seat, o[..]);
-  me := st[0].pose;
-  if t - st[0].last_cast < EG_CAST_GAP { why = CR_COOLDOWN; }
-  else if o[4] > 0.5 { why = CR_DEAD; }
-  ax := c.x; ay := c.y; az := c.z;
-  tgt := c.tgt;
-  if why == CR_OK {
-    // a named target gone already: the cast goes to the point it was aimed at
-    tt := rc_target(v, k, tgt);
-    if tt.named && !tt.up { tgt = -1; }
-    if a.tg == FB_SELF { ax = me.x; ay = me.y; az = me.z; }
-    at := rc_landing(v, k, EgCast.{x = ax, y = ay, z = az, tgt = tgt});
-    if rc_ranged(a) && !cr_in_reach(at.x - me.x, at.z - me.z, rc_range(slot, a), false) { why = CR_RANGE; }
-    else if c.sight == 2 { why = CR_SIGHT; }
-    // Repair: within its reach, and not again until CR_REPAIR_EVERY after the last
-    if why == CR_OK && cr_repair(slot) {
-      // (a third of a second's grace: the page counts from its own bar's end, a little before the release here)
-      if t - st[0].repaired < cast(int) (f32(CR_REPAIR_EVERY) * f32(EG_HZ)) - EG_HZ / 3 { why = CR_COOLDOWN; }
-      else if !cr_in_reach(at.x - me.x, at.z - me.z, f32(CR_REPAIR_REACH), false) { why = CR_RANGE; }
-    }
-  }
-  if why != CR_OK { v[0].eg[k].casts[q].on = false; eg_refuse(v, k, SeatId.{value = seat}, seq, cr_word(why)); return; }
-  if !re_may_start(v,k, SeatId.{value = seat},slot,q){v[0].eg[k].casts[q].on=false;eg_refuse(v,k, SeatId.{value = seat},seq,"busy");return;}
-  mode := c.mode;
-  // an ability the world runs whole (room-abilities.coax) has no roll of the rules'
-  if ra_whole(slot) {
-    v[0].eg[k].casts[q].on = false;
-    if !ra_cast(v, k, SeatId.{value = seat}, slot, me, ax, ay, az, mode) { eg_refuse(v, k, SeatId.{value = seat}, seq, "busy"); return; }
-    st[0].last_cast = t;
-    eb: [128] u8;
-    en := wire_put_cast_e(eb[..], 0, WireCastE.{ss = seat, slot = slot, ax = ax, ay = ay, az = az, seed = 1, mode = mode});
-    eg_event(v, k, cast(string) eb[0..<en], me.x, me.z, false);
-    return;
-  }
-  if ra_world_slot(slot)&&!ra_may_queue(v,k, SeatId.{value = seat},true){v[0].eg[k].casts[q].on=false;eg_refuse(v,k, SeatId.{value = seat},seq,"busy");return;}
-  st[0].last_cast = t;
-  bar := cr_bar_ticks(slot, EG_HZ);
-  cs := v[0].eg[k].casts[q..<q + 1];
-  cs[0].x = ax; cs[0].y = ay; cs[0].z = az; cs[0].tgt = tgt;
-  cs[0].start = t; cs[0].release = t + bar; cs[0].due = t + hi_i(eg_round(a.delay * f32(EG_HZ)), bar);
-  cs[0].phase = ifx bar > 0 then RC_BAR else RC_FLIGHT;
-  cs[0].helps = e5rr_helps(a);
-  cs[0].hp0 = v[0].eg[k].rules[0].b[0].c[E5RR_SEAT + seat].hp; cs[0].mx = me.x; cs[0].mz = me.z;
-  cs[0].seed = 1 + (v[0].eg[k].seed + t * 31 + seat * 977 + slot * 7) % 999983;
-  b: [128] u8;
-  n := wire_put_cast_e(b[..], 0, WireCastE.{ss = seat, slot = slot, ax = ax, ay = ay, az = az, seed = cs[0].seed, mode = mode});
-  // the Warlock's that strike the town go to the world now (they have no bar); Everglade's four at their release
-  if slot == EG_WL_BLAST || slot == EG_WL_FIREBALL { rc_world_strike(v, k, cs[0]); }
-  // a spell on the town holds R off; what the fire burns through and what falls with it don't (R puts the fire out)
-  if slot < EG_SP_SLOTS || slot == EG_WL_BLAST || slot == EG_WL_FIREBALL { v[0].eg[k].broke_at = t; }
-  eg_event(v, k, cast(string) b[0..<n], ax, az, false);
-  _ := ra_cast(v, k, SeatId.{value = seat}, slot, me, ax, ay, az, mode);   // and its effect, the world's (room-abilities.coax)
-}
-hi_i :: (a: int, b: int) -> int { return ifx a > b then a else b; }
-// Cast c's strike on the world's town (it breaks and burns the pieces): Everglade's four and the
-// Warlock's Eldritch Blast and Fireball, from the same seed the pages play it from.
-rc_world_strike :: (v: [] RmServer, k: int, c: EgCast) {
-  if !rc_owner_live(v,k,c) || !rc_target_live(v,k,c) {return;}
-  if v[0].eg[k].strike_n >= EG_WORLD_STRIKES { return; }
-  me := v[0].eg[k].seat[c.seat].pose;
-  v[0].eg[k].strikes[v[0].eg[k].strike_n] = EgStrike.{owner=c.owner, by = c.seat, slot = c.slot, fx = me.x, fy = me.y + 1.6, fz = me.z, ax = c.x, ay = c.y, az = c.z, seed = c.seed};
-  v[0].eg[k].strike_n += 1;
-}
-// Cast q ends before its strike: everyone near hears why (e stop), the caster's bar cancels.
-rc_stop :: (v: [] RmServer, k: int, q: int, why: int) {
-  c := v[0].eg[k].casts[q];
-  if !rc_owner_live(v,k,c) {v[0].eg[k].casts[q].on=false;return;}
-  v[0].eg[k].casts[q].on = false;
-  b: [64] u8;
-  n := wire_put_stop(b[..], 0, c.seat, c.slot, cr_word(why));
-  me := v[0].eg[k].seat[c.seat].pose;
-  eg_event(v, k, cast(string) b[0..<n], me.x, me.z, false);
-}
-// Cast q's bar is done: the checks again, at the release's slack; then it is on its way.
-rc_release :: (v: [] RmServer, k: int, q: int) {
-  c := v[0].eg[k].casts[q];
-  if !rc_owner_live(v,k,c) {v[0].eg[k].casts[q].on=false;return;}
-  if !rc_target_live(v,k,c) {rc_stop(v,k,q,CR_GONE);return;}
-  a := e5rr_entry(v[0].eg[k].rules[..], c.slot);
-  me := v[0].eg[k].seat[c.seat].pose;
-  tt := rc_target(v, k, c.tgt);
-  if tt.named && !tt.up { rc_stop(v, k, q, CR_GONE); return; }
-  at := rc_landing(v, k, c);
-  if rc_ranged(a) && !cr_in_reach(at.x - me.x, at.z - me.z, rc_range(c.slot, a), true) { rc_stop(v, k, q, CR_RANGE); return; }
-  if c.sight == 2 { rc_stop(v, k, q, CR_SIGHT); return; }
-  if cr_repair(c.slot) {
-    if !cr_in_reach(at.x - me.x, at.z - me.z, f32(CR_REPAIR_REACH), true) { rc_stop(v, k, q, CR_RANGE); return; }
-    room:=v[0].eg[k..<k+1];
-    switch rc_repair_commit(room[0].seat[c.seat..<c.seat+1],room[0].casts[q..<q+1],room[0].strikes[..],room[0].strike_n,room[0].tick,me,at,tt.named) {
-      case none {rc_stop(v,k,q,CR_BUSY);return;}
-      case some(count) {room[0].strike_n=count;}
-    }
-    ev_repair(v, k, SeatId.{value = c.seat});   // a repair under the siege is help on its line (room-events.coax, #12860)
-    return;
-  }
-  cs := v[0].eg[k].casts[q..<q + 1];
-  cs[0].phase = RC_FLIGHT;
-  if tt.named { cs[0].x = at.x; cs[0].y = at.y; cs[0].z = at.z; }   // where it goes if its target falls in flight
-  if c.slot < EG_SP_SLOTS || cr_repair(c.slot) { rc_world_strike(v, k, cs[0]); }   // a Repair: the world stands it up
-}
-// Only these small mutable spans enter the undo log. Refusing the outbox
-// restores both cooldown and cast phase before the caller publishes a stop.
-rc_repair_commit :: (seat:[]EgSeat,casting:[]EgCast,strikes:[]EgStrike,count:int,tick:int,me:EgPose,at:EgPose,named:bool)->int? #effects(reads,writes,traps) {
-  #transaction {
-    seat[0].repaired=tick;casting[0].phase=RC_FLIGHT;
-    if named {casting[0].x=at.x;casting[0].y=at.y;casting[0].z=at.z;}
-    if count>=strikes.count {return null;}
-    c:=casting[0];
-    strikes[count]=EgStrike.{owner=c.owner,by=c.seat,slot=c.slot,fx=me.x,fy=me.y+1.6,fz=me.z,ax=c.x,ay=c.y,az=c.z,seed=c.seed};
-    return some(count+1);
-  }
-}
-#test "repair transaction: a full world outbox restores the cooldown and casting phase" {
-  seat:=[1]EgSeat.[EgSeat.{repaired=9}];casting:=[1]EgCast.[EgCast.{phase=RC_BAR,x=1,y=2,z=3}];strikes:[1]EgStrike;
-  switch rc_repair_commit(seat[..],casting[..],strikes[..],1,50,EgPose.{},EgPose.{x=7,y=8,z=9},true) {case none {} case some(wrong) {#assert false;}}
-  #assert seat[0].repaired==9 && casting[0].phase==RC_BAR && casting[0].x==1 && casting[0].y==2 && casting[0].z==3;
-  switch rc_repair_commit(seat[..],casting[..],strikes[..],0,50,EgPose.{},EgPose.{x=7,y=8,z=9},true) {case none {#assert false;} case some(count) {#assert count==1;}}
-  #assert seat[0].repaired==50 && casting[0].phase==RC_FLIGHT && strikes[0].ax==7;
-}
-// Cast q's strike: rolled by the rules at its target if it still stands, else where it was.
-rc_strike :: (v: [] RmServer, k: int, q: int) {
-  if !rc_owner_live(v,k,v[0].eg[k].casts[q]) {v[0].eg[k].casts[q].on=false;return;}
-  if !rc_target_live(v,k,v[0].eg[k].casts[q]) {rc_stop(v,k,q,CR_GONE);return;}
-  cs := v[0].eg[k].casts[q];
-  v[0].eg[k].casts[q].on = false;
-  if !v[0].eg[k].seat[cs.seat].live { return; }
-  tt := rc_target(v, k, cs.tgt);
-  tgt := ifx tt.named && !tt.up then -1 else cs.tgt;
-  at := rc_landing(v, k, EgCast.{x = cs.x, y = cs.y, z = cs.z, tgt = tgt});
-  ok := e5rr_use_released(v[0].eg[k].rules[..], cs.seat, cs.slot, at.x, at.z, tgt);   // released: it lands though its caster fell in flight (#13120)
-  // Dimension Door: the world puts the seat where the engine teleported it (a rooftop: the aim's height)
-  at2: [2] f32;
-  if ok && cs.slot == EG_WL_DOOR && v[0].eg[k].strike_n < EG_WORLD_STRIKES && e5rr_seat_at(v[0].eg[k].rules[..], cs.seat, at2[..]) {
-    me := v[0].eg[k].seat[cs.seat].pose;
-    ax := ifx abs(at2[0] - cs.x) < 1.6 then cs.x else at2[0]; az := ifx abs(at2[1] - cs.z) < 1.6 then cs.z else at2[1];
-    v[0].eg[k].strikes[v[0].eg[k].strike_n] = EgStrike.{owner=cs.owner, by = cs.seat, slot = cs.slot, fx = me.x, fy = me.y, fz = me.z, ax = ax, ay = cs.y, az = az, seed = 1};
-    v[0].eg[k].strike_n += 1;
-  }
-}
-// The strikes due now that help (or, !helps, that harm), in cr_before's order.
-rc_strikes :: (v: [] RmServer, k: int, helps: bool) {
-  t := v[0].eg[k].tick;
-  while true {
-    best := -1;
-    for q: 0..<EG_CASTS {
-      c := v[0].eg[k].casts[q];
-      if !c.on || c.phase != RC_FLIGHT || c.helps != helps || c.due > t { continue; }
-      if best < 0 { best = q; continue; }
-      b := v[0].eg[k].casts[best];
-      if cr_before(c.helps, c.start, c.order, b.helps, b.start, b.order) { best = q; }
-    }
-    if best < 0 { return; }
-    rc_strike(v, k, best);
-  }
-}
 // What the rooms have scheduled (the agent clock's `clock settle`, #13096): the casts begun and not yet
 // resolved, over every live room. A room with none has nothing with a moment of its own still to come.
 rm_scheduled :: (v: [] RmServer) -> int #export_c #effects(all) {
@@ -290,66 +34,13 @@ rm_scheduled :: (v: [] RmServer) -> int #export_c #effects(all) {
   for k: 0..<EG_ROOMS { if !rm_eg_live(v, k) { continue; } for q: 0..<EG_CASTS { if v[0].eg[k].casts[q].on { n += 1; } } }
   return n;
 }
-// Each tick's casts, before the rules' step: the starts (in the order heard), then the heals due.
+// Each tick, before the rules' step: the world's harm (a guard's blade, a fall), after the heals.
 rc_tick_first :: (v: [] RmServer, k: int) {
-  for q:0..<EG_CASTS {if v[0].eg[k].casts[q].on && !rc_owner_live(v,k,v[0].eg[k].casts[q]) {v[0].eg[k].casts[q].on=false;}}
-  while true {
-    best := -1;
-    for q: 0..<EG_CASTS {
-      c := v[0].eg[k].casts[q];
-      if !c.on || c.phase != RC_WAIT || !rc_ready(v, k, c) { continue; }
-      if best < 0 || c.order < v[0].eg[k].casts[best].order { best = q; }
-    }
-    if best < 0 { break; }
-    rc_start(v, k, best);
-    if v[0].eg[k].casts[best].on && v[0].eg[k].casts[best].phase == RC_WAIT { v[0].eg[k].casts[best].on = false; }   // (never left waiting twice)
-  }
-  rc_strikes(v, k, true);
-  // the world's harm this tick (a guard's blade, a fall), after the heals
   for s: 0..<EG_SEATS {
     u := hb_take(v[0].eg[k].hurts[..],s);
     if rm_eg_seat_live(v, k, SeatId.{value = s}) { e5rr_hurt(v[0].eg[k].rules[..], EG_TGT_SEAT + s, u.amount, u.by); }
   }
 }
-// After the rules' step: casts whose caster fell or is held stop, bars that are done release, and
-// the harm due strikes.
-rc_tick_last :: (v: [] RmServer, k: int) {
-  t := v[0].eg[k].tick;
-  for q: 0..<EG_CASTS {
-    c := v[0].eg[k].casts[q];
-    if !c.on || c.phase != RC_BAR { continue; }
-    o: [E5RR_OUT_FLOATS] f32;
-    e5rr_seat_out(v[0].eg[k].rules[..], c.seat, o[..]);
-    if o[4] > 0.5 { rc_stop(v, k, q, CR_DEAD); continue; }
-    if cr_halted(cast(int) o[3] | v[0].eg[k].seat[c.seat].wcond) { rc_stop(v, k, q, CR_HELD); continue; }
-    if cr_repair(c.slot) {
-      // a Repair stops when its caster is hurt or moves (the hammer needs both hands and a steady footing)
-      p := v[0].eg[k].seat[c.seat].pose;
-      dx := p.x - c.mx; dz := p.z - c.mz;
-      if v[0].eg[k].rules[0].b[0].c[E5RR_SEAT + c.seat].hp < c.hp0 || dx * dx + dz * dz > f32(CR_REPAIR_MOVE) * f32(CR_REPAIR_MOVE) { rc_stop(v, k, q, CR_NO); continue; }
-    }
-    if t >= c.release { rc_release(v, k, q); }
-  }
-  rc_strikes(v, k, false);
-}
-// Seat s left: its casts on their bars stop (everyone hears it), the rest go.
-rc_left :: (v: [] RmServer, k: int, s_id: SeatId) { s := s_id.value;
-  for c: 0..<EG_CASTS {
-    cs := v[0].eg[k].casts[c];
-    if !cs.on || cs.seat != s { continue; }
-    if cs.phase == RC_BAR { rc_stop(v, k, c, CR_LEFT); } else { v[0].eg[k].casts[c].on = false; }
-  }
-}
-
-// Seat s cuts over for travel (room-travel.coax, #12850): its casts not yet released stop (everyone near
-// hears "left", as when it leaves); one already on its way was accepted, and lands.
-rc_cutover :: (v: [] RmServer, k: int, s_id: SeatId) { s := s_id.value;
-  for c: 0..<EG_CASTS {
-    cs := v[0].eg[k].casts[c];
-    if cs.on && cs.seat == s && cs.phase != RC_FLIGHT { rc_stop(v, k, c, CR_LEFT); }
-  }
-}
-
 // ---- checks (coax test --library coax/web/room/room.coax --only "casts:")
 
 
@@ -385,33 +76,3 @@ rc_test_room :: (v: [] RmServer, code: string, n: int, warlock: bool) -> int {
   rc_test_tick(v, k, true); rc_test_tick(v, k, true);
   return k;
 }
-// Seat `seat`'s wolves from Conjure Animals at (x, z): the first one's id.
-rc_test_wolf :: (v: [] RmServer, k: int, seat_id: SeatId, x: f32, z: f32, alone: bool) -> int { seat := seat_id.value;
-  t: [64] u8; n := put(t[..], 0, "C 900 32 "); n = put_int(t[..], n, cast(int) (x * 100)); n = put(t[..], n, " 0 "); n = put_int(t[..], n, cast(int) (z * 100)); n = put(t[..], n, " -1");
-  rm_heard(v, seat, cast(string) t[0..<n]);
-  for q: 0..<3 { rc_test_tick(v, k, true); }
-  first := 0;
-  for q: 0..<E5RR_BEASTS {
-    id := v[0].eg[k].rules[0].beasts[q].id;
-    if id == 0 { continue; }
-    if first == 0 { first = id; continue; }
-    if alone { e5rr_hurt(v[0].eg[k].rules[..], E5RR_TGT_BEAST + id, 99, -1); }
-  }
-  for q: 0..<3 { rc_test_tick(v, k, true); }
-  return first;
-}
-rc_test_at :: (t: string, part: string) -> int {
-  if part.count > t.count { return -1; }
-  for i: 0..<t.count - part.count + 1 { if t[i..<i + part.count] == part { return i; } }
-  return -1;
-}
-
-
-
-
-
-
-
-
-
-

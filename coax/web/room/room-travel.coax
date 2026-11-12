@@ -132,7 +132,6 @@ eg_heard_travel :: (v: [] RmServer, k: int, seat_id: SeatId, text: string) { sea
   v[0].trv.t[slot] = e;
   // 2. prepare: the cutover, and what the destination starts from
   v[0].eg[k].seat[seat].travel_until = v[0].mono_ms + TRAVEL_MS;
-  rc_cutover(v, k, seat_id);
   trv_capture(v, slot, k, seat_id);
   ck_capture(v, k, seat_id);   // a zone change is saved before the journey goes (#13184)
   rv_note_seat(v, k, seat_id); v[0].vit.flush = true;
