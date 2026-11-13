@@ -286,7 +286,7 @@
     {
       "id": "psionic.language.current",
       "document": "psionic/book/PLAN.md",
-      "scope": "Current shared compiler and bounded Psionic consumers, including nominal/formal scalar units and initial concrete native-C affine point/vector types; full transforms, compiler clocks, other targets and full robot migrations remain separate. Reviewed after #12867: Metal graphics emission is a graphics path and does not qualify Psionic Metal or WebGPU compute beyond the bounded kernels named. Reviewed for #12949: caf5c6c80b adds scoped Mac host acceptance without widening compute qualification; 199402193d removes only a worker-notice workaround from the unchanged spatial oracle. Reviewed for #13134: 6adbb76c82's WGSL compute entries serve the engine's GPU cull only and qualify no Psionic browser compute; cdf2eedd13 adds checks only. Reviewed for #13516: target.browser is renamed \"Coax Native Web browser path\" and its meaning names the browser's DOM for text surfaces; no compute, layout or target qualification changes.",
+      "scope": "Current shared compiler and bounded Psionic consumers, including nominal/formal scalar units and initial concrete native-C affine point/vector types; full transforms, compiler clocks, other targets and full robot migrations remain separate. Reviewed after #12867: Metal graphics emission is a graphics path and does not qualify Psionic Metal or WebGPU compute beyond the bounded kernels named. Reviewed for #12949: caf5c6c80b adds scoped Mac host acceptance without widening compute qualification; 199402193d removes only a worker-notice workaround from the unchanged spatial oracle. Reviewed for #13134: 6adbb76c82's WGSL compute entries serve the engine's GPU cull only and qualify no Psionic browser compute; cdf2eedd13 adds checks only. Reviewed for #13516: target.browser is renamed \"Coax Native Web browser path\" and its meaning names the browser's DOM for text surfaces; no compute, layout or target qualification changes. Reviewed for #13451: typed uniform blocks are a WGSL graphics binding form and qualify no Psionic compute.",
       "text_sha256": "7f0dc4b94142d897dfcc449a061683ab4d7f60b5b7af9949835fee2462284f84",
       "features": [
         {
@@ -349,11 +349,11 @@
         },
         {
           "path": "coax/lib/compiler/wgsl.coax",
-          "sha256": "ceaf5dfd38087f990cf71855c1eedf35aa9be64091eab784c0ec74e3eb52b4e1"
+          "sha256": "82acb392c92cec8bbebeea3892eaa433d469e10c19993b1438aaef1933471192"
         },
         {
           "path": "docs/metaverse/native-gpu.md",
-          "sha256": "4b965efcbdae2f3476b86b3cbe2f0f21f8b5fd7f34097d8763dc9544ed7e00ec"
+          "sha256": "735d113946de8467af19f1df1e8730bdbfe963257e034dfdb39d4e00bdd9dc7d"
         },
         {
           "path": "coax/QUANTITIES.md",
@@ -442,7 +442,7 @@
     {
       "id": "coax.wgsl.current",
       "document": "coax/book/ch17-gpu.md",
-      "scope": "Bounded direct WGSL graphics emission and the named Everglade source consumer; planned shader syntax, general layouts and Psionic browser compute remain separate. Reviewed after #12867: `coax metal --vertex/--fragment` adds a separate Metal graphics writer over the same checked tree; the WGSL path and its refusals are unchanged. Reviewed for #12949: caf5c6c80b adds scoped Mac host acceptance without widening compute qualification; 199402193d removes only a worker-notice workaround from the unchanged spatial oracle. Reviewed for #13134: 6adbb76c82 adds bounded `coax wgsl --computes` entries with `atomic` storage bindings for the engine's GPU cluster cull (metaverse-engine/render/geometry/cull.coax); Psionic browser compute remains separate. cdf2eedd13 adds checks only; 4c7669373d and c50fcbbf15 change Everglade's bindings for one zone and sun-shadow atlas tiles. Reviewed for #13516: target.browser is renamed \"Coax Native Web browser path\" and its meaning names the browser's DOM for text surfaces; no compute, layout or target qualification changes.",
+      "scope": "Bounded direct WGSL graphics emission and the named Everglade source consumer; planned shader syntax, general layouts and Psionic browser compute remain separate. Reviewed after #12867: `coax metal --vertex/--fragment` adds a separate Metal graphics writer over the same checked tree; the WGSL path and its refusals are unchanged. Reviewed for #12949: caf5c6c80b adds scoped Mac host acceptance without widening compute qualification; 199402193d removes only a worker-notice workaround from the unchanged spatial oracle. Reviewed for #13134: 6adbb76c82 adds bounded `coax wgsl --computes` entries with `atomic` storage bindings for the engine's GPU cluster cull (metaverse-engine/render/geometry/cull.coax); Psionic browser compute remains separate. cdf2eedd13 adds checks only; 4c7669373d and c50fcbbf15 change Everglade's bindings for one zone and sun-shadow atlas tiles. Reviewed for #13516: target.browser is renamed \"Coax Native Web browser path\" and its meaning names the browser's DOM for text surfaces; no compute, layout or target qualification changes. Reviewed for #13451: `coax wgsl` adds typed uniform blocks (`uniform` with no count for a []STRUCT of vec4s and f32s in fours, read at u[0]); Metal and SPIR-V gain checks only, and no page uses the form yet.",
       "text_sha256": "4a593a91eb143f061fb948f11119f1e6f62a1e1629db334786aeb190920e94eb",
       "features": [
         {
@@ -453,15 +453,15 @@
       "evidence": [
         {
           "path": "coax/lib/compiler/wgsl.coax",
-          "sha256": "ceaf5dfd38087f990cf71855c1eedf35aa9be64091eab784c0ec74e3eb52b4e1"
+          "sha256": "82acb392c92cec8bbebeea3892eaa433d469e10c19993b1438aaef1933471192"
         },
         {
           "path": "coax/src/shader.cpp",
-          "sha256": "1ed52e044f6b7b0fd265756ad3ce926ec8a38bc0576f45b167992adb7af79b52"
+          "sha256": "a21891825ff2b013193eb58a46e879ee3ca029df1f1e6ce44b0680878e3ceb38"
         },
         {
           "path": "docs/metaverse/native-gpu.md",
-          "sha256": "4b965efcbdae2f3476b86b3cbe2f0f21f8b5fd7f34097d8763dc9544ed7e00ec"
+          "sha256": "735d113946de8467af19f1df1e8730bdbfe963257e034dfdb39d4e00bdd9dc7d"
         },
         {
           "path": "apps/openagents-web/gpu/everglade-v1/gpu.module",
