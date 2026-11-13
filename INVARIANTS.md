@@ -8425,7 +8425,9 @@ The compiler, clang and the linker are not a sandbox (#13467;
 [coax/script-profile.md](coax/script-profile.md)). A source someone else
 wrote is compiled only by the compile job
 (`metaverse-engine/tools/script-job.coax` through `coax/web/script-job.sh`),
-which the API runs when `OA_SCRIPT_JOB` names it.
+which the API asks the compile service `oa-script-job` to run when
+`OA_SCRIPT_JOB_URL` names it (production, `coax/web/script-job/`), or runs
+itself when `OA_SCRIPT_JOB` names it (a developer's machine).
 
 - **The source names no file.** Before any compiler runs, a source is
   refused unless every `#word` in it is on the job's list, with `#load` only
@@ -8438,15 +8440,20 @@ which the API runs when `OA_SCRIPT_JOB` names it.
   are; the wrapper starts it with `env -i`.
 - **The network is denied where the platform can** (`sandbox-exec` on
   macOS, a network namespace on Linux), and
-  `OA_SCRIPT_JOB_SANDBOX=required` refuses to run where it cannot.
+  `OA_SCRIPT_JOB_SANDBOX=required` refuses to run where it cannot. The
+  compile service sets `closed`: without a namespace the job runs only when
+  the machine reaches no address outside, so a service deployed with its
+  egress open compiles nothing.
 - **Its answer is not trusted.** The server checks the module's bytes as it
   checks any upload and writes the manifest from them. From the job it takes
   the script's name and state fields only. A job that lies about the bytes
   changes nothing.
 - **A server with no job compiles nothing** (503, `no-compiler`).
 - **Not enforced, and stated.** The wrapper does not hide the file system
-  from reads, and macOS enforces no memory limit. A server runs the job as a
-  user that holds nothing, with no network and no service account.
+  from reads, and macOS enforces no memory limit. The compile service runs
+  the job as `nobody`, in an image that holds only the job's files, with its
+  egress denied and a service account that holds no role (the metadata server
+  still answers, with that account only).
 
 Checks: `coax/web/tool.sh metaverse-engine/tools/script-job-check.coax`;
 `coax/bin/coax test metaverse-engine/tools/script-job.coax --library` ("the
@@ -8454,7 +8461,8 @@ job hands the compiler only a source that loads the script API and uses the
 listed directives"); `coax/bin/coax test coax/web/api/script-store.coax --library`
 ("a job that lies about the bytes changes nothing" is part of "a module is
 stored only when the check passes"); `coax/web/api/tests/script_checks.coax`
-(the compile route, on a machine with the Wasm toolchain).
+(the compile route through the compile service, on a machine with the Wasm
+toolchain).
 
 ## A script can be reported and switched off
 

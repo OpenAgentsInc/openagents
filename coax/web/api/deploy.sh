@@ -35,6 +35,9 @@
 # Inference credit (inference.c, NIP-X402 over Spark): OA_SPARK_URL is oa-spark's URL when that
 # service exists; the API's runtime account may invoke it (coax/web/api/spark/deploy.sh).
 #
+# Realm scripts (scripts.c): OA_SCRIPT_JOB_URL is oa-script-job's URL when that service exists
+# (coax/web/script-job/deploy.sh); until then the compile route answers 503 no-compiler.
+#
 # Publishing from a drop (rc-publish, drops.c): Secret Manager oa-project-kek-staging and
 # oa-project-kek-production (64 hex digits each, made once, never printed) seal each project's
 # key; while one is missing that environment's PUBLISH only freezes the draft.
@@ -190,6 +193,11 @@ deploy() {  # service runtime-secret host agent-projects-secret runner-service d
   local spark
   spark="$(gcloud run services describe oa-spark --project "$project" --region "$region" --format 'value(status.url)' 2>/dev/null || true)"
   [[ -n "$spark" ]] && env+="~OA_SPARK_URL=$spark"
+  # Realm scripts other people wrote (scripts.c, #13467): the compile job, oa-script-job (coax/web/script-job/deploy.sh),
+  # when deployed; the API's runtime account may invoke it. Without it the compile route answers 503 no-compiler.
+  local script_job
+  script_job="$(gcloud run services describe oa-script-job --project "$project" --region "$region" --format 'value(status.url)' 2>/dev/null || true)"
+  [[ -n "$script_job" ]] && env+="~OA_SCRIPT_JOB_URL=$script_job"
   wake="$(gcloud run services describe "$5" --project "$project" --region "$region" --format 'value(status.url)' 2>/dev/null || true)"
   [[ -n "$wake" ]] && env+="~OA_AGENT_WAKE_URL=$wake/wake"
   local repo_url; repo_url="$(live_env "$1" OA_REPO_URL)"

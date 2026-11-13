@@ -130,7 +130,7 @@ if [[ $serve == 1 && -n "${OA_SERVE_STATE:-}" ]]; then
   printf '%s\n' "$$" > "$state/owner.pid"
 fi
 cleanup() {
-  kill ${api_pid:-} ${notice_relay_pid:-} ${runner_pid:-} ${ports_pid:-} ${token_pid:-} 2>/dev/null || true
+  kill ${api_pid:-} ${notice_relay_pid:-} ${runner_pid:-} ${ports_pid:-} ${token_pid:-} ${script_job_pid:-} 2>/dev/null || true
   if [[ -n "$state" ]]; then
     "$pgbin/pg_ctl" -D "$db" -m fast stop >/dev/null 2>&1 || true
     [[ "$(cat "$state/owner.pid" 2>/dev/null)" != "$$" ]] || rm -f "$state/owner.pid"
@@ -186,7 +186,7 @@ fi
 # (test_zchat.py's fake on CHAT_PORT + 1 and runner on + 2).
 "$here/../tool.sh" "$here/port_locks.coax" "$work/ports" $$ API_PORT:7000:1 NPC_PORT:7800:1 PIECE_PORT:8600:1 BUILDER_PORT:9400:1 \
   GCS_PORT:10200:1 RELAY_PORT:11000:1 NOTICE_RELAY_PORT:11800:1 WAKE_PORT:12600:8 INFER_PORT:13400:1 SPARK_PORT:14200:1 \
-  RESEND_PORT:15000:1 TOKENINFO_PORT:15800:1 CHAT_PORT:16600:3 METAVERSE_GCS_PORT:17400:1 ANIME_PORT:18200:1 \
+  RESEND_PORT:15000:1 TOKENINFO_PORT:15800:1 CHAT_PORT:16600:3 METAVERSE_GCS_PORT:17400:1 ANIME_PORT:18200:1 SCRIPT_JOB_PORT:19000:1 \
   > /dev/null 2> "$work/ports.err" & ports_pid=$!
 for _ in $(seq 1200); do [[ -s "$work/ports" ]] && break; kill -0 "$ports_pid" 2>/dev/null || break; sleep 0.1; done
 [[ -s "$work/ports" ]] || { echo "test.sh: no ports for the fake services" >&2; cat "$work/ports.err" >&2; exit 1; }
@@ -373,7 +373,18 @@ if [[ $serve == 0 && -x "$cli_coax" ]] && { runs script_checks || runs script_cl
   else echo "api: no compile job here (no Wasm toolchain): the compile route's checks do not run" >&2; fi
 fi
 export SCRIPT_JOB_READY="${script_job:+1}"
-OA_SCRIPT_JOB="$script_job" COAX="$cli_coax" \
+# The compile service (coax/web/script-job/serve.c, Cloud Run oa-script-job) in front of that job, which the API
+# asks through OA_SCRIPT_JOB_URL as production does (#13467): the compile checks go through it. The command path
+# runs the same job runner (script-job-run.c) inside the service.
+script_job_url=""
+if [[ $serve == 0 && -n "$script_job" ]]; then
+  "$cc" -std=c11 -O1 -g -Wall -Wextra -Werror -D_DEFAULT_SOURCE -fsanitize=address,undefined -I"$here" \
+    -o "$work/oa-script-job" "$here/../script-job/serve.c" "$here/script-job-run.c"
+  (cd "$repo_root" && OA_SCRIPT_JOB="$script_job" COAX="$cli_coax" exec "$work/oa-script-job" --listen "127.0.0.1:$SCRIPT_JOB_PORT") 2> "$work/script-job.log" & script_job_pid=$!
+  for _ in $(seq 100); do curl -s -m 1 "http://127.0.0.1:$SCRIPT_JOB_PORT/healthz" > /dev/null && { script_job_url="http://127.0.0.1:$SCRIPT_JOB_PORT"; break; }; sleep 0.1; done
+  [[ -n "$script_job_url" ]] || { echo "test.sh: the compile service didn't start" >&2; cat "$work/script-job.log" >&2; exit 1; }
+fi
+OA_SCRIPT_JOB="$script_job" OA_SCRIPT_JOB_URL="$script_job_url" OA_SCRIPT_JOB_TOKEN=test-script-job COAX="$cli_coax" \
 OA_CHAT_RUNNER_URL="http://127.0.0.1:$CHAT_PORT" OA_CHAT_DAILY_USD=1 \
 OA_AGENT_PROJECTS=agent-proj OA_AGENT_WAKE_URL="http://127.0.0.1:$WAKE_PORT/wake" OA_AGENT_WAKE_TOKEN=test-wake \
 OA_PROJECT_KEK="$k_project" OA_PUBLISH_RELAY="ws://127.0.0.1:$RELAY_PORT" OA_SITE_BUCKET=site-test \

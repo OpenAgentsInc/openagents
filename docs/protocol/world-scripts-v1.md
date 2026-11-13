@@ -197,8 +197,16 @@ Codes 1 and 2 are the script host's own (`metaverse-engine/script/frame.coax`).
 
 The compiler, clang and the linker are not a sandbox, so a source we did not
 write is compiled in a job (`metaverse-engine/tools/script-job.coax`, through
-`coax/web/script-job.sh SOURCE NAME OUTDIR`). The API runs the command named
-by `OA_SCRIPT_JOB`; with the setting empty it compiles nothing.
+`coax/web/script-job.sh SOURCE NAME OUTDIR`). The API runs it one of two
+ways:
+
+- **The compile service**, when `OA_SCRIPT_JOB_URL` names it: the Cloud Run
+  service `oa-script-job` (`coax/web/script-job/`), which production uses. The
+  API asks it with an identity token for its URL.
+- **The command** named by `OA_SCRIPT_JOB`, on the API's own machine: a
+  developer's machine and the dev server.
+
+The URL wins when both are set. With neither the API compiles nothing.
 
 - **The source names no file.** Before any compiler runs, every `#word` in
   the source is held to a list: `#script`, `#effects`, `#export_c`,
@@ -215,6 +223,44 @@ by `OA_SCRIPT_JOB`; with the setting empty it compiles nothing.
   `HOME`, `TMPDIR`, `COAX`, the Wasm toolchain's paths), and the wrapper
   starts the tool with `env -i` and a `HOME` and `TMPDIR` of its own.
 
+### The compile service
+
+`oa-script-job` runs the same job the same way (`coax/web/api/script-job-run.c`
+is the API's and the service's), behind one route:
+
+| Request | Answer |
+| --- | --- |
+| `POST /compile/NAME`, the source as the body | 200 `application/wasm`: the module, with the job's manifest (one line of `realm.script.v1`) in `X-Script-Manifest` |
+| | 422 `text/plain`: the job refused the source, in its own words |
+| | 500 `text/plain`: the job could not run, made nothing or ran past its time |
+| `GET /healthz` | 200 `ok` |
+
+The API treats the service's answer as it treats the command's: it checks
+the module's bytes and writes the manifest from them, and takes only the name
+and state fields from the job's manifest.
+
+Its image (`coax/web/script-job/Dockerfile`) holds the Coax compiler (this
+tree's published Linux build), the Wasm toolchain and only the repository
+files the job reads; the job's tools are built into it, owned by root, and
+the service runs as `nobody`. `coax/web/script-job/deploy.sh` deploys it:
+
+- **No secrets.** Its own service account, `oa-script-job`, holds no role.
+  No secret is mounted and no variable names one. The metadata server still
+  answers inside the container, but only with that account's tokens.
+- **No network.** All its traffic goes into the network `oa-script-job`
+  (Direct VPC egress, all traffic), which has no Cloud NAT, no Private Google
+  Access and a firewall rule that denies all egress.
+- **Checked by the job.** The image sets `OA_SCRIPT_JOB_SANDBOX=closed`: where
+  the kernel makes no network namespace, the job runs only when a TCP
+  connection to 1.1.1.1:443 and to 8.8.8.8:53 both fail within 2 seconds. A
+  service deployed with its egress open refuses every source (500) rather
+  than compile with a network.
+- **Limits.** One request at a time an instance, 75 seconds a request, 2 GiB
+  of memory, on top of the job's own limits.
+- **Who may call it.** Only the API's runtime account has `run.invoker`.
+  Ingress is not `internal`, as for `oa-spark`: that would need the API
+  itself on VPC egress.
+
 What is and is not enforced:
 
 | | macOS | Linux |
@@ -222,18 +268,38 @@ What is and is not enforced:
 | Environment taken away | yes | yes |
 | CPU seconds, file size | yes (`ulimit -t`, `-f`) | yes |
 | Address space | no: macOS does not enforce `ulimit -v` | yes (`ulimit -v`) |
-| Network denied | yes, with `sandbox-exec` | yes where the kernel allows a user and network namespace (`unshare -rn`) |
+| Network denied | yes, with `sandbox-exec` | yes where the kernel allows a user and network namespace (`unshare -rn`); in the compile service, by its platform's egress, which the job checks before it runs |
 | Writes outside the job's directory | denied under `/Users`, `/etc`, `/usr`, `/opt` by `sandbox-exec` | not denied by the wrapper |
 | Reads of other files | not denied: the job runs as its caller's user | not denied by the wrapper |
 
-`OA_SCRIPT_JOB_SANDBOX=required` makes the wrapper refuse to run where it can
-deny no network; the default, `try`, runs and says so. A server sets
-`required` and runs the job as a user that holds nothing, in a container with
-no network and no service account. The Linux column is not yet run by a
-check: the checks below ran on macOS.
+`OA_SCRIPT_JOB_SANDBOX` says what the wrapper does where it can deny no
+network itself: `required` refuses to run; `closed` runs only when the
+machine reaches no address outside (the compile service's setting);
+the default, `try`, runs and says so.
+
+Where each column was run:
+
+- **macOS:** the checks below.
+- **Linux, with a namespace:** `script-job-check.coax` passes all 8 cases on
+  a build host (Debian, kernel 6.1, `unshare -rn` allowed), with
+  `OA_SCRIPT_JOB_SANDBOX=required`:
+  `coax/remote/remote.sh run -- env OA_SCRIPT_JOB_SANDBOX=required coax/web/tool.sh metaverse-engine/tools/script-job-check.coax`.
+- **Linux, the compile service's image** (2026-11-13, a build host, Docker):
+  `deploy.sh --stage DIR`, then `docker build DIR`. Docker's default seccomp
+  profile allows no `unshare -rn`, so the `closed` check holds the network.
+  With `--network none` (only `lo`), as `nobody`: the sample script answered
+  200 with a 954-byte module and its manifest in about 1.1 seconds, and a
+  source with `#foreign` answered 422 with the job's words. On Docker's
+  default bridge network, which reaches the internet, the same sample
+  answered 500: the job refused to run.
+
+Whether Cloud Run allows `unshare -rn` is not known yet; either way the
+`closed` check runs before each job.
 
 Checks: `coax/web/tool.sh metaverse-engine/tools/script-job-check.coax`
 (compiles the sample script; refuses a second `#load`, a `#foreign`, an
 `#import`, an `#import_proto`, an oversize source, a `#run` that never ends,
 and a script that names itself otherwise);
-`coax/bin/coax test metaverse-engine/tools/script-job.coax --library`.
+`coax/bin/coax test metaverse-engine/tools/script-job.coax --library`;
+`coax/web/api/tests/script_checks.coax`, whose compile checks go through the
+compile service (`coax/web/api/test.sh` starts it in front of the job).

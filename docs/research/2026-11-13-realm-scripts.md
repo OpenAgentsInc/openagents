@@ -227,7 +227,7 @@ Kept current as stages land (#13467). The contract as built is
 | The host: a tick of a world's scripts, diagnostics, switch-off | built | `metaverse-engine/script/host.coax` |
 | The manifest and the frame and result bytes | built | `metaverse-engine/script/manifest.coax`, `frame.coax` |
 | Scripts in the world document: stored by hash behind the check, the edit rule, the publish rule | built | `coax/web/api/scripts.c`, `script-policy.coax`, `script-store.coax`, `metaverse-engine/script/store.coax`; [the contract](../protocol/world-scripts-v1.md) |
-| Other authors: the compile job, quotas, reports and the switch-off | built for a developer's machine; a server has no job yet | `metaverse-engine/tools/script-job.coax`, `coax/web/script-job.sh`, `OA_SCRIPT_JOB` |
+| Other authors: the compile job, quotas, reports and the switch-off | built; the compile service's image is proven on a build host, not yet deployed | `metaverse-engine/tools/script-job.coax`, `coax/web/script-job.sh`, `coax/web/script-job/` (the Cloud Run service `oa-script-job`, `OA_SCRIPT_JOB_URL`), `OA_SCRIPT_JOB` |
 | A world's script rows (`ID\|NAME\|HASH\|FOR` in a content table) | built | `metaverse-engine/script/rows.coax`, Splice's `scripts` table |
 | Splice's raider and Imperial robot as scripts | built | `metaverse/splice-bots/scripts/`, `metaverse/splice-bots/scripts.coax` |
 | The page's script module and its loader | built | `apps/openagents-web/script-host.coax`, `metaverse-engine/script/loader.coax`, `coax/web/host.js` "A realm's scripts" |

@@ -129,10 +129,11 @@ bool inference_google_token(char *out, size_t cap) { return token(out, cap); }
 
 static bool send_all(int fd, const char *p, size_t n);
 
-// ---- our Spark wallet (OA_SPARK_URL): POST path with json, or GET with none.
-// Its status (0 unreached), and its body into *out (malloc'd, or NULL).
-static bool spark_token(const char *aud, char *out, size_t cap) {
-  const char *given = getenv("OA_SPARK_TOKEN");
+// An identity token for a sibling Cloud Run service (its URL is the audience), from the metadata server,
+// or the token in the environment variable `given` (tests). Our Spark wallet and the compile service
+// (scripts.c) are asked with one.
+bool api_id_token(const char *aud, const char *given_env, char *out, size_t cap) {
+  const char *given = given_env ? getenv(given_env) : NULL;
   if (given && *given) { snprintf(out, cap, "%s", given); return true; }
   CURL *h = curl_easy_init();
   if (!h) return false;
@@ -152,12 +153,15 @@ static bool spark_token(const char *aud, char *out, size_t cap) {
   curl_slist_free_all(hd); curl_easy_cleanup(h); free(b.p);
   return ok;
 }
+
+// ---- our Spark wallet (OA_SPARK_URL): POST path with json, or GET with none.
+// Its status (0 unreached), and its body into *out (malloc'd, or NULL).
 static long spark_call(const char *path, const char *json, long timeout_s, char **out) {
   *out = NULL;
   const char *base = getenv("OA_SPARK_URL");
   if (!base || !*base) { api_log("inference: no OA_SPARK_URL"); return 0; }
   char tok[4096], auth[4200], url[1024];
-  if (!spark_token(base, tok, sizeof tok)) { api_log("inference: no token for the wallet"); return 0; }
+  if (!api_id_token(base, "OA_SPARK_TOKEN", tok, sizeof tok)) { api_log("inference: no token for the wallet"); return 0; }
   snprintf(url, sizeof url, "%s%s", base, path);
   snprintf(auth, sizeof auth, "Authorization: Bearer %s", tok);
   CURL *h = curl_easy_init();

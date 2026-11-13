@@ -102,6 +102,9 @@ bool inference_route(const request *q);   // inference.c: POST /api/v1/inference
 bool inference_ask(const request *q, const char *pubkey, bool free_key);   // inference.c: the same ask for a caller another route named (chat.c)
 // Our Spark wallet (inference.c, OA_SPARK_URL): POST path with json (GET with none); its status (0 unreached), its body into *out.
 long api_spark(const char *path, const char *json, long timeout_s, char **out);
+// An identity token for a sibling Cloud Run service whose URL is aud (inference.c), or the token in the
+// environment variable given_env when it is set (tests).
+bool api_id_token(const char *aud, const char *given_env, char *out, size_t cap);
 // The model (npc.c): its generateContent answer into *body (malloc'd, or NULL), the HTTP status (0 unreached).
 long npc_ask_model(const char *url_env, const char *model, const char *request, char **body);
 long npc_ask_model_twice(const char *url_env, const char *model, const char *request, long timeout_ms, char **body);

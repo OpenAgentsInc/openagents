@@ -12,7 +12,7 @@
 //                                                  a JSON array of {name, type, at, size} (optional). The module is
 //                                                  checked, its manifest written from the bytes and both stored; the
 //                                                  answer is the manifest (realm.script.v1). 422: a refused module
-//   POST /api/worlds/<id>/scripts/compile?name=NAME  body: a script's Coax source. The compile job (OA_SCRIPT_JOB) makes
+//   POST /api/worlds/<id>/scripts/compile?name=NAME  body: a script's Coax source. The compile job (OA_SCRIPT_JOB_URL or OA_SCRIPT_JOB) makes
 //                                                  the module, which is then checked and stored as above, with its source.
 //                                                  422 with the compiler's words; 503 when this server has no job
 //   POST /api/worlds/<id>/scripts/<hash>/report    body: a short reason. Any account that is logged in
@@ -30,6 +30,9 @@
 // ledger, and nothing here runs a script.
 #include "api.h"
 #include "script-store.generated.h"
+#include "script-job-run.h"
+
+#include <curl/curl.h>
 
 #include <errno.h>
 #include <fcntl.h>
@@ -37,15 +40,16 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
 
-#define SCRIPT_WORDS 600       // a refusal's words (store.coax SS_WORDS)
-#define SCRIPT_SOURCE 65536    // a source's bytes (SS_SOURCE)
-#define SCRIPT_MODULE 65536    // a module's (wasm.coax WM_BYTES)
-#define SCRIPT_MANIFEST 8192   // a manifest's (manifest.coax SM_TEXT)
+#define SCRIPT_WORDS SCRIPT_JOB_WORDS        // a refusal's words (store.coax SS_WORDS)
+#define SCRIPT_SOURCE 65536                  // a source's bytes (SS_SOURCE)
+#define SCRIPT_MODULE SCRIPT_JOB_MODULE      // a module's (wasm.coax WM_BYTES)
+#define SCRIPT_MANIFEST SCRIPT_JOB_MANIFEST  // a manifest's (manifest.coax SM_TEXT)
 #define SCRIPT_JOB_MS 90000    // how long this service waits for the compile job, which has a shorter limit of its own
 #define SCRIPT_DAY_MS 86400000LL
 
@@ -184,8 +188,8 @@ static void script_list(const request *q, PGconn *db, const char *id) {
   PGresult *r = PQexecParams(db, "SELECT s.manifest, o.hash IS NOT NULL, coalesce(o.why, ''), s.source IS NOT NULL FROM verse.world_scripts s LEFT JOIN verse.script_off o ON o.hash = s.hash "
                                  "WHERE s.world = $1 ORDER BY s.hash", 1, NULL, v, NULL, NULL, 0);
   if (PQresultStatus(r) != PGRES_TUPLES_OK) { api_log("scripts: %s", PQerrorMessage(db)); PQclear(r); world_refuse(q->fd, 500, "not read"); return; }
-  const char *job = getenv("OA_SCRIPT_JOB");
-  bool ok = wsp_list_begin(W(), cs(id), job && *job);
+  const char *job = getenv("OA_SCRIPT_JOB"), *service = getenv("OA_SCRIPT_JOB_URL");
+  bool ok = wsp_list_begin(W(), cs(id), (job && *job) || (service && *service));
   for (int i = 0; ok && i < PQntuples(r); i++)
     ok = wsp_list_add(W(), cs(PQgetvalue(r, i, 0)), PQgetvalue(r, i, 1)[0] == 't', cs(PQgetvalue(r, i, 2)), PQgetvalue(r, i, 3)[0] == 't', i == 0);
   PQclear(r);
@@ -303,88 +307,87 @@ static void script_put(const request *q, PGconn *db, const char *id) {
   store_checked(q, db, id, who_of(q), q->body, q->body_len, NULL, today, left, false);
 }
 
-// ---- the compile job (metaverse-engine/tools/script-job.coax through OA_SCRIPT_JOB): a command that
-// takes SOURCE NAME OUTDIR, writes OUTDIR/NAME.wasm and OUTDIR/NAME.json and exits 0, or says why not on
-// its output and exits 1. It runs tools that are not a sandbox, under limits of its own. Nothing it
-// writes is believed but the module's bytes, which are checked as any upload, and the name and state
-// fields of its manifest.
+// ---- the compile job (metaverse-engine/tools/script-job.coax): a command that takes SOURCE NAME OUTDIR,
+// writes OUTDIR/NAME.wasm and OUTDIR/NAME.json and exits 0, or says why not on its output and exits 1. It
+// runs tools that are not a sandbox, under limits of its own. This service runs it one of two ways:
+//   OA_SCRIPT_JOB_URL  the compile service (coax/web/script-job/serve.c, Cloud Run oa-script-job), asked with
+//                      an identity token for its URL (OA_SCRIPT_JOB_TOKEN instead: tests). It wins when both are set.
+//   OA_SCRIPT_JOB      the command, run here (script-job-run.c): a developer's machine and the dev server.
+// Either way nothing it says is believed but the module's bytes, which are checked as any upload, and the
+// name and state fields of its manifest.
 
-// A file's bytes (at most cap) into out: how many, or -1.
-static long file_read(const char *path, char *out, size_t cap) {
-  int fd = open(path, O_RDONLY | O_NOFOLLOW);
-  if (fd < 0) return -1;
-  size_t n = 0; ssize_t k;
-  while (n < cap && (k = read(fd, out + n, cap - n)) > 0) n += (size_t)k;
-  char one;
-  bool more = n == cap && read(fd, &one, 1) > 0;
-  close(fd);
-  return more ? -1 : (long)n;
+typedef struct { char *p; size_t n, cap; } job_buf;
+static size_t job_take(char *data, size_t size, size_t k, void *user) {
+  job_buf *b = user; size_t n = size * k;
+  if (b->n + n > b->cap) return 0;   // more than the most this service keeps: the call fails
+  memcpy(b->p + b->n, data, n); b->n += n;
+  return n;
 }
-// The job run on a source in a directory of its own: 0 with the module and the job's manifest read
-// back, 1 with the job's words, 2 when it could not be run or ran past this service's wait.
-static int job_run(const char *cmd, const char *name, const char *source, size_t source_n, char *wasm, long *wasm_n, char *made, long *made_n, char *words, size_t words_cap) {
-  const char *tmp = getenv("TMPDIR");
-  char dir[400], src[480], out[480], log[480], path[600];
-  snprintf(dir, sizeof dir, "%s/oa-script-XXXXXX", tmp && *tmp ? tmp : "/tmp");
+// The answer's X-Script-Manifest header, the job's manifest (one line of realm.script.v1), into made.
+typedef struct { char *made; long *made_n; } job_head;
+static size_t job_header(char *data, size_t size, size_t k, void *user) {
+  job_head *h = user; size_t n = size * k;
+  static const char name[] = "x-script-manifest:";
+  if (n > sizeof name - 1 && !strncasecmp(data, name, sizeof name - 1)) {
+    const char *v = data + sizeof name - 1, *e = data + n;
+    while (v < e && (*v == ' ' || *v == '\t')) v++;
+    while (e > v && (e[-1] == '\r' || e[-1] == '\n' || e[-1] == ' ')) e--;
+    if (e > v && (size_t)(e - v) <= SCRIPT_MANIFEST) { memcpy(h->made, v, (size_t)(e - v)); *h->made_n = (long)(e - v); }
+  }
+  return n;
+}
+// The compile service asked to compile a source: as script_job_run, 0 with the module and the job's
+// manifest, 1 with the job's words (its 422), 2 when it could not be reached or answered otherwise.
+static int job_remote(const char *base, const char *name, const char *source, size_t source_n,
+                      char *wasm, long *wasm_n, char *made, long *made_n, char *words, size_t words_cap) {
   snprintf(words, words_cap, "the compile job could not be run");
-  if (!mkdtemp(dir)) return 2;
-  snprintf(src, sizeof src, "%s/%s.coax", dir, name); snprintf(out, sizeof out, "%s/out", dir); snprintf(log, sizeof log, "%s/log", dir);
-  int result = 2;
-  int sfd = open(src, O_WRONLY | O_CREAT | O_EXCL, 0600);
-  bool wrote = sfd >= 0 && write(sfd, source, source_n) == (ssize_t)source_n;
-  if (sfd >= 0) close(sfd);
-  pid_t pid = wrote ? fork() : -1;
-  if (pid == 0) {
-    setpgid(0, 0);
-    int lfd = open(log, O_WRONLY | O_CREAT | O_TRUNC, 0600), nfd = open("/dev/null", O_RDONLY);
-    if (lfd < 0 || nfd < 0) _exit(126);
-    dup2(nfd, 0); dup2(lfd, 1); dup2(lfd, 2);
-    for (int fd = 3; fd < 256; fd++) close(fd);   // the job holds no socket and no database connection of this service
-    // the job inherits none of this service's environment: only where its tools are
-    static const char *const keep[] = {"PATH", "HOME", "TMPDIR", "COAX", "COAXIAL_CLANG", "COAXIAL_RESOURCES", "COAXIAL_TOOLCHAIN", "OA_SCRIPT_JOB_SANDBOX"};
-    static char vars[8][1200]; char *envp[9]; int en = 0;
-    for (size_t i = 0; i < sizeof keep / sizeof keep[0]; i++) {
-      const char *v = getenv(keep[i]);
-      if (v && *v && snprintf(vars[en], sizeof vars[en], "%s=%s", keep[i], v) < (int)sizeof vars[en]) { envp[en] = vars[en]; en++; }
-    }
-    envp[en] = NULL;
-    execle(cmd, cmd, src, name, out, (char *)NULL, envp);
-    _exit(127);
+  *wasm_n = 0; *made_n = 0;
+  if (!script_job_name_safe(name)) return 2;
+  char tok[4096], auth[4200], url[1200];
+  if (!api_id_token(base, "OA_SCRIPT_JOB_TOKEN", tok, sizeof tok)) { api_log("scripts: no token for the compile service"); return 2; }
+  snprintf(url, sizeof url, "%s/compile/%s", base, name);
+  snprintf(auth, sizeof auth, "Authorization: Bearer %s", tok);
+  CURL *c = curl_easy_init();
+  if (!c) return 2;
+  job_buf b = {wasm, 0, SCRIPT_MODULE};
+  job_head h = {made, made_n};
+  struct curl_slist *hd = curl_slist_append(curl_slist_append(NULL, auth), "Content-Type: text/plain; charset=utf-8");
+  curl_easy_setopt(c, CURLOPT_URL, url);
+  curl_easy_setopt(c, CURLOPT_HTTPHEADER, hd);
+  curl_easy_setopt(c, CURLOPT_POSTFIELDS, source);
+  curl_easy_setopt(c, CURLOPT_POSTFIELDSIZE, (long)source_n);
+  curl_easy_setopt(c, CURLOPT_WRITEFUNCTION, job_take);
+  curl_easy_setopt(c, CURLOPT_WRITEDATA, &b);
+  curl_easy_setopt(c, CURLOPT_HEADERFUNCTION, job_header);
+  curl_easy_setopt(c, CURLOPT_HEADERDATA, &h);
+  curl_easy_setopt(c, CURLOPT_TIMEOUT_MS, (long)SCRIPT_JOB_MS);
+  long status = 0;
+  CURLcode r = curl_easy_perform(c);
+  if (r == CURLE_OK) curl_easy_getinfo(c, CURLINFO_RESPONSE_CODE, &status);
+  curl_slist_free_all(hd); curl_easy_cleanup(c);
+  memset(tok, 0, sizeof tok); memset(auth, 0, sizeof auth);
+  if (status == 200 && b.n > 0 && *made_n > 0) { *wasm_n = (long)b.n; return 0; }
+  if (status == 422 && b.n > 0) {
+    long n = (long)(b.n < words_cap - 1 ? b.n : words_cap - 1);
+    memcpy(words, wasm, (size_t)n);
+    script_job_words(words, n, words_cap);
+    if (!words[0]) snprintf(words, words_cap, "the compile job refused the source");
+    *made_n = 0;
+    return 1;
   }
-  if (pid > 0) {
-    int status = 0; long long waited = 0; pid_t got = 0;
-    while ((got = waitpid(pid, &status, WNOHANG)) == 0 && waited < SCRIPT_JOB_MS) { struct timespec ts = {0, 20000000}; nanosleep(&ts, NULL); waited += 20; }
-    if (got == 0) { kill(-pid, SIGKILL); kill(pid, SIGKILL); waitpid(pid, &status, 0); snprintf(words, words_cap, "the compile job ran past its time limit"); }
-    else if (got == pid && WIFEXITED(status) && WEXITSTATUS(status) == 0) {
-      snprintf(path, sizeof path, "%s/%s.wasm", out, name); *wasm_n = file_read(path, wasm, SCRIPT_MODULE);
-      snprintf(path, sizeof path, "%s/%s.json", out, name); *made_n = file_read(path, made, SCRIPT_MANIFEST);
-      if (*wasm_n > 0 && *made_n > 0) result = 0; else snprintf(words, words_cap, "the compile job made no module");
-    } else if (got == pid && WIFEXITED(status) && WEXITSTATUS(status) == 1) {
-      long n = file_read(log, words, words_cap - 1);
-      if (n < 0) n = (long)words_cap - 1;   // longer than a refusal's words: its start
-      while (n > 0 && (words[n - 1] == '\n' || words[n - 1] == ' ')) n--;
-      for (long i = 0; i < n; i++) if ((unsigned char)words[i] < 32 || (unsigned char)words[i] > 126) words[i] = ' ';
-      words[n] = 0;
-      if (!n) snprintf(words, words_cap, "the compile job refused the source");
-      result = 1;
-    }
-    kill(-pid, SIGKILL);   // nothing the job started outlives it
-  }
-  // the directory goes: the files this service and the job's contract name, then the directory
-  snprintf(path, sizeof path, "%s/%s.wasm", out, name); unlink(path);
-  snprintf(path, sizeof path, "%s/%s.json", out, name); unlink(path);
-  rmdir(out); unlink(src); unlink(log);
-  if (rmdir(dir) != 0) api_log("scripts: the compile job left files in its directory");
-  return result;
+  api_log("scripts: the compile service answered %ld (%s)", status, r == CURLE_OK ? "ok" : curl_easy_strerror(r));
+  if (r == CURLE_OPERATION_TIMEDOUT) snprintf(words, words_cap, "the compile job ran past its time limit");
+  *made_n = 0;
+  return 2;
 }
 // POST .../scripts/compile?name=NAME: a script's source.
 static void script_compile(const request *q, PGconn *db, const char *id) {
   int64_t verdict = may_store(q, db, id, world_scripts_world(db, id, false, NULL));
   if (verdict != 0) { refuse_may(q->fd, verdict); return; }
-  const char *job = getenv("OA_SCRIPT_JOB");
+  const char *job = getenv("OA_SCRIPT_JOB"), *service = getenv("OA_SCRIPT_JOB_URL");
   char name[80] = "";
   api_query(q, "name", name, sizeof name);
-  bool runner = job && *job;
+  bool remote = service && *service, runner = remote || (job && *job);
   long long left = 0, today = 0;
   int64_t code = wsp_compile(runner, wsp_name_ok(cs(name)) && !memchr(q->body, 0, q->body_len) ? (int64_t)q->body_len : 0, 0);
   if (code == 0) { today = day_hit(db, "script-compile", who_of(q), &left); code = wsp_compile(runner, (int64_t)q->body_len, today); }
@@ -398,7 +401,8 @@ static void script_compile(const request *q, PGconn *db, const char *id) {
   long wasm_n = 0, made_n = 0;
   if (!wasm || !made || !source) { world_refuse(q->fd, 500, "not read"); _exit(0); }
   memcpy(source, q->body, q->body_len); source[q->body_len] = 0;
-  int ran = job_run(job, name, source, q->body_len, wasm, &wasm_n, made, &made_n, words, sizeof words);
+  int ran = remote ? job_remote(service, name, source, q->body_len, wasm, &wasm_n, made, &made_n, words, sizeof words)
+                   : script_job_run(job, name, source, q->body_len, SCRIPT_JOB_MS, wasm, &wasm_n, made, &made_n, words, sizeof words);
   if (ran != 0) {
     if (ran == 2) api_log("scripts: %s", words);
     refuse_code(q->fd, wsp_source(), words, 0, 0);

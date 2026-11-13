@@ -11,8 +11,11 @@
 #     macOS does not enforce it, so memory is bounded there only by the time limits.
 #   - The network: on macOS sandbox-exec denies it (and writes outside the job's directory); on Linux a
 #     new user and network namespace (unshare -rn) where the kernel allows one. OA_SCRIPT_JOB_SANDBOX says
-#     what happens where neither works: `required` refuses to run (the setting for a server), `try` (the
-#     default, for a developer's machine) runs without and says so on stderr, `off` does not try.
+#     what happens where neither works: `required` refuses to run (a server that can make a namespace),
+#     `closed` runs only when the machine itself reaches no address outside (a TCP connection to 1.1.1.1:443
+#     and to 8.8.8.8:53, each given 2 s, must both fail; the setting for the compile service, whose platform
+#     denies the network: coax/web/script-job/), `try` (the default, for a developer's machine) runs without
+#     and says so on stderr, `off` does not try.
 #   - It does not hide the file system from reads: the job runs as the caller's user and can read what
 #     that user can. A server runs it as a user that holds nothing (see docs/protocol/world-scripts-v1.md).
 set -euo pipefail
@@ -36,7 +39,13 @@ if [[ "$mode" != off ]]; then
     /usr/bin/sandbox-exec -p "$profile" /usr/bin/true 2> /dev/null && box=(/usr/bin/sandbox-exec -p "$profile")
   elif command -v unshare > /dev/null && unshare -rn true 2> /dev/null; then box=(unshare -rn)
   fi
-  if [[ ${#box[@]} -eq 0 ]]; then
+  if [[ ${#box[@]} -eq 0 && "$mode" == closed ]]; then
+    # no namespace here: the job runs only when the machine's own network reaches nothing outside
+    reach() { timeout 2 bash -c "exec 3<> /dev/tcp/$1/$2" 2> /dev/null; }
+    reach 1.1.1.1 443 & a=$!; reach 8.8.8.8 53 & b=$!
+    open=0; wait "$a" && open=1; wait "$b" && open=1
+    (( open == 0 )) || { echo "script-job: OA_SCRIPT_JOB_SANDBOX=closed, but this machine reaches an address outside" >&2; exit 2; }
+  elif [[ ${#box[@]} -eq 0 ]]; then
     [[ "$mode" != required ]] || { echo "script-job: no sandbox here to deny the network, and OA_SCRIPT_JOB_SANDBOX=required" >&2; exit 2; }
     echo "script-job: the network is not denied here (no sandbox-exec or unshare)" >&2
   fi
