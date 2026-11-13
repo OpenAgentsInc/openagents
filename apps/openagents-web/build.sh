@@ -181,6 +181,10 @@ timed host-sockets "$here/../../coax/web/tool.sh" "$here/../../coax/web/build-so
 host_sockets=$!
 timed host-packs "$here/../../coax/web/tool.sh" "$here/../../coax/web/build-packs.coax" "$here/../.." "$here/build/host-packs.wasm" &
 host_packs=$!
+# The frame plan for a page with no plan of its own (#13451): host.js loads it (coax/web/frame-plan-host.js)
+# and asks it each frame's order, so every page draws in metaverse-engine/render/passes.coax's.
+timed frame-plan "$here/../../coax/web/wasm.sh" "$here/../../metaverse-engine/host/frame-plan-carrier.coax" "$here/../../coax/web/frame-plan-face.c" "$here/build/frame-plan.wasm" &
+frame_plan=$!
 # Range-addressable packs (VPK3, metaverse-engine/editor/page-pack.coax, #13001): each .vpk3 a realm names in
 # realms.json is written from its tracked .pack beside it (rewritten only when the pack changed),
 # and so is each block build (metaverse-engine/tools/block-pack.coax) a realm's blocks: asset names.
@@ -606,6 +610,7 @@ wait "$host_media"
 wait "$host_services"
 wait "$host_sockets"
 wait "$host_packs"
+wait "$frame_plan"
 wait "$room_latency"
 wait "$fairy"
 wait "$villa"

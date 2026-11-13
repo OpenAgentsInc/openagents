@@ -81,6 +81,43 @@ frame_plan_page :: (bits: u32, c: FrameCounts, x: RenderShipping, out: [] u32) -
   return frame_plan_write(q[..], out);
 }
 
+// A page with no plan of its own (GitHub #13451): its host reads the page's counts from the exports it
+// always read and asks here, so one module (metaverse-engine/host/frame-plan-carrier.coax, loaded by
+// the host) decides every such page's order. `ask` is FPA_WORDS words:
+//   0 the host's bits (FPH_*)   1 width   2 height   3 the HUD vertex's floats
+//   4 HUD vertices   5 draws   6 water draws   7 grass blades   8 particles   9 surface vertices
+//   10 caster vertices   11 caster instances
+//   12 the separate shadow list's draws + 1 (0: the scene's list casts)
+//   13 the cull's runs   14 facts (FPA_*)   15 bloom stages
+//   16 the shadow tile to draw + 1 (0: none)   17 tiles   18 the tiles to clear, a bit each (read only
+//      when the host's bits say its shadow atlas is tiled)
+//   19.. each tile's rectangle in texels: x, y, w, h
+//   51.. the rectangle the drawn tile's draws are cut to: x, y, w, h (no width: the tile's own)
+// The result is the words written, 0 when the ask is refused.
+FPA_CUT :: 19 + RENDER_SHADOW_TILES * 4;
+FPA_WORDS :: FPA_CUT + 4;
+FPA_CHARACTER_CAST :: 1; FPA_GRASS_LAST :: 2; FPA_SHADOW_LAZY :: 4; FPA_FACTS :: 7;
+fpa_int :: (w: u32) -> int #effects(all) { return cast(int) w; }
+frame_plan_host :: (ask: [] const u32, out: [] u32) -> int #effects(all) {
+  if out.count > 0 { out[0] = 0; }
+  if ask.count < FPA_WORDS { return 0; }
+  facts := fpa_int(ask[14]);
+  if facts > FPA_FACTS || fpa_int(ask[17]) > RENDER_SHADOW_TILES || fpa_int(ask[16]) > fpa_int(ask[17]) || fpa_int(ask[15]) > 5 { return 0; }
+  c := FrameCounts.{width = fpa_int(ask[1]), height = fpa_int(ask[2]), vertex_stride = fpa_int(ask[3]), hud_vertices = fpa_int(ask[4]), draw_count = fpa_int(ask[5]),
+                    water_draws = fpa_int(ask[6]), grass_instances = fpa_int(ask[7]), particle_instances = fpa_int(ask[8]), surface_vertices = fpa_int(ask[9]),
+                    caster_vertices = fpa_int(ask[10]), caster_instances = fpa_int(ask[11])};
+  x := RenderShipping.{shadow_draws = fpa_int(ask[12]) - 1, cull = ask[13] > 0, cull_runs = fpa_int(ask[13]), character = true, character_cast = (facts & FPA_CHARACTER_CAST) != 0,
+                       sort = true, grass_last = (facts & FPA_GRASS_LAST) != 0, bloom_passes = fpa_int(ask[15]),
+                       shadow_lazy = (facts & FPA_SHADOW_LAZY) != 0};
+  // a tiled atlas with no tile yet draws no shadow pass: the host's bit says the atlas is tiled
+  if (ask[0] & FPH_TILES) != 0 {
+    x.tiles = true; x.tile_count = fpa_int(ask[17]); x.tile = fpa_int(ask[16]) - 1; x.clears = fpa_int(ask[18]);
+    for t: 0..<x.tile_count { for j: 0..<4 { x.rects[t][j] = fpa_int(ask[19 + t * 4 + j]); } }
+    for j: 0..<4 { x.cut[j] = fpa_int(ask[FPA_CUT + j]); }
+  }
+  return frame_plan_page(ask[0], c, x, out);
+}
+
 fp_byte_ok :: (v: int) -> bool #effects(all) { return v >= 0 && v <= 255; }
 fp_count_ok :: (v: int) -> bool #effects(all) { return v >= 0 && v <= 0x7fffffff; }
 // A bloom step is four whole numbers of 0 to 255.

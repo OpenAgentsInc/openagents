@@ -1,0 +1,17 @@
+// The frame plan for a page with no plan of its own (GitHub #13451): the browser host loads this one
+// small module (build/frame-plan.wasm, coax/web/frame-plan-face.c) and asks it for each frame's order,
+// handing it the counts it reads from the page's exports. The order is metaverse-engine/render/passes.coax's,
+// as it is for a page that exports coaxial_frame_plan_v1; the host decides none.
+//   coax/bin/coax test metaverse-engine/host/frame-plan-carrier.coax
+#load "../render/frame-plan.coax";
+
+frame_plan_carrier_words :: () -> int #export_c #effects(all) { return FPA_WORDS; }
+frame_plan_carrier_ask :: (ask: [] u32, out: [] u32) -> int #export_c #effects(all) { return frame_plan_host(ask, out); }
+
+#test "the carrier's ask is frame_plan_host's: a flat page is a background and its HUD" {
+  a: [FPA_WORDS] u32; v: [2056] u32;
+  a[1] = 320; a[2] = 180; a[3] = 16; a[4] = 6; a[15] = 5;
+  #assert frame_plan_carrier_words() == 55 && frame_plan_carrier_ask(a[..], v[..]) == 40 && frame_plan_count(v[0..<40]) == 4;
+  #assert frame_plan_op(v[0..<40], 1).pass == RenderPassId.background && frame_plan_op(v[0..<40], 2).pass == RenderPassId.hud && frame_plan_op(v[0..<40], 2).count == 6;
+  #assert frame_plan_carrier_ask(a[0..<54], v[..]) == 0;
+}

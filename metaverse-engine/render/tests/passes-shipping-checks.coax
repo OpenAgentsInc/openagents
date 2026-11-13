@@ -148,3 +148,42 @@ rps_kinds :: (q: RenderPlan, want: [] const RenderOpKind) -> bool #effects(all) 
   #assert !render_pass_state(RenderFeatures.{}, cast(RenderPassId) p).valid;
   #assert render_pass_state(RenderFeatures.{scene = true}, cast(RenderPassId) p).valid == (p >= 16);
 }
+
+#test "a traced page's particles: no scene, drawn over the background and the surface, before the HUD (#13451)" {
+  c := FrameCounts.{width = 320, height = 180, vertex_stride = 16, hud_vertices = 6, particle_instances = 12, surface_vertices = 9};
+  q := render_plan(RenderFeatures.{particles = true, particle_over = true}, c, RenderReadiness.ready, true);
+  #assert q.status == RenderPlanStatus.ok && q.count == 6 && q.ops[0].depth == RenderTarget.none;
+  #assert q.ops[1].pass == RenderPassId.background && q.ops[2].pass == RenderPassId.particle_over && q.ops[2].count == 6 && q.ops[2].instances == 12;
+  #assert q.ops[3].pass == RenderPassId.particle && q.ops[3].instances == 12 && q.ops[3].state.valid && q.ops[3].state.depth == RenderDepth.none && q.ops[4].pass == RenderPassId.hud;
+  // with a surface they follow it and test its depth; with no over pipeline only the added pass draws
+  q = render_plan(RenderFeatures.{surface = true, particles = true}, c, RenderReadiness.ready, true);
+  #assert q.count == 6 && q.ops[0].depth == RenderTarget.scene_depth && q.ops[2].pass == RenderPassId.surface && q.ops[3].pass == RenderPassId.particle && q.ops[3].state.depth == RenderDepth.less;
+  // not until their group is ready, and none when there are none
+  q = render_plan(RenderFeatures.{particles = true}, c, RenderReadiness.ready, false); #assert q.count == 4;
+  c.particle_instances = 0; q = render_plan(RenderFeatures.{particles = true}, c, RenderReadiness.ready, true); #assert q.count == 4;
+  // a scene's particles still wait for its draws
+  c.particle_instances = 12; c.surface_vertices = 0;
+  q = render_plan(RenderFeatures.{scene = true, particles = true}, c, RenderReadiness.ready, true);
+  for i: 0..<q.count { #assert q.ops[i].pass != RenderPassId.particle || q.ops[i].kind != RenderOpKind.draw; }
+}
+
+#test "shipping: a lazy shadow map has no pass on a frame with nothing to cast; casters and a separate list still open it" {
+  f := RenderFeatures.{scene = true, shadow = true, grass = true};
+  c := FrameCounts.{width = 320, height = 180, vertex_stride = 16, grass_instances = 1};
+  x := RenderShipping.{shadow_lazy = true};
+  q := render_plan_shipping(f, c, x, RenderReadiness.ready, true);
+  #assert q.status == RenderPlanStatus.ok && q.ops[0].depth == RenderTarget.scene_depth && q.ops[0].colour0 == RenderTarget.screen;
+  // not lazy: the empty map is cleared, as render_plan has it
+  q = render_plan_shipping(f, c, RenderShipping.{}, RenderReadiness.ready, true); #assert q.ops[0].depth == RenderTarget.shadow_map && q.ops[1].kind == RenderOpKind.end;
+  // a draw opens it; so does a separate shadow list with draws while the scene's list is all water
+  c.draw_count = 2;
+  q = render_plan_shipping(f, c, x, RenderReadiness.ready, true); #assert q.ops[0].depth == RenderTarget.shadow_map && q.ops[1].pass == RenderPassId.shadow && q.ops[1].count == 2;
+  c.draw_count = 0; x.shadow_draws = 4;
+  q = render_plan_shipping(f, c, x, RenderReadiness.ready, true); #assert q.ops[0].depth == RenderTarget.shadow_map && q.ops[1].pass == RenderPassId.shadow && q.ops[1].count == 4;
+  // not ready: nothing casts yet
+  c.draw_count = 2; x.shadow_draws = -1;
+  q = render_plan_shipping(f, c, x, RenderReadiness.background, true); #assert q.ops[0].depth == RenderTarget.scene_depth;
+  // casters keep their clear every frame
+  f.casters = true; c.draw_count = 0;
+  q = render_plan_shipping(f, c, x, RenderReadiness.ready, true); #assert q.ops[0].depth == RenderTarget.shadow_map;
+}

@@ -49,6 +49,9 @@ RenderShipping :: struct {
   cull:bool; cull_runs:int;  // the cull's first phase ran, over this many runs
   character:bool; character_cast:bool;
   sort:bool; grass_last:bool; bloom_passes:int=5;
+  cut:[4]int;                // the rectangle the tile's draws are cut to when it has a width; none: the tile's own
+  shadow_lazy:bool;          // the whole shadow map's pass only on a frame with something to cast (or casters): a page
+                             // that never cleared an empty map (host.js's order before the plan, #13451)
 }
 RenderPlan :: struct { status:RenderPlanStatus=RenderPlanStatus.invalid; readiness:RenderReadiness; count:int; ops:[RENDER_OPS]RenderOp; }
 
@@ -117,7 +120,7 @@ RenderPlan :: struct { status:RenderPlanStatus=RenderPlanStatus.invalid; readine
 }
 #forall "render graph feature admission follows the complete prerequisite relation" bits:0..<16384 {
   f:=RenderFeatures.{scene=(bits&1)!=0,shadow=(bits&2)!=0,casters=(bits&4)!=0,grass=(bits&8)!=0,surface=(bits&16)!=0,water=(bits&32)!=0,water_copy=(bits&64)!=0,post=(bits&128)!=0,post_depth=(bits&256)!=0,traced_depth=(bits&512)!=0,particles=(bits&1024)!=0,particle_depth=(bits&2048)!=0,particle_over=(bits&4096)!=0,media=(bits&8192)!=0};
-  requires:=[14]int.[0,1,1,1,0,1,160,1,128,0,1,1088,1024,0];
+  requires:=[14]int.[0,1,1,1,0,1,160,1,128,0,0,1088,1024,0];
   expected:=true;
   for i:0..<14 {if (bits&(1<<i))!=0 && (bits&requires[i])!=requires[i] {expected=false;}}
   if (bits&17)==17 || ((bits&512)!=0 && (bits&17)==0) {expected=false;}
@@ -236,7 +239,8 @@ RenderPlan :: struct { status:RenderPlanStatus=RenderPlanStatus.invalid; readine
 #load "tests/passes-shipping-checks.coax" #test;
 
 render_features :: (f:RenderFeatures)->bool #effects(all) {
-  if !f.scene && (f.shadow || f.casters || f.grass || f.water || f.post || f.particles) {return false;}
+  // a traced page (no scene: bg_fs draws the world) may still have particles, drawn over what it traced (#13451)
+  if !f.scene && (f.shadow || f.casters || f.grass || f.water || f.post) {return false;}
   if f.scene && f.surface {return false;}
   if f.water_copy && (!f.water || !f.post) {return false;}
   if f.post_depth && !f.post {return false;}
@@ -267,7 +271,7 @@ render_pass_state :: (f:RenderFeatures,p:RenderPassId)->RenderPassState #effects
     r.colour=ifx p==RenderPassId.water_transmit then RenderBlend.multiply else RenderBlend.add;r.alpha=RenderBlend.keep;
   } else if p==RenderPassId.particle_over || p==RenderPassId.particle {
     r.valid=ifx p==RenderPassId.particle_over then f.particle_over else f.particles;
-    r.outputs=ifx f.post then 2 else 1;r.depth=RenderDepth.less;r.aux_write=false;
+    r.outputs=ifx f.post then 2 else 1;r.depth=ifx f.scene || f.surface then RenderDepth.less else RenderDepth.none;r.aux_write=false;
     r.colour=ifx p==RenderPassId.particle_over then RenderBlend.over else RenderBlend.add;
     r.alpha=ifx p==RenderPassId.particle_over then RenderBlend.under else RenderBlend.add;
   } else if p==RenderPassId.bloom || p==RenderPassId.post {r.valid=f.post;
@@ -299,6 +303,8 @@ render_shipping :: (f:RenderFeatures,x:RenderShipping)->bool #effects(all) {
   if !x.tiles && (x.tile>=0 || x.tile_count>0) {return false;}
   if x.tiles && !f.shadow {return false;}
   for k:0..<x.tile_count {for j:0..<4 {if x.rects[k][j]<0 || x.rects[k][j]>RENDER_RECT_MOST {return false;}}if x.rects[k][2]<1 || x.rects[k][3]<1 {return false;}}
+  for j:0..<4 {if x.cut[j]<0 || x.cut[j]>RENDER_RECT_MOST {return false;}}
+  if (x.cut[2]>0)!=(x.cut[3]>0) {return false;}
   if x.shadow_draws< -1 || x.shadow_draws>4294967295 {return false;}
   if x.shadow_draws>=0 && !f.shadow {return false;}
   if x.cull_runs<0 || x.cull_runs>4294967295 || (x.cull && (!f.scene || x.cull_runs<1)) {return false;}
@@ -335,12 +341,12 @@ render_plan_shipping :: (f:RenderFeatures,c:FrameCounts,x:RenderShipping,ready:R
     if x.tile>=0 && casting>0 {
       rp_begin(q,RenderTarget.none,RenderTarget.none,RenderTarget.shadow_map,true,true);
       for k:0..<x.tile_count {if (x.clears&(1<<cast(u64)k))!=0 {rp_rect(q,RenderOpKind.viewport,x.rects[k]);rp_draw(q,f,RenderPassId.shadow_clear,RenderDrawSource.vertices,0,3,1);}}
-      rp_rect(q,RenderOpKind.viewport,[4]int.[0,0,0,0]);rp_rect(q,RenderOpKind.scissor,x.rects[x.tile]);
+      rp_rect(q,RenderOpKind.viewport,[4]int.[0,0,0,0]);rp_rect(q,RenderOpKind.scissor,ifx x.cut[2]>0 then x.cut else x.rects[x.tile]);
       rp_draw(q,f,RenderPassId.shadow,cast_from,0,casting,1);
       if hero && x.character_cast {rp_draw(q,f,RenderPassId.character_cast,RenderDrawSource.current,0,1,1);}
       rp_emit(q,RenderOp.{kind=RenderOpKind.end});
     }
-  } else if f.shadow || f.casters {
+  } else if f.casters || (f.shadow && (!x.shadow_lazy || draws>0 || casting>0)) {
     rp_begin(q,RenderTarget.none,RenderTarget.none,RenderTarget.shadow_map,false,true);
     if f.shadow && casting>0 {rp_draw(q,f,RenderPassId.shadow,cast_from,0,casting,1);}
     if f.casters && c.caster_vertices>0 && c.caster_instances>0 {rp_draw(q,f,RenderPassId.caster,RenderDrawSource.vertices,0,c.caster_vertices,c.caster_instances);}
@@ -385,6 +391,12 @@ render_plan_shipping :: (f:RenderFeatures,c:FrameCounts,x:RenderShipping,ready:R
   if sparks>0 {
     if f.particle_over {rp_draw(q,f,RenderPassId.particle_over,RenderDrawSource.vertices,0,6,sparks);}
     rp_draw(q,f,RenderPassId.particle,RenderDrawSource.vertices,0,6,sparks);
+  }
+  // a traced page's particles, over what bg_fs and its surface drew
+  puffs:=ifx !f.scene && f.particles && particles_ready then c.particle_instances else 0;
+  if puffs>0 {
+    if f.particle_over {rp_draw(q,f,RenderPassId.particle_over,RenderDrawSource.vertices,0,6,puffs);}
+    rp_draw(q,f,RenderPassId.particle,RenderDrawSource.vertices,0,6,puffs);
   }
   if f.post {
     rp_emit(q,RenderOp.{kind=RenderOpKind.end});

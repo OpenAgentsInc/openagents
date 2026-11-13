@@ -300,6 +300,8 @@ host-sockets 24000
 # Bounded VPK1/private reader and exact retained stream ownership (34,411 bytes).
 # Packs paged by world cell, the cells entry (kind 8) and the rig entry (kind 7) (#13304, #13280, #13306): 48,113 bytes measured 2026-11-13; about 5% room
 host-packs 51000
+# The frame plan for a page with no plan of its own (#13451): passes.coax's order as words. 25,055 release bytes measured 2026-11-13 on Linux; about 10% room
+frame-plan 27500
 # Initial procedural Valley Lab and shared walker, no fetched assets.
 valleylab 160000
 # Named face admission, sparse morph playback and source-rate facial-bone overlays (#12962): 85,271 bytes.
