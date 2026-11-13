@@ -8,6 +8,7 @@
 //   ?view=outfits   the six outfits on one body (&body=bruiser|mechanic|scout|elder|fighter|kid)
 //   ?view=one       a turntable on one character: the page's own document (the default view)
 //   &pane=0         the scene alone, with no pane beside it (a picture of a view)
+//   &close=1        on the turntable, a close view of the character's head (the face's review)
 //   &turn=DEGREES   holds the turntable at an angle; &doc=BASE64URL loads a crew.character.v1 document;
 //                   &body= and &outfit= dress the turntable's character in a preset
 //
@@ -32,7 +33,7 @@ Crew :: struct {
   outfit: int; body: int = CB_FIGHTER;   // the fit view's outfit and the outfits view's body
   doc: [1] CrewDoc;                      // the turntable's character
   refused: [CD_WHY] u8; refused_n: int;  // why the last document was refused (none: it stood)
-  turn: f32; pinned: bool; spin: bool = true; labels: bool = true;
+  turn: f32; pinned: bool; spin: bool = true; labels: bool = true; close: bool;
   time: f32;
   variant: int; clock: f32 = 0.5;
   want: int = 1; built: int;             // the scene that is wanted, and the one the store holds
@@ -166,6 +167,13 @@ cr_camera :: (s: [] Crew, aspect: f32) -> CamNow {
   if s[0].view == CR_ONE {
     h := cast(f32) s[0].doc[0].body.v[CB_HEIGHT] * 0.01;
     fov: f32 = 0.42;
+    if s[0].close {
+      m := cb_form(s[0].doc[0].body);
+      at := v3(0, m.head.y - m.head_ry * 0.25, m.head.z);
+      away := hi(m.head_ry * 2.1 / tan(fov * 0.5), m.head_ry * 2.2 / (tan(fov * 0.5) * hi(aspect, 0.3)));
+      b := s[0].turn;
+      return CamNow.{eye = v3(sin(b) * away, at.y + m.head_ry * 0.15, at.z + cos(b) * away), at = at, fov = fov};
+    }
     tall := h * 1.22 + 0.1;
     dist := hi(tall * 0.5 / tan(fov * 0.5), 0.72 / (tan(fov * 0.5) * hi(aspect, 0.3)));
     a := s[0].turn;
@@ -255,6 +263,7 @@ cr_show :: (s: [] Crew, what: string, value: string) {
   if what == "turn" { k := decimal(value); if k >= 0 && k <= 360 { s[0].turn = wrap_angle(k * PI / 180); s[0].pinned = true; } else { s[0].pinned = false; } }
   if what == "spin" { s[0].spin = value == "on"; s[0].pinned = false; }
   if what == "labels" { s[0].labels = value != "off" && value != "0"; }
+  if what == "close" { s[0].close = value == "1" || value == "on"; }
 }
 // A document for the turntable: it stands whole, or it is refused with its reason and the character stays.
 crew_load :: (s: [] Crew, text: string) -> bool {
@@ -291,8 +300,8 @@ crew_message :: (s: [] Crew, kind: int, body: string) #export_c #effects(all) {
   s[0].facts = true;
   url := fact(body, "url");
   s[0].bare = query(url, "pane") == "0";
-  names := [4] string.["view", "outfit", "body", "labels"];
-  for k: 0..<4 { v := query(url, names[k]); if v.count > 0 { cr_show(s, names[k], v); } }
+  names := [5] string.["view", "outfit", "body", "labels", "close"];
+  for k: 0..<5 { v := query(url, names[k]); if v.count > 0 { cr_show(s, names[k], v); } }
   // on the turntable, a body or an outfit named in the address dresses the page's character in that preset
   if s[0].view == CR_ONE && query(url, "body").count > 0 { bk := CB_PRESET_KEYS; k := cr_key_of(bk[..], query(url, "body")); if k >= 0 { s[0].from_address = true; s[0].doc[0].body = cb_preset(k); s[0].doc[0].look = cr_row_look(k); s[0].want += 1; } }
   if s[0].view == CR_ONE && query(url, "outfit").count > 0 { ok := CW_OUTFIT_KEYS; k := cr_key_of(ok[..], query(url, "outfit")); if k >= 0 { s[0].from_address = true; s[0].doc[0].wear = cw_outfit(k); s[0].want += 1; } }

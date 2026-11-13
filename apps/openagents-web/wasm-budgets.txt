@@ -70,7 +70,8 @@ editor-shell 320000
 agents 120000
 # Crew, character creation (#13462): the body, the wardrobe and the document (metaverse-engine/kit/crew-*.coax) on the cel lofts and
 # Anime Lab's uniforms: 161,360 bytes measured 2026-11-13 on a Mac release build; about 10% room.
-crew 180000
+# With the modelled face and hair (#13490): 182,527 bytes measured 2026-11-13 on a Linux build host; about 3% room.
+crew 188000
 # ... and its pane, the creation steps in the frames set (crew-pane.coax): 119,391 bytes measured the same way; about 10% room.
 crew-pane 132000
 # The page's script module (script-host.coax, #13467): the module check, the interpreter, the host and the loader. 79,438 bytes measured with the script list's codec (Mac, clang 23); about 10% room.
@@ -363,7 +364,8 @@ painted 200000
 # Linux build host; about 3% room.
 # With the solar, charger, mesa, train and room kits a pieces row may name (metaverse-engine/kit/props.coax,
 # kit_train, kit_mesa, #13485): 598,185 bytes measured 2026-11-13 on a Linux build host; about 3.5% room.
-splice 620000
+# With the crew kit's modelled face and hair (#13490): 633,556 bytes measured 2026-11-13 on a Linux build host; about 3% room.
+splice 652000
 # /worlds on the frames set drawn by the browser (worlds-web.coax, beside the side): 91,057 bytes measured
 # 2026-11-13 on a Mac, about 9% room. It replaces realmlist (70,076 bytes and its 16,279-byte shader).
 worlds-web 100000

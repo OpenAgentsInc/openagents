@@ -121,8 +121,8 @@ the body's ring stations and its sides. A check dresses every body preset
 in every outfit, and the two bodies furthest apart in every single piece,
 and asserts that no garment is thinner than the body under it at any ring
 (`cw_covers`: the torso, each limb, and the whole body's hull for a skirt,
-a coat or a hood), and that a dressed character stays inside 30,000
-vertices.
+a coat or a hood), and that a dressed character stays inside 34,000
+vertices (30,000 before the modelled face and hair, #13490).
 
 ### Head, face, hair and skin
 
@@ -134,8 +134,29 @@ Enough for a player to look like their own person, in the sheet's manner:
 - Hair: eight styles (messy bun, crop, mohawk with braid, long tied,
   curls, shaved, topknot, long loose), in a row of eight colours.
 
-They are `metaverse-engine/kit/crew-head.coax`. A face is flat marks on the
-head, as Anime Lab's faces are.
+They are `metaverse-engine/kit/crew-head.coax`. Every face is drawn in
+one style, taken from the owner's face sheet (not in the repository): a
+comic look with ink lines and cel shading. The choices vary features inside
+that style:
+
+- **The head is modelled.** An oval with a V-shaped jaw down to a pointed
+  chin, cheekbones with a plane under each, eye sockets, a brow ridge, a
+  nose ridge with wings, and full lips. The cel pass shades the planes and
+  inks the creases. The jaw choice moves the jaw: soft (the base), square
+  (wide corners) or narrow.
+- **The features are drawn on the surface.** Large almond eyes with a dark
+  lash line and a wing, a lower liner, a lid crease, light irises and a
+  highlight; angled brows; a small nose drawn with a tip line and
+  nostrils; a defined upper lip with a bow.
+- **Rough choices follow the owner's second sheet.** A square jaw, heavy
+  brows, a broad nose, a moustache or a beard make the whole face rougher:
+  a heavier brow ridge and brows, narrower eyes, creases between the brows
+  and beside the nose, and darker irises.
+- **Hair is locks.** Tapered locks swept from a part, loose strands at the
+  face, and for the bun a high knot of loops and flyaways. Small silver
+  hoops hang at the ears when nothing covers them.
+
+The head, face and hair together stay inside 14,000 vertices.
 
 ### The process a player sees
 
@@ -186,8 +207,9 @@ grey paper for a sky and a floor that shows only the figures' shadows
 | `/worlds/crew?view=fit&outfit=deckhand` | One outfit on all six bodies, to prove the fitting |
 | `/worlds/crew?view=outfits&body=fighter` | The six outfits on one body, as the outfit sheet lays them out |
 
-`&pane=0` shows the scene alone, `&turn=DEGREES` holds the turntable, and
-on the turntable `&body=` and `&outfit=` dress the character in a preset.
+`&pane=0` shows the scene alone, `&turn=DEGREES` holds the turntable,
+`&close=1` frames the turntable on the head, and on the turntable `&body=`
+and `&outfit=` dress the character in a preset.
 
 Pictures of each view, taken headless and compared by eye against the two
 sheets:
@@ -204,13 +226,16 @@ sheets:
 
 The modules live in the Metaverse Engine (`metaverse-engine/`), not in
 Splice, so any realm can use them. The page is its own realm page with its
-own modules (`crew`, budget 180,000 bytes; `crew-pane`, 132,000); it adds
+own modules (`crew`, budget 188,000 bytes; `crew-pane`, 132,000); it adds
 nothing to Splice's module.
 
 How close the pictures are to the sheets, weakest first:
 
-- **Faces and hair** are simple marks and shapes. They tell six people
-  apart; they don't have the sheets' drawing.
+- **Hair** is tapered locks: thinner and tidier than the face sheet's
+  messy bun and ink strands, and it shades grey rather than ink black.
+- **Faces** have the sheet's shape, eyes, brows, nose and lips. The eyes
+  are drawn on the surface, not modelled lids; the nose shows mostly
+  through its lines; the skin is lighter than the sheet's tan once lit.
 - **The runner's jacket** reads as a cropped jacket with full sleeves and a
   ribbed hem, but boxy, and its hood lies out of sight on the back.
 - **The clear helmet** is hoops, not glass.

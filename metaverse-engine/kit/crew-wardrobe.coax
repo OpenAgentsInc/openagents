@@ -133,7 +133,7 @@ CW_METAL :: () -> KitTint { return kit_tint(0.80, 0.83, 0.88); }
 CW_SHELL :: () -> KitTint { return kit_tint(0.90, 0.91, 0.93); }      // a helmet's ring, a pack's case
 CW_FITTED :: 0.008f32; CW_LOOSE :: 0.022f32; CW_BAGGY :: 0.05f32;     // the eases, metres on a 1.75 m body
 CW_BOOT_T :: 4.4f32;   // where a boot's top is on a leg's loft (between the calf and the ankle)
-CW_BUDGET :: 30000;    // the most vertices one dressed character takes
+CW_BUDGET :: 34000;    // the most vertices one dressed character takes (the modelled face and hair, #13490)
 
 // What a garment was fitted round: the torso, an arm, a leg, or the whole body's hull (a skirt, a coat).
 CW_ON_TORSO :: 0; CW_ON_ARM :: 1; CW_ON_LEG :: 2; CW_ON_HULL :: 3;
@@ -820,7 +820,8 @@ cw_head_write :: (buf: [] u32, p: [] Pen, f: Frame, d: CwDraw, m: CrewForm, fit:
   rx := m.head_rx; ry := m.head_ry; rz := m.head_rz;
   if face == CW_MASK {
     cw_cloth(p, d.obj + 4, CW_DEEP());
-    ellipsoid(buf, p, kit_at(hf, 0, -ry * 0.50, rz * 0.07), rx * 1.03, ry * 0.60, rz * 1.02, 12, 6, 0);
+    // deep enough at the front to cover the face's nose and lips
+    ellipsoid(buf, p, kit_at(hf, 0, -ry * 0.50, rz * 0.10), rx * 1.03, ry * 0.60, rz * 1.12, 12, 6, 0);
     cw_thread(p, d.obj);
     dash(buf, p, kit_at(hf, 0, -ry * 0.16, rz * 1.0), -rx * 0.42, 0, rx * 0.42, 0, d.sw * 0.8, d.sw * 0.8);
   }
