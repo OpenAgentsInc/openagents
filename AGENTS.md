@@ -177,6 +177,7 @@ coax/web/tool.sh components-check           # the component system's layers, no 
 coax/web/tool.sh everglade2-drift --page ORIGIN --room PORT  # Everglade II's page against a local room through a shaped network: your corrections and the others as drawn, against bounds (metaverse-engine/net/README.md "The drift check", #13277; a Mac with a GPU, after coax/web/room/local.coax --static)
 coax/web/tool.sh layer-check                # no load from metaverse-engine/ up into metaverse/, apps/, everglade/ or coax/web/, none from everglade/ into apps/, no plain load of a tests/ file or of a checks file beside a module (`X-checks.coax`) by product code (a module loads its checks with `#load "FILE" #test;`, #13383); no engine module without a product consumer or a line in metaverse-engine/consumers.txt (#13272); no authoring or engine context reaches the character record or the item ledger (the `durable` gate, #13431); the allowlist only shrinks (metaverse-engine/README.md "Layers", #13264)
 coax/web/tool.sh prepush --replay COMMIT    # would the pre-push check refuse COMMIT? (--replay-check: the historical clobbers, #13265)
+coax/web/tool.sh agent-reference --write    # each realm's reference for agents, apps/openagents-web/realms/PAGE/llms.txt, from its wire, pins, content tables, limits and diagnostic codes; commit it (--check runs before a push, #13430)
 coax/web/tool.sh wire-check                 # every wire shape is in proto/registry.json with one codec; the allowlist only shrinks (proto/README.md, #13236)
 coax/web/tool.sh shot URL OUT.png 1280x720 --keep --eval JS  # a picture of a page; --keep reuses the loaded page (docs/metaverse/fast-shots.md)
 coax/web/tool.sh shot --compare A.png B.png  # how much two pictures differ
@@ -266,7 +267,7 @@ tests for what you touched, not everything.
   10 to 20 seconds, never more than two minutes). It refuses a commit that
   undoes another agent's work of the last 24 hours (a tree written from a
   stale snapshot), a commit with no `Agent:` line, and a failing
-  `tools-check`, `everglade-parity`, `wire-check`, `layer-check`, state-keep test or touched
+  `tools-check`, `everglade-parity`, `wire-check`, `layer-check`, state-keep test, `agent-reference --check` or touched
   suite. The hooks are tracked in `coax/remote/hooks/`; a clone turns them on
   once with `git config core.hooksPath coax/remote/hooks` (this Mac's clone
   has it, so every worktree gets it). When a refusal is right, fix the

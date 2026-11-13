@@ -264,6 +264,8 @@ reports() {
   migrations
   step prepush-replay coax/web/tool.sh prepush --replay-check || status=1
   step wgsl coax/web/tool.sh coax/web/wgsl-module.coax --site --check || status=1
+  # each realm's reference for agents is what its sources write (#13430)
+  step agent-reference coax/web/tool.sh agent-reference --check || status=1
   visuals
   generated
   pack_reader_c

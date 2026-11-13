@@ -55,6 +55,22 @@ New tools are Coax too ([tools-in-coax.md](tools-in-coax.md)): write
 `coax/web/NAME.coax` with `#test` checks and run it with
 `coax/web/tool.sh NAME`.
 
+## A realm's reference for agents
+
+Each realm with a row in the authority table has a generated reference,
+`apps/openagents-web/realms/PAGE/llms.txt`, served at `/worlds/PAGE/llms.txt`:
+its wire version and pins, content tables, the shapes its contexts own, who
+decides each kind of state, its limits, the driver's operations and the
+diagnostic codes. Read it before you write against a realm; it describes the
+build it is served beside, not `main`.
+
+It is generated, never edited. When you change a pin, a limit it lists, a
+content table, a registry row or a diagnostic code, run
+`coax/web/tool.sh agent-reference --write` and commit the files. The pre-push
+check runs `--check` and refuses a stale one. To add a realm, add its
+`ar_realm` entry in `coax/web/agent-reference.coax` and its row in
+`metaverse-engine/editor/authority.coax`.
+
 ## Drive a page or realm
 
 `coax/web/tool.sh drive` runs a page in headless Chrome and applies one

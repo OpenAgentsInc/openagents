@@ -82,7 +82,8 @@ for root, dirs, files in os.walk(app):
                      and not os.path.exists(os.path.join(root, d, "DEV-ONLY")))
     for f in sorted(files):
         rel = os.path.relpath(os.path.join(root, f), app)
-        agent = rel in ("llms.txt", "robots.txt", "pylon" + os.sep + "join.sh") or (rel.startswith("cli" + os.sep) and f.endswith((".sh", ".ps1"))) or rel == "docs/connect-a-pylon/confidential-round.json"
+        # a realm's reference for agents, generated with the build (coax/web/agent-reference.coax, #13430)
+        agent = (rel.startswith("realms" + os.sep) and f == "llms.txt") or rel in ("llms.txt", "robots.txt", "pylon" + os.sep + "join.sh") or (rel.startswith("cli" + os.sep) and f.endswith((".sh", ".ps1"))) or rel == "docs/connect-a-pylon/confidential-round.json"
         if f == "README.md" or not (agent or f.endswith((".html", ".md", ".svg", ".jpg"))): continue
         pages.append(rel)
 for f in pages:

@@ -1,0 +1,390 @@
+// The version-matched reference for agents (GitHub #13430; docs/research/spawn-what-to-adapt.md, N2):
+// for each realm with a row in the authority table, one generated file,
+// apps/openagents-web/realms/PAGE/llms.txt, served at /worlds/PAGE/llms.txt beside the page it
+// describes and linked from the site's llms.txt. It says what an agent needs to work on that
+// realm at this build and nothing about any other: the wire version and the engine, rules and
+// content pins, the content tables' schemas, the wire and stored shapes the realm's contexts own,
+// who decides each kind of state, the limits, the driver's operations, the diagnostic codes, and
+// examples. The site, the rooms and a pinned realm each ship the file their own commit wrote, so an
+// agent reading a realm's reference can't write against wire 7 for a realm still on wire 6 (#13397).
+//
+// Nothing in it is written by hand: every line is read from the sources named in it (constants by
+// name, the content document's own table lines, proto/registry.json, the authority table, the
+// diagnostic codes). --check fails when a committed file is not what the sources write now, so a
+// change to a pin, a limit, a table or a code changes the reference in the same commit.
+//   coax/web/tool.sh agent-reference --write     write the files (commit them)
+//   coax/web/tool.sh agent-reference --check     fail if a committed file is out of date
+//   coax/web/tool.sh agent-reference --print PAGE   one realm's reference to the terminal
+//   coax/bin/coax test coax/web/agent-reference.coax
+#import "Basic";
+#load "../lib/sys/tool.coax";
+#load "../lib/sys/fs.coax";
+#load "../lib/json/json.coax";
+#load "../lib/crypto/sha256-memory.coax";
+#load "../../metaverse-engine/agent/why.coax";
+#load "../../metaverse-engine/editor/authority.coax";
+#load "../../metaverse-engine/content/tables.coax";   // the content format's id is its codec's (CT_MAGIC)
+
+AR_OUT :: 262144;       // one reference, in bytes
+AR_FILE :: 4194304;     // the largest source read (proto/registry.json)
+AR_OWNERS :: 8;
+
+// A limit: the constant NAME in FILE, and what it bounds.
+ArLimit :: struct { file: string; name: string; what: string; }
+// A realm's reference: its page under apps/openagents-web/realms/, its row in the authority table,
+// its content document, whether it speaks the room wire, the folders whose shapes it uses and its limits.
+ArRealm :: struct {
+  page: string; title: string; authority: string; app: string; content: string; wire: bool;
+  roots: [AR_OWNERS] string; root_n: int;     // a registry row is the realm's when its codec or one of its files is under one of these
+  limits: [16] ArLimit; limit_n: int;
+}
+AR_WIRE :: "everglade/shared/everglade-wire.coax";
+AR_REGISTRY :: "proto/registry.json";
+AR_DIAGNOSTICS :: "proto/verse/engine-diagnostics-v1.json";
+AR_CLAIMS :: "coax/book/capability-claims.json";
+AR_STATUS :: "coax/release-status.json";
+AR_SITE :: "apps/openagents-web/llms.txt";
+AR_PAGES :: [2] string.["splice", "everglade2"];
+
+ar_limit :: (r: [] ArRealm, file: string, name: string, what: string) { r[0].limits[r[0].limit_n] = ArLimit.{file = file, name = name, what = what}; r[0].limit_n += 1; }
+ar_root :: (r: [] ArRealm, path: string) { r[0].roots[r[0].root_n] = path; r[0].root_n += 1; }
+// The limits every realm on the engine has.
+ar_engine_limits :: (r: [] ArRealm) {
+  ar_limit(r, "metaverse-engine/content/tables.coax", "CT_BODY", "bytes in a content document");
+  ar_limit(r, "metaverse-engine/content/tables.coax", "CT_TABLES", "tables in a content document");
+  ar_limit(r, "metaverse-engine/content/tables.coax", "CT_COLS", "columns in a table, its id among them");
+  ar_limit(r, "metaverse-engine/content/tables.coax", "CT_ROWS", "rows in a content document");
+  ar_limit(r, "metaverse-engine/content/tables.coax", "CT_NAME", "bytes in a document's, a table's or a column's name");
+  ar_limit(r, "metaverse-engine/agent/drive.coax", "DRV_ENTS", "entities the driver's tree lists in a frame");
+  ar_limit(r, "metaverse-engine/ui/trace.coax", "UIT_MAX", "HUD widgets the layout trace keeps in a frame");
+}
+ar_realm :: (page: string, r: [] ArRealm) -> bool {
+  none: ArRealm; r[0] = none;
+  if page == "splice" {
+    r[0].page = "splice"; r[0].title = "Splice"; r[0].authority = "splice"; r[0].app = "splice"; r[0].content = "metaverse/splice/content/splice.content";
+    ar_root(r, "metaverse/splice/"); ar_root(r, "metaverse-engine/content/"); ar_root(r, "metaverse-engine/editor/edit.coax"); ar_root(r, "metaverse-engine/editor/doc.coax"); ar_root(r, "metaverse-engine/agent/");
+    ar_limit(r, "metaverse/splice/layer.coax", "SL_CAP", "entities in the World of colliders, placed pieces among them");
+    ar_limit(r, "metaverse/splice/layer.coax", "SL_ITEMS", "placed pieces the edit layer holds");
+    ar_limit(r, "metaverse/splice/layer.coax", "SL_STEPS", "steps the edit layer's undo keeps");
+    ar_limit(r, "metaverse/splice/layer.coax", "SL_NEAR", "entities one collision question looks at");
+    ar_limit(r, "metaverse/splice/content.coax", "SC_PIECE_MAX", "kinds of piece in the pieces table");
+    ar_engine_limits(r);
+    return true;
+  }
+  if page == "everglade2" {
+    r[0].page = "everglade2"; r[0].title = "Everglade"; r[0].authority = "everglade"; r[0].app = "everglade2"; r[0].content = "everglade/content/everglade.content"; r[0].wire = true;
+    ar_root(r, "everglade/"); ar_root(r, "coax/web/room/"); ar_root(r, "metaverse-engine/content/"); ar_root(r, "metaverse-engine/session/"); ar_root(r, "metaverse-engine/net/"); ar_root(r, "metaverse-engine/agent/");
+    ar_limit(r, AR_WIRE, "WIRE_SEATS", "players in one room");
+    ar_limit(r, AR_WIRE, "WIRE_FRAME", "bytes in a frame a page sends");
+    ar_limit(r, AR_WIRE, "WIRE_SERVER_FRAME", "bytes in a frame a room sends");
+    ar_limit(r, "metaverse-engine/session/ledger.coax", "LEDGER_KEEP", "ms the item ledger remembers an operation id");
+    ar_engine_limits(r);
+    return true;
+  }
+  return false;
+}
+
+// ---- reading the sources
+
+ar_digit :: (c: u8) -> bool { return c >= '0' && c <= '9'; }
+ar_ident :: (c: u8) -> bool { return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || ar_digit(c) || c == '_'; }
+// The whole number NAME is declared as in a source ("NAME :: 256;" anywhere in a line, before a
+// comment): -1 when it isn't declared so (not there, a float, an expression).
+ar_const :: (src: string, name: string) -> int {
+  i := 0;
+  while i + name.count + 4 <= src.count {
+    if src[i..<i + name.count] == name && (i == 0 || !ar_ident(src[i - 1])) && src[i + name.count..<i + name.count + 4] == " :: " {
+      k := i + name.count + 4; v := 0; digits := 0;
+      while k < src.count && ar_digit(src[k]) && digits < 15 { v = v * 10 + cast(int) (src[k] - '0'); k += 1; digits += 1; }
+      if digits > 0 && k < src.count && src[k] == ';' { return v; }
+      return -1;
+    }
+    i += 1;
+  }
+  return -1;
+}
+AR_HEX :: "0123456789abcdef";
+// The SHA-256 of bytes as 64 hex digits, into out.
+ar_sha :: (bytes: [] u8, out: [] u8) -> string {
+  raw: [32] u8;
+  if sha256_hash_checked(bytes, raw[..], false) != SHA_OK || out.count < 64 { return ""; }
+  for i: 0..<32 { out[i * 2] = AR_HEX[cast(int) (raw[i] >> 4)]; out[i * 2 + 1] = AR_HEX[cast(int) (raw[i] & 15)]; }
+  return cast(string) out[0..<64];
+}
+// Line k of a text from byte `at`: the line, and where the next starts (at text.count: no more).
+ArLine :: struct { text: string; next: int; }
+ar_line :: (t: string, at: int) -> ArLine {
+  e := at; while e < t.count && t[e] != '\n' { e += 1; }
+  return ArLine.{text = t[at..<e], next = ifx e < t.count then e + 1 else e};
+}
+ar_starts :: (s: string, p: string) -> bool { return s.count >= p.count && s[0..<p.count] == p; }
+// Word w of a line split by single spaces, or "".
+ar_word :: (s: string, w: int) -> string {
+  k := 0; from := 0;
+  for i: 0..<s.count + 1 {
+    if i == s.count || s[i] == ' ' { if k == w { return s[from..<i]; } k += 1; from = i + 1; }
+  }
+  return "";
+}
+
+// ---- the text
+Ar :: struct { b: [AR_OUT] u8; n: int; }
+ar_s :: (o: [] Ar, s: string) { o[0].n = drv_put_s(o[0].b[..], o[0].n, s); }
+ar_i :: (o: [] Ar, v: int) { o[0].n = drv_put_i(o[0].b[..], o[0].n, v); }
+ar_text :: (o: [] Ar) -> string { return cast(string) o[0].b[0..<o[0].n]; }
+ar_kv :: (o: [] Ar, k: string, v: string) { ar_s(o, "- "); ar_s(o, k); ar_s(o, ": "); ar_s(o, v); ar_s(o, "\n"); }
+ar_kvi :: (o: [] Ar, k: string, v: int) { ar_s(o, "- "); ar_s(o, k); ar_s(o, ": "); ar_i(o, v); ar_s(o, "\n"); }
+
+// The content document's own lines: its header, its reach, and each table's columns with its row count.
+// The first data row of the first table is kept as the example. False when it isn't a content document.
+ar_content :: (o: [] Ar, doc: string, example: [] u8, example_n: [] int, first_table: [] u8, first_n: [] int) -> bool {
+  head := ar_line(doc, 0);
+  if ar_word(head.text, 0) != CT_MAGIC || ar_word(head.text, 2).count == 0 { return false; }
+  ar_s(o, "- format: `"); ar_s(o, CT_MAGIC); ar_s(o, "` (docs/protocol/aethyr-content-v1.md): one text document; a `table NAME COLUMNS` line, then a row a line, cells split by `|`\n");
+  ar_kv(o, "document", ar_word(head.text, 1)); ar_kv(o, "revision", ar_word(head.text, 2));
+  at := head.next; table := ""; rows := 0; tables := 0; example_n[0] = 0; first_n[0] = 0;
+  // the furthest a place may be from the middle, centimetres: said before the tables
+  second := ar_line(doc, at);
+  if ar_starts(second.text, "reach ") { ar_kv(o, "reach, cm", second.text[6..<second.text.count]); at = second.next; }
+  ar_s(o, "\n| Table | Columns | Rows |\n| --- | --- | --- |\n");
+  while true {
+    last := at >= doc.count;
+    l := ar_line(doc, at);
+    if last || ar_starts(l.text, "table ") {
+      if table.count > 0 { ar_s(o, "| `"); ar_s(o, ar_word(table, 1)); ar_s(o, "` | `"); ar_s(o, table[7 + ar_word(table, 1).count..<table.count]); ar_s(o, "` | "); ar_i(o, rows); ar_s(o, " |\n"); }
+      if last { break; }
+      table = l.text; rows = 0; tables += 1;
+      if tables == 1 { first_n[0] = drv_put_s(first_table, 0, l.text); }
+    } else if table.count > 0 && l.text.count > 0 && ar_digit(l.text[0]) {
+      rows += 1;
+      if tables == 1 && rows == 1 { example_n[0] = drv_put_s(example, 0, l.text); }
+    }
+    at = l.next;
+  }
+  return tables > 0;
+}
+// Whether a path is under one of the realm's roots.
+ar_under :: (r: [] ArRealm, path: string) -> bool {
+  for q: 0..<r[0].root_n { if ar_starts(path, r[0].roots[q]) { return true; } }
+  return false;
+}
+// The registry's rows whose codec, or one of whose files, is under the realm's roots, and that have a
+// schema: "| ID | kind | owner | schema |". How many; -1 when the registry has no shapes.
+ar_shapes :: (o: [] Ar, d: Jv, r: [] ArRealm) -> int {
+  shapes := jv_get(d, 0, "shapes");
+  if jv_kind(d, shapes) != JV_ARRAY { return -1; }
+  n := 0; k := d.nodes[shapes].first;
+  ib: [128] u8; kb: [32] u8; ob: [64] u8; sb: [256] u8; cb: [256] u8;
+  while k != -1 {
+    on := jv_str(d, jv_get(d, k, "owner"), ob[..]); kn := jv_str(d, jv_get(d, k, "kind"), kb[..]);
+    owner := ifx on > 0 then cast(string) ob[0..<on] else ""; kind := ifx kn > 0 then cast(string) kb[0..<kn] else "";
+    sn := jv_str(d, jv_get(d, k, "schema"), sb[..]); idn := jv_str(d, jv_get(d, k, "id"), ib[..]);
+    cn := jv_str(d, jv_get(d, k, "codec"), cb[..]);
+    mine := cn > 0 && ar_under(r, cast(string) cb[0..<cn]);
+    files := jv_get(d, k, "files");
+    if !mine && jv_kind(d, files) == JV_ARRAY {
+      for q: 0..<jv_len(d, files) { fl := jv_str(d, jv_at(d, files, q), cb[..]); if fl > 0 && ar_under(r, cast(string) cb[0..<fl]) { mine = true; } }
+    }
+    // the diagnostic codes have their own section
+    if mine && sn > 0 && idn > 0 && kind != "diagnostic" {
+      ar_s(o, "| `"); ar_s(o, cast(string) ib[0..<idn]); ar_s(o, "` | "); ar_s(o, kind); ar_s(o, " | "); ar_s(o, owner); ar_s(o, " | `"); ar_s(o, cast(string) sb[0..<sn]); ar_s(o, "` |\n");
+      n += 1;
+    }
+    k = d.nodes[k].next;
+  }
+  return n;
+}
+AR_OPS :: [11] string.["edit", "undo", "redo", "content-rollback", "world-save", "world-load", "publish", "code-reload", "sim-step", "ledger", "character"];
+
+// One realm's reference into o. "" when it is written; else what could not be read.
+ar_write :: (r: [] ArRealm, o: [] Ar, buf: [] u8) -> string {
+  hex: [64] u8; wire_content := 0; wire_revs := 0;
+  o[0].n = 0;
+  ar_s(o, "# "); ar_s(o, r[0].title); ar_s(o, ": agent reference\n\n");
+  ar_s(o, "> What an agent needs to work on this realm at this build: its wire and pins, content tables, shapes, limits, the driver's operations and the diagnostic codes. Generated by `coax/web/agent-reference.coax` from the sources named below; never edited by hand. It describes the build it is served beside, not `main`.\n\n");
+  ar_s(o, "The site's index is [llms.txt](https://openagents.com/llms.txt). Look a Coax name up with `coax vocab NAME`.\n\n");
+
+  // ---- the build
+  ar_s(o, "## Build\n\n");
+  ar_kv(o, "realm", r[0].authority);
+  ar_s(o, "- page: `/worlds/"); ar_s(o, r[0].page); ar_s(o, "` (module `"); ar_s(o, r[0].app); ar_s(o, "`, source `apps/openagents-web/realms/"); ar_s(o, r[0].page); ar_s(o, "/`)\n");
+  if r[0].wire {
+    n := fs_read(AR_WIRE, buf);
+    if n < 0 { return AR_WIRE; }
+    w := cast(string) buf[0..<n];
+    ver := ar_const(w, "WIRE_VERSION"); eng := ar_const(w, "WIRE_ENGINE"); rules := ar_const(w, "WIRE_RULES"); content := ar_const(w, "WIRE_CONTENT");
+    if ver < 1 || eng < 0 || rules < 0 || content < 0 { return "WIRE_VERSION, WIRE_ENGINE, WIRE_RULES or WIRE_CONTENT in everglade/shared/everglade-wire.coax"; }
+    ar_s(o, "- wire: "); ar_i(o, ver); ar_s(o, " (`"); ar_s(o, AR_WIRE); ar_s(o, "` `WIRE_VERSION`). A room also seats a page one version behind, "); ar_i(o, ver - 1); ar_s(o, ", for one release. A frame written for any other version is refused with `r 0 version`\n");
+    ar_s(o, "- pins: engine "); ar_i(o, eng); ar_s(o, ", rules "); ar_i(o, rules); ar_s(o, ", content "); ar_i(o, content); ar_s(o, " (`WIRE_ENGINE`, `WIRE_RULES`, `WIRE_CONTENT`). A page says them before its hello. A room refuses a hello whose pins are neither its own nor the release before's (`r 0 version`)\n");
+    // the content pin a page says: the tables' revision under WIRE_CONTENT (wire_content_pin)
+    revs := ar_const(w, "WIRE_CONTENT_REVS");
+    if revs < 1 { return "WIRE_CONTENT_REVS in everglade/shared/everglade-wire.coax"; }
+    wire_content = content; wire_revs = revs;
+  } else {
+    ar_s(o, "- wire: none. The page decides the simulation; there is no room to speak to\n");
+  }
+  cn := fs_read(r[0].content, buf);
+  if cn < 0 { return r[0].content; }
+  ar_s(o, "- content: `"); ar_s(o, r[0].content); ar_s(o, "`, revision "); ar_s(o, ar_word(ar_line(cast(string) buf[0..<cn], 0).text, 2)); ar_s(o, ", sha256 `"); ar_s(o, ar_sha(buf[0..<cn], hex[..])); ar_s(o, "`");
+  if wire_revs > 0 {
+    rev := 0; for c: ar_word(ar_line(cast(string) buf[0..<cn], 0).text, 2) { if ar_digit(c) { rev = rev * 10 + cast(int) (c - '0'); } }
+    ar_s(o, "; on the wire its pin is "); ar_i(o, ifx rev < 1 || rev >= wire_revs then wire_content else (wire_content - 1) * wire_revs + rev);
+  }
+  ar_s(o, "\n");
+  // the content section is written from the same bytes, below
+  content_text: [65536 + 16] u8; content_n := 0;
+  for i: 0..<cn { if content_n < content_text.count { content_text[content_n] = buf[i]; content_n += 1; } }
+  dn := fs_read(AR_DIAGNOSTICS, buf);
+  if dn < 0 { return AR_DIAGNOSTICS; }
+  ar_s(o, "- diagnostics: `engine-diagnostics-v1`, "); ar_i(o, WHY_CODES - 1); ar_s(o, " codes, sha256 `"); ar_s(o, ar_sha(buf[0..<dn], hex[..])); ar_s(o, "` (`"); ar_s(o, AR_DIAGNOSTICS); ar_s(o, "`)\n");
+  // the compiler and its claims are named, not pinned: a compiler release changes no realm's wire or tables
+  ar_s(o, "- language: Coax; the compiler's version is in `"); ar_s(o, AR_STATUS); ar_s(o, "` and what it claims to do in `"); ar_s(o, AR_CLAIMS); ar_s(o, "`\n");
+  ar_s(o, "- reference: the last line of this file is the sha256 of everything above it. Two builds with the same line have the same reference\n\n");
+
+  // ---- state and authority
+  a := realm_authority(r[0].authority);
+  if a.realm.count == 0 { return "this realm's row in metaverse-engine/editor/authority.coax"; }
+  ar_s(o, "## State and authority\n\nFrom `metaverse-engine/editor/authority.coax` (INVARIANTS.md, \"Authoring never writes durable state\").\n\n");
+  ar_kv(o, "content, who may change what is authored", a.content);
+  ar_kv(o, "simulation, what decides what is running", a.simulation);
+  ar_kv(o, "durability, what holds what outlives a session", a.durability);
+  ar_s(o, "\n| Operation | May write |\n| --- | --- |\n");
+  for op: 0..<OP_COUNT {
+    ar_s(o, "| "); ar_s(o, state_op_name(op)); ar_s(o, " |");
+    first := true;
+    kinds := [3] int.[STATE_AUTHORED, STATE_RUNNING, STATE_DURABLE]; names := [3] string.["authored", "running", "durable"];
+    for q: 0..<3 { if realm_op_may_write(r[0].authority, op, kinds[q]) { ar_s(o, ifx first then " " else ", "); ar_s(o, names[q]); first = false; } }
+    if first { ar_s(o, " nothing in this realm"); }
+    ar_s(o, " |\n");
+  }
+  ar_s(o, "\n");
+
+  // ---- content
+  ar_s(o, "## Content tables\n\n");
+  example: [512] u8; en: [1] int; first: [256] u8; fn: [1] int;
+  if !ar_content(o, cast(string) content_text[0..<content_n], example[..], en[..], first[..], fn[..]) { return "a content document's header and tables"; }
+  ar_s(o, "\nA table's first column is `id`. Another column is `NAME:int`, `NAME:text`, `NAME:cm` (centimetres), `NAME:ref.TABLE` (the id of a row of TABLE) or `NAME:opt.TABLE` (the same, or 0 for none). A row's id is never changed or used again.\n\n");
+
+  // ---- shapes
+  rn := fs_read(AR_REGISTRY, buf);
+  if rn < 0 { return AR_REGISTRY; }
+  rnodes: [65536] JvNode; rd: [1] Jv;
+  if !jv_parse(rd[..], cast(string) buf[0..<rn], rnodes[..]) { return "proto/registry.json as JSON"; }
+  ar_s(o, "## Wire and stored shapes\n\nThe rows of `proto/registry.json` whose codec or files are this realm's (under");
+  for q: 0..<r[0].root_n { ar_s(o, ifx q == 0 then " `" else ", `"); ar_s(o, r[0].roots[q]); ar_s(o, "`"); }
+  ar_s(o, "). Each has one codec file; read a shape through it and never write its bytes by hand (proto/README.md).\n\n| Id | Kind | Owner | Schema |\n| --- | --- | --- | --- |\n");
+  if ar_shapes(o, rd[0], r) < 1 { return "the realm's rows in proto/registry.json"; }
+  ar_s(o, "\n");
+
+  // ---- limits
+  ar_s(o, "## Limits\n\nEvery limit is shown here and none is hidden. Past one, the engine refuses or drops the work and says so: ask `why caps`.\n\n| Limit | Value | Where |\n| --- | --- | --- |\n");
+  for q: 0..<r[0].limit_n {
+    l := r[0].limits[q];
+    ln := fs_read(l.file, buf);
+    if ln < 0 { return l.file; }
+    v := ar_const(cast(string) buf[0..<ln], l.name);
+    if v < 0 { return l.name; }
+    ar_s(o, "| "); ar_s(o, l.what); ar_s(o, " | "); ar_i(o, v); ar_s(o, " | `"); ar_s(o, l.name); ar_s(o, "` in `"); ar_s(o, l.file); ar_s(o, "` |\n");
+  }
+  ar_s(o, "\n");
+
+  // ---- the tools
+  ar_s(o, "## Operations\n\n`coax/web/tool.sh drive web apps/openagents-web /worlds/"); ar_s(o, r[0].page); ar_s(o, " OP...` drives the page in headless Chrome, one operation an argument (coax/start-here.md). The `openagents world` commands and the `world_*` tools are not built yet (#13415); when they are, they are listed here.\n\n");
+  ar_s(o, "| Operation | What it answers |\n| --- | --- |\n");
+  ar_s(o, "| `tree`, `layout` | What is in the world and on the HUD, by stable id |\n| `state PATH` | A field of the realm's state |\n| `why ID`, `why caps` | Why a thing isn't seen, reached or working; the limits applied this run |\n| `hit X Y`, `taps` | What receives a tap at a point; tap targets that are small, covered or overlapping |\n| `tap ID`, `type ID TEXT` | A click on a widget; typing into it |\n");
+  ar_s(o, ifx r[0].wire then "| `walk-to ID`, `face ID`, `use ABILITY on ID`, `mount ID`, `stop` | A world operation, as a player's input; the room decides the outcome |\n" else "| `walk-to ID` and the other world operations | Refused by name: this realm takes none from a driver yet |\n");
+  ar_s(o, "| `clock +MS`, `clock settle`, `clock until PATH` | Steps the agent clock |\n| `screenshot FILE`, `logs`, `perf` | The page as it is, its console, its frame counters |\n\n");
+
+  // ---- diagnostics
+  ar_s(o, "## Diagnostic codes\n\n`why ID` answers with the first failed link of state, spawned, view, drawn, asset, collider, system (docs/metaverse/diagnostics.md).\n\n| Number | Code | Id | Link | Retry |\n| --- | --- | --- | --- | --- |\n");
+  for c: 1..<WHY_CODES {
+    ar_s(o, "| "); ar_i(o, c); ar_s(o, " | `"); ar_s(o, why_name(c)); ar_s(o, "` | `"); ar_s(o, why_id(c)); ar_s(o, "` | "); ar_s(o, why_link_name(why_link(c))); ar_s(o, " | "); ar_s(o, ifx why_retry(c) then "yes" else "no"); ar_s(o, " |\n");
+  }
+  ar_s(o, "\n");
+
+  // ---- examples
+  ar_s(o, "## Examples\n\nAsk what is there, then why one thing isn't:\n\n```sh\ncoax/web/tool.sh drive web apps/openagents-web /worlds/"); ar_s(o, r[0].page); ar_s(o, " \"tree\" \"why you\" \"why caps\" \"taps\"\n```\n\n");
+  w: [1] Why; wa: [WHY_OUT] u8;
+  why_begin(w[..], "you"); why_pass(w[..], WHY_STATE); why_pass(w[..], WHY_SPAWNED); why_fail(w[..], WHY_NOT_IN_VIEW, "camera.frame", "inside the frame", "past its right edge");
+  ar_s(o, "An answer:\n\n```text\n"); ar_s(o, why_answer(w[..], wa[..])); ar_s(o, "```\n\n");
+  if fn[0] > 0 && en[0] > 0 {
+    ar_s(o, "A content row, under its table's line:\n\n```text\n"); ar_s(o, cast(string) first[0..<fn[0]]); ar_s(o, "\n"); ar_s(o, cast(string) example[0..<en[0]]); ar_s(o, "\n```\n\n");
+  }
+  if o[0].n + 100 > AR_OUT { return "room: the reference is past AR_OUT bytes"; }
+  ar_s(o, "reference sha256: "); body := o[0].b[0..<o[0].n - 18];
+  ar_s(o, ar_sha(body, hex[..])); ar_s(o, "\n");
+  return "";
+}
+ar_path :: (page: string, out: [] u8) -> string {
+  n := drv_put_s(out, 0, "apps/openagents-web/realms/"); n = drv_put_s(out, n, page); n = drv_put_s(out, n, "/llms.txt");
+  return cast(string) out[0..<n];
+}
+
+#test "a constant is read by its whole name, as a whole number, before its semicolon" {
+  src := "SL_CAP :: 256;            // entities\nSL_OPS :: 256; SL_STEPS :: 64;   // the log\nXSL_CAP :: 9;\nSL_CELL :: 16.0f32;\nWIRE_MIN :: WIRE_VERSION - 1;\nWIRE_VERSION :: 7;   // 7: rows\n";
+  #assert ar_const(src, "SL_CAP") == 256 && ar_const(src, "SL_STEPS") == 64 && ar_const(src, "SL_OPS") == 256 && ar_const(src, "WIRE_VERSION") == 7;
+  #assert ar_const(src, "SL_CELL") == -1 && ar_const(src, "WIRE_MIN") == -1 && ar_const(src, "NOPE") == -1 && ar_const("", "A") == -1 && ar_const("XA :: 1;", "A") == -1 && ar_const("A :: 1", "A") == -1;
+  #assert ar_word("aethyr.content.v1 splice 1", 1) == "splice" && ar_word("a b", 2) == "" && ar_starts("table x", "table ") && !ar_starts("tab", "table ");
+  l := ar_line("ab\ncd", 0); m := ar_line("ab\ncd", l.next);
+  #assert l.text == "ab" && l.next == 3 && m.text == "cd" && m.next == 5;
+}
+#test "the content section is the document's own tables, with their rows counted and the first row kept" {
+  o: [1] Ar; ex: [64] u8; en: [1] int; ft: [64] u8; fn: [1] int;
+  doc := "aethyr.content.v1 demo 3\nreach 500\ntable areas id name:text x:cm\n1|Dome|100\n2|Gate|200\ntable pieces id name:text\n7|Crate\n";
+  #assert ar_content(o[..], doc, ex[..], en[..], ft[..], fn[..]);
+  t := ar_text(o[..]);
+  #assert cp_has(t, "- document: demo\n- revision: 3\n- reach, cm: 500\n") && cp_has(t, "| `areas` | `id name:text x:cm` | 2 |\n| `pieces` | `id name:text` | 1 |\n");
+  #assert cast(string) ex[0..<en[0]] == "1|Dome|100" && cast(string) ft[0..<fn[0]] == "table areas id name:text x:cm";
+  p: [1] Ar;
+  #assert !ar_content(p[..], "something else\n", ex[..], en[..], ft[..], fn[..]) && !ar_content(p[..], "aethyr.content.v1 demo 3\nreach 5\n", ex[..], en[..], ft[..], fn[..]);
+}
+#test "the realms: each page has its authority row; an unknown page has none" {
+  r: [1] ArRealm;
+  for p: AR_PAGES { #assert ar_realm(p, r[..]) && r[0].page == p && realm_authority(r[0].authority).realm == r[0].authority && r[0].limit_n > 7 && r[0].root_n >= 2; }
+  #assert !ar_realm("nowhere", r[..]) && ar_realm("everglade2", r[..]) && r[0].wire && ar_realm("splice", r[..]) && !r[0].wire;
+  b: [128] u8;
+  #assert ar_path("splice", b[..]) == "apps/openagents-web/realms/splice/llms.txt";
+  for op: 0..<OP_COUNT { #assert AR_OPS[op] == state_op_name(op); }
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  args: [1] Args;
+  usage := "usage: coax/web/tool.sh agent-reference --write | --check | --print PAGE   (from the repository root)";
+  if !args_load(args[..]) { tool_errln(usage); return 2; }
+  write := args_has(args[..], "--write"); check := args_has(args[..], "--check"); only := args_value(args[..], "--print", "");
+  if !write && !check && only.count == 0 { tool_errln(usage); return 2; }
+  if !fs_exists(AR_REGISTRY) { tool_errln("agent-reference: run from the repository root (no proto/registry.json here)"); return 2; }
+  o: [1] Ar; r: [1] ArRealm; buf: [AR_FILE] u8; have: [AR_OUT] u8; pb: [256] u8;
+  bad := 0;
+  if only.count > 0 {
+    if !ar_realm(only, r[..]) { print("agent-reference: no realm page \"%\"; the pages are splice and everglade2\n", only); return 2; }
+    fault := ar_write(r[..], o[..], buf[..]);
+    if fault.count > 0 { print("agent-reference: could not read %\n", fault); return 1; }
+    print("%", ar_text(o[..])); return 0;
+  }
+  for p: AR_PAGES {
+    if !ar_realm(p, r[..]) { return 2; }
+    fault := ar_write(r[..], o[..], buf[..]);
+    if fault.count > 0 { print("agent-reference: %: could not read %. A source it reads moved; fix its place in coax/web/agent-reference.coax\n", p, fault); bad += 1; continue; }
+    path := ar_path(p, pb[..]);
+    if write {
+      if !fs_write(path, ar_text(o[..])) { print("agent-reference: can't write %\n", path); bad += 1; continue; }
+      print("agent-reference: wrote % (% bytes)\n", path, o[0].n);
+    } else {
+      n := fs_read(path, have[..]);
+      if n < 0 || cast(string) have[0..<n] != ar_text(o[..]) {
+        bad += 1;
+        print("FAIL agent-reference: % is % what its sources write now. Run coax/web/tool.sh agent-reference --write and commit the file (#13430).\n", path, ifx n < 0 then "missing; it is not" else "not");
+      }
+    }
+  }
+  // the site's index links each realm's reference
+  sn := fs_read(AR_SITE, buf[..]);
+  site := cast(string) buf[0..<(ifx sn > 0 then sn else 0)];
+  for p: AR_PAGES {
+    link: [128] u8; n := drv_put_s(link[..], 0, "https://openagents.com/worlds/"); n = drv_put_s(link[..], n, p); n = drv_put_s(link[..], n, "/llms.txt");
+    if !cp_has(site, cast(string) link[0..<n]) { bad += 1; print("FAIL agent-reference: % does not link %\n", AR_SITE, cast(string) link[0..<n]); }
+  }
+  if bad == 0 && check { print("agent-reference: % references are what their sources write, and the site's llms.txt links them\n", AR_PAGES.count); }
+  return ifx bad == 0 then 0 else 1;
+}

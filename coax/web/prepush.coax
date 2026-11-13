@@ -40,7 +40,7 @@ PP_PATHS :: 65536;         // files one commit changes
 PP_WINDOW_S :: 86400;      // how far back a change counts as newer work: 24 hours
 PP_SHOW :: 12;             // findings printed per commit
 PP_PUSH :: 512;            // commits judged per push
-PP_JOBS :: 8;
+PP_JOBS :: 9;
 PP_HOW :: "docs/metaverse/green-main-pipeline.md, \"The pre-push check\"";
 PP_REFUSE :: 3;
 PP_ZERO :: "0000000000000000000000000000000000000000";
@@ -529,6 +529,8 @@ pp_checks :: (base: string, commit: string, changed: string, seconds: int, red: 
   rs := [2] string.["coax/remote/remote.sh", "status"];
   // what a code reload keeps (coax/web/state-keep.js, #13411): 13 tests, a tenth of a second (#13426)
   sk := [3] string.["bun", "test", "coax/web/state-keep.test.ts"];
+  // each realm's reference for agents is what its sources write now (coax/web/agent-reference.coax, #13430)
+  ar := [3] string.["coax/web/tool.sh", "agent-reference", "--check"];
   tests := true;
   hb: [64] u8;
   if proc_getenv("OA_PREPUSH_TESTS", hb[..]) == "0" { tests = false; print("prepush: OA_PREPUSH_TESTS=0: no coax test\n"); }
@@ -540,6 +542,7 @@ pp_checks :: (base: string, commit: string, changed: string, seconds: int, red: 
   if (run & PP_RUN_WIRE) != 0 { ok = pp_start(jobs[2..<3], "wire-check", wc[..], none) && ok; }
   ok = pp_start(jobs[3..<4], "layer-check", lc[..], none) && ok;
   ok = pp_start(jobs[7..<8], "state-keep", sk[..], none) && ok;
+  if has_compiler { ok = pp_start(jobs[8..<9], "agent-reference", ar[..], none) && ok; }
   tests = (run & PP_RUN_SUITES) != 0;
   if tests {
     ok = pp_start(jobs[4..<5], "suites --list", sl[..], none) && ok;

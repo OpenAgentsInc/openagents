@@ -143,6 +143,8 @@ refuses a push when:
 4. **A check fails:** `tools-check`, `everglade-parity`, `wire-check` and
    `layer-check` (the last two with `--base` set to the push's merge base),
    `bun test coax/web/state-keep.test.ts` (what a code reload keeps, #13426),
+   `agent-reference --check` (each realm's `llms.txt` is what its sources
+   write; run `coax/web/tool.sh agent-reference --write` and commit, #13430),
    and `coax test` of the suites the push changed (`check.sh only`, on the
   pushed commit itself), on a build host when
    `remote.sh status` shows one with a free slot. A check that fails on
