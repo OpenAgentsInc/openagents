@@ -1,0 +1,111 @@
+// A world's two revisions and when an update reaches a session (GitHub #13412;
+// docs/research/spawn-what-to-adapt.md "Dev and live revisions"; docs/protocol/world-live-v1.md).
+//
+// A world has a `dev` revision, which edits change, and a `live` revision, which a publish copies
+// from dev. People who play join live; people who edit (`?edit`) join dev. A publish says when the
+// update reaches the sessions that are open: `now`, or at the `next` session.
+//
+// The rule is the release set's (docs/deployment/release-set.md, #13299) and the previous pins'
+// (docs/protocol/everglade-previous-pins.md, #13408), for a world's document:
+//   - A revision carries the pins of the build that reads it: the engine, the rules, the content
+//     tables' revision and the wire. The four are matched together, as a room matches a page's.
+//   - A session never takes a revision whose pins are not its own. So an update that changes a pin
+//     waits for the next session, whatever the publish asked: `now` is refused for it by name.
+//     That is #13397's case (rooms on wire 6, a page on wire 5): the page keeps what it can read.
+//   - Live keeps the revision before the last pin change for one release (`previous`). A session
+//     still on those pins is served it; a session on any other pins is told to reload.
+//   - One raise a release: a second pin change replaces `previous`, so the sessions two behind
+//     reload. A publish that changes no pin (a repair) leaves `previous` as it is.
+// The facts are plain numbers; the API (coax/web/api/world-policy.coax), the dev server and a page
+// ask the same procedures.
+//   coax/bin/coax test metaverse-engine/editor/world-live.coax --library
+//   coax/bin/coax mutate metaverse-engine/editor/world-live.coax --library --root-only
+#authority;
+
+WL_DEV :: 0; WL_LIVE :: 1;       // a lane
+WU_NOW :: 0; WU_NEXT :: 1;       // when an update reaches the open sessions
+
+// The build a revision is read by: matched together, never one by one.
+WorldPins :: struct { engine: int; rules: int; content: int; wire: int; }
+wl_same :: (a: WorldPins, b: WorldPins) -> bool #effects(all) { return a.engine == b.engine && a.rules == b.rules && a.content == b.content && a.wire == b.wire; }
+
+wl_lane :: (word: string) -> int #effects(all) { return ifx word == "dev" then WL_DEV else (ifx word == "live" then WL_LIVE else -1); }
+wl_lane_word :: (lane: int) -> string #effects(all) { return ifx lane == WL_DEV then "dev" else (ifx lane == WL_LIVE then "live" else ""); }
+wl_when :: (word: string) -> int #effects(all) { return ifx word == "now" then WU_NOW else (ifx word == "next" then WU_NEXT else -1); }
+wl_when_word :: (when: int) -> string #effects(all) { return ifx when == WU_NOW then "now" else (ifx when == WU_NEXT then "next" else ""); }
+
+// ---- a publish: dev becomes live
+
+WP_OK :: 0;
+WP_STALE :: 1;      // dev moved since the publisher read it
+WP_NOTHING :: 2;    // live is already this dev revision
+WP_NOT_NOW :: 3;    // the update changes a pin: it can only start with the next session
+WP_BAD :: 4;        // no such policy, or a revision that is none
+// May dev revision `asked` (dev is at `dev`) become live, reaching sessions `when`? `from`: the dev
+// revision live was last published from (-1: never). has_live: there is a live revision, with `live` pins.
+wl_publish :: (when: int, asked: int, dev: int, from: int, pins: WorldPins, has_live: bool, live: WorldPins) -> int #effects(all) {
+  if (when != WU_NOW && when != WU_NEXT) || asked < 0 || dev < 0 { return WP_BAD; }
+  if asked != dev { return WP_STALE; }
+  if has_live && from == dev { return WP_NOTHING; }
+  if when == WU_NOW && has_live && !wl_same(pins, live) { return WP_NOT_NOW; }
+  return WP_OK;
+}
+// Whether the live revision a publish replaces becomes `previous`: only when the publish changes a
+// pin. A publish on the same pins leaves `previous` as it was.
+wl_keeps :: (has_live: bool, pins: WorldPins, live: WorldPins) -> bool #effects(all) { return has_live && !wl_same(pins, live); }
+wl_publish_why :: (verdict: int) -> string #effects(all) {
+  if verdict == WP_STALE { return "the world changed since you read it: read it again"; }
+  if verdict == WP_NOTHING { return "live is already this revision"; }
+  if verdict == WP_NOT_NOW { return "this update needs a newer build of the world, so it starts with the next session: publish it for the next session"; }
+  if verdict == WP_BAD { return "say when the update reaches people: now or next"; }
+  return "";
+}
+
+// ---- a session
+
+WJ_LIVE :: 0;       // the live revision
+WJ_PREVIOUS :: 1;   // the revision before the last pin change, for one release
+WJ_RELOAD :: 2;     // neither is this build's: reload the page
+WJ_NONE :: 3;       // the world has no live revision yet
+// Which live revision a session on `mine` pins joins.
+wl_join :: (mine: WorldPins, has_live: bool, live: WorldPins, has_prev: bool, prev: WorldPins) -> int #effects(all) {
+  if !has_live { return WJ_NONE; }
+  if wl_same(mine, live) { return WJ_LIVE; }
+  if has_prev && wl_same(mine, prev) { return WJ_PREVIOUS; }
+  return WJ_RELOAD;
+}
+// Whether an open session on `mine` pins takes a published update now (true) or keeps what it
+// joined until its next session (false). `when`: what the publish said.
+wl_follow :: (when: int, mine: WorldPins, update: WorldPins) -> bool #effects(all) { return when == WU_NOW && wl_same(mine, update); }
+
+#test "world live: pins match together, and lanes and policies have their words" {
+  p := WorldPins.{engine = 1, rules = 1, content = 2, wire = 1};
+  #assert wl_same(p, p);
+  q := p; q.engine = 2; #assert !wl_same(p, q) && !wl_same(q, p);
+  q = p; q.rules = 2; #assert !wl_same(p, q);
+  q = p; q.content = 1; #assert !wl_same(p, q);
+  q = p; q.wire = 2; #assert !wl_same(p, q);
+  #assert wl_lane("dev") == WL_DEV && wl_lane("live") == WL_LIVE && wl_lane("") == -1 && wl_lane("Dev") == -1 && wl_lane_word(WL_DEV) == "dev" && wl_lane_word(WL_LIVE) == "live" && wl_lane_word(2) == "" && wl_lane_word(-1) == "";
+  #assert wl_when("now") == WU_NOW && wl_when("next") == WU_NEXT && wl_when("later") == -1 && wl_when("") == -1 && wl_when_word(WU_NOW) == "now" && wl_when_word(WU_NEXT) == "next" && wl_when_word(2) == "" && wl_when_word(-1) == "";
+}
+#test "world live: a publish names the dev revision it read, changes something, and says now only when no pin changes" {
+  p := WorldPins.{engine = 1, rules = 1, content = 1, wire = 1}; q := p; q.content = 2; none := WorldPins.{};
+  // the first publish: nothing is live yet, so now and next are both fine
+  #assert wl_publish(WU_NOW, 5, 5, -1, p, false, none) == WP_OK && wl_publish(WU_NEXT, 5, 5, -1, p, false, none) == WP_OK && wl_publish(WU_NOW, 0, 0, -1, p, false, none) == WP_OK;
+  #assert wl_publish(WU_NOW, 5, 5, 5, p, false, none) == WP_OK;   // `from` means nothing until something is live
+  // stale, nothing new, and what is no publish
+  #assert wl_publish(WU_NOW, 4, 5, 3, p, true, p) == WP_STALE && wl_publish(WU_NOW, 6, 5, 3, p, true, p) == WP_STALE && wl_publish(WU_NEXT, 5, 5, 5, p, true, p) == WP_NOTHING && wl_publish(WU_NOW, 5, 5, 4, p, true, p) == WP_OK;
+  #assert wl_publish(2, 5, 5, 3, p, true, p) == WP_BAD && wl_publish(-1, 5, 5, 3, p, true, p) == WP_BAD && wl_publish(WU_NOW, -1, -1, 3, p, true, p) == WP_BAD && wl_publish(WU_NOW, 5, -1, 3, p, true, p) == WP_BAD && wl_publish(WU_NOW, -1, 5, 3, p, true, p) == WP_BAD;
+  // a pin changes: next session only
+  #assert wl_publish(WU_NOW, 5, 5, 3, q, true, p) == WP_NOT_NOW && wl_publish(WU_NEXT, 5, 5, 3, q, true, p) == WP_OK;
+  #assert wl_keeps(true, q, p) && !wl_keeps(true, p, p) && !wl_keeps(false, q, p);
+  #assert wl_publish_why(WP_OK) == "" && wl_publish_why(WP_STALE).count > 0 && wl_publish_why(WP_NOTHING).count > 0 && wl_publish_why(WP_NOT_NOW).count > 0 && wl_publish_why(WP_BAD).count > 0 && wl_publish_why(5) == "";
+  #assert wl_publish_why(WP_STALE) != wl_publish_why(WP_NOTHING) && wl_publish_why(WP_NOT_NOW) != wl_publish_why(WP_BAD) && wl_publish_why(WP_NOTHING) != wl_publish_why(WP_NOT_NOW) && wl_publish_why(WP_STALE) != wl_publish_why(WP_BAD);
+}
+#test "world live: a session joins the revision its build reads, and takes an update now only on its own pins" {
+  p := WorldPins.{engine = 1, rules = 1, content = 1, wire = 1}; q := p; q.wire = 2; r := p; r.wire = 3; none := WorldPins.{};
+  #assert wl_join(p, false, none, false, none) == WJ_NONE && wl_join(p, false, p, true, p) == WJ_NONE;
+  #assert wl_join(q, true, q, true, p) == WJ_LIVE && wl_join(p, true, q, true, p) == WJ_PREVIOUS && wl_join(r, true, q, true, p) == WJ_RELOAD;
+  #assert wl_join(p, true, q, false, p) == WJ_RELOAD && wl_join(p, true, p, false, none) == WJ_LIVE && wl_join(p, true, p, true, p) == WJ_LIVE;
+  #assert wl_follow(WU_NOW, p, p) && !wl_follow(WU_NEXT, p, p) && !wl_follow(WU_NOW, p, q) && !wl_follow(WU_NEXT, p, q) && !wl_follow(2, p, p);
+}

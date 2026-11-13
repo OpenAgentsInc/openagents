@@ -1,0 +1,62 @@
+// Splice's world for the API (GitHub #13412): what coax/web/api/worlds.c calls to carry a batch out
+// on the world `splice`. It is Splice's own Coax, the code the page runs (world.coax, layer.coax,
+// walk.coax), built into the API as the unit splice-world (coax/web/api/api-sources.sh), so the
+// server and the page cannot disagree about where a piece may stand. worlds.c moves text in and
+// out; nothing here reads a database or a clock.
+//   coax/bin/coax test metaverse/splice/world-api.coax --only "the API's"
+#load "splice-game.coax";
+
+// The document of Splice with nothing placed into out: its length, or -1.
+splice_world_empty :: (out: [] u8) -> int #export_c #effects(all) {
+  g := [1] SpGame.[SpGame.{}]; k: [1] SpwScratch;
+  made := spw_empty(g[..], k[..], out);
+  return ifx made.count == 0 then -1 else made.count;
+}
+// This build's pins into out (engine, rules, content, wire): what a revision saved here is read by.
+splice_world_pins :: (out: [] int) -> bool #export_c #effects(all) {
+  if out.count < 4 { return false; }
+  g := [1] SpGame.[SpGame.{}]; g_reset(g[..]);
+  p := spw_pins(g[..]);
+  out[0] = p.engine; out[1] = p.rules; out[2] = p.content; out[3] = p.wire;
+  return true;
+}
+// A batch carried out on a document (world.coax spw_batch): its status (SPB_*). n takes six
+// numbers: the bytes of the new document, of the batch as taken and of its inverse, of the words
+// of a refusal, how many edits were taken, and which edit was refused (-1: none).
+splice_world_batch :: (doc: string, body: string, fenced: bool, out_doc: [] u8, out_did: [] u8, out_inv: [] u8, out_why: [] u8, n: [] int) -> int #export_c #effects(all) {
+  if n.count < 6 { return SPB_ROOM; }
+  g := [1] SpGame.[SpGame.{}]; x := [1] SpwWork.[SpwWork.{}];
+  b := spw_batch(g[..], x[..], doc, body, fenced, out_doc, out_did, out_inv, out_why);
+  n[0] = b.doc; n[1] = b.did; n[2] = b.inv; n[3] = ifx b.why > out_why.count then 0 else b.why; n[4] = b.edits; n[5] = b.at;
+  return b.status;
+}
+// What the API answers for a status: 200 saved; 400 no batch; 409 stale; 422 refused, with words;
+// 500 the stored document did not open or an answer did not fit.
+splice_world_status :: (status: int) -> int #export_c #effects(all) {
+  if status == SPB_OK { return 200; }
+  if status == SPB_BATCH { return 400; }
+  if status == SPB_STALE { return 409; }
+  if status == SPB_REFUSED || status == SPB_WALK || status == SPB_NOTHING { return 422; }
+  return 500;
+}
+// The words for a status that came with none of its own.
+splice_world_words :: (status: int) -> string #export_c #effects(all) {
+  if status == SPB_BATCH { return "send a world.edit.v1 batch of edits"; }
+  if status == SPB_STALE { return "the world changed since you read it: read it again"; }
+  if status == SPB_NOTHING { return "nothing to change"; }
+  return "not saved";
+}
+
+#test "the API's Splice: the empty document, the pins, and a batch through the exported calls" #steps 4000000000 #traversal 2000000000 {
+  t := [1] SpwTest.[SpwTest.{}]; n: [6] int; pins: [4] int;
+  e := splice_world_empty(t[0].doc[..]);
+  #assert e > 0 && splice_world_empty(t[0].doc[0..<64]) == -1 && splice_world_pins(pins[..]) && pins[0] == SPW_ENGINE && pins[1] == SPW_RULES && pins[2] >= 1 && pins[3] == SPW_WIRE && !splice_world_pins(pins[0..<3]);
+  empty := cast(string) t[0].doc[0..<e];
+  s := splice_world_batch(empty, SPT_TWO, true, t[0].next[..], t[0].did[..], t[0].inv[..], t[0].why[..], n[..]);
+  #assert s == SPB_OK && n[0] > 0 && n[1] > 0 && n[2] > 0 && n[3] == 0 && n[4] == 2 && n[5] == -1;
+  s = splice_world_batch(cast(string) t[0].next[0..<n[0]], sc_edit_swap(SPT_TWO, "\"rev\":0", "\"rev\":2", t[0].back[..]), true, t[0].third[..], t[0].did[..], t[0].inv[..], t[0].why[..], n[..]);
+  #assert s == SPB_REFUSED && n[0] == 0 && n[5] == 0 && cast(string) t[0].why[0..<n[3]] == "inside the placed piece 0";
+  #assert splice_world_batch(empty, SPT_TWO, true, t[0].next[..], t[0].did[..], t[0].inv[..], t[0].why[..], n[0..<5]) == SPB_ROOM;
+  #assert splice_world_status(SPB_OK) == 200 && splice_world_status(SPB_BATCH) == 400 && splice_world_status(SPB_STALE) == 409 && splice_world_status(SPB_REFUSED) == 422 && splice_world_status(SPB_WALK) == 422 && splice_world_status(SPB_NOTHING) == 422 && splice_world_status(SPB_DOC) == 500 && splice_world_status(SPB_ROOM) == 500;
+  #assert splice_world_words(SPB_STALE).count > 20 && splice_world_words(SPB_BATCH).count > 20 && splice_world_words(SPB_NOTHING) == "nothing to change" && splice_world_words(SPB_DOC) == "not saved";
+}

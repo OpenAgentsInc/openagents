@@ -1,0 +1,60 @@
+// Checks proto/world/doc-v1.json against metaverse-engine/editor/world-doc.coax, the one codec of a
+// world's document (GitHub #13412): the pinned document loads into a World, gives the digest and
+// the head it states, and saves to the same bytes; each rejected document is refused; the profile
+// names itself, its version and this check.
+// Usage: coax/web/tool.sh metaverse-engine/tools/world-doc-profile.coax proto/world/doc-v1.json
+//        coax/web/tool.sh metaverse-engine/tools/world-doc-profile.coax --sample    (the pinned document, from a World built here)
+#import "Basic";
+#load "../editor/world-doc.coax";
+#load "../../coax/lib/json/json.coax";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+
+WDP_CHECK :: "coax/web/tool.sh metaverse-engine/tools/world-doc-profile.coax proto/world/doc-v1.json";
+WDP_CAP :: 64; WDP_OWN :: 2;
+WdpWork :: struct { store: [1] WorldStore; own: [WDP_CAP * WDP_OWN] int; text: [40000] u8; again: [40000] u8; }
+
+wdp_str :: (d: Jv, at: int, out: [] u8) -> string {
+  n := jv_str(d, at, out);
+  return ifx n >= 0 then cast(string) out[0..<n] else "";
+}
+wdp_check :: (w: [] WdpWork, profile_json: string) -> bool {
+  nodes: [256] JvNode; da: [1] Jv;
+  if !jv_parse(da[..], profile_json, nodes[..]) { return false; }
+  d := da[0];
+  nb: [128] u8; cb: [256] u8;
+  if wdp_str(d, jv_get(d, 0, "profile"), nb[..]) != "world-doc-v1" || jv_int(d, jv_get(d, 0, "version"), 0) != 1 || wdp_str(d, jv_get(d, 0, "check"), cb[..]) != WDP_CHECK { return false; }
+  if wdp_str(d, jv_get(d, 0, "schema"), nb[..]) != WD_MAGIC || jv_int(d, jv_get(d, 0, "cap"), 0) != WDP_CAP || jv_int(d, jv_get(d, 0, "own"), -1) != WDP_OWN { return false; }
+  v := world_of(w[0].store[..], WDP_CAP);
+  if !world_init(v, 8) { return false; }
+  text := wdp_str(d, jv_get(d, 0, "doc"), w[0].text[..]);
+  got := world_load(v, text, w[0].own[..], WDP_OWN);
+  if !got.ok || !wd_world_is(got, wdp_str(d, jv_get(d, 0, "world"), nb[..])) { return false; }
+  if got.content != jv_int(d, jv_get(d, 0, "content"), -1) || got.head != jv_int(d, jv_get(d, 0, "head"), -1) || got.next != jv_int(d, jv_get(d, 0, "next"), -1) || got.digest != jv_int(d, jv_get(d, 0, "digest"), -1) { return false; }
+  if world_count(v) != jv_int(d, jv_get(d, 0, "entities"), -1) { return false; }
+  if world_save(v, wdp_str(d, jv_get(d, 0, "world"), nb[..]), got.content, got.head, got.next, w[0].own[..], WDP_OWN, w[0].again[..]) != text { return false; }
+  rej := jv_get(d, 0, "rejected");
+  if jv_kind(d, rej) != JV_ARRAY || jv_len(d, rej) < 4 { return false; }
+  for i: 0..<jv_len(d, rej) {
+    n := jv_str(d, jv_at(d, rej, i), w[0].again[..]);
+    if n < 0 || world_load(v, cast(string) w[0].again[0..<n], w[0].own[..], WDP_OWN).ok { return false; }
+  }
+  return true;
+}
+#test "world document profile tool refuses a profile that is not one" { w := [1] WdpWork.[WdpWork.{}]; #assert !wdp_check(w[..], "{}") && !wdp_check(w[..], "bad"); }
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) != 1 { tool_errln("usage: world-doc-profile FILE.json | --sample"); return 2; }
+  if args_at(a[..], 0) == "--sample" {
+    t := [1] WdTest.[WdTest.{}]; s := wd_test_world(t[..]);
+    print("%", world_save(s, "splice", 7, 41, 9, t[0].own_a[..], 2, t[0].text[..]));
+    return 0;
+  }
+  raw: [131072] u8; n := fs_read(args_at(a[..], 0), raw[..]);
+  if n <= 0 { tool_errln("world-doc-profile: cannot read JSON"); return 2; }
+  w := [1] WdpWork.[WdpWork.{}];
+  if !wdp_check(w[..], cast(string) raw[0..<n]) { print("world-doc-v1: profile fails\n"); return 1; }
+  print("world-doc-v1: profile holds\n");
+  return 0;
+}

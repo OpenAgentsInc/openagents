@@ -8,7 +8,7 @@
 #                               and sets the array API_SOURCES to every C file of the binary.
 #                               Compile with -I"$WORK".
 # A new C file goes in API_C; a new Coax unit goes in API_COAX as SOURCE:NAME (SOURCE from DIR, or
-# from the repository root when it starts with pay/), which makes WORK/NAME.generated.{c,h}. A unit
+# from the repository root when it starts with pay/ or metaverse/), which makes WORK/NAME.generated.{c,h}. A unit
 # whose C is wrapped by a NAME-unit.c (it includes the generated C under names of its own) is
 # listed in API_COAX_WRAPPED instead, so its generated C is made but not linked twice.
 API_C="api.c analytics.c admin.c player.c rooms.c npc.c room.c private.c drops.c villa.c chat.c realms.c
@@ -16,12 +16,13 @@ API_C="api.c analytics.c admin.c player.c rooms.c npc.c room.c private.c drops.c
   anime.c seats.c nostr.c email.c jobs.c relay.c verse_packs.c worldbuilder.c auth.c auth-seal-unit.c
   lnaddr.c lnaddr-unit.c agents.c agent-wire-unit.c agent-attest-unit.c auth-recover.c auth-life.c
   auth-recover-crypto-unit.c auth-device.c auth-device-crypto-unit.c push.c passkeys.c passkey-verify-unit.c
-  wallet.c wallet-vault-unit.c ticket-sign-unit.c service.c"
+  wallet.c wallet-vault-unit.c ticket-sign-unit.c service.c worlds.c splice-world-unit.c"
 API_COAX="npc-personas anime-director-policy seat-policy progress-policy item-policy moderation-policy
   character-policy worldbuilder-policy auth-policy auth-recover-policy auth-life-policy
-  auth-device-policy passkey-policy pay/wallet-policy:wallet-policy service-policy service-wire realm-wire auth-push seat-wire jobs-wire email-wire packs-wire"
+  auth-device-policy passkey-policy pay/wallet-policy:wallet-policy service-policy service-wire realm-wire auth-push seat-wire jobs-wire email-wire packs-wire world-policy"
 API_COAX_WRAPPED="auth-seal pay/lnaddr-policy:lnaddr-policy agent-wire agent-attest auth-recover-crypto
-  auth-device-crypto passkey-verify pay/wallet-vault-store:wallet-vault ticket-sign"
+  auth-device-crypto passkey-verify pay/wallet-vault-store:wallet-vault ticket-sign
+  metaverse/splice/world-api:splice-world"
 api_sources() {
   local a="$1" work="$2" coax="$3" root u src name
   root="$(cd "$a/../../.." && pwd)"
@@ -29,7 +30,7 @@ api_sources() {
   for u in $API_C; do API_SOURCES+=("$a/$u"); done
   for u in $API_COAX $API_COAX_WRAPPED; do
     src="${u%%:*}"; name="${u##*:}"
-    if [[ "$src" == pay/* ]]; then src="$root/$src.coax"; else src="$a/$src.coax"; fi
+    if [[ "$src" == pay/* || "$src" == metaverse/* ]]; then src="$root/$src.coax"; else src="$a/$src.coax"; fi
     "$coax" c "$src" --run-steps 250000000 --library --header "$work/$name.generated.h" > "$work/$name.generated.c"
     [[ " $(echo $API_COAX) " == *" $u "* ]] && API_SOURCES+=("$work/$name.generated.c")
   done

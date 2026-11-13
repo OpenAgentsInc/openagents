@@ -1,0 +1,249 @@
+// The world routes' rules (GitHub #13412, the browser editor's E3; COAX.md "Where API rules go";
+// docs/protocol/world-edit-v1.md): what coax/web/api/worlds.c asks before it reads or writes a
+// world's document. worlds.c reads the facts (migrations/0181_worlds.sql), asks here, and writes
+// what these answers say; the database decides nothing, and worlds.c builds no byte of its own.
+//
+//   who may write         an admin, from this site or signed (wr_write); anyone reads
+//   the fence             a batch names the dev revision it was made from; any other is 409
+//   the undo log          an undo takes the newest standing step's inverse, a redo the next step's
+//                         batch; an apply cuts the steps after where the log stands (wr_log)
+//   dev and live          a publish copies dev to live for sessions now or next, and a session
+//                         joins the revision its build reads: metaverse-engine/editor/world-live.coax's
+//                         rule, named here for C with plain numbers
+//   the bytes             metaverse-engine/editor/world-edit.coax's: a batch's head and edits, an
+//                         event, a state, a refusal
+// Whether an edit may stand is the world's own Coax (Splice: metaverse/splice/world-api.coax).
+//   coax/bin/coax test coax/web/api/world-policy.coax --library
+//   coax/bin/coax mutate coax/web/api/world-policy.coax --library --root-only
+#authority;
+#load "../../../metaverse-engine/editor/world-live.coax";
+#load "../../../metaverse-engine/editor/world-edit.coax";
+
+WR_OK :: 0;
+WR_CROSS :: 1;       // a write from another site's page
+WR_LOG_IN :: 2;      // nobody is logged in
+WR_NOT_ADMIN :: 3;   // logged in, but only an admin writes this world
+WR_NO_WORLD :: 4;    // no world has this ID
+WR_BAD :: 5;         // the body is not a batch
+WR_STALE :: 6;       // made from another revision than the world's
+WR_NO_UNDO :: 7;     // nothing to undo
+WR_NO_REDO :: 8;     // nothing to redo
+WR_NO_LIVE :: 9;     // nothing is published yet
+WR_RELOAD :: 10;     // the page's build reads neither live revision
+WR_LANE :: 11;       // no such lane
+
+// A write: a batch of edits, an undo, a redo, ORIGINAL or a publish. base: the revision the batch
+// names; rev: the dev revision; done, steps: where the undo log stands and how long it is.
+wr_write :: (same_site: bool, known: bool, admin: bool, exists: bool, batch_ok: bool, what: int, base: int, rev: int, done: int, steps: int) -> int #export_c #effects(all) {
+  if !same_site { return WR_CROSS; }
+  if !known { return WR_LOG_IN; }
+  if !admin { return WR_NOT_ADMIN; }
+  if !exists { return WR_NO_WORLD; }
+  if !batch_ok || what < WB_APPLY || what > WB_PUBLISH_NEXT { return WR_BAD; }
+  if base != rev { return WR_STALE; }
+  if what == WB_UNDO && done <= 0 { return WR_NO_UNDO; }
+  if what == WB_REDO && done >= steps { return WR_NO_REDO; }
+  return WR_OK;
+}
+// A read of lane `lane`. join: wl_join's answer for the page's pins (WJ_LIVE when it sent none).
+wr_read :: (exists: bool, lane: int, join: int) -> int #export_c #effects(all) {
+  if !exists { return WR_NO_WORLD; }
+  if lane == WL_DEV { return WR_OK; }
+  if lane != WL_LIVE { return WR_LANE; }
+  if join == WJ_NONE { return WR_NO_LIVE; }
+  if join == WJ_RELOAD { return WR_RELOAD; }
+  return WR_OK;
+}
+wr_status :: (verdict: int) -> int #export_c #effects(all) {
+  if verdict == WR_OK { return 200; }
+  if verdict == WR_LOG_IN { return 401; }
+  if verdict == WR_CROSS || verdict == WR_NOT_ADMIN { return 403; }
+  if verdict == WR_NO_WORLD || verdict == WR_NO_LIVE { return 404; }
+  if verdict == WR_STALE || verdict == WR_RELOAD { return 409; }
+  if verdict == WR_NO_UNDO || verdict == WR_NO_REDO { return 422; }
+  return 400;
+}
+wr_words :: (verdict: int) -> string #export_c #effects(all) {
+  if verdict == WR_CROSS { return "cross-site"; }
+  if verdict == WR_LOG_IN { return "log in as an admin"; }
+  if verdict == WR_NOT_ADMIN { return "only an admin changes this world"; }
+  if verdict == WR_NO_WORLD { return "no such world"; }
+  if verdict == WR_BAD { return "send a world.edit.v1 batch"; }
+  if verdict == WR_STALE { return "the world changed since you read it: read it again"; }
+  if verdict == WR_NO_UNDO { return "nothing to undo"; }
+  if verdict == WR_NO_REDO { return "nothing to redo"; }
+  if verdict == WR_NO_LIVE { return "nothing is published yet"; }
+  if verdict == WR_RELOAD { return "this page is older than the world: reload it"; }
+  if verdict == WR_LANE { return "a lane is dev or live"; }
+  return "";
+}
+
+// ---- the undo log: steps 0..<steps, of which the first `done` stand
+
+// The stored step a write takes again: an undo the newest standing one, a redo the one after; -1
+// for a write that carries its own edits.
+wr_step :: (what: int, done: int) -> int #export_c #effects(all) {
+  if what == WB_UNDO { return done - 1; }
+  if what == WB_REDO { return done; }
+  return -1;
+}
+// Whether the step is taken backward (its inverse) or forward (its batch).
+wr_backward :: (what: int) -> bool #export_c #effects(all) { return what == WB_UNDO; }
+// Where the log stands after a write that was saved.
+wr_done :: (what: int, done: int) -> int #export_c #effects(all) {
+  if what == WB_UNDO { return done - 1; }
+  if what == WB_APPLY || what == WB_REDO || what == WB_ORIGINAL { return done + 1; }
+  return done;
+}
+// How long the log is after it: an apply (or ORIGINAL) is the new last step, so the steps an undo
+// left ahead of it go.
+wr_steps :: (what: int, done: int, steps: int) -> int #export_c #effects(all) {
+  if what == WB_APPLY || what == WB_ORIGINAL { return done + 1; }
+  return steps;
+}
+// Whether a write is a publish (it changes live), and when it reaches sessions.
+wr_publishes :: (what: int) -> bool #export_c #effects(all) { return what == WB_PUBLISH_NOW || what == WB_PUBLISH_NEXT; }
+wr_when :: (what: int) -> int #export_c #effects(all) { return ifx what == WB_PUBLISH_NEXT then WU_NEXT else WU_NOW; }
+
+// ---- dev and live (world-live.coax), with plain numbers
+
+wr_lane :: (word: string) -> int #export_c #effects(all) { return ifx word.count == 0 then WL_LIVE else wl_lane(word); }
+wr_is_dev :: (lane: int) -> bool #export_c #effects(all) { return lane == WL_DEV; }
+// Whether a join gives the revision before the last pin change, not live.
+wr_previous :: (join: int) -> bool #export_c #effects(all) { return join == WJ_PREVIOUS; }
+wr_publish :: (when: int, asked: int, dev: int, from: int, engine: int, rules: int, content: int, wire: int,
+               has_live: bool, live_engine: int, live_rules: int, live_content: int, live_wire: int) -> int #export_c #effects(all) {
+  return wl_publish(when, asked, dev, from, WorldPins.{engine = engine, rules = rules, content = content, wire = wire}, has_live,
+                    WorldPins.{engine = live_engine, rules = live_rules, content = live_content, wire = live_wire});
+}
+wr_publish_status :: (verdict: int) -> int #export_c #effects(all) {
+  if verdict == WP_OK { return 200; }
+  if verdict == WP_STALE { return 409; }
+  if verdict == WP_NOTHING || verdict == WP_NOT_NOW { return 422; }
+  return 400;
+}
+wr_publish_words :: (verdict: int) -> string #export_c #effects(all) { return wl_publish_why(verdict); }
+wr_keeps :: (has_live: bool, engine: int, rules: int, content: int, wire: int, live_engine: int, live_rules: int, live_content: int, live_wire: int) -> bool #export_c #effects(all) {
+  return wl_keeps(has_live, WorldPins.{engine = engine, rules = rules, content = content, wire = wire}, WorldPins.{engine = live_engine, rules = live_rules, content = live_content, wire = live_wire});
+}
+// Which live revision a page joins. sent: the page said its pins (a page that says none reads live).
+wr_join :: (sent: bool, engine: int, rules: int, content: int, wire: int, has_live: bool, live_engine: int, live_rules: int, live_content: int, live_wire: int,
+            has_prev: bool, prev_engine: int, prev_rules: int, prev_content: int, prev_wire: int) -> int #export_c #effects(all) {
+  if !sent { return ifx has_live then WJ_LIVE else WJ_NONE; }
+  return wl_join(WorldPins.{engine = engine, rules = rules, content = content, wire = wire}, has_live, WorldPins.{engine = live_engine, rules = live_rules, content = live_content, wire = live_wire},
+                 has_prev, WorldPins.{engine = prev_engine, rules = prev_rules, content = prev_content, wire = prev_wire});
+}
+
+// ---- the bytes (world-edit.coax)
+
+wr_world_ok :: (id: string) -> bool #export_c #effects(all) { return we_world_ok(id); }
+// A batch's head into out: the revision it names, what it does, how many edits. False when the body is none.
+wr_batch :: (body: string, out: [] int) -> bool #export_c #effects(all) {
+  e: [WE_BATCH] WorldEdit;
+  b := we_batch_read(body, e[..]);
+  if !b.ok || out.count < 3 { return false; }
+  out[0] = b.rev; out[1] = b.what; out[2] = b.n;
+  return true;
+}
+// A batch's edit `i` as its own bytes into out: their length, or -1.
+wr_batch_edit :: (body: string, i: int, out: [] u8) -> int #export_c #effects(all) {
+  e: [WE_BATCH] WorldEdit;
+  b := we_batch_read(body, e[..]);
+  if !b.ok || i < 0 || i >= WE_BATCH { return -1; }
+  made := we_write(e[i], out);   // past the batch's edits there is no edit, and none is written
+  return ifx made.count == 0 then -1 else made.count;
+}
+// The id of the event a write publishes: a publish's, or a saved edit's.
+wr_event_id :: (publish: bool) -> string #export_c #effects(all) { return ifx publish then WE_PUBLISHED else WE_EVENT; }
+// A saved edit's event into out: its length, or -1.
+wr_event :: (seq: int, world: string, rev: int, edit: string, at: int, out: [] u8) -> int #export_c #effects(all) {
+  made := we_event_write(seq, world, rev, we_read(edit), at, out);
+  return ifx made.count == 0 then -1 else made.count;
+}
+wr_published :: (seq: int, world: string, rev: int, from: int, when: int, engine: int, rules: int, content: int, wire: int, at: int, out: [] u8) -> int #export_c #effects(all) {
+  made := we_published_write(WorldPublished.{seq = seq, rev = rev, from = from, when = when, engine = engine, rules = rules, content = content, wire = wire, at = at}, world, out);
+  return ifx made.count == 0 then -1 else made.count;
+}
+// engine, rules, content, wire: the pins of the build that reads the revision answered.
+wr_state :: (world: string, lane: int, rev: int, engine: int, rules: int, content: int, wire: int, dev: int, live: int, when: int, undo: int, redo: int, doc: string, did: string, out: [] u8) -> int #export_c #effects(all) {
+  v := WorldState.{lane = lane, rev = rev, dev = dev, live = live, when = when, undo = undo, redo = redo};
+  v.build[0] = engine; v.build[1] = rules; v.build[2] = content; v.build[3] = wire;
+  made := we_state_write(v, world, doc, did, out);
+  return ifx made.count == 0 then -1 else made.count;
+}
+wr_refusal :: (words: string, edit: int, out: [] u8) -> int #export_c #effects(all) {
+  made := we_refusal_write(words, edit, out);
+  return ifx made.count == 0 then -1 else made.count;
+}
+
+#test "world routes: only an admin writes, from this site, a batch made from the world's revision" {
+  #assert wr_write(true, true, true, true, true, WB_APPLY, 7, 7, 0, 0) == WR_OK;
+  #assert wr_write(false, true, true, true, true, WB_APPLY, 7, 7, 0, 0) == WR_CROSS && wr_write(true, false, true, true, true, WB_APPLY, 7, 7, 0, 0) == WR_LOG_IN && wr_write(true, true, false, true, true, WB_APPLY, 7, 7, 0, 0) == WR_NOT_ADMIN;
+  #assert wr_write(true, true, true, false, true, WB_APPLY, 7, 7, 0, 0) == WR_NO_WORLD && wr_write(true, true, true, true, false, WB_APPLY, 7, 7, 0, 0) == WR_BAD;
+  #assert wr_write(true, true, true, true, true, -1, 7, 7, 0, 0) == WR_BAD && wr_write(true, true, true, true, true, 6, 7, 7, 0, 0) == WR_BAD && wr_write(true, true, true, true, true, WB_PUBLISH_NEXT, 7, 7, 0, 0) == WR_OK;
+  #assert wr_write(true, true, true, true, true, WB_APPLY, 6, 7, 0, 0) == WR_STALE && wr_write(true, true, true, true, true, WB_APPLY, 8, 7, 0, 0) == WR_STALE;
+  // the order: another site's page learns nothing; a stranger is asked to log in before anything is said of the world
+  #assert wr_write(false, false, false, false, false, WB_APPLY, 6, 7, 0, 0) == WR_CROSS && wr_write(true, false, false, false, false, WB_APPLY, 6, 7, 0, 0) == WR_LOG_IN && wr_write(true, true, false, false, false, WB_APPLY, 6, 7, 0, 0) == WR_NOT_ADMIN;
+  #assert wr_write(true, true, true, false, false, WB_APPLY, 6, 7, 0, 0) == WR_NO_WORLD && wr_write(true, true, true, true, false, WB_APPLY, 6, 7, 0, 0) == WR_BAD && wr_write(true, true, true, true, true, WB_UNDO, 6, 7, 0, 0) == WR_STALE;
+  // undo and redo need a step
+  #assert wr_write(true, true, true, true, true, WB_UNDO, 7, 7, 0, 3) == WR_NO_UNDO && wr_write(true, true, true, true, true, WB_UNDO, 7, 7, 1, 3) == WR_OK && wr_write(true, true, true, true, true, WB_UNDO, 7, 7, -1, 3) == WR_NO_UNDO;
+  #assert wr_write(true, true, true, true, true, WB_REDO, 7, 7, 3, 3) == WR_NO_REDO && wr_write(true, true, true, true, true, WB_REDO, 7, 7, 2, 3) == WR_OK && wr_write(true, true, true, true, true, WB_REDO, 7, 7, 4, 3) == WR_NO_REDO;
+  #assert wr_write(true, true, true, true, true, WB_APPLY, 7, 7, 0, 0) == WR_OK && wr_write(true, true, true, true, true, WB_ORIGINAL, 7, 7, 3, 3) == WR_OK;
+}
+#test "world routes: anyone reads dev; live is what is published, for a page whose build reads it" {
+  #assert wr_read(true, WL_DEV, WJ_NONE) == WR_OK && wr_read(false, WL_DEV, WJ_LIVE) == WR_NO_WORLD && wr_read(false, WL_LIVE, WJ_LIVE) == WR_NO_WORLD;
+  #assert wr_read(true, WL_LIVE, WJ_LIVE) == WR_OK && wr_read(true, WL_LIVE, WJ_PREVIOUS) == WR_OK && wr_read(true, WL_LIVE, WJ_NONE) == WR_NO_LIVE && wr_read(true, WL_LIVE, WJ_RELOAD) == WR_RELOAD;
+  #assert wr_read(true, -1, WJ_LIVE) == WR_LANE && wr_read(true, 2, WJ_LIVE) == WR_LANE && wr_read(true, WL_DEV, WJ_RELOAD) == WR_OK;
+  #assert wr_is_dev(WL_DEV) && !wr_is_dev(WL_LIVE) && !wr_is_dev(-1) && wr_previous(WJ_PREVIOUS) && !wr_previous(WJ_LIVE) && !wr_previous(WJ_RELOAD);
+  #assert wr_lane("") == WL_LIVE && wr_lane("dev") == WL_DEV && wr_lane("live") == WL_LIVE && wr_lane("x") == -1;
+}
+#test "world routes: each verdict has its status and its words" {
+  status := [12] int.[200, 403, 401, 403, 404, 400, 409, 422, 422, 404, 409, 400];
+  for v: 0..<12 {
+    #assert wr_status(v) == status[v] && (wr_words(v).count > 0) == (v != WR_OK);
+    for o: 0..<v { #assert wr_words(o) != wr_words(v); }
+  }
+  #assert wr_status(12) == 400 && wr_status(-1) == 400 && wr_words(12) == "" && wr_words(-1) == "";
+}
+#test "world routes: the undo log: which step a write takes, and where the log stands after" {
+  #assert wr_step(WB_UNDO, 3) == 2 && wr_step(WB_REDO, 3) == 3 && wr_step(WB_APPLY, 3) == -1 && wr_step(WB_ORIGINAL, 3) == -1 && wr_step(WB_PUBLISH_NOW, 3) == -1;
+  #assert wr_backward(WB_UNDO) && !wr_backward(WB_REDO) && !wr_backward(WB_APPLY);
+  #assert wr_done(WB_APPLY, 3) == 4 && wr_done(WB_ORIGINAL, 3) == 4 && wr_done(WB_REDO, 3) == 4 && wr_done(WB_UNDO, 3) == 2 && wr_done(WB_PUBLISH_NOW, 3) == 3 && wr_done(WB_PUBLISH_NEXT, 3) == 3;
+  #assert wr_steps(WB_APPLY, 3, 7) == 4 && wr_steps(WB_ORIGINAL, 3, 7) == 4 && wr_steps(WB_UNDO, 3, 7) == 7 && wr_steps(WB_REDO, 3, 7) == 7 && wr_steps(WB_PUBLISH_NOW, 3, 7) == 7;
+  #assert wr_publishes(WB_PUBLISH_NOW) && wr_publishes(WB_PUBLISH_NEXT) && !wr_publishes(WB_APPLY) && !wr_publishes(WB_ORIGINAL) && !wr_publishes(6);
+  #assert wr_when(WB_PUBLISH_NOW) == WU_NOW && wr_when(WB_PUBLISH_NEXT) == WU_NEXT;
+}
+#test "world routes: a publish and a join are world-live.coax's, pin by pin" {
+  // each pin on its own: a change of any one is a pin change
+  for k: 0..<4 {
+    e := ifx k == 0 then 2 else 1; r := ifx k == 1 then 2 else 1; c := ifx k == 2 then 2 else 1; w := ifx k == 3 then 2 else 1;
+    #assert wr_publish(WU_NOW, 5, 5, 3, e, r, c, w, true, 1, 1, 1, 1) == WP_NOT_NOW && wr_publish(WU_NOW, 5, 5, 3, 1, 1, 1, 1, true, e, r, c, w) == WP_NOT_NOW && wr_publish(WU_NEXT, 5, 5, 3, e, r, c, w, true, 1, 1, 1, 1) == WP_OK;
+    #assert wr_keeps(true, e, r, c, w, 1, 1, 1, 1) && wr_keeps(true, 1, 1, 1, 1, e, r, c, w) && !wr_keeps(false, e, r, c, w, 1, 1, 1, 1);
+    #assert wr_join(true, e, r, c, w, true, e, r, c, w, false, 0, 0, 0, 0) == WJ_LIVE && wr_join(true, 1, 1, 1, 1, true, e, r, c, w, true, 1, 1, 1, 1) == WJ_PREVIOUS && wr_join(true, 1, 1, 1, 1, true, e, r, c, w, false, 1, 1, 1, 1) == WJ_RELOAD;
+    #assert wr_join(true, 1, 1, 1, 1, true, 3, 3, 3, 3, true, e, r, c, w) == WJ_RELOAD;
+  }
+  #assert wr_publish(WU_NOW, 5, 5, 3, 1, 1, 1, 1, true, 1, 1, 1, 1) == WP_OK && wr_publish(WU_NOW, 4, 5, 3, 1, 1, 1, 1, true, 1, 1, 1, 1) == WP_STALE && wr_publish(WU_NOW, 5, 5, 5, 1, 1, 1, 1, true, 1, 1, 1, 1) == WP_NOTHING && wr_publish(7, 5, 5, 3, 1, 1, 1, 1, true, 1, 1, 1, 1) == WP_BAD;
+  #assert wr_publish(WU_NOW, 5, 5, -1, 2, 2, 2, 2, false, 1, 1, 1, 1) == WP_OK && !wr_keeps(true, 1, 1, 1, 1, 1, 1, 1, 1);
+  #assert wr_publish_status(WP_OK) == 200 && wr_publish_status(WP_STALE) == 409 && wr_publish_status(WP_NOTHING) == 422 && wr_publish_status(WP_NOT_NOW) == 422 && wr_publish_status(WP_BAD) == 400 && wr_publish_status(9) == 400;
+  #assert wr_publish_words(WP_NOT_NOW) == wl_publish_why(WP_NOT_NOW) && wr_publish_words(WP_STALE) == wl_publish_why(WP_STALE) && wr_publish_words(WP_OK) == "";
+  // a page that says no pins reads live, when there is one
+  #assert wr_join(false, 9, 9, 9, 9, true, 1, 1, 1, 1, false, 0, 0, 0, 0) == WJ_LIVE && wr_join(false, 1, 1, 1, 1, false, 1, 1, 1, 1, false, 0, 0, 0, 0) == WJ_NONE && wr_join(true, 1, 1, 1, 1, false, 1, 1, 1, 1, false, 0, 0, 0, 0) == WJ_NONE;
+}
+#test "world routes: the bytes are the codec's: a batch's head and edits, an event, a state, a refusal" {
+  h: [3] int; o: [WE_BATCH_BODY] u8; fx := WE_FIXTURE;
+  #assert wr_batch(WE_BATCH_FIXTURE, h[..]) && h[0] == 41 && h[1] == WB_APPLY && h[2] == WE_FIXTURE_N && wr_batch(WE_UNDO_FIXTURE, h[..]) && h[0] == 7 && h[1] == WB_UNDO && h[2] == 0;
+  #assert !wr_batch("{}", h[..]) && !wr_batch(WE_BATCH_FIXTURE, h[0..<2]) && h[0] == 7;
+  for i: 0..<WE_FIXTURE_N { n := wr_batch_edit(WE_BATCH_FIXTURE, i, o[..]); #assert n > 0 && cast(string) o[0..<n] == fx[i]; }
+  #assert wr_batch_edit(WE_BATCH_FIXTURE, -1, o[..]) == -1 && wr_batch_edit(WE_BATCH_FIXTURE, WE_FIXTURE_N, o[..]) == -1 && wr_batch_edit(WE_BATCH_FIXTURE, WE_BATCH, o[..]) == -1 && wr_batch_edit(WE_BATCH_FIXTURE, WE_BATCH - 1, o[..]) == -1 && wr_batch_edit("{}", 0, o[..]) == -1 && wr_batch_edit(WE_BATCH_FIXTURE, 0, o[0..<8]) == -1;
+  n := wr_event(912, "splice", 42, fx[0], 1762190000000, o[..]);
+  #assert n > 0 && cast(string) o[0..<n] == WE_EVENT_FIXTURE && wr_event(912, "splice", 42, "{}", 1762190000000, o[..]) == -1 && wr_event(912, "splice", 42, fx[0], 1762190000000, o[0..<20]) == -1;
+  n = wr_published(913, "splice", 3, 42, WU_NEXT, 1, 1, 2, 1, 1762190000500, o[..]);
+  #assert n > 0 && cast(string) o[0..<n] == WE_PUBLISHED_FIXTURE && wr_published(0, "splice", 3, 42, WU_NEXT, 1, 1, 2, 1, 1762190000500, o[..]) == -1;
+  n = wr_state("splice", WL_DEV, 43, 1, 1, 2, 1, 43, 3, WU_NOW, 2, 1, "world.doc.v1 splice\ncontent 2\n", "", o[..]);
+  #assert n > 0 && cast(string) o[0..<n] == WE_STATE_FIXTURE && wr_state("Splice", WL_DEV, 43, 1, 1, 2, 1, 43, 3, WU_NOW, 2, 1, "", "", o[..]) == -1;
+  for k: 0..<4 { #assert wr_state("splice", WL_DEV, 43, ifx k == 0 then 19 else 1, ifx k == 1 then 190 else 1, ifx k == 2 then 1900 else 2, ifx k == 3 then 19000 else 1, 43, 3, WU_NOW, 2, 1, "world.doc.v1 splice\ncontent 2\n", "", o[..]) == n + k + 1; }
+  n = wr_refusal("in the kept-clear zone 'Scanner gate'", 1, o[..]);
+  #assert n > 0 && cast(string) o[0..<n] == WE_REFUSAL_FIXTURE && wr_refusal("x", -1, o[0..<3]) == -1;
+  #assert wr_event_id(false) == WE_EVENT && wr_event_id(true) == WE_PUBLISHED && we_event_kind(WE_EVENT_FIXTURE) == 1;
+  #assert wr_world_ok("splice") && !wr_world_ok("Splice") && !wr_world_ok("");
+}

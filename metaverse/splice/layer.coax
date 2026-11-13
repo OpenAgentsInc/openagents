@@ -61,19 +61,22 @@ SlLayer :: struct {
   ops: [SL_OPS] ForgeItemOp;
   steps: [SL_STEPS] ForgeStep;
   rev: int;        // counts the layer's changes: an edit, an undo, a redo
+  head: int;       // the world document's revision the layer stands at (world.coax): 0 with no document
   built: int;      // the revision the World's placed pieces were built from
 }
 
-sl_world :: (g: [] SpGame) -> World {
+// The World over a store of Splice's size (the game's, or a scratch one a document is read into).
+slw_world :: (ws: [] SlWorld) -> World {
   return World.{
-    ents = EntityStore.{gen = g[0].ws[0].gen[..], live = g[0].ws[0].live[..], born = g[0].ws[0].born[..], doomed = g[0].ws[0].doomed[..],
-      ids = g[0].ws[0].ids[..], free = g[0].ws[0].free[..], spawns = g[0].ws[0].spawns[..], n = g[0].ws[0].en[..]},
-    has = g[0].ws[0].has[..], f = g[0].ws[0].f[..], i = g[0].ws[0].i[..],
-    grid = SpatialGrid.{head = g[0].ws[0].head[..], next = g[0].ws[0].next[..], prev = g[0].ws[0].prev[..], at = g[0].ws[0].at[..],
-      cx = g[0].ws[0].cx[..], cz = g[0].ws[0].cz[..], x = g[0].ws[0].gx[..], z = g[0].ws[0].gz[..], cell = g[0].ws[0].cell[..], n = g[0].ws[0].gn[..]},
-    sys_id = g[0].ws[0].sys_id[..], sys_reads = g[0].ws[0].sys_reads[..], sys_writes = g[0].ws[0].sys_writes[..],
-    seen = g[0].ws[0].seen[..], n = g[0].ws[0].n[..]};
+    ents = EntityStore.{gen = ws[0].gen[..], live = ws[0].live[..], born = ws[0].born[..], doomed = ws[0].doomed[..],
+      ids = ws[0].ids[..], free = ws[0].free[..], spawns = ws[0].spawns[..], n = ws[0].en[..]},
+    has = ws[0].has[..], f = ws[0].f[..], i = ws[0].i[..],
+    grid = SpatialGrid.{head = ws[0].head[..], next = ws[0].next[..], prev = ws[0].prev[..], at = ws[0].at[..],
+      cx = ws[0].cx[..], cz = ws[0].cz[..], x = ws[0].gx[..], z = ws[0].gz[..], cell = ws[0].cell[..], n = ws[0].gn[..]},
+    sys_id = ws[0].sys_id[..], sys_reads = ws[0].sys_reads[..], sys_writes = ws[0].sys_writes[..],
+    seen = ws[0].seen[..], n = ws[0].n[..]};
 }
+sl_world :: (g: [] SpGame) -> World { return slw_world(g[0].ws[..]); }
 // A column's element, read straight from the store. Between steps the realm owns the columns
 // (world.coax), and a walker's questions are asked between steps.
 sl_f :: (g: [] SpGame, col: int, s: int) -> f32 { return g[0].ws[0].f[col * SL_CAP + s]; }

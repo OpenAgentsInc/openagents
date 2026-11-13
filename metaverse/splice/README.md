@@ -17,6 +17,7 @@ for people and agents who change the code.
 | `content/splice.content`, `content.coax` | The content tables and their reader |
 | `pieces.coax` | Which engine kit piece a row draws, and its measured footprint |
 | `layer.coax` | The colliders (a World of entities) and the edit layer |
+| `world.coax`, `world-api.coax` | Splice as the world `splice`: its document, its edits as the wire carries them, and what the API calls |
 | `layer-draw.coax` | The layer's draw: a mesh for each kind, a row for each placed piece |
 | `walk.coax` | The walk replay: the second check of a layer |
 | `why.coax`, `why-checks.coax` | The answers to `coax drive ... "why ID"` and what `tree` lists: the diagnostic chain walked from the game's state (#13429) |
@@ -102,6 +103,20 @@ Each edit is checked before it is taken. An edit is refused when the piece:
 
 A placed piece is scenery. It blocks you, the party's people and the camera, and it has no AI and
 no hit points.
+
+### The world `splice`
+
+Splice is the first world with an ID ([edits](../../docs/protocol/world-edit-v1.md),
+[the document](../../docs/protocol/world-doc-v1.md), [dev and live](../../docs/protocol/world-live-v1.md)).
+`world.coax` turns a wire edit into the calls above and answers its inverse. The API
+(`/api/worlds/splice`) runs the same file on every batch, then the walk replay, and saves the
+document a fresh game builds from the pieces. Only an admin writes it.
+
+| Call | What it does |
+| --- | --- |
+| `spw_edit(g, e, sure)` | One wire edit on the layer. `sure`: the server saved it already, so a page takes it where it stands |
+| `spw_batch(...)` | A batch on a document: the new document, the batch as taken and its inverse, or the refusal |
+| `spw_open(g, k, text)`, `spw_save(g, k, out)` | A document read into a game and written from one |
 
 ### How it is built
 

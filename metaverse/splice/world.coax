@@ -1,0 +1,264 @@
+// Splice as a world with an ID (GitHub #13412, the browser editor's E3;
+// docs/editor/2026-11-12-browser-editor.md): its document, and its edits as the wire carries them.
+//
+// The world's ID is `splice`. Its document (metaverse-engine/editor/world-doc.coax, world.doc.v1) is
+// the game's World saved whole: the designed world's colliders and every placed piece, with the
+// shapes Splice keeps beside the World's columns, the content tables' revision the pieces name
+// rows of, and the edit log's head. A placed piece is the entity whose kind is its content ID and
+// whose row is its number in the layer.
+//
+// The document is always the one a fresh game builds from the layer's pieces (spw_build), so two
+// hosts given the same edits hold the same bytes, and a document that is not what this build
+// makes from its own pieces (a wall moved, a collider that is not its piece's) is refused
+// (spw_open). The server and the page run this same file: the server carries a batch out with it
+// (world-api.coax, through coax/web/api/worlds.c), so they cannot disagree about where a thing stands.
+//
+// An edit is checked as every Splice edit is (layer.coax sl_check: an area, the kept-clear zones,
+// what stands there), and a batch is saved only when the run can still be walked (walk.coax).
+// A refusal is in words, naming the zone or the place.
+//   coax/bin/coax test metaverse/splice/splice-game.coax
+#load "../../metaverse-engine/editor/world-doc.coax";
+#load "../../metaverse-engine/editor/world-live.coax";
+
+SPW_ID :: "splice";
+SPW_ENGINE :: 1;     // the document's reader: raised when world.doc.v1's reading here changes
+SPW_RULES :: 1;      // Splice's edit rules (sl_check, the walk): raised when an edit a build took is one another refuses
+SPW_WIRE :: 1;       // world.edit.v1
+SPW_OWN :: 5;        // Splice's own columns: the shape's middle (x, z), its half sizes (x, z) as bits, and the shape
+SPW_DOC :: 131072;   // bytes a document may take (wd_bytes(SL_CAP, SPW_OWN) and room to spare)
+
+// The game's World, and room to read a document into without touching it.
+SpwScratch :: struct { ws: [1] SlWorld; own: [SL_CAP * SPW_OWN] int; text: [SPW_DOC] u8; }
+
+// The pins of this build's Splice: what a session carries (world-live.coax).
+spw_pins :: (g: [] SpGame) -> WorldPins { return WorldPins.{engine = SPW_ENGINE, rules = SPW_RULES, content = g[0].c[0].rev, wire = SPW_WIRE}; }
+spw_own :: (ws: [] SlWorld, own: [] int) {
+  for s: 0..<SL_CAP {
+    own[s * SPW_OWN] = cast(int) f32_bits(ws[0].ox[s]); own[s * SPW_OWN + 1] = cast(int) f32_bits(ws[0].oz[s]);
+    own[s * SPW_OWN + 2] = cast(int) f32_bits(ws[0].ex[s]); own[s * SPW_OWN + 3] = cast(int) f32_bits(ws[0].ez[s]); own[s * SPW_OWN + 4] = ws[0].shape[s];
+  }
+}
+// The designed world's colliders and the layer's pieces, built from nothing: the World every host
+// builds from these pieces. The run's own state (where you stand, what you carry) is not touched.
+spw_build :: (g: [] SpGame) { sl_build(g); }
+// The game's World as its document at the layer's head, into out ("" when it does not fit).
+// The same bytes on every host only after spw_build.
+spw_save :: (g: [] SpGame, k: [] SpwScratch, out: [] u8) -> string {
+  spw_own(g[0].ws[..], k[0].own[..]);
+  return world_save(sl_world(g), SPW_ID, g[0].c[0].rev, g[0].layer[0].head, g[0].layer[0].st[0].next_id + 1, k[0].own[..], SPW_OWN, out);
+}
+
+SPW_OK :: 0;
+SPW_NOT_DOC :: 1;     // not a world document, or not Splice's
+SPW_CONTENT :: 2;     // made with another revision of the content tables
+SPW_NOT_BUILT :: 3;   // not the World this build makes from the document's own pieces
+SPW_FULL :: 4;        // more pieces than a layer holds
+// The layer's pieces read from a document: the layer holds them under their numbers, with no
+// history, at the document's head. The World is not built (spw_build, or sl_sync on a page that
+// keeps its run). A document refused leaves the layer as it was.
+spw_pieces :: (g: [] SpGame, k: [] SpwScratch, text: string) -> int {
+  w := slw_world(k[0].ws[..]);
+  if !world_init(w, SL_CELL) { return SPW_NOT_DOC; }
+  d := world_load(w, text, k[0].own[..], SPW_OWN);
+  if !d.ok || !wd_world_is(d, SPW_ID) { return SPW_NOT_DOC; }
+  if d.content != g[0].c[0].rev { return SPW_CONTENT; }
+  count := 0;
+  for s: 0..<world_high(w) { if world_at(w, s) != ENTITY_NONE && world_i(w, WI_KIND, s) >= SK_PIECE { count += 1; } }
+  if count > SL_ITEMS { return SPW_FULL; }
+  // every piece has a number below the document's next, and no two share one
+  for s: 0..<world_high(w) {
+    if world_at(w, s) == ENTITY_NONE || world_i(w, WI_KIND, s) < SK_PIECE { continue; }
+    row := world_i(w, WI_ROW, s);
+    if row < 0 || row + 1 >= d.next { return SPW_NOT_DOC; }
+    for o: 0..<s { if world_at(w, o) != ENTITY_NONE && world_i(w, WI_KIND, o) >= SK_PIECE && world_i(w, WI_ROW, o) == row { return SPW_NOT_DOC; } }
+  }
+  scene := sl_scene(g);
+  forge_scene_reset(scene);
+  for s: 0..<world_high(w) {
+    if world_at(w, s) == ENTITY_NONE || world_i(w, WI_KIND, s) < SK_PIECE { continue; }
+    item := ForgeItem.{id = world_i(w, WI_ROW, s), mesh = world_i(w, WI_KIND, s), x = world_f(w, WF_X, s), y = world_f(w, WF_Y, s), z = world_f(w, WF_Z, s), yaw = world_f(w, WF_YAW, s)};
+    _ := forge_scene_apply(scene, ForgeItemOp.{kind = FORGE_SCENE_PLACE, has = true, a = item});
+  }
+  g[0].layer[0].st[0].next_id = d.next - 1;
+  g[0].layer[0].head = d.head;
+  g[0].layer[0].rev += 1;
+  return SPW_OK;
+}
+// A document opened on a game for the server: its pieces, the World built from them, and the
+// bytes compared: SPW_NOT_BUILT for a document this build would not have written.
+spw_open :: (g: [] SpGame, k: [] SpwScratch, text: string) -> int {
+  v := spw_pieces(g, k, text);
+  if v != SPW_OK { return v; }
+  spw_build(g);
+  if spw_save(g, k, k[0].text[..]) != text { return SPW_NOT_BUILT; }
+  return SPW_OK;
+}
+spw_open_why :: (v: int) -> string {
+  if v == SPW_NOT_DOC { return "that is not Splice's world document"; }
+  if v == SPW_CONTENT { return "the document was made with another revision of Splice's content tables"; }
+  if v == SPW_NOT_BUILT { return "the document is not the world Splice builds from its own pieces"; }
+  if v == SPW_FULL { return "the document holds more pieces than Splice keeps"; }
+  return "";
+}
+
+// ---- an edit
+
+SPE_SIZE :: 20;      // Splice's pieces keep their size
+SPE_LAND :: 21;      // Splice has no land to shape
+SPE_COLUMN :: 22;    // a placed piece has no such column to set
+SPE_TABLES :: 23;    // the content tables change with a build
+SPE_ID :: 24;        // a spawn asks for a number that is taken, or was never given
+// What an edit did: the piece it made or changed (its number on the wire, 1 and up), the edit as
+// it was taken (a spawn with its number filled in) and the edit that takes it back; or why not
+// (`why`: an SL_ or SPE_ number; `v`: the layer's verdict when the check refused).
+SpwEdit :: struct { ok: bool; id: int; did: WorldEdit; inv: WorldEdit; why: int; v: SlVerdict; }
+spw_no :: (why: int) -> SpwEdit { return SpwEdit.{why = why, v = SlVerdict.{why = why}}; }
+spw_from :: (e: WorldEdit, r: SlEdit, id: int, inv: WorldEdit) -> SpwEdit {
+  if !r.ok { return SpwEdit.{why = r.v.why, v = r.v}; }
+  return SpwEdit.{ok = true, id = id, did = e, inv = inv};
+}
+// One edit carried out on the layer, checked as every Splice edit is. `sure`: the edit was saved
+// by the server already (a page following a revision): it is taken where it stands, and the
+// check that would refuse it for where you stand is not asked.
+spw_edit :: (g: [] SpGame, e: WorldEdit, sure: bool) -> SpwEdit {
+  if !we_valid(e) { return spw_no(SL_NOTHING); }
+  if e.op == WE_TERRAIN { return spw_no(SPE_LAND); }
+  if e.op == WE_CELL { return spw_no(SPE_TABLES); }
+  if e.op == WE_SCALE || (e.op == WE_SPAWN && e.scale != 100) { return spw_no(SPE_SIZE); }
+  if sure {
+    // the server's World took it: the layer's log takes it as it is
+    a := we_scene_apply(sl_scene(g), e);
+    if !a.ok { return spw_no(SL_NOTHING); }
+    g[0].layer[0].rev += 1; sl_sync(g);
+    did := e; did.id = a.id;
+    return SpwEdit.{ok = true, id = a.id, did = did, inv = a.inv};
+  }
+  if e.op == WE_SPAWN {
+    did := e;
+    if e.id == 0 {
+      r := sl_place(g, e.kind, e.x, e.z, e.yaw);
+      if !r.ok { return spw_from(e, r, 0, e); }
+      did.id = r.id + 1; did.y = we_cm(g[0].layer[0].items[sl_item(g, r.id)].y);
+      return SpwEdit.{ok = true, id = r.id + 1, did = did, inv = WorldEdit.{ok = true, op = WE_DESPAWN, id = r.id + 1}};
+    }
+    // a piece brought back under its number (an undo of its removal): a number once given, now free
+    if e.id > g[0].layer[0].st[0].next_id || sl_item(g, e.id - 1) >= 0 { return spw_no(SPE_ID); }
+    if g[0].layer[0].st[0].n >= SL_ITEMS { return spw_no(SL_FULL); }
+    v := sl_check(g, e.kind, sc_m(e.x), sc_m(e.z), sl_rad(e.yaw), -1);
+    if v.why != SL_OK { return SpwEdit.{why = v.why, v = v}; }
+    did.y = we_cm(ground_y(g, sc_m(e.x), sc_m(e.z)));
+    a := we_scene_apply(sl_scene(g), did);
+    if !a.ok { return spw_no(SPE_ID); }
+    g[0].layer[0].rev += 1; sl_sync(g);
+    return SpwEdit.{ok = true, id = e.id, did = did, inv = a.inv};
+  }
+  i := sl_item(g, e.id - 1);
+  if i < 0 { return spw_no(SL_NO_ITEM); }
+  was := g[0].layer[0].items[i];
+  inv := WorldEdit.{ok = true, op = e.op, id = e.id};
+  if e.op == WE_DESPAWN { return spw_from(e, sl_remove(g, e.id - 1), e.id, we_spawn_of(was)); }
+  if e.op == WE_MOVE {
+    inv.x = we_cm(was.x); inv.y = we_cm(was.y); inv.z = we_cm(was.z);
+    r := sl_move(g, e.id - 1, e.x, e.z);
+    did := e; if r.ok { did.y = we_cm(g[0].layer[0].items[sl_item(g, e.id - 1)].y); }
+    return spw_from(did, r, e.id, inv);
+  }
+  if e.op == WE_ROTATE { inv.yaw = we_deg(was.yaw); return spw_from(e, sl_turn(g, e.id - 1, e.yaw), e.id, inv); }
+  // a set of where it stands or how it is turned is a move or a turn; a piece has no other column an edit sets
+  if e.op == WE_SET && (e.col == WEC_X || e.col == WEC_Z) {
+    m := WorldEdit.{ok = true, op = WE_MOVE, id = e.id, x = ifx e.col == WEC_X then e.v else we_cm(was.x), z = ifx e.col == WEC_Z then e.v else we_cm(was.z)};
+    if !we_valid(m) { return spw_no(SL_EDGE); }
+    return spw_edit(g, m, false);
+  }
+  if e.op == WE_SET && e.col == WEC_YAW {
+    if !we_turn_ok(e.v) { return spw_no(SL_TURN); }
+    return spw_edit(g, WorldEdit.{ok = true, op = WE_ROTATE, id = e.id, yaw = e.v}, false);
+  }
+  return spw_no(SPE_COLUMN);
+}
+// A refusal in words, into out.
+spw_why :: (g: [] SpGame, r: SpwEdit, out: [] u8) -> string {
+  if r.why == SPE_SIZE { return "Splice's pieces keep their size"; }
+  if r.why == SPE_LAND { return "Splice has no land to shape"; }
+  if r.why == SPE_COLUMN { return "a placed piece can be moved and turned; it has nothing else to set"; }
+  if r.why == SPE_TABLES { return "Splice's content tables change with a build, not with an edit"; }
+  if r.why == SPE_ID { return "that number is not free for a piece"; }
+  return sl_why(g, r.v, out);
+}
+
+// ---- a batch, as the server saves it
+
+SPB_OK :: 0;
+SPB_DOC :: 1;        // the document did not open (spw_open)
+SPB_BATCH :: 2;      // the body is not a batch
+SPB_STALE :: 3;      // made from another revision than the document's head
+SPB_REFUSED :: 4;    // an edit was refused: which, and why in words
+SPB_WALK :: 5;       // every edit stood, but the run can no longer be walked
+SPB_NOTHING :: 6;    // nothing to do
+SPB_ROOM :: 7;       // an answer did not fit
+// What a batch did. doc, did, inv: how many bytes of each out buffer hold the new document, the
+// batch as it was taken (every spawn numbered; an ORIGINAL as its removals) and the batch that
+// takes it back (the inverses, last first). edits: how many edits were taken. at: the edit refused.
+SpwBatch :: struct { status: int; doc: int; did: int; inv: int; why: int; edits: int; at: int = -1; }
+SpwWork :: struct { e: [WE_BATCH] WorldEdit; did: [WE_BATCH] WorldEdit; inv: [WE_BATCH] WorldEdit; k: [1] SpwScratch; w: [1] SwWalker; }
+// Carries a batch out on the document `doc`, on a game of its own (g is reset; the caller keeps
+// nothing in it). `fenced`: the batch must name the document's head (a page's or an agent's
+// edits); without it the revision is not asked (a stored step taken again by an undo or a redo,
+// which the caller has fenced already). Nothing is half done: a batch refused changes no answer.
+spw_batch :: (g: [] SpGame, x: [] SpwWork, doc: string, body: string, fenced: bool, out_doc: [] u8, out_did: [] u8, out_inv: [] u8, out_why: [] u8) -> SpwBatch {
+  b := SpwBatch.{};
+  g_reset(g);
+  g[0].px = g[0].at.bay_x; g[0].pz = g[0].at.bay_z;   // nobody stands in the server's world
+  opened := spw_open(g, x[0].k[..], doc);
+  if opened != SPW_OK {
+    b.status = SPB_DOC; b.why = ct_put(out_why, 0, spw_open_why(opened));
+    return b;
+  }
+  head := g[0].layer[0].head;
+  batch := we_batch_read(body, x[0].e[..]);
+  if !batch.ok || batch.what == WB_UNDO || batch.what == WB_REDO { b.status = SPB_BATCH; return b; }
+  if fenced && batch.rev != head { b.status = SPB_STALE; return b; }
+  n := batch.n;
+  if batch.what == WB_ORIGINAL {
+    // the designed world again: every placed piece removed, the newest first
+    n = g[0].layer[0].st[0].n;
+    if n > WE_BATCH { n = WE_BATCH; }
+    for i: 0..<n { x[0].e[i] = WorldEdit.{ok = true, op = WE_DESPAWN, id = g[0].layer[0].items[g[0].layer[0].st[0].n - 1 - i].id + 1}; }
+  }
+  if n == 0 { b.status = SPB_NOTHING; b.why = ct_put(out_why, 0, "nothing to change"); return b; }
+  for i: 0..<n {
+    r := spw_edit(g, x[0].e[i], false);
+    if !r.ok {
+      b.status = SPB_REFUSED; b.at = i;
+      wb: [200] u8; b.why = ct_put(out_why, 0, spw_why(g, r, wb[..]));
+      return b;
+    }
+    x[0].did[i] = r.did; x[0].inv[n - 1 - i] = r.inv;
+  }
+  // the second check: the run's whole way on foot against the layer as it would be saved
+  if g[0].layer[0].st[0].n > 0 {
+    keep := g[0].layer[0];
+    walk := sw_replay(g, x[0].w[..]);
+    if walk.why != SW_OK {
+      b.status = SPB_WALK;
+      wb: [200] u8; b.why = ct_put(out_why, 0, sw_why(g, walk, wb[..]));
+      return b;
+    }
+    g_reset(g); g[0].layer[0] = keep;
+  }
+  g[0].layer[0].head = head + n;
+  spw_build(g);
+  made := spw_save(g, x[0].k[..], out_doc);
+  did := we_batch_write(head, WB_APPLY, x[0].did[..], n, out_did);
+  inv := we_batch_write(head + n, WB_APPLY, x[0].inv[..], n, out_inv);
+  if made.count == 0 || did.count == 0 || inv.count == 0 || b.why > out_why.count { b.status = SPB_ROOM; return b; }
+  b.doc = made.count; b.did = did.count; b.inv = inv.count; b.edits = n;
+  return b;
+}
+// The document of Splice with nothing placed, at head 0: what the world is before its first edit.
+spw_empty :: (g: [] SpGame, k: [] SpwScratch, out: [] u8) -> string {
+  g_reset(g);
+  forge_scene_reset(sl_scene(g)); g[0].layer[0].head = 0; g[0].layer[0].rev += 1;
+  spw_build(g);
+  return spw_save(g, k, out);
+}

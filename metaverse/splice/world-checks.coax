@@ -1,0 +1,112 @@
+// The checks of Splice as a world with an ID (world.coax; GitHub #13412). splice-game.coax loads this
+// file with `#load ... #test;`.
+
+SpwTest :: struct { g: [1] SpGame; x: [1] SpwWork; doc: [SPW_DOC] u8; next: [SPW_DOC] u8; third: [SPW_DOC] u8; did: [WE_BATCH_BODY] u8; inv: [WE_BATCH_BODY] u8; back: [WE_BATCH_BODY] u8; why: [240] u8; }
+spt_why :: (t: [] SpwTest, b: SpwBatch) -> string { return cast(string) t[0].why[0..<b.why]; }
+// Two places the fixture layer uses: a palm by the scanner gate, a small crate by the rover's door.
+SPT_TWO :: "{\"schema\":\"world.edit.v1\",\"rev\":0,\"do\":\"apply\",\"edits\":[{\"op\":\"spawn\",\"id\":0,\"kind\":113,\"x\":17720,\"y\":0,\"z\":-7060,\"yaw\":0,\"scale\":100},{\"op\":\"spawn\",\"id\":0,\"kind\":117,\"x\":280,\"y\":0,\"z\":150,\"yaw\":0,\"scale\":100}]}";
+
+#test "Splice's world: the empty document opens, a batch places pieces, and the document it saves opens to the same bytes" #steps 4000000000 #traversal 2000000000 {
+  t := [1] SpwTest.[SpwTest.{}]; g := t[0].g[..];
+  empty := spw_empty(g, t[0].x[0].k[..], t[0].doc[..]);
+  #assert empty.count > 0 && spw_open(g, t[0].x[0].k[..], empty) == SPW_OK && g[0].layer[0].head == 0 && g[0].layer[0].st[0].n == 0;
+  b := spw_batch(g, t[0].x[..], empty, SPT_TWO, true, t[0].next[..], t[0].did[..], t[0].inv[..], t[0].why[..]);
+  #assert b.status == SPB_OK && b.edits == 2 && b.doc > 0 && b.at == -1;
+  doc := cast(string) t[0].next[0..<b.doc];
+  // the batch as taken numbers its spawns; its inverse removes them, the last first
+  #assert cast(string) t[0].did[0..<b.did] == "{\"schema\":\"world.edit.v1\",\"rev\":0,\"do\":\"apply\",\"edits\":[{\"op\":\"spawn\",\"id\":1,\"kind\":113,\"x\":17720,\"y\":0,\"z\":-7060,\"yaw\":0,\"scale\":100},{\"op\":\"spawn\",\"id\":2,\"kind\":117,\"x\":280,\"y\":0,\"z\":150,\"yaw\":0,\"scale\":100}]}";
+  #assert cast(string) t[0].inv[0..<b.inv] == "{\"schema\":\"world.edit.v1\",\"rev\":2,\"do\":\"apply\",\"edits\":[{\"op\":\"despawn\",\"id\":2},{\"op\":\"despawn\",\"id\":1}]}";
+  #assert spw_open(g, t[0].x[0].k[..], doc) == SPW_OK && g[0].layer[0].head == 2 && g[0].layer[0].st[0].n == 2 && g[0].layer[0].st[0].next_id == 2 && g[0].layer[0].items[1].mesh == 117;
+  #assert spw_save(g, t[0].x[0].k[..], t[0].third[..]) == doc;
+  // a second host given the same edits one at a time holds the same bytes
+  h := [1] SpGame.[SpGame.{}]; g_reset(h[..]); h[0].px = h[0].at.bay_x; h[0].pz = h[0].at.bay_z;
+  #assert spw_open(h[..], t[0].x[0].k[..], empty) == SPW_OK;
+  e: [WE_BATCH] WorldEdit; n := we_batch_read(SPT_TWO, e[..]).n;
+  for i: 0..<n { #assert spw_edit(h[..], e[i], false).ok; }
+  h[0].layer[0].head = 2; spw_build(h[..]);
+  #assert spw_save(h[..], t[0].x[0].k[..], t[0].third[..]) == doc && sl_digest(h[..]) == sl_digest(g);
+  // and a page that follows the saved edits, keeping its run, holds the same pieces
+  p := [1] SpGame.[SpGame.{}]; g_reset(p[..]); p[0].px = 177.2; p[0].pz = -70.6;   // you stand where the palm goes
+  #assert we_batch_read(cast(string) t[0].did[0..<b.did], e[..]).ok;
+  for i: 0..<n { r := spw_edit(p[..], e[i], true); #assert r.ok && r.id == i + 1; }
+  #assert p[0].layer[0].st[0].n == 2 && forge_same_item(p[0].layer[0].items[0], g[0].layer[0].items[0]) && forge_same_item(p[0].layer[0].items[1], g[0].layer[0].items[1]);
+  #assert !spw_edit(p[..], e[0], false).ok && spw_pins(p[..]).content == p[0].c[0].rev && spw_pins(p[..]).engine == SPW_ENGINE && spw_pins(p[..]).rules == SPW_RULES && spw_pins(p[..]).wire == SPW_WIRE;
+}
+#test "Splice's world: a stale batch, a refused edit and what is no batch change nothing, and a refusal names the zone" #steps 4000000000 #traversal 2000000000 {
+  t := [1] SpwTest.[SpwTest.{}]; g := t[0].g[..];
+  empty := spw_empty(g, t[0].x[0].k[..], t[0].doc[..]);
+  b := spw_batch(g, t[0].x[..], empty, sc_edit_swap(SPT_TWO, "\"rev\":0", "\"rev\":1", t[0].back[..]), true, t[0].next[..], t[0].did[..], t[0].inv[..], t[0].why[..]);
+  #assert b.status == SPB_STALE && b.doc == 0 && b.edits == 0;
+  // the same body, not fenced (a stored step taken again), is taken
+  #assert spw_batch(g, t[0].x[..], empty, sc_edit_swap(SPT_TWO, "\"rev\":0", "\"rev\":1", t[0].back[..]), false, t[0].next[..], t[0].did[..], t[0].inv[..], t[0].why[..]).status == SPB_OK;
+  // the second edit stands in the scanner gate's kept-clear zone: the whole batch is refused, and it says which edit and why
+  b = spw_batch(g, t[0].x[..], empty, sc_edit_swap(SPT_TWO, "\"x\":280,\"y\":0,\"z\":150", "\"x\":17500,\"y\":0,\"z\":-6700", t[0].back[..]), true, t[0].next[..], t[0].did[..], t[0].inv[..], t[0].why[..]);
+  #assert b.status == SPB_REFUSED && b.at == 1 && b.doc == 0 && spt_why(t[..], b) == "in the kept-clear zone 'Scanner gate'";
+  b = spw_batch(g, t[0].x[..], empty, sc_edit_swap(SPT_TWO, "\"kind\":113", "\"kind\":999", t[0].back[..]), true, t[0].next[..], t[0].did[..], t[0].inv[..], t[0].why[..]);
+  #assert b.status == SPB_REFUSED && b.at == 0 && spt_why(t[..], b) == "no piece has that content ID";
+  b = spw_batch(g, t[0].x[..], empty, sc_edit_swap(SPT_TWO, "\"scale\":100", "\"scale\":150", t[0].back[..]), true, t[0].next[..], t[0].did[..], t[0].inv[..], t[0].why[..]);
+  #assert b.status == SPB_REFUSED && spt_why(t[..], b) == "Splice's pieces keep their size";
+  // what Splice does not take, each in words
+  no := [5] string.["{\"op\":\"scale\",\"id\":1,\"scale\":150}", "{\"op\":\"terrain\",\"brush\":\"raise\",\"x\":300,\"z\":-200,\"r\":450,\"v\":80,\"mat\":3}", "{\"op\":\"cell\",\"table\":\"landmarks\",\"row\":16,\"col\":\"name\",\"v\":\"x\"}", "{\"op\":\"set\",\"id\":1,\"col\":\"hp\",\"v\":3}", "{\"op\":\"spawn\",\"id\":9,\"kind\":113,\"x\":17720,\"y\":0,\"z\":-7060,\"yaw\":0,\"scale\":100}"];
+  codes := [5] int.[SPE_SIZE, SPE_LAND, SPE_TABLES, SPE_COLUMN, SPE_ID];
+  #assert spw_open(g, t[0].x[0].k[..], empty) == SPW_OK && spw_edit(g, we_read("{\"op\":\"spawn\",\"id\":0,\"kind\":113,\"x\":17720,\"y\":0,\"z\":-7060,\"yaw\":0,\"scale\":100}"), false).ok;
+  for i: 0..<5 { r := spw_edit(g, we_read(no[i]), false); #assert !r.ok && r.why == codes[i] && spw_why(g, r, t[0].why[..]).count > 10; }
+  #assert !spw_edit(g, we_read("{\"op\":\"move\",\"id\":7,\"x\":0,\"y\":0,\"z\":0}"), false).ok && !spw_edit(g, WorldEdit.{}, false).ok && !spw_edit(g, WorldEdit.{}, true).ok && g[0].layer[0].st[0].n == 1;
+  // what is no batch, a document that is none, and an undo (the caller's to turn into a stored step)
+  #assert spw_batch(g, t[0].x[..], empty, "{}", true, t[0].next[..], t[0].did[..], t[0].inv[..], t[0].why[..]).status == SPB_BATCH;
+  #assert spw_batch(g, t[0].x[..], empty, WE_UNDO_FIXTURE, false, t[0].next[..], t[0].did[..], t[0].inv[..], t[0].why[..]).status == SPB_BATCH;
+  b = spw_batch(g, t[0].x[..], "world.doc.v1 splice\n", SPT_TWO, true, t[0].next[..], t[0].did[..], t[0].inv[..], t[0].why[..]);
+  #assert b.status == SPB_DOC && spt_why(t[..], b) == "that is not Splice's world document";
+  b = spw_batch(g, t[0].x[..], empty, "{\"schema\":\"world.edit.v1\",\"rev\":0,\"do\":\"original\",\"edits\":[]}", true, t[0].next[..], t[0].did[..], t[0].inv[..], t[0].why[..]);
+  #assert b.status == SPB_NOTHING && spt_why(t[..], b) == "nothing to change";
+  small: [64] u8;
+  #assert spw_batch(g, t[0].x[..], empty, SPT_TWO, true, small[..], t[0].did[..], t[0].inv[..], t[0].why[..]).status == SPB_ROOM && spw_batch(g, t[0].x[..], empty, SPT_TWO, true, t[0].next[..], small[..], t[0].inv[..], t[0].why[..]).status == SPB_ROOM;
+}
+#test "Splice's world: a batch's inverse takes it back, a move and a turn are edits, and ORIGINAL removes every piece and comes back whole" #steps 4000000000 #traversal 2000000000 {
+  t := [1] SpwTest.[SpwTest.{}]; g := t[0].g[..];
+  empty := spw_empty(g, t[0].x[0].k[..], t[0].doc[..]);
+  b := spw_batch(g, t[0].x[..], empty, SPT_TWO, true, t[0].next[..], t[0].did[..], t[0].inv[..], t[0].why[..]);
+  #assert b.status == SPB_OK;
+  two := cast(string) t[0].next[0..<b.doc];
+  // a move, a turn and a set of x on piece 2; the inverse says where it stood
+  m := spw_batch(g, t[0].x[..], two, "{\"schema\":\"world.edit.v1\",\"rev\":2,\"do\":\"apply\",\"edits\":[{\"op\":\"move\",\"id\":2,\"x\":300,\"y\":0,\"z\":120},{\"op\":\"rotate\",\"id\":2,\"yaw\":45},{\"op\":\"set\",\"id\":2,\"col\":\"x\",\"v\":310},{\"op\":\"set\",\"id\":2,\"col\":\"yaw\",\"v\":50}]}", true, t[0].third[..], t[0].did[..], t[0].inv[..], t[0].why[..]);
+  #assert m.status == SPB_OK && m.edits == 4;
+  #assert cast(string) t[0].inv[0..<m.inv] == "{\"schema\":\"world.edit.v1\",\"rev\":6,\"do\":\"apply\",\"edits\":[{\"op\":\"rotate\",\"id\":2,\"yaw\":45},{\"op\":\"move\",\"id\":2,\"x\":300,\"y\":0,\"z\":120},{\"op\":\"rotate\",\"id\":2,\"yaw\":0},{\"op\":\"move\",\"id\":2,\"x\":280,\"y\":0,\"z\":150}]}";
+  moved := cast(string) t[0].third[0..<m.doc];
+  // the inverse, taken unfenced as an undo is, gives the two pieces back where they stood
+  u := spw_batch(g, t[0].x[..], moved, cast(string) t[0].inv[0..<m.inv], false, t[0].doc[..], t[0].did[..], t[0].back[..], t[0].why[..]);
+  #assert u.status == SPB_OK && u.edits == 4;
+  undone := cast(string) t[0].doc[0..<u.doc];
+  #assert spw_open(g, t[0].x[0].k[..], undone) == SPW_OK && g[0].layer[0].head == 10 && we_cm(g[0].layer[0].items[1].x) == 280 && we_cm(g[0].layer[0].items[1].z) == 150 && we_deg(g[0].layer[0].items[1].yaw) == 0;
+  // ORIGINAL: both pieces go, the newest first; its inverse brings each back under its number
+  o := spw_batch(g, t[0].x[..], undone, "{\"schema\":\"world.edit.v1\",\"rev\":10,\"do\":\"original\",\"edits\":[]}", true, t[0].third[..], t[0].did[..], t[0].inv[..], t[0].why[..]);
+  #assert o.status == SPB_OK && o.edits == 2 && cast(string) t[0].did[0..<o.did] == "{\"schema\":\"world.edit.v1\",\"rev\":10,\"do\":\"apply\",\"edits\":[{\"op\":\"despawn\",\"id\":2},{\"op\":\"despawn\",\"id\":1}]}";
+  bare := cast(string) t[0].third[0..<o.doc];
+  #assert spw_open(g, t[0].x[0].k[..], bare) == SPW_OK && g[0].layer[0].st[0].n == 0 && g[0].layer[0].st[0].next_id == 2 && g[0].layer[0].head == 12;
+  r := spw_batch(g, t[0].x[..], bare, cast(string) t[0].inv[0..<o.inv], false, t[0].doc[..], t[0].did[..], t[0].back[..], t[0].why[..]);
+  #assert r.status == SPB_OK && spw_open(g, t[0].x[0].k[..], cast(string) t[0].doc[0..<r.doc]) == SPW_OK && g[0].layer[0].st[0].n == 2 && g[0].layer[0].items[0].id == 0 && g[0].layer[0].items[1].id == 1 && g[0].layer[0].items[1].mesh == 117 && g[0].layer[0].head == 14;
+  // a new piece after that never takes a number given before
+  n := spw_batch(g, t[0].x[..], cast(string) t[0].doc[0..<r.doc], "{\"schema\":\"world.edit.v1\",\"rev\":14,\"do\":\"apply\",\"edits\":[{\"op\":\"despawn\",\"id\":2},{\"op\":\"spawn\",\"id\":0,\"kind\":117,\"x\":280,\"y\":0,\"z\":150,\"yaw\":0,\"scale\":100}]}", true, t[0].third[..], t[0].did[..], t[0].inv[..], t[0].why[..]);
+  #assert n.status == SPB_OK && cast(string) t[0].inv[0..<n.inv] == "{\"schema\":\"world.edit.v1\",\"rev\":16,\"do\":\"apply\",\"edits\":[{\"op\":\"despawn\",\"id\":3},{\"op\":\"spawn\",\"id\":2,\"kind\":117,\"x\":280,\"y\":0,\"z\":150,\"yaw\":0,\"scale\":100}]}";
+}
+#test "Splice's world: a document this build would not write is refused, and a batch that stops the walk is not saved" #steps 4000000000 #traversal 2000000000 {
+  t := [1] SpwTest.[SpwTest.{}]; g := t[0].g[..];
+  empty := spw_empty(g, t[0].x[0].k[..], t[0].doc[..]);
+  // a World that was edited in place (its slots' generations moved on) is a true document of a
+  // World, with its own digest, but not the one a fresh game builds from the pieces
+  e: [WE_BATCH] WorldEdit; n := we_batch_read(SPT_TWO, e[..]).n;
+  #assert spw_open(g, t[0].x[0].k[..], empty) == SPW_OK;
+  for i: 0..<n { #assert spw_edit(g, e[i], false).ok; }
+  g[0].layer[0].head = 2;
+  worn := spw_save(g, t[0].x[0].k[..], t[0].next[..]);
+  #assert worn.count > 0 && spw_open(g, t[0].x[0].k[..], worn) == SPW_NOT_BUILT && spw_open_why(SPW_NOT_BUILT).count > 0 && spw_open_why(SPW_OK) == "";
+  // another world's document, another content revision, and what is no document
+  #assert spw_pieces(g, t[0].x[0].k[..], "") == SPW_NOT_DOC && spw_open_why(SPW_NOT_DOC) != spw_open_why(SPW_CONTENT) && spw_open_why(SPW_FULL).count > 0;
+  g[0].c[0].rev += 1;
+  #assert spw_pieces(g, t[0].x[0].k[..], empty) == SPW_CONTENT;
+  g[0].c[0].rev -= 1;
+  // with the scanner gate's kept-clear zone out of the tables the check lets a wall into the gate, and the walk refuses the batch
+  sc_drop_kept(g[0].c[..], 1);
+  b := spw_batch(g, t[0].x[..], empty, "{\"schema\":\"world.edit.v1\",\"rev\":0,\"do\":\"apply\",\"edits\":[{\"op\":\"spawn\",\"id\":0,\"kind\":116,\"x\":17500,\"y\":0,\"z\":-6700,\"yaw\":0,\"scale\":100}]}", true, t[0].next[..], t[0].did[..], t[0].inv[..], t[0].why[..]);
+  #assert b.status == SPB_WALK && b.doc == 0 && spt_why(t[..], b).count > 20;
+}

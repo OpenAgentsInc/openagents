@@ -7974,3 +7974,28 @@ bar or a new press is still refused once the maker is down. Checks:
 `released:` in the SRD engine, the two `(#13120)` checks in
 `everglade/zone-combat.coax`, and `casts: a cast released before its caster
 falls` in `room-casts.coax` (GitHub #13120).
+
+## A world's document changes only through fenced, checked edits
+
+Worlds with an ID (#13412; `docs/protocol/world-edit-v1.md`, `world-doc-v1.md`,
+`world-live-v1.md`):
+
+- A write to `/api/worlds/ID` is a `world.edit.v1` batch that names the dev
+  revision it was made from. Any other revision is refused whole, 409
+  (`coax/web/api/world-policy.coax` `wr_write`, `#authority`).
+- The server carries a batch out with the world's own Coax, the code its page
+  runs (Splice: `metaverse/splice/world.coax` `spw_batch`). One refused edit
+  refuses the batch, in words. The client is never trusted for placement.
+- The stored document is the one a fresh game builds from its own pieces. A
+  document this build would not write is refused (`spw_open`).
+- Each saved edit is one outbox row (`realm-authoring.world.edited.v1`),
+  written in the transaction that changes the document, one a revision.
+- An undo is saved as edits of its own, so every reader follows it the same way.
+- A session never takes a live revision whose pins (engine, rules, content,
+  wire) are not its own. An update that changes a pin starts with the next
+  session, and live keeps the revision before it for one release
+  (`metaverse-engine/editor/world-live.coax`, `#authority`).
+
+Checks: `coax/bin/coax test metaverse/splice/splice-game.coax --only "Splice's world"`,
+`coax/web/api/tests/world_checks.coax`, and `coax mutate` on the two
+`#authority` files.

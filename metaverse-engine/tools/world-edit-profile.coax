@@ -1,0 +1,78 @@
+// Checks proto/world/edit-v1.json against metaverse-engine/editor/world-edit.coax, the one codec of a
+// world's edits (GitHub #13412): each op's pinned bytes read as that op and write back the same;
+// each batch, event and answer reads and writes back the same; each rejected body reads as none
+// of them; the profile names itself, its version and this check.
+// Usage: coax/web/tool.sh metaverse-engine/tools/world-edit-profile.coax proto/world/edit-v1.json
+#import "Basic";
+#load "../editor/world-edit.coax";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+
+WEP_CHECK :: "coax/web/tool.sh metaverse-engine/tools/world-edit-profile.coax proto/world/edit-v1.json";
+WepWork :: struct { wire: [WE_BATCH_BODY] u8; out: [WE_BATCH_BODY] u8; doc: [4096] u8; did: [WE_BATCH_BODY] u8; e: [WE_BATCH] WorldEdit; words: [400] u8; }
+
+wep_str :: (d: Jv, at: int, out: [] u8) -> string {
+  n := jv_str(d, at, out);
+  return ifx n >= 0 then cast(string) out[0..<n] else "";
+}
+// Whether `wire` is of the kind the profile says (edit, batch, edited, published, state, refusal) and reads in its one form.
+wep_reads :: (w: [] WepWork, kind: string, wire: string) -> bool {
+  if kind == "edit" { e := we_read(wire); return e.ok && we_write(e, w[0].out[..]) == wire; }
+  if kind == "batch" { b := we_batch_read(wire, w[0].e[..]); return b.ok && we_batch_write(b.rev, b.what, w[0].e[..], b.n, w[0].out[..]) == wire; }
+  if kind == "edited" { return we_event_read(wire).ok && we_event_kind(wire) == 1; }
+  if kind == "published" { return we_published_read(wire).ok && we_event_kind(wire) == 2; }
+  if kind == "state" { return we_state_read(wire, w[0].doc[..], w[0].did[..], w[0].out[..]).ok; }
+  if kind == "refusal" { r := we_refusal_read(wire, w[0].words[..]); return r.ok && we_refusal_write(cast(string) w[0].words[0..<r.words_n], r.edit, w[0].out[..]) == wire; }
+  return false;
+}
+wep_check :: (w: [] WepWork, profile_json: string) -> bool {
+  nodes: [1024] JvNode; da: [1] Jv;
+  if !jv_parse(da[..], profile_json, nodes[..]) { return false; }
+  d := da[0];
+  nb: [128] u8; cb: [256] u8; kb: [32] u8; ob: [32] u8;
+  if wep_str(d, jv_get(d, 0, "profile"), nb[..]) != "world-edit-v1" || jv_int(d, jv_get(d, 0, "version"), 0) != 1 || wep_str(d, jv_get(d, 0, "check"), cb[..]) != WEP_CHECK { return false; }
+  if wep_str(d, jv_get(d, 0, "schema"), nb[..]) != WE_SCHEMA { return false; }
+  // every op, once, in the codec's order
+  edits := jv_get(d, 0, "edits");
+  if jv_kind(d, edits) != JV_ARRAY || jv_len(d, edits) != WE_OPS - 1 { return false; }
+  for i: 0..<WE_OPS - 1 {
+    e := jv_at(d, edits, i);
+    wire := wep_str(d, jv_get(d, e, "wire"), w[0].wire[..]);
+    if wep_str(d, jv_get(d, e, "op"), ob[..]) != WE_OP[i + 1] || wire.count == 0 || !wep_reads(w, "edit", wire) || we_read(wire).op != i + 1 { return false; }
+  }
+  // every `do` a batch has, both events and both answers
+  shapes := jv_get(d, 0, "shapes");
+  if jv_kind(d, shapes) != JV_ARRAY || jv_len(d, shapes) < WE_DOS + 4 { return false; }
+  seen_do: [WE_DOS] bool; kinds := 0;
+  for i: 0..<jv_len(d, shapes) {
+    e := jv_at(d, shapes, i);
+    kind := wep_str(d, jv_get(d, e, "kind"), kb[..]);
+    wire := wep_str(d, jv_get(d, e, "wire"), w[0].wire[..]);
+    if wire.count == 0 || !wep_reads(w, kind, wire) { return false; }
+    if kind == "batch" { b := we_batch_read(wire, w[0].e[..]); seen_do[b.what] = true; }
+    if kind == "edited" { kinds |= 1; } if kind == "published" { kinds |= 2; } if kind == "state" { kinds |= 4; } if kind == "refusal" { kinds |= 8; }
+  }
+  for k: 0..<WE_DOS { if !seen_do[k] { return false; } }
+  if kinds != 15 { return false; }
+  rej := jv_get(d, 0, "rejected");
+  if jv_kind(d, rej) != JV_ARRAY || jv_len(d, rej) < 8 { return false; }
+  for i: 0..<jv_len(d, rej) {
+    n := jv_str(d, jv_at(d, rej, i), w[0].wire[..]);
+    if n < 0 { return false; }
+    wire := cast(string) w[0].wire[0..<n];
+    if wep_reads(w, "edit", wire) || wep_reads(w, "batch", wire) || wep_reads(w, "edited", wire) || wep_reads(w, "published", wire) || wep_reads(w, "state", wire) { return false; }
+  }
+  return true;
+}
+#test "world edit profile tool refuses a profile that is not one" { w := [1] WepWork.[WepWork.{}]; #assert !wep_check(w[..], "{}") && !wep_check(w[..], "bad"); }
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) != 1 { tool_errln("usage: world-edit-profile FILE.json"); return 2; }
+  raw: [131072] u8; n := fs_read(args_at(a[..], 0), raw[..]);
+  if n <= 0 { tool_errln("world-edit-profile: cannot read JSON"); return 2; }
+  w := [1] WepWork.[WepWork.{}];
+  if !wep_check(w[..], cast(string) raw[0..<n]) { print("world-edit-v1: profile fails\n"); return 1; }
+  print("world-edit-v1: profile holds\n");
+  return 0;
+}

@@ -1,0 +1,31 @@
+// The fixtures of metaverse-engine/editor/world-edit.coax's checks (proto/world/edit-v1.json holds the
+// same bytes; metaverse-engine/tools/world-edit-profile.coax holds the file to them).
+WE_FIXTURE_N :: 8;
+WE_FIXTURE :: [WE_FIXTURE_N] string.[
+  "{\"op\":\"spawn\",\"id\":0,\"kind\":102,\"x\":-160,\"y\":0,\"z\":-5120,\"yaw\":90,\"scale\":100}",
+  "{\"op\":\"despawn\",\"id\":7}",
+  "{\"op\":\"set\",\"id\":7,\"col\":\"height\",\"v\":250}",
+  "{\"op\":\"move\",\"id\":7,\"x\":1250,\"y\":30,\"z\":-400}",
+  "{\"op\":\"rotate\",\"id\":7,\"yaw\":-45}",
+  "{\"op\":\"scale\",\"id\":7,\"scale\":150}",
+  "{\"op\":\"cell\",\"table\":\"landmarks\",\"row\":16,\"col\":\"name\",\"v\":\"Dance \\\"floor\\\"\"}",
+  "{\"op\":\"terrain\",\"brush\":\"raise\",\"x\":300,\"z\":-200,\"r\":450,\"v\":80,\"mat\":3}"];
+WE_BATCH_FIXTURE :: "{\"schema\":\"world.edit.v1\",\"rev\":41,\"do\":\"apply\",\"edits\":[{\"op\":\"spawn\",\"id\":0,\"kind\":102,\"x\":-160,\"y\":0,\"z\":-5120,\"yaw\":90,\"scale\":100},{\"op\":\"despawn\",\"id\":7},{\"op\":\"set\",\"id\":7,\"col\":\"height\",\"v\":250},{\"op\":\"move\",\"id\":7,\"x\":1250,\"y\":30,\"z\":-400},{\"op\":\"rotate\",\"id\":7,\"yaw\":-45},{\"op\":\"scale\",\"id\":7,\"scale\":150},{\"op\":\"cell\",\"table\":\"landmarks\",\"row\":16,\"col\":\"name\",\"v\":\"Dance \\\"floor\\\"\"},{\"op\":\"terrain\",\"brush\":\"raise\",\"x\":300,\"z\":-200,\"r\":450,\"v\":80,\"mat\":3}]}";
+WE_UNDO_FIXTURE :: "{\"schema\":\"world.edit.v1\",\"rev\":7,\"do\":\"undo\",\"edits\":[]}";
+WE_EVENT_FIXTURE :: "{\"id\":\"realm-authoring.world.edited.v1\",\"seq\":912,\"world\":\"splice\",\"rev\":42,\"edit\":{\"op\":\"spawn\",\"id\":0,\"kind\":102,\"x\":-160,\"y\":0,\"z\":-5120,\"yaw\":90,\"scale\":100},\"at\":1762190000000}";
+WE_PUBLISH_FIXTURE :: "{\"schema\":\"world.edit.v1\",\"rev\":3,\"do\":\"publish-next\",\"edits\":[]}";
+WE_PUBLISHED_FIXTURE :: "{\"id\":\"realm-authoring.world.published.v1\",\"seq\":913,\"world\":\"splice\",\"rev\":3,\"from\":42,\"when\":\"next\",\"engine\":1,\"rules\":1,\"content\":2,\"wire\":1,\"at\":1762190000500}";
+WE_STATE_FIXTURE :: "{\"schema\":\"world.state.v1\",\"id\":\"splice\",\"lane\":\"dev\",\"rev\":43,\"build\":[1,1,2,1],\"dev\":43,\"live\":3,\"when\":\"now\",\"undo\":2,\"redo\":1,\"doc\":\"world.doc.v1 splice\\ncontent 2\\n\"}";
+WE_REFUSAL_FIXTURE :: "{\"error\":\"in the kept-clear zone 'Scanner gate'\",\"edit\":1}";
+// `was` in `s` swapped for `with`, into out (the first place it stands; s itself when it does not).
+sc_edit_swap :: (s: string, was: string, with: string, out: [] u8) -> string {
+  for i: 0..<s.count - was.count + 1 {
+    if s[i..<i + was.count] != was { continue; }
+    n := 0;
+    for k: 0..<i { out[n] = s[k]; n += 1; }
+    for k: 0..<with.count { out[n] = with[k]; n += 1; }
+    for k: i + was.count..<s.count { out[n] = s[k]; n += 1; }
+    return cast(string) out[0..<n];
+  }
+  return s;
+}

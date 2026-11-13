@@ -15,8 +15,10 @@
 #load "walk.coax";
 #load "layer-fixture.coax";
 #load "layer-draw.coax";
+#load "world.coax";
 #load "layer-checks.coax" #test;   // the colliders' and the layer's checks
 #load "walk-checks.coax" #test;    // the walk replay's, the fixture layer's and the kept-clear zones' checks
+#load "world-checks.coax" #test;   // the world document's and the saved batch's checks
 #load "splice-cast.coax";
 #load "why.coax";                  // the answers to `why ID` (metaverse-engine/agent/why.coax, #13429)
 #load "why-checks.coax" #test;

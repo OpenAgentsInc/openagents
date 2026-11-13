@@ -18153,6 +18153,33 @@ CREATE FUNCTION verse.voice_realm_name(realm text) RETURNS text
 
 
 --
+-- Name: world_outbox; Type: TABLE; Schema: verse; Owner: -
+--
+
+CREATE TABLE verse.world_outbox (
+    seq bigint NOT NULL,
+    event text NOT NULL,
+    world text NOT NULL,
+    lane text NOT NULL,
+    rev bigint NOT NULL,
+    body text NOT NULL,
+    at_ms bigint NOT NULL,
+    CONSTRAINT world_outbox_at_ms_check CHECK ((at_ms > 0)),
+    CONSTRAINT world_outbox_lane_check CHECK ((lane = ANY (ARRAY['dev'::text, 'live'::text]))),
+    CONSTRAINT world_outbox_rev_check CHECK ((rev >= 1))
+);
+
+
+--
+-- Name: world_outbox_since(text, text, bigint, integer); Type: FUNCTION; Schema: verse; Owner: -
+--
+
+CREATE FUNCTION verse.world_outbox_since(w text, l text, after bigint, n integer) RETURNS SETOF verse.world_outbox
+    LANGUAGE sql STABLE
+    AS $$ SELECT * FROM verse.world_outbox WHERE world = w AND lane = l AND rev > after ORDER BY rev LIMIT least(greatest(n, 0), 500) $$;
+
+
+--
 -- Name: worlds_answer(jsonb); Type: FUNCTION; Schema: verse; Owner: -
 --
 
@@ -22643,6 +22670,60 @@ ALTER SEQUENCE verse.voice_edits_id_seq OWNED BY verse.voice_edits.id;
 
 
 --
+-- Name: world_docs; Type: TABLE; Schema: verse; Owner: -
+--
+
+CREATE TABLE verse.world_docs (
+    id text NOT NULL,
+    kind text NOT NULL,
+    dev_rev bigint DEFAULT 0 NOT NULL,
+    dev_doc text DEFAULT ''::text NOT NULL,
+    done integer DEFAULT 0 NOT NULL,
+    steps integer DEFAULT 0 NOT NULL,
+    live_rev bigint DEFAULT 0 NOT NULL,
+    live_from bigint DEFAULT '-1'::integer NOT NULL,
+    live_doc text DEFAULT ''::text NOT NULL,
+    live_when integer DEFAULT 0 NOT NULL,
+    live_engine integer DEFAULT 0 NOT NULL,
+    live_rules integer DEFAULT 0 NOT NULL,
+    live_content integer DEFAULT 0 NOT NULL,
+    live_wire integer DEFAULT 0 NOT NULL,
+    prev_rev bigint DEFAULT 0 NOT NULL,
+    prev_doc text DEFAULT ''::text NOT NULL,
+    prev_engine integer DEFAULT 0 NOT NULL,
+    prev_rules integer DEFAULT 0 NOT NULL,
+    prev_content integer DEFAULT 0 NOT NULL,
+    prev_wire integer DEFAULT 0 NOT NULL,
+    CONSTRAINT world_docs_check CHECK ((steps >= done)),
+    CONSTRAINT world_docs_dev_rev_check CHECK ((dev_rev >= 0)),
+    CONSTRAINT world_docs_done_check CHECK ((done >= 0)),
+    CONSTRAINT world_docs_id_check CHECK ((id ~ '^[a-z][a-z0-9-]{0,31}$'::text)),
+    CONSTRAINT world_docs_live_rev_check CHECK ((live_rev >= 0)),
+    CONSTRAINT world_docs_live_when_check CHECK ((live_when = ANY (ARRAY[0, 1]))),
+    CONSTRAINT world_docs_prev_rev_check CHECK ((prev_rev >= 0))
+);
+
+
+--
+-- Name: world_outbox_seq_seq; Type: SEQUENCE; Schema: verse; Owner: -
+--
+
+CREATE SEQUENCE verse.world_outbox_seq_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: world_outbox_seq_seq; Type: SEQUENCE OWNED BY; Schema: verse; Owner: -
+--
+
+ALTER SEQUENCE verse.world_outbox_seq_seq OWNED BY verse.world_outbox.seq;
+
+
+--
 -- Name: world_state; Type: TABLE; Schema: verse; Owner: -
 --
 
@@ -22652,6 +22733,19 @@ CREATE TABLE verse.world_state (
     settings jsonb DEFAULT '{}'::jsonb NOT NULL,
     settings_ms bigint,
     settings_by text
+);
+
+
+--
+-- Name: world_steps; Type: TABLE; Schema: verse; Owner: -
+--
+
+CREATE TABLE verse.world_steps (
+    world text NOT NULL,
+    n integer NOT NULL,
+    did text NOT NULL,
+    inv text NOT NULL,
+    CONSTRAINT world_steps_n_check CHECK ((n >= 0))
 );
 
 
@@ -23152,6 +23246,13 @@ ALTER TABLE ONLY verse.service_alerts ALTER COLUMN id SET DEFAULT nextval('verse
 --
 
 ALTER TABLE ONLY verse.voice_edits ALTER COLUMN id SET DEFAULT nextval('verse.voice_edits_id_seq'::regclass);
+
+
+--
+-- Name: world_outbox seq; Type: DEFAULT; Schema: verse; Owner: -
+--
+
+ALTER TABLE ONLY verse.world_outbox ALTER COLUMN seq SET DEFAULT nextval('verse.world_outbox_seq_seq'::regclass);
 
 
 --
@@ -24799,11 +24900,43 @@ ALTER TABLE ONLY verse.voice_edits
 
 
 --
+-- Name: world_docs world_docs_pkey; Type: CONSTRAINT; Schema: verse; Owner: -
+--
+
+ALTER TABLE ONLY verse.world_docs
+    ADD CONSTRAINT world_docs_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: world_outbox world_outbox_pkey; Type: CONSTRAINT; Schema: verse; Owner: -
+--
+
+ALTER TABLE ONLY verse.world_outbox
+    ADD CONSTRAINT world_outbox_pkey PRIMARY KEY (seq);
+
+
+--
+-- Name: world_outbox world_outbox_world_lane_rev_key; Type: CONSTRAINT; Schema: verse; Owner: -
+--
+
+ALTER TABLE ONLY verse.world_outbox
+    ADD CONSTRAINT world_outbox_world_lane_rev_key UNIQUE (world, lane, rev);
+
+
+--
 -- Name: world_state world_state_pkey; Type: CONSTRAINT; Schema: verse; Owner: -
 --
 
 ALTER TABLE ONLY verse.world_state
     ADD CONSTRAINT world_state_pkey PRIMARY KEY (world);
+
+
+--
+-- Name: world_steps world_steps_pkey; Type: CONSTRAINT; Schema: verse; Owner: -
+--
+
+ALTER TABLE ONLY verse.world_steps
+    ADD CONSTRAINT world_steps_pkey PRIMARY KEY (world, n);
 
 
 --
@@ -26486,6 +26619,22 @@ ALTER TABLE ONLY verse.room_kicks
 
 ALTER TABLE ONLY verse.seats
     ADD CONSTRAINT seats_player_fkey FOREIGN KEY (player) REFERENCES verse.players(id);
+
+
+--
+-- Name: world_outbox world_outbox_world_fkey; Type: FK CONSTRAINT; Schema: verse; Owner: -
+--
+
+ALTER TABLE ONLY verse.world_outbox
+    ADD CONSTRAINT world_outbox_world_fkey FOREIGN KEY (world) REFERENCES verse.world_docs(id) ON DELETE CASCADE;
+
+
+--
+-- Name: world_steps world_steps_world_fkey; Type: FK CONSTRAINT; Schema: verse; Owner: -
+--
+
+ALTER TABLE ONLY verse.world_steps
+    ADD CONSTRAINT world_steps_world_fkey FOREIGN KEY (world) REFERENCES verse.world_docs(id) ON DELETE CASCADE;
 
 
 --

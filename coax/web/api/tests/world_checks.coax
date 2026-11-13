@@ -1,0 +1,158 @@
+// A world's document through the API's routes (GitHub #13412, the browser editor's E3): Splice,
+// the first world with an ID, read and edited at /api/worlds/splice against test.sh's throwaway
+// Postgres and API. Who may write (an admin, signed), the revision fence (409), a refusal in words
+// naming the zone (422), the undo log, ORIGINAL, one outbox event a saved edit, and the dev and
+// live revisions with the now and next-session rule and the revision kept for one release.
+// Every body is read through the codec the API writes it with (metaverse-engine/editor/world-edit.coax).
+//   API=... PGURL=... PSQL=... SIGN=... ADMIN_KEY=... OTHER_KEY=... coax/web/tool.sh coax/web/api/tests/world_checks.coax
+#load "api_harness.coax";
+#load "../../../../metaverse-engine/editor/world-edit.coax";
+#load "../../../../metaverse-engine/editor/world-live.coax";
+
+WC_PATH :: "/api/worlds/splice";
+// A palm by the scanner gate and a small crate by the rover's door, as metaverse/splice/world-checks.coax places them.
+WC_SPAWNS :: "{\"op\":\"spawn\",\"id\":0,\"kind\":113,\"x\":17720,\"y\":0,\"z\":-7060,\"yaw\":0,\"scale\":100},{\"op\":\"spawn\",\"id\":0,\"kind\":117,\"x\":280,\"y\":0,\"z\":150,\"yaw\":0,\"scale\":100}";
+WC_IN_GATE :: "{\"op\":\"spawn\",\"id\":0,\"kind\":113,\"x\":17500,\"y\":0,\"z\":-6700,\"yaw\":0,\"scale\":100}";
+
+Wc :: struct { doc: [200000] u8; did: [WE_BATCH_BODY] u8; scratch: [400000] u8; st: WorldState; words: [300] u8; content: int; }
+wc_batch :: (b: [] Sb, rev: int, what: string, edits: string) -> string {
+  sb_clear(b); sb(b, "{\"schema\":\"world.edit.v1\",\"rev\":"); sb_int(b, rev); sb(b, ",\"do\":\""); sb(b, what); sb(b, "\",\"edits\":["); sb(b, edits); sb(b, "]}");
+  return sb_text(b);
+}
+// A signed POST of a batch: its status. The answer's state, when it is one, is in w[0].st.
+wc_post :: (t: [] Ap, w: [] Wc, key: string, rev: int, what: string, edits: string) -> int {
+  b: [1] Sb; body := wc_batch(b[..], rev, what, edits);
+  url: [1] Sb; sb(url[..], t[0].api); sb(url[..], WC_PATH);
+  sig: [4096] u8; s := ap_nostr(t, key, "POST", sb_text(url[..]), body, true, sig[..]);
+  auth: [1] Sb; sb(auth[..], "Authorization: Nostr "); sb(auth[..], s);
+  h := [2] string.["Content-Type: application/json", sb_text(auth[..])];
+  st := ap_call(t, "POST", WC_PATH, body, h[..]);
+  w[0].st = we_state_read(ap_body(t), w[0].doc[..], w[0].did[..], w[0].scratch[..]);
+  return st;
+}
+wc_get :: (t: [] Ap, w: [] Wc, query: string) -> int {
+  p: [1] Sb; sb(p[..], WC_PATH); sb(p[..], query);
+  st := ap_call(t, "GET", sb_text(p[..]), "", t[0].no[0..<0]);
+  w[0].st = we_state_read(ap_body(t), w[0].doc[..], w[0].did[..], w[0].scratch[..]);
+  return st;
+}
+wc_doc :: (w: [] Wc) -> string { return cast(string) w[0].doc[0..<w[0].st.doc_n]; }
+wc_did :: (w: [] Wc) -> string { return cast(string) w[0].did[0..<w[0].st.did_n]; }
+// A refusal's words, and the edit it names in `edit`.
+wc_refusal :: (t: [] Ap, w: [] Wc, edit: [] int) -> string {
+  r := we_refusal_read(ap_body(t), w[0].words[..]);
+  edit[0] = r.edit;
+  return ifx r.ok then cast(string) w[0].words[0..<r.words_n] else "";
+}
+wc_reset :: (t: [] Ap) {
+  ap_do(t, "DELETE FROM verse.world_outbox WHERE world = 'splice'; DELETE FROM verse.world_steps WHERE world = 'splice'; DELETE FROM verse.world_docs WHERE id = 'splice'; INSERT INTO verse.world_docs (id, kind) VALUES ('splice', 'splice');");
+}
+// The lines of an events answer: how many, and each read by the codec. `first`: the revision the first carries.
+wc_events :: (t: [] Ap, query: string, first: int, kind: int) -> int {
+  p: [1] Sb; sb(p[..], WC_PATH); sb(p[..], "/events"); sb(p[..], query);
+  if ap_call(t, "GET", sb_text(p[..]), "", t[0].no[0..<0]) != 200 { return -1; }
+  body := ap_body(t); at := 0; n := 0;
+  while at < body.count {
+    end := at;
+    while end < body.count && body[end] != '\n' { end += 1; }
+    line := body[at..<end]; at = end + 1;
+    if we_event_kind(line) != kind { return -2; }
+    if kind == 1 { v := we_event_read(line); if !v.ok || v.rev != first + n || !we_event_world_is(v, "splice") { return -3; } }
+    if kind == 2 { v := we_published_read(line); if !v.ok || v.rev != first + n { return -3; } }
+    n += 1;
+  }
+  return n;
+}
+
+wc_checks :: (t: [] Ap, w: [] Wc, other: string) {
+  edit: [1] int; q: [200] u8;
+  wc_reset(t);
+  // ---- reading
+  ap_check(t, "world: a world nobody made is not found", wc_get(t, w, "?lane=dev") == 200 && ap_call(t, "GET", "/api/worlds/nope?lane=dev", "", t[0].no[0..<0]) == 404 && ap_call(t, "GET", "/api/worlds/Splice", "", t[0].no[0..<0]) == 404, ap_body(t));
+  st := wc_get(t, w, "?lane=dev");
+  ap_check(t, "world: Splice's dev revision reads before its first edit: revision 0 and its document", st == 200 && w[0].st.ok && w[0].st.rev == 0 && w[0].st.dev == 0 && w[0].st.live == 0 && w[0].st.undo == 0 && w[0].st.redo == 0 && w[0].st.build[0] == 1 && w[0].st.build[3] == 1 && ap_starts(wc_doc(w), "world.doc.v1 splice\ncontent "), ap_body(t));
+  w[0].content = ap_whole(ct_part(ct_part(wc_doc(w), '\n', 1), ' ', 1));
+  ap_check(t, "world: an answer names the build that reads it: its content pin is the document's", w[0].st.build[2] == w[0].content && w[0].content >= 1, "");
+  st = wc_get(t, w, "");
+  ap_check(t, "world: nothing is live until a publish", st == 404 && wc_refusal(t, w, edit[..]) == "nothing is published yet" && wc_get(t, w, "?lane=side") == 400, ap_body(t));
+  // ---- who may write
+  b: [1] Sb;
+  st = ap_json(t, "POST", WC_PATH, wc_batch(b[..], 0, "apply", WC_SPAWNS));
+  ap_check(t, "world: a write nobody signed is asked to log in", st == 401 && wc_refusal(t, w, edit[..]) == "log in as an admin", ap_body(t));
+  st = wc_post(t, w, other, 0, "apply", WC_SPAWNS);
+  ap_check(t, "world: a signed write by someone who is no admin is refused", st == 403 && wc_refusal(t, w, edit[..]) == "only an admin changes this world", ap_body(t));
+  ho := [2] string.["Content-Type: application/json", "Origin: https://evil.example"];
+  st = ap_call(t, "POST", WC_PATH, wc_batch(b[..], 0, "apply", WC_SPAWNS), ho[..]);
+  ap_check(t, "world: a write from another site's page is refused", st == 403 && wc_refusal(t, w, edit[..]) == "cross-site", ap_body(t));
+  st = wc_post(t, w, t[0].admin_key, 0, "save", "");
+  ap_check(t, "world: what is no batch is refused, and nothing was written so far", st == 400 && ap_sql(t, "SELECT dev_rev || ' ' || steps || ' ' || (SELECT count(*) FROM verse.world_outbox WHERE world = 'splice') FROM verse.world_docs WHERE id = 'splice'", q[..]) == "0 0 0", ap_body(t));
+  // ---- an admin's edits
+  st = wc_post(t, w, t[0].admin_key, 0, "apply", WC_SPAWNS);
+  ap_check(t, "world: an admin's batch is saved: the revision moves one an edit and the answer numbers the spawns", st == 200 && w[0].st.ok && w[0].st.rev == 2 && w[0].st.dev == 2 && w[0].st.undo == 1 && w[0].st.redo == 0 && ap_has(wc_did(w), "{\"op\":\"spawn\",\"id\":1,\"kind\":113,") && ap_has(wc_did(w), "{\"op\":\"spawn\",\"id\":2,\"kind\":117,"), ap_body(t));
+  st = wc_post(t, w, t[0].admin_key, 0, "apply", WC_SPAWNS);
+  ap_check(t, "world: a batch made from a stale revision is refused, 409", st == 409 && wc_refusal(t, w, edit[..]) == "the world changed since you read it: read it again", ap_body(t));
+  st = wc_post(t, w, t[0].admin_key, 2, "apply", WC_IN_GATE);
+  ap_check(t, "world: an edit Splice's own check refuses is refused in words that name the zone, and nothing is saved", st == 422 && wc_refusal(t, w, edit[..]) == "in the kept-clear zone 'Scanner gate'" && edit[0] == 0 && ap_sql(t, "SELECT dev_rev FROM verse.world_docs WHERE id = 'splice'", q[..]) == "2", ap_body(t));
+  st = wc_get(t, w, "?lane=dev");
+  ap_check(t, "world: the saved document reads back at its head", st == 200 && w[0].st.rev == 2 && ap_has(wc_doc(w), "\nhead 2 3\n"), "");
+  ap_check(t, "world: a saved edit is one event, in order, read by the codec", wc_events(t, "?lane=dev&after=0", 1, 1) == 2 && wc_events(t, "?lane=dev&after=1", 2, 1) == 1 && wc_events(t, "?lane=dev&after=2", 3, 1) == 0 && wc_events(t, "?lane=x", 1, 1) == -1, ap_body(t));
+  // ---- the undo log
+  st = wc_post(t, w, t[0].admin_key, 2, "undo", "");
+  ap_check(t, "world: an undo takes the batch back as edits of its own", st == 200 && w[0].st.rev == 4 && w[0].st.undo == 0 && w[0].st.redo == 1 && ap_has(wc_did(w), "{\"op\":\"despawn\",\"id\":2},{\"op\":\"despawn\",\"id\":1}"), ap_body(t));
+  st = wc_post(t, w, t[0].admin_key, 4, "undo", "");
+  ap_check(t, "world: with nothing to undo, an undo says so", st == 422 && wc_refusal(t, w, edit[..]) == "nothing to undo", ap_body(t));
+  st = wc_post(t, w, t[0].admin_key, 4, "redo", "");
+  ap_check(t, "world: a redo brings each piece back under its number", st == 200 && w[0].st.rev == 6 && w[0].st.undo == 1 && w[0].st.redo == 0 && ap_has(wc_did(w), "{\"op\":\"spawn\",\"id\":1,") && ap_has(wc_did(w), "{\"op\":\"spawn\",\"id\":2,"), ap_body(t));
+  st = wc_post(t, w, t[0].admin_key, 6, "redo", "");
+  ap_check(t, "world: with nothing to redo, a redo says so", st == 422 && wc_refusal(t, w, edit[..]) == "nothing to redo", ap_body(t));
+  st = wc_post(t, w, t[0].admin_key, 6, "apply", "{\"op\":\"move\",\"id\":2,\"x\":300,\"y\":0,\"z\":120},{\"op\":\"rotate\",\"id\":2,\"yaw\":45}");
+  ap_check(t, "world: a move and a turn are edits", st == 200 && w[0].st.rev == 8 && w[0].st.undo == 2, ap_body(t));
+  st = wc_post(t, w, t[0].admin_key, 8, "undo", "");
+  moved := st == 200 && w[0].st.rev == 10 && w[0].st.redo == 1;
+  st = wc_post(t, w, t[0].admin_key, 10, "apply", "{\"op\":\"despawn\",\"id\":1}");
+  ap_check(t, "world: a new edit after an undo cuts the steps ahead of it", moved && st == 200 && w[0].st.rev == 11 && w[0].st.undo == 2 && w[0].st.redo == 0 && ap_sql(t, "SELECT count(*) || ' ' || max(n) FROM verse.world_steps WHERE world = 'splice'", q[..]) == "2 1", ap_body(t));
+  ap_check(t, "world: the outbox holds one event a revision", ap_sql(t, "SELECT count(*) || ' ' || max(rev) || ' ' || count(DISTINCT seq) FROM verse.world_outbox WHERE world = 'splice' AND lane = 'dev'", q[..]) == "11 11 11" && wc_events(t, "?lane=dev&after=0", 1, 1) == 11, "");
+  // ---- dev and live
+  st = wc_post(t, w, t[0].admin_key, 10, "publish-now", "");
+  ap_check(t, "world: a publish names the dev revision it read", st == 409, ap_body(t));
+  st = wc_post(t, w, t[0].admin_key, 11, "publish-now", "");
+  ap_check(t, "world: a publish makes dev live", st == 200 && w[0].st.ok && w[0].st.lane == WL_LIVE && w[0].st.rev == 1 && w[0].st.live == 1 && w[0].st.dev == 11 && w[0].st.when == WU_NOW, ap_body(t));
+  st = wc_post(t, w, t[0].admin_key, 11, "publish-next", "");
+  ap_check(t, "world: a publish of what is live already says so", st == 422 && wc_refusal(t, w, edit[..]) == "live is already this revision", ap_body(t));
+  st = wc_get(t, w, "");
+  live_ok := st == 200 && w[0].st.lane == WL_LIVE && w[0].st.rev == 1 && ap_has(wc_doc(w), "\nhead 11 ");
+  p: [1] Sb; sb(p[..], "?lane=live&engine=1&rules=1&wire=1&content="); sb_int(p[..], w[0].content);
+  st = wc_get(t, w, sb_text(p[..]));
+  mine_ok := st == 200 && w[0].st.rev == 1;
+  sb_clear(p[..]); sb(p[..], "?lane=live&engine=1&rules=1&wire=9&content="); sb_int(p[..], w[0].content);
+  st = wc_get(t, w, sb_text(p[..]));
+  ap_check(t, "world: live is read by anyone, and by a page whose build reads it; a page on other pins is told to reload", live_ok && mine_ok && st == 409 && wc_refusal(t, w, edit[..]) == "this page is older than the world: reload it", ap_body(t));
+  ap_check(t, "world: a publish is one event of the live lane, with the build's pins", wc_events(t, "?lane=live&after=0", 1, 2) == 1 && ap_has(ap_body(t), "\"from\":11,\"when\":\"now\",\"engine\":1,\"rules\":1,"), ap_body(t));
+  // live as a newer build would have published it (its wire raised): this build's update can't start now
+  st = wc_post(t, w, t[0].admin_key, 11, "apply", "{\"op\":\"rotate\",\"id\":2,\"yaw\":90}");
+  ap_do(t, "UPDATE verse.world_docs SET live_wire = 2 WHERE id = 'splice'");
+  st = wc_post(t, w, t[0].admin_key, 12, "publish-now", "");
+  not_now := st == 422 && ap_has(wc_refusal(t, w, edit[..]), "it starts with the next session");
+  st = wc_post(t, w, t[0].admin_key, 12, "publish-next", "");
+  ap_check(t, "world: an update that changes a pin is refused for now and taken for the next session; the revision before it is kept", not_now && st == 200 && w[0].st.rev == 2 && w[0].st.when == WU_NEXT && ap_sql(t, "SELECT prev_rev || ' ' || prev_wire || ' ' || live_wire || ' ' || live_when || ' ' || live_from FROM verse.world_docs WHERE id = 'splice'", q[..]) == "1 2 1 1 12", ap_body(t));
+  sb_clear(p[..]); sb(p[..], "?lane=live&engine=1&rules=1&wire=2&content="); sb_int(p[..], w[0].content);
+  st = wc_get(t, w, sb_text(p[..]));
+  ap_check(t, "world: a session still on the pins before joins the revision kept for it", st == 200 && w[0].st.rev == 1 && ap_has(wc_doc(w), "\nhead 11 "), ap_body(t));
+  // a repair on the same pins leaves the kept revision as it is
+  st = wc_post(t, w, t[0].admin_key, 12, "original", "");
+  bare := st == 200 && w[0].st.rev == 13 && ap_has(wc_did(w), "{\"op\":\"despawn\",\"id\":");
+  st = wc_post(t, w, t[0].admin_key, 13, "publish-now", "");
+  ap_check(t, "world: ORIGINAL removes every placed piece, and a publish on the same pins is taken now and leaves the kept revision", bare && st == 200 && w[0].st.rev == 3 && w[0].st.when == WU_NOW && ap_sql(t, "SELECT prev_rev || ' ' || prev_wire FROM verse.world_docs WHERE id = 'splice'", q[..]) == "1 2", ap_body(t));
+  st = wc_post(t, w, t[0].admin_key, 13, "original", "");
+  ap_check(t, "world: ORIGINAL with nothing placed changes nothing", st == 422 && wc_refusal(t, w, edit[..]) == "nothing to change", ap_body(t));
+  wc_reset(t);
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  t: [1] Ap; w := [1] Wc.[Wc.{}];
+  if !ap_open(t[..]) { return 2; }
+  kb: [2048] u8; other := proc_getenv("OTHER_KEY", kb[..]);
+  if t[0].sign == "" || t[0].admin_key == "" || other == "" { tool_errln("world checks: SIGN, ADMIN_KEY and OTHER_KEY come from coax/web/api/test.sh"); return 2; }
+  wc_checks(t[..], w[..], other);
+  return ap_done(t[..], "world checks");
+}

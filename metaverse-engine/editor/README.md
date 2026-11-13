@@ -27,5 +27,18 @@ The product spec, what is on screen and what to build, is
   character record or the item ledger.
   `coax/bin/coax test metaverse-engine/editor/authority.coax --library`
 
+- `world-edit.coax`: a world's edits on the wire (`world.edit.v1`, #13412): one typed edit
+  (spawn, despawn, set a column, move, rotate, scale, set a content cell, shape the land), the
+  batch that names its revision, the event a saved edit becomes and what the API answers. It
+  carries an entity edit out on the scene's log, and a cell edit on a content document's log,
+  and answers the inverse. [docs/protocol/world-edit-v1.md](../../docs/protocol/world-edit-v1.md).
+  `coax/bin/coax test metaverse-engine/editor/world-edit.coax --library`
+- `world-doc.coax`: a World saved and loaded whole (`world.doc.v1`): `world_save` and
+  `world_load`, deterministic, with a digest check. [docs/protocol/world-doc-v1.md](../../docs/protocol/world-doc-v1.md).
+  `coax/bin/coax test metaverse-engine/editor/world-doc.coax --library`
+- `world-live.coax`: a world's dev and live revisions, and whether an update reaches a session
+  now or at its next session (`#authority`). [docs/protocol/world-live-v1.md](../../docs/protocol/world-live-v1.md).
+  `coax/bin/coax test metaverse-engine/editor/world-live.coax --library`
+
 The page side lives in `apps/openagents-web/` (`builder.coax` today, `myrealm.coax` as the
 canvas) and the shared edit layer in `metaverse/edit/edit.coax`.

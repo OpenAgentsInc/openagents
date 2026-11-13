@@ -1,0 +1,112 @@
+{
+ "profile": "world-edit-v1",
+ "version": 1,
+ "title": "A world's edits v1 (world.edit.v1)",
+ "check": "coax/web/tool.sh metaverse-engine/tools/world-edit-profile.coax proto/world/edit-v1.json",
+ "spec": "docs/protocol/world-edit-v1.md",
+ "schema": "world.edit.v1",
+ "about": "One typed edit to a world (GitHub #13412): spawn, despawn, set a column, move, rotate, scale, set a content cell, shape the land. Whole centimetres, whole degrees, whole percent. A batch names the revision it was made from. A saved edit is the domain event realm-authoring.world.edited.v1, one a revision of the dev lane; a publish is realm-authoring.world.published.v1 on the live lane. The API answers a state (world.state.v1) or a refusal in words. metaverse-engine/editor/world-edit.coax writes and reads every one; coax/web/api/worlds.c carries them through coax/web/api/world-policy.coax.",
+ "edits": [
+  {
+   "op": "spawn",
+   "wire": "{\"op\":\"spawn\",\"id\":0,\"kind\":102,\"x\":-160,\"y\":0,\"z\":-5120,\"yaw\":90,\"scale\":100}"
+  },
+  {
+   "op": "despawn",
+   "wire": "{\"op\":\"despawn\",\"id\":7}"
+  },
+  {
+   "op": "set",
+   "wire": "{\"op\":\"set\",\"id\":7,\"col\":\"height\",\"v\":250}"
+  },
+  {
+   "op": "move",
+   "wire": "{\"op\":\"move\",\"id\":7,\"x\":1250,\"y\":30,\"z\":-400}"
+  },
+  {
+   "op": "rotate",
+   "wire": "{\"op\":\"rotate\",\"id\":7,\"yaw\":-45}"
+  },
+  {
+   "op": "scale",
+   "wire": "{\"op\":\"scale\",\"id\":7,\"scale\":150}"
+  },
+  {
+   "op": "cell",
+   "wire": "{\"op\":\"cell\",\"table\":\"landmarks\",\"row\":16,\"col\":\"name\",\"v\":\"Dance \\\"floor\\\"\"}"
+  },
+  {
+   "op": "terrain",
+   "wire": "{\"op\":\"terrain\",\"brush\":\"raise\",\"x\":300,\"z\":-200,\"r\":450,\"v\":80,\"mat\":3}"
+  }
+ ],
+ "shapes": [
+  {
+   "kind": "batch",
+   "wire": "{\"schema\":\"world.edit.v1\",\"rev\":41,\"do\":\"apply\",\"edits\":[{\"op\":\"spawn\",\"id\":0,\"kind\":102,\"x\":-160,\"y\":0,\"z\":-5120,\"yaw\":90,\"scale\":100},{\"op\":\"despawn\",\"id\":7},{\"op\":\"set\",\"id\":7,\"col\":\"height\",\"v\":250},{\"op\":\"move\",\"id\":7,\"x\":1250,\"y\":30,\"z\":-400},{\"op\":\"rotate\",\"id\":7,\"yaw\":-45},{\"op\":\"scale\",\"id\":7,\"scale\":150},{\"op\":\"cell\",\"table\":\"landmarks\",\"row\":16,\"col\":\"name\",\"v\":\"Dance \\\"floor\\\"\"},{\"op\":\"terrain\",\"brush\":\"raise\",\"x\":300,\"z\":-200,\"r\":450,\"v\":80,\"mat\":3}]}"
+  },
+  {
+   "kind": "batch",
+   "wire": "{\"schema\":\"world.edit.v1\",\"rev\":7,\"do\":\"undo\",\"edits\":[]}"
+  },
+  {
+   "kind": "batch",
+   "wire": "{\"schema\":\"world.edit.v1\",\"rev\":7,\"do\":\"redo\",\"edits\":[]}"
+  },
+  {
+   "kind": "batch",
+   "wire": "{\"schema\":\"world.edit.v1\",\"rev\":7,\"do\":\"original\",\"edits\":[]}"
+  },
+  {
+   "kind": "batch",
+   "wire": "{\"schema\":\"world.edit.v1\",\"rev\":7,\"do\":\"publish-now\",\"edits\":[]}"
+  },
+  {
+   "kind": "batch",
+   "wire": "{\"schema\":\"world.edit.v1\",\"rev\":3,\"do\":\"publish-next\",\"edits\":[]}"
+  },
+  {
+   "kind": "edited",
+   "wire": "{\"id\":\"realm-authoring.world.edited.v1\",\"seq\":912,\"world\":\"splice\",\"rev\":42,\"edit\":{\"op\":\"spawn\",\"id\":0,\"kind\":102,\"x\":-160,\"y\":0,\"z\":-5120,\"yaw\":90,\"scale\":100},\"at\":1762190000000}"
+  },
+  {
+   "kind": "published",
+   "wire": "{\"id\":\"realm-authoring.world.published.v1\",\"seq\":913,\"world\":\"splice\",\"rev\":3,\"from\":42,\"when\":\"next\",\"engine\":1,\"rules\":1,\"content\":2,\"wire\":1,\"at\":1762190000500}"
+  },
+  {
+   "kind": "state",
+   "wire": "{\"schema\":\"world.state.v1\",\"id\":\"splice\",\"lane\":\"dev\",\"rev\":43,\"build\":[1,1,2,1],\"dev\":43,\"live\":3,\"when\":\"now\",\"undo\":2,\"redo\":1,\"doc\":\"world.doc.v1 splice\\ncontent 2\\n\"}"
+  },
+  {
+   "kind": "state",
+   "wire": "{\"schema\":\"world.state.v1\",\"id\":\"splice\",\"lane\":\"dev\",\"rev\":9,\"build\":[1,1,2,1],\"dev\":9,\"live\":3,\"when\":\"next\",\"undo\":3,\"redo\":0,\"did\":{\"schema\":\"world.edit.v1\",\"rev\":7,\"do\":\"undo\",\"edits\":[]}}"
+  },
+  {
+   "kind": "refusal",
+   "wire": "{\"error\":\"in the kept-clear zone 'Scanner gate'\",\"edit\":1}"
+  },
+  {
+   "kind": "refusal",
+   "wire": "{\"error\":\"log in as an admin\"}"
+  }
+ ],
+ "rejected": [
+  "",
+  "{}",
+  "{\"op\":\"spawn\",\"id\":0,\"kind\":102,\"x\":-160,\"y\":0,\"z\":-5120,\"yaw\":90,\"scale\":100",
+  " {\"op\":\"spawn\",\"id\":0,\"kind\":102,\"x\":-160,\"y\":0,\"z\":-5120,\"yaw\":90,\"scale\":100}",
+  "{\"op\":\"spawn\",\"id\":0,\"kind\":0,\"x\":-160,\"y\":0,\"z\":-5120,\"yaw\":90,\"scale\":100}",
+  "{\"op\":\"spawn\",\"id\":0,\"kind\":102,\"x\":-160,\"y\":0,\"z\":-5120,\"yaw\":181,\"scale\":100}",
+  "{\"op\":\"spawn\",\"id\":0,\"kind\":102,\"x\":-160,\"y\":0,\"z\":-5120,\"yaw\":90,\"scale\":100,\"note\":1}",
+  "{\"op\":\"set\",\"id\":7,\"col\":\"mass\",\"v\":250}",
+  "{\"op\":\"cell\",\"table\":\"Land\",\"row\":16,\"col\":\"name\",\"v\":\"Dance \\\"floor\\\"\"}",
+  "{\"op\":\"terrain\",\"brush\":\"dig\",\"x\":300,\"z\":-200,\"r\":450,\"v\":80,\"mat\":3}",
+  "{\"schema\":\"world.edit.v2\",\"rev\":41,\"do\":\"apply\",\"edits\":[{\"op\":\"spawn\",\"id\":0,\"kind\":102,\"x\":-160,\"y\":0,\"z\":-5120,\"yaw\":90,\"scale\":100},{\"op\":\"despawn\",\"id\":7},{\"op\":\"set\",\"id\":7,\"col\":\"height\",\"v\":250},{\"op\":\"move\",\"id\":7,\"x\":1250,\"y\":30,\"z\":-400},{\"op\":\"rotate\",\"id\":7,\"yaw\":-45},{\"op\":\"scale\",\"id\":7,\"scale\":150},{\"op\":\"cell\",\"table\":\"landmarks\",\"row\":16,\"col\":\"name\",\"v\":\"Dance \\\"floor\\\"\"},{\"op\":\"terrain\",\"brush\":\"raise\",\"x\":300,\"z\":-200,\"r\":450,\"v\":80,\"mat\":3}]}",
+  "{\"schema\":\"world.edit.v1\",\"rev\":41,\"do\":\"save\",\"edits\":[{\"op\":\"spawn\",\"id\":0,\"kind\":102,\"x\":-160,\"y\":0,\"z\":-5120,\"yaw\":90,\"scale\":100},{\"op\":\"despawn\",\"id\":7},{\"op\":\"set\",\"id\":7,\"col\":\"height\",\"v\":250},{\"op\":\"move\",\"id\":7,\"x\":1250,\"y\":30,\"z\":-400},{\"op\":\"rotate\",\"id\":7,\"yaw\":-45},{\"op\":\"scale\",\"id\":7,\"scale\":150},{\"op\":\"cell\",\"table\":\"landmarks\",\"row\":16,\"col\":\"name\",\"v\":\"Dance \\\"floor\\\"\"},{\"op\":\"terrain\",\"brush\":\"raise\",\"x\":300,\"z\":-200,\"r\":450,\"v\":80,\"mat\":3}]}",
+  "{\"schema\":\"world.edit.v1\",\"rev\":7,\"do\":\"undo\",\"edits\":[{\"op\":\"despawn\",\"id\":7}]}",
+  "{\"id\":\"realm-authoring.world.edited.v2\",\"seq\":912,\"world\":\"splice\",\"rev\":42,\"edit\":{\"op\":\"spawn\",\"id\":0,\"kind\":102,\"x\":-160,\"y\":0,\"z\":-5120,\"yaw\":90,\"scale\":100},\"at\":1762190000000}",
+  "{\"id\":\"realm-authoring.world.edited.v1\",\"seq\":912,\"world\":\"splice\",\"rev\":0,\"edit\":{\"op\":\"spawn\",\"id\":0,\"kind\":102,\"x\":-160,\"y\":0,\"z\":-5120,\"yaw\":90,\"scale\":100},\"at\":1762190000000}",
+  "{\"id\":\"realm-authoring.world.published.v1\",\"seq\":913,\"world\":\"splice\",\"rev\":3,\"from\":42,\"when\":\"soon\",\"engine\":1,\"rules\":1,\"content\":2,\"wire\":1,\"at\":1762190000500}",
+  "{\"schema\":\"world.state.v1\",\"id\":\"splice\",\"lane\":\"side\",\"rev\":43,\"build\":[1,1,2,1],\"dev\":43,\"live\":3,\"when\":\"now\",\"undo\":2,\"redo\":1,\"doc\":\"world.doc.v1 splice\\ncontent 2\\n\"}"
+ ]
+}

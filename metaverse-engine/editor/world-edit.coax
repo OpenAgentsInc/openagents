@@ -1,0 +1,640 @@
+// A world's edits on the wire (GitHub #13412, the browser editor's E3;
+// docs/editor/2026-11-12-browser-editor.md, docs/protocol/world-edit-v1.md): one typed edit, the
+// batch a page, the CLI or an agent sends, and the event a saved edit becomes. This file is the one
+// codec of all three (proto/world/edit-v1.json holds the bytes).
+//
+// An edit is one JSON object. Places are whole centimetres, turns whole degrees and sizes whole
+// percent, as every realm document keeps them. An entity is named by its ID; a kind is a content ID.
+//   {"op":"spawn","id":ID,"kind":K,"x":X,"y":Y,"z":Z,"yaw":DEG,"scale":PCT}   ID 0: the world numbers it
+//   {"op":"despawn","id":ID}
+//   {"op":"set","id":ID,"col":COLUMN,"v":N}        a column of the World (x y z yaw vx vy vz radius height hp hp_max kind row)
+//   {"op":"move","id":ID,"x":X,"y":Y,"z":Z}
+//   {"op":"rotate","id":ID,"yaw":DEG}
+//   {"op":"scale","id":ID,"scale":PCT}
+//   {"op":"cell","table":T,"row":ID,"col":COLUMN,"v":TEXT}    a cell of a content table; COLUMN "*": the whole
+//                                                           row as "ID|CELL|...", or "" to drop it
+//   {"op":"terrain","brush":B,"x":X,"z":Z,"r":R,"v":N,"mat":M}   paint, raise, lower, smooth or flatten the land
+// A batch names the revision it was made from, so a stale one is refused whole (409):
+//   {"schema":"world.edit.v1","rev":N,"do":"apply","edits":[EDIT,...]}
+// do: apply (the edits), undo, redo, original (every placed thing removed), or publish-now and
+// publish-next (dev becomes live, world-live.coax); only an apply carries edits.
+// A saved edit is a domain event (proto/README.md "Domain events"), one a revision of the dev lane:
+//   {"id":"realm-authoring.world.edited.v1","seq":S,"world":ID,"rev":N,"edit":EDIT,"at":MS}
+// and a publish is one of the live lane, with the pins of the build that reads the revision:
+//   {"id":"realm-authoring.world.published.v1","seq":S,"world":ID,"rev":LIVE,"from":DEV,"when":"now","engine":E,"rules":R,"content":C,"wire":W,"at":MS}
+// A reader takes the event whose revision is one above the last it took (we_take).
+// What the API answers (coax/web/api/worlds.c writes no byte of its own):
+//   {"schema":"world.state.v1","id":ID,"lane":"dev","rev":N,"build":[E,R,C,W],"dev":D,"live":L,"when":"now","undo":U,"redo":R,"doc":TEXT,"did":BATCH}
+//   {"error":WORDS,"edit":I}      a refusal in words; "edit": which edit of the batch, when one was refused
+// rev: the lane's revision; build: the pins of the build that reads it (engine, rules, content,
+// wire), so every answer names the world, the revision and the build it touched (#13437); undo, redo: steps that can be taken; doc: the lane's document
+// (world-doc.coax), on a read; did: the batch as it was taken, every spawn numbered, on a write.
+// Every reader refuses any bytes but the ones the writer writes (it writes what it read and
+// compares), so an edit that reads is the edit a writer would write.
+//
+// we_scene_apply carries an entity edit out on the engine's edit log (edit.coax ForgeScene) and
+// answers its inverse, so undo and redo are edits too; we_content_apply does the same for a cell
+// on a content document's log (content-edit.coax).
+//   coax/bin/coax test metaverse-engine/editor/world-edit.coax --library
+#load "../../coax/lib/json/json.coax";
+#load "content-edit.coax";
+#load "world-edit-checks.coax" #test;   // the checks' fixtures
+
+WE_SCHEMA :: "world.edit.v1";
+WE_EVENT :: "realm-authoring.world.edited.v1";
+WE_SPAWN :: 1; WE_DESPAWN :: 2; WE_SET :: 3; WE_MOVE :: 4; WE_ROTATE :: 5; WE_SCALE :: 6; WE_CELL :: 7; WE_TERRAIN :: 8;
+WE_OPS :: 9;
+WE_OP :: [WE_OPS] string.["", "spawn", "despawn", "set", "move", "rotate", "scale", "cell", "terrain"];
+// The World's columns by name (metaverse-engine/core/world.coax): the f32 columns, then the int ones.
+WE_COLS :: 13;
+WE_COL :: [WE_COLS] string.["x", "y", "z", "yaw", "vx", "vy", "vz", "radius", "height", "hp", "hp_max", "kind", "row"];
+WEC_X :: 0; WEC_Y :: 1; WEC_Z :: 2; WEC_YAW :: 3; WEC_KIND :: 11;
+WE_BRUSHES :: 5;
+WE_BRUSH :: [WE_BRUSHES] string.["paint", "raise", "lower", "smooth", "flatten"];
+WE_PUBLISHED :: "realm-authoring.world.published.v1";
+WE_STATE :: "world.state.v1";
+WB_APPLY :: 0; WB_UNDO :: 1; WB_REDO :: 2; WB_ORIGINAL :: 3; WB_PUBLISH_NOW :: 4; WB_PUBLISH_NEXT :: 5;
+WE_DOS :: 6;
+WE_DO :: [WE_DOS] string.["apply", "undo", "redo", "original", "publish-now", "publish-next"];
+WE_LANE :: [2] string.["dev", "live"];
+WE_WHEN :: [2] string.["now", "next"];
+
+WE_NAME :: 15;            // bytes in a table's or a column's name (tables.coax CT_NAME)
+WE_TEXT :: 512;           // bytes in a cell's value, or a whole row's
+WE_LINE :: 1400;          // the longest edit, in bytes (a cell whose every byte is escaped)
+WE_REACH :: 10000000;     // centimetres either way a place may be: 100 km (tables.coax CT_REACH_MAX)
+WE_ID_MAX :: 2147483647;
+WE_PI :: 3.14159265f32;
+WE_BATCH :: 64;           // edits in one batch
+WE_WORLD :: 32;           // bytes in a world's ID
+WE_NODES :: 24;           // JSON nodes one edit has, at most
+
+WorldEdit :: struct {
+  ok: bool; op: int;
+  id: int;                  // the entity, or a cell's row
+  kind: int;                // spawn: the content ID
+  x: int; y: int; z: int;   // centimetres
+  yaw: int;                 // degrees, -179 to 180
+  scale: int = 100;         // percent
+  col: int;                 // set: the column; terrain: the brush
+  v: int;                   // set: the value; terrain: how much
+  r: int; mat: int;         // terrain: the brush's radius in centimetres, and the material painted
+  table: [WE_NAME] u8; table_n: int;
+  name: [WE_NAME] u8; name_n: int;   // cell: the column's name, or "*"
+  text: [WE_TEXT] u8; text_n: int;   // cell: the value
+}
+WorldBatch :: struct { ok: bool; rev: int; what: int; n: int; }
+WorldEvent :: struct { ok: bool; seq: int; rev: int; at: int; world: [WE_WORLD] u8; world_n: int; edit: WorldEdit; }
+
+// ---- words and numbers
+
+// A world's ID: a lowercase letter, then lowercase letters, digits and hyphens, WE_WORLD bytes at most.
+we_world_ok :: (s: string) -> bool {
+  if s.count < 1 || s.count > WE_WORLD || s[0] < 'a' || s[0] > 'z' { return false; }
+  for b: s { if !((b >= 'a' && b <= 'z') || (b >= '0' && b <= '9') || b == '-') { return false; } }
+  return true;
+}
+we_index :: (words: [] string, w: string) -> int {
+  for i: 0..<words.count { if words[i] == w && w.count > 0 { return i; } }
+  return -1;
+}
+we_op :: (word: string) -> int { ops := WE_OP; return ifx we_index(ops[..], word) < 0 then 0 else we_index(ops[..], word); }
+we_col :: (word: string) -> int { cols := WE_COL; return we_index(cols[..], word); }
+we_in :: (v: int, lo: int, hi: int) -> bool { return v >= lo && v <= hi; }
+we_place_ok :: (e: WorldEdit) -> bool { return we_in(e.x, -WE_REACH, WE_REACH) && we_in(e.y, -WE_REACH, WE_REACH) && we_in(e.z, -WE_REACH, WE_REACH); }
+we_turn_ok :: (deg: int) -> bool { return we_in(deg, -179, 180); }
+we_scale_ok :: (pct: int) -> bool { return we_in(pct, FORGE_SCALE_MIN, FORGE_SCALE_MAX); }
+// A cell's value: one line of printable bytes.
+we_text_ok :: (s: string) -> bool {
+  if s.count > WE_TEXT { return false; }
+  for b: s { if b < 32 || b == 127 { return false; } }
+  return true;
+}
+we_table_is :: (e: WorldEdit, s: string) -> bool { t := e.table; return cast(string) t[0..<e.table_n] == s; }
+we_name_is :: (e: WorldEdit, s: string) -> bool { t := e.name; return cast(string) t[0..<e.name_n] == s; }
+we_text_is :: (e: WorldEdit, s: string) -> bool { t := e.text; return cast(string) t[0..<e.text_n] == s; }
+// Whether e is an edit the wire carries: its op, and every field that op has, in range.
+we_valid :: (e: WorldEdit) -> bool {
+  if e.op == WE_SPAWN { return we_in(e.id, 0, WE_ID_MAX) && we_in(e.kind, 1, WE_ID_MAX) && we_place_ok(e) && we_turn_ok(e.yaw) && we_scale_ok(e.scale); }
+  if e.op == WE_DESPAWN { return we_in(e.id, 1, WE_ID_MAX); }
+  if e.op == WE_SET { return we_in(e.id, 1, WE_ID_MAX) && we_in(e.col, 0, WE_COLS - 1) && we_in(e.v, -WE_ID_MAX, WE_ID_MAX); }
+  if e.op == WE_MOVE { return we_in(e.id, 1, WE_ID_MAX) && we_place_ok(e); }
+  if e.op == WE_ROTATE { return we_in(e.id, 1, WE_ID_MAX) && we_turn_ok(e.yaw); }
+  if e.op == WE_SCALE { return we_in(e.id, 1, WE_ID_MAX) && we_scale_ok(e.scale); }
+  if e.op == WE_CELL {
+    tb := e.table; nb := e.name; xb := e.text;
+    if e.table_n < 0 || e.table_n > WE_NAME || e.name_n < 0 || e.name_n > WE_NAME || e.text_n < 0 || e.text_n > WE_TEXT { return false; }
+    name := cast(string) nb[0..<e.name_n];
+    return ct_name_ok(cast(string) tb[0..<e.table_n]) && we_in(e.id, 1, WE_ID_MAX) && (name == "*" || ct_name_ok(name)) && we_text_ok(cast(string) xb[0..<e.text_n]);
+  }
+  if e.op == WE_TERRAIN { return we_in(e.col, 0, WE_BRUSHES - 1) && we_in(e.x, -WE_REACH, WE_REACH) && we_in(e.z, -WE_REACH, WE_REACH) && we_in(e.r, 1, WE_REACH) && we_in(e.v, 0, WE_REACH) && we_in(e.mat, 0, 255); }
+  return false;
+}
+
+// ---- writing
+
+we_int :: (o: [] Jo, key: string, v: int) { jo_key(o, key); jo_int(o, v); }
+// The edit as a JSON value into an open writer. The caller has checked we_valid.
+we_put :: (o: [] Jo, e: WorldEdit) {
+  jo_obj(o); jo_key(o, "op"); jo_str(o, WE_OP[e.op]);
+  if e.op == WE_SPAWN { we_int(o, "id", e.id); we_int(o, "kind", e.kind); we_int(o, "x", e.x); we_int(o, "y", e.y); we_int(o, "z", e.z); we_int(o, "yaw", e.yaw); we_int(o, "scale", e.scale); }
+  if e.op == WE_DESPAWN { we_int(o, "id", e.id); }
+  if e.op == WE_SET { we_int(o, "id", e.id); jo_key(o, "col"); jo_str(o, WE_COL[e.col]); we_int(o, "v", e.v); }
+  if e.op == WE_MOVE { we_int(o, "id", e.id); we_int(o, "x", e.x); we_int(o, "y", e.y); we_int(o, "z", e.z); }
+  if e.op == WE_ROTATE { we_int(o, "id", e.id); we_int(o, "yaw", e.yaw); }
+  if e.op == WE_SCALE { we_int(o, "id", e.id); we_int(o, "scale", e.scale); }
+  if e.op == WE_CELL {
+    tb := e.table; nb := e.name; xb := e.text;
+    jo_key(o, "table"); jo_str(o, cast(string) tb[0..<e.table_n]); we_int(o, "row", e.id);
+    jo_key(o, "col"); jo_str(o, cast(string) nb[0..<e.name_n]); jo_key(o, "v"); jo_str(o, cast(string) xb[0..<e.text_n]);
+  }
+  if e.op == WE_TERRAIN { jo_key(o, "brush"); jo_str(o, WE_BRUSH[e.col]); we_int(o, "x", e.x); we_int(o, "z", e.z); we_int(o, "r", e.r); we_int(o, "v", e.v); we_int(o, "mat", e.mat); }
+  jo_end(o);
+}
+// The edit's bytes into out; "" for what is no edit, or when out is too small.
+we_write :: (e: WorldEdit, out: [] u8) -> string {
+  if !we_valid(e) { return ""; }
+  o: [1] Jo; jo_start(o[..], out); we_put(o[..], e);
+  return ifx o[0].bad then "" else jo_text(o[..]);
+}
+
+// ---- reading
+
+we_word :: (d: Jv, at: int, out: [] u8) -> string {
+  n := jv_str(d, at, out);
+  return ifx n >= 0 then cast(string) out[0..<n] else "";
+}
+// The edit at node `at` of a parsed document. ok only when the node's own bytes are the edit's.
+we_from :: (d: Jv, at: int) -> WorldEdit {
+  e := WorldEdit.{};
+  wb: [WE_NAME + 1] u8;
+  e.op = we_op(we_word(d, jv_get(d, at, "op"), wb[..]));
+  if e.op == 0 { return e; }
+  e.id = jv_int(d, jv_get(d, at, ifx e.op == WE_CELL then "row" else "id"), -1);
+  e.kind = jv_int(d, jv_get(d, at, "kind"), 0);
+  e.x = jv_int(d, jv_get(d, at, "x"), 0); e.y = jv_int(d, jv_get(d, at, "y"), 0); e.z = jv_int(d, jv_get(d, at, "z"), 0);
+  e.yaw = jv_int(d, jv_get(d, at, "yaw"), 0); e.scale = jv_int(d, jv_get(d, at, "scale"), 100);
+  e.r = jv_int(d, jv_get(d, at, "r"), 0); e.mat = jv_int(d, jv_get(d, at, "mat"), 0);
+  if e.op == WE_SET { e.col = we_col(we_word(d, jv_get(d, at, "col"), wb[..])); e.v = jv_int(d, jv_get(d, at, "v"), WE_ID_MAX + 1); }
+  if e.op == WE_TERRAIN { brushes := WE_BRUSH; e.col = we_index(brushes[..], we_word(d, jv_get(d, at, "brush"), wb[..])); e.v = jv_int(d, jv_get(d, at, "v"), -1); }
+  if e.op == WE_CELL {
+    e.table_n = ct_copy(e.table[..], we_word(d, jv_get(d, at, "table"), wb[..]));
+    e.name_n = ct_copy(e.name[..], we_word(d, jv_get(d, at, "col"), wb[..]));
+    n := jv_str(d, jv_get(d, at, "v"), e.text[..]);
+    if n < 0 { return e; }
+    e.text_n = n;
+  }
+  ob: [WE_LINE] u8;
+  made := we_write(e, ob[..]);
+  node := jv_raw(d, at);
+  e.ok = made.count > 0 && made == node;
+  return e;
+}
+// The edit in text; not ok for anything but an edit in its one form.
+we_read :: (text: string) -> WorldEdit {
+  nodes: [WE_NODES] JvNode; d: [1] Jv;
+  if text.count == 0 || text.count > WE_LINE || !jv_parse(d[..], text, nodes[..]) { return WorldEdit.{}; }
+  e := we_from(d[0], 0);
+  e.ok = e.ok && jv_raw(d[0], 0).count == text.count;   // nothing before or after it
+  return e;
+}
+
+// ---- a batch
+
+// The batch's bytes into out; "" when it is none (a revision below 0, an edit that is none, more
+// than WE_BATCH, edits beside an undo) or does not fit.
+we_batch_write :: (rev: int, what: int, edits: [] WorldEdit, n: int, out: [] u8) -> string {
+  if rev < 0 || rev > WE_ID_MAX || what < WB_APPLY || what >= WE_DOS || n < 0 || n > WE_BATCH || n > edits.count { return ""; }
+  if (what == WB_APPLY) != (n > 0) { return ""; }
+  o: [1] Jo; jo_start(o[..], out);
+  jo_obj(o[..]); jo_key(o[..], "schema"); jo_str(o[..], WE_SCHEMA); we_int(o[..], "rev", rev);
+  jo_key(o[..], "do"); jo_str(o[..], WE_DO[what]);
+  jo_key(o[..], "edits"); jo_arr(o[..]);
+  for i: 0..<n { if !we_valid(edits[i]) { return ""; } we_put(o[..], edits[i]); }
+  jo_end(o[..]); jo_end(o[..]);
+  return ifx o[0].bad then "" else jo_text(o[..]);
+}
+WE_BATCH_BODY :: 65536;   // the longest batch, in bytes
+// The batch in text, its edits into `edits`; not ok for anything but a batch in its one form.
+we_batch_read :: (text: string, edits: [] WorldEdit) -> WorldBatch {
+  b := WorldBatch.{};
+  if text.count == 0 || text.count > WE_BATCH_BODY { return b; }
+  nodes: [WE_BATCH * WE_NODES + 16] JvNode; da: [1] Jv;
+  if !jv_parse(da[..], text, nodes[..]) { return b; }
+  d := da[0];
+  wb: [WE_NAME + 1] u8;
+  if !jv_raw_eq(jv_raw(d, jv_get(d, 0, "schema")), WE_SCHEMA) { return b; }
+  b.rev = jv_int(d, jv_get(d, 0, "rev"), -1);
+  words := WE_DO;
+  b.what = we_index(words[..], we_word(d, jv_get(d, 0, "do"), wb[..]));
+  list := jv_get(d, 0, "edits");
+  if jv_kind(d, list) != JV_ARRAY || jv_len(d, list) > WE_BATCH || jv_len(d, list) > edits.count { return b; }
+  b.n = jv_len(d, list);
+  for i: 0..<b.n {
+    edits[i] = we_from(d, jv_at(d, list, i));
+    if !edits[i].ok { return b; }
+  }
+  ob: [WE_BATCH_BODY] u8;
+  made := we_batch_write(b.rev, b.what, edits, b.n, ob[..]);
+  b.ok = made.count > 0 && made == text;
+  return b;
+}
+
+// ---- the event
+
+WE_EVENT_BODY :: WE_LINE + 200;
+// A saved edit as its event's bytes into out; "" for what is none.
+we_event_write :: (seq: int, world: string, rev: int, e: WorldEdit, at: int, out: [] u8) -> string {
+  if seq < 1 || rev < 1 || rev > WE_ID_MAX || at < 1 || !we_world_ok(world) || !we_valid(e) { return ""; }
+  o: [1] Jo; jo_start(o[..], out);
+  jo_obj(o[..]); jo_key(o[..], "id"); jo_str(o[..], WE_EVENT); we_int(o[..], "seq", seq);
+  jo_key(o[..], "world"); jo_str(o[..], world); we_int(o[..], "rev", rev);
+  jo_key(o[..], "edit"); we_put(o[..], e);
+  we_int(o[..], "at", at);
+  jo_end(o[..]);
+  return ifx o[0].bad then "" else jo_text(o[..]);
+}
+we_event_world_is :: (v: WorldEvent, s: string) -> bool { w := v.world; return cast(string) w[0..<v.world_n] == s; }
+// The event in text; not ok for anything but an event in its one form.
+we_event_read :: (text: string) -> WorldEvent {
+  v := WorldEvent.{};
+  if text.count == 0 || text.count > WE_EVENT_BODY { return v; }
+  nodes: [WE_NODES + 12] JvNode; da: [1] Jv;
+  if !jv_parse(da[..], text, nodes[..]) { return v; }
+  d := da[0];
+  if !jv_raw_eq(jv_raw(d, jv_get(d, 0, "id")), WE_EVENT) { return v; }
+  v.seq = jv_int(d, jv_get(d, 0, "seq"), 0); v.rev = jv_int(d, jv_get(d, 0, "rev"), 0); v.at = jv_int(d, jv_get(d, 0, "at"), 0);
+  wb: [WE_WORLD + 1] u8;
+  v.world_n = ct_copy(v.world[..], we_word(d, jv_get(d, 0, "world"), wb[..]));
+  v.edit = we_from(d, jv_get(d, 0, "edit"));
+  ob: [WE_EVENT_BODY] u8;
+  vw := v.world;
+  made := we_event_write(v.seq, cast(string) vw[0..<v.world_n], v.rev, v.edit, v.at, ob[..]);
+  v.ok = made.count > 0 && made == text;
+  return v;
+}
+// A reader at revision `seen` takes the event one above it, and no other.
+we_take :: (seen: int, v: WorldEvent) -> bool { return v.ok && v.rev == seen + 1; }
+
+// ---- a publish's event
+
+WorldPublished :: struct { ok: bool; seq: int; rev: int; from: int; when: int; engine: int; rules: int; content: int; wire: int; at: int; world: [WE_WORLD] u8; world_n: int; }
+WE_PUBLISHED_BODY :: 400;
+// The event's bytes into out; "" for what is none. Its world is `world`, not v's.
+we_published_write :: (v: WorldPublished, world: string, out: [] u8) -> string {
+  if v.seq < 1 || v.rev < 1 || v.rev > WE_ID_MAX || v.from < 0 || v.from > WE_ID_MAX || v.when < 0 || v.when > 1 || v.at < 1 || !we_world_ok(world) { return ""; }
+  if !we_in(v.engine, 0, WE_ID_MAX) || !we_in(v.rules, 0, WE_ID_MAX) || !we_in(v.content, 0, WE_ID_MAX) || !we_in(v.wire, 0, WE_ID_MAX) { return ""; }
+  o: [1] Jo; jo_start(o[..], out);
+  jo_obj(o[..]); jo_key(o[..], "id"); jo_str(o[..], WE_PUBLISHED); we_int(o[..], "seq", v.seq);
+  jo_key(o[..], "world"); jo_str(o[..], world); we_int(o[..], "rev", v.rev); we_int(o[..], "from", v.from);
+  jo_key(o[..], "when"); jo_str(o[..], WE_WHEN[v.when]);
+  we_int(o[..], "engine", v.engine); we_int(o[..], "rules", v.rules); we_int(o[..], "content", v.content); we_int(o[..], "wire", v.wire);
+  we_int(o[..], "at", v.at);
+  jo_end(o[..]);
+  return ifx o[0].bad then "" else jo_text(o[..]);
+}
+we_published_read :: (text: string) -> WorldPublished {
+  v := WorldPublished.{};
+  if text.count == 0 || text.count > WE_PUBLISHED_BODY { return v; }
+  nodes: [16] JvNode; da: [1] Jv;
+  if !jv_parse(da[..], text, nodes[..]) { return v; }
+  d := da[0];
+  if !jv_raw_eq(jv_raw(d, jv_get(d, 0, "id")), WE_PUBLISHED) { return v; }
+  v.seq = jv_int(d, jv_get(d, 0, "seq"), 0); v.rev = jv_int(d, jv_get(d, 0, "rev"), 0); v.from = jv_int(d, jv_get(d, 0, "from"), -1); v.at = jv_int(d, jv_get(d, 0, "at"), 0);
+  v.engine = jv_int(d, jv_get(d, 0, "engine"), -1); v.rules = jv_int(d, jv_get(d, 0, "rules"), -1); v.content = jv_int(d, jv_get(d, 0, "content"), -1); v.wire = jv_int(d, jv_get(d, 0, "wire"), -1);
+  wb: [WE_WORLD + 1] u8; whens := WE_WHEN;
+  v.when = we_index(whens[..], we_word(d, jv_get(d, 0, "when"), wb[..]));
+  v.world_n = ct_copy(v.world[..], we_word(d, jv_get(d, 0, "world"), wb[..]));
+  ob: [WE_PUBLISHED_BODY] u8; vw := v.world;
+  made := we_published_write(v, cast(string) vw[0..<v.world_n], ob[..]);
+  v.ok = made.count > 0 && made == text;
+  return v;
+}
+// An event's kind by its id, without reading the rest: WE_EVENT's 1, WE_PUBLISHED's 2, else 0.
+we_event_kind :: (text: string) -> int {
+  a := "{\"id\":\"realm-authoring.world.edited.v1\","; b := "{\"id\":\"realm-authoring.world.published.v1\",";
+  if text.count > a.count && text[0..<a.count] == a { return 1; }
+  if text.count > b.count && text[0..<b.count] == b { return 2; }
+  return 0;
+}
+
+// ---- what the API answers
+
+// rev: the lane's revision. undo, redo: steps that can be taken. doc_n, did_n: bytes of the
+// document and of the batch as taken (0: the answer has none).
+WorldState :: struct { ok: bool; lane: int; rev: int; build: [4] int; dev: int; live: int; when: int; undo: int; redo: int; doc_n: int; did_n: int; world: [WE_WORLD] u8; world_n: int; }
+// The answer's bytes into out; "" for what is none. doc: the lane's document, or "" for none;
+// did: the batch as taken (its own bytes, a batch in its one form), or "" for none.
+we_state_write :: (v: WorldState, world: string, doc: string, did: string, out: [] u8) -> string {
+  if !we_world_ok(world) || v.lane < 0 || v.lane > 1 || v.when < 0 || v.when > 1 { return ""; }
+  if !we_in(v.rev, 0, WE_ID_MAX) || !we_in(v.dev, 0, WE_ID_MAX) || !we_in(v.live, 0, WE_ID_MAX) || !we_in(v.undo, 0, WE_ID_MAX) || !we_in(v.redo, 0, WE_ID_MAX) { return ""; }
+  o: [1] Jo; jo_start(o[..], out);
+  jo_obj(o[..]); jo_key(o[..], "schema"); jo_str(o[..], WE_STATE);
+  jo_key(o[..], "id"); jo_str(o[..], world); jo_key(o[..], "lane"); jo_str(o[..], WE_LANE[v.lane]);
+  we_int(o[..], "rev", v.rev);
+  jo_key(o[..], "build"); jo_arr(o[..]); for k: 0..<4 { if !we_in(v.build[k], 0, WE_ID_MAX) { return ""; } jo_int(o[..], v.build[k]); } jo_end(o[..]);
+  we_int(o[..], "dev", v.dev); we_int(o[..], "live", v.live);
+  jo_key(o[..], "when"); jo_str(o[..], WE_WHEN[v.when]); we_int(o[..], "undo", v.undo); we_int(o[..], "redo", v.redo);
+  if doc.count > 0 { jo_key(o[..], "doc"); jo_str(o[..], doc); }
+  if did.count > 0 { jo_key(o[..], "did"); jo_raw(o[..], did); }
+  jo_end(o[..]);
+  return ifx o[0].bad then "" else jo_text(o[..]);
+}
+WE_STATE_NODES :: WE_BATCH * WE_NODES + 40;
+// The answer in text: its document into doc and the batch as taken into did (each as many bytes
+// as the state says). Not ok for anything but an answer in its one form, or one that does not fit.
+we_state_read :: (text: string, doc: [] u8, did: [] u8, scratch: [] u8) -> WorldState {
+  v := WorldState.{};
+  nodes: [WE_STATE_NODES] JvNode; da: [1] Jv;
+  if text.count == 0 || !jv_parse(da[..], text, nodes[..]) { return v; }
+  d := da[0];
+  if !jv_raw_eq(jv_raw(d, jv_get(d, 0, "schema")), WE_STATE) { return v; }
+  wb: [WE_WORLD + 1] u8; lanes := WE_LANE; whens := WE_WHEN;
+  v.world_n = ct_copy(v.world[..], we_word(d, jv_get(d, 0, "id"), wb[..]));
+  v.lane = we_index(lanes[..], we_word(d, jv_get(d, 0, "lane"), wb[..]));
+  v.when = we_index(whens[..], we_word(d, jv_get(d, 0, "when"), wb[..]));
+  v.rev = jv_int(d, jv_get(d, 0, "rev"), -1); v.dev = jv_int(d, jv_get(d, 0, "dev"), -1); v.live = jv_int(d, jv_get(d, 0, "live"), -1);
+  v.undo = jv_int(d, jv_get(d, 0, "undo"), -1); v.redo = jv_int(d, jv_get(d, 0, "redo"), -1);
+  pins := jv_get(d, 0, "build");
+  for k: 0..<4 { v.build[k] = jv_int(d, jv_at(d, pins, k), -1); }
+  at := jv_get(d, 0, "doc");
+  if at >= 0 { n := jv_str(d, at, doc); if n <= 0 { return v; } v.doc_n = n; }
+  at = jv_get(d, 0, "did");
+  if at >= 0 {
+    raw := jv_raw(d, at);
+    if raw.count == 0 || raw.count > did.count { return v; }
+    for i: 0..<raw.count { did[i] = raw[i]; }
+    v.did_n = raw.count;
+  }
+  vw := v.world;
+  made := we_state_write(v, cast(string) vw[0..<v.world_n], cast(string) doc[0..<v.doc_n], cast(string) did[0..<v.did_n], scratch);
+  v.ok = made.count > 0 && made == text;
+  return v;
+}
+// A refusal's bytes into out: the words, and which edit of the batch was refused (below 0: none was).
+we_refusal_write :: (words: string, edit: int, out: [] u8) -> string {
+  o: [1] Jo; jo_start(o[..], out);
+  jo_obj(o[..]); jo_key(o[..], "error"); jo_str(o[..], words);
+  if edit >= 0 { we_int(o[..], "edit", edit); }
+  jo_end(o[..]);
+  return ifx o[0].bad then "" else jo_text(o[..]);
+}
+// A refusal read: its words into out (their length; -1 when text is none), and the edit it names (-1: none).
+WorldRefusal :: struct { ok: bool; words_n: int; edit: int = -1; }
+we_refusal_read :: (text: string, words: [] u8) -> WorldRefusal {
+  r := WorldRefusal.{};
+  nodes: [8] JvNode; da: [1] Jv;
+  if text.count == 0 || !jv_parse(da[..], text, nodes[..]) { return r; }
+  n := jv_str(da[0], jv_get(da[0], 0, "error"), words);
+  if n < 0 { return r; }
+  r.words_n = n; r.edit = jv_int(da[0], jv_get(da[0], 0, "edit"), -1); r.ok = true;
+  return r;
+}
+
+// ---- carried out on the edit log
+
+we_m :: (cm: int) -> f32 { return cast(f32) cm / 100; }
+we_cm :: (m: f32) -> int { return cast(int) floor(m * 100 + 0.5); }
+we_rad :: (deg: int) -> f32 { return cast(f32) deg * WE_PI / 180; }
+we_deg :: (rad: f32) -> int { return forge_turn(cast(int) floor(rad * 180 / WE_PI + 0.5)); }
+we_pct :: (scale: f32) -> int { return cast(int) floor(scale * 100 + 0.5); }
+// An entity's ID on the wire is 1 and up (0 asks the world to number a spawn); a scene numbers its
+// things from 0. A placed thing as the spawn that makes it, with its ID.
+we_spawn_of :: (item: ForgeItem) -> WorldEdit {
+  return WorldEdit.{ok = true, op = WE_SPAWN, id = item.id + 1, kind = item.mesh, x = we_cm(item.x), y = we_cm(item.y), z = we_cm(item.z), yaw = we_deg(item.yaw), scale = we_pct(item.scale)};
+}
+we_item_of :: (e: WorldEdit, id: int) -> ForgeItem {
+  return ForgeItem.{id = id, mesh = e.kind, x = we_m(e.x), y = we_m(e.y), z = we_m(e.z), yaw = we_rad(e.yaw), scale = cast(f32) e.scale / 100};
+}
+// What an edit did: the entity it made or changed, and the edit that takes it back.
+WeApplied :: struct { ok: bool; id: int; inv: WorldEdit; }
+// An entity edit (spawn, despawn, move, rotate, scale, or a set of x, y, z, yaw or kind) carried
+// out on a scene as one step of its log. Not ok, and the scene as it was, for an edit that is
+// none, names no thing, changes nothing, or is not a scene's (a cell, the land, a column a placed
+// thing does not carry).
+we_scene_apply :: (s: ForgeScene, e: WorldEdit) -> WeApplied {
+  if !we_valid(e) { return WeApplied.{}; }
+  if e.op == WE_SPAWN {
+    id := e.id - 1;
+    if e.id == 0 { id = forge_scene_place(s, e.kind, we_m(e.x), we_m(e.y), we_m(e.z), we_rad(e.yaw), cast(f32) e.scale / 100); }
+    else if s.st[0].n >= s.items.count || !forge_scene_push(s, ForgeItemOp.{kind = FORGE_SCENE_PLACE, has = true, a = we_item_of(e, id)}) { id = -1; }
+    if id < 0 { return WeApplied.{}; }
+    return WeApplied.{ok = true, id = id + 1, inv = WorldEdit.{ok = true, op = WE_DESPAWN, id = id + 1}};
+  }
+  i := forge_scene_find(s, e.id - 1);
+  if i < 0 { return WeApplied.{}; }
+  was := s.items[i]; next := was;
+  inv := WorldEdit.{ok = true, op = e.op, id = e.id};
+  if e.op == WE_DESPAWN { return WeApplied.{ok = forge_scene_delete(s, e.id - 1), id = e.id, inv = we_spawn_of(was)}; }
+  if e.op == WE_MOVE {
+    inv.x = we_cm(was.x); inv.y = we_cm(was.y); inv.z = we_cm(was.z);
+    return WeApplied.{ok = forge_scene_move(s, e.id - 1, we_m(e.x), we_m(e.y), we_m(e.z)), id = e.id, inv = inv};
+  }
+  if e.op == WE_ROTATE { inv.yaw = we_deg(was.yaw); return WeApplied.{ok = forge_scene_rotate(s, e.id - 1, we_rad(e.yaw)), id = e.id, inv = inv}; }
+  if e.op == WE_SCALE { inv.scale = we_pct(was.scale); return WeApplied.{ok = forge_scene_scale(s, e.id - 1, cast(f32) e.scale / 100), id = e.id, inv = inv}; }
+  if e.op != WE_SET { return WeApplied.{}; }
+  inv.col = e.col;
+  if e.col == WEC_X { inv.v = we_cm(was.x); next.x = we_m(e.v); }
+  else if e.col == WEC_Y { inv.v = we_cm(was.y); next.y = we_m(e.v); }
+  else if e.col == WEC_Z { inv.v = we_cm(was.z); next.z = we_m(e.v); }
+  else if e.col == WEC_YAW { if !we_turn_ok(e.v) { return WeApplied.{}; } inv.v = we_deg(was.yaw); next.yaw = we_rad(e.v); }
+  else if e.col == WEC_KIND { if e.v < 1 { return WeApplied.{}; } inv.v = was.mesh; next.mesh = e.v; }
+  else { return WeApplied.{}; }
+  if (e.col <= WEC_Z) && !we_in(e.v, -WE_REACH, WE_REACH) { return WeApplied.{}; }
+  return WeApplied.{ok = forge_scene_reshape(s, FORGE_SCENE_MOVE, e.id - 1, next), id = e.id, inv = inv};
+}
+// A cell edit carried out on a content document's log (content-edit.coax) as one step. Not ok,
+// and the document as it was, for a table or a row the document has not, or a value that changes
+// nothing. The tables' own rules (a dangling ID, a sum) are held when the document is written
+// (forge_content_text), as for every content edit.
+we_content_apply :: (d: [] ForgeDoc, e: WorldEdit) -> WeApplied {
+  if !we_valid(e) || e.op != WE_CELL { return WeApplied.{}; }
+  kb: [FORGE_SLOT_KEY] u8; hb: [FORGE_SLOT_KEY] u8; nb: [WE_TEXT + WE_TEXT] u8;
+  tb := e.table; cb := e.name; xb := e.text;
+  table := cast(string) tb[0..<e.table_n]; col := cast(string) cb[0..<e.name_n]; val := cast(string) xb[0..<e.text_n];
+  head := forge_slot_at(d, forge_content_key(table, 0, hb[..]));
+  if !head.found { return WeApplied.{}; }
+  old := forge_slot_at(d, forge_content_key(table, e.id, kb[..]));
+  was := ifx old.found then forge_slot_text(d, forge_content_key(table, e.id, kb[..])) else "";
+  inv := WorldEdit.{ok = true, op = WE_CELL, id = e.id, table = e.table, table_n = e.table_n};
+  if col == "*" {
+    inv.name[0] = '*'; inv.name_n = 1;
+    if was.count > WE_TEXT { return WeApplied.{}; }
+    inv.text_n = ct_copy(inv.text[..], was);
+    if val.count == 0 { return WeApplied.{ok = old.found && forge_content_drop(d, table, e.id), id = e.id, inv = inv}; }
+    lead := ct_num(ct_part(val, '|', 0));
+    if !lead.ok || lead.v != e.id { return WeApplied.{}; }
+    return WeApplied.{ok = forge_content_row(d, table, val), id = e.id, inv = inv};
+  }
+  if !old.found { return WeApplied.{}; }
+  // the column's place in the table's header: "id NAME:KIND ..." before any sum rule
+  cols := ct_part(forge_slot_text(d, forge_content_key(table, 0, hb[..])), ';', 0);
+  k := -1;
+  for c: 1..<ct_parts(cols, ' ') { if ct_part(ct_part(cols, ' ', c), ':', 0) == col { k = c; } }
+  if k < 1 || k >= ct_parts(was, '|') { return WeApplied.{}; }
+  for b: val { if b == '|' { return WeApplied.{}; } }
+  inv.name = e.name; inv.name_n = e.name_n;
+  inv.text_n = ct_copy(inv.text[..], ct_part(was, '|', k));
+  n := 0;
+  for c: 0..<ct_parts(was, '|') {
+    if c > 0 { n = ct_put(nb[..], n, "|"); }
+    n = ct_put(nb[..], n, ifx c == k then val else ct_part(was, '|', c));
+  }
+  if n > nb.count { return WeApplied.{}; }
+  return WeApplied.{ok = forge_content_row(d, table, cast(string) nb[0..<n]), id = e.id, inv = inv};
+}
+
+#test "world edit: every op writes its pinned bytes and reads back the same edit" {
+  o: [WE_LINE] u8; fx := WE_FIXTURE;
+  for i: 0..<WE_FIXTURE_N {
+    e := we_read(fx[i]);
+    #assert e.ok && e.op == i + 1 && we_write(e, o[..]) == fx[i];
+  }
+  s := we_read(fx[0]); #assert s.id == 0 && s.kind == 102 && s.x == -160 && s.y == 0 && s.z == -5120 && s.yaw == 90 && s.scale == 100;
+  m := we_read(fx[3]); #assert m.id == 7 && m.x == 1250 && m.y == 30 && m.z == -400;
+  c := we_read(fx[6]); #assert we_table_is(c, "landmarks") && c.id == 16 && we_name_is(c, "name") && we_text_is(c, "Dance \"floor\"");
+  t := we_read(fx[7]); #assert t.col == 1 && t.x == 300 && t.z == -200 && t.r == 450 && t.v == 80 && t.mat == 3;
+  #assert we_op("spawn") == WE_SPAWN && we_op("terrain") == WE_TERRAIN && we_op("") == 0 && we_op("fly") == 0 && we_col("hp_max") == 10 && we_col("mass") == -1;
+}
+#test "world edit: a reader refuses what is not an edit in its one form" {
+  o: [WE_LINE + 64] u8; fx := WE_FIXTURE; s := fx[0];
+  #assert !we_read("").ok && !we_read("{}").ok && !we_read("[]").ok && !we_read(s[0..<s.count - 1]).ok && !we_read(sc_edit_swap(s, "{", " {", o[..])).ok;
+  #assert !we_read(sc_edit_swap(s, "\"spawn\"", "\"spawns\"", o[..])).ok && !we_read(sc_edit_swap(s, "\"kind\":102", "\"kind\":0", o[..])).ok && !we_read(sc_edit_swap(s, "\"kind\":102,", "", o[..])).ok;
+  #assert !we_read(sc_edit_swap(s, "\"yaw\":90", "\"yaw\":181", o[..])).ok && !we_read(sc_edit_swap(s, "\"yaw\":90", "\"yaw\":-180", o[..])).ok && we_read(sc_edit_swap(s, "\"yaw\":90", "\"yaw\":180", o[..])).ok;
+  #assert !we_read(sc_edit_swap(s, "\"scale\":100", "\"scale\":24", o[..])).ok && !we_read(sc_edit_swap(s, "\"scale\":100", "\"scale\":401", o[..])).ok && we_read(sc_edit_swap(s, "\"scale\":100", "\"scale\":400", o[..])).ok;
+  #assert !we_read(sc_edit_swap(s, "\"x\":-160", "\"x\":10000001", o[..])).ok && we_read(sc_edit_swap(s, "\"x\":-160", "\"x\":-10000000", o[..])).ok && !we_read(sc_edit_swap(s, "\"x\":-160", "\"x\":\"-160\"", o[..])).ok;
+  #assert !we_read(sc_edit_swap(s, "\"scale\":100", "\"scale\":100,\"note\":1", o[..])).ok && !we_read(sc_edit_swap(s, "\"id\":0", "\"id\":-1", o[..])).ok;
+  #assert !we_read(sc_edit_swap(fx[1], "\"id\":7", "\"id\":0", o[..])).ok && !we_read(sc_edit_swap(fx[2], "\"height\"", "\"mass\"", o[..])).ok && !we_read(sc_edit_swap(fx[2], "\"v\":250", "\"v\":2147483648", o[..])).ok;
+  #assert !we_read(sc_edit_swap(fx[6], "\"landmarks\"", "\"Land\"", o[..])).ok && !we_read(sc_edit_swap(fx[6], "\"name\"", "\"Name\"", o[..])).ok && !we_read(sc_edit_swap(fx[6], "floor", "fl\\noor", o[..])).ok && !we_read(sc_edit_swap(fx[6], "\"row\":16", "\"row\":0", o[..])).ok;
+  #assert we_read(sc_edit_swap(fx[6], "\"name\"", "\"*\"", o[..])).ok;
+  #assert !we_read(sc_edit_swap(fx[7], "\"raise\"", "\"dig\"", o[..])).ok && !we_read(sc_edit_swap(fx[7], "\"r\":450", "\"r\":0", o[..])).ok && !we_read(sc_edit_swap(fx[7], "\"mat\":3", "\"mat\":256", o[..])).ok && !we_read(sc_edit_swap(fx[7], "\"v\":80", "\"v\":-1", o[..])).ok;
+  long: [WE_LINE + 8] u8; for i: 0..<long.count { long[i] = ' '; }
+  #assert !we_read(cast(string) long[..]).ok;
+  short: [10] u8; #assert we_write(we_read(s), short[..]) == "" && we_write(WorldEdit.{}, o[..]) == "" && we_write(WorldEdit.{op = 9}, o[..]) == "";
+}
+#test "world edit: a batch names its revision; it reads back whole or not at all" {
+  o: [WE_BATCH_BODY] u8; p: [WE_BATCH_BODY] u8; e: [WE_BATCH] WorldEdit; r: [WE_BATCH] WorldEdit; fx := WE_FIXTURE;
+  for i: 0..<WE_FIXTURE_N { e[i] = we_read(fx[i]); }
+  text := we_batch_write(41, WB_APPLY, e[..], WE_FIXTURE_N, o[..]);
+  #assert text == WE_BATCH_FIXTURE;
+  b := we_batch_read(text, r[..]);
+  #assert b.ok && b.rev == 41 && b.what == WB_APPLY && b.n == WE_FIXTURE_N && r[3].x == 1250 && we_text_is(r[6], "Dance \"floor\"");
+  #assert we_batch_write(7, WB_UNDO, e[..], 0, o[..]) == WE_UNDO_FIXTURE && we_batch_read(WE_UNDO_FIXTURE, r[..]).ok && we_batch_read(WE_UNDO_FIXTURE, r[..]).what == WB_UNDO && we_batch_read(WE_UNDO_FIXTURE, r[..]).rev == 7;
+  #assert we_batch_read(we_batch_write(0, WB_REDO, e[..], 0, o[..]), r[..]).what == WB_REDO && we_batch_read(we_batch_write(3, WB_ORIGINAL, e[..], 0, o[..]), r[..]).what == WB_ORIGINAL;
+  #assert we_batch_read(we_batch_write(3, WB_PUBLISH_NOW, e[..], 0, o[..]), r[..]).what == WB_PUBLISH_NOW && we_batch_write(3, WB_PUBLISH_NEXT, e[..], 0, o[..]) == WE_PUBLISH_FIXTURE && we_batch_read(WE_PUBLISH_FIXTURE, r[..]).what == WB_PUBLISH_NEXT;
+  // an undo carries no edits, an apply carries one at least, and a batch has a size
+  #assert we_batch_write(7, WB_UNDO, e[..], 1, o[..]) == "" && we_batch_write(7, WB_APPLY, e[..], 0, o[..]) == "" && we_batch_write(-1, WB_APPLY, e[..], 1, o[..]) == "" && we_batch_write(1, 6, e[..], 0, o[..]) == "" && we_batch_write(1, -1, e[..], 0, o[..]) == "";
+  #assert we_batch_write(1, WB_APPLY, e[..], WE_BATCH + 1, o[..]) == "" && we_batch_write(1, WB_APPLY, e[0..<2], 3, o[..]) == "";
+  bad := e; bad[2].col = 99; #assert we_batch_write(1, WB_APPLY, bad[..], 3, o[..]) == "";
+  #assert !we_batch_read("", r[..]).ok && !we_batch_read("{}", r[..]).ok && !we_batch_read(sc_edit_swap(text, "world.edit.v1", "world.edit.v2", p[..]), r[..]).ok;
+  #assert !we_batch_read(sc_edit_swap(text, "\"rev\":41", "\"rev\":-1", p[..]), r[..]).ok && !we_batch_read(sc_edit_swap(text, "\"apply\"", "\"save\"", p[..]), r[..]).ok && !we_batch_read(sc_edit_swap(text, "\"edits\":[", "\"edits\":[ ", p[..]), r[..]).ok;
+  #assert !we_batch_read(sc_edit_swap(text, "\"yaw\":90", "\"yaw\":900", p[..]), r[..]).ok && !we_batch_read(text, r[0..<3]).ok && !we_batch_read(sc_edit_swap(text, "\"edits\":[", "\"edits\":7,\"x\":[", p[..]), r[..]).ok;
+  small: [40] u8; #assert we_batch_write(41, WB_APPLY, e[..], WE_FIXTURE_N, small[..]) == "";
+}
+#test "world edit: a saved edit is an event; a reader takes each revision once, in order" {
+  o: [WE_EVENT_BODY] u8; p: [WE_EVENT_BODY + 64] u8; fx := WE_FIXTURE;
+  text := we_event_write(912, "splice", 42, we_read(fx[0]), 1762190000000, o[..]);
+  #assert text == WE_EVENT_FIXTURE;
+  v := we_event_read(text);
+  #assert v.ok && v.seq == 912 && v.rev == 42 && v.at == 1762190000000 && we_event_world_is(v, "splice") && v.edit.op == WE_SPAWN && v.edit.kind == 102;
+  #assert we_take(41, v) && !we_take(42, v) && !we_take(40, v) && !we_take(41, WorldEvent.{rev = 42});
+  #assert !we_event_read("").ok && !we_event_read("{}").ok && !we_event_read(sc_edit_swap(text, "edited.v1", "edited.v2", p[..])).ok && !we_event_read(sc_edit_swap(text, "\"splice\"", "\"Splice\"", p[..])).ok;
+  #assert !we_event_read(sc_edit_swap(text, "\"rev\":42", "\"rev\":0", p[..])).ok && !we_event_read(sc_edit_swap(text, "\"seq\":912,", "", p[..])).ok && !we_event_read(sc_edit_swap(text, "\"kind\":102", "\"kind\":-1", p[..])).ok && !we_event_read(sc_edit_swap(text, "\"at\":1762190000000", "\"at\":0", p[..])).ok;
+  #assert we_event_write(0, "splice", 42, we_read(fx[0]), 1, o[..]) == "" && we_event_write(1, "", 42, we_read(fx[0]), 1, o[..]) == "" && we_event_write(1, "splice", 0, we_read(fx[0]), 1, o[..]) == "" && we_event_write(1, "splice", 1, WorldEdit.{}, 1, o[..]) == "" && we_event_write(1, "splice", 1, we_read(fx[0]), 0, o[..]) == "";
+  #assert we_world_ok("splice") && we_world_ok("w-12") && !we_world_ok("") && !we_world_ok("Splice") && !we_world_ok("1w") && !we_world_ok("a_b") && !we_world_ok("abcdefghijabcdefghijabcdefghijabc");
+}
+WeTestScene :: struct { st: [1] ForgeSceneState; items: [8] ForgeItem; ops: [32] ForgeItemOp; steps: [16] ForgeStep; }
+we_test_scene :: (t: [] WeTestScene) -> ForgeScene { return ForgeScene.{st = t[0].st[..], items = t[0].items[..], ops = t[0].ops[..], steps = t[0].steps[..]}; }
+#test "world edit: entity edits are steps of the scene's log, and each answers the edit that takes it back" {
+  t: [1] WeTestScene; s := we_test_scene(t[..]); forge_scene_reset(s); o: [WE_LINE] u8;
+  a := we_scene_apply(s, we_read("{\"op\":\"spawn\",\"id\":0,\"kind\":102,\"x\":-160,\"y\":0,\"z\":-5120,\"yaw\":90,\"scale\":100}"));
+  #assert a.ok && a.id == 1 && we_write(a.inv, o[..]) == "{\"op\":\"despawn\",\"id\":1}" && s.st[0].n == 1 && we_cm(s.items[0].x) == -160 && we_deg(s.items[0].yaw) == 90;
+  m := we_scene_apply(s, we_read("{\"op\":\"move\",\"id\":1,\"x\":1250,\"y\":30,\"z\":-400}"));
+  #assert m.ok && we_write(m.inv, o[..]) == "{\"op\":\"move\",\"id\":1,\"x\":-160,\"y\":0,\"z\":-5120}" && we_cm(s.items[0].x) == 1250 && we_cm(s.items[0].y) == 30;
+  r := we_scene_apply(s, we_read("{\"op\":\"rotate\",\"id\":1,\"yaw\":-45}"));
+  #assert r.ok && we_write(r.inv, o[..]) == "{\"op\":\"rotate\",\"id\":1,\"yaw\":90}" && we_deg(s.items[0].yaw) == -45;
+  c := we_scene_apply(s, we_read("{\"op\":\"scale\",\"id\":1,\"scale\":150}"));
+  #assert c.ok && we_write(c.inv, o[..]) == "{\"op\":\"scale\",\"id\":1,\"scale\":100}" && we_pct(s.items[0].scale) == 150;
+  k := we_scene_apply(s, we_read("{\"op\":\"set\",\"id\":1,\"col\":\"kind\",\"v\":110}"));
+  #assert k.ok && we_write(k.inv, o[..]) == "{\"op\":\"set\",\"id\":1,\"col\":\"kind\",\"v\":102}" && s.items[0].mesh == 110;
+  y := we_scene_apply(s, we_read("{\"op\":\"set\",\"id\":1,\"col\":\"yaw\",\"v\":10}"));
+  #assert y.ok && we_write(y.inv, o[..]) == "{\"op\":\"set\",\"id\":1,\"col\":\"yaw\",\"v\":-45}" && we_deg(s.items[0].yaw) == 10;
+  z := we_scene_apply(s, we_read("{\"op\":\"set\",\"id\":1,\"col\":\"z\",\"v\":77}"));
+  #assert z.ok && we_write(z.inv, o[..]) == "{\"op\":\"set\",\"id\":1,\"col\":\"z\",\"v\":-400}" && we_cm(s.items[0].z) == 77;
+  x := we_scene_apply(s, we_read("{\"op\":\"set\",\"id\":1,\"col\":\"x\",\"v\":5}")); yy := we_scene_apply(s, we_read("{\"op\":\"set\",\"id\":1,\"col\":\"y\",\"v\":6}"));
+  #assert x.ok && x.inv.v == 1250 && yy.ok && yy.inv.v == 30 && we_cm(s.items[0].x) == 5 && we_cm(s.items[0].y) == 6;
+  // refused, and the scene as it was: no such thing, nothing changed, a column a placed thing has not, a turn out of range
+  steps := s.st[0].done;
+  #assert !we_scene_apply(s, we_read("{\"op\":\"move\",\"id\":9,\"x\":0,\"y\":0,\"z\":0}")).ok && !we_scene_apply(s, we_read("{\"op\":\"move\",\"id\":1,\"x\":5,\"y\":6,\"z\":77}")).ok;
+  #assert !we_scene_apply(s, we_read("{\"op\":\"set\",\"id\":1,\"col\":\"hp\",\"v\":3}")).ok && !we_scene_apply(s, we_read("{\"op\":\"set\",\"id\":1,\"col\":\"yaw\",\"v\":181}")).ok && !we_scene_apply(s, we_read("{\"op\":\"set\",\"id\":1,\"col\":\"kind\",\"v\":0}")).ok && !we_scene_apply(s, we_read("{\"op\":\"set\",\"id\":1,\"col\":\"x\",\"v\":10000001}")).ok;
+  #assert !we_scene_apply(s, we_read("{\"op\":\"terrain\",\"brush\":\"raise\",\"x\":300,\"z\":-200,\"r\":450,\"v\":80,\"mat\":3}")).ok && !we_scene_apply(s, WorldEdit.{}).ok && s.st[0].done == steps;
+  // a despawn answers the spawn that brings the same thing back under its ID
+  d := we_scene_apply(s, we_read("{\"op\":\"despawn\",\"id\":1}"));
+  #assert d.ok && s.st[0].n == 0 && we_write(d.inv, o[..]) == "{\"op\":\"spawn\",\"id\":1,\"kind\":110,\"x\":5,\"y\":6,\"z\":77,\"yaw\":10,\"scale\":150}";
+  b := we_scene_apply(s, d.inv);
+  #assert b.ok && b.id == 1 && s.st[0].n == 1 && s.items[0].mesh == 110 && we_pct(s.items[0].scale) == 150 && !we_scene_apply(s, d.inv).ok;
+  // the log undoes them like any other step
+  #assert forge_scene_undo(s) && s.st[0].n == 0 && forge_scene_undo(s) && s.st[0].n == 1 && forge_scene_redo(s) && s.st[0].n == 0;
+}
+#test "world edit: a cell edit is a step of the content document's log, and answers the edit that takes it back" {
+  d: [1] ForgeDoc; o: [CT_BODY] u8; l: [WE_LINE] u8; c: [1] ContentDoc;
+  #assert forge_content_open(d[..], CT_FIXTURE);
+  a := we_content_apply(d[..], we_read("{\"op\":\"cell\",\"table\":\"item\",\"row\":5,\"col\":\"name\",\"v\":\"Long sword\"}"));
+  #assert a.ok && we_write(a.inv, l[..]) == "{\"op\":\"cell\",\"table\":\"item\",\"row\":5,\"col\":\"name\",\"v\":\"Short sword\"}" && forge_slot_text(d[..], "table:item-5") == "5|Long sword|8";
+  n := we_content_apply(d[..], we_read("{\"op\":\"cell\",\"table\":\"item\",\"row\":5,\"col\":\"slot\",\"v\":\"9\"}"));
+  #assert n.ok && we_text_is(n.inv, "8") && forge_slot_text(d[..], "table:item-5") == "5|Long sword|9";
+  // a whole row: new, changed, and dropped; each answers what was there
+  r := we_content_apply(d[..], we_read("{\"op\":\"cell\",\"table\":\"item\",\"row\":9,\"col\":\"*\",\"v\":\"9|Rope|0\"}"));
+  #assert r.ok && we_write(r.inv, l[..]) == "{\"op\":\"cell\",\"table\":\"item\",\"row\":9,\"col\":\"*\",\"v\":\"\"}" && ct_read(c[..], forge_content_text(d[..], 8, o[..])) && ct_rows(c[..], ct_table(c[..], "item")) > 0;
+  x := we_content_apply(d[..], r.inv);
+  #assert x.ok && we_text_is(x.inv, "9|Rope|0") && !forge_slot_at(d[..], "table:item-9").found;
+  // refused, and the document as it was
+  done := d[0].done;
+  #assert !we_content_apply(d[..], we_read("{\"op\":\"cell\",\"table\":\"zone\",\"row\":1,\"col\":\"name\",\"v\":\"x\"}")).ok && !we_content_apply(d[..], we_read("{\"op\":\"cell\",\"table\":\"item\",\"row\":99,\"col\":\"name\",\"v\":\"x\"}")).ok;
+  #assert !we_content_apply(d[..], we_read("{\"op\":\"cell\",\"table\":\"item\",\"row\":5,\"col\":\"weight\",\"v\":\"x\"}")).ok && !we_content_apply(d[..], we_read("{\"op\":\"cell\",\"table\":\"item\",\"row\":5,\"col\":\"name\",\"v\":\"a|b\"}")).ok;
+  #assert !we_content_apply(d[..], we_read("{\"op\":\"cell\",\"table\":\"item\",\"row\":5,\"col\":\"name\",\"v\":\"Long sword\"}")).ok && !we_content_apply(d[..], we_read("{\"op\":\"cell\",\"table\":\"item\",\"row\":9,\"col\":\"*\",\"v\":\"8|Rope|0\"}")).ok;
+  #assert !we_content_apply(d[..], we_read("{\"op\":\"cell\",\"table\":\"item\",\"row\":99,\"col\":\"*\",\"v\":\"\"}")).ok && !we_content_apply(d[..], we_read("{\"op\":\"despawn\",\"id\":1}")).ok && d[0].done == done;
+  #assert forge_undo(d[..]) && forge_undo(d[..]) && forge_undo(d[..]) && forge_undo(d[..]) && forge_content_text(d[..], 7, o[..]) == CT_FIXTURE;
+}
+#test "world edit: a publish is an event of the live lane, with its pins; an event says its kind by its id" {
+  o: [WE_PUBLISHED_BODY] u8; p: [WE_PUBLISHED_BODY + 64] u8;
+  v := WorldPublished.{seq = 913, rev = 3, from = 42, when = 1, engine = 1, rules = 1, content = 2, wire = 1, at = 1762190000500};
+  text := we_published_write(v, "splice", o[..]);
+  #assert text == WE_PUBLISHED_FIXTURE;
+  r := we_published_read(text); rw := r.world;
+  #assert r.ok && r.seq == 913 && r.rev == 3 && r.from == 42 && r.when == 1 && r.engine == 1 && r.rules == 1 && r.content == 2 && r.wire == 1 && r.at == 1762190000500 && cast(string) rw[0..<r.world_n] == "splice";
+  #assert !we_published_read("").ok && !we_published_read("{}").ok && !we_published_read(sc_edit_swap(text, "published.v1", "published.v2", p[..])).ok && !we_published_read(sc_edit_swap(text, "\"next\"", "\"soon\"", p[..])).ok;
+  #assert !we_published_read(sc_edit_swap(text, "\"from\":42,", "", p[..])).ok && !we_published_read(sc_edit_swap(text, "\"wire\":1", "\"wire\":-1", p[..])).ok && !we_published_read(sc_edit_swap(text, "\"rev\":3", "\"rev\":0", p[..])).ok && we_published_read(sc_edit_swap(text, "\"next\"", "\"now\"", p[..])).when == 0;
+  bad := v; bad.seq = 0; #assert we_published_write(bad, "splice", o[..]) == "";
+  bad = v; bad.when = 2; #assert we_published_write(bad, "splice", o[..]) == "" && we_published_write(v, "Splice", o[..]) == "";
+  bad = v; bad.from = -1; #assert we_published_write(bad, "splice", o[..]) == "";
+  bad = v; bad.at = 0; #assert we_published_write(bad, "splice", o[..]) == "";
+  bad = v; bad.content = -1; #assert we_published_write(bad, "splice", o[..]) == "";
+  #assert we_event_kind(WE_EVENT_FIXTURE) == 1 && we_event_kind(WE_PUBLISHED_FIXTURE) == 2 && we_event_kind("{}") == 0 && we_event_kind("") == 0;
+}
+#test "world edit: the API's answers: a state with its document or the batch as taken, and a refusal in words" {
+  o: [4096] u8; doc: [1024] u8; did: [2048] u8; scratch: [4096] u8; w: [200] u8;
+  v := WorldState.{lane = 0, rev = 43, dev = 43, live = 3, when = 0, undo = 2, redo = 1};
+  v.build[0] = 1; v.build[1] = 1; v.build[2] = 2; v.build[3] = 1;
+  text := we_state_write(v, "splice", "world.doc.v1 splice\ncontent 2\n", "", o[..]);
+  #assert text == WE_STATE_FIXTURE;
+  r := we_state_read(text, doc[..], did[..], scratch[..]);
+  #assert r.ok && r.lane == 0 && r.rev == 43 && r.dev == 43 && r.live == 3 && r.when == 0 && r.undo == 2 && r.redo == 1 && r.build[0] == 1 && r.build[2] == 2 && r.build[3] == 1 && cast(string) doc[0..<r.doc_n] == "world.doc.v1 splice\ncontent 2\n" && r.did_n == 0;
+  taken := we_state_write(v, "splice", "", WE_UNDO_FIXTURE, o[..]);
+  r = we_state_read(taken, doc[..], did[..], scratch[..]);
+  #assert r.ok && r.doc_n == 0 && cast(string) did[0..<r.did_n] == WE_UNDO_FIXTURE;
+  bare := we_state_write(v, "splice", "", "", o[..]);
+  #assert we_state_read(bare, doc[..], did[..], scratch[..]).ok && !we_state_read("", doc[..], did[..], scratch[..]).ok && !we_state_read("{}", doc[..], did[..], scratch[..]).ok;
+  #assert !we_state_read(sc_edit_swap(WE_STATE_FIXTURE, "world.state.v1", "world.state.v2", scratch[..]), doc[..], did[..], o[..]).ok && !we_state_read(sc_edit_swap(WE_STATE_FIXTURE, "\"dev\"", "\"Dev\"", scratch[..]), doc[..], did[..], o[..]).ok;
+  #assert !we_state_read(sc_edit_swap(WE_STATE_FIXTURE, "\"undo\":2", "\"undo\":-2", scratch[..]), doc[..], did[..], o[..]).ok && !we_state_read(WE_STATE_FIXTURE, doc[0..<8], did[..], scratch[..]).ok && !we_state_read(taken, doc[..], did[0..<8], scratch[..]).ok;
+  bad := v; bad.lane = 2; #assert we_state_write(bad, "splice", "", "", o[..]) == "";
+  bad = v; bad.when = -1; #assert we_state_write(bad, "splice", "", "", o[..]) == "" && we_state_write(v, "", "", "", o[..]) == "";
+  bad = v; bad.rev = -1; #assert we_state_write(bad, "splice", "", "", o[..]) == "";
+  bad = v; bad.build[3] = -1; #assert we_state_write(bad, "splice", "", "", o[..]) == "" && !we_state_read(sc_edit_swap(WE_STATE_FIXTURE, "[1,1,2,1]", "[1,1,2]", scratch[..]), doc[..], did[..], o[..]).ok;
+  n := we_refusal_write("in the kept-clear zone 'Scanner gate'", 1, o[..]);
+  #assert n == WE_REFUSAL_FIXTURE;
+  f := we_refusal_read(n, w[..]);
+  #assert f.ok && f.edit == 1 && cast(string) w[0..<f.words_n] == "in the kept-clear zone 'Scanner gate'";
+  g := we_refusal_read(we_refusal_write("log in as an admin", -1, o[..]), w[..]);
+  #assert g.ok && g.edit == -1 && cast(string) w[0..<g.words_n] == "log in as an admin" && !we_refusal_read("{}", w[..]).ok && !we_refusal_read("", w[..]).ok && we_refusal_write("x", -1, o[0..<4]) == "";
+}

@@ -16,7 +16,7 @@
 // 3. A coax/web/api/*.c file with a *_route function, or a coax/web/room/room-*.coax or
 //    everglade/server/*.coax or metaverse/orbit-league/server/*.coax file (the room's), is in no row (codec, schema or files), and for a room file not in the registry's no_frames list
 //    (the room files that build and read no wire bytes of their own).
-// 4. A file under proto/coder/, proto/verse/, proto/aethyrforge/ or proto/aethyr/ is in no row
+// 4. A file under proto/coder/, proto/verse/, proto/aethyrforge/, proto/aethyr/ or proto/world/ is in no row
 //    that has a check.
 // 5. A .proto under proto/openagents/ is in no proto/modules.json profile and no row marked
 //    "status": "no-consumer".
@@ -229,7 +229,7 @@ wc_path_kind :: (path: string, has_route: bool) -> int {
   if wc_directly(path, "coax/web/room/room-") && wc_ends(path, ".coax") { return WC_ROOM; }
   if wc_directly(path, "everglade/server/") && wc_ends(path, ".coax") { return WC_ROOM; }   // Everglade's room (#13267)
   if wc_directly(path, "metaverse/orbit-league/server/") && wc_ends(path, ".coax") { return WC_ROOM; }   // Orbit League's room (#13347)
-  if wc_starts(path, "proto/coder/") || wc_starts(path, "proto/verse/") || wc_starts(path, "proto/aethyrforge/") || wc_starts(path, "proto/aethyr/") { return WC_PROFILE; }
+  if wc_starts(path, "proto/coder/") || wc_starts(path, "proto/verse/") || wc_starts(path, "proto/aethyrforge/") || wc_starts(path, "proto/aethyr/") || wc_starts(path, "proto/world/") { return WC_PROFILE; }
   if wc_starts(path, "proto/openagents/") && wc_ends(path, ".proto") { return WC_PROTO; }
   return 0;
 }
@@ -914,7 +914,7 @@ WC_T_QUIET :: WcRun.{quiet = true};
   #assert wc_path_kind("coax/web/room/room-relay.coax", false) == WC_ROOM && wc_path_kind("coax/web/room/load.coax", false) == 0 && wc_path_kind("coax/web/room/room-tick.c", false) == 0;
   #assert wc_path_kind("everglade/server/guard.coax", false) == WC_ROOM && wc_path_kind("everglade/server/legacy/x.coax", false) == 0 && wc_path_kind("everglade/zone.coax", false) == 0;
   #assert wc_path_kind("metaverse/orbit-league/server/room.coax", false) == WC_ROOM && wc_path_kind("metaverse/orbit-league/server/x/y.coax", false) == 0 && wc_path_kind("metaverse/orbit-league/room.coax", false) == 0;
-  #assert wc_path_kind("proto/verse/a.json", false) == WC_PROFILE && wc_path_kind("proto/coder/x/b.schema.json", false) == WC_PROFILE && wc_path_kind("proto/aethyr/a.json", false) == WC_PROFILE && wc_path_kind("proto/aethyrforge/a.json", false) == WC_PROFILE;
+  #assert wc_path_kind("proto/verse/a.json", false) == WC_PROFILE && wc_path_kind("proto/coder/x/b.schema.json", false) == WC_PROFILE && wc_path_kind("proto/aethyr/a.json", false) == WC_PROFILE && wc_path_kind("proto/aethyrforge/a.json", false) == WC_PROFILE && wc_path_kind("proto/world/a.json", false) == WC_PROFILE;
   #assert wc_path_kind("proto/openagents/a/v1/a.proto", false) == WC_PROTO && wc_path_kind("proto/openagents/a/v1/a.options", false) == 0 && wc_path_kind("proto/nostr/a.proto", false) == 0 && wc_path_kind("proto/README.md", false) == 0;
   #assert wc_under("a/b.c", "a/b.c") && wc_under("a/b.c", "a/") && !wc_under("a/b.c", "a") && !wc_under("ab/c", "a/") && !wc_under("a", "");
 }

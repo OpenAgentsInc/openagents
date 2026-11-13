@@ -1,0 +1,309 @@
+// A World saved and loaded whole (GitHub #13412, the browser editor's E3;
+// docs/editor/2026-11-12-browser-editor.md, docs/protocol/world-doc-v1.md): the document a world
+// with an ID is. It holds the World's entities and every column (metaverse-engine/core/world.coax),
+// the realm's own columns beside them, the content revision the entities' kinds name rows of, and
+// the edit log's head: the revision the last saved edit made.
+//
+//   world.doc.v1 ID                     the world's ID
+//   content REV                         the content tables' revision
+//   head REV NEXT                       the edit log's head: the revision the last saved edit made, and
+//                                       the number the next spawned entity gets (IDs are never given twice)
+//   tick N                              steps the World has run
+//   counters N N N N N N N N            the entity store's counters
+//   own N                               the realm's own columns, a slot
+//   e SLOT GEN ID FLAGS HAS F*9 I*4 OWN*N   a slot ever used: its generation, EntityId, flags (1 live,
+//                                       2 waiting to be born, 4 doomed), components, the f32 columns
+//                                       as their bits in hex, the int columns, the realm's own
+//   free SLOT ...                       the free slots, the stack's order
+//   spawns SLOT ...                     the spawns waiting for the next flush, in order
+//   digest N                            world_digest, mixed with the content, the head and the own columns
+//
+// It is deterministic: equal Worlds write equal bytes on every host, and a loaded World writes the
+// bytes it was loaded from. world_load checks the whole document's form before it changes
+// anything (a document refused there leaves the World as it was), then loads it and compares the
+// digest; a document that does not give its own digest is refused and leaves an empty World. The systems list is the realm's code, not its data: a load keeps the list it finds.
+//   coax/bin/coax test metaverse-engine/editor/world-doc.coax --library
+#load "../core/world.coax";
+#load "../content/tables.coax";
+#load "world-edit.coax";
+
+WD_MAGIC :: "world.doc.v1";
+WD_OWN_MAX :: 8;          // the realm's own columns a slot, at most
+WD_ENTITY :: 320;         // bytes an entity's line may take
+WD_HEAD :: 400;           // bytes the lines round the entities take, less the free and spawn lists
+
+// What a document says of itself, and whether it loaded.
+WorldDoc :: struct { ok: bool; content: int; head: int; next: int; digest: int; world: [WE_WORLD] u8; world_n: int; }
+
+// The bytes a World of `cap` slots with `own` columns may need.
+wd_bytes :: (cap: int, own: int) -> int { return WD_HEAD + cap * (WD_ENTITY + own * 12 + 16); }
+
+wd_hex :: (out: [] u8, n: int, v: int) -> int {
+  if n + 8 > out.count { return out.count + 1; }
+  for k: 0..<8 { d := (v >> ((7 - k) * 4)) & 15; out[n + k] = cast(u8) (ifx d < 10 then '0' + d else 'a' + d - 10); }
+  return n + 8;
+}
+wd_unhex :: (s: string) -> CtNum {
+  if s.count != 8 { return CtNum.{}; }
+  v := 0;
+  for b: s {
+    d := -1;
+    if b >= '0' && b <= '9' { d = cast(int) (b - '0'); }
+    if b >= 'a' && b <= 'f' { d = cast(int) (b - 'a') + 10; }
+    if d < 0 { return CtNum.{}; }
+    v = v * 16 + d;
+  }
+  return CtNum.{ok = true, v = v};
+}
+// A whole number of any size an int holds, as text and back (a content cell stops at 2^31).
+wd_put_int :: (out: [] u8, n: int, v: int) -> int {
+  d: [20] u8; m := 0; neg := v < 0;
+  x := v;
+  while true { r := x % 10; d[m] = cast(u8) ('0' + (ifx r < 0 then -r else r)); m += 1; x = x / 10; if x == 0 { break; } }
+  if n + m + (ifx neg then 1 else 0) > out.count { return out.count + 1; }
+  at := n;
+  if neg { out[at] = '-'; at += 1; }
+  for i: 0..<m { out[at + i] = d[m - 1 - i]; }
+  return at + m;
+}
+wd_num :: (s: string) -> CtNum {
+  neg := s.count > 0 && s[0] == '-'; a := ifx neg then 1 else 0;
+  if s.count == a || s.count > a + 19 || (s.count > a + 1 && s[a] == '0') || (neg && s[a] == '0') { return CtNum.{}; }
+  v := 0;
+  for i: a..<s.count {
+    if s[i] < '0' || s[i] > '9' { return CtNum.{}; }
+    dg := cast(int) (s[i] - '0');
+    if v > 922337203685477580 || (v == 922337203685477580 && dg > 7) { return CtNum.{}; }
+    v = v * 10 + dg;
+  }
+  return CtNum.{ok = true, v = ifx neg then -v else v};
+}
+// The digest a document carries: the World's, with what the document adds.
+wd_digest :: (w: World, content: int, head: int, next: int, own: [] int, per: int) -> int {
+  h := entity_mix(entity_mix(entity_mix(world_digest(w), content), head), next);
+  for s: 0..<world_high(w) { for k: 0..<per { h = entity_mix(entity_mix(h, own[s * per + k]), own[s * per + k] >> 32); } }
+  return h;
+}
+wd_list :: (out: [] u8, at: int, word: string, slots: [] int, count: int) -> int {
+  n := ct_put(out, at, word);
+  for k: 0..<count { n = ct_put(out, n, " "); n = wd_put_int(out, n, slots[k]); }
+  return ct_put(out, n, "\n");
+}
+// The World as its document into out: its bytes, or "" when the ID is no world's, a number is out
+// of range, `own` is not `per` columns a slot, or out is too small. `own`: the realm's columns,
+// slot by slot (own[slot * per + k]); pass none with per 0.
+world_save :: (w: World, id: string, content: int, head: int, next: int, own: [] int, per: int, out: [] u8) -> string {
+  if !world_ready(w) || !we_world_ok(id) || content < 0 || head < 0 || next < 1 || per < 0 || per > WD_OWN_MAX || own.count < world_high(w) * per { return ""; }
+  cap := world_cap(w); e := w.ents;
+  n := ct_put(out, 0, WD_MAGIC); n = ct_put(out, n, " "); n = ct_put(out, n, id);
+  n = ct_put(out, n, "\ncontent "); n = wd_put_int(out, n, content);
+  n = ct_put(out, n, "\nhead "); n = wd_put_int(out, n, head); n = ct_put(out, n, " "); n = wd_put_int(out, n, next);
+  n = ct_put(out, n, "\ntick "); n = wd_put_int(out, n, world_tick(w));
+  n = ct_put(out, n, "\ncounters");
+  for c: 0..<ENTITY_COUNTERS { n = ct_put(out, n, " "); n = wd_put_int(out, n, e.n[c]); }
+  n = ct_put(out, n, "\nown "); n = wd_put_int(out, n, per); n = ct_put(out, n, "\n");
+  for s: 0..<entity_high(e) {
+    flags := (ifx e.live[s] then 1 else 0) + (ifx e.born[s] then 2 else 0) + (ifx e.doomed[s] then 4 else 0);
+    n = ct_put(out, n, "e "); n = wd_put_int(out, n, s); n = ct_put(out, n, " "); n = wd_put_int(out, n, e.gen[s]);
+    n = ct_put(out, n, " "); n = wd_put_int(out, n, e.ids[s]); n = ct_put(out, n, " "); n = wd_put_int(out, n, flags);
+    n = ct_put(out, n, " "); n = wd_put_int(out, n, w.has[s]);
+    for c: 0..<WORLD_F { n = ct_put(out, n, " "); n = wd_hex(out, n, cast(int) f32_bits(w.f[c * cap + s])); }
+    for c: 0..<WORLD_I { n = ct_put(out, n, " "); n = wd_put_int(out, n, w.i[c * cap + s]); }
+    for k: 0..<per { n = ct_put(out, n, " "); n = wd_put_int(out, n, own[s * per + k]); }
+    n = ct_put(out, n, "\n");
+  }
+  n = wd_list(out, n, "free", e.free, e.n[ENTITY_FREE]);
+  n = wd_list(out, n, "spawns", e.spawns, e.n[ENTITY_SPAWNS]);
+  n = ct_put(out, n, "digest "); n = wd_put_int(out, n, wd_digest(w, content, head, next, own, per)); n = ct_put(out, n, "\n");
+  return ifx n > out.count then "" else cast(string) out[0..<n];
+}
+
+// A line's number after its word ("content 7"), or not ok.
+wd_after :: (line: string, word: string) -> CtNum {
+  if ct_parts(line, ' ') != 2 || ct_part(line, ' ', 0) != word { return CtNum.{}; }
+  return wd_num(ct_part(line, ' ', 1));
+}
+// One pass over a document: with `write` false it only checks the lines' form and that every
+// number fits this World; with `write` true it also puts them in the World, which the caller has
+// emptied. Either way, what the document says of itself.
+wd_pass :: (w: World, text: string, own: [] int, per: int, write: bool) -> WorldDoc {
+  d := WorldDoc.{}; cap := world_cap(w); e := w.ents;
+  at := 0; line_no := 0; high := 0; seen := 0; frees := -1; spawns := -1; counters: [ENTITY_COUNTERS] int; done := false;
+  while at < text.count {
+    end := at;
+    while end < text.count && text[end] != '\n' { end += 1; }
+    if end >= text.count || done { return d; }   // every line ends in a newline, and the digest is the last
+    line := text[at..<end]; at = end + 1;
+    word := ct_part(line, ' ', 0);
+    if line_no == 0 {
+      if ct_parts(line, ' ') != 2 || word != WD_MAGIC || !we_world_ok(ct_part(line, ' ', 1)) { return d; }
+      d.world_n = ct_copy(d.world[..], ct_part(line, ' ', 1));
+    } else if line_no == 1 { v := wd_after(line, "content"); if !v.ok || v.v < 0 { return d; } d.content = v.v; }
+    else if line_no == 2 {
+      v := wd_num(ct_part(line, ' ', 1)); x := wd_num(ct_part(line, ' ', 2));
+      if ct_parts(line, ' ') != 3 || word != "head" || !v.ok || v.v < 0 || !x.ok || x.v < 1 { return d; }
+      d.head = v.v; d.next = x.v;
+    }
+    else if line_no == 3 { v := wd_after(line, "tick"); if !v.ok || v.v < 0 { return d; } if write { w.n[WORLD_TICK] = v.v; } }
+    else if line_no == 4 {
+      if word != "counters" || ct_parts(line, ' ') != ENTITY_COUNTERS + 1 { return d; }
+      for c: 0..<ENTITY_COUNTERS { v := wd_num(ct_part(line, ' ', c + 1)); if !v.ok || v.v < 0 { return d; } counters[c] = v.v; }
+      high = counters[ENTITY_HIGH];
+      if high > cap || counters[ENTITY_FREE] > high || counters[ENTITY_SPAWNS] > high || counters[ENTITY_LIVE] > high || counters[ENTITY_DOOMED] > high { return d; }
+      if write { for c: 0..<ENTITY_COUNTERS { e.n[c] = counters[c]; } }
+    } else if line_no == 5 { v := wd_after(line, "own"); if !v.ok || v.v != per { return d; } }
+    else if word == "e" {
+      if seen >= high || ct_parts(line, ' ') != 6 + WORLD_F + WORLD_I + per { return d; }
+      slot := wd_num(ct_part(line, ' ', 1)); gen := wd_num(ct_part(line, ' ', 2)); id := wd_num(ct_part(line, ' ', 3));
+      flags := wd_num(ct_part(line, ' ', 4)); has := wd_num(ct_part(line, ' ', 5));
+      if !slot.ok || slot.v != seen || !gen.ok || gen.v < 0 || gen.v > ENTITY_GEN_MASK || !id.ok || id.v < 0 || !flags.ok || flags.v > 7 || !has.ok || has.v < 0 || has.v > WORLD_ALL { return d; }
+      if write { e.gen[seen] = gen.v; e.ids[seen] = id.v; e.live[seen] = (flags.v & 1) != 0; e.born[seen] = (flags.v & 2) != 0; e.doomed[seen] = (flags.v & 4) != 0; w.has[seen] = has.v; }
+      for c: 0..<WORLD_F {
+        v := wd_unhex(ct_part(line, ' ', 6 + c));
+        if !v.ok { return d; }
+        if write { w.f[c * cap + seen] = f32_from_bits(cast(u32) v.v); }
+      }
+      for c: 0..<WORLD_I {
+        v := wd_num(ct_part(line, ' ', 6 + WORLD_F + c));
+        if !v.ok { return d; }
+        if write { w.i[c * cap + seen] = v.v; }
+      }
+      for k: 0..<per {
+        v := wd_num(ct_part(line, ' ', 6 + WORLD_F + WORLD_I + k));
+        if !v.ok { return d; }
+        if write { own[seen * per + k] = v.v; }
+      }
+      seen += 1;
+    } else if word == "free" || word == "spawns" {
+      first := word == "free";
+      if seen != high || (first && frees >= 0) || (!first && (frees < 0 || spawns >= 0)) { return d; }
+      count := ct_parts(line, ' ') - 1;
+      if count != counters[ifx first then ENTITY_FREE else ENTITY_SPAWNS] { return d; }
+      for k: 0..<count {
+        v := wd_num(ct_part(line, ' ', k + 1));
+        if !v.ok || v.v < 0 || v.v >= high { return d; }
+        if write { if first { e.free[k] = v.v; } else { e.spawns[k] = v.v; } }
+      }
+      if first { frees = count; } else { spawns = count; }
+    } else if word == "digest" {
+      v := wd_after(line, "digest");
+      if !v.ok || spawns < 0 { return d; }
+      d.digest = v.v; done = true;
+    } else { return d; }
+    line_no += 1;
+  }
+  d.ok = done;
+  return d;
+}
+// The document into the World (and the realm's own columns into `own`): what it says of itself,
+// ok when it loaded. A document that is not one in its one form or does not fit this World (more
+// slots than its cap, another count of own columns) is refused and changes nothing; one that does
+// not give its own digest once loaded is refused and leaves the World empty. The index is built from the loaded transforms.
+world_load :: (w: World, text: string, own: [] int, per: int) -> WorldDoc {
+  no := WorldDoc.{};
+  if !world_ready(w) || per < 0 || per > WD_OWN_MAX || own.count < world_cap(w) * per || w.n[WORLD_STEPPING] != 0 { return no; }
+  d := wd_pass(w, text, own, per, false);
+  if !d.ok { return no; }
+  cell := w.grid.cell[0]; cap := world_cap(w);
+  // empty the entities, the columns and the index; the systems list and the counters stay the realm's
+  entity_clear(w.ents);
+  for k: 0..<w.has.count { w.has[k] = 0; }
+  for k: 0..<w.f.count { w.f[k] = 0; }
+  for k: 0..<w.i.count { w.i[k] = 0; }
+  for k: 0..<cap * per { own[k] = 0; }
+  _ := spatial_init(w.grid, cell);
+  d = wd_pass(w, text, own, per, true);
+  for s: 0..<entity_high(w.ents) {
+    if w.ents.live[s] && (w.has[s] & WORLD_TRANSFORM) != 0 { _ = spatial_put(w.grid, s, w.f[WF_X * cap + s], w.f[WF_Z * cap + s]); }
+  }
+  if d.ok && wd_digest(w, d.content, d.head, d.next, own, per) == d.digest { return d; }
+  entity_clear(w.ents);
+  for k: 0..<w.has.count { w.has[k] = 0; }
+  for k: 0..<w.f.count { w.f[k] = 0; }
+  for k: 0..<w.i.count { w.i[k] = 0; }
+  for k: 0..<cap * per { own[k] = 0; }
+  _ = spatial_init(w.grid, cell);
+  w.n[WORLD_TICK] = 0;
+  return no;
+}
+wd_world_is :: (d: WorldDoc, id: string) -> bool { w := d.world; return cast(string) w[0..<d.world_n] == id; }
+
+// ---- checks
+
+WdTest :: struct { a: [1] WorldStore; b: [1] WorldStore; own_a: [64 * 2] int; own_b: [64 * 2] int; text: [40000] u8; again: [40000] u8; bent: [40000] u8; }
+// A World with a history: spawns, a despawn that frees a slot, a spawn that takes it again, a spawn
+// still waiting and a despawn still waiting, a step run.
+wd_test_world :: (t: [] WdTest) -> World {
+  w := world_of(t[0].a[..], 64); _ := world_init(w, 8);
+  _ = world_system(w, 1, WORLD_TRANSFORM, WORLD_TRANSFORM);
+  hs: [6] Handle(Entity);
+  for k: 0..<6 {
+    made := world_spawn(w, ifx k == 3 then WORLD_KIND | WORLD_ROW else WORLD_ALL);
+    s := entity_slot(made.handle); hs[k] = made.handle;
+    _ = world_set_f(w, WF_X, s, cast(f32) k * 3.25 - 7); _ = world_set_f(w, WF_Z, s, cast(f32) k * -1.5); _ = world_set_f(w, WF_YAW, s, 0.1 * cast(f32) k);
+    _ = world_set_f(w, WF_RADIUS, s, 0.45); _ = world_set_f(w, WF_HEIGHT, s, 1.8);
+    _ = world_set_i(w, WI_KIND, s, 100 + k); _ = world_set_i(w, WI_ROW, s, k); _ = world_set_i(w, WI_HP, s, 9000000000 + k);
+    t[0].own_a[s * 2] = k * 11; t[0].own_a[s * 2 + 1] = -k;
+  }
+  _ = world_commit(w);
+  world_despawn(w, hs[1]); world_despawn(w, hs[4]);
+  _ = world_commit(w);
+  t[0].own_a[2] = 0; t[0].own_a[3] = 0; t[0].own_a[8] = 0; t[0].own_a[9] = 0;
+  again := world_spawn(w, WORLD_ALL);   // takes slot 4 again, a generation on
+  _ = world_set_f(w, WF_X, entity_slot(again.handle), 31.5); _ = world_set_i(w, WI_KIND, entity_slot(again.handle), 777);
+  _ = world_commit(w);
+  _ = world_step_begin(w); _ = world_system_begin(w, 1); world_system_end(w); _ = world_step_end(w);
+  waiting := world_spawn(w, WORLD_TRANSFORM);
+  _ = world_set_f(w, WF_Z, entity_slot(waiting.handle), -2.5);
+  world_despawn(w, hs[2]);
+  return w;
+}
+#test "world document: a World saves whole and loads to the same World, the same digest and the same bytes" {
+  t := [1] WdTest.[WdTest.{}]; w := wd_test_world(t[..]);
+  text := world_save(w, "splice", 7, 41, 9, t[0].own_a[..], 2, t[0].text[..]);
+  #assert text.count > 0 && world_count(w) == 5 && world_tick(w) == 1 && w.ents.n[ENTITY_SPAWNS] == 1 && w.ents.n[ENTITY_DOOMED] == 1 && w.ents.n[ENTITY_FREE] == 0;
+  v := world_of(t[0].b[..], 64); _ := world_init(v, 8);
+  d := world_load(v, text, t[0].own_b[..], 2);
+  #assert d.ok && d.content == 7 && d.head == 41 && wd_world_is(d, "splice") && d.digest == wd_digest(w, 7, 41, 9, t[0].own_a[..], 2) && d.next == 9;
+  #assert world_digest(v) == world_digest(w) && world_count(v) == 5 && world_tick(v) == 1 && world_high(v) == world_high(w);
+  #assert world_save(v, "splice", 7, 41, 9, t[0].own_b[..], 2, t[0].again[..]) == text;
+  for k: 0..<64 * 2 { #assert t[0].own_b[k] == t[0].own_a[k]; }
+  // the loaded World goes on as the saved one does: the same flush, the same next spawn, the same index
+  _ = world_commit(w); _ = world_commit(v);
+  a := world_spawn(w, WORLD_ALL); b := world_spawn(v, WORLD_ALL);
+  #assert a.handle == b.handle && a.id == b.id && world_digest(v) == world_digest(w) && world_count(v) == 5;
+  near_a: [16] int; near_b: [16] int;
+  na := world_near(w, 0, 0, 12, near_a[..]); nb := world_near(v, 0, 0, 12, near_b[..]);
+  #assert na == nb && na > 0;
+  for k: 0..<na { found := false; for j: 0..<nb { found = found || near_b[j] == near_a[k]; } #assert found; }
+}
+#test "world document: a document that is not one, or not this World's, is refused whole" {
+  t := [1] WdTest.[WdTest.{}]; w := wd_test_world(t[..]);
+  text := world_save(w, "splice", 7, 41, 9, t[0].own_a[..], 2, t[0].text[..]);
+  v := world_of(t[0].b[..], 64); _ := world_init(v, 8);
+  bent := [9] string.["world.doc.v1 splice", "content 7", "head 41 9", "tick 1", "own 2", "\ne 0 0 1 1 31", "free", "spawns 1", "digest "];
+  with := [9] string.["world.doc.v2 splice", "content -7", "head 41 0", "tick 2", "own 1", "\ne 0 0 2 1 31", "free 0", "spawns 5", "digest 1"];
+  for k: 0..<9 {
+    s := sc_edit_swap(text, bent[k], with[k], t[0].bent[..]);
+    #assert s != text;
+    #assert world_load(v, text, t[0].own_b[..], 2).ok && world_count(v) == 5;
+    // refused by its form: the World is as it was. Refused by its digest (the tick, an EntityId, a waiting spawn, the digest itself): empty
+    by_digest := k == 3 || k == 5 || k >= 7;
+    #assert !world_load(v, s, t[0].own_b[..], 2).ok && world_ready(v);
+    #assert world_count(v) == (ifx by_digest then 0 else 5) && world_high(v) == (ifx by_digest then 0 else world_high(w)) && world_tick(v) == (ifx by_digest then 0 else 1);
+  }
+  // a changed column changes the digest; a cut document, a second digest and stray bytes are no document
+  #assert !world_load(v, sc_edit_swap(text, " 100 0 0 0\n", " 101 0 0 0\n", t[0].bent[..]), t[0].own_b[..], 2).ok;
+  #assert !world_load(v, text[0..<text.count - 1], t[0].own_b[..], 2).ok && !world_load(v, "", t[0].own_b[..], 2).ok && !world_load(v, "world.doc.v1 splice\n", t[0].own_b[..], 2).ok;
+  n := 0; for k: 0..<text.count { t[0].bent[n] = text[k]; n += 1; } for b: "digest 1\n" { t[0].bent[n] = b; n += 1; }
+  #assert !world_load(v, cast(string) t[0].bent[0..<n], t[0].own_b[..], 2).ok;
+  // a World too small for it, own columns it has not, a save with a bad ID or too little room
+  small := world_of(t[0].b[..], 4); _ = world_init(small, 8);
+  #assert !world_load(small, text, t[0].own_b[..], 2).ok && !world_load(v, text, t[0].own_b[..], 1).ok && !world_load(v, text, t[0].own_b[0..<8], 2).ok && !world_load(v, text, t[0].own_b[..], 9).ok;
+  #assert world_save(w, "Splice", 7, 41, 9, t[0].own_a[..], 2, t[0].again[..]) == "" && world_save(w, "splice", -1, 41, 9, t[0].own_a[..], 2, t[0].again[..]) == "" && world_save(w, "splice", 7, -1, 9, t[0].own_a[..], 2, t[0].again[..]) == "" && world_save(w, "splice", 7, 41, 0, t[0].own_a[..], 2, t[0].again[..]) == "";
+  #assert world_save(w, "splice", 7, 41, 9, t[0].own_a[..], 2, t[0].again[0..<200]) == "" && world_save(w, "splice", 7, 41, 9, t[0].own_a[0..<3], 2, t[0].again[..]) == "" && world_save(w, "splice", 7, 41, 9, t[0].own_a[..], 9, t[0].again[..]) == "";
+  // no own columns is a document too
+  none: [1] int;
+  plain := world_save(w, "splice", 7, 41, 9, none[0..<0], 0, t[0].again[..]);
+  #assert plain.count > 0 && world_load(v, plain, none[0..<0], 0).ok && world_digest(v) == world_digest(w) && wd_bytes(64, 2) >= text.count;
+}
