@@ -258,8 +258,10 @@ live_page_end :: (l: [] Live) {
   if oldest < 0 || (l[0].until >= 0 && oldest > l[0].until) { live_incomplete(l, 1); return; }
   if oldest == l[0].until {
     // Inclusive until repeats its boundary. A multi-event stalled cohort
-    // cannot be safely skipped on a relay with an unknown cap.
-    if l[0].page_count > 1 || l[0].history_peak < 2 { live_incomplete(l, 2); return; }
+    // cannot be safely skipped on a relay with an unknown cap; one event moves
+    // a second back, as pr_page and lr_page_end read it. A relay with no NIP-67
+    // "finish" (relay.openagents.com since #13361) ends a one-event read here.
+    if l[0].page_count > 1 { live_incomplete(l, 2); return; }
     if oldest == 0 { l[0].stage += 1; l[0].until = -1; l[0].history_peak = 0; }
     else { l[0].until = oldest - 1; }
   } else { l[0].until = oldest; }
