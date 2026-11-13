@@ -445,7 +445,7 @@ bool emit_shader(const File *file, const std::string &vertex, const std::string 
 // `tree`, *out is the tree as decimal words, then the names' lines.
 // `coax wgsl FILE --vertices A,B --fragments C,D --computes E,F --bindings F [--strip P]`: a whole
 // module (WG_module), each vertex, fragment and compute entry (stages 0, 1 and 3) with its
-// resources bound as F's lines (`NAME GROUP BINDING [uniform COUNT | rw | atomic]`) say; an
+// resources bound as F's lines (`NAME GROUP BINDING [uniform [COUNT] | rw | atomic]`; `uniform` alone a typed block) say; an
 // entry's WGSL name is its procedure's without the prefix P.
 #ifndef COAX_BOOTSTRAP_IMPORTER
 static std::vector<std::string> wgsl_list(const std::string &list) {

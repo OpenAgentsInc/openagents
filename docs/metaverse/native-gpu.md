@@ -669,3 +669,17 @@ tasks (native-gpu.json) come after the port.
   and the held one ended it, back on VT 1. Still open: a navigation to
   another realm is ignored, and the owner's own play on coderos-4080 in
   place of the kiosk (NEEDS_OWNER.md).
+- 2026-11-13: typed uniform blocks (#13451, part 1). A bindings line may
+  say `uniform` with no count for a `[]STRUCT` parameter: `coax wgsl`
+  writes the struct and `var<uniform> NAME: coax_tN;`, and `u[0].field`
+  becomes `NAME.field` (a constant 0 is the only index; a store or a count
+  is refused). The struct must be vec4s and f32s in fours, each field where
+  the one before ends, so WGSL's uniform layout is C's with no padding
+  rule; anything else is refused with reason 10. The `[]f32` form with a
+  count is unchanged. `coax metal` and `coax spirv` already lower such a
+  view as a buffer of the struct (Metal `device const coax_tN*`, SPIR-V a
+  `Block` with each field's `Offset` and the element's `ArrayStride`); a
+  check in each backend pins that. No page uses the form yet: Everglade
+  II's shaders reach their uniforms through the shared `cg_*`,
+  `fivelab_*`, `paint_env_*` and `wg_at*` helpers, which seven other
+  modules also call with a `[]f32` block.
