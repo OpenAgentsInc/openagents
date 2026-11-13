@@ -3,8 +3,10 @@
 # Size 1280x800, query "edit&stage=5".
 clock +1500
 clock until page.f.rev >= 0 within 20000
+# start the game; it holds the pointer to look round, and Escape lets go of it so the panes take presses again
 type - key Enter
 clock +800
+type - key Escape
 # place three pieces with the realm commands: revisions 1 to 3
 place 117 17500 -7500
 place 117 17650 -7350
@@ -13,6 +15,7 @@ clock until game.layer.st.n == 3 within 6000
 # the select tool: a tap in the world picks the crate under it and marks the point
 tap tool
 tap tool.1
+# points are the window's, inside the scene's frame: at 1280x800 the canvas runs from x 236 to 1024, below the strip
 tap 820 480
 clock until page.sel == 3 within 6000
 tap 475 525
@@ -113,15 +116,12 @@ tap model=Gemini 3.8 Flash
 clock +300
 tap model=Gemini 3.8 Flash
 tap agent
+# the agent's pane put away, the scene's frame grows to the window's foot: a frame drawn at the new size
+clock +300
 # the run kept its state: the player has not moved from where stage 5 put them
 where
 # what a tap reaches, and the tap targets
 hit 57 35
 hit 640 300
 screenshot apps/openagents-web/build/editor-run.png
-# a phone's size: the strip wraps, the two panes stand side by side above the world
-prefer size 390x844
-clock +300
-hit 60 35
-screenshot apps/openagents-web/build/editor-run-phone.png
 logs

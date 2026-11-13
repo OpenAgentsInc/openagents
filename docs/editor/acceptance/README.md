@@ -50,9 +50,16 @@ not hold.
      --ops docs/editor/acceptance/editor-run.ops
    ```
 
-The run exits 0 when every step holds: 100 operations, about a minute. It
-leaves two pictures in `apps/openagents-web/build/`: `editor-run.png` and
-`editor-run-phone.png`.
+The run exits 0 when every step holds: 98 operations, about a minute. It
+leaves a picture in `apps/openagents-web/build/`: `editor-run.png`.
+
+The scene stands in a frame: the canvas is the part of the window between the
+strip and the two side panes (and the agent's pane while it is open). Taps and
+drags in the runs are the window's CSS pixels, as a mouse gives them; the page
+hears them in the canvas's own pixels. `hit` asks the HUD at the point less the
+canvas's corner and says where that corner is. The game starts with Enter and
+holds the pointer to look round; `type - key Escape` lets go of it, as the
+browser's own Escape does, so the panes take presses again.
 
 The code steps save two of Splice's sources (`metaverse/splice/splice-game.coax`
 and `gpu/splice.coax`) and then save them back as they were. If the run stops
@@ -78,9 +85,8 @@ must be one revision; a stroke must be one undo step. It leaves
 written against every edit showed in the frame it was made in: the page
 checks its own world, so nothing waits on a server.
 
-It does not check the chat line against the real model (the run scripts the
-model's answers, below) or a phone's size: the driver's change of size mid-run garbles the page's own text,
-so take that picture from a fresh load at 390x844.
+It does not check the chat line against the real model: the run scripts the
+model's answers, below.
 
 ## What it checks
 
@@ -102,8 +108,7 @@ so take that picture from a fresh load at 390x844.
 | Talk to the agent | Nothing changes. |
 | Switch to an agent on this machine | Coder's answers are scripted (`local-agents.json`: Claude Code ready). The Agent menu lists Claude Code beside us, the conversation switches to it, and back to Gemini (#13465). |
 | Where the player stands | The run kept its state: the player has not moved. |
-| What a tap reaches | The shell's button over the canvas, and the world where no pane is. |
-| A phone's size | The strip wraps and the panes stand side by side above the world. |
+| What a tap reaches | The shell's button in the strip, and the world in the frame. |
 
 The swaps are timed in real time. On the build this was written against, on
 a Mac that was busy with other builds, the engine swapped 950 to 1,040 ms
@@ -130,17 +135,6 @@ agent's clock.
   `/local/agents`) are scripted, so the run checks the menu and the switch,
   not a turn. Their edits are the realm commands the first steps use
   (`place`), which is the path their `realm_world` tools take.
-- **Real Chrome and a real phone.** This run is headless Chrome. The pass with
-  a hand on a mouse and a finger on a phone is the owner's step in
-  `NEEDS_OWNER.md`.
-- **Tap sizes under a mouse.** Under a finger every control of the kit is at
-  least 44 px either way (`@media (pointer: coarse)` in the mono skin,
-  #13448); with a mouse the kit keeps its desktop sizes. Check a phone with:
-
-  ```sh
-  coax/web/tool.sh drive web apps/openagents-web /worlds/splice \
-    --query "edit&stage=5" --size 390x844 --live http://127.0.0.1:9538 \
-    "prefer pointer coarse" "clock +1500" taps
-  ```
-
-  It answers `0 under 44 px`.
+- **Real Chrome.** This run is headless Chrome. The pass with a hand on a
+  mouse is the owner's step in `NEEDS_OWNER.md`.
+- **A phone.** The runs are at desktop sizes only.

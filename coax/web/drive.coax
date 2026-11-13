@@ -31,6 +31,7 @@
 //   drag X0 Y0 X1 Y1              a press at one point, a move to another and a release there: a gizmo's drag
 //   type ID TEXT | type ID key NAME   tap ID, then the text (or one key: Enter, Escape, 1, w ...);
 //                                 ID - types into the page as it is
+//                                 (Escape also lets go of a held pointer, as the browser's own Escape does)
 //   walk-to ID | face ID | use ABILITY on ID | mount ID | stop
 //                                 a world operation: the realm walks, turns and presses as a player's
 //                                 input would (a deed the room answers); it waits until the operation
@@ -486,6 +487,10 @@ dv_key :: (s: [] DvS, name: string) -> bool {
     jo_key(j[..], "windowsVirtualKeyCode"); jo_int(j[..], code); jo_end(j[..]);
     if cdp_call(s[0].c[..], "Input.dispatchKeyEvent", jo_text(j[..]), CDP_CALL_MS) < 0 { return false; }
   }
+  // Escape is also the browser's own: it lets go of a held pointer (mouselook), which a key sent by
+  // DevTools does not do. The shared browser has focus, so a page's lock holds there, and while it
+  // holds every press goes to the canvas, not to the editor's panes.
+  if name == "Escape" { _ := dv_eval(s, "(document.exitPointerLock?.(), 'ok')"); }
   return true;
 }
 DV_LOGS_JS :: "(() => { if (globalThis.__driveLogs) return; const L = globalThis.__driveLogs = []; const k = (t, a) => { try { L.push(t + ': ' + a.map((x) => typeof x === 'string' ? x : JSON.stringify(x)).join(' ')); if (L.length > 500) L.shift(); } catch {} }; for (const m of ['error', 'warn', 'log', 'info']) { const o = console[m].bind(console); console[m] = (...a) => { k(m, a); o(...a); }; } addEventListener('error', (e) => k('page error', [e.message + ' at ' + e.filename + ':' + e.lineno])); addEventListener('unhandledrejection', (e) => k('unhandled rejection', [String(e.reason)])); })()";

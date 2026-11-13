@@ -480,7 +480,7 @@ is slice 3, E4 is slice 4 and E9 is slices 5-6.
 | E11 | Asset import: drop glTF, PNG or audio, pack it with a licence, browse it, swap it live | #13420 |
 | E12 | Code from the browser, owner and admin only: edit a realm's Coax on the dev server, check it on save, swap it live | #13421 |
 | E13 | The four editors move onto the shell: Everglade EDIT, WorldBuilder, the realm edit layer and Splice | #13422 |
-| E14 | Acceptance: a real-input run of the editor in real Chrome, on a laptop and a phone | #13423 |
+| E14 | Acceptance: a real-input run of the editor in real Chrome, on a laptop | #13423 |
 
 The acceptance run that repeats is `docs/editor/acceptance/` (E14, #13423): a
 file of `coax drive` operations and how to run it. One pass on the dev server
@@ -508,7 +508,7 @@ content tables and a typed edit layer). Everglade is the second.
 
 ## Done means
 
-- On a laptop and a phone, a person opens `/worlds/splice?edit`, places,
+- On a laptop, a person opens `/worlds/splice?edit`, places,
   moves and deletes pieces, edits a content row, and changes a shader and a
   line of game code. Each change shows in under 2 seconds, and the run keeps
   its state.

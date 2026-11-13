@@ -5,6 +5,7 @@ clock until b.cat_ready == true within 60000
 # the overview, and a tap on the ground: "here"
 type - key Tab
 clock +400
+# points are the window's, inside the scene's frame: at 1280x800 the canvas runs from x 236 to 1024, below the strip
 tap 640 520
 clock until b.ep.here == true within 3000
 # Add a cottage at the point: one typed spawn, revision 1
