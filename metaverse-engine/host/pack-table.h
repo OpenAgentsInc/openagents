@@ -10,8 +10,8 @@
 #include <stdint.h>
 #include "aethyr-pack-table.h"
 
-// The kinds a host sorts entries by (metaverse-engine/host/pack-table.coax PACK_CATALOG to PACK_DATA).
-enum { AETHYR_PACK_CATALOG = 1, AETHYR_PACK_VERTICES = 2, AETHYR_PACK_INDICES = 3, AETHYR_PACK_LAYER = 4, AETHYR_PACK_SOUND = 5, AETHYR_PACK_DATA = 6 };
+// The kinds a host sorts entries by (metaverse-engine/host/pack-table.coax PACK_CATALOG to PACK_RIG).
+enum { AETHYR_PACK_CATALOG = 1, AETHYR_PACK_VERTICES = 2, AETHYR_PACK_INDICES = 3, AETHYR_PACK_LAYER = 4, AETHYR_PACK_SOUND = 5, AETHYR_PACK_DATA = 6, AETHYR_PACK_RIG = 7 };
 
 typedef coax_t_PackTable AethyrPack;
 

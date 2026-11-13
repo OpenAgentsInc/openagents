@@ -1,0 +1,195 @@
+// VRG1: skinned rigs as bytes (GitHub #13306, AAA P6.4). One file holds up to eight named rig
+// sets. A set is what metaverse-engine/anim/skin.coax plays (SkinRig) for two bodies that share
+// their joints and their clips' rotations: the parents, each body's rest and inverse bind, each
+// clip's seconds and metres, each clip and joint's key tracks, each body's translation keys and
+// the rotation keys. A pack carries the file as its rig entry (kind 7, PACK_RIG), so a page reads
+// its rigs from the pack it already loads and the generated rig procedures can go.
+//
+// The bytes, little endian, every field a 4-byte word (proto/metaverse-engine/rig-pack-v1.json):
+//   header, 32 bytes: "VRG1", version (1), sets (1 to 8), the file's bytes, 0, 0, 0, 0
+//   a row a set, 48 bytes: its name in 16 zero-padded bytes (1 to 15 of a-z, 0-9 and '-'),
+//     joints, clips, translation keys a body, rotation keys, offset, bytes, 0, 0
+//   a set's words, in this order (VRG_PARENT ... VRG_KEYS_R):
+//     parent + 1 a joint (0: a root; a parent comes before its child)
+//     rest of body 0, rest of body 1          7 floats a joint: translation, rotation x y z w
+//     bind of body 0, bind of body 1          12 floats a joint: three rows of four
+//     duration, distance                      a float a clip
+//     translation tracks, rotation tracks     (first key, keys) a clip and joint
+//     translation keys of body 0, of body 1   4 floats a key: seconds, x, y, z
+//     rotation keys                           5 floats a key: seconds, x, y, z, w
+// Sets follow the rows with no gap, in row order, and the last ends the file. A file is read whole
+// or refused (vrg_valid): every size is exact, every float is finite, every track lies inside its
+// keys and no two sets share a name. A set has 1 to 256 joints and 1 to 256 clips. vrg_ints and vrg_floats copy one part of a set into an array
+// of exactly its size; the writer's calls are their mirror, so a file written here reads back bit
+// for bit.
+//   coax/bin/coax test --library metaverse-engine/anim/rig-pack.coax
+#authority;
+#load "../core/binary-words.coax";
+
+VRG_MAGIC :: 0x31475256;   // "VRG1"
+VRG_HEADER :: 32;
+VRG_ROW :: 48;
+VRG_SETS :: 8;
+VRG_NAME :: 16;
+VRG_JOINTS :: 256;         // joints a set has at most
+VRG_CLIPS :: 256;          // clips a set has at most
+VRG_MIN :: 260;            // the smallest file: one set of one joint and one clip with no keys
+
+// A set's parts, in file order.
+VRG_PARENT :: 0; VRG_REST_0 :: 1; VRG_REST_1 :: 2; VRG_BIND_0 :: 3; VRG_BIND_1 :: 4;
+VRG_DURATION :: 5; VRG_DISTANCE :: 6; VRG_TRACK_T :: 7; VRG_TRACK_R :: 8;
+VRG_KEYS_T_0 :: 9; VRG_KEYS_T_1 :: 10; VRG_KEYS_R :: 11; VRG_PARTS :: 12;
+
+// One set as its row states it: its words are b[at..<at + n]. joints is 0 for no set.
+VrgSet :: struct { joints: int; clips: int; keys_t: int; keys_r: int; at: int; n: int; }
+
+// The words of a part; -1 for a part there is not.
+vrg_words :: (s: VrgSet, part: int) -> int #effects(all) {
+  if part == VRG_PARENT { return s.joints; }
+  if part == VRG_REST_0 || part == VRG_REST_1 { return s.joints * 7; }
+  if part == VRG_BIND_0 || part == VRG_BIND_1 { return s.joints * 12; }
+  if part == VRG_DURATION || part == VRG_DISTANCE { return s.clips; }
+  if part == VRG_TRACK_T || part == VRG_TRACK_R { return s.clips * s.joints * 2; }
+  if part == VRG_KEYS_T_0 || part == VRG_KEYS_T_1 { return s.keys_t * 4; }
+  if part == VRG_KEYS_R { return s.keys_r * 5; }
+  return -1;
+}
+// Where a part starts in the file.
+vrg_at :: (s: VrgSet, part: int) -> int #effects(all) {
+  at := s.at;
+  for p: 0..<part { at += vrg_words(s, p) * 4; }
+  return at;
+}
+// A set's bytes: every part.
+vrg_bytes :: (s: VrgSet) -> int #effects(all) { return vrg_at(s, VRG_PARTS) - s.at; }
+// Whether a part holds whole numbers (the parents and the tracks); the rest are floats.
+vrg_whole :: (part: int) -> bool #effects(all) { return part == VRG_PARENT || part == VRG_TRACK_T || part == VRG_TRACK_R; }
+vrg_counts_ok :: (s: VrgSet) -> bool #effects(all) {
+  return s.joints >= 1 && s.joints <= VRG_JOINTS && s.clips >= 1 && s.clips <= VRG_CLIPS;
+}
+vrg_name_byte :: (c: u8) -> bool #effects(all) { return (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-'; }
+// A row's name: its length, 0 when it is not 1 to 15 name bytes then zeros.
+vrg_name_len :: (b: [] u8, row: int) -> int #effects(all) {
+  n := 0;
+  for k: 0..<VRG_NAME {
+    if b[row + k] == 0 { continue; }
+    if k != n || !vrg_name_byte(b[row + k]) { return 0; }
+    n += 1;
+  }
+  return ifx n == VRG_NAME then 0 else n;
+}
+vrg_name_is :: (b: [] u8, row: int, name: string) -> bool #effects(all) {
+  if name.count != vrg_name_len(b, row) { return false; }
+  for k: 0..<name.count { if b[row + k] != name[k] { return false; }  }
+  return true;
+}
+vrg_same_name :: (b: [] u8, a: int, c: int) -> bool #effects(all) {
+  for k: 0..<VRG_NAME { if b[a + k] != b[c + k] { return false; } }
+  return true;
+}
+// Row k as it is written, unchecked.
+vrg_row :: (b: [] u8, k: int) -> VrgSet #effects(all) {
+  r := VRG_HEADER + VRG_ROW * k + VRG_NAME;
+  return VrgSet.{joints = cast(int) scan_u32(b, r), clips = cast(int) scan_u32(b, r + 4), keys_t = cast(int) scan_u32(b, r + 8),
+                 keys_r = cast(int) scan_u32(b, r + 12), at = cast(int) scan_u32(b, r + 16), n = cast(int) scan_u32(b, r + 20)};
+}
+vrg_finite :: (b: [] u8, at: int) -> bool #effects(all) { return (scan_u32(b, at) & 0x7f800000) != 0x7f800000; }
+// A set's words: parents first, floats finite, tracks inside their keys.
+vrg_set_ok :: (b: [] u8, s: VrgSet) -> bool #effects(all) {
+  for j: 0..<s.joints { if cast(int) scan_u32(b, s.at + j * 4) > j { return false; } }
+  part := VRG_REST_0;
+  while vrg_words(s, part) >= 0 {
+    at := vrg_at(s, part); n := vrg_words(s, part);
+    if vrg_whole(part) {
+      keys := ifx part == VRG_TRACK_T then s.keys_t else s.keys_r;
+      for t: 0..<n / 2 {
+        first := cast(int) scan_u32(b, at + t * 8); count := cast(int) scan_u32(b, at + t * 8 + 4);
+        if count > keys - first { return false; }
+      }
+    } else {
+      for w: 0..<n { if !vrg_finite(b, at + w * 4) { return false; } }
+    }
+    part += 1;
+  }
+  return true;
+}
+// Whether a file of `bytes` has room for the header and `sets` rows, and sets is no more than eight.
+vrg_rows_fit :: (bytes: int, sets: int) -> bool #effects(all) { return sets <= VRG_SETS && bytes >= VRG_HEADER + VRG_ROW * sets; }
+// The sets a file holds: 0 when the file is refused.
+vrg_valid :: (b: [] u8) -> int #effects(all) {
+  if b.count < VRG_MIN { return 0; }
+  if scan_u32(b, 0) != VRG_MAGIC || scan_u32(b, 4) != 1 || cast(int) scan_u32(b, 12) != b.count { return 0; }
+  for k: 16..<VRG_HEADER { if b[k] != 0 { return 0; } }
+  sets := cast(int) scan_u32(b, 8);
+  if !vrg_rows_fit(b.count, sets) { return 0; }
+  at := VRG_HEADER + VRG_ROW * sets;
+  for k: 0..<sets {
+    row := VRG_HEADER + VRG_ROW * k; s := vrg_row(b, k);
+    if vrg_name_len(b, row) == 0 || !vrg_counts_ok(s) { return 0; }
+    for z: row + VRG_NAME + 24..<row + VRG_ROW { if b[z] != 0 { return 0; } }
+    for e: 0..<k { if vrg_same_name(b, row, VRG_HEADER + VRG_ROW * e) { return 0; } }
+    if s.at != at || s.n != vrg_bytes(s) || s.n > b.count - at { return 0; }
+    if !vrg_set_ok(b, s) { return 0; }
+    at += s.n;
+  }
+  return ifx at == b.count then sets else 0;
+}
+// The named set of a file vrg_valid admits; joints 0 when the file has none by that name.
+vrg_find :: (b: [] u8, name: string) -> VrgSet #effects(all) {
+  for k: 0..<vrg_valid(b) { if vrg_name_is(b, VRG_HEADER + VRG_ROW * k, name) { return vrg_row(b, k); } }
+  return VrgSet.{};
+}
+// A whole-number part of a set into out, which is exactly its size. The parents come out as the
+// rig holds them: -1 for a root.
+vrg_ints :: (b: [] u8, s: VrgSet, part: int, out: [] int) -> bool #effects(all) {
+  if s.joints == 0 || !vrg_whole(part) || out.count != vrg_words(s, part) { return false; }
+  at := vrg_at(s, part); less := ifx part == VRG_PARENT then 1 else 0;
+  for w: 0..<out.count { out[w] = cast(int) scan_u32(b, at + w * 4) - less; }
+  return true;
+}
+// A float part of a set into out, which is exactly its size.
+vrg_floats :: (b: [] u8, s: VrgSet, part: int, out: [] f32) -> bool #effects(all) {
+  if s.joints == 0 || vrg_whole(part) || out.count != vrg_words(s, part) { return false; }
+  at := vrg_at(s, part);
+  for w: 0..<out.count { out[w] = scan_float(b, at + w * 4); }
+  return true;
+}
+
+// ---- the writer (the rig tool's; everglade/model/tools/rig-pack.coax)
+// The header and zeroed rows for `sets` sets into out: where the first set's words start, 0 refused.
+vrg_begin :: (out: [] u8, sets: int) -> int #effects(all) {
+  at := VRG_HEADER + VRG_ROW * sets;
+  if sets < 1 || sets > VRG_SETS || out.count < at { return 0; }
+  for k: 12..<at { out[k] = 0; }
+  scan_put(out, 0, VRG_MAGIC); scan_put(out, 4, 1); scan_put(out, 8, cast(u32) sets);
+  return at;
+}
+// Row k: the set `name` with these counts, its words from `at`. The set as written (joints 0 refused).
+vrg_set :: (out: [] u8, k: int, name: string, joints: int, clips: int, keys_t: int, keys_r: int, at: int) -> VrgSet #effects(all) {
+  s := VrgSet.{joints = joints, clips = clips, keys_t = keys_t, keys_r = keys_r, at = at};
+  if !vrg_counts_ok(s) || name.count < 1 || name.count >= VRG_NAME { return VrgSet.{}; }
+  s.n = vrg_bytes(s);
+  if s.n > out.count - at { return VrgSet.{}; }
+  row := VRG_HEADER + VRG_ROW * k;
+  for c, i: name { out[row + i] = c; }
+  r := row + VRG_NAME;
+  scan_put(out, r, cast(u32) joints); scan_put(out, r + 4, cast(u32) clips); scan_put(out, r + 8, cast(u32) keys_t);
+  scan_put(out, r + 12, cast(u32) keys_r); scan_put(out, r + 16, cast(u32) at); scan_put(out, r + 20, cast(u32) s.n);
+  return s;
+}
+vrg_put_ints :: (out: [] u8, s: VrgSet, part: int, v: [] int) -> bool #effects(all) {
+  if s.joints == 0 || !vrg_whole(part) || v.count != vrg_words(s, part) { return false; }
+  at := vrg_at(s, part); more := ifx part == VRG_PARENT then 1 else 0;
+  for w: 0..<v.count { scan_put(out, at + w * 4, cast(u32) (v[w] + more)); }
+  return true;
+}
+vrg_put_floats :: (out: [] u8, s: VrgSet, part: int, v: [] f32) -> bool #effects(all) {
+  if s.joints == 0 || vrg_whole(part) || v.count != vrg_words(s, part) { return false; }
+  at := vrg_at(s, part);
+  for w: 0..<v.count { scan_put(out, at + w * 4, f32_bits(v[w])); }
+  return true;
+}
+// The file's size into its header once the last set is written: the file is out[0..<bytes].
+vrg_end :: (out: [] u8, bytes: int) #effects(all) { scan_put(out, 12, cast(u32) bytes); }
+
+#load "rig-pack-checks.coax" #test;

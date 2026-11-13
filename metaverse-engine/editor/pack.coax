@@ -7,13 +7,15 @@
 //   entries, 48 bytes each: kind, licence, 0 (u16), offset, bytes, 0, a name in 32 zero-padded bytes
 //   data, each entry from a 4-byte boundary, in table order, zeros between
 // Kinds: 1 the catalog, 2 vertices, 3 indices (one each, in that order), then 4 texture layers,
-// then 6 data layers (linear: normal and ORM maps, #13012), then 5 sounds. The catalog is text a line each; the lines read here are
+// then 6 data layers (linear: normal and ORM maps, #13012), then 5 sounds, then at most one 7, the
+// rigs (VRG1, #13306). The catalog is text a line each; the lines read here are
 //   budget BYTES / bytes BYTES       the header's budget and size again
 //   L K NAME|LICENCE|URL             source K's licence, K = 0, 1, ... in order
 //   M NAME FIRST COUNT K ...         a mesh of source K; C NAME FIRST COUNT K ... a character
 //   T LAYER SOURCE K                 layer LAYER (0, 1, ... in order) is source K's
 //   S NAME K                         the next sound, NAME, is source K's
 //   D LAYER NAME K                   data layer LAYER (0, 1, ... in order), NAME, is source K's
+//   R NAME K                         the rig entry, NAME, is source K's
 // and every other line is left to the realm. A pack is refused, with why and the entry it names,
 // when it is over its budget, when an asset has no licence the catalog declares, when a layer or
 // sound has a licence other than its catalog line's (pack_realm.py gives a layer that two sources
@@ -110,8 +112,8 @@ pack_read :: (p: string, r: [] PackRead) -> bool #effects(all) {
     pk_off := pack_u32(p, pk_e + 4);
     pk_n := pack_u32(p, pk_e + 8);
     pk_name := pack_name(p[pk_e + 16..<pk_e + PACK_ENTRY]);
-    pk_first := ifx pk_k < 3 then pk_kind == pk_k + 1 else pk_kind == PACK_LAYER || pk_kind == PACK_SOUND || pk_kind == PACK_DATA;
-    if !pk_first || (pk_kind == PACK_LAYER && (pk_prev == PACK_SOUND || pk_prev == PACK_DATA)) || (pk_kind == PACK_DATA && pk_prev == PACK_SOUND) { return pack_why(r, "an entry out of order", pk_k); }
+    pk_first := ifx pk_k < 3 then pk_kind == pk_k + 1 else pk_kind == PACK_LAYER || pk_kind == PACK_SOUND || pk_kind == PACK_DATA || pk_kind == PACK_RIG;
+    if !pk_first || pk_prev == PACK_RIG || (pk_kind == PACK_LAYER && (pk_prev == PACK_SOUND || pk_prev == PACK_DATA)) || (pk_kind == PACK_DATA && pk_prev == PACK_SOUND) { return pack_why(r, "an entry out of order", pk_k); }
     if p[pk_e + 2] != 0 || p[pk_e + 3] != 0 || pack_u32(p, pk_e + 12) != 0 || pk_name.count == 0 { return pack_why(r, "a malformed entry", pk_k); }
     if pk_off != pk_at || pk_off + pack_pad(pk_n) > p.count { return pack_why(r, "an entry out of place", pk_k); }
     for pk_z: pk_off + pk_n..<pk_off + pack_pad(pk_n) { if p[pk_z] != 0 { return pack_why(r, "an entry out of place", pk_k); } }
@@ -138,8 +140,8 @@ pack_read :: (p: string, r: [] PackRead) -> bool #effects(all) {
 pack_catalog :: (t: string, r: [] PackRead) -> bool #effects(all) {
   if t.count == 0 || t[t.count - 1] != '\n' { return pack_why(r, "a catalog that doesn't end its last line", 0); }
   pk_stated := 0; pk_layer := 0; pk_sound := 0; pk_at := 0;
-  pk_layers := 0; pk_sounds := 0; pk_datas := 0; pk_data := 0;
-  for pk_k: 3..<r[0].count { pk_t := r[0].entries[pk_k].kind; if pk_t == PACK_LAYER { pk_layers += 1; } else if pk_t == PACK_DATA { pk_datas += 1; } else { pk_sounds += 1; } }
+  pk_layers := 0; pk_sounds := 0; pk_datas := 0; pk_data := 0; pk_rigs := 0; pk_rig := 0;
+  for pk_k: 3..<r[0].count { pk_t := r[0].entries[pk_k].kind; if pk_t == PACK_LAYER { pk_layers += 1; } else if pk_t == PACK_DATA { pk_datas += 1; } else if pk_t == PACK_RIG { pk_rigs += 1; } else { pk_sounds += 1; } }
   for pk_i: 0..<t.count {
     if t[pk_i] != '\n' { continue; }
     pk_line := t[pk_at..<pk_i]; pk_at = pk_i + 1;
@@ -174,11 +176,18 @@ pack_catalog :: (t: string, r: [] PackRead) -> bool #effects(all) {
       if pack_number(pack_field(pk_line, 1)) != pk_data || !pack_licensed(r, pk_e, pk_lic) { return pack_why(r, "an asset without a declared licence", pk_e); }
       pk_data += 1;
     }
+    if pk_what == "R" {
+      pk_e := pack_nth(r, PACK_RIG, pk_rig);
+      if pk_e == -1 { return pack_why(r, "a catalog line for an entry the pack doesn't have", 0); }
+      if pack_field(pk_line, 1) != r[0].entries[pk_e].name || !pack_licensed(r, pk_e, pack_number(pack_field(pk_line, 2))) { return pack_why(r, "an asset without a declared licence", pk_e); }
+      pk_rig += 1;
+    }
   }
   if pk_stated != 2 { return pack_why(r, "a catalog that misstates the pack", 0); }
   if pk_layer != pk_layers { return pack_why(r, "an asset without a declared licence", pack_nth(r, PACK_LAYER, pk_layer)); }
   if pk_data != pk_datas { return pack_why(r, "an asset without a declared licence", pack_nth(r, PACK_DATA, pk_data)); }
   if pk_sound != pk_sounds { return pack_why(r, "an asset without a declared licence", pack_nth(r, PACK_SOUND, pk_sound)); }
+  if pk_rig != pk_rigs { return pack_why(r, "an asset without a declared licence", pack_nth(r, PACK_RIG, pk_rig)); }
   return true;
 }
 // book:end catalog
@@ -390,7 +399,7 @@ PACK_TEST_HEAD :: "budget 600\nbytes 512\nL 0 Kit|CC0|u\nL 1 Sounds|CC0|u\n";
   t := 32; layer := 32 + 48 * 3; sound := 32 + 48 * 4;
   #assert pack_test_refused(t, 2, "an entry out of order", 0) && pack_test_refused(t + 48, 3, "an entry out of order", 1);
   #assert pack_test_refused(t + 96, 4, "an entry out of order", 2) && pack_test_refused(layer, 3, "an entry out of order", 3);
-  #assert pack_test_refused(layer, 7, "an entry out of order", 3) && pack_test_refused(sound, 1, "an entry out of order", 4);
+  #assert pack_test_refused(layer, 8, "an entry out of order", 3) && pack_test_refused(sound, 1, "an entry out of order", 4);
   #assert pack_test_refused(layer, 6, "a catalog line for an entry the pack doesn't have", 0);   // a data layer is an order; the catalog then names a layer the pack lacks
   #assert pack_test_refused(sound, 6, "an entry out of order", 4) == false;
   #assert pack_test_refused(layer, 5, "an entry out of order", 4) == false;   // two sounds is an order; the catalog then names a layer the pack lacks
@@ -601,8 +610,11 @@ pack_test_sounds :: (sounds: int, bytes: string, out: [] u8) -> string #effects(
 // order: six entries, 444 bytes.
 PACK_TEST_DATA_CATALOG :: "budget 600\nbytes 444\nL 0 Kit|CC0|u\nL 1 Sounds|CC0|u\nT 0 layer3.jpg 0\nD 0 part 0\nS part 1\n";
 PackTestWhy :: struct { why: string; entry: int; }
-pack_test_data :: (kinds: [3] int) -> PackTestWhy #effects(all) {
-  s: [6] PackSource; pack_test_sources(PACK_TEST_DATA_CATALOG, s[..]);
+pack_test_data :: (kinds: [3] int) -> PackTestWhy #effects(all) { return pack_test_kinds(kinds, PACK_TEST_DATA_CATALOG); }
+// The same pack with a rig for its data layer: the catalog is as long, so the pack is 444 bytes too.
+PACK_TEST_RIG_CATALOG :: "budget 600\nbytes 444\nL 0 Kit|CC0|uuu\nL 1 Sounds|CC0|u\nT 0 layer3.jpg 0\nR part 0\nS part 1\n";
+pack_test_kinds :: (kinds: [3] int, catalog: string) -> PackTestWhy #effects(all) {
+  s: [6] PackSource; pack_test_sources(catalog, s[..]);
   for k: 0..<3 { s[3 + k] = PackSource.{kind = kinds[k], licence = ifx kinds[k] == PACK_SOUND then 1 else 0, name = "part", data = "abc"}; }
   b: [900] u8; pk_w := pack_write(s[..], 600, b[..]);
   r: [1] PackRead; pk_ok := pack_read(cast(string) b[0..<pk_w], r[..]);
@@ -617,6 +629,39 @@ pack_test_data :: (kinds: [3] int) -> PackTestWhy #effects(all) {
   a = pack_test_data([3] int.[PACK_SOUND, PACK_LAYER, PACK_SOUND]); #assert a.why == "an entry out of order" && a.entry == 4;
   a = pack_test_data([3] int.[PACK_LAYER, PACK_SOUND, PACK_DATA]); #assert a.why == "an entry out of order" && a.entry == 5;
   a = pack_test_data([3] int.[PACK_SOUND, PACK_SOUND, PACK_LAYER]); #assert a.why == "an entry out of order" && a.entry == 5;
+}
+#test "the rigs are one entry, the last, with its R line" {
+  a := pack_test_kinds([3] int.[PACK_LAYER, PACK_SOUND, PACK_RIG], PACK_TEST_RIG_CATALOG);
+  #assert a.why == "" && a.entry == -2 && PACK_RIG == 7 && PACK_TEST_RIG_CATALOG.count == PACK_TEST_DATA_CATALOG.count;
+  // Anything after the rigs, a second rig among them, is out of order at that entry; so is a kind there is not.
+  a = pack_test_kinds([3] int.[PACK_LAYER, PACK_RIG, PACK_SOUND], PACK_TEST_RIG_CATALOG); #assert a.why == "an entry out of order" && a.entry == 5;
+  a = pack_test_kinds([3] int.[PACK_RIG, PACK_LAYER, PACK_SOUND], PACK_TEST_RIG_CATALOG); #assert a.why == "an entry out of order" && a.entry == 4;
+  a = pack_test_kinds([3] int.[PACK_SOUND, PACK_RIG, PACK_RIG], PACK_TEST_RIG_CATALOG); #assert a.why == "an entry out of order" && a.entry == 5;
+  a = pack_test_kinds([3] int.[PACK_RIG, PACK_DATA, PACK_SOUND], PACK_TEST_RIG_CATALOG); #assert a.why == "an entry out of order" && a.entry == 4;
+  a = pack_test_kinds([3] int.[PACK_LAYER, PACK_SOUND, 8], PACK_TEST_RIG_CATALOG); #assert a.why == "an entry out of order" && a.entry == 5;
+}
+// The test pack's table with the rigs of licence `lic` after its sound (when `rig`), and the
+// catalog of its sources, its layer, its sound and this line.
+pack_test_r :: (line: string, lic: int, rig: bool) -> PackTestWhy #effects(all) {
+  r: [1] PackRead; tb: [600] u8; pack_test_table(r[..], tb[..]);
+  if rig { r[0].count = 6; r[0].entries[5] = PackEntry.{kind = PACK_RIG, licence = lic, name = "people"}; }
+  cb: [400] u8; c := pack_test_join("budget 600\nbytes 512\nL 0 Kit|CC0|u\nL 1 Sounds|CC0|u\nT 0 layer3.jpg 0\nS door 1\n", line, cb[..]);
+  pk_ok := pack_catalog(c, r[..]);
+  return PackTestWhy.{why = ifx pk_ok then "" else r[0].why, entry = ifx pk_ok then -2 else r[0].entry};
+}
+#test "an R line names the rigs by name and by a declared licence that is the entry's" {
+  a := pack_test_r("R people 0\n", 0, true); #assert a.why == "" && a.entry == -2;
+  a = pack_test_r("R people 1\n", 1, true); #assert a.why == "" && a.entry == -2;
+  // No R line for the rigs; a second one, or one in a pack with no rigs.
+  a = pack_test_r("", 0, true); #assert a.why == "an asset without a declared licence" && a.entry == 5;
+  a = pack_test_r("R people 0\nR people 0\n", 0, true); #assert a.why == "a catalog line for an entry the pack doesn't have" && a.entry == 0;
+  a = pack_test_r("R people 0\n", 0, false); #assert a.why == "a catalog line for an entry the pack doesn't have" && a.entry == 0;
+  a = pack_test_r("", 0, false); #assert a.why == "" && a.entry == -2;
+  // Another name; another source's licence, one that isn't a number, one past the declared sources.
+  a = pack_test_r("R folk 0\n", 0, true); #assert a.why == "an asset without a declared licence" && a.entry == 5;
+  a = pack_test_r("R people 1\n", 0, true); #assert a.why == "an asset without a declared licence" && a.entry == 5;
+  a = pack_test_r("R people x\n", 0, true); #assert a.why == "an asset without a declared licence" && a.entry == 5;
+  a = pack_test_r("R people 2\n", 2, true); #assert a.why == "an asset without a declared licence" && a.entry == 5;
 }
 // The test pack's table with a data layer of licence `lic` before its sound, and the catalog of
 // its sources, its layer, its sound and this line.

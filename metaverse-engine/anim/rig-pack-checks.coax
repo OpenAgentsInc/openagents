@@ -1,0 +1,130 @@
+// The checks of rig-pack.coax (VRG1), loaded by it with #test.
+// Two small sets: "a" (2 joints, 1 clip, 2 translation keys a body, 3 rotation keys) and "b-2"
+// (1 joint, 2 clips, no translation keys, 1 rotation key).
+VRG_T_BYTES :: 828;   // 32 + 96 + a's 476 + b-2's 224
+vrg_t_ramp :: (v: [] f32, from: f32) { for w: 0..<v.count { v[w] = from + cast(f32) w * 0.25; } }
+vrg_t_file :: (out: [] u8) -> int {
+  at := vrg_begin(out, 2);
+  a := vrg_set(out, 0, "a", 2, 1, 2, 3, at);
+  pa := [2] int.[-1, 0]; ta := [4] int.[0, 2, 1, 1]; ra := [4] int.[0, 1, 1, 2];
+  f14: [14] f32; f24: [24] f32; f1: [1] f32; f8: [8] f32; f15: [15] f32;
+  ok := vrg_put_ints(out, a, VRG_PARENT, pa[..]) && vrg_put_ints(out, a, VRG_TRACK_T, ta[..]) && vrg_put_ints(out, a, VRG_TRACK_R, ra[..]);
+  vrg_t_ramp(f14[..], 1); ok = ok && vrg_put_floats(out, a, VRG_REST_0, f14[..]);
+  vrg_t_ramp(f14[..], -2); ok = ok && vrg_put_floats(out, a, VRG_REST_1, f14[..]);
+  vrg_t_ramp(f24[..], 3); ok = ok && vrg_put_floats(out, a, VRG_BIND_0, f24[..]);
+  vrg_t_ramp(f24[..], 4); ok = ok && vrg_put_floats(out, a, VRG_BIND_1, f24[..]);
+  vrg_t_ramp(f1[..], 5); ok = ok && vrg_put_floats(out, a, VRG_DURATION, f1[..]);
+  vrg_t_ramp(f1[..], 6); ok = ok && vrg_put_floats(out, a, VRG_DISTANCE, f1[..]);
+  vrg_t_ramp(f8[..], 7); ok = ok && vrg_put_floats(out, a, VRG_KEYS_T_0, f8[..]);
+  vrg_t_ramp(f8[..], 8); ok = ok && vrg_put_floats(out, a, VRG_KEYS_T_1, f8[..]);
+  vrg_t_ramp(f15[..], 9); ok = ok && vrg_put_floats(out, a, VRG_KEYS_R, f15[..]);
+  b := vrg_set(out, 1, "b-2", 1, 2, 0, 1, at + a.n);
+  pb := [1] int.[-1]; tb := [4] int.[0, 0, 0, 0]; rb := [4] int.[0, 1, 1, 0];
+  f7: [7] f32; f12: [12] f32; f2: [2] f32; f0: [1] f32; f5: [5] f32;
+  ok = ok && vrg_put_ints(out, b, VRG_PARENT, pb[..]) && vrg_put_ints(out, b, VRG_TRACK_T, tb[..]) && vrg_put_ints(out, b, VRG_TRACK_R, rb[..]);
+  vrg_t_ramp(f7[..], 10); ok = ok && vrg_put_floats(out, b, VRG_REST_0, f7[..]) && vrg_put_floats(out, b, VRG_REST_1, f7[..]);
+  vrg_t_ramp(f12[..], 11); ok = ok && vrg_put_floats(out, b, VRG_BIND_0, f12[..]) && vrg_put_floats(out, b, VRG_BIND_1, f12[..]);
+  vrg_t_ramp(f2[..], 12); ok = ok && vrg_put_floats(out, b, VRG_DURATION, f2[..]) && vrg_put_floats(out, b, VRG_DISTANCE, f2[..]);
+  ok = ok && vrg_put_floats(out, b, VRG_KEYS_T_0, f0[0..<0]) && vrg_put_floats(out, b, VRG_KEYS_T_1, f0[0..<0]);
+  vrg_t_ramp(f5[..], 13); ok = ok && vrg_put_floats(out, b, VRG_KEYS_R, f5[..]);
+  if !ok || a.joints != 2 || b.joints != 1 { return 0; }
+  vrg_end(out, at + a.n + b.n);
+  return at + a.n + b.n;
+}
+// The file with one word changed is refused, and admitted again with the word put back.
+vrg_t_refused :: (b: [] u8, at: int, v: u32) -> bool {
+  was := scan_u32(b, at); scan_put(b, at, v); no := vrg_valid(b) == 0; scan_put(b, at, was);
+  return no && vrg_valid(b) == 2;
+}
+#test "a VRG1 file is exactly its layout, and each part reads back bit for bit" {
+  b: [VRG_T_BYTES] u8; n := vrg_t_file(b[..]); #assert n == VRG_T_BYTES && vrg_valid(b[..]) == 2;
+  #assert scan_u32(b[..], 0) == 0x31475256 && b[0] == 'V' && b[3] == '1' && scan_u32(b[..], 4) == 1 && scan_u32(b[..], 8) == 2 && scan_u32(b[..], 12) == 828;
+  a := vrg_find(b[..], "a"); #assert a.joints == 2 && a.clips == 1 && a.keys_t == 2 && a.keys_r == 3 && a.at == 128 && a.n == 476 && vrg_bytes(a) == 476;
+  c := vrg_find(b[..], "b-2"); #assert c.joints == 1 && c.clips == 2 && c.keys_t == 0 && c.keys_r == 1 && c.at == 604 && c.n == 224;
+  #assert b[32] == 'a' && b[33] == 0 && b[80] == 'b' && b[82] == '2' && b[83] == 0 && scan_u32(b[..], 48) == 2 && scan_u32(b[..], 64) == 128 && scan_u32(b[..], 68) == 476;
+  // where each part starts, and its words
+  starts := [13] int.[128, 136, 192, 248, 344, 440, 444, 448, 464, 480, 512, 544, 604];
+  for p: 0..<13 { #assert vrg_at(a, p) == starts[p]; }
+  for p: 0..<12 { #assert vrg_words(a, p) * 4 == starts[p + 1] - starts[p]; }
+  #assert vrg_words(a, 12) == -1 && vrg_words(a, -1) == -1 && vrg_whole(0) && vrg_whole(7) && vrg_whole(8) && !vrg_whole(1) && !vrg_whole(6) && !vrg_whole(9) && !vrg_whole(11);
+  // the parents: -1 for a root on the page, 0 in the file
+  pa: [2] int; #assert vrg_ints(b[..], a, VRG_PARENT, pa[..]) && pa[0] == -1 && pa[1] == 0 && scan_u32(b[..], 128) == 0 && scan_u32(b[..], 132) == 1;
+  ta: [4] int; #assert vrg_ints(b[..], a, VRG_TRACK_T, ta[..]) && ta[0] == 0 && ta[1] == 2 && ta[2] == 1 && ta[3] == 1;
+  ra: [4] int; #assert vrg_ints(b[..], a, VRG_TRACK_R, ra[..]) && ra[0] == 0 && ra[1] == 1 && ra[2] == 1 && ra[3] == 2;
+  // every float part, each word
+  from := [12] f32.[0, 1, -2, 3, 4, 5, 6, 0, 0, 7, 8, 9]; f: [24] f32;
+  for p: 0..<12 { if vrg_whole(p) { continue; }
+    n2 := vrg_words(a, p); #assert vrg_floats(b[..], a, p, f[0..<n2]);
+    for w: 0..<n2 { #assert f[w] == from[p] + cast(f32) w * 0.25; }
+  }
+  #assert scan_float(b[..], 136) == 1 && scan_float(b[..], 600) == 12.5;
+  f5: [5] f32; #assert vrg_floats(b[..], c, VRG_KEYS_R, f5[..]) && f5[0] == 13 && f5[4] == 14 && vrg_floats(b[..], c, VRG_KEYS_T_0, f5[0..<0]);
+  pb: [1] int; #assert vrg_ints(b[..], c, VRG_PARENT, pb[..]) && pb[0] == -1;
+  // a part is read only into an array of exactly its size, by its own call, from a set that is one
+  #assert !vrg_ints(b[..], a, VRG_PARENT, ta[..]) && !vrg_ints(b[..], a, VRG_PARENT, ta[0..<1]) && !vrg_ints(b[..], a, VRG_DURATION, ta[0..<1]);
+  #assert !vrg_floats(b[..], a, VRG_DURATION, f[0..<2]) && !vrg_floats(b[..], a, VRG_DURATION, f[0..<0]) && !vrg_floats(b[..], a, VRG_PARENT, f[0..<2]);
+  #assert !vrg_floats(b[..], a, VRG_PARTS, f[0..<0]) && !vrg_floats(b[..], a, -1, f[0..<0]);
+  none := vrg_find(b[..], "c"); #assert none.joints == 0 && none.n == 0 && !vrg_ints(b[..], none, VRG_PARENT, ta[0..<0]) && !vrg_floats(b[..], none, VRG_DURATION, f[0..<0]);
+  #assert vrg_find(b[..], "").joints == 0 && vrg_find(b[..], "b").joints == 0 && vrg_find(b[..], "b-22").joints == 0 && vrg_find(b[..], "b-3").joints == 0;
+}
+#test "a VRG1 file that is not exactly its layout is refused" {
+  b: [VRG_T_BYTES + 4] u8; n := vrg_t_file(b[..]); f := b[0..<n]; #assert n == VRG_T_BYTES && vrg_valid(f) == 2;
+  // the header: the magic, the version, the stated size, the zeros
+  #assert vrg_t_refused(f, 0, 0x32475256) && vrg_t_refused(f, 4, 2) && vrg_t_refused(f, 4, 0) && vrg_t_refused(f, 12, 824) && vrg_t_refused(f, 12, 832);
+  #assert vrg_t_refused(f, 16, 1) && vrg_t_refused(f, 28, 0x01000000);
+  // cut short or with bytes after it, even when the header agrees
+  #assert vrg_valid(b[0..<n - 4]) == 0 && vrg_valid(b[..]) == 0 && vrg_valid(b[0..<0]) == 0 && vrg_valid(b[0..<32]) == 0 && vrg_valid(b[0..<VRG_MIN - 1]) == 0;
+  scan_put(b[..], 12, cast(u32) (n + 4)); #assert vrg_valid(b[..]) == 0; scan_put(b[..], 12, cast(u32) (n - 4)); #assert vrg_valid(b[0..<n - 4]) == 0; scan_put(b[..], 12, cast(u32) n);
+  // the sets: none, too many, more rows than the file holds
+  #assert vrg_t_refused(f, 8, 0) && vrg_t_refused(f, 8, 1) && vrg_t_refused(f, 8, 3) && vrg_t_refused(f, 8, 9) && vrg_t_refused(f, 8, 0xffffffff);
+  // a row: its name, its zeros, its counts, its place and its size
+  #assert vrg_t_refused(f, 32, 0) && vrg_t_refused(f, 32, 0x41) && vrg_t_refused(f, 32, 0x5f61) && vrg_t_refused(f, 32, 0x7b) && vrg_t_refused(f, 32, 0x3a) && vrg_t_refused(f, 32, 0x60) && vrg_t_refused(f, 32, 0x2f) && vrg_t_refused(f, 32, 0x6100) && vrg_t_refused(f, 32, 0x61000061) && vrg_t_refused(f, 44, 0x61000000) && vrg_t_refused(f, 80, 0x61);
+  #assert !vrg_t_refused(f, 32, 0x7a2d3930) && !vrg_t_refused(f, 32, 0x6162) && !vrg_t_refused(f, 80, 0x62);
+  scan_put(f, 32, 0x6261); #assert vrg_valid(f) == 2 && vrg_t_refused(f, 80, 0x6261); scan_put(f, 32, 0x61);
+  for k: 0..<15 { f[32 + k] = 'q'; } #assert vrg_valid(f) == 2; f[47] = 'q'; #assert vrg_valid(f) == 0; for k: 1..<16 { f[32 + k] = 0; } f[32] = 'a';
+  #assert vrg_t_refused(f, 72, 1) && vrg_t_refused(f, 76, 0x01000000) && vrg_t_refused(f, 120, 1);
+  #assert vrg_t_refused(f, 48, 0) && vrg_t_refused(f, 48, 3) && vrg_t_refused(f, 52, 0) && vrg_t_refused(f, 52, 2) && vrg_t_refused(f, 56, 3) && vrg_t_refused(f, 60, 2);
+  #assert vrg_t_refused(f, 64, 124) && vrg_t_refused(f, 64, 132) && vrg_t_refused(f, 68, 472) && vrg_t_refused(f, 68, 480) && vrg_t_refused(f, 112, 600) && vrg_t_refused(f, 112, 608) && vrg_t_refused(f, 116, 228) && vrg_t_refused(f, 116, 220);
+  // a parent after its child, a float that is not finite, a track outside its keys
+  #assert vrg_t_refused(f, 128, 1) && vrg_t_refused(f, 132, 2) && !vrg_t_refused(f, 132, 0) && vrg_t_refused(f, 604, 1);
+  #assert vrg_t_refused(f, 136, 0x7f800000) && vrg_t_refused(f, 136, 0xff800000) && vrg_t_refused(f, 600, 0x7fc00000) && vrg_t_refused(f, 440, 0x7f800001) && vrg_t_refused(f, 824, 0x7f800000) && !vrg_t_refused(f, 136, 0x7f7fffff);
+  #assert vrg_t_refused(f, 452, 3) && vrg_t_refused(f, 448, 1) && vrg_t_refused(f, 448, 3) && vrg_t_refused(f, 460, 2) && !vrg_t_refused(f, 460, 0);
+  #assert !vrg_t_refused(f, 468, 2) && !vrg_t_refused(f, 468, 3) && vrg_t_refused(f, 468, 4) && vrg_t_refused(f, 476, 3) && vrg_t_refused(f, 472, 2) && vrg_t_refused(f, 472, 4);
+  // a track of no keys may start at the end of its keys, and no further
+  scan_put(f, 452, 0); scan_put(f, 448, 2); #assert vrg_valid(f) == 2; scan_put(f, 448, 3); #assert vrg_valid(f) == 0;
+}
+#test "the largest and smallest sets a VRG1 file admits, and a writer that is told wrong" {
+  // one joint, one clip, no keys: the smallest file
+  s: [VRG_MIN] u8; at := vrg_begin(s[..], 1); #assert at == 80;
+  m := vrg_set(s[..], 0, "m", 1, 1, 0, 0, at); #assert m.joints == 1 && m.n == 180 && at + m.n == VRG_MIN;
+  vrg_end(s[..], VRG_MIN); #assert vrg_valid(s[..]) == 1 && vrg_find(s[..], "m").n == 180;
+  // 256 joints and 256 clips are admitted; 257 of either is not
+  big: [1100000] u8; at = vrg_begin(big[..], 1);
+  g := vrg_set(big[..], 0, "big", 256, 256, 0, 0, at); #assert g.joints == 256 && g.n == 4 * (256 * 39 + 512 + 4 * 65536);
+  vrg_end(big[..], at + g.n); #assert vrg_valid(big[0..<at + g.n]) == 1;
+  #assert vrg_set(big[..], 0, "big", 257, 1, 0, 0, at).joints == 0 && vrg_set(big[..], 0, "big", 1, 257, 0, 0, at).joints == 0 && vrg_set(big[..], 0, "big", 0, 1, 0, 0, at).joints == 0 && vrg_set(big[..], 0, "big", 1, 0, 0, 0, at).joints == 0;
+  // a reader told 257 joints or clips by a file whose sizes agree refuses it
+  at = vrg_begin(big[..], 1); scan_put(big[..], 48, 257); scan_put(big[..], 52, 1); scan_put(big[..], 64, 80); big[32] = 'j';
+  j := VrgSet.{joints = 257, clips = 1, at = 80}; scan_put(big[..], 68, cast(u32) vrg_bytes(j)); vrg_end(big[..], 80 + vrg_bytes(j)); #assert vrg_valid(big[0..<80 + vrg_bytes(j)]) == 0;
+  scan_put(big[..], 48, 256); j.joints = 256; scan_put(big[..], 68, cast(u32) vrg_bytes(j)); vrg_end(big[..], 80 + vrg_bytes(j)); #assert vrg_valid(big[0..<80 + vrg_bytes(j)]) == 1;
+  scan_put(big[..], 48, 1); scan_put(big[..], 52, 257); j = VrgSet.{joints = 1, clips = 257, at = 80}; scan_put(big[..], 68, cast(u32) vrg_bytes(j)); vrg_end(big[..], 80 + vrg_bytes(j)); #assert vrg_valid(big[0..<80 + vrg_bytes(j)]) == 0;
+  scan_put(big[..], 52, 256); j.clips = 256; scan_put(big[..], 68, cast(u32) vrg_bytes(j)); vrg_end(big[..], 80 + vrg_bytes(j)); #assert vrg_valid(big[0..<80 + vrg_bytes(j)]) == 1;
+  // the rows a file has room for, and eight sets at most
+  #assert vrg_rows_fit(416, 8) && !vrg_rows_fit(415, 8) && !vrg_rows_fit(464, 9) && !vrg_rows_fit(100000, 9) && vrg_rows_fit(80, 1) && !vrg_rows_fit(79, 1) && vrg_rows_fit(128, 2) && !vrg_rows_fit(100, 2) && vrg_rows_fit(32, 0) && !vrg_rows_fit(31, 0);
+  // eight smallest sets are a file; a ninth is refused, and so is a name any two of them share
+  e: [1856] u8; at = vrg_begin(e[..], 8); #assert at == 416;
+  for k: 0..<8 { nm := [2] u8.['s', cast(u8) ('0' + k)]; q := vrg_set(e[..], k, cast(string) nm[..], 1, 1, 0, 0, at); #assert q.n == 180; at += q.n; }
+  vrg_end(e[..], at); #assert at == 1856 && vrg_valid(e[0..<at]) == 8 && vrg_find(e[0..<at], "s7").at == 1676 && vrg_find(e[0..<at], "s8").joints == 0;
+  e[32 + 48 * 2 + 1] = '1'; #assert vrg_valid(e[0..<at]) == 0; e[32 + 48 * 2 + 1] = '2'; e[32 + 48 * 7 + 1] = '3'; #assert vrg_valid(e[0..<at]) == 0; e[32 + 48 * 7 + 1] = '7'; #assert vrg_valid(e[0..<at]) == 8;
+  // the writer: 1 to 8 sets, a name of 1 to 15 bytes, room for the set, a part by its own call at its size
+  o: [512] u8;
+  #assert vrg_begin(o[..], 0) == 0 && vrg_begin(o[..], 9) == 0 && vrg_begin(o[..], 8) == 416 && vrg_begin(o[0..<415], 8) == 0 && vrg_begin(o[0..<416], 8) == 416;
+  o[100] = 7; o[12] = 7; o[127] = 7; o[128] = 7; #assert vrg_begin(o[..], 2) == 128 && o[100] == 0 && o[12] == 0 && o[127] == 0 && o[128] == 7 && scan_u32(o[..], 8) == 2 && scan_u32(o[..], 4) == 1;
+  #assert vrg_set(o[..], 0, "", 1, 1, 0, 0, 128).joints == 0 && vrg_set(o[..], 0, "abcdefghijklmnop", 1, 1, 0, 0, 128).joints == 0 && vrg_set(o[..], 0, "abcdefghijklmno", 1, 1, 0, 0, 128).joints == 1;
+  #assert vrg_set(o[..], 1, "x", 1, 1, 0, 0, 333).joints == 0 && vrg_set(o[..], 1, "x", 1, 1, 0, 0, 332).n == 180;
+  x := vrg_set(o[..], 1, "x", 1, 1, 0, 0, 308); #assert x.at == 308 && o[80] == 'x' && scan_u32(o[..], 112) == 308 && scan_u32(o[..], 116) == 180;
+  one := [1] int.[-1]; two := [2] int.[3, 1]; f1 := [1] f32.[2.5]; f2 := [2] f32.[1, 1];
+  #assert vrg_put_ints(o[..], x, VRG_PARENT, one[..]) && !vrg_put_ints(o[..], x, VRG_PARENT, two[..]) && !vrg_put_ints(o[..], x, VRG_DURATION, one[..]) && !vrg_put_ints(o[..], VrgSet.{}, VRG_PARENT, one[0..<0]);
+  #assert vrg_put_ints(o[..], x, VRG_TRACK_R, two[..]) && scan_u32(o[..], vrg_at(x, VRG_TRACK_R)) == 3 && scan_u32(o[..], vrg_at(x, VRG_TRACK_R) + 4) == 1 && vrg_put_floats(o[..], x, VRG_DURATION, f1[..]) && scan_float(o[..], vrg_at(x, VRG_DURATION)) == 2.5;
+  #assert !vrg_put_floats(o[..], x, VRG_DURATION, f2[..]) && !vrg_put_floats(o[..], x, VRG_PARENT, f1[..]) && !vrg_put_floats(o[..], x, VRG_PARTS, f1[0..<0]) && !vrg_put_floats(o[..], x, -1, f1[0..<0]) && !vrg_put_floats(o[..], VrgSet.{}, VRG_DURATION, f1[0..<0]);
+}

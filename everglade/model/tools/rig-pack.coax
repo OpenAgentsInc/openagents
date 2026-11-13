@@ -1,0 +1,198 @@
+// Everglade's rigs as an asset (GitHub #13306, AAA P6.4): the people's, the previews' and the
+// two-handed clips' rigs written as one VRG1 file (metaverse-engine/anim/rig-pack.coax) and put
+// into a pack as its rig entry (kind 7, "rigs", with its R line).
+//   rig-pack OUT.vrg                   the file, from this tree's rig procedures
+//   rig-pack --check FILE.vrg          FILE read back through everglade/scene/rig-asset.coax is, bit
+//                                      for bit, what the procedures load; it prints each set's size
+//   rig-pack --into IN.pack OUT.pack   IN with the rigs as its last entry (one it already has is replaced)
+// The entry's licence is the catalog's source for the Quaternius characters and animation library.
+// apps/openagents-web/build.sh runs --into on Everglade II's pack before page-pack writes the .vpk3.
+// Run: coax/web/tool.sh everglade/model/tools/rig-pack.coax ...
+// tool.sh: release
+// tool.sh: stack-gib 8
+#import "Basic";
+#load "../../scene/rig-asset.coax";
+#load "../../../metaverse-engine/host/pack-table.coax";
+#load "../../../coax/lib/sys/tool.coax";
+#load "../../../coax/lib/sys/fs.coax";
+#load "../../../coax/lib/sys/args.coax";
+
+RGP_FILE :: 4194304;        // the rigs' file at most
+RGP_PACK :: 67108864;       // a pack at most (the paged reader's window)
+RGP_CATALOG :: 16777216;
+RGP_SOURCE :: "Quaternius Universal Base Characters";   // the L line the rigs are licensed by starts with this
+
+RgpRigs :: struct { people: [1] People; preview: [1] Preview; twohand: [1] Twohand; }
+RgpBack :: struct { people: [1] People; preview: [1] Preview; twohand: [1] Twohand; }
+
+rgp_put :: (out: [] u8, s: VrgSet, parent: [] int, rest_m: [] f32, rest_f: [] f32, bind_m: [] f32, bind_f: [] f32, duration: [] f32, distance: [] f32,
+            track_t: [] int, track_r: [] int, keys_t_m: [] f32, keys_t_f: [] f32, keys_r: [] f32) -> bool {
+  return s.joints > 0 && vrg_put_ints(out, s, VRG_PARENT, parent) && vrg_put_floats(out, s, VRG_REST_0, rest_m) && vrg_put_floats(out, s, VRG_REST_1, rest_f)
+      && vrg_put_floats(out, s, VRG_BIND_0, bind_m) && vrg_put_floats(out, s, VRG_BIND_1, bind_f) && vrg_put_floats(out, s, VRG_DURATION, duration)
+      && vrg_put_floats(out, s, VRG_DISTANCE, distance) && vrg_put_ints(out, s, VRG_TRACK_T, track_t) && vrg_put_ints(out, s, VRG_TRACK_R, track_r)
+      && vrg_put_floats(out, s, VRG_KEYS_T_0, keys_t_m) && vrg_put_floats(out, s, VRG_KEYS_T_1, keys_t_f) && vrg_put_floats(out, s, VRG_KEYS_R, keys_r);
+}
+// The three rigs as the procedures load them, as one file into out: its bytes, -1 refused.
+rgp_write :: (r: [] RgpRigs, out: [] u8) -> int {
+  people_load(r[0].people[..]); preview_load(r[0].preview[..]); twohand_load(r[0].twohand[..]);
+  at := vrg_begin(out, 3);
+  if at == 0 { return -1; }
+  p := r[0].people[..]; a := vrg_set(out, 0, E2RIG_PEOPLE, PEOPLE_JOINTS, PEOPLE_CLIPS, p[0].keys_t_m.count / 4, p[0].keys_r.count / 5, at);
+  if !rgp_put(out, a, p[0].parent[..], p[0].rest_m[..], p[0].rest_f[..], p[0].bind_m[..], p[0].bind_f[..], p[0].duration[..], p[0].distance[..], p[0].track_t[..], p[0].track_r[..], p[0].keys_t_m[..], p[0].keys_t_f[..], p[0].keys_r[..]) { return -1; }
+  at += a.n;
+  v := r[0].preview[..]; b := vrg_set(out, 1, E2RIG_PREVIEW, PREVIEW_JOINTS, PREVIEW_CLIPS, v[0].keys_t_m.count / 4, v[0].keys_r.count / 5, at);
+  if !rgp_put(out, b, v[0].parent[..], v[0].rest_m[..], v[0].rest_f[..], v[0].bind_m[..], v[0].bind_f[..], v[0].duration[..], v[0].distance[..], v[0].track_t[..], v[0].track_r[..], v[0].keys_t_m[..], v[0].keys_t_f[..], v[0].keys_r[..]) { return -1; }
+  at += b.n;
+  t := r[0].twohand[..]; c := vrg_set(out, 2, E2RIG_TWOHAND, TWOHAND_JOINTS, TWOHAND_CLIPS, t[0].keys_t_m.count / 4, t[0].keys_r.count / 5, at);
+  if !rgp_put(out, c, t[0].parent[..], t[0].rest_m[..], t[0].rest_f[..], t[0].bind_m[..], t[0].bind_f[..], t[0].duration[..], t[0].distance[..], t[0].track_t[..], t[0].track_r[..], t[0].keys_t_m[..], t[0].keys_t_f[..], t[0].keys_r[..]) { return -1; }
+  at += c.n;
+  vrg_end(out, at);
+  return ifx vrg_valid(out[0..<at]) == 3 then at else -1;
+}
+rgp_same_f :: (a: [] f32, b: [] f32) -> bool { if a.count != b.count { return false; } for k: 0..<a.count { if f32_bits(a[k]) != f32_bits(b[k]) { return false; } } return true; }
+rgp_same_i :: (a: [] int, b: [] int) -> bool { if a.count != b.count { return false; } for k: 0..<a.count { if a[k] != b[k] { return false; } } return true; }
+// Whether the file fills the three rigs with exactly what the procedures load.
+rgp_agrees :: (file: [] u8, r: [] RgpRigs, g: [] RgpBack) -> bool {
+  people_load(r[0].people[..]); preview_load(r[0].preview[..]); twohand_load(r[0].twohand[..]);
+  if !e2rig_people(file, g[0].people[..]) || !e2rig_preview(file, g[0].preview[..]) || !e2rig_twohand(file, g[0].twohand[..]) { return false; }
+  p := r[0].people[..]; q := g[0].people[..];
+  if !(rgp_same_i(p[0].parent[..], q[0].parent[..]) && rgp_same_f(p[0].rest_m[..], q[0].rest_m[..]) && rgp_same_f(p[0].rest_f[..], q[0].rest_f[..]) && rgp_same_f(p[0].bind_m[..], q[0].bind_m[..]) && rgp_same_f(p[0].bind_f[..], q[0].bind_f[..])
+      && rgp_same_f(p[0].duration[..], q[0].duration[..]) && rgp_same_f(p[0].distance[..], q[0].distance[..]) && rgp_same_i(p[0].track_t[..], q[0].track_t[..]) && rgp_same_i(p[0].track_r[..], q[0].track_r[..])
+      && rgp_same_f(p[0].keys_t_m[..], q[0].keys_t_m[..]) && rgp_same_f(p[0].keys_t_f[..], q[0].keys_t_f[..]) && rgp_same_f(p[0].keys_r[..], q[0].keys_r[..])) { return false; }
+  v := r[0].preview[..]; w := g[0].preview[..];
+  if !(rgp_same_i(v[0].parent[..], w[0].parent[..]) && rgp_same_f(v[0].rest_m[..], w[0].rest_m[..]) && rgp_same_f(v[0].rest_f[..], w[0].rest_f[..]) && rgp_same_f(v[0].bind_m[..], w[0].bind_m[..]) && rgp_same_f(v[0].bind_f[..], w[0].bind_f[..])
+      && rgp_same_f(v[0].duration[..], w[0].duration[..]) && rgp_same_f(v[0].distance[..], w[0].distance[..]) && rgp_same_i(v[0].track_t[..], w[0].track_t[..]) && rgp_same_i(v[0].track_r[..], w[0].track_r[..])
+      && rgp_same_f(v[0].keys_t_m[..], w[0].keys_t_m[..]) && rgp_same_f(v[0].keys_t_f[..], w[0].keys_t_f[..]) && rgp_same_f(v[0].keys_r[..], w[0].keys_r[..])) { return false; }
+  t := r[0].twohand[..]; u := g[0].twohand[..];
+  return rgp_same_i(t[0].parent[..], u[0].parent[..]) && rgp_same_f(t[0].rest_m[..], u[0].rest_m[..]) && rgp_same_f(t[0].rest_f[..], u[0].rest_f[..]) && rgp_same_f(t[0].bind_m[..], u[0].bind_m[..]) && rgp_same_f(t[0].bind_f[..], u[0].bind_f[..])
+      && rgp_same_f(t[0].duration[..], u[0].duration[..]) && rgp_same_f(t[0].distance[..], u[0].distance[..]) && rgp_same_i(t[0].track_t[..], u[0].track_t[..]) && rgp_same_i(t[0].track_r[..], u[0].track_r[..])
+      && rgp_same_f(t[0].keys_t_m[..], u[0].keys_t_m[..]) && rgp_same_f(t[0].keys_t_f[..], u[0].keys_t_f[..]) && rgp_same_f(t[0].keys_r[..], u[0].keys_r[..]);
+}
+
+// ---- the pack
+// A catalog without its R lines into out, ending its last line: the length, -1 when out is too small.
+rgp_strip :: (cat: string, out: [] u8) -> int {
+  n := 0; at := 0;
+  while at < cat.count {
+    e := at; while e < cat.count && cat[e] != '\n' { e += 1; }
+    if !(e - at > 1 && cat[at] == 'R' && cat[at + 1] == ' ') && e > at {
+      if n + e - at + 1 > out.count { return -1; }
+      for q: at..<e { out[n] = cat[q]; n += 1; }
+      out[n] = '\n'; n += 1;
+    }
+    at = e + 1;
+  }
+  return n;
+}
+// The number K of the first "L K NAME|..." line whose NAME starts with `name`: -1 for none.
+rgp_source :: (cat: string, name: string) -> int {
+  at := 0;
+  while at < cat.count {
+    e := at; while e < cat.count && cat[e] != '\n' { e += 1; }
+    if e - at > 4 && cat[at] == 'L' && cat[at + 1] == ' ' {
+      k := 0; q := at + 2; digits := 0;
+      while q < e && cat[q] >= '0' && cat[q] <= '9' { k = k * 10 + cast(int) (cat[q] - '0'); q += 1; digits += 1; }
+      if digits > 0 && digits < 4 && q < e && cat[q] == ' ' && e - q - 1 >= name.count && cast(string) cat[q + 1..<q + 1 + name.count] == name { return k; }
+    }
+    at = e + 1;
+  }
+  return -1;
+}
+rgp_number :: (v: int, out: [] u8) -> int { d: [20] u8; n := 0; x := v; while x > 0 || n == 0 { d[n] = cast(u8) ('0' + x % 10); x /= 10; n += 1; } for k: 0..<n { out[k] = d[n - 1 - k]; } return n; }
+// `pack` with `rigs` as its last entry and its R line, into out: the size, -1 refused. An entry of
+// kind 7 the pack already has is left out. Each entry keeps its order, from a 4-byte boundary, and
+// the catalog's fixed-width "bytes " line states the new size.
+rgp_into :: (pack: [] u8, rigs: [] u8, out: [] u8, body: [] u8) -> int {
+  t: [1] PackTable;
+  if !pack_table(cast(string) pack, pack.count, t[..]) || t[0].count < 1 || t[0].entries[0].kind != PACK_CATALOG || pack_u32(cast(string) pack, 16) != PACK_HEADER { return -1; }
+  cat := t[0].entries[0];
+  bn := rgp_strip(cast(string) pack[cat.at..<cat.at + cat.n], body);
+  lic := rgp_source(cast(string) pack[cat.at..<cat.at + cat.n], RGP_SOURCE);
+  if bn < 0 || lic < 0 || lic > 254 || bn + 32 > body.count { return -1; }
+  for ch: "R rigs " { body[bn] = ch; bn += 1; } bn += rgp_number(lic, body[bn..<body.count]); body[bn] = '\n'; bn += 1;
+  kept := 0; for k: 0..<t[0].count { if t[0].entries[k].kind != PACK_RIG { kept += 1; } }
+  if kept + 1 > PACK_TABLE_MAX { return -1; }
+  at := PACK_HEADER + PACK_ENTRY * (kept + 1);
+  if at > out.count { return -1; }
+  for k: 0..<PACK_HEADER { out[k] = pack[k]; }
+  for k: PACK_HEADER..<at { out[k] = 0; }
+  pack_put32(out, 4, kept + 1); pack_put32(out, 20, at);
+  row := PACK_HEADER;
+  for k: 0..<t[0].count + 1 {
+    last := k == t[0].count;
+    if !last && t[0].entries[k].kind == PACK_RIG { continue; }
+    n := ifx last then rigs.count else (ifx k == 0 then bn else t[0].entries[k].n);
+    if at + ((n + 3) / 4) * 4 > out.count { return -1; }
+    if last { out[row] = PACK_RIG; out[row + 1] = cast(u8) lic; for ch, i: "rigs" { out[row + 16 + i] = ch; } for q: 0..<n { out[at + q] = rigs[q]; } }
+    else {
+      old := PACK_HEADER + PACK_ENTRY * k;
+      for q: 0..<PACK_ENTRY { out[row + q] = pack[old + q]; }
+      if k == 0 { for q: 0..<n { out[at + q] = body[q]; } } else { src := t[0].entries[k].at; for q: 0..<n { out[at + q] = pack[src + q]; } }
+    }
+    pack_put32(out, row + 4, at); pack_put32(out, row + 8, n);
+    at += n; while at % 4 != 0 { out[at] = 0; at += 1; }
+    row += PACK_ENTRY;
+  }
+  pack_put32(out, 8, at);
+  cs := pack_u32(cast(string) out, PACK_HEADER + 4); found := false;
+  for k: cs..<cs + bn - 16 { if cast(string) out[k..<k + 6] == "bytes " && (k == cs || out[k - 1] == '\n') { v := at; for j: 0..<10 { out[k + 15 - j] = cast(u8) (48 + v % 10); v /= 10; } found = true; break; } }
+  return ifx found then at else -1;
+}
+#test "a pack takes the rigs as its last entry with an R line, and takes them again in place of the first" {
+  // a three-entry pack: the catalog, four vertex bytes, a rig entry that is to go
+  cat := "bytes 0000000000\nL 0 Kit|CC0|u\nL 3 Quaternius Universal Base Characters, and more|CC0|u\nR old 0\nC a 1 2 3\n";
+  p: [512] u8; for ch, i: "VPK1" { p[i] = ch; } pack_put32(p[..], 4, 3); pack_put32(p[..], 12, 4096); pack_put32(p[..], 16, 32); pack_put32(p[..], 20, 176);
+  at := 176; p[32] = 1; p[33] = 255; pack_put32(p[..], 36, at); pack_put32(p[..], 40, cat.count); for ch, i: "catalog" { p[48 + i] = ch; } for ch: cat { p[at] = ch; at += 1; } at = ((at + 3) / 4) * 4;
+  p[80] = 2; p[81] = 255; pack_put32(p[..], 84, at); pack_put32(p[..], 88, 4); for ch, i: "vertices" { p[96 + i] = ch; } for k: 0..<4 { p[at + k] = cast(u8) (200 + k); } at += 4;
+  p[128] = 7; pack_put32(p[..], 132, at); pack_put32(p[..], 136, 3); for ch, i: "old" { p[144 + i] = ch; } p[at] = 9; at += 4; pack_put32(p[..], 8, at);
+  rigs := [5] u8.[1, 2, 3, 4, 5]; o: [1024] u8; body: [512] u8;
+  n := rgp_into(p[0..<at], rigs[..], o[..], body[..]); #assert n > 0 && n % 4 == 0;
+  t: [1] PackTable; #assert pack_table(cast(string) o[0..<n], n, t[..]) && t[0].count == 3 && pack_u32(cast(string) o[..], 20) == 176 && pack_u32(cast(string) o[..], 12) == 4096;
+  e := t[0].entries; #assert e[0].kind == 1 && e[0].name == "catalog" && e[1].kind == 2 && e[1].n == 4 && o[e[1].at] == 200 && o[e[1].at + 3] == 203 && e[1].name == "vertices" && e[1].licence == 255;
+  #assert e[2].kind == PACK_RIG && e[2].licence == 3 && e[2].name == "rigs" && e[2].n == 5 && o[e[2].at] == 1 && o[e[2].at + 4] == 5 && e[2].at + 8 == n && e[0].at == 176 && e[1].at % 4 == 0 && e[2].at % 4 == 0;
+  c2 := cast(string) o[e[0].at..<e[0].at + e[0].n]; v := 0; for j: 6..<16 { v = v * 10 + cast(int) (c2[j] - '0'); } #assert v == n;
+  #assert c2[16..<c2.count] == "\nL 0 Kit|CC0|u\nL 3 Quaternius Universal Base Characters, and more|CC0|u\nC a 1 2 3\nR rigs 3\n";
+  // again: the same bytes
+  o2: [1024] u8; n2 := rgp_into(o[0..<n], rigs[..], o2[..], body[..]); #assert n2 == n && cast(string) o2[0..<n] == cast(string) o[0..<n];
+  // no source for the rigs, not a pack, no room
+  p[176 + 35] = 'q'; #assert rgp_into(p[0..<at], rigs[..], o[..], body[..]) == -1; p[176 + 35] = 'Q';
+  #assert rgp_into(p[0..<at - 4], rigs[..], o[..], body[..]) == -1 && rgp_into(p[0..<at], rigs[..], o[0..<n - 1], body[..]) == -1 && rgp_into(p[0..<at], rigs[..], o[0..<n], body[..]) == n;
+  #assert rgp_source("L 12 Quaternius Universal Base|x\n", "Quaternius Universal") == 12 && rgp_source("M L 1 Q\nL x Q\nL 1Q\nL 1 P\n", "Q") == -1 && rgp_source("L 7 Q", "Q") == 7;
+  nb: [4] u8; #assert rgp_number(0, nb[..]) == 1 && nb[0] == '0' && rgp_number(254, nb[..]) == 3 && nb[0] == '2' && nb[2] == '4';
+}
+#test "the rigs' file fills the three rigs with exactly what the procedures load, and a file short of a set fills none" #steps 400000000 {
+  r: [1] RgpRigs; g: [1] RgpBack; file: [RGP_FILE] u8;
+  n := rgp_write(r[..], file[..]); #assert n > 1500000 && n < RGP_FILE && vrg_valid(file[0..<n]) == 3 && rgp_agrees(file[0..<n], r[..], g[..]);
+  #assert vrg_find(file[0..<n], E2RIG_PEOPLE).joints == 65 && vrg_find(file[0..<n], E2RIG_PREVIEW).clips == PREVIEW_CLIPS && vrg_find(file[0..<n], E2RIG_TWOHAND).clips == TWOHAND_CLIPS;
+  // a set under another name, or of another size, fills nothing
+  file[32] = 'q'; #assert !e2rig_people(file[0..<n], g[0].people[..]) && e2rig_preview(file[0..<n], g[0].preview[..]) && !rgp_agrees(file[0..<n], r[..], g[..]); file[32] = 'p';
+  #assert !e2rig_people(file[0..<n - 4], g[0].people[..]) && !e2rig_twohand(file[0..<0], g[0].twohand[..]);
+}
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) { return 2; }
+  r: [1] RgpRigs; file: [RGP_FILE] u8;
+  if args_count(a[..]) == 1 {
+    n := rgp_write(r[..], file[..]);
+    if n < 0 || !fs_write(args_at(a[..], 0), cast(string) file[0..<n]) { tool_errln("rig-pack: the rigs are refused, or the file can't be written"); return 1; }
+    print("rig-pack: % bytes, 3 sets\n", n); return 0;
+  }
+  if args_count(a[..]) == 2 && args_at(a[..], 0) == "--check" {
+    g: [1] RgpBack; n := fs_read(args_at(a[..], 1), file[..]);
+    if n <= 0 || vrg_valid(file[0..<n]) != 3 { tool_errln("rig-pack: not a VRG1 file of three sets"); return 1; }
+    if !rgp_agrees(file[0..<n], r[..], g[..]) { tool_errln("rig-pack: the file is not what the rig procedures load"); return 1; }
+    print("rig-pack: % bytes; people % bytes, preview % bytes, two-hand % bytes; every word is the procedures'\n", n, vrg_find(file[0..<n], E2RIG_PEOPLE).n, vrg_find(file[0..<n], E2RIG_PREVIEW).n, vrg_find(file[0..<n], E2RIG_TWOHAND).n); return 0;
+  }
+  if args_count(a[..]) == 3 && args_at(a[..], 0) == "--into" {
+    pack: [RGP_PACK] u8; out: [RGP_PACK] u8; body: [RGP_CATALOG] u8;
+    size := fs_read(args_at(a[..], 1), pack[..]);
+    if size < 32 { tool_errln("rig-pack: can't read the pack"); return 1; }
+    n := rgp_write(r[..], file[..]);
+    if n < 0 { tool_errln("rig-pack: the rigs are refused"); return 1; }
+    at := rgp_into(pack[0..<size], file[0..<n], out[..], body[..]);
+    if at < 0 { tool_errln("rig-pack: the pack is refused, has no source for the rigs, or grows past 64 MiB"); return 1; }
+    if !fs_write(args_at(a[..], 2), cast(string) out[0..<at]) { return 1; }
+    print("rig-pack: the rigs % bytes; the pack % bytes\n", n, at); return 0;
+  }
+  tool_errln("usage: rig-pack OUT.vrg | --check FILE.vrg | --into IN.pack OUT.pack"); return 2;
+}

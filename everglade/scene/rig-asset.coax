@@ -1,0 +1,44 @@
+// Everglade's rigs from the pack (GitHub #13306, AAA P6.4): the people's, the previews' and the
+// two-handed clips' rigs filled from a VRG1 file (metaverse-engine/anim/rig-pack.coax), the rig
+// entry of the zone's pack, in place of the generated procedures (people_load, preview_load,
+// twohand_load). A set fills its struct whole or not at all: every part must be the struct's size.
+// The file's sets are "people", "preview" and "two-hand".
+//
+// The generated procedures stay while a page still bakes at its start, before a pack has arrived.
+// everglade/model/tools/rig-pack.coax writes the file from them and holds every float's bits of
+// what these calls fill to what they load, so a page that moves to the file plays the same poses.
+#load "../../metaverse-engine/anim/rig-pack.coax";
+#load "people-rig.coax";
+#load "preview-rig.coax";
+#load "two-hand-rig.coax";
+
+E2RIG_PEOPLE :: "people"; E2RIG_PREVIEW :: "preview"; E2RIG_TWOHAND :: "two-hand";
+
+// The people's rig from the file b: false, and d as it was told to be by nobody, when b has no such set.
+e2rig_people :: (b: [] u8, d: [] People) -> bool #effects(all) {
+  s := vrg_find(b, E2RIG_PEOPLE);
+  if s.joints != PEOPLE_JOINTS || s.clips != PEOPLE_CLIPS || s.keys_t * 4 != d[0].keys_t_m.count || s.keys_r * 5 != d[0].keys_r.count { return false; }
+  return vrg_ints(b, s, VRG_PARENT, d[0].parent[..]) && vrg_floats(b, s, VRG_REST_0, d[0].rest_m[..]) && vrg_floats(b, s, VRG_REST_1, d[0].rest_f[..])
+      && vrg_floats(b, s, VRG_BIND_0, d[0].bind_m[..]) && vrg_floats(b, s, VRG_BIND_1, d[0].bind_f[..])
+      && vrg_floats(b, s, VRG_DURATION, d[0].duration[..]) && vrg_floats(b, s, VRG_DISTANCE, d[0].distance[..])
+      && vrg_ints(b, s, VRG_TRACK_T, d[0].track_t[..]) && vrg_ints(b, s, VRG_TRACK_R, d[0].track_r[..])
+      && vrg_floats(b, s, VRG_KEYS_T_0, d[0].keys_t_m[..]) && vrg_floats(b, s, VRG_KEYS_T_1, d[0].keys_t_f[..]) && vrg_floats(b, s, VRG_KEYS_R, d[0].keys_r[..]);
+}
+e2rig_preview :: (b: [] u8, d: [] Preview) -> bool #effects(all) {
+  s := vrg_find(b, E2RIG_PREVIEW);
+  if s.joints != PREVIEW_JOINTS || s.clips != PREVIEW_CLIPS || s.keys_t * 4 != d[0].keys_t_m.count || s.keys_r * 5 != d[0].keys_r.count { return false; }
+  return vrg_ints(b, s, VRG_PARENT, d[0].parent[..]) && vrg_floats(b, s, VRG_REST_0, d[0].rest_m[..]) && vrg_floats(b, s, VRG_REST_1, d[0].rest_f[..])
+      && vrg_floats(b, s, VRG_BIND_0, d[0].bind_m[..]) && vrg_floats(b, s, VRG_BIND_1, d[0].bind_f[..])
+      && vrg_floats(b, s, VRG_DURATION, d[0].duration[..]) && vrg_floats(b, s, VRG_DISTANCE, d[0].distance[..])
+      && vrg_ints(b, s, VRG_TRACK_T, d[0].track_t[..]) && vrg_ints(b, s, VRG_TRACK_R, d[0].track_r[..])
+      && vrg_floats(b, s, VRG_KEYS_T_0, d[0].keys_t_m[..]) && vrg_floats(b, s, VRG_KEYS_T_1, d[0].keys_t_f[..]) && vrg_floats(b, s, VRG_KEYS_R, d[0].keys_r[..]);
+}
+e2rig_twohand :: (b: [] u8, d: [] Twohand) -> bool #effects(all) {
+  s := vrg_find(b, E2RIG_TWOHAND);
+  if s.joints != TWOHAND_JOINTS || s.clips != TWOHAND_CLIPS || s.keys_t * 4 != d[0].keys_t_m.count || s.keys_r * 5 != d[0].keys_r.count { return false; }
+  return vrg_ints(b, s, VRG_PARENT, d[0].parent[..]) && vrg_floats(b, s, VRG_REST_0, d[0].rest_m[..]) && vrg_floats(b, s, VRG_REST_1, d[0].rest_f[..])
+      && vrg_floats(b, s, VRG_BIND_0, d[0].bind_m[..]) && vrg_floats(b, s, VRG_BIND_1, d[0].bind_f[..])
+      && vrg_floats(b, s, VRG_DURATION, d[0].duration[..]) && vrg_floats(b, s, VRG_DISTANCE, d[0].distance[..])
+      && vrg_ints(b, s, VRG_TRACK_T, d[0].track_t[..]) && vrg_ints(b, s, VRG_TRACK_R, d[0].track_r[..])
+      && vrg_floats(b, s, VRG_KEYS_T_0, d[0].keys_t_m[..]) && vrg_floats(b, s, VRG_KEYS_T_1, d[0].keys_t_f[..]) && vrg_floats(b, s, VRG_KEYS_R, d[0].keys_r[..]);
+}
