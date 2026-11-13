@@ -9,7 +9,8 @@
 //   screenshot OUT.png            the frame as it is now (offscreen)
 //   quit                          the session ends (ui_drive_serve returns)
 // Any other `clock ...` goes to the app first (UiApp.drive), for an app with clock operations of its own.
-// The iPhone app (apple/phone-drive.c) includes this file too, with a UiHost of its own and no window.
+// The iPhone app (apple/phone-drive.c) includes this file too, with a UiHost of its own and no window; on a
+// physical iPhone it listens on TCP and admits a driver first (UI_DRIVE_ADMIT: local network, launch token).
 // A host may answer operations of its own first (UI_DRIVE_HOST: the Mac's ax, ax-press ID and
 // ax-key KEY, and the file chooser's choose, choose PATH, choose done and cancel; apple/ui-host.m).
 // Everything else is the app's (UiApp.drive): `tree`, `tap ID`, `type ID TEXT` and the app's own.
@@ -119,6 +120,10 @@ static int ui_drive_pump(UiHost *h, int timeout_ms) {
   if (poll(&p, 1, timeout_ms) <= 0) return !h->drive.quit;
   if (h->drive.conn_fd < 0) {
     int c = accept(h->drive.listen_fd, NULL, NULL);
+#ifdef UI_DRIVE_ADMIT
+    // a host on a network socket first decides who may drive it (the iPhone's: apple/phone-drive.c)
+    if (c >= 0 && !UI_DRIVE_ADMIT(h, c)) { close(c); return 1; }
+#endif
     if (c >= 0) { h->drive.conn_fd = c; h->drive.line_n = 0; }
     return 1;
   }

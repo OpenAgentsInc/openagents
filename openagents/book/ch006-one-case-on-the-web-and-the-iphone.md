@@ -1,11 +1,12 @@
 # 6. One case on the web and the iPhone
 
 > **Status: partly implemented.** The login case and the cancellation case
-> run with byte-equal traces in headless Chrome and in the iPhone simulator,
-> and the independent check passes there
-> ([#13516](https://github.com/OpenAgentsInc/openagents/issues/13516)). The
-> driver's stale-build refusal on the iPhone and the device runs remain. See
-> "What remains".
+> run with byte-equal traces in headless Chrome, in the iPhone simulator and
+> on a physical iPhone, and the independent check passes on both iPhones
+> ([#13516](https://github.com/OpenAgentsInc/openagents/issues/13516),
+> [#13517](https://github.com/OpenAgentsInc/openagents/issues/13517)). The
+> driver's stale-build refusal on the iPhone, dictation and Android remain.
+> See "What remains".
 
 ## Premise
 
@@ -61,6 +62,45 @@ before a chapter names `ios-device` as a target
 ([CONTRACT.md](CONTRACT.md#targets)). When the work reaches that point, the
 device run goes in the workspace's `NEEDS_OWNER.md` if it needs the owner's
 phone or key.
+
+### Who may drive a phone
+
+A simulator's app shares the Mac's file system, so the driver reaches it on
+a Unix socket. A physical iPhone needs a network transport. Two were open:
+a TCP socket on the local network, or the tunnel that `devicectl` keeps to
+a paired phone. The tunnel is out: `devicectl` reports its address (an
+`fd..::1` address), but macOS doesn't expose it as a network interface, so
+a socket on the Mac can't reach an app through it.
+
+The driver uses TCP on the phone's own network, and the app admits a
+driver only when all of these hold
+([`apple/phone-drive.c`](../../apps/shared/host/apple/phone-drive.c)):
+
+- **A development launch.** The app listens only when it is launched with
+  `-OADrive tcp:PORT -OADriveToken TOKEN` (with `devicectl device process
+  launch`). A launch argument is not saved, so the next normal launch has
+  no listener. Without a token of 32 to 128 characters it doesn't listen
+  at all.
+- **The local network.** The driver's address must be on the subnet of one
+  of the phone's own interfaces that is up (Wi-Fi, or the USB link to the
+  Mac), never the cellular one, or loopback. Anything else is answered
+  `refused: only a driver on this phone's own network may attach` and
+  closed.
+- **The launch's token.** The driver's first line, within five seconds, is
+  `attach TOKEN`, compared in constant time. A wrong one is answered
+  `refused: wrong token` and closed. The runner makes a new token for each
+  case (`openssl rand -hex 16`) and passes it at launch.
+- **One driver at a time.** A second connection waits until the first
+  closes.
+
+The app only accepts connections. It never browses or dials, so no Local
+Network prompt stood in the way.
+
+```shell
+xcrun devicectl device process launch --device DEVICE --terminate-existing \
+  com.openagents.app -- -OADrive tcp:47613 -OADriveToken TOKEN
+coax/web/tool.sh drive native tcp:PHONE.local:47613 --token TOKEN --ops openagents/examples/cases/login.ops
+```
 
 ## What we build
 
@@ -127,13 +167,84 @@ xcodebuild -project apps/openagents-ios/OpenAgents.xcodeproj -scheme OpenAgents 
   -only-testing:OpenAgentsUITests/SharedAppUITests test
 ```
 
+### On a physical iPhone
+
+Recorded on 2026-11-13
+([#13517](https://github.com/OpenAgentsInc/openagents/issues/13517)), on an
+iPhone 17 Pro Max with iOS 26.6.2 on the same Wi-Fi as the Mac (macOS 26.4,
+Xcode 26.6). The app is a Debug build with development signing (the team's
+Apple Development certificate and its development profile for
+`com.openagents.app`), installed with `devicectl device install app`. There
+was no TestFlight build and no upload.
+
+```shell
+xcodebuild -project apps/openagents-ios/OpenAgents.xcodeproj -scheme OpenAgents \
+  -configuration Debug -destination id=UDID -derivedDataPath build-device build
+xcrun devicectl device install app --device DEVICE \
+  apps/openagents-ios/build-device/Build/Products/Debug-iphoneos/OpenAgents.app
+coax/web/tool.sh apps/shared/cases.coax ios-device DEVICE
+```
+
+All five cases of chapter 11 matched their traces byte for byte, the same
+bytes as on cpu, the web and the simulator. Among them,
+[`login.trace`](../examples/cases/login.trace) and
+[`login-cancel.trace`](../examples/cases/login-cancel.trace) are this
+chapter's. The refusals held on the phone too: a driver with a wrong token
+got `refused: wrong token`, the driver refused to start without `--token`,
+and an app launched with a five-character token didn't listen.
+
+The first launch on the phone crashed before it drew anything: the shared
+app's state was built on the main thread's stack, which is 1 MB on a phone
+and 8 MB in the simulator. The app now zeroes it in place.
+
+The independent check, `SharedAppUITests`, passed on the phone, and so did
+the device checks in
+[`SharedAppDeviceUITests`](../../apps/openagents-ios/StarterUITests/SharedAppDeviceUITests.swift),
+which drive the app by hand through the accessibility tree:
+
+```shell
+xcodebuild -project apps/openagents-ios/OpenAgents.xcodeproj -scheme OpenAgents \
+  -configuration Debug -destination id=UDID -derivedDataPath build-device \
+  -only-testing:OpenAgentsUITests/SharedAppUITests \
+  -only-testing:OpenAgentsUITests/SharedAppDeviceUITests test
+```
+
+| Check | What ran on the phone | Result |
+| --- | --- | --- |
+| One-time code | The code field brings up the number pad (digits, no letters); `123456` tapped on its keys logs in | Passed |
+| An input method | The Japanese (Romaji) keyboard, given to the app by launch arguments so the phone's settings don't change: `nihongo` tapped key by key is marked text `にほんご`, the candidate `日本語` commits it, and only `日本語` is sent, once | Passed |
+| Non-Latin text | `こんにちは 你好 🙂` typed into the composer comes back whole in the transcript | Passed |
+| VoiceOver labels | Every button, field and text on the home, login (both steps), chats and chat screens has a label | Passed |
+| Accessibility audit | `performAccessibilityAudit` on the same five screens | Passed, with two issues set aside (below) |
+| Background | The app goes to the Home Screen while a reply is pending and comes back to the same conversation: one message, the whole reply once, no Stop notice | Passed |
+
+The audit first failed on Dynamic Type: the labels and fields didn't follow
+the text size setting. They do now. It also reports two issues that are not
+the shared screen's. The masked address `y...@example.com` is "not
+human-readable", but the mask is the point. The system keyboard's
+suggestion bar has an empty slot with no description. The test sets those
+two aside by name and fails on any other issue.
+
+In the background check the fakes answer every two seconds
+(`-OASharedAppHandSeconds 2`), so the turn is still pending when the app
+leaves. When the app came back, the reply had already finished, once.
+
+Not covered on the phone:
+
+- **Dictation.** XCUITest can't speak to the phone, so nothing here drives
+  dictation. A person checks it by hand (the workspace's `NEEDS_OWNER.md`).
+- **VoiceOver itself.** The checks read the labels VoiceOver reads and run
+  the audit; nobody moved through the screens with VoiceOver on.
+- **One-time code AutoFill.** The field is a one-time-code field, but the
+  suggestion above the keyboard needs a real text message.
+
 ## What remains
 
 - **Stale builds.** The iPhone driver doesn't check yet that the app was
   built from the source under test. The web driver does.
-- **Devices.** `ios-device` is not run
-  ([#13517](https://github.com/OpenAgentsInc/openagents/issues/13517)), and
-  neither is Android.
+- **Dictation, VoiceOver on, AutoFill.** The device checks above don't
+  cover them; a person checks them on the phone.
+- **Android.** Neither the emulator nor a phone has run the cases.
 
 Planned paths: none new. The cases are in
 [`openagents/examples/cases`](../examples/cases).
@@ -148,7 +259,8 @@ Planned paths: none new. The cases are in
   - [The iOS app's tests](../../apps/openagents-ios/README.md)
 - **Promises covered** ([audit](../../docs/audits/2026-11-10-episode-289-port-audit.md#1-what-episode-289-promised)): P1, P16
 
-## Open questions for the owner
+## Decided
 
-1. Which transport does the driver use to reach an app on a physical
-   iPhone, and who may attach to it?
+1. The driver reaches a physical iPhone over TCP on the phone's own
+   network, and only a driver on that network with the launch's token may
+   attach ("Who may drive a phone", 2026-11-13).

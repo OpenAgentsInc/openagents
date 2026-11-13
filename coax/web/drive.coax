@@ -92,6 +92,7 @@
 // The native hosts (apps/shared/host/drive.c, GitHub #13156) answer the same way on a Unix socket: an
 // app started with --drive SOCKET (OpenAgents, Everglade's Workshop chat) takes
 //   coax/web/tool.sh drive native SOCKET [--within MS] [--ops FILE] OP...
+//   coax/web/tool.sh drive native tcp:HOST:PORT --token TOKEN ...   (a physical iPhone: -OADrive tcp:PORT, #13517)
 // (--ops takes them from a file and echoes each as `> OP`, as the web prints them) with the host's clock +MS, clock settle [within MS], screenshot OUT.png and quit, and the app's own:
 // tree, tap ID, type ID TEXT, state NAME ... (`tree` lists the ids: components/core/elements.coax).
 // It refuses a build older than its sources (build/.drive/APP.sources, written by coax/web/wasm.sh),
@@ -1069,33 +1070,83 @@ dv_state :: (s: [] DvS, path: string, out: [] Dv) -> bool {
 }
 
 // ---- drive native: one line an operation to a native host's socket; each answer is its length, a
-// newline, then that many bytes (apps/shared/host/drive.c).
-dv_native :: (sock: string, ops: [] string, within: int, echo: bool) -> int {
-  if sock.count == 0 || sock.count > 103 { tool_errln("drive: the socket's path is empty or too long"); return 2; }
-  for c: sock { r := cxsock_host_push(cast(int) c); }
-  h := cxsock_connect_unix(5000);
-  if h < 0 { tool_err("drive: nothing answers on "); tool_errln(sock); return 1; }
+// newline, then that many bytes (apps/shared/host/drive.c). SOCKET is a Unix socket's path, or tcp:HOST:PORT
+// for a physical iPhone (apps/shared/host/apple/phone-drive.c, GitHub #13517; HOST may be [IPv6]): there
+// the first line is `attach TOKEN`, with the token the app was launched with (-OADriveToken), and the app
+// answers `attached` or `refused: ...`.
+// One answer from the host: its length, a newline, then that many bytes; false if none came in time.
+dv_native_answer :: (h: int, within: int, ans: [] Dv) -> bool {
+  want := -1; got := 0; until := cxsock_now_ms() + within + 10000; head := 0;
+  while (want < 0 || got < want) && cxsock_now_ms() < until {
+    k := cxsock_read(h, 1000);
+    if k < 0 { break; }
+    for j: 0..<k {
+      b := cxsock_byte(h, j);
+      if want < 0 { if b == 10 { want = head; } else { head = head * 10 + (b - '0'); } }
+      else if got < want { if ans[0].n < DV_TEXT { ans[0].b[ans[0].n] = cast,trunc(u8) b; ans[0].n += 1; } got += 1; }
+    }
+  }
+  return want >= 0 && got >= want;
+}
+dv_native_line :: (h: int, line: string) -> bool {
+  ok := true;
+  for c: line { if c == 10 || cxsock_write(h, cast(int) c) != 0 { ok = false; } }
+  return ok && cxsock_write(h, 10) == 0 && cxsock_flush(h, 5000) == 0;
+}
+// tcp:HOST:PORT's host and port (-1 when it isn't one): the port is after the last colon, and an IPv6
+// host may be in brackets.
+DvTcp :: struct { host: string; port: int; }
+dv_tcp :: (sock: string) -> DvTcp {
+  r: DvTcp; r.port = -1;
+  if !dv_starts(sock, "tcp:") { return r; }
+  rest := sock[4..<sock.count];
+  at := rest.count - 1;
+  while at >= 0 && rest[at] != ':' { at -= 1; }
+  if at <= 0 || at == rest.count - 1 { return r; }
+  host := rest[0..<at];
+  if host.count >= 2 && host[0] == '[' && host[host.count - 1] == ']' { host = host[1..<host.count - 1]; }
+  port := 0;
+  for c: rest[at + 1..<rest.count] { if c < '0' || c > '9' { return r; } port = port * 10 + cast(int) (c - '0'); if port > 65535 { return r; } }
+  if host.count == 0 || port < 1 || port > 65535 { return r; }
+  r.host = host; r.port = port;
+  return r;
+}
+#test "drive native: tcp:HOST:PORT names a host and a port" {
+  a := dv_tcp("tcp:192.168.1.49:47613"); #assert a.host == "192.168.1.49" && a.port == 47613;
+  b := dv_tcp("tcp:[fe80::1%en0]:9"); #assert b.host == "fe80::1%en0" && b.port == 9;
+  c := dv_tcp("tcp:Christophers-iPhone.local:80"); #assert c.host == "Christophers-iPhone.local" && c.port == 80;
+  #assert dv_tcp("/tmp/x.sock").port == -1 && dv_tcp("tcp:host").port == -1 && dv_tcp("tcp::80").port == -1;
+  #assert dv_tcp("tcp:h:0").port == -1 && dv_tcp("tcp:h:65536").port == -1 && dv_tcp("tcp:h:8x").port == -1 && dv_tcp("tcp:h:").port == -1;
+}
+dv_native :: (sock: string, token: string, ops: [] string, within: int, echo: bool) -> int {
+  tcp := dv_tcp(sock);
+  h := -1;
+  if tcp.port > 0 {
+    if token.count == 0 { tool_errln("drive: tcp:HOST:PORT takes --token TOKEN (the app's -OADriveToken)"); return 2; }
+    for c: tcp.host { r := cxsock_host_push(cast(int) c); }
+    h = cxsock_connect(tcp.port, 5000);
+    if h < 0 { tool_err("drive: nothing answers on "); tool_errln(sock); return 1; }
+    hello: [1] Dv; dv_s(hello[..], "attach "); dv_s(hello[..], token);
+    said: [1] Dv;
+    if !dv_native_line(h, dv_text(hello[..])) || !dv_native_answer(h, 0, said[..]) || dv_text(said[..]) != "attached" {
+      tool_err("drive: the app did not admit this driver: "); tool_errln(dv_text(said[..]));
+      r := cxsock_close(h); return 1;
+    }
+  } else {
+    if dv_starts(sock, "tcp:") { tool_errln("drive: tcp:HOST:PORT needs a host and a port from 1 to 65535"); return 2; }
+    if sock.count == 0 || sock.count > 103 { tool_errln("drive: the socket's path is empty or too long"); return 2; }
+    for c: sock { r := cxsock_host_push(cast(int) c); }
+    h = cxsock_connect_unix(5000);
+    if h < 0 { tool_err("drive: nothing answers on "); tool_errln(sock); return 1; }
+  }
   if echo { print("drive: % ready: a native host on its socket\n", sock); }
   status := 0;
   for op: ops {
     if echo { print("> %\n", op); }
-    ok := true;
-    for c: op { if c == 10 || cxsock_write(h, cast(int) c) != 0 { ok = false; } }
-    ok = ok && cxsock_write(h, 10) == 0 && cxsock_flush(h, 5000) == 0;
-    if !ok { tool_errln("drive: the app closed the socket"); status = 1; break; }
+    if !dv_native_line(h, op) { tool_errln("drive: the app closed the socket"); status = 1; break; }
     // the length, then the answer; an operation may take its own `within` and a little more
-    want := -1; got := 0; until := cxsock_now_ms() + within + 10000;
-    ans: [1] Dv; head := 0;
-    while (want < 0 || got < want) && cxsock_now_ms() < until {
-      k := cxsock_read(h, 1000);
-      if k < 0 { break; }
-      for j: 0..<k {
-        b := cxsock_byte(h, j);
-        if want < 0 { if b == 10 { want = head; } else { head = head * 10 + (b - '0'); } }
-        else if got < want { if ans[0].n < DV_TEXT { ans[0].b[ans[0].n] = cast,trunc(u8) b; ans[0].n += 1; } got += 1; }
-      }
-    }
-    if want < 0 || got < want { tool_err("drive: no answer to "); tool_errln(op); status = 1; break; }
+    ans: [1] Dv;
+    if !dv_native_answer(h, within, ans[..]) { tool_err("drive: no answer to "); tool_errln(op); status = 1; break; }
     text := dv_text(ans[..]);
     if echo { print("%\n", text); }   // as the web prints it: every answer a line, an empty one too
     else if text.count > 0 { print("%", text); if text[text.count - 1] != 10 { print("\n"); } }
@@ -1112,6 +1163,7 @@ dv_usage :: () -> int {
   tool_errln("      use ABILITY on ID, mount ID, stop, status, screenshot OUT.png, logs, prefer K V, perf,");
   tool_errln("      clock +MS, clock settle [within MS], clock until PATH [OP VALUE] [within MS]");
   tool_errln("       coax/web/tool.sh drive native SOCKET [--within MS] [--ops FILE] OP...   (an app started with --drive SOCKET)");
+  tool_errln("       coax/web/tool.sh drive native tcp:HOST:PORT --token TOKEN [--within MS] [--ops FILE] OP...   (a physical iPhone)");
   return 2;
 }
 // The repository's root from this tool's own binary (ROOT/coax/web/build/tools/NAME-HASH, tool.sh).
@@ -1123,10 +1175,11 @@ tool_main :: () -> int #export_c #effects(all) {
   loaded := args_load(a[..]);   // once: a second load lists every argument again
   if loaded { kept := rs_keeper_call(a[..]); if kept >= 0 { return kept; } }
   if loaded && args_count(a[..]) >= 3 && args_at(a[..], 0) == "native" {
-    nops: [DV_OPS] string; nn := 0; nwithin := 30000; nfile: [16384] u8; echo := false;
+    nops: [DV_OPS] string; nn := 0; nwithin := 30000; nfile: [16384] u8; echo := false; ntoken := "";
     j := 2;
     while j < args_count(a[..]) {
       if args_at(a[..], j) == "--within" && j + 1 < args_count(a[..]) { nwithin = dv_int(args_at(a[..], j + 1)); j += 2; continue; }
+      if args_at(a[..], j) == "--token" && j + 1 < args_count(a[..]) { ntoken = args_at(a[..], j + 1); j += 2; continue; }
       // --ops FILE: the operations from a file, one a line (# a note), each echoed as `> OP` before its answer, as the web prints them
       if args_at(a[..], j) == "--ops" && j + 1 < args_count(a[..]) {
         fn := fs_read(args_at(a[..], j + 1), nfile[..]);
@@ -1146,7 +1199,7 @@ tool_main :: () -> int #export_c #effects(all) {
       if nn >= nops.count { tool_errln("drive: at most 128 operations a run"); return 2; }
       nops[nn] = args_at(a[..], j); nn += 1; j += 1;
     }
-    return dv_native(args_at(a[..], 1), nops[0..<nn], nwithin, echo);
+    return dv_native(args_at(a[..], 1), ntoken, nops[0..<nn], nwithin, echo);
   }
   if !loaded || args_count(a[..]) < 3 || args_at(a[..], 0) != "web" { return dv_usage(); }
   app_dir := args_at(a[..], 1); path := args_at(a[..], 2);

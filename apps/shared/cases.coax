@@ -7,22 +7,31 @@
 //   ios-simulator   the iPhone app in the simulator DEVICE (its name or UDID), installed from
 //                   apps/openagents-ios/build.sh; each case launches it fresh with -OADrive SOCKET and plays
 //                   the case with coax/web/tool.sh drive native SOCKET --ops FILE
+//   ios-device      the iPhone app on the physical iPhone DEVICE (devicectl's identifier or name), installed from
+//                   a development build (chapter 6, "On a physical iPhone"; GitHub #13517); each case launches
+//                   it fresh with -OADrive tcp:47613 and a new token, plays the case with coax/web/tool.sh drive
+//                   native tcp:HOST:47613 --token TOKEN --ops FILE, and ends the app. HOST is the phone's name on
+//                   the local network (devicectl's first local host name, as NAME.local), or --host HOST.
 // A host's trace is compared after its first line (`drive: ... ready`), which names the host.
 //   coax/web/tool.sh apps/shared/cases.coax cpu [--write] [CASE...]
 //   coax/web/tool.sh apps/shared/cases.coax web [CASE...]
 //   coax/web/tool.sh apps/shared/cases.coax ios-simulator DEVICE [CASE...]
+//   coax/web/tool.sh apps/shared/cases.coax ios-device DEVICE [--host HOST] [CASE...]
 // Run it from the repository's root.
 #import "Basic";
 #load "../../coax/lib/sys/tool.coax";
 #load "../../coax/lib/sys/fs.coax";
 #load "../../coax/lib/sys/proc.coax";
+#load "../../coax/lib/json/json.coax";
 #load "openagents-app.coax";
 
 CS_CASES :: [5] string.["login", "login-cancel", "first-milestone", "logout-pending", "reconnect"];
 CS_DIR :: "openagents/examples/cases/";
 CS_BUNDLE :: "com.openagents.app";
+CS_PORT :: 47613;
+CS_COREDEVICE :: ".coredevice.local";   // the port the app listens on, on a physical iPhone
 
-CsRun :: struct { app: [1] OapApp; trace: [1] OapTrace; ops: [16384] u8; want: [65536] u8; got: [131072] u8; err: [8192] u8; path: [512] u8; sock: [128] u8; }
+CsRun :: struct { app: [1] OapApp; trace: [1] OapTrace; ops: [16384] u8; want: [65536] u8; got: [131072] u8; err: [8192] u8; path: [512] u8; sock: [128] u8; token: [128] u8; json: [32768] u8; pid: [32] u8; addr: [320] u8; }
 
 cs_path :: (r: [] CsRun, name: string, ext: string) -> string {
   n := oap_put(r[0].path[..], 0, CS_DIR); n = oap_put(r[0].path[..], n, name); n = oap_put(r[0].path[..], n, ext);
@@ -56,8 +65,32 @@ cs_differ :: (got: string, want: string, out: [] u8) -> string {
   return "";
 }
 
+// A value in a JSON file devicectl wrote (--json-output): a string's text or a number's digits, or "".
+cs_devicectl :: (file: string, path: string, buf: [] u8, out: [] u8) -> string {
+  n := fs_read(file, buf);
+  if n <= 0 { return ""; }
+  nodes: [2048] JvNode; d: [1] Jv;
+  if !jv_parse(d[..], cast(string) buf[0..<n], nodes[..]) { return ""; }
+  at := jv_path(d[0], 0, path);
+  if jv_kind(d[0], at) == JV_STRING { k := jv_str(d[0], at, out); return ifx k < 0 then "" else cast(string) out[0..<k]; }
+  if jv_kind(d[0], at) == JV_NUMBER { k := oap_put(out, 0, jv_raw(d[0], at)); return cast(string) out[0..<k]; }
+  return "";
+}
+// The phone's name on the local network from devicectl's local host name: NAME.coredevice.local is NAME.local.
+cs_lan_name :: (coredevice: string, out: [] u8) -> string {
+  tail := CS_COREDEVICE;
+  if coredevice.count <= tail.count || coredevice[coredevice.count - tail.count..<coredevice.count] != tail { return coredevice; }
+  n := oap_put(out, 0, coredevice[0..<coredevice.count - tail.count]); n = oap_put(out, n, ".local");
+  return cast(string) out[0..<n];
+}
+#test "cases: a phone's name on the local network" {
+  b: [64] u8;
+  #assert cs_lan_name("Christophers-iPhone.coredevice.local", b[..]) == "Christophers-iPhone.local";
+  #assert cs_lan_name("phone.lan", b[..]) == "phone.lan" && cs_lan_name(".coredevice.local", b[..]) == ".coredevice.local";
+}
+
 // One case on one host: true when its trace is the committed one.
-cs_case :: (r: [] CsRun, host: string, device: string, name: string, write: bool) -> bool {
+cs_case :: (r: [] CsRun, host: string, device: string, lan: string, name: string, write: bool) -> bool {
   on := fs_read(cs_path(r, name, ".ops"), r[0].ops[..]);
   if on < 0 { print("case %: no %.ops in %\n", name, name, CS_DIR); return false; }
   ops := cast(string) r[0].ops[0..<on];
@@ -72,6 +105,37 @@ cs_case :: (r: [] CsRun, host: string, device: string, name: string, write: bool
     if p.started != 0 || p.timed_out { print("case % on the web: coax drive did not run (% %)\n", name, p.started, cast(string) r[0].err[0..<p.err_n]); return false; }
     // proc_run joins lines with newlines and drops the last one: give it back
     n := p.out_n; if n < r[0].got.count { r[0].got[n] = '\n'; n += 1; }
+    got = cs_after_head(cast(string) r[0].got[0..<n]);
+  } else if host == "ios-device" {
+    // a fresh app on the phone for each case, listening on the phone's network for a driver with a new token
+    tk := [4] string.["openssl", "rand", "-hex", "16"];
+    t := proc_run(tk[..], 10000, r[0].token[..], r[0].err[..]);
+    if t.started != 0 || t.status != 0 || t.out_n < 32 { print("case % on the phone: no token (openssl rand)\n", name); return false; }
+    token := cast(string) r[0].token[0..<32];
+    jn := oap_put(r[0].sock[..], 0, "/tmp/oa-cases-"); jn = oap_int(r[0].sock[..], jn, proc_now_ms() % 100000000); jn = oap_put(r[0].sock[..], jn, ".json");
+    json := cast(string) r[0].sock[0..<jn];
+    an := oap_put(r[0].addr[..], 0, "tcp:"); listen := cast(string) r[0].addr[0..<oap_int(r[0].addr[..], an, CS_PORT)];
+    launch := [15] string.["xcrun", "devicectl", "device", "process", "launch", "--device", device, "--terminate-existing", "--json-output", json, CS_BUNDLE, "--", "-OADrive", listen, "-OADriveToken"];
+    full: [16] string; for x, k: launch { full[k] = x; } full[15] = token;
+    p := proc_run(full[..], 90000, r[0].got[..], r[0].err[..]);
+    pid := cs_devicectl(json, "result.process.processIdentifier", r[0].json[..], r[0].pid[..]);
+    removed := fs_remove(json);
+    if p.started != 0 || p.status != 0 || pid.count == 0 { print("case % on the phone: the app did not launch on % (% %)\n", name, device, p.status, cast(string) r[0].err[0..<p.err_n]); return false; }
+    an = oap_put(r[0].addr[..], 0, "tcp:"); an = oap_put(r[0].addr[..], an, lan); an = oap_put(r[0].addr[..], an, ":"); an = oap_int(r[0].addr[..], an, CS_PORT);
+    addr := cast(string) r[0].addr[0..<an];
+    drive := [8] string.["coax/web/tool.sh", "drive", "native", addr, "--token", token, "--ops", cs_path(r, name, ".ops")];
+    // the app listens once it has drawn its first screen: until then nothing answers, and no operation was sent
+    q: ProcRun; tries := 0;
+    while true {
+      q = proc_run(drive[..], 120000, r[0].got[..], r[0].err[..]);
+      tries += 1;
+      if q.started != 0 || q.out_n > 0 || tries >= 40 || !oap_has(cast(string) r[0].err[0..<q.err_n], "nothing answers") { break; }
+      proc_sleep(250);
+    }
+    stop := [9] string.["xcrun", "devicectl", "device", "process", "terminate", "--device", device, "--pid", pid];
+    e: [1024] u8; o: [1024] u8; ended := proc_run(stop[..], 60000, o[..], e[..]);
+    if q.started != 0 || q.timed_out || q.out_n == 0 { print("case % on the phone: coax drive did not run (% %)\n", name, q.started, cast(string) r[0].err[0..<q.err_n]); return false; }
+    n := q.out_n; if n < r[0].got.count { r[0].got[n] = '\n'; n += 1; }
     got = cs_after_head(cast(string) r[0].got[0..<n]);
   } else {
     // a fresh app on the simulator for each case, listening on its own socket
@@ -104,14 +168,29 @@ cs_case :: (r: [] CsRun, host: string, device: string, name: string, write: bool
 
 tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
-  if !args_load(a[..]) || args_count(a[..]) < 1 { tool_errln("usage: coax/web/tool.sh apps/shared/cases.coax cpu [--write] | web | ios-simulator DEVICE [CASE...]"); return 2; }
+  if !args_load(a[..]) || args_count(a[..]) < 1 { tool_errln("usage: coax/web/tool.sh apps/shared/cases.coax cpu [--write] | web | ios-simulator DEVICE | ios-device DEVICE [--host HOST] [CASE...]"); return 2; }
   host := args_at(a[..], 0);
-  if host != "cpu" && host != "web" && host != "ios-simulator" { tool_errln("cases: the hosts are cpu, web and ios-simulator"); return 2; }
+  if host != "cpu" && host != "web" && host != "ios-simulator" && host != "ios-device" { tool_errln("cases: the hosts are cpu, web, ios-simulator and ios-device"); return 2; }
   if !fs_exists(CS_DIR) { tool_errln("cases: run from the repository's root (no openagents/examples/cases/ here)"); return 2; }
-  i := 1; device := ""; write := false;
-  if host == "ios-simulator" {
-    if args_count(a[..]) < 2 { tool_errln("cases: ios-simulator takes the simulator's name or UDID"); return 2; }
+  i := 1; device := ""; write := false; lan := "";
+  if host == "ios-simulator" || host == "ios-device" {
+    if args_count(a[..]) < 2 { tool_errln("cases: ios-simulator and ios-device take the device's name or identifier"); return 2; }
     device = args_at(a[..], 1); i = 2;
+  }
+  lanbuf: [256] u8; js: [65536] u8; hn: [256] u8;
+  if host == "ios-device" {
+    if i + 1 < args_count(a[..]) && args_at(a[..], i) == "--host" { lan = args_at(a[..], i + 1); i += 2; }
+    else {
+      // the phone's name on the local network, from devicectl
+      jf := "/tmp/oa-cases-device.json";
+      info := [8] string.["xcrun", "devicectl", "device", "info", "details", "--device", device, "--json-output"];
+      full: [9] string; for x, k: info { full[k] = x; } full[8] = jf;
+      o: [4096] u8; e: [4096] u8;
+      p := proc_run(full[..], 60000, o[..], e[..]);
+      lan = cs_lan_name(cs_devicectl(jf, "result.connectionProperties.localHostnames[0]", js[..], hn[..]), lanbuf[..]);
+      removed := fs_remove(jf);
+      if p.started != 0 || p.status != 0 || lan.count == 0 { tool_errln("cases: devicectl knows no such phone, or no name for it on the network (pass --host HOST)"); return 2; }
+    }
   }
   names: [16] string; nn := 0;
   while i < args_count(a[..]) {
@@ -123,7 +202,7 @@ tool_main :: () -> int #export_c #effects(all) {
   failed := 0;
   for k: 0..<nn {
     r: [1] CsRun;
-    if !cs_case(r[..], host, device, names[k], write) { failed += 1; }
+    if !cs_case(r[..], host, device, lan, names[k], write) { failed += 1; }
   }
   if failed > 0 { print("% of % cases failed on %\n", failed, nn, host); return 1; }
   print("% cases on %: every trace the same\n", nn, host);

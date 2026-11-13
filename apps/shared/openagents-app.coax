@@ -85,7 +85,7 @@ OapApp :: struct {
   clock_ms: f64;                    // the controlled clock: only `clock` moves it
   // A person using the app with no driver: the fakes answer on their own, the oldest first, half a
   // second apart (oap_tick). Once a driver speaks, only the clock releases anything.
-  hand: bool; hand_wait: f32;
+  hand: bool; hand_wait: f32; hand_s: f32;
   // what the driver reads
   log: [OAP_LOG] u8; log_n: int;
   input: [512] u8; input_n: int; input_had: bool;  // the answer to the last input a host delivered
@@ -490,7 +490,7 @@ oap_tick :: (a: [] OapApp, dt: f32) -> bool {
   oap_open(a);
   if !a[0].hand || a[0].held_n == 0 { a[0].hand_wait = 0; return false; }
   a[0].hand_wait += dt;
-  if a[0].hand_wait < OAP_HAND_S { return false; }
+  if a[0].hand_wait < (ifx a[0].hand_s > 0 then a[0].hand_s else OAP_HAND_S) { return false; }
   a[0].hand_wait = 0;
   name: [OAP_NAME] u8; n := oap_put(name[..], 0, cast(string) a[0].held[0].name[0..<a[0].held[0].name_n]);
   a[0].out_n = 0;
@@ -589,6 +589,9 @@ oap_host_in :: (h: [] OapHost, from: int, to: int) -> string {
   b := ifx to < a then a else ifx to > OAP_IN then OAP_IN else to;
   return cast(string) h[0].in[a..<b];
 }
+// How long the fakes wait before each answer when a person drives (OAP_HAND_S when 0 or less): a device check
+// that holds a turn across the background slows them down (#13517).
+oap_host_hand_wait :: (h: [] OapHost, seconds: f32) #export_c #effects(all) { if h.count > 0 { h[0].app[0].hand_s = seconds; } }
 // presenting: the host draws real controls; hand: a person, so the fakes answer on their own.
 oap_host_open :: (h: [] OapHost, presenting: bool, hand: bool) #export_c #effects(all) {
   if h.count < 1 { return; }
@@ -744,6 +747,17 @@ OAP_T_LOGIN :: "tap home.login\ntype account.email you@example.com\ntap account.
   #assert oap_tick(a[..], 0.6) && oap_tick(a[..], 0.6) && oap_logged_in(a[..]) && a[0].route == OAP_CHATS;
   _ = oap_press(a[..], "shell.new"); _ = oap_edit(a[..], "composer.input", "hi"); _ = oap_press(a[..], "composer.send");
   #assert oap_drive(a[..], "state turn") == "live" && !a[0].hand && !oap_tick(a[..], 5.0);
+}
+
+#test "by hand, a host may slow the fakes down: each answer waits the seconds it set" {
+  h: [1] OapHost;
+  oap_host_open(h[..], true, true); oap_host_hand_wait(h[..], 2.0);
+  a := h[0].app[..];
+  _ := oap_press(a, "home.login"); _ = oap_edit(a, "account.email", "you@example.com"); _ = oap_press(a, "account.submit");
+  #assert !oap_tick(a, 0.6) && !oap_tick(a, 1.0) && oap_waiting(a) && oap_tick(a, 0.5) && a[0].flow[0].state == ALF_CODE;
+  oap_host_hand_wait(h[..], 0);
+  _ = oap_edit(a, "account.code", "123456"); _ = oap_press(a, "account.verify");
+  #assert oap_tick(a, 0.6) && oap_tick(a, 0.6) && oap_logged_in(a) && a[0].route == OAP_CHATS;
 }
 
 #test "a native host's face: the view as records, an edit by id and text, a drive operation" {

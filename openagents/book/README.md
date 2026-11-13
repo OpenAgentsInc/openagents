@@ -155,7 +155,7 @@ NIPs, old crates and protocol packages.
 | [3. Components](ch003-components.md) | Unimplemented: design draft |
 | [4. Routes and navigation](ch004-routes-and-navigation.md) | Unimplemented: design draft |
 | [5. Effects, services and time](ch005-effects-services-and-time.md) | Unimplemented: design draft |
-| [6. One case on the web and the iPhone](ch006-one-case-on-the-web-and-the-iphone.md) | Partly implemented: login cases, web and iPhone simulator |
+| [6. One case on the web and the iPhone](ch006-one-case-on-the-web-and-the-iphone.md) | Partly implemented: login cases, web, iPhone simulator and iPhone |
 
 ### II. OpenAgents on the web and phone
 

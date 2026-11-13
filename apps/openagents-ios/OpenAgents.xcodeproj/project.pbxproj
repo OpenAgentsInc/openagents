@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		03AF362E64D9222AA06F0E40 /* NativePolicy.c in Sources */ = {isa = PBXBuildFile; fileRef = DCD62FA8D277D57B999CBF47 /* NativePolicy.c */; settings = {COMPILER_FLAGS = "-Wno-unused-function -Wno-unused-variable"; }; };
 		081BC189AB524F65D78C03E4 /* AppAnalytics.swift in Sources */ = {isa = PBXBuildFile; fileRef = ABE3F6DB32D91F73A83323E9 /* AppAnalytics.swift */; };
+		103180BD57D2AA2E93F4A6B7 /* SharedAppDeviceUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09C4767D8A37A4590FBE5B4D /* SharedAppDeviceUITests.swift */; };
 		1F3972F80AD727788C1649CC /* NostrSign.c in Sources */ = {isa = PBXBuildFile; fileRef = 0B12460F6D71E6EC127D760A /* NostrSign.c */; };
 		2423078B067528A80731C519 /* BIP39.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2BAFA692F7A2D8501CD6985F /* BIP39.swift */; };
 		2CC0D955E1B50A311219BE38 /* SparkHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F41D56BF7ED365348CE324E /* SparkHost.swift */; };
@@ -62,6 +63,7 @@
 /* Begin PBXFileReference section */
 		0083B1697095508B0B534B8B /* NostrKey.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NostrKey.swift; sourceTree = "<group>"; };
 		01C83152B91DFEEF873AAD56 /* NativeHost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeHost.swift; sourceTree = "<group>"; };
+		09C4767D8A37A4590FBE5B4D /* SharedAppDeviceUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedAppDeviceUITests.swift; sourceTree = "<group>"; };
 		0B12460F6D71E6EC127D760A /* NostrSign.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = NostrSign.c; sourceTree = "<group>"; };
 		0ED6598EDE69B5D065A7D102 /* BalanceUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BalanceUITests.swift; sourceTree = "<group>"; };
 		131BDA8ADB97609206195533 /* bip39-english.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "bip39-english.txt"; sourceTree = "<group>"; };
@@ -226,6 +228,7 @@
 			isa = PBXGroup;
 			children = (
 				0ED6598EDE69B5D065A7D102 /* BalanceUITests.swift */,
+				09C4767D8A37A4590FBE5B4D /* SharedAppDeviceUITests.swift */,
 				84FCC7F13CC90E6C87B4D65D /* SharedAppUITests.swift */,
 				88DAD8B0C2CFFD99B8FB4D20 /* StarterUITests.swift */,
 			);
@@ -419,6 +422,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				47402381B8C043A601D16232 /* BalanceUITests.swift in Sources */,
+				103180BD57D2AA2E93F4A6B7 /* SharedAppDeviceUITests.swift in Sources */,
 				A05D687346C45546701CEFF7 /* SharedAppUITests.swift in Sources */,
 				647B0F6C417120E15A1A68A3 /* StarterUITests.swift in Sources */,
 			);

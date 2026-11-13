@@ -1,12 +1,14 @@
 # 11. A conversation screen
 
-> **Status: implemented — the first milestone on the web and the iPhone
-> simulator, with recorded fakes.** Login, one message, a fixture reply and
-> Stop run from one shared module, and the same five cases give byte-equal
-> traces on the build host, in headless Chrome and in the iPhone simulator
-> ([#13516](https://github.com/OpenAgentsInc/openagents/issues/13516)). A
-> physical iPhone, Android and the live chat page are not covered yet: see
-> "What remains".
+> **Status: implemented — the first milestone on the web, the iPhone
+> simulator and a physical iPhone, with recorded fakes.** Login, one
+> message, a fixture reply and Stop run from one shared module, and the same
+> five cases give byte-equal traces on the build host, in headless Chrome,
+> in the iPhone simulator and on an iPhone
+> ([#13516](https://github.com/OpenAgentsInc/openagents/issues/13516),
+> [#13517](https://github.com/OpenAgentsInc/openagents/issues/13517)).
+> Android, dictation and the live chat page are not covered yet: see "What
+> remains".
 
 ## Premise
 
@@ -116,13 +118,17 @@ coax/bin/coax test apps/shared/openagents-app.coax
 coax/web/tool.sh apps/shared/cases.coax cpu
 coax/web/tool.sh apps/shared/cases.coax web
 coax/web/tool.sh apps/shared/cases.coax ios-simulator DEVICE
+coax/web/tool.sh apps/shared/cases.coax ios-device DEVICE
 ```
 
 `web` serves `apps/openagents-web` as built: build the page with
 `coax/web/wasm.sh apps/openagents-web/milestone.coax
 apps/openagents-web/milestone-face.c apps/openagents-web/build/milestone.wasm`.
 `ios-simulator` takes a booted simulator's name or UDID that has the app
-from `apps/openagents-ios/build.sh` installed.
+from `apps/openagents-ios/build.sh` installed. `ios-device` takes a paired
+iPhone's `devicectl` identifier or name, with a development build of the app
+installed, and drives it over the phone's network with a new token for
+each case (chapter 6, "Who may drive a phone").
 
 - **Source:** the shared app,
   [`apps/shared/openagents-app.coax`](../../apps/shared/openagents-app.coax),
@@ -156,14 +162,23 @@ from `apps/openagents-ios/build.sh` installed.
 Recorded on 2026-11-13: all five cases passed on cpu, on web (headless
 Chrome on macOS) and on ios-simulator (iPhone 17, iOS 26.5).
 
+Recorded on 2026-11-13 on ios-device
+([#13517](https://github.com/OpenAgentsInc/openagents/issues/13517)): all
+five cases passed on an iPhone 17 Pro Max with iOS 26.6.2, a Debug build
+with development signing, driven over Wi-Fi. The device checks of chapter 6
+("On a physical iPhone") ran on the same phone against this screen: the
+Japanese input method in the composer sends `日本語` once, non-Latin text
+and an emoji come back whole, every control has a VoiceOver label and the
+accessibility audit passes, and a reply pending when the app goes to the
+background has finished once when it comes back. Dictation was not driven.
+
 ## What remains
 
-- **A physical iPhone and Android.** The cases have run only in the
-  simulator. A device run also checks the keyboard's input methods,
-  VoiceOver and backgrounding. Those are device targets (CONTRACT.md) and
-  stay unnamed until they run
-  ([#13517](https://github.com/OpenAgentsInc/openagents/issues/13517)). The Android app has no host for the shared
-  app yet.
+- **Android.** The Android app has no host for the shared app yet, so
+  neither Android target is named.
+- **Dictation and VoiceOver on.** The iPhone checks read the labels and run
+  the audit, but nobody dictated a message or moved through the screen with
+  VoiceOver on. A person checks those on the phone (chapter 6).
 - **The live chat page.** `/chat`
   ([`chat-web.coax`](../../apps/openagents-web/chat-web.coax)) still keeps
   its own state. Moving it onto the shared app's conversation state is

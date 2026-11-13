@@ -6,7 +6,7 @@ import UIKit
 /// role, label and whether it can be pressed) and hands a button's press and a field's text to it.
 ///
 /// Launched with `-OADrive SOCKET`, it answers coax drive on that socket (apps/shared/host/drive.c through
-/// apple/phone-drive.c): `tap ID` presses the UIButton with that accessibility identifier through its own
+/// apple/phone-drive.c; on a physical iPhone `-OADrive tcp:PORT -OADriveToken TOKEN`, #13517): `tap ID` presses the UIButton with that accessibility identifier through its own
 /// action, `type ID TEXT` types into the UITextField, and every other operation is the shared app's. With
 /// `-OASharedApp YES` and no driver, a person uses it by hand and the fake services answer on their own.
 /// Its services are fakes with recorded answers: it reaches no server and logs nobody in.
@@ -20,12 +20,19 @@ final class SharedAppViewController: UIViewController {
     private var controls: [String: UIView] = [:]
     private var link: CADisplayLink?
     private let socket: String?
+    private let token: String?
 
-    init(socket: String?) {
+    init(socket: String?, token: String? = nil) {
         self.socket = socket
+        self.token = token
         super.init(nibName: nil, bundle: nil)
-        host.initialize(to: coax_t_OapHost())
+        // zeroed in place: the struct is larger than a device's 1 MB main-thread stack, so `coax_t_OapHost()`
+        // overflowed it on a physical iPhone (#13517) though the simulator's 8 MB stack held it
+        UnsafeMutableRawPointer(host).initializeMemory(as: UInt8.self, repeating: 0, count: MemoryLayout<coax_t_OapHost>.stride)
         oap_host_open(view_, true, socket == nil)
+        // a device check that holds a turn across the background slows the fakes down (#13517)
+        let wait = UserDefaults.standard.double(forKey: "OASharedAppHandSeconds")
+        if wait > 0 { oap_host_hand_wait(view_, Float(wait)) }
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
     deinit { host.deallocate() }
@@ -56,7 +63,7 @@ final class SharedAppViewController: UIViewController {
         SharedAppViewController.shown = self
         render()
         if let socket {
-            if phone_drive_start(socket, sharedAppAnswer, sharedAppStep) == 0 { NSLog("coax drive: could not listen on %@", socket) }
+            if phone_drive_start(socket, token, sharedAppAnswer, sharedAppStep) == 0 { NSLog("coax drive: could not listen on %@ (tcp:PORT needs -OADriveToken of 32 to 128 characters)", socket) }
         } else {
             let link = CADisplayLink(target: self, selector: #selector(tick(_:)))
             link.add(to: .main, forMode: .common)
@@ -158,6 +165,8 @@ final class SharedAppViewController: UIViewController {
             field.autocapitalizationType = .none
             field.autocorrectionType = .no
             field.textColor = .white
+            field.font = .preferredFont(forTextStyle: .body)
+            field.adjustsFontForContentSizeCategory = true
             let id = e.id
             field.addAction(UIAction { [weak self, weak field] _ in self?.edit(id, field?.text ?? "") }, for: .editingChanged)
             if e.id == "account.email" { field.keyboardType = .emailAddress; field.textContentType = .emailAddress }
@@ -167,6 +176,7 @@ final class SharedAppViewController: UIViewController {
             let label = UILabel()
             label.numberOfLines = 0
             label.textColor = .white
+            label.adjustsFontForContentSizeCategory = true
             control = label
         }
         control.accessibilityIdentifier = e.id
