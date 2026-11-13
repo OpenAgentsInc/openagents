@@ -20,9 +20,38 @@
   // what the room says and what the page sends, on either transport: a WebSocket's frames (wrapped
   // here) or WebTransport's (coax/web/room-wt.js calls globalThis.__netTap), payload bytes alike
   const net = () => (E.net = E.net || { in_b: 0, in_n: 0, out_b: 0, out_n: 0, keys: 0, t0: performance.now() });
+  // A binary state frame (#13278, everglade/shared/wire-table.coax): a keyframe by its header's F and PART, its
+  // runs of rows by their bytes and count, and the first few refusals as text for the report.
+  const heardBinary = (n, u8) => {
+    if (!u8 || !u8.length) return;
+    let bit = 8;
+    const get = (k) => { let v = 0; for (let i = 0; i < k; i++, bit++) v = v * 2 + (((u8[bit >> 3] ?? 0) >> (7 - (bit & 7))) & 1); return v; };
+    const u = (g) => { let v = 0, m = 1; for (let c = 0; c < 12; c++) { v += get(g) * m; m *= 2 ** g; if (!get(1)) break; } return v; };
+    if (u8[0] === 134 && E.heard.length < 40) { const seq = u(7), len = u(5); bit = (bit + 7) & ~7; E.heard.push(`r ${seq} ${new TextDecoder().decode(u8.subarray(bit >> 3, (bit >> 3) + len))}`); return; }
+    if (u8[0] !== 129) return;
+    u(7); u(7); const f = get(3), part = u(3);
+    if ((f & 1) && part === 0) n.keys += 1;
+    let at = (bit + 7) >> 3;
+    while (at < u8.length) {
+      let len = u8[at], a = at + 1;
+      if (len >= 128) { len = (len - 128) * 256 + u8[at + 1]; a = at + 2; }
+      if (!len || a + len > u8.length) break;
+      if (u8[a] === 130) {   // a run of rows: for each a 1 bit and the row (id u8, BACK b4, the mask in two levels, each change i4)
+        n.row_b = (n.row_b || 0) + a + len - at; bit = (a + 1) * 8;
+        const runs = [5, 3, 5, 5, 5];
+        for (let rows = 0; rows < 4096 && bit < (a + len) * 8 && get(1); rows++) {
+          u(8); get(4); const said = get(5); let fields = 0;
+          for (let g = 0; g < 5; g++) if (said & (1 << g)) { let m = get(runs[g]); while (m) { fields += m & 1; m >>= 1; } }
+          for (let q = 0; q < fields; q++) u(4);
+          n.row_n = (n.row_n || 0) + 1;
+        }
+      }
+      at = a + len;
+    }
+  };
   const heard = (data) => {
     const n = net(); n.in_b += (data.length || data.byteLength || 0); n.in_n += 1;
-    if (typeof data !== 'string') return;
+    if (typeof data !== 'string') { heardBinary(n, data instanceof ArrayBuffer ? new Uint8Array(data) : data); return; }
     for (const f of data.split('|')) {
       if (!f.startsWith('D ')) continue;
       // a keyframe: a D whose F has bit 1 (a snapshot), counted at its first part

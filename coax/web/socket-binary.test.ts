@@ -8,7 +8,7 @@ import { expect, test } from "bun:test"
 import { makeSocketQueues, socketBinary } from "./socket-queue-host.js"
 import { wtSocket } from "./room-wt.js"
 import { workerRoomSocket } from "./room-worker.js"
-import { binaryInput } from "./latency-host.js"
+import { binaryInput, binaryState } from "./latency-host.js"
 
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms))
 const bytes = (...b: number[]) => new Uint8Array(b)
@@ -150,4 +150,13 @@ test("the latency observer reads a binary input's number as the text input's", (
   expect(binaryInput(bytes(177, 0xff))).toBe("")
   expect(binaryInput(bytes(176, 2))).toBe("")                      // not an input
   expect(binaryInput(bytes(1, 177, 2))).toBe("")
+})
+
+test("the latency observer reads a binary state frame's head as text", () => {
+  // the table's golden bytes for "D 900 41 0 0 x 7;o 3" and "D 901 41 2 1 ..." (proto/verse/everglade-session-binary-v1.json)
+  const hex = (h: string) => new Uint8Array(h.match(/../g)!.map((x) => parseInt(x, 16)))
+  expect(binaryState(hex("81090e520003840700028f06"))).toBe("D 900 41 0 0 ")
+  expect(binaryState(hex("810b0e5244800b82804041084201010421000791a91ead1e3840"))).toBe("D 901 41 2 1 ")
+  expect(binaryState(hex("b1520470005bde81048700"))).toBe("")
+  expect(binaryState(hex("8109"))).toBe("")
 })

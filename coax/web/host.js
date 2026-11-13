@@ -705,7 +705,7 @@ const utf8 = (ptr, len) => new TextDecoder().decode(new Uint8Array(memory.buffer
 const SOCKET_BUDGET_MS = 12, socketQueue = [];
 let socketHead = 0, socketTimer = 0, socketDrained = 0, socketFrames = 0;
 function socketQueued(ws, id, event, text = "") {
-  if(event===SOCKET_FRAME&&typeof text==="string")ws.__roomTrace?.receive(text);   // the observer reads text frames only (#13278)
+  if(event===SOCKET_FRAME)ws.__roomTrace?.receive(text);   // (a binary state frame is read by its head: latency-host.js binaryState, #13278)
   if(event===SOCKET_CLOSED||event===SOCKET_ERROR)retireRoomTrace(ws);
   if (event === SOCKET_FRAME) socketFrames++;
   if(ws.__coaxialPolicy&&socketQueues){socketQueues.receive(ws,id,event,text);return;}

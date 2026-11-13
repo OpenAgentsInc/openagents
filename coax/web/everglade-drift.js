@@ -12,7 +12,26 @@
   // in the Coax driver; overflow or malformed samples refuse qualification.
   D.tickSamples = []; D.tickParts = []; D.tickOverflow = false;
   D.messages = [];
-  const refusal = text => { if (typeof text === "string" && text.startsWith("r ") && D.messages.length < 256) D.messages.push([Math.round(now()),text]); };
+  // A binary frame (#13278, everglade/shared/wire-table.coax) as the text this check reads: an input (I, J1)
+  // and a refusal (r) by their rows; any other as "bin" and its bytes in hex. Fields are bits, the highest
+  // first: uG groups of G bits, the lowest first, each followed by a bit that says another follows; iG
+  // zig-zagged; a word its length as u5, zero bits to a whole byte, then its bytes.
+  const wireBits = (u8) => {
+    let bit = 8;
+    const get = (k) => { let v = 0; for (let i = 0; i < k; i++, bit++) v = v * 2 + (((u8[bit >> 3] ?? 0) >> (7 - (bit & 7))) & 1); return v; };
+    const u = (g) => { let v = 0, m = 1; for (let n = 0; n < 12; n++) { v += get(g) * m; m *= 2 ** g; if (!get(1)) break; } return v; };
+    const i = (g) => { const z = u(g); return z % 2 ? -(z + 1) / 2 : z / 2; };
+    const w = () => { const n = u(5); bit = (bit + 7) & ~7; const s = new TextDecoder().decode(u8.subarray(bit >> 3, (bit >> 3) + n)); bit += n * 8; return s; };
+    return { get, u, i, w };
+  };
+  const wireText = (u8) => {
+    const k = u8[0] - 128, r = wireBits(u8);
+    if (k === 49 || k === 50) return `${k === 49 ? "I" : "J1"} ${r.u(7)} ${r.i(4)} ${r.i(4)} ${r.i(4)} ${r.i(4)} ${r.i(8)} ${r.u(5)} ${r.u(7)}`;
+    if (k === 6) return `r ${r.u(7)} ${r.w()}`;
+    return "bin " + Array.from(u8, (b) => b.toString(16).padStart(2, "0")).join("");
+  };
+  const wireBinary = (d) => (d instanceof ArrayBuffer ? new Uint8Array(d) : d instanceof Uint8Array ? d : null);
+  const refusal = data => { const b = wireBinary(data), text = b ? wireText(b) : data; if (typeof text === "string" && text.startsWith("r ") && D.messages.length < 256) D.messages.push([Math.round(now()),text]); };
   const NativeSocket = globalThis.WebSocket;
   globalThis.WebSocket = class extends NativeSocket {
     constructor(...args) { super(...args); this.addEventListener("message", e => refusal(e.data)); }
@@ -22,7 +41,7 @@
     constructor(...args) {
       super(...args);
       this.addEventListener("message", ({data:m}) => {
-        if (m?.t === "frame") refusal(m.text);
+        if (m?.t === "frame") refusal(m.bytes ?? m.text);
         if (m?.t !== "cost" || !Array.isArray(m.tickSamplesUs)) return;
         if (D.tickSamples.length + m.tickSamplesUs.length > 8192) { D.tickOverflow = true; return; }
         D.tickSamples.push(...m.tickSamplesUs.map(v => Math.ceil(v)));
@@ -72,7 +91,7 @@
     if (typeof send === "function" && !send.__drInputs) {
       const observe = function (id, ptr, len) {
         if (mem && D.origin != null && len > 0 && len <= 2048) {
-          const raw = new TextDecoder().decode(new Uint8Array(mem.buffer, ptr, len));
+          const sent = new Uint8Array(mem.buffer, ptr, len), raw = (sent[0] & 0xC0) === 0x80 ? wireText(sent) : new TextDecoder().decode(sent);
           if (raw.startsWith("I ")) {
             if (D.inputs.length < 8192) D.inputs.push(raw); else D.inputOverflow = true;
           } else if (D.commands.length < 256) D.commands.push([Math.round(now()), raw]);

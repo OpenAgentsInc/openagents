@@ -10,6 +10,21 @@ export function binaryInput(bytes){
  for(let at=1;at<9;at++,scale*=128){if(at>=bytes.length)return '';seq+=(bytes[at]>>1)*scale;if(!(bytes[at]&1))return `I ${seq}`;}
  return '';
 }
+// A binary state frame (#13278: opcode 129 D) as the head the observer reads, "D TICK ACK F PART ". TICK and
+// ACK are groups of 7 bits and a bit each, so a byte each group; F is 3 bits; PART is groups of 3 bits, the
+// lowest first, each followed by a bit that says another follows. Any other binary frame is '' (no state).
+export function binaryState(bytes){
+ if(bytes[0]!==129)return '';
+ let at=1;
+ const u7=()=>{let v=0,scale=1;for(let k=0;k<8;k++,scale*=128){if(at>=bytes.length)return -1;const b=bytes[at++];v+=(b>>1)*scale;if(!(b&1))return v;}return -1;};
+ const tick=u7(),ack=tick<0?-1:u7();
+ if(ack<0)return '';
+ let bit=at*8;
+ const get=k=>{let v=0;for(let i=0;i<k;i++,bit++){if((bit>>3)>=bytes.length)return -1;v=v*2+((bytes[bit>>3]>>(7-(bit&7)))&1);}return v;};
+ const f=get(3);let part=0,shift=0;
+ for(;;){const g=get(3),more=get(1);if(f<0||g<0||more<0||shift>24)return '';part+=g<<shift;shift+=3;if(!more)break;}
+ return `D ${tick} ${ack} ${f} ${part} `;
+}
 export async function openLatencyObserver(){
  compiled??=(async()=>{const r=await fetch(new URL('../build/latency-client.wasm',import.meta.url),{cache:'no-store'});if(!r.ok)throw Error(`latency observer ${r.status}`);return WebAssembly.compile(await r.arrayBuffer());})();
  const memory=new WebAssembly.Memory({initial:32,maximum:1024});
@@ -19,7 +34,7 @@ export async function openLatencyObserver(){
  const encoder=new TextEncoder(),decoder=new TextDecoder();
  function put(text){const bytes=encoder.encode(text);if(bytes.length>4300)return -1;new Uint8Array(memory.buffer,x.lt_inbox(),bytes.length).set(bytes);return bytes.length;}
  return {before(text){if(typeof text!=='string')text=binaryInput(text);const n=put(text);if(n<0)return '';const size=x.lt_before(n,us());return size?decoder.decode(new Uint8Array(memory.buffer,x.lt_outbox(),size)):'';},
-  receive(text){const n=put(text);if(n>=0)x.lt_receive(n,us());},
+  receive(text){if(typeof text!=='string')text=binaryState(text);if(!text)return;const n=put(text);if(n>=0)x.lt_receive(n,us());},
   applied(ack,tick,lag){x.lt_applied(BigInt(ack),BigInt(tick),us(),BigInt(lag));},
   submitted(queue,lag,current){const id=x.lt_submit(us(),BigInt(lag));if(id)queue.onSubmittedWorkDone().then(()=>{if(current())x.lt_complete(id,us());else x.lt_retire();}).catch(()=>x.lt_retire());},
   retire:()=>x.lt_retire(),snapshot:()=>({rows:Array.from({length:x.lt_count()},(_,r)=>Array.from({length:23},(_,f)=>Number(x.lt_value(r,f)))),expired:Number(x.lt_expired()),refused:Number(x.lt_refused()),missing:Number(x.lt_missing())})};
