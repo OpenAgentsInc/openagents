@@ -68,6 +68,15 @@ reproduction, and two conditions made it possible:
   - at 50% full, writes the 25 processes holding the most files to
     `~/.openagents/logs/fd-guard/`, so the next incident names its cause.
   - at 80% full, shows a notification.
+- `scripts/mac/proc-guard.sh` (added 2026-11-13 after a runaway check made
+  3,375 processes, #13472), the LaunchAgent `com.openagents.proc-guard`,
+  every 30 seconds: a program with more than 150 copies is a runaway and is
+  logged with the process groups that hold it; its copies that match a
+  `stop=` pattern in `~/.openagents/proc-guard.conf` (by default only
+  headless Chrome from our CDP tools) are stopped; above 2,000 processes the
+  biggest programs and groups go to `~/.openagents/logs/proc-guard/` with a
+  notification. Opt-in: `scripts/mac/proc-guard.sh --install`. Checked by
+  `scripts/mac/test-proc-guard.sh`.
 - Agents count toward one machine budget: at most two heavy builds or
   browser measurement loops at a time, and no `coax-publish` mutation run
   while agents build.
