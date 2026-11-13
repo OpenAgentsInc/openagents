@@ -450,9 +450,9 @@ two_hand_room :: (pal:[]f32,bind:[6][3]f32,k:int)->[3]f32 {
 cc_pose :: (own:[]figs.Twohand,ppl:[]figs.People,sk:[]figs.Skin,female:bool,c:int,f:int,out:[]f32) {
  if c==figs.BD_BOW {figs.bd_bow_pose(ppl,ifx female then 1 else 0,f,out);return;}
  if c>=figs.BD_OWN {rig:=figs.twohand_rig(own,female);t:=f32(f)*rig.duration[c-figs.BD_OWN]/f32(figs.BD_OWN_FRAMES[c-figs.BD_OWN]);
-  for j:0..<figs.PEOPLE_JOINTS {sk[0].now[j]=figs.skin_sample(rig,c-figs.BD_OWN,j,t);}figs.skin_palette(rig,sk[..],out);return;}
+  figs.anim_graph_pose_clip(rig,sk[..],c-figs.BD_OWN,t);figs.skin_palette(rig,sk[..],out);return;}
  rig:=figs.people_rig(ppl,female);cl:=figs.BD_CLIP[c];t:=f32(f)*rig.duration[cl]/f32(figs.BD_FRAMES[c]);
- for j:0..<figs.PEOPLE_JOINTS {sk[0].now[j]=figs.skin_sample(rig,cl,j,t);}figs.skin_palette(rig,sk[..],out);
+ figs.anim_graph_pose_clip(rig,sk[..],cl,t);figs.skin_palette(rig,sk[..],out);
 }
 // The least room, over every pose a two-hander shows, into room (three a row: head, neck, torso): rows 0 to 5
 // the six owned clips played alone at 60 a second on both bodies; then the blends a frame of the game shows
@@ -470,7 +470,7 @@ two_hand_rooms :: (room:[]f32,body:int,blends:bool,kit:int) {
   // the clips alone, between their keys too
   if !blends {for c:0..<figs.TWOHAND_CLIPS {
    rig:=figs.twohand_rig(own[..],female);n:=cast(int)(rig.duration[c]*60)+1;
-   for i:0..<n {t:=f32(i)/60;for j:0..<figs.PEOPLE_JOINTS {sk[0].now[j]=figs.skin_sample(rig,c,j,t);}figs.skin_palette(rig,sk[..],pa[..]);
+   for i:0..<n {t:=f32(i)/60;figs.anim_graph_pose_clip(rig,sk[..],c,t);figs.skin_palette(rig,sk[..],pa[..]);
     cc_room_min(room,c,two_hand_room(pa[..],bind,c/3));}
   }}
   // the blends, as the game plays them
