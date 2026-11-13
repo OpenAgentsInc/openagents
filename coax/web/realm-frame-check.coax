@@ -1,0 +1,149 @@
+// A realm in a sandboxed frame on its own origin, checked for real (GitHub #13432;
+// docs/metaverse/realm-origin.md): the dev server is started with a realm origin, headless Chrome
+// opens a page of the site's, and that page frames Splice from the realm origin with
+// realm-frame.js. The site is http://127.0.0.1:PORT and the realm origin http://localhost:PORT: the
+// same server, two origins and two sites to the browser, told apart by the request's Host.
+//
+// What must hold:
+//   - the realm origin answers a realm's page and what it loads, with the headers that sandbox it,
+//     and none of the site's pages, the API or the live channel; the site's own answers are unchanged;
+//   - the framed realm starts, draws and answers "ready splice 1 1": cross-origin isolated, and with
+//     no origin of its own;
+//   - it answers a typed ask (the driver's `why caps`) with the asker's number, and refuses a text
+//     that is not a message;
+//   - the site's page cannot read the frame, stays cross-origin isolated itself, and realm-frame.js
+//     refuses to make a frame on the site's own origin.
+//   coax/web/serve.sh builds coax/web/build/serve; the page's module is apps/openagents-web/build/splice.wasm
+//   coax/web/tool.sh realm-frame-check [SERVE_BINARY] [APP_DIR]
+#import "Basic";
+#load "resident.coax";
+#load "../lib/net/socket_foreign.coax";
+#load "../lib/net/ws.coax";
+#load "../../metaverse-engine/host/realm-frame.coax";
+
+RC_BODY :: 4194304;
+
+rc_connect :: (port: int) -> int {
+  for ch: "127.0.0.1" { if cxsock_host_push(cast(int) ch) != 0 { return -1; } }
+  return cxsock_connect(port, 500);
+}
+// One GET with this Host: the answer's head (and the start of its body), or "".
+rc_get :: (port: int, host: string, path: string, out: [] u8) -> string {
+  h := rc_connect(port); if h < 0 { return ""; }
+  q: [2048] u8; n := ws_put(q[..], 0, "GET "); n = ws_put(q[..], n, path); n = ws_put(q[..], n, " HTTP/1.1\r\nHost: "); n = ws_put(q[..], n, host); n = ws_put(q[..], n, "\r\nConnection: close\r\n\r\n");
+  ok := true; for i: 0..<n { if cxsock_write(h, cast(int) q[i]) != 0 { ok = false; } }
+  ok = ok && cxsock_flush(h, 500) == 0;
+  used := 0; end := proc_now_ms() + 5000;
+  while ok && proc_now_ms() < end && used < 4096 {
+    k := cxsock_read(h, end - proc_now_ms());
+    if k == -1 { break; }
+    if k == -2 { continue; }
+    if k < 0 { ok = false; break; }
+    for i: 0..<k { if used < out.count { out[used] = cast,trunc(u8) cxsock_byte(h, i); used += 1; } }
+  }
+  closed := cxsock_close(h);
+  return ifx ok then cast(string) out[0..<used] else "";
+}
+rc_has :: (text: string, part: string) -> bool {
+  if part.count > text.count { return false; }
+  for i: 0..<text.count - part.count + 1 { if text[i..<i + part.count] == part { return true; } }
+  return false;
+}
+rc_check :: (ok: bool, what: string) -> int {
+  if ok { print("  ok    %\n", what); return 0; }
+  print("  FAIL  %\n", what); return 1;
+}
+rc_eval :: (c: [] Cdp, js: string, buf: [] u8) -> string {
+  n := media_value(c, js, buf);
+  return ifx n >= 0 then cast(string) buf[0..<n] else "";
+}
+// Posts one text into the frame and waits for the next text it posts back: that text, or "".
+rc_ask :: (c: [] Cdp, text: string, buf: [] u8, within_ms: int) -> string {
+  js: [4096] u8; j: [1] Jo; q: [2048] u8; jo_start(j[..], q[..]); jo_str(j[..], text);
+  n := ws_put(js[..], 0, "(() => { globalThis.__rfHeard.length = 0; globalThis.__rf.send("); n = ws_put(js[..], n, jo_text(j[..])); n = ws_put(js[..], n, "); return 'sent'; })()");
+  if rc_eval(c, cast(string) js[0..<n], buf) != "sent" { return ""; }
+  end := proc_now_ms() + within_ms;
+  while proc_now_ms() < end {
+    got := rc_eval(c, "(globalThis.__rfHeard.length ? globalThis.__rfHeard[0] : '')", buf);
+    if got.count > 0 { return got; }
+    proc_sleep(50);
+  }
+  return "";
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  args: [1] Args; if !args_load(args[..]) { return 2; }
+  serve := ifx args_count(args[..]) > 0 then args_at(args[..], 0) else "coax/web/build/serve";
+  app := ifx args_count(args[..]) > 1 then args_at(args[..], 1) else "apps/openagents-web";
+  if fs_kind(serve) != FS_FILE { tool_errln("realm-frame-check: no dev server at coax/web/build/serve (coax/web/serve.sh builds it)"); return 2; }
+  listener := cxsock_listen(0); if listener < 0 { return 2; } port := cxsock_port(listener); closed := cxsock_close(listener);
+  site: [64] u8; sn := ws_put(site[..], 0, "127.0.0.1:"); sn = ws_digits(site[..], sn, port);
+  realm: [64] u8; rn := ws_put(realm[..], 0, "localhost:"); rn = ws_digits(realm[..], rn, port);
+  site_host := cast(string) site[0..<sn]; realm_host := cast(string) realm[0..<rn];
+  h := proc_new(); argv := [7] string.[serve, app, "--listen", site_host, "--static", "--realm-host", realm_host];
+  ok := true; for x: argv { ok = ok && proc_arg(h, x); }
+  ok = ok && proc_quiet(h) && proc_start(h) == 0;
+  if !ok { tool_errln("realm-frame-check: the dev server did not start"); return 2; }
+  buf: [RC_BODY] u8; b := buf[..]; failed := 0;
+  up := false; end := proc_now_ms() + 5000;
+  while !up && proc_now_ms() < end { up = rc_get(port, site_host, "/llms.txt", b).count > 0; if !up { proc_sleep(20); } }
+  failed += rc_check(up, "the dev server answers");
+
+  // ---- the realm origin over HTTP
+  page := rc_get(port, realm_host, "/worlds/splice", b);
+  failed += rc_check(ws_starts(page, "HTTP/1.1 200 ") && rc_has(page, "\r\nContent-Security-Policy: sandbox allow-scripts allow-pointer-lock allow-orientation-lock\r\n") && !rc_has(page, "allow-same-origin"), "the realm origin's page is sandboxed by its own answer, with no origin");
+  failed += rc_check(rc_has(page, "\r\nCross-Origin-Resource-Policy: cross-origin\r\n") && rc_has(page, "\r\nAccess-Control-Allow-Origin: *\r\n") && rc_has(page, "\r\nCross-Origin-Embedder-Policy: require-corp\r\n"), "it may be framed by the site's isolated page and loads its own files without credentials");
+  failed += rc_check(ws_starts(rc_get(port, realm_host, "/coaxial/host.js", b), "HTTP/1.1 200 ") && ws_starts(rc_get(port, realm_host, "/build/splice.wasm", b), "HTTP/1.1 200 "), "the realm origin serves what a page loads");
+  no := [6] string.["/", "/chat", "/login", "/api/playtest/realms/listed", "/coaxial/live", "/llms.txt"];
+  for u: no { failed += rc_check(ws_starts(rc_get(port, realm_host, u, b), "HTTP/1.1 404 "), u); }
+  mine := rc_get(port, site_host, "/worlds/splice", b);
+  failed += rc_check(ws_starts(mine, "HTTP/1.1 200 ") && !rc_has(mine, "Content-Security-Policy") && !rc_has(mine, "Access-Control-Allow-Origin"), "the site's own answers are as they were");
+  failed += rc_check(ws_starts(rc_get(port, site_host, "/chat", b), "HTTP/1.1 200 "), "the site still serves its pages");
+
+  // ---- the frame, in a browser
+  c: [1] Cdp;
+  if !cdp_launch(c[..], 1280, 720, "coax-realm-frame-") { tool_err("realm-frame-check: "); tool_errln(cdp_error(c[..])); failed += 1; }
+  else {
+    url: [256] u8; un := ws_put(url[..], 0, "http://"); un = ws_put(url[..], un, site_host); un = ws_put(url[..], un, "/components");
+    q: [1024] u8; k: [1] Jo; jo_start(k[..], q[..]); jo_obj(k[..]); jo_key(k[..], "url"); jo_str(k[..], cast(string) url[0..<un]); jo_end(k[..]);
+    nav := cdp_call(c[..], "Page.navigate", jo_text(k[..]), CDP_CALL_MS) >= 0;
+    loaded := false; until := proc_now_ms() + 20000;
+    while nav && !loaded && proc_now_ms() < until { loaded = rc_eval(c[..], "document.readyState", b) == "complete"; if !loaded { proc_sleep(100); } }
+    failed += rc_check(loaded, "a page of the site's opens");
+    failed += rc_check(rc_eval(c[..], "String(crossOriginIsolated)", b) == "true", "the site's page is cross-origin isolated");
+    // realm-frame.js refuses the site's own origin
+    same: [1024] u8; m := ws_put(same[..], 0, "import('/coaxial/realm-frame.js').then((f) => { try { f.openRealmFrame(document.body, location.origin, '/worlds/splice', () => {}); return 'made'; } catch (e) { return 'refused'; } })");
+    failed += rc_check(rc_eval(c[..], cast(string) same[0..<m], b) == "refused", "realm-frame.js refuses a frame on the site's own origin");
+    open: [1024] u8; o := ws_put(open[..], 0, "import('/coaxial/realm-frame.js').then((f) => { globalThis.__rfHeard = []; globalThis.__rf = f.openRealmFrame(document.body, 'http://");
+    o = ws_put(open[..], o, realm_host); o = ws_put(open[..], o, "', '/worlds/splice', (t) => globalThis.__rfHeard.push(t)); return 'open'; })");
+    failed += rc_check(rc_eval(c[..], cast(string) open[0..<o], b) == "open", "the site's page frames Splice from the realm origin");
+    // hello until the realm's engine is up and answers
+    hello: [64] u8; ready := ""; rb: [256] u8; tries := 0;
+    until = proc_now_ms() + 90000;
+    while ready.count == 0 && proc_now_ms() < until { got := rc_ask(c[..], rf_hello(hello[..]), b, 1000); tries += 1; if got.count > 0 { ready = cast(string) rb[0..<ws_put(rb[..], 0, got)]; } }
+    r := rf_read(ready);
+    failed += rc_check(r.kind == RF_READY && r.text == "splice", "the framed realm starts and answers hello with ready");
+    if r.kind != RF_READY { print("        it answered \"%\" after % hellos; the frame's document: %\n", ready, tries, rc_eval(c[..], "(() => { const f = document.querySelector('iframe[data-realm-frame]'); return f ? f.src : 'no frame'; })()", b)); }
+    failed += rc_check(r.kind == RF_READY && r.isolated, "the frame is cross-origin isolated");
+    failed += rc_check(r.kind == RF_READY && r.opaque, "the frame has no origin: the sandbox holds");
+    ab: [RF_BODY + 64] u8; ask: [128] u8;
+    got := rc_ask(c[..], rf_ask(ask[..], 7, "why caps"), b, 5000);
+    a := rf_read(cast(string) ab[0..<ws_put(ab[..], 0, got)]);
+    failed += rc_check(a.kind == RF_ANSWER && a.seq == 7 && ws_starts(a.text, "caps: "), "a typed ask is answered with the asker's number");
+    got = rc_ask(c[..], rf_ask(ask[..], 8, "why you"), b, 5000);
+    a = rf_read(cast(string) ab[0..<ws_put(ab[..], 0, got)]);
+    failed += rc_check(a.kind == RF_ANSWER && a.seq == 8 && ws_starts(a.text, "why you: "), "the driver's why reaches the realm through the frame");
+    got = rc_ask(c[..], "document.cookie", b, 5000);
+    a = rf_read(cast(string) ab[0..<ws_put(ab[..], 0, got)]);
+    failed += rc_check(a.kind == RF_REFUSED, "a text that is not a message is refused");
+    failed += rc_check(rc_eval(c[..], "(() => { const f = document.querySelector('iframe[data-realm-frame]'); try { return String(f.contentDocument); } catch (e) { return 'threw'; } })()", b) == "null", "the site's page cannot read the frame's document");
+    failed += rc_check(rc_eval(c[..], "(() => { const f = document.querySelector('iframe[data-realm-frame]'); try { return String(f.contentWindow.coaxial); } catch (e) { return 'threw'; } })()", b) == "threw", "nor reach into its window");
+    failed += rc_check(rc_eval(c[..], "(() => { const f = document.querySelector('iframe[data-realm-frame]'); return f.getAttribute('sandbox'); })()", b) == "allow-scripts allow-pointer-lock allow-orientation-lock", "the frame's sandbox never allows the same origin");
+    cdp_close(c[..]);
+  }
+  number: [32] u8; dn := ws_digits(number[..], 0, proc_pid(h)); out: [256] u8; err: [256] u8;
+  command := [3] string.["/bin/kill", "-TERM", cast(string) number[0..<dn]]; killed := proc_run(command[..], 1000, out[..], err[..]);
+  waited := proc_wait(h, 2000); released := proc_release(h);
+  print("realm-frame-check: % failed\n", failed);
+  return ifx failed == 0 then 0 else 1;
+}

@@ -1,0 +1,83 @@
+// Checks proto/verse/realm-frame-v1.json against metaverse-engine/host/realm-frame.coax, the realm
+// frame messages' one codec (#13432): the profile names itself, the id, its version, its limits and
+// this check; each pinned message's fields write its pinned bytes and its bytes read back the same
+// fields; each rejected text does not read.
+// Usage: coax/web/tool.sh metaverse-engine/tools/realm-frame-profile.coax proto/verse/realm-frame-v1.json
+#import "Basic";
+#load "../host/realm-frame.coax";
+#load "../../coax/lib/json/json.coax";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+
+RFP_CHECK :: "coax/web/tool.sh metaverse-engine/tools/realm-frame-profile.coax proto/verse/realm-frame-v1.json";
+
+rfp_str :: (d: Jv, at: int, out: [] u8) -> string {
+  n := jv_str(d, at, out);
+  return ifx n >= 0 then cast(string) out[0..<n] else "";
+}
+rfp_kind :: (name: string) -> int {
+  for k: 1..<RF_KINDS.count { if RF_KINDS[k] == name { return k; } }
+  return RF_NONE;
+}
+// "" when the profile holds; else what is wrong.
+rfp_fault :: (profile_json: string) -> string #effects(all) {
+  nodes: [1024] JvNode; da: [1] Jv;
+  if !jv_parse(da[..], profile_json, nodes[..]) { return "is not JSON"; }
+  d := da[0];
+  nb: [128] u8; cb: [256] u8; kb: [32] u8; fb: [16] u8; tb: [RF_BODY + 64] u8; wb: [RF_BODY + 128] u8; ob: [RF_BODY + 128] u8;
+  if rfp_str(d, jv_get(d, 0, "profile"), nb[..]) != "realm-frame-v1" || jv_int(d, jv_get(d, 0, "version"), 0) != 1 || rfp_str(d, jv_get(d, 0, "id"), nb[..]) != RF_ID { return "does not name itself realm-frame-v1, version 1, with the codec's id"; }
+  if rfp_str(d, jv_get(d, 0, "check"), cb[..]) != RFP_CHECK { return "does not name this check"; }
+  lim := jv_get(d, 0, "limits");
+  if jv_int(d, jv_get(d, lim, "line"), -1) != RF_LINE || jv_int(d, jv_get(d, lim, "body"), -1) != RF_BODY || jv_int(d, jv_get(d, lim, "app"), -1) != RF_APP || jv_int(d, jv_get(d, lim, "seq_max"), -1) != RF_SEQ_MAX { return "has limits that are not the codec's"; }
+  ms := jv_get(d, 0, "messages");
+  if jv_kind(d, ms) != JV_ARRAY || jv_len(d, ms) < 5 { return "pins fewer than five messages"; }
+  seen: [6] bool;
+  for i: 0..<jv_len(d, ms) {
+    row := jv_at(d, ms, i);
+    kind := rfp_kind(rfp_str(d, jv_get(d, row, "kind"), kb[..]));
+    from := rfp_str(d, jv_get(d, row, "from"), fb[..]);
+    seq := jv_int(d, jv_get(d, row, "seq"), -1);
+    tn := jv_str(d, jv_get(d, row, "text"), tb[..]); wn := jv_str(d, jv_get(d, row, "wire"), wb[..]);
+    if kind == RF_NONE || tn < 0 || wn < 1 { return "pins a message with no kind, text or bytes"; }
+    text := cast(string) tb[0..<tn]; wire := cast(string) wb[0..<wn];
+    iso := jv_kind(d, jv_get(d, row, "isolated")) == JV_TRUE; opq := jv_kind(d, jv_get(d, row, "opaque")) == JV_TRUE;
+    // who sends it: the site says hello and asks; the realm says the rest
+    if (from == "site") != (kind == RF_HELLO || kind == RF_ASK) || (from != "site" && from != "realm") { return "pins a message from the wrong side"; }
+    made := "";
+    if kind == RF_HELLO { made = rf_hello(ob[..]); }
+    if kind == RF_ASK { made = rf_ask(ob[..], seq, text); }
+    if kind == RF_READY { made = rf_ready(ob[..], text, iso, opq); }
+    if kind == RF_ANSWER { made = rf_answer(ob[..], seq, text); }
+    if kind == RF_REFUSED { made = rf_refused(ob[..], text); }
+    if made != wire { return "pins bytes the codec writes otherwise"; }
+    m := rf_read(wire);
+    if m.kind != kind || m.text != text { return "pins bytes the codec reads otherwise"; }
+    if (kind == RF_ASK || kind == RF_ANSWER) && m.seq != seq { return "pins a number the codec reads otherwise"; }
+    if kind == RF_READY && (m.isolated != iso || m.opaque != opq) { return "pins flags the codec reads otherwise"; }
+    seen[kind] = true;
+  }
+  for k: 1..<6 { if !seen[k] { return "does not pin every kind of message"; } }
+  rej := jv_get(d, 0, "rejected");
+  if jv_kind(d, rej) != JV_ARRAY || jv_len(d, rej) < 8 { return "pins fewer than eight rejected texts"; }
+  for i: 0..<jv_len(d, rej) {
+    n := jv_str(d, jv_at(d, rej, i), wb[..]);
+    if n < 0 || rf_read(cast(string) wb[0..<n]).kind != RF_NONE { return "lists as rejected a text the codec reads"; }
+  }
+  return "";
+}
+#test "the profile tool refuses what is not the profile" {
+  #assert rfp_fault("{}").count > 0 && rfp_fault("bad") == "is not JSON" && rfp_kind("ask") == RF_ASK && rfp_kind("nope") == RF_NONE && rfp_kind("") == RF_NONE;
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  args: [1] Args;
+  if !args_load(args[..]) || args_count(args[..]) != 1 { tool_errln("usage: coax/web/tool.sh metaverse-engine/tools/realm-frame-profile.coax proto/verse/realm-frame-v1.json"); return 2; }
+  path := args_at(args[..], 0);
+  buf: [262144] u8;
+  n := fs_read(path, buf[..]);
+  if n < 0 { print("realm-frame-profile: can't read %\n", path); return 2; }
+  fault := rfp_fault(cast(string) buf[0..<n]);
+  if fault.count > 0 { print("realm-frame-profile: % %\n", path, fault); return 1; }
+  print("realm-frame-profile: % holds: every kind of message and its limits, as metaverse-engine/host/realm-frame.coax has them\n", path);
+  return 0;
+}

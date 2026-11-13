@@ -986,6 +986,9 @@ const nip07Imports = {
 
 // ---- the page: what the browser knows about this visit, for the app
 const PAGE_KIND = 600, HIDDEN_KIND = 601, SHOWN_KIND = 602, LEAVE_KIND = 603, ERROR_KIND = 604, VIEWER_KIND = 606, DRIVE_KIND = 700;
+// A realm in the site's sandboxed frame (realm-frame.js, #13432): 720 is a message the site posted
+// (metaverse-engine/host/realm-frame.coax reads it), 721 what the frame is, "ISOLATED OPAQUE", said before it.
+const FRAME_KIND = 720, FRAME_ENV_KIND = 721;
 // Who is logged in, the same on every page: /api/auth/viewer's lines (/api/auth/me's: K| npub, H| hex key,
 // M| a member key it speaks for, J| a private project), or "" when nobody is (a 200, so no console error).
 // Apps that care read VIEWER_KIND.
@@ -997,9 +1000,11 @@ function viewer() {
     .then((t) => send(VIEWER_KIND, t), () => send(VIEWER_KIND, ""));
 }
 const randomId = () => [...crypto.getRandomValues(new Uint8Array(8))].map((b) => b.toString(16).padStart(2, "0")).join("");
+// `store` gives the storage: naming it can throw too, in a sandboxed page with no origin (a realm on
+// the realm origin, #13432), so it is asked for inside the try.
 function kept(store, key) {
-  try { const v = store.getItem(key); if (v) return [v, false]; const n = randomId(); store.setItem(key, n); return [n, true]; }
-  catch { return [randomId(), true]; }   // storage refused (a private window): this page only
+  try { const s = store(), v = s.getItem(key); if (v) return [v, false]; const n = randomId(); s.setItem(key, n); return [n, true]; }
+  catch { return [randomId(), true]; }   // storage refused (a private window, a sandboxed frame): this page only
 }
 // The realm's style, zones and clock (docs/metaverse/art-styles.md, The style field).
 function styleFacts() {
@@ -1018,7 +1023,7 @@ function styleFacts() {
 const GPU_KIND = 613;
 let gpuFacts = {};
 function pageFacts() {
-  const [tab, fresh] = kept(sessionStorage, "coaxial.tab"), [visitor] = kept(localStorage, "coaxial.visitor");
+  const [tab, fresh] = kept(() => sessionStorage, "coaxial.tab"), [visitor] = kept(() => localStorage, "coaxial.visitor");
   let tz = ""; try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone || ""; } catch {}
   const nav = performance.getEntriesByType?.("navigation")?.[0], fcp = performance.getEntriesByName?.("first-contentful-paint")?.[0];
   const clean = (v) => String(v ?? "").replace(/[\r\n]/g, " ");
@@ -1055,7 +1060,7 @@ addEventListener("unhandledrejection", (e) => send(ERROR_KIND, `${String(e.reaso
 // page name (data-realm, else the app). The message only, no page data.
 function lifeBeacon(ev, msg, more = null) {
   if (location.protocol === "file:" || !navigator.sendBeacon) return;
-  const [tab] = kept(sessionStorage, "coaxial.tab");
+  const [tab] = kept(() => sessionStorage, "coaxial.tab");
   if (!/^[0-9a-f]{8,64}$/.test(tab)) return;
   const body = { sid: `c${tab}`, events: [{ ev, page: realmId || app, ct: Date.now(), p: { msg: String(msg || "").slice(0, 80), webgpu: !!navigator.gpu, ...(more || {}) } }] };
   if (navigator.webdriver) body.auto = "webdriver";
@@ -3761,6 +3766,18 @@ globalThis.coaxial = { send, ready: false, sceneReady: false, loadMarks: () => l
     })),
     scheduled: () => globalThis.coaxial?.roomHost?.scheduled ?? -1,
   } : null,
+  // This page in the site's sandboxed frame (realm-frame.js, #13432): one text from the page that
+  // holds it, answered with what the realm's module writes (coaxial_drive_out), or null. The module
+  // reads it with the codec and refuses what is not a message; nothing here judges it.
+  framed: (text) => {
+    const x = engine?.exports;
+    if (!x?.coaxial_drive_out || waiting || !arena) return null;
+    let opaque = false;
+    try { opaque = self.origin === "null"; } catch {}
+    send(FRAME_ENV_KIND, `${globalThis.crossOriginIsolated ? 1 : 0} ${opaque ? 1 : 0}`);
+    send(FRAME_KIND, String(text));
+    return new TextDecoder().decode(new Uint8Array(memory.buffer, x.coaxial_drive_out(arena.state), x.coaxial_drive_out_len(arena.state)));
+  },
   drive: {
     send: (text) => {
       const x = engine?.exports;
@@ -3975,6 +3992,26 @@ function zoneOut() {
   canvas.remove();a11y.root?.remove();a11y.status?.remove();field?.remove();
 }
 
+// The site's page speaks to a realm in its sandboxed frame (realm-frame.js): ?frame=ORIGIN names the
+// page that holds it. Only that window and that origin are heard, only text, only when the origin is
+// one this page lists (its script's data-frame-origins) or, on this computer's own addresses, another
+// of them. The answer goes back to that origin alone.
+{
+  const holder = new URLSearchParams(location.search).get("frame") || "";
+  const local = (h) => h === "127.0.0.1" || h === "localhost" || h === "[::1]";
+  let allowed = false;
+  try {
+    const u = new URL(holder);
+    allowed = u.origin === holder && ((document.querySelector("script[data-app]")?.dataset.frameOrigins || "").split(" ").includes(holder) || (local(location.hostname) && local(u.hostname)));
+  } catch {}
+  if (allowed && window.parent !== window) {
+    addEventListener("message", (e) => {
+      if (e.source !== window.parent || e.origin !== holder || typeof e.data !== "string" || e.data.length > 4096) return;
+      const answer = globalThis.coaxial?.framed?.(e.data);
+      if (answer) window.parent.postMessage(answer, holder);
+    });
+  }
+}
 function sendHash() {
   const x = engine?.exports;
   if (!x?.coaxial_hash || !x.coaxial_inbox) return;

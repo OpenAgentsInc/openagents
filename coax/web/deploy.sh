@@ -235,6 +235,8 @@ if $server; then
   cp "$here/serve.c" "$here/../../metaverse/voice-host/ws.c" "$here/../../metaverse/voice-host/ws.h" "$stage/image/server/"
   "$here/../bin/coax" c "$here/http-range.coax" --library --header "$stage/image/server/http-range.h" > "$stage/image/server/http-range.c"
   "$here/../bin/coax" c "$here/site-routes.coax" --library --header "$stage/image/server/site-routes.h" > "$stage/image/server/site-routes.c"
+  # serve.c answers the realm origin by these rules (--realm-host, #13432)
+  "$here/../bin/coax" c "$here/realm-origin.coax" --library --header "$stage/image/server/realm-origin.h" > "$stage/image/server/realm-origin.c"
   sed -i.bak 's#"../../metaverse/voice-host/ws.h"#"ws.h"#' "$stage/image/server/serve.c" && rm -f "$stage/image/server/serve.c.bak"
   cp "$here/Dockerfile" "$stage/image/"
   image="$region-docker.pkg.dev/$project/cloud-run-source-deploy/coaxial-serve:$(date +%Y%m%d-%H%M%S)"

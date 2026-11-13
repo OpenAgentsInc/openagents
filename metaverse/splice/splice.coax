@@ -10,6 +10,7 @@
 #load "../../apps/openagents-web/animelab.coax";
 #load "../../metaverse-engine/kit/land.coax";
 #load "splice-game.coax";
+#load "../../metaverse-engine/host/realm-frame.coax";   // the messages a realm in the site's sandboxed frame takes (#13432)
 
 SP_WORLD_WORDS :: 150000;
 
@@ -35,6 +36,10 @@ Splice :: struct {
   // What `why ID` reads of the page (why.coax, #13429), and its last answer, which the host reads back
   aspect: f32 = 1.7778; held: bool; live_over: bool;
   drive: [1] Drive;           // the agent driver's lists and its last answer (metaverse-engine/agent/drive.coax)
+  // In the site's sandboxed frame (metaverse-engine/host/realm-frame.coax, #13432): what the frame is
+  // (the host says before each message), and the last answer to the page that holds it.
+  frame_isolated: bool; frame_opaque: bool; frame_answer: bool;
+  frame_out: [RF_BODY + 64] u8; frame_n: int;
 }
 // The page's facts for a `why` answer.
 sp_page :: (s: [] Splice) -> SyPage {
@@ -44,7 +49,23 @@ sp_page :: (s: [] Splice) -> SyPage {
 splice_drive :: (s: [] Splice, text: string) {
   _ := sy_drive(s[0].game[..], s[0].ld[..], sp_page(s), s[0].drive[..], text, s[0].time);
 }
-splice_drive_out :: (s: [] Splice) -> string #export_c #effects(all) { return ifx s.count > 0 then drv_said(s[0].drive[..]) else ""; }
+splice_drive_out :: (s: [] Splice) -> string #export_c #effects(all) {
+  if s.count < 1 { return ""; }
+  return ifx s[0].frame_answer then cast(string) s[0].frame_out[0..<s[0].frame_n] else drv_said(s[0].drive[..]);
+}
+// One message from the page that holds this realm's frame: hello is answered ready, an ask with the
+// driver's answer, and anything else with a refusal that says why. Nothing else is acted on.
+splice_framed :: (s: [] Splice, text: string) {
+  m := rf_read(text); out := s[0].frame_out[..]; reply := "";
+  if m.kind == RF_HELLO { reply = rf_ready(out, "splice", s[0].frame_isolated, s[0].frame_opaque); }
+  else if m.kind == RF_ASK {
+    body := sy_drive(s[0].game[..], s[0].ld[..], sp_page(s), s[0].drive[..], m.text, s[0].time);
+    reply = rf_answer(out, m.seq, ifx body.count <= RF_BODY then body else body[0..<RF_BODY]);
+  }
+  else if m.kind == RF_NONE { reply = rf_refused(out, m.why); }
+  else { reply = rf_refused(out, "not a message for a realm"); }
+  s[0].frame_n = reply.count; s[0].frame_answer = true;
+}
 
 // A scene's look: its anime variant (metaverse/style-preset.coax ANIME_*), the clock it is seen at, and
 // where its key light comes from.
@@ -338,7 +359,9 @@ splice_fact :: (s: [] Splice, k: int) -> int #export_c #effects(all) {
   return -1;
 }
 splice_message :: (s: [] Splice, kind: int, body: string) #export_c #effects(all) {
-  if kind == 700 && s.count > 0 { splice_drive(s, body); return; }
+  if kind == 700 && s.count > 0 { s[0].frame_answer = false; splice_drive(s, body); return; }
+  if kind == 721 && s.count > 0 { s[0].frame_isolated = sp_whole(body, 0) == 1; s[0].frame_opaque = sp_whole(body, 1) == 1; return; }
+  if kind == 720 && s.count > 0 { splice_framed(s, body); return; }
   if kind == 610 && s.count > 0 && body.count > 0 {   // a moment of the game to stand in: "0" to "10"
     n := 0;
     for i: 0..<body.count { d := cast(int) body[i] - 48; if d >= 0 && d <= 9 { n = n * 10 + d; } }
@@ -515,6 +538,35 @@ splice_place_words :: () -> int #export_c #effects(all) { return SD_PLACE_WORDS;
   #assert s[0].scene == 0;
 }
 
+#test "in the site's frame Splice answers hello and a driver's ask, and refuses everything else" {
+  s := [1] Splice.[Splice.{}];
+  s[0].started = true; g_stage(s[0].game[..], 5);
+  // the host says what the frame is before each message; then the message
+  splice_message(s[..], 720, "realm-frame.v1 hello");
+  #assert splice_drive_out(s[..]) == "realm-frame.v1 ready splice 0 0";
+  splice_message(s[..], 721, "1 1"); splice_message(s[..], 720, "realm-frame.v1 hello");
+  #assert splice_drive_out(s[..]) == "realm-frame.v1 ready splice 1 1";
+  splice_message(s[..], 721, "1 0"); splice_message(s[..], 720, "realm-frame.v1 hello");
+  #assert splice_drive_out(s[..]) == "realm-frame.v1 ready splice 1 0";
+  // an ask is the driver's command; its answer carries the asker's number
+  splice_message(s[..], 720, "realm-frame.v1 ask 41 why foe-9");
+  a := rf_read(splice_drive_out(s[..]));
+  #assert a.kind == RF_ANSWER && a.seq == 41 && cp_has(a.text, "why foe-9: not-in-state\n") && cp_has(a.text, "code: engine.diagnostic.not-in-state.v1\n");
+  splice_message(s[..], 720, "realm-frame.v1 ask 0 why caps");
+  #assert splice_drive_out(s[..]) == "realm-frame.v1 answer 0\ncaps: none\n";
+  // what is not a message for a realm is refused, and says why; nothing of it runs
+  splice_message(s[..], 720, "why you");
+  #assert splice_drive_out(s[..]) == "realm-frame.v1 refused not realm-frame.v1";
+  splice_message(s[..], 720, "realm-frame.v1 ready splice 1 1");
+  #assert splice_drive_out(s[..]) == "realm-frame.v1 refused not a message for a realm";
+  splice_message(s[..], 720, "realm-frame.v1 answer 1\nx");
+  #assert splice_drive_out(s[..]) == "realm-frame.v1 refused not a message for a realm";
+  splice_message(s[..], 720, "realm-frame.v2 hello");
+  #assert splice_drive_out(s[..]) == "realm-frame.v1 refused not realm-frame.v1";
+  // a driver's own command after it reads the driver's answer again, not the frame's
+  splice_message(s[..], 700, "why caps");
+  #assert splice_drive_out(s[..]) == "caps: none\n";
+}
 #test "G turns the graybox on and off, and a new run keeps it" {
   s := [1] Splice.[Splice.{}];
   #assert(splice_key(s[..], 'g', true));

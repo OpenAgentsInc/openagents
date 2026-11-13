@@ -8025,3 +8025,27 @@ Checks: `metaverse-engine/tests/seam-normals.coax` (walks at 16 headings from
 its lips, the ground query on a 1/8 m lattice both ways, sunk and moving
 spheres; it fails on a wall and on a spike), and `ground-contact.coax`'s own
 (367 mutants, 0 survivors).
+
+## A realm that runs someone else's code has no origin, and speaks only typed messages
+
+Such a realm is served from the realm origin, never the site's, in a frame
+(#13432; [docs/metaverse/realm-origin.md](docs/metaverse/realm-origin.md)).
+Every answer from the realm origin sandboxes its document
+(`Content-Security-Policy: sandbox ...`, never `allow-same-origin`), so the
+realm has no cookies and no storage, and the realm origin answers only a
+realm's page and what it loads: never the API, a login or the chat
+(`coax/web/realm-origin.coax`, `#authority`). The site, the editor's shell
+and the chat reach it only by `window.postMessage`, with the messages of
+`realm-frame.v1` (`metaverse-engine/host/realm-frame.coax`, `#authority`;
+`proto/verse/realm-frame-v1.json`). A text that is not one of them is
+refused whole. The glue (`coax/web/realm-frame.js`, `host.js`) carries text
+and judges nothing; it refuses a frame on the site's own origin and hears
+only the window and origin that hold it. The session cookie and our own auth
+never reach the realm origin. This holds before code from the browser (E12,
+#13421) opens to anyone but the owner.
+
+Checks: `coax/web/tool.sh realm-frame-check` (headless Chrome: the site
+frames Splice from the realm origin; `ready splice 1 1`, a typed ask
+answered, another text refused, the frame unreadable from the site);
+`realm-frame.coax` (242 mutants, 0 survivors) and `realm-origin.coax` (88
+mutants, 0 survivors); `realm-frame-profile.coax`.

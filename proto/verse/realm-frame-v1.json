@@ -1,0 +1,108 @@
+{
+  "profile": "realm-frame-v1",
+  "version": 1,
+  "title": "Realm frame messages v1",
+  "id": "realm-frame.v1",
+  "check": "coax/web/tool.sh metaverse-engine/tools/realm-frame-profile.coax proto/verse/realm-frame-v1.json",
+  "spec": "docs/metaverse/realm-origin.md",
+  "limits": {
+    "line": 512,
+    "body": 32768,
+    "app": 32,
+    "seq_max": 999999
+  },
+  "messages": [
+    {
+      "kind": "hello",
+      "from": "site",
+      "seq": 0,
+      "text": "",
+      "isolated": false,
+      "opaque": false,
+      "wire": "realm-frame.v1 hello"
+    },
+    {
+      "kind": "ask",
+      "from": "site",
+      "seq": 12,
+      "text": "why piece-3",
+      "isolated": false,
+      "opaque": false,
+      "wire": "realm-frame.v1 ask 12 why piece-3"
+    },
+    {
+      "kind": "ask",
+      "from": "site",
+      "seq": 0,
+      "text": "hit 120 300",
+      "isolated": false,
+      "opaque": false,
+      "wire": "realm-frame.v1 ask 0 hit 120 300"
+    },
+    {
+      "kind": "ready",
+      "from": "realm",
+      "seq": 0,
+      "text": "splice",
+      "isolated": true,
+      "opaque": true,
+      "wire": "realm-frame.v1 ready splice 1 1"
+    },
+    {
+      "kind": "ready",
+      "from": "realm",
+      "seq": 0,
+      "text": "everglade2",
+      "isolated": false,
+      "opaque": true,
+      "wire": "realm-frame.v1 ready everglade2 0 1"
+    },
+    {
+      "kind": "answer",
+      "from": "realm",
+      "seq": 12,
+      "text": "why piece-3: ok\npassed: state spawned view drawn asset collider\nnot applicable: system\n",
+      "isolated": false,
+      "opaque": false,
+      "wire": "realm-frame.v1 answer 12\nwhy piece-3: ok\npassed: state spawned view drawn asset collider\nnot applicable: system\n"
+    },
+    {
+      "kind": "answer",
+      "from": "realm",
+      "seq": 999999,
+      "text": "",
+      "isolated": false,
+      "opaque": false,
+      "wire": "realm-frame.v1 answer 999999\n"
+    },
+    {
+      "kind": "refused",
+      "from": "realm",
+      "seq": 0,
+      "text": "unknown kind",
+      "isolated": false,
+      "opaque": false,
+      "wire": "realm-frame.v1 refused unknown kind"
+    }
+  ],
+  "rejected": [
+    "",
+    "hello",
+    "realm-frame.v2 hello",
+    "realm-frame.v1",
+    "realm-frame.v1 dance",
+    "realm-frame.v1 hello there",
+    "realm-frame.v1 ask tree",
+    "realm-frame.v1 ask 01 tree",
+    "realm-frame.v1 ask 1000000 tree",
+    "realm-frame.v1 ask 1",
+    "realm-frame.v1 ready splice 1",
+    "realm-frame.v1 ready Splice 1 1",
+    "realm-frame.v1 ready splice 2 1",
+    "realm-frame.v1 answer 1",
+    "realm-frame.v1 answer x\nbody",
+    "realm-frame.v1 refused",
+    "realm-frame.v1 hello\tx",
+    " realm-frame.v1 hello"
+  ]
+}

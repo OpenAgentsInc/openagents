@@ -60,6 +60,7 @@ The rows of `proto/registry.json` whose codec or files are this realm's (under `
 | Id | Kind | Owner | Schema |
 | --- | --- | --- | --- |
 | `aethyr.content.v1` | profile | engine | `proto/aethyr/content-v1.json` |
+| `realm-frame.v1` | profile | engine | `proto/verse/realm-frame-v1.json` |
 | `world.edit.v1` | profile | realm-authoring | `proto/world/edit-v1.json` |
 | `world.doc.v1` | profile | realm-authoring | `proto/world/doc-v1.json` |
 | `realm-document-v1` | proto | realm-authoring | `proto/openagents/verse/doc/v1alpha1/realm.proto#RealmDocument` |
@@ -151,4 +152,4 @@ table areas id name:text x:cm z:cm hx:int hz:int r:int
 1|Dome village|17500|-7500|0|0|630
 ```
 
-reference sha256: 6112f0daaec2b0fb4141364bd49a1a0ecdb81f5d202d0c4a344eb49d23537cd7
+reference sha256: bbbc620df963531a8db2837e8f1bfe7b1ca35112d66d7ba8edcb4119b2f7bd89

@@ -1,0 +1,247 @@
+// Typed messages between the site and a realm in a sandboxed frame (GitHub #13432;
+// docs/research/spawn-what-to-adapt.md, N4; docs/metaverse/realm-origin.md).
+//
+// A realm that runs someone else's code is served from its own origin, in a frame whose sandbox
+// gives it no origin at all: it has no cookies, no storage and no way to read the page that holds
+// it. The site, the editor's shell and the chat reach it only through window.postMessage, and only
+// with the messages of this file. The browser glue on both sides (coax/web/realm-frame.js, and
+// host.js in the frame) carries the text and decides nothing: a realm's module reads a message
+// with rf_read and writes its answer with rf_ready, rf_answer or rf_refused.
+//
+// A message is one line, then for an answer its body:
+//
+//   realm-frame.v1 hello                  site to realm: speak; the realm answers ready
+//   realm-frame.v1 ask SEQ COMMAND        site to realm: a driver's command (tree, why ID, hit X Y ...:
+//                                         metaverse-engine/agent/drive.coax); the realm answers answer SEQ
+//   realm-frame.v1 ready APP I O          realm to site: its app's name; I is 1 when the frame is
+//                                         cross-origin isolated, O is 1 when it has no origin (the
+//                                         sandbox holds). A site trusts neither a 0
+//   realm-frame.v1 answer SEQ\nBODY       realm to site: the command's answer, RF_BODY bytes at most
+//   realm-frame.v1 refused REASON         realm to site: the message was not one of these
+//
+// SEQ is a whole number from 0 to 999999, the asker's own. A message longer than its limit, with a
+// control character in its line, with another version or another kind is refused whole; nothing of
+// it is acted on. A changed message is a new id (realm-frame.v2), never an edit in place.
+// proto/verse/realm-frame-v1.json pins the bytes; check both against each other with
+//   coax/web/tool.sh metaverse-engine/tools/realm-frame-profile.coax proto/verse/realm-frame-v1.json
+//   coax/bin/coax test metaverse-engine/host/realm-frame.coax --library
+//   coax/bin/coax mutate metaverse-engine/host/realm-frame.coax --library
+#authority;
+
+RF_ID :: "realm-frame.v1";
+RF_LINE :: 512;        // bytes in a message's line
+RF_BODY :: 32768;      // bytes in an answer's body
+RF_APP :: 32;          // bytes in an app's name
+RF_SEQ_MAX :: 999999;
+RF_NONE :: 0; RF_HELLO :: 1; RF_ASK :: 2; RF_READY :: 3; RF_ANSWER :: 4; RF_REFUSED :: 5;
+RF_KINDS :: [6] string.["", "hello", "ask", "ready", "answer", "refused"];
+
+// A message read. kind RF_NONE: not a message (why says so). text is an ask's command, a ready's
+// app, an answer's body or a refusal's reason: a view of the message given.
+RfMsg :: struct { kind: int; seq: int; text: string; isolated: bool; opaque: bool; why: string; }
+
+rf_no :: (why: string) -> RfMsg #effects() { return RfMsg.{kind = RF_NONE, why = why}; }
+// The word of a line that starts at `at`: up to the next space or the line's end (it may be empty).
+RfSpan :: struct { from: int; to: int; }
+rf_word :: (line: string, at: int) -> RfSpan #effects(reads, traps) {
+  to := at;
+  while to < line.count && line[to] != ' ' { to += 1; }
+  return RfSpan.{from = at, to = to};
+}
+// Whether another word follows the one that ends at `to`: a space, then at least the line's end.
+rf_more :: (line: string, to: int) -> bool #effects() { return to < line.count; }
+// A whole number 0 to RF_SEQ_MAX with no sign and no leading zero but "0" itself: -1 when it isn't.
+rf_seq :: (s: string) -> int #effects(reads, traps) {
+  if s.count == 0 || s.count > 6 || (s.count > 1 && s[0] == '0') { return -1; }
+  v := 0;
+  for c: s { if c < '0' || c > '9' { return -1; } v = v * 10 + cast(int) (c - '0'); }
+  return v;
+}
+// An app's name: lowercase letters, digits and dashes, 1 to RF_APP bytes.
+rf_app_ok :: (s: string) -> bool #effects(reads, traps) {
+  if s.count == 0 || s.count > RF_APP { return false; }
+  for c: s { if !((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-') { return false; } }
+  return true;
+}
+// A line's text: printable, no control character (a tab or a newline would start another field or line).
+rf_plain :: (s: string) -> bool #effects(reads, traps) {
+  for c: s { if c < 32 || c == 127 { return false; } }
+  return true;
+}
+// Reads one message. The whole text is the message: its line, and for an answer the body after the newline.
+rf_read :: (text: string) -> RfMsg #effects(reads, traps) {
+  if text.count == 0 { return rf_no("empty"); }
+  end := 0;
+  while end < text.count && text[end] != '\n' { end += 1; }
+  if end > RF_LINE { return rf_no("line too long"); }
+  line := text[0..<end];
+  if !rf_plain(line) { return rf_no("control character"); }
+  if line.count < RF_ID.count || line[0..<RF_ID.count] != RF_ID { return rf_no("not realm-frame.v1"); }
+  if line.count == RF_ID.count { return rf_no("no kind"); }
+  if line[RF_ID.count] != ' ' { return rf_no("not realm-frame.v1"); }
+  kind := rf_word(line, RF_ID.count + 1);
+  k := line[kind.from..<kind.to];
+  has_body := end < text.count;
+  if k == "hello" {
+    if rf_more(line, kind.to) || has_body { return rf_no("hello takes nothing"); }
+    return RfMsg.{kind = RF_HELLO};
+  }
+  if k == "ask" {
+    if !rf_more(line, kind.to) || has_body { return rf_no("ask takes a number and a command"); }
+    s := rf_word(line, kind.to + 1);
+    seq := rf_seq(line[s.from..<s.to]);
+    if seq == -1 { return rf_no("ask takes a number from 0 to 999999"); }
+    if s.to + 1 >= line.count { return rf_no("ask takes a command"); }
+    return RfMsg.{kind = RF_ASK, seq = seq, text = line[s.to + 1..<line.count]};
+  }
+  if k == "ready" {
+    bad := "ready takes an app and two flags";
+    if !rf_more(line, kind.to) || has_body { return rf_no(bad); }
+    a := rf_word(line, kind.to + 1);
+    if !rf_more(line, a.to) { return rf_no(bad); }
+    i := rf_word(line, a.to + 1);
+    if !rf_more(line, i.to) { return rf_no(bad); }
+    o := rf_word(line, i.to + 1);
+    if rf_more(line, o.to) { return rf_no(bad); }
+    app := line[a.from..<a.to]; fi := line[i.from..<i.to]; fo := line[o.from..<o.to];
+    if !rf_app_ok(app) || (fi != "0" && fi != "1") || (fo != "0" && fo != "1") { return rf_no(bad); }
+    return RfMsg.{kind = RF_READY, text = app, isolated = fi == "1", opaque = fo == "1"};
+  }
+  if k == "answer" {
+    if !rf_more(line, kind.to) || !has_body { return rf_no("answer takes a number and a body"); }
+    s := rf_word(line, kind.to + 1);
+    if rf_more(line, s.to) { return rf_no("answer takes a number and a body"); }
+    seq := rf_seq(line[s.from..<s.to]);
+    if seq == -1 { return rf_no("answer takes a number from 0 to 999999"); }
+    if text.count - end - 1 > RF_BODY { return rf_no("body too long"); }
+    return RfMsg.{kind = RF_ANSWER, seq = seq, text = text[end + 1..<text.count]};
+  }
+  if k == "refused" {
+    if kind.to + 1 >= line.count || has_body { return rf_no("refused takes a reason"); }
+    return RfMsg.{kind = RF_REFUSED, text = line[kind.to + 1..<line.count]};
+  }
+  return rf_no("unknown kind");
+}
+
+rf_put :: (out: [] u8, at: int, t: string) -> int #effects(reads, writes, traps) {
+  n := at;
+  for c: t { if n < out.count { out[n] = c; } n += 1; }
+  return n;
+}
+rf_put_int :: (out: [] u8, at: int, v: int) -> int #effects(reads, writes, traps) {
+  d: [8] u8; c := 0; x := v;
+  while true { d[c] = cast(u8) ('0' + x % 10); c += 1; x /= 10; if x == 0 { break; } }
+  n := at;
+  while c > 0 { c -= 1; if n < out.count { out[n] = d[c]; } n += 1; }
+  return n;
+}
+// The writers: the message into out, "" when it would not be one rf_read takes or out has no room.
+rf_done :: (out: [] u8, n: int) -> string #effects(reads, traps) { return ifx n <= out.count then cast(string) out[0..<n] else ""; }
+rf_hello :: (out: [] u8) -> string #effects(reads, writes, traps) {
+  return rf_done(out, rf_put(out, rf_put(out, 0, RF_ID), " hello"));
+}
+rf_ask :: (out: [] u8, seq: int, command: string) -> string #effects(reads, writes, traps) {
+  if seq < 0 || seq > RF_SEQ_MAX || command.count == 0 || !rf_plain(command) { return ""; }
+  n := rf_put(out, rf_put(out, 0, RF_ID), " ask "); n = rf_put_int(out, n, seq); n = rf_put(out, n, " "); n = rf_put(out, n, command);
+  return ifx n <= RF_LINE then rf_done(out, n) else "";
+}
+rf_ready :: (out: [] u8, app: string, isolated: bool, opaque: bool) -> string #effects(reads, writes, traps) {
+  if !rf_app_ok(app) { return ""; }
+  n := rf_put(out, rf_put(out, 0, RF_ID), " ready "); n = rf_put(out, n, app);
+  n = rf_put(out, n, ifx isolated then " 1" else " 0"); n = rf_put(out, n, ifx opaque then " 1" else " 0");
+  return rf_done(out, n);
+}
+rf_answer :: (out: [] u8, seq: int, body: string) -> string #effects(reads, writes, traps) {
+  if seq < 0 || seq > RF_SEQ_MAX || body.count > RF_BODY { return ""; }
+  n := rf_put(out, rf_put(out, 0, RF_ID), " answer "); n = rf_put_int(out, n, seq); n = rf_put(out, n, "\n"); n = rf_put(out, n, body);
+  return rf_done(out, n);
+}
+rf_refused :: (out: [] u8, reason: string) -> string #effects(reads, writes, traps) {
+  if reason.count == 0 || !rf_plain(reason) { return ""; }
+  n := rf_put(out, rf_put(out, 0, RF_ID), " refused "); n = rf_put(out, n, reason);
+  return ifx n <= RF_LINE then rf_done(out, n) else "";
+}
+
+#test "each message reads back as it was written" {
+  b: [RF_BODY + 64] u8;
+  h := rf_read(rf_hello(b[..]));
+  #assert h.kind == RF_HELLO && rf_hello(b[..]) == "realm-frame.v1 hello";
+  a := rf_read(rf_ask(b[..], 12, "why piece-3"));
+  #assert a.kind == RF_ASK && a.seq == 12 && a.text == "why piece-3" && rf_ask(b[..], 12, "why piece-3") == "realm-frame.v1 ask 12 why piece-3";
+  #assert rf_ask(b[..], 0, "tree") == "realm-frame.v1 ask 0 tree" && rf_read(rf_ask(b[..], 0, "tree")).kind == RF_ASK && rf_ask(b[..], RF_SEQ_MAX, "hit 10 20") == "realm-frame.v1 ask 999999 hit 10 20" && rf_read(rf_ask(b[..], RF_SEQ_MAX, "hit 10 20")).seq == RF_SEQ_MAX && rf_read(rf_ask(b[..], 7, "x")).text == "x";
+  #assert rf_answer(b[..], 0, "x") == "realm-frame.v1 answer 0\nx" && rf_answer(b[..], RF_SEQ_MAX, "x") == "realm-frame.v1 answer 999999\nx" && rf_read(rf_answer(b[..], RF_SEQ_MAX, "x")).seq == RF_SEQ_MAX;
+  #assert rf_ask(b[..], 1, "tree") == "realm-frame.v1 ask 1 tree" && rf_answer(b[..], 1, "x") == "realm-frame.v1 answer 1\nx";
+  r := rf_read(rf_ready(b[..], "splice", true, true));
+  #assert r.kind == RF_READY && r.text == "splice" && r.isolated && r.opaque && rf_ready(b[..], "splice", true, false) == "realm-frame.v1 ready splice 1 0";
+  q := rf_read(rf_ready(b[..], "everglade2", false, true));
+  #assert q.kind == RF_READY && !q.isolated && q.opaque && rf_read(rf_ready(b[..], "a", true, false)).isolated && !rf_read(rf_ready(b[..], "a", true, false)).opaque;
+  w := rf_read(rf_answer(b[..], 12, "why you: ok\npassed: state\n"));
+  #assert w.kind == RF_ANSWER && w.seq == 12 && w.text == "why you: ok\npassed: state\n" && rf_answer(b[..], 3, "") == "realm-frame.v1 answer 3\n" && rf_read(rf_answer(b[..], 3, "")).text == "";
+  f := rf_read(rf_refused(b[..], "unknown kind"));
+  #assert f.kind == RF_REFUSED && f.text == "unknown kind" && rf_refused(b[..], "x") == "realm-frame.v1 refused x";
+  for k: 1..<6 { #assert RF_KINDS[k].count > 0; }
+  #assert RF_KINDS[RF_HELLO] == "hello" && RF_KINDS[RF_ASK] == "ask" && RF_KINDS[RF_READY] == "ready" && RF_KINDS[RF_ANSWER] == "answer" && RF_KINDS[RF_REFUSED] == "refused";
+}
+#test "what is not a message is refused whole, with why" {
+  #assert rf_read("").why == "empty" && rf_read("").kind == RF_NONE;
+  // a newline first is an empty line, not a message; a body alone is not one either
+  #assert rf_read("\nrealm-frame.v1 hello").why == "not realm-frame.v1" && rf_read("\n").why == "not realm-frame.v1" && rf_read("realm-frame.v").why == "not realm-frame.v1" && rf_read("realm-frame.v1\thello").why == "control character";
+  #assert rf_read("realm-frame.v1\nbody").why == "no kind";
+  #assert rf_read("realm-frame.v2 hello").why == "not realm-frame.v1" && rf_read("hello").why == "not realm-frame.v1" && rf_read(" realm-frame.v1 hello").why == "not realm-frame.v1" && rf_read("realm-frame.v1x hello").why == "not realm-frame.v1";
+  #assert rf_read("realm-frame.v1").why == "no kind" && rf_read("realm-frame.v1 dance").why == "unknown kind" && rf_read("realm-frame.v1 ").why == "unknown kind" && rf_read("realm-frame.v1 Hello").why == "unknown kind";
+  #assert rf_read("realm-frame.v1 hello there").why == "hello takes nothing" && rf_read("realm-frame.v1 hello ").why == "hello takes nothing" && rf_read("realm-frame.v1 hello\n").why == "hello takes nothing";
+  #assert rf_read("realm-frame.v1 hello\tx").why == "control character" && rf_read("realm-frame.v1 ask 1 a\rb").why == "control character";
+  del := [21] u8.[114, 101, 97, 108, 109, 45, 102, 114, 97, 109, 101, 46, 118, 49, 32, 104, 101, 108, 108, 111, 127];
+  #assert rf_read(cast(string) del[..]).why == "control character" && !rf_plain(cast(string) del[20..<21]) && rf_plain(" ~") && !rf_plain("\0");
+  // ask: a number in range, written one way, then a command
+  #assert rf_read("realm-frame.v1 ask").why == "ask takes a number and a command" && rf_read("realm-frame.v1 ask 1").why == "ask takes a command" && rf_read("realm-frame.v1 ask 1 ").why == "ask takes a command";
+  bad := [7] string.["realm-frame.v1 ask x tree", "realm-frame.v1 ask -1 tree", "realm-frame.v1 ask 01 tree", "realm-frame.v1 ask 1000000 tree", "realm-frame.v1 ask 1.5 tree", "realm-frame.v1 ask  tree", "realm-frame.v1 ask +1 tree"];
+  for t: bad { #assert rf_read(t).why == "ask takes a number from 0 to 999999"; }
+  #assert rf_read("realm-frame.v1 ask 1 tree\nmore").why == "ask takes a number and a command";
+  // ready: an app's name and two flags, nothing after
+  r := [8] string.["realm-frame.v1 ready", "realm-frame.v1 ready splice", "realm-frame.v1 ready splice 1", "realm-frame.v1 ready splice 1 1 1", "realm-frame.v1 ready Splice 1 1", "realm-frame.v1 ready splice 2 1", "realm-frame.v1 ready splice 1 x", "realm-frame.v1 ready splice 1 1\n"];
+  for t: r { #assert rf_read(t).why == "ready takes an app and two flags"; }
+  #assert rf_read("realm-frame.v1 ready  1 1").why == "ready takes an app and two flags" && rf_read("realm-frame.v1 ready a_b 1 1").why == "ready takes an app and two flags";
+  #assert !rf_app_ok("") && rf_app_ok("a") && rf_app_ok("everglade-2") && !rf_app_ok("a b") && !rf_app_ok("012345678901234567890123456789012") && rf_app_ok("01234567890123456789012345678901");
+  // the letters, digits and dash, and the characters on either side of each run
+  #assert rf_app_ok("az09-") && !rf_app_ok("`") && !rf_app_ok("{") && !rf_app_ok("/") && !rf_app_ok(":") && !rf_app_ok(",") && !rf_app_ok(".") && !rf_app_ok("A") && !rf_app_ok("Z");
+  #assert rf_read("realm-frame.v1 ready a 0 0").kind == RF_READY && rf_read("realm-frame.v1 ready a 1 0").isolated && rf_read("realm-frame.v1 ready a 0 1").opaque && !rf_read("realm-frame.v1 ready a 0 1").isolated && !rf_read("realm-frame.v1 ready a 1 0").opaque;
+  #assert rf_read("realm-frame.v1 ready a 1 ").why == "ready takes an app and two flags" && rf_read("realm-frame.v1 ready a  1").why == "ready takes an app and two flags" && rf_read("realm-frame.v1 ready a 1 1 ").why == "ready takes an app and two flags";
+  #assert rf_read("realm-frame.v1 ready ").why == "ready takes an app and two flags" && rf_read("realm-frame.v1 ready a ").why == "ready takes an app and two flags";
+  #assert rf_read("realm-frame.v1 ask ").why == "ask takes a number from 0 to 999999" && rf_read("realm-frame.v1 ask 0 x").seq == 0 && rf_read("realm-frame.v1 ask 0 x").kind == RF_ASK && rf_read("realm-frame.v1 ask 5 a b").text == "a b";
+  #assert rf_read("realm-frame.v1 answer 0\n").kind == RF_ANSWER && rf_read("realm-frame.v1 answer 0\n").seq == 0 && rf_read("realm-frame.v1 answer \nx").why == "answer takes a number from 0 to 999999" && rf_read("realm-frame.v1 answer\nx").why == "answer takes a number and a body";
+  #assert rf_read("realm-frame.v1 refused a").text == "a" && rf_read("realm-frame.v1 refused a b").text == "a b";
+  w := rf_word("ab cd", 3); #assert w.from == 3 && w.to == 5 && rf_word("ab cd", 0).to == 2 && rf_word("ab cd", 2).to == 2 && rf_word("ab", 2).to == 2 && rf_more("ab cd", 2) && !rf_more("ab", 2);
+  // answer: a number, then a body on the lines after
+  #assert rf_read("realm-frame.v1 answer 1").why == "answer takes a number and a body" && rf_read("realm-frame.v1 answer").why == "answer takes a number and a body" && rf_read("realm-frame.v1 answer 1 x\nbody").why == "answer takes a number and a body";
+  #assert rf_read("realm-frame.v1 answer x\nbody").why == "answer takes a number from 0 to 999999";
+  #assert rf_read("realm-frame.v1 refused").why == "refused takes a reason" && rf_read("realm-frame.v1 refused ").why == "refused takes a reason" && rf_read("realm-frame.v1 refused x\ny").why == "refused takes a reason";
+  #assert rf_seq("0") == 0 && rf_seq("999999") == 999999 && rf_seq("00") == -1 && rf_seq("") == -1 && rf_seq("1234567") == -1 && rf_seq("10") == 10 && rf_seq("1a") == -1 && rf_seq("/") == -1 && rf_seq(":") == -1;
+}
+#test "the limits: a line of RF_LINE bytes and a body of RF_BODY are taken; one more is not" {
+  b: [RF_BODY + 64] u8; big: [RF_BODY + 8] u8;
+  for i: 0..<big.count { big[i] = 'a'; }
+  // "realm-frame.v1 ask 1 " is 21 bytes
+  fits := rf_ask(b[..], 1, cast(string) big[0..<RF_LINE - 21]);
+  #assert fits.count == RF_LINE && rf_read(fits).kind == RF_ASK && rf_read(fits).text.count == RF_LINE - 21;
+  #assert rf_ask(b[..], 1, cast(string) big[0..<RF_LINE - 20]) == "";
+  long: [RF_LINE + 32] u8; n := rf_put(long[..], 0, "realm-frame.v1 ask 1 "); n = rf_put(long[..], n, cast(string) big[0..<RF_LINE - 20]);
+  #assert n == RF_LINE + 1 && rf_read(cast(string) long[0..<n]).why == "line too long";
+  // "realm-frame.v1 refused " is 23 bytes
+  #assert rf_refused(b[..], cast(string) big[0..<RF_LINE - 23]).count == RF_LINE && rf_refused(b[..], cast(string) big[0..<RF_LINE - 22]) == "" && rf_refused(b[..], "") == "" && rf_refused(b[..], "a\nb") == "";
+  body := rf_answer(b[..], 5, cast(string) big[0..<RF_BODY]);
+  #assert body.count == RF_BODY + 24 && rf_read(body).kind == RF_ANSWER && rf_read(body).text.count == RF_BODY;
+  #assert rf_answer(b[..], 5, cast(string) big[0..<RF_BODY + 1]) == "";
+  over: [RF_BODY + 64] u8; m := rf_put(over[..], 0, "realm-frame.v1 answer 5\n"); m = rf_put(over[..], m, cast(string) big[0..<RF_BODY + 1]);
+  #assert rf_read(cast(string) over[0..<m]).why == "body too long";
+  // the writers refuse what the reader would, and a buffer with no room
+  small: [16] u8;
+  #assert rf_hello(small[..]) == "" && rf_ready(small[..], "splice", true, true) == "" && rf_answer(small[..], 1, "x") == "" && rf_ask(small[..], 1, "tree") == "" && rf_refused(small[..], "x") == "";
+  #assert rf_ask(b[..], -1, "tree") == "" && rf_ask(b[..], RF_SEQ_MAX + 1, "tree") == "" && rf_ask(b[..], 1, "") == "" && rf_ask(b[..], 1, "a\tb") == "";
+  #assert rf_answer(b[..], -1, "x") == "" && rf_answer(b[..], RF_SEQ_MAX + 1, "x") == "" && rf_ready(b[..], "", true, true) == "" && rf_ready(b[..], "A", true, true) == "";
+  // room that ends exactly where a number would go: nothing is written past it
+  edge: [19] u8;
+  #assert rf_ask(edge[..], 5, "tree") == "" && rf_answer(edge[0..<18], 5, "x") == "";
+  exact: [20] u8;
+  #assert rf_hello(exact[..]) == "realm-frame.v1 hello" && rf_hello(exact[0..<19]) == "";
+}

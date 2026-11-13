@@ -27,6 +27,8 @@
 // watched too. The watch has no fixed size.
 //
 //   serve APP_DIR [--listen HOST:PORT] [--build CMD] [--host-dir DIR] [--static] [--cache SECONDS] [--api PORT]
+//         [--realm-host HOST:PORT]   requests whose Host is this are the realm origin's (#13432): only a
+//                                    realm's page and what it loads, every answer sandboxed with no origin
 //     [--throttle-mbps N] [--latency-ms M]
 // Shaping covers HTTP responses, including API forwarding and headers: N is decimal
 // Mbit/s per connection (0 disables; minimum 0.001), M delays the first byte.
@@ -71,6 +73,7 @@
 #include "http-range.h"
 #include "sha256-kernel.h"
 #include "site-routes.h"
+#include "realm-origin.h"
 
 #define MAX_CLIENTS 64
 #define REQ_MAX 16384
@@ -83,6 +86,17 @@ static client clients[MAX_CLIENTS];
 static char app_dir[PATH_MAX], host_dir[PATH_MAX], build_cmd[PATH_MAX + 64];
 static bool static_mode;
 static char cache_control[64] = "public, max-age=300";
+// --realm-host HOST:PORT (#13432, coax/web/realm-origin.coax): a request whose Host is this is the
+// realm origin's. It answers only a realm's page and what a page loads, and every answer carries
+// the realm origin's headers: its documents are sandboxed with no origin of their own.
+static const char *realm_host = "";
+static bool realm_request;   // the request being answered is the realm origin's
+static const char *realm_headers(void) {
+  static char text[512];
+  if (!realm_request) return "";
+  if (!text[0]) { coax_string h = realm_origin_headers(); snprintf(text, sizeof text, "%.*s", (int)h.count, h.data); }
+  return text;
+}
 static int api_port;   // --api: /api/ requests go to 127.0.0.1:api_port
 static int local_port; // --local: /local/ requests go to `coder mcp --http` on 127.0.0.1:local_port (its local routes)
 static double throttle_bytes, latency_ms, next_send_ms;
@@ -178,12 +192,12 @@ static bool send_all(int fd, const void *data, size_t n) {
 }
 
 static void respond(int fd, int status, const char *reason, const char *type, const void *body, size_t n) {
-  char head[512];
+  char head[1024];
   int h = snprintf(head, sizeof head,
                    "HTTP/1.1 %d %s\r\nContent-Type: %s\r\nContent-Length: %zu\r\nCache-Control: %s\r\n"
-                   "Cross-Origin-Opener-Policy: same-origin\r\nCross-Origin-Embedder-Policy: require-corp\r\n"
+                   "Cross-Origin-Opener-Policy: same-origin\r\nCross-Origin-Embedder-Policy: require-corp\r\n%s"
                    "X-Content-Type-Options: nosniff\r\nConnection: close\r\n\r\n",
-                   status, reason, type, n, static_mode && status == 200 ? cache_control : "no-store");
+                   status, reason, type, n, static_mode && status == 200 ? cache_control : "no-store", realm_headers());
   if (!send_all(fd, head, (size_t)h)) return;
   if (n) send_all(fd, body, n);
 }
@@ -240,6 +254,21 @@ static void not_found(int fd) {
 
 // Header transport only; the Coax policy selects the range. Duplicate Range
 // fields and If-Range (we do not emit validators) fall back to the full body.
+// The request's Host header, trimmed, into out ("" when it has none or it does not fit).
+static void request_host(const char *request, char *out, size_t cap) {
+  out[0] = 0;
+  const char *p = strstr(request, "\r\n");
+  while (p && p[2] && p[2] != '\r') {
+    p += 2; const char *end = strstr(p, "\r\n"); if (!end) return;
+    if (!strncasecmp(p, "Host:", 5)) {
+      const char *v = p + 5; while (v < end && (*v == ' ' || *v == '\t')) v++;
+      const char *e = end; while (e > v && (e[-1] == ' ' || e[-1] == '\t')) e--;
+      size_t n = (size_t)(e - v); if (n >= cap) return;
+      memcpy(out, v, n); out[n] = 0; return;
+    }
+    p = end;
+  }
+}
 static void range_header(const char *request, char *out, size_t cap) {
   out[0] = 0; bool seen = false;
   const char *p = strstr(request, "\r\n");
@@ -288,13 +317,13 @@ static void serve_file(int fd, const char *url, const char *request) {
   char extra[160] = "";
   if (r.status == 206) snprintf(extra, sizeof extra, "Content-Range: bytes %lld-%lld/%lld\r\n", (long long)r.first, (long long)(r.first + r.length - 1), (long long)st.st_size);
   if (r.status == 416) snprintf(extra, sizeof extra, "Content-Range: bytes */%lld\r\n", (long long)st.st_size);
-  char head[1024];
+  char head[1536];
   int h = snprintf(head, sizeof head,
     "HTTP/1.1 %lld %s\r\nContent-Type: %s\r\nContent-Length: %lld\r\nAccept-Ranges: bytes\r\n%s"
-    "Cache-Control: %s\r\nCross-Origin-Opener-Policy: same-origin\r\nCross-Origin-Embedder-Policy: require-corp\r\n"
+    "Cache-Control: %s\r\nCross-Origin-Opener-Policy: same-origin\r\nCross-Origin-Embedder-Policy: require-corp\r\n%s"
     "X-Content-Type-Options: nosniff\r\nConnection: close\r\n\r\n",
     (long long)r.status, r.status == 206 ? "Partial Content" : r.status == 416 ? "Range Not Satisfiable" : "OK",
-    content_type(path), (long long)r.length, extra, static_mode && r.status != 416 ? cache_control : "no-store");
+    content_type(path), (long long)r.length, extra, static_mode && r.status != 416 ? cache_control : "no-store", realm_headers());
   if (fseeko(f, (off_t)r.first, SEEK_SET)) { fclose(f); respond(fd,500,"Read Failed","text/plain","",0); return; }
   // A large body (a realm's pack, 90 MB) goes out from a child of its own. Sent here, it held every
   // other request (the page's shaders, fonts and sounds) until the browser had read all of it (#13141).
@@ -452,6 +481,16 @@ static void handle_request(client *c) {
     drop(c);return;
   }
   char method[8] = {0}, url[1024] = {0};
+  // The realm origin (--realm-host): by the request's Host. It answers a realm's page and what a page
+  // loads, and nothing else: no API, no live channel, no page of the site's (realm-origin.coax).
+  realm_request = false;
+  if (realm_host[0]) {
+    char host[256]; request_host(c->buf, host, sizeof host);
+    realm_request = realm_origin_host((coax_string){host, (int64_t)strlen(host)}, (coax_string){realm_host, (int64_t)strlen(realm_host)});
+    if (realm_request && (sscanf(c->buf, "%7s %1023s", method, url) != 2 || strcmp(method, "GET") || !realm_origin_serves((coax_string){url, (int64_t)strlen(url)}))) {
+      respond(c->fd, 404, "Not Found", "text/plain", "not on the realm origin\n", 24); drop(c); return;
+    }
+  }
   if (api_port && sscanf(c->buf, "%7s %1023s", method, url) == 2 && !strncmp(url, "/api/", 5)) { proxy_api(c); return; }
   if (local_port && sscanf(c->buf, "%7s %1023s", method, url) == 2 && !strncmp(url, "/local/", 7)) { proxy_local(c, url); return; }
   if (sscanf(c->buf, "%7s %1023s", method, url) != 2 || strcmp(method, "GET")) {
@@ -955,6 +994,7 @@ int main(int argc, char **argv) {
     if (!strcmp(argv[i], "--listen") && i + 1 < argc) listen_spec = argv[++i];
     else if (!strcmp(argv[i], "--host-dir") && i + 1 < argc) hosts = argv[++i];
     else if (!strcmp(argv[i], "--static")) static_mode = true;
+    else if (!strcmp(argv[i], "--realm-host") && i + 1 < argc) realm_host = argv[++i];
     else if ((!strcmp(argv[i], "--throttle-mbps") || !strcmp(argv[i], "--latency-ms")) && i+1<argc) {
       bool rate = !strcmp(argv[i], "--throttle-mbps"); char *end;
       errno = 0;
