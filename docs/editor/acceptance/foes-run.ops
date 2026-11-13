@@ -1,0 +1,53 @@
+# The foes' plans in the editor (#13466), for coax drive (docs/editor/acceptance/README.md, "Foes").
+# Start from an empty world on the dev server. Size 1280x800, query "edit&stage=5", --real-time: each edit
+# verb fails the run unless the world takes it and the page stands at its revision; `state` shows the rest.
+clock +3000
+state page.f.rev
+type - key Enter
+clock +800
+type - key Escape
+# what the agent reads first: the time of day, the actors by name, each one's four plans and the places
+foes
+# the editor's time of day: dusk. The light and every foe follow it, and play is not changed
+time dusk
+clock +500
+state game.view
+# two robots stand guard at the tunnel mouth: a plan with no route takes its old one, cut to fit
+plan 6 dusk guard
+route 6 dusk -200 -3700, 0 -3100
+plan 7 dusk guard --on call
+route 7 dusk 200 -3700, 0 -3100
+# the raiders circle the party floor at dusk: a patrol of four points
+plan 1 dusk patrol
+route 1 dusk 150 -3100, 0 -1900, -150 -3100, 0 -4300
+# pick an actor: its route and notice ring are drawn, and the inspector shows its plan
+tap actor.6
+clock +500
+state page.actor
+screenshot apps/openagents-web/build/foes-dusk.png
+# Simulate: the foes run their plans with no player
+tap sim
+clock +4000
+screenshot apps/openagents-web/build/foes-simulate.png
+tap sim
+# dawn: the same actor, its dawn plan
+time dawn
+clock +500
+state game.view
+tap actor.1
+clock +500
+state page.actor
+screenshot apps/openagents-web/build/foes-dawn.png
+# undo walks the eight edits back, one a step; then the story's own clock
+undo
+undo
+undo
+undo
+undo
+undo
+undo
+undo
+time story
+clock +500
+state game.view
+logs

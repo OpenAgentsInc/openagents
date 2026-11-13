@@ -93,6 +93,28 @@ checks its own world, so nothing waits on a server.
 It does not check the chat line against the real model: the run scripts the
 model's answers, below.
 
+## Foes
+
+A third pass sets the foes' plans (#13466). Start from an empty world, as for
+the first pass, then:
+
+```sh
+coax/web/tool.sh drive web apps/openagents-web /worlds/splice \
+  --query "edit&stage=5" --size 1280x800 --live http://127.0.0.1:9538 \
+  --real-time --ops docs/editor/acceptance/foes-run.ops
+```
+
+It reads the actors and their plans, sets the editor's time to dusk, sets two
+robots to guard the tunnel mouth and a raider to patrol, picks an actor,
+simulates, sets dawn, and undoes the eight edits. Each edit verb fails the run
+unless the world takes it and the page stands at its revision. It leaves
+`foes-dusk.png`, `foes-simulate.png` and `foes-dawn.png` in
+`apps/openagents-web/build/`.
+
+It runs with `--real-time` because under the agent clock the page does not
+reach its world's first revision on the dev server (#13475), so `state`
+shows the time of day and the actor where `clock until` would hold them.
+
 ## What it checks
 
 | Step | What must hold |

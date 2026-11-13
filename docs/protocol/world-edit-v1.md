@@ -236,9 +236,15 @@ second `world_*` family.
 | `realm world-publish ID now\|next --yes` | `realm_world_publish` | `publish now --yes` | Makes dev live |
 | `realm world-why ID THING` | `realm_world_why` | `why ID` | Why a thing isn't seen, reached or working |
 | `realm world-open ID` | `realm_world_open` | | The address of the page that edits it |
+| `realm world-foes ID` | `realm_world_foes` | `foes` | The editor's time of day, each actor by number and name with its plan at dawn, day, dusk and night, and the places a route may name |
+| `realm world-plan ID FOE WHEN DO [--route "X Z, X Z"] [--speed CM/S] [--notice CM] [--on chase\|call\|flee\|ignore]` | `realm_world_plan` | `plan FOE WHEN DO` | Sets what actor FOE does at WHEN. Without `--route` the old route is cut or grown to fit the new DO. One edit: the plan's whole row |
+| `realm world-route ID FOE WHEN "X Z, X Z"` | `realm_world_route` | `route FOE WHEN X Z, X Z` | Sets actor FOE's route at WHEN |
+| `realm world-time ID story\|dawn\|day\|dusk\|night` | `realm_world_time` | `time WHEN` | The editor's time of day: the light and every actor follow it. Play keeps the run's own clock |
 
 Places are whole centimetres. Each write answers
 [one result](realm-result-v1.md): the new revision, or the refusal in words.
+A plan, route or time the world already holds answers done at the revision it
+stands at, with nothing sent.
 `--shot OUT.png` adds a frame of the page at the edit's revision.
 `--dry-run` carries the batch out in a copy and saves nothing.
 

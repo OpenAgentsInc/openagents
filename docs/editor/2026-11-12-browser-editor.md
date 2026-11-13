@@ -453,6 +453,75 @@ not a flat folder scan.
   channel reloads it. Edits handle content and placement; code handles rules
   and behaviour.
 
+### Foes' movement at dawn and dusk (#13466)
+
+An agent in the editor sets how Splice's raiders and Imperial robots move, and
+you watch it in the editor.
+
+- **Movement is data.** Each actor has a plan for each time of day: stand,
+  dance, sleep, guard, patrol, wander or follow; its route, speed and notice
+  range; and what it does on noticing you (chase, call, flee, ignore). The
+  rules run with no model call (`metaverse-engine/ai/npc-plan.coax`,
+  `ai/plan.coax`). Splice's old fixed movement is the shipped plans, so play is
+  unchanged ([the tables](../../metaverse/splice/README.md#foes-plans)).
+- **Plans are cells of the world's content tables,** so they go through
+  `world.edit.v1` with the server's checks, undo and revisions. A route out of
+  the mine, of the wrong shape for its DO, or through a wall is refused in
+  words; the wall's refusal names the nearest place a foe can stand.
+- **Realm commands:** `world-foes`, `world-plan`, `world-route` and
+  `world-time` are rows of `REALM_COMMANDS`, so the CLI, the MCP tools and
+  `coax drive` (`foes`, `plan`, `route`, `time`) come from them
+  ([the table](../protocol/world-edit-v1.md#from-the-command-line-mcp-and-coax-drive)).
+  `world-plan` writes the plan's whole row, its route cut or grown to fit the
+  new DO, so one edit always holds.
+- **The editor:** a time-of-day menu in the strip (story, dawn, day, dusk,
+  night), an Actors list in the left pane, and the selected actor's plan in the
+  inspector (what it does and on noticing as menus, speed, notice and route as
+  fields). Picking an actor looks at it from above and draws its route and
+  notice ring; the HUD's phase chips follow the editor's time. Simulate runs
+  the foes with nobody there for them to see.
+- **Outcome replay** checks plans and the clock in the live World and in the
+  saved tables (`metaverse/splice/replay.coax`, `PR_PLAN`, `PR_CLOCK`). A kept
+  world earns a probe for each plan, and each broken variant fails them.
+- **Scripted run:** `docs/editor/acceptance/foes-run.ops` (README, "Foes").
+
+**The live test, part 1: plan data** (2026-11-13, local Claude Code on Haiku
+5.5, `claude-haiku-5-5`, the realm commands as its only Bash, 42 turns,
+$0.07). The prompt: "At dawn the Imperial robots sweep the village gate in
+pairs and the raiders sleep by the fire. At dusk the raiders circle the party
+mine and two robots stand guard at the tunnel mouth." What happened:
+- The village gate was refused in the server's words: the dome village is a
+  stage with no foes. The agent left the dawn robots as they were.
+- Raiders 1 to 5 sleep at dawn. At dusk they patrol a four-point loop on the
+  party floor, and Imperial 1 and 2 guard the tunnel mouth.
+- Many routes were refused as inside a wall before one held. Fixed: the
+  refusal now names the nearest place a foe can stand.
+- Several of its shell lines (variables, `echo $?`) needed approval it did not
+  have. That is the harness, not the editor.
+- [Dusk](shots/foes-dusk.png), [dawn](shots/foes-dawn.png) and
+  [Simulate at dusk](shots/foes-simulate.png), each with an actor's route
+  drawn.
+
+**Part 2: code** (Haiku 5.5, Read, Edit and `coax/bin/coax check` and `test`,
+23 turns, $0.11). The prompt asked for something the plan data cannot say: an
+Imperial robot that is hit makes the others drop their plans and ring it until
+you are far away. The prompt named the realm's files and said that a save
+rebuilds. What happened:
+- The agent added a `rally` field to `SpGame`, a ring of slots in
+  `g_foes_step` and a call from the hit. `coax check` passed first time and
+  the realm's tests passed.
+- The open editor swapped the engine twice ("swapped in 195 ms") and kept the
+  world at revision 19 with its plans and time of day
+  ([the editor after the swaps](shots/foes-code-swap.png)).
+- The agent's code compiled first time, so it met no compiler error. A
+  deliberate error in the same file showed the rest: `coax check` printed the
+  compiler's words (`error[E0315]: procedure 'ring_of' is not declared`), the
+  server logged them, sent them to the open tab, and kept the last good
+  engine. The next good save swapped in.
+- The change was not kept: it alters play, and realm code is ours or a
+  reviewed PR. Plans stay the first path: they work on a deployed page with
+  undo and server checks. Code edits work only on a dev server.
+
 ## Gaps, and the issues that close them
 
 Existing issues this builds on:

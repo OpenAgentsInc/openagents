@@ -876,11 +876,14 @@ dv_op :: (s: [] DvS, op: string, out: [] Dv) -> bool {
   return false;
 }
 // ---- a world's edits (GitHub #13415): the realm commands, sent for the revision the page shows
-DV_WORLD_VERBS :: [11] string.["world", "place", "move", "turn", "set", "remove", "undo", "redo", "original", "apply", "publish"];
+DV_WORLD_VERBS :: [15] string.["world", "place", "move", "turn", "set", "remove", "undo", "redo", "original", "apply", "publish", "foes", "plan", "route", "time"];
+// the verbs that read the world and change nothing: their answer is the command's words, with no revision
+dv_world_read :: (w: string) -> bool { return w == "world" || w == "foes"; }
 dv_world_verb :: (w: string) -> bool { for v: DV_WORLD_VERBS { if v == w { return true; } } return false; }
 dv_int_signed :: (s: string) -> int { return ifx s.count > 1 && s[0] == '-' then -dv_int(s[1..<s.count]) else dv_int(s); }
 #test "a world's verbs are the realm command's rows, by their last word" {
   #assert dv_world_verb("place") && dv_world_verb("undo") && dv_world_verb("world") && !dv_world_verb("tree") && !dv_world_verb("") && !dv_world_verb("world-place");
+  #assert dv_world_verb("plan") && dv_world_verb("route") && dv_world_verb("time") && dv_world_verb("foes") && dv_world_read("foes") && !dv_world_read("plan");
   #assert dv_int_signed("-7060") == -7060 && dv_int_signed("17720") == 17720;
 }
 // A member of a one-line JSON object as its raw text ("" when absent): the CLI's --json answer.
@@ -901,15 +904,19 @@ dv_world :: (s: [] DvS, op: string, out: [] Dv) -> bool {
   verb := dv_cat2(ifx w0 == "world" then "world" else "world-", ifx w0 == "world" then "" else w0, vb[..]);
   argv[0] = cast(string) s[0].cli[0..<s[0].cli_n]; argv[1] = "realm"; argv[2] = verb; argv[3] = world; n = 4;
   k := 1;
-  while dv_word(op, k).count > 0 && n < argv.count - 6 { argv[n] = dv_word(op, k); n += 1; k += 1; }
-  if w0 != "world" && rev > 0 { rt: [1] Dv; dv_i(rt[..], rev); for c, i: dv_text(rt[..]) { rb[i] = c; } argv[n] = "--rev"; argv[n + 1] = cast(string) rb[0..<rt[0].n]; n += 2; }
+  // a route is one argument however many words its points take: "route FOE WHEN X Z, X Z"
+  last := ifx w0 == "route" then 3 else argv.count;
+  while dv_word(op, k).count > 0 && n < argv.count - 6 && k < last { argv[n] = dv_word(op, k); n += 1; k += 1; }
+  if w0 == "route" && dv_word(op, 3).count > 0 { argv[n] = dv_rest(op, 3); n += 1; }
+  read := dv_world_read(w0);
+  if !read && rev > 0 { rt: [1] Dv; dv_i(rt[..], rev); for c, i: dv_text(rt[..]) { rb[i] = c; } argv[n] = "--rev"; argv[n + 1] = cast(string) rb[0..<rt[0].n]; n += 2; }
   argv[n] = "--origin"; argv[n + 1] = cast(string) s[0].origin[0..<s[0].origin_n]; n += 2;
-  if w0 != "world" { argv[n] = "--json"; n += 1; }
+  if !read { argv[n] = "--json"; n += 1; }
   ans: [1048576] u8; err: [8192] u8;
   ran := proc_run(argv[0..<n], 60000, ans[..], err[..]);
   if ran.status < 0 || ran.timed_out { dv_s(out, "the realm command did not run: build it (apps/openagents-cli/build.sh)"); return false; }
   text := cast(string) ans[0..<ran.out_n];
-  if w0 == "world" { dv_s(out, text); if ran.status != 0 { dv_s(out, cast(string) err[0..<ran.err_n]); } return ran.status == 0; }
+  if read { dv_s(out, text); if ran.status != 0 { dv_s(out, cast(string) err[0..<ran.err_n]); } return ran.status == 0; }
   nodes: [4096] JvNode;
   result := dv_member(text, "result", nodes[..]); state := dv_member(text, "state", nodes[..]); to := dv_int(dv_member(text, "rev", nodes[..]));
   if result.count == 0 { dv_s(out, "the realm command gave no result: "); dv_s(out, text); dv_s(out, cast(string) err[0..<ran.err_n]); return false; }

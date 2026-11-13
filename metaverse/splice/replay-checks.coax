@@ -75,3 +75,42 @@ SPR_PROBES :: [9 * SPR_PROBE] int.[
   far := [1] string.["{\"schema\":\"world.edit.v1\",\"rev\":0,\"do\":\"apply\",\"edits\":[{\"op\":\"spawn\",\"id\":3,\"kind\":113,\"x\":17720,\"y\":0,\"z\":-7060,\"yaw\":0,\"scale\":100}]}"];
   #assert !spr_replay(t[..], far[..], none[0..<0], SB_NONE).ok[OC_ERRORS];
 }
+#test "outcome replay: a run that sets foes' plans holds them in the live World and in the saved tables, and each broken variant tells which (#13466)" #steps 4000000000 #traversal 2000000000 {
+  t := [1] SprWork.[SprWork.{}];
+  // raider 1 sleeps at dawn, a crate is put by the rover, raider 2 stands at dawn: cells and a thing in one run
+  run := [3] string.[
+    "{\"schema\":\"world.edit.v1\",\"rev\":0,\"do\":\"apply\",\"edits\":[{\"op\":\"cell\",\"table\":\"plans\",\"row\":10,\"col\":\"do\",\"v\":\"sleep\"}]}",
+    "{\"schema\":\"world.edit.v1\",\"rev\":1,\"do\":\"apply\",\"edits\":[{\"op\":\"spawn\",\"id\":0,\"kind\":117,\"x\":280,\"y\":0,\"z\":150,\"yaw\":0,\"scale\":100}]}",
+    "{\"schema\":\"world.edit.v1\",\"rev\":2,\"do\":\"apply\",\"edits\":[{\"op\":\"cell\",\"table\":\"plans\",\"row\":20,\"col\":\"do\",\"v\":\"stand\"}]}"];
+  probes := [3 * SPR_PROBE] int.[PR_COUNT, 1, 0, 0,   PR_PLAN, 1, 0, NPD_SLEEP,   PR_PLAN, 2, 0, NPD_STAND];
+  r := spr_replay(t[..], run[..], probes[..], SB_NONE);
+  #assert spr_holds(r) && r.pieces == 1 && r.head == 3;
+  // the page missed the last plan: the live World is wrong and the probe says so; the saved tables are right
+  r = spr_replay(t[..], run[..], probes[..], SB_LIVE);
+  #assert !r.ok[OC_LIVE] && r.ok[OC_SAVED] && r.ok[OC_ERRORS] && !r.ok[OC_PROBES] && r.at[OC_PROBES] == 2 && r.why == WHY_NOT_IN_STATE;
+  // the saved tables are one batch behind: the page is right, the saved world is wrong
+  r = spr_replay(t[..], run[..], probes[..], SB_SAVED);
+  #assert r.ok[OC_LIVE] && !r.ok[OC_SAVED] && r.ok[OC_ERRORS] && r.ok[OC_PROBES];
+  // a plan the run did not set fails its probe; a foe that is not one fails too
+  other := [2 * SPR_PROBE] int.[PR_PLAN, 3, 0, NPD_SLEEP,   PR_PLAN, 10, 0, NPD_DANCE];
+  r = spr_replay(t[..], run[..], other[0..<SPR_PROBE], SB_NONE);
+  #assert !r.ok[OC_PROBES] && r.at[OC_PROBES] == 0 && !r.ok[OC_LIVE] && !r.ok[OC_SAVED];
+  #assert !spr_replay(t[..], run[..], other[SPR_PROBE..<2 * SPR_PROBE], SB_NONE).ok[OC_PROBES];
+  // a run recorded without probes earns one a plan from the tables it saved, and each broken variant fails them
+  none: [1] int; earned: [(2 + SPR_PLANS) * SPR_PROBE] int;
+  _ := spr_replay(t[..], run[..], none[0..<0], SB_NONE);
+  n := spr_plan_probes_of(t[..], earned[..], 0);
+  #assert n == SPR_PLANS * SPR_PROBE && earned[0] == PR_CLOCK && earned[1] == -1 && earned[4] == PR_PLAN && earned[5] == 1 && earned[6] == 0 && earned[7] == NPD_SLEEP && earned[5 * SPR_PROBE + 3] == NPD_STAND;
+  #assert spr_holds(spr_replay(t[..], run[..], earned[0..<n], SB_NONE)) && !spr_replay(t[..], run[..], earned[0..<n], SB_LIVE).ok[OC_LIVE] && !spr_replay(t[..], run[..], earned[0..<n], SB_SAVED).ok[OC_SAVED];
+  #assert spr_plan_probes_of(t[..], earned[0..<8], 0) == 0;
+  // the editor's clock set last: a page that missed it, or a saved world a step behind, fails the clock probe
+  dusk := [2] string.[run[0], "{\"schema\":\"world.edit.v1\",\"rev\":1,\"do\":\"apply\",\"edits\":[{\"op\":\"cell\",\"table\":\"clock\",\"row\":1,\"col\":\"when\",\"v\":\"dusk\"}]}"];
+  _ = spr_replay(t[..], dusk[..], none[0..<0], SB_NONE);
+  n = spr_plan_probes_of(t[..], earned[..], 0);
+  #assert earned[1] == 2 && spr_holds(spr_replay(t[..], dusk[..], earned[0..<n], SB_NONE));
+  r = spr_replay(t[..], dusk[..], earned[0..<n], SB_LIVE);
+  #assert !r.ok[OC_LIVE] && r.at[OC_PROBES] == 0 && !spr_replay(t[..], dusk[..], earned[0..<n], SB_SAVED).ok[OC_SAVED];
+  pieces := SPR_RUN;
+  _ = spr_replay(t[..], pieces[..], none[0..<0], SB_NONE);
+  #assert spr_plan_probes_of(t[..], earned[..], 4) == 4;   // a run that never touched the tables earns none
+}

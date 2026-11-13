@@ -133,6 +133,18 @@ rw_row :: (table: string, id: int) -> string #effects(all) {
   }
   return "";
 }
+// Whether a content document's text already holds a cell edit's value: the row's cell under the
+// edit's column (the whole row for "*").
+rw_holds :: (content: string, edit: WorldEdit) -> bool #effects(all) {
+  e := edit;
+  table := rw_table(content, cast(string) e.table[0..<e.table_n]);
+  row := rw_row(table, e.id); col := cast(string) e.name[0..<e.name_n]; text := cast(string) e.text[0..<e.text_n];
+  if row.count == 0 { return false; }
+  if col == "*" { return row == text; }
+  head := ct_part(table, '\n', 0);
+  for k: 2..<ct_parts(head, ' ') { if ct_part(ct_part(head, ' ', k), ':', 0) == col { return ct_part(row, '|', k - 2) == text; } }
+  return false;
+}
 // world-plan and world-route: actor FOE's plan at WHEN, as it is in the world's dev tables, with what
 // the arguments change, written as its whole row: one edit that holds, since a new DO takes a route of
 // its own shape (npl_fit). 1, or 0 when the world has no such plan (the words say so), or -1.
@@ -172,6 +184,10 @@ rw_plan_edit :: (a: [] Args, verb: string, content: string, e: [] WorldEdit, wor
   #assert rw_plan_edit(a[..], "world-plan", content, e[..], words[..]) == 1 && cast(string) e[0].text[0..<e[0].text_n] == "10|1|dawn|sleep|-600 -4800|180|300|call";
   a[0] = Args.{}; for s: [6] string.["realm","world-plan","splice","1","dawn","patrol"] { #assert args_add(a[..],s); }
   #assert rw_plan_edit(a[..], "world-plan", content, e[..], words[..]) == 1 && cast(string) e[0].text[0..<e[0].text_n] == "10|1|dawn|patrol|-600 -4800, -200 -4800|180|0|chase";
+  // what the world holds already is told apart from a change: the whole row, or one cell
+  #assert rw_holds(content, rw_cell("plans", 62, "*", "62|6|dusk|patrol|850 -4500, 850 -5700|180|500|chase")) && !rw_holds(content, rw_cell("plans", 62, "*", "62|6|dusk|guard|850 -4500, 850 -5700|180|500|chase"));
+  #assert rw_holds(content, rw_cell("clock", 1, "when", "story")) && !rw_holds(content, rw_cell("clock", 1, "when", "dusk")) && !rw_holds(content, rw_cell("clock", 2, "when", "story")) && !rw_holds(content, rw_cell("clock", 1, "nope", "story"));
+  #assert rw_holds(content, rw_cell("plans", 10, "do", "dance")) && !rw_holds(content, rw_cell("plans", 10, "on", "dance"));
   a[0] = Args.{}; for s: [6] string.["realm","world-route","splice","6","dusk","0 -4500, 1200 -4500, 0 -4500"] { #assert args_add(a[..],s); }
   #assert rw_plan_edit(a[..], "world-route", content, e[..], words[..]) == 1 && cast(string) e[0].text[0..<e[0].text_n] == "62|6|dusk|patrol|0 -4500, 1200 -4500, 0 -4500|180|500|chase";
   a[0] = Args.{}; for s: [6] string.["realm","world-route","splice","6","dawn","0 0, 1 1"] { #assert args_add(a[..],s); }
@@ -326,12 +342,16 @@ rw_write :: (a: [] Args, r: [] Rep, profile: string, verb: string, slug: string,
   c := REALM_COMMANDS[rc_find(verb)];
   words := OpWords.{verb = verb, realm = slug, effect = c.effect, page = rw_page(slug, w[0].page[..]), key = rc_option(a, verb, "--key", "")};
   n := rw_edits(a, verb, w[0].e[..]);
-  if verb == "world-plan" || verb == "world-route" {
-    // the plan as the dev tables hold it now, changed by the arguments
+  same := false;
+  if verb == "world-plan" || verb == "world-route" || verb == "world-time" {
+    // the plan or the clock as the dev tables hold it now, changed by the arguments
     cres := api_call(a, profile, "GET", rw_path(slug, "/content?lane=dev", w[0].path[..]), "", w[0].content[..]);
     if !api_ok(cres) { words.words = api_why(cast(string) w[0].content[0..<cres.n], w[0].words[..]); return rw_answer(r, w, or_of_status(ifx cres.error == HTTP_OK then cres.status else 0, 0), words); }
-    n = rw_plan_edit(a, verb, cast(string) w[0].content[0..<cres.n], w[0].e[..], w[0].words[..]);
+    content := cast(string) w[0].content[0..<cres.n];
+    if verb != "world-time" { n = rw_plan_edit(a, verb, content, w[0].e[..], w[0].words[..]); }
     if n < -1 { words.words = cast(string) w[0].words[0..<-n]; return rw_answer(r, w, OpResult.{state = OR_REFUSED, code = ORC_BAD_REQUEST}, words); }
+    // already so: done, at the revision it stands at, with nothing sent (an agent that sets what is there is not refused)
+    same = n == 1 && rw_holds(content, w[0].e[0]);
   }
   if verb == "world-apply" {
     file := positional(a, 3);
@@ -353,6 +373,11 @@ rw_write :: (a: [] Args, r: [] Rep, profile: string, verb: string, slug: string,
     return rw_answer(r, w, or_of_status(ifx res.error == HTTP_OK then (ifx res.status == 200 then 500 else res.status) else 0, 0), words);
   }
   st := w[0].st; base := st.rev;
+  if same {
+    words.words = "nothing changed: the world already holds that";
+    out := OpResult.{ok = true, state = OR_DONE, rev = st.rev}; for k: 0..<4 { out.build[k] = st.build[k]; }
+    return rw_answer(r, w, out, words);
+  }
   if rc_has(a, verb, "--rev") { base = cli_count(rc_option(a, verb, "--rev", ""), 1, 999999999); if base < 0 { base = 0; } }
   what := rw_what(verb, positional(a, 3));
   body := we_batch_write(base, what, w[0].e[..], ifx what == WB_APPLY then n else 0, w[0].body[..]);

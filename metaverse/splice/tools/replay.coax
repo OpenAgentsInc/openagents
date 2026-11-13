@@ -13,7 +13,7 @@
 #load "../../../coax/lib/sys/fs.coax";
 
 RP_STEPS :: 256;
-RpRun :: struct { text: [RP_STEPS * 4096] u8; at: [RP_STEPS] int; n: [RP_STEPS] int; batches: [RP_STEPS] string; count: int; probes: [(2 * SL_ITEMS + 2) * SPR_PROBE] int; }
+RpRun :: struct { text: [RP_STEPS * 4096] u8; at: [RP_STEPS] int; n: [RP_STEPS] int; batches: [RP_STEPS] string; count: int; probes: [(2 * SL_ITEMS + 2 + SPR_PLANS) * SPR_PROBE] int; }
 
 tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
@@ -34,6 +34,7 @@ tool_main :: () -> int #export_c #effects(all) {
   t := [1] SprWork.[SprWork.{}]; o: [400] u8; none: [1] int;
   first := spr_replay(t[..], r[0].batches[0..<r[0].count], none[0..<0], SB_NONE);
   pn := spr_probes_of(t[0].want[..], r[0].probes[..]);
+  pn = spr_plan_probes_of(t[..], r[0].probes[..], pn);   // and the plans, when the run set any (#13466)
   run := spr_replay(t[..], r[0].batches[0..<r[0].count], r[0].probes[0..<pn], SB_NONE);
   print("replayed % steps: % things, head %\n%", r[0].count, run.pieces, run.head, spr_report(run, o[..]));
   holds := spr_holds(first) && spr_holds(run);

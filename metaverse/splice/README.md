@@ -80,6 +80,29 @@ A footprint is how far a piece's body reaches to each side and ahead, below 2 m.
 every piece's triangles and compares them with its row, so a collider is never wider than what
 you see. The collider is the stadium inside that footprint, so it turns with the piece.
 
+### Foes' plans
+
+The foes move by data, not by code (#13466). The table `plans` gives each of the nine actors
+(`actors`: Raider 1 to 5, Imperial 1 to 4) a plan for dawn, day, dusk and night, rule-based with
+no model call at run time ([the module](../../metaverse-engine/ai/npc-plan.coax),
+[its steps](../../metaverse-engine/ai/plan.coax)):
+
+| Column | What it holds |
+| --- | --- |
+| `do` | `stand`, `dance`, `sleep`, `guard`, `patrol`, `wander` or `follow` |
+| `route` | Points in centimetres: one for stand, dance, sleep and wander (`X Z R`), the post and where it looks for guard, 2 to 8 for patrol, `foe N` for follow |
+| `speed`, `notice` | Centimetres a second, and how near you come before it notices (0: never) |
+| `on` | What it does on noticing you: `chase`, `call` (the others near it chase too), `flee` or `ignore` |
+
+The shipped rows are the movement Splice had in code, so play is unchanged. The table `clock` holds
+the editor's time of day (`story` in play). A route stays in the mine, and a point inside a wall
+is refused with the nearest place a foe can stand. `world.coax` checks both on every cell edit.
+
+An agent edits plans with the realm commands (`openagents realm world-foes`, `world-plan`,
+`world-route`, `world-time`; [the table](../../docs/protocol/world-edit-v1.md)). A behaviour the
+plans cannot express is a change to `splice-game.coax` (`g_foes_step`) on a dev server, which
+rebuilds and swaps the engine on save and keeps the world's plans and state.
+
 ### Edits
 
 `layer.coax` holds the layer as a scene in the engine's edit log (`metaverse-engine/editor/edit.coax`). Places
