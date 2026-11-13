@@ -16,13 +16,13 @@ html,body{margin:0;height:100%;background:#000;color:var(--white)}
 body{overflow:hidden;font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;font-size:14px;line-height:1.5}
 canvas{position:fixed;inset:0;width:100%;height:100%;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
 canvas[data-cursor=pointer]{cursor:pointer}
-main{position:relative;max-width:640px;margin:0 auto;padding:24px 16px}
+body>main{position:relative;max-width:640px;margin:0 auto;padding:24px 16px}
 html:not(.gpu) body{overflow:auto}
 a{color:var(--light)}
 a:hover{color:var(--accent)}
 /* When the GPU draws the page, the text stays for agents, search engines and screen readers only. */
-.inside canvas,.inside main{display:none}.inside #home-root{position:fixed;inset:0;background:#000;z-index:30}
-.gpu main{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;padding:0}
+.inside canvas,.inside body>main{display:none}.inside #home-root{position:fixed;inset:0;background:#000;z-index:30}
+.gpu body>main{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;padding:0}
 </style>
 </head>
 <body>
@@ -38,17 +38,26 @@ a:hover{color:var(--accent)}
 <p>Join with the command below, or read the <a href="/docs/connect-a-pylon">Pylon guide</a>. The board's COPY COMMAND control copies this exact command.</p>
 <p><code>curl -fsSL https://openagents.com/pylon/join.sh -o /tmp/join-pylon.sh &amp;&amp; bash /tmp/join-pylon.sh --model elephant-1 --self-test</code></p>
 </main>
-<script type="module" src="/coaxial/host.js" data-app="newland"></script>
+<!-- The public home page's engine. It is held in a template so that nothing of it loads until the script below
+knows who is here: someone logged in gets the app shell instead (docs/app-shell.md). -->
+<template id="public-engine"><script type="module" src="/coaxial/host.js" data-app="newland"></script></template>
 <script type="module">
-// Someone logged in gets the app's frame (home-web: an empty screen and a side of places) over the public home page.
+// Who is here decides the page, with one small request before any engine loads. Someone logged in gets the app
+// shell (chat-web: the side, and nothing beside it on this page); anyone else the public home page above.
+let inside = false;
 try {
-  const r = await fetch("/api/auth/account", { credentials: "same-origin", signal: AbortSignal.timeout(4000) });
-  if (r.ok && (await r.json()).logged_in === true) {
-    document.documentElement.classList.add("inside");
-    const root = document.createElement("div"); root.id = "home-root"; document.body.appendChild(root);
-    await import("/coaxial/dom-host.js?app=home-web&root=home-root");
-  }
+  const r = await fetch("/api/auth/account", { credentials: "same-origin", cache: "no-store", signal: AbortSignal.timeout(3000) });
+  inside = r.ok && (await r.json()).logged_in === true;
 } catch {}
+if (inside) {
+  document.documentElement.classList.add("inside");
+  const root = document.createElement("div"); root.id = "home-root"; document.body.appendChild(root);
+  const shell = document.createElement("script"); shell.type = "module"; shell.src = "/coaxial/dom-host.js";
+  shell.dataset.app = "chat-web"; shell.dataset.root = "home-root";
+  document.body.appendChild(shell);
+} else {
+  document.body.appendChild(document.getElementById("public-engine").content.cloneNode(true));
+}
 </script>
 </body>
 </html>

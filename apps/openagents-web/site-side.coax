@@ -1,0 +1,133 @@
+// The site's side: the rules behind the left side every page shows someone logged in (docs/app-shell.md).
+// Plain functions, no drawing: which place a page is, who is logged in as the account's lines say, what a
+// search keeps, and which section a row of a list falls in. The side is drawn with the kit's pieces
+// (components/kit/frames.coax: k_side, k_side_head, k_side_places, k_side_list, k_side_mark, k_search,
+// k_who, k_side_open) by the page that holds it; today that is the app shell (chat-web.coax).
+//   coax/bin/coax test apps/openagents-web/site-side.coax
+#load "../../coax/lib/nostr/nip19-core.coax";
+
+// The places at the top of the side, in order, and the page each one is.
+SS_HOME :: -1; SS_CHATS :: 0; SS_PROJECTS :: 1; SS_WORLDS :: 2; SS_PLACES :: 3;
+SS_NAMES :: [3] string.["Chats", "Projects", "Worlds"];
+SS_HREFS :: [3] string.["/chat", "/projects", "/worlds"];
+SS_WHO :: 96;          // bytes of a name at the foot
+SS_QUERY :: 64;        // bytes of a search
+
+// The place an address is: the home page, or one of the places (anything under it). -2 for none.
+ss_place_of :: (path: string) -> int {
+  if path == "/" || path.count == 0 { return SS_HOME; }
+  hrefs := SS_HREFS;
+  for k: 0..<SS_PLACES {
+    h := hrefs[k];
+    if path.count >= h.count && cast(string) path[0..<h.count] == h && (path.count == h.count || path[h.count] == '/' || path[h.count] == '?') { return k; }
+  }
+  return -2;
+}
+// Whether the app shell draws this address itself (the home page and the chat) or the browser goes to it.
+ss_in_shell :: (path: string) -> bool { p := ss_place_of(path); return p == SS_HOME || p == SS_CHATS; }
+
+ss_put :: (out: [] u8, at: int, text: string) -> int {
+  n := at;
+  for c: text { if n < out.count { out[n] = c; n += 1; } }
+  return n;
+}
+ss_hex :: (c: u8) -> int {
+  if c >= '0' && c <= '9' { return cast(int) (c - '0'); }
+  if c >= 'a' && c <= 'f' { return cast(int) (c - 'a') + 10; }
+  return -1;
+}
+// The name at the foot from /api/auth/account?as=lines: the first email (masked by the API), else the key
+// it acts as, as a short npub ("npub1abcdefg...uvwxyz"). Its length in out, 0 when the lines say nobody.
+ss_who_read :: (body: string, out: [] u8) -> int {
+  at := 0; key := ""; email := ""; logged := false;
+  while at < body.count {
+    e := at;
+    while e < body.count && body[e] != '\n' { e += 1; }
+    line := cast(string) body[at..<e];
+    if line == "logged_in 1" { logged = true; }
+    if email.count == 0 && line.count > 6 && cast(string) line[0..<6] == "email " { email = cast(string) line[6..<line.count]; }
+    if key.count == 0 && line.count == 68 && cast(string) line[0..<4] == "key " { key = cast(string) line[4..<68]; }
+    at = e + 1;
+  }
+  if !logged { return 0; }
+  if email.count > 0 { return ss_put(out, 0, email); }
+  if key.count == 64 {
+    raw: [32] u8;
+    for i: 0..<32 {
+      a := ss_hex(key[2 * i]); b := ss_hex(key[2 * i + 1]);
+      if a < 0 || b < 0 { return ss_put(out, 0, "Your account"); }
+      raw[i] = cast(u8) (a * 16 + b);
+    }
+    npub: [80] u8;
+    r := nip19_encode_checked(N19_NPUB, cast(string) raw[..], npub[..], false);
+    if r.error == NC_OK && r.written > 20 {
+      n := ss_put(out, 0, cast(string) npub[0..<12]);
+      n = ss_put(out, n, "...");
+      return ss_put(out, n, cast(string) npub[r.written - 6..<r.written]);
+    }
+  }
+  return ss_put(out, 0, "Your account");
+}
+
+ss_lower :: (c: u8) -> u8 { return ifx c >= 'A' && c <= 'Z' then c + 32 else c; }
+// Whether a row's title is kept by a search: every word of the search is in it, in any case. An empty
+// search keeps everything.
+ss_match :: (title: string, query: string) -> bool {
+  at := 0;
+  while at < query.count {
+    while at < query.count && query[at] == ' ' { at += 1; }
+    e := at;
+    while e < query.count && query[e] != ' ' { e += 1; }
+    if e > at {
+      w := e - at; found := false; i := 0;
+      while !found && i + w <= title.count {
+        same := true;
+        for k: 0..<w { if ss_lower(title[i + k]) != ss_lower(query[at + k]) { same = false; break; } }
+        found = same; i += 1;
+      }
+      if !found { return false; }
+    }
+    at = e;
+  }
+  return true;
+}
+
+// The sections of a list of conversations, top to bottom: those at work now, then Claude Code's here, then
+// the ones that ended most recently. A conversation is in exactly one.
+SS_RUNNING :: 0; SS_CLAUDE :: 1; SS_RECENT :: 2; SS_SECTIONS :: 3;
+SS_SECTION_NAMES :: [3] string.["Running", "Claude Code", "Recent"];
+// Which section a conversation is in: `busy` it is at work now (a session running, a Claude Code conversation
+// open in a terminal here), `claude` it is Claude Code's.
+ss_section :: (busy: bool, claude: bool) -> int {
+  if busy { return SS_RUNNING; }
+  if claude { return SS_CLAUDE; }
+  return SS_RECENT;
+}
+
+#test "an address is its place: the home page, a place or anything under it, or none" {
+  #assert ss_place_of("/") == SS_HOME && ss_place_of("") == SS_HOME;
+  #assert ss_place_of("/chat") == SS_CHATS && ss_place_of("/chat/") == SS_CHATS && ss_place_of("/chat?x=1") == SS_CHATS;
+  #assert ss_place_of("/projects") == SS_PROJECTS && ss_place_of("/projects/coax") == SS_PROJECTS && ss_place_of("/worlds/new") == SS_WORLDS;
+  #assert ss_place_of("/chatter") == -2 && ss_place_of("/chat-gpu") == -2 && ss_place_of("/settings") == -2;
+  #assert ss_in_shell("/") && ss_in_shell("/chat") && !ss_in_shell("/projects") && !ss_in_shell("/worlds") && !ss_in_shell("/login");
+}
+#test "the name at the foot is the first email, else a short npub of the key, and nothing for nobody" {
+  out: [SS_WHO] u8;
+  n := ss_who_read("logged_in 1\naccount acct_1\nkind email\nemail a•••@example.com\nemail b@x.com\nkey 7e7e9c42a91bfef19fa929e5fda1b72e0ebc1a4c1141673e2794234d86addf4e\n", out[..]);
+  #assert cast(string) out[0..<n] == "a•••@example.com";
+  n = ss_who_read("logged_in 1\naccount acct_1\nkey 7e7e9c42a91bfef19fa929e5fda1b72e0ebc1a4c1141673e2794234d86addf4e\n", out[..]);
+  #assert cast(string) out[0..<n] == "npub10elfcs4...zvjptg";
+  n = ss_who_read("logged_in 1\naccount acct_1\nkind words\n", out[..]);
+  #assert cast(string) out[0..<n] == "Your account";
+  #assert ss_who_read("logged_in 0\n", out[..]) == 0 && ss_who_read("", out[..]) == 0;
+}
+#test "a search keeps a title holding every one of its words, in any case" {
+  #assert ss_match("Port the frames to SVG", "") && ss_match("Port the frames to SVG", "  ");
+  #assert ss_match("Port the frames to SVG", "svg") && ss_match("Port the frames to SVG", "FRAMES port");
+  #assert !ss_match("Port the frames to SVG", "png") && !ss_match("Port the frames to SVG", "frames png") && !ss_match("", "a");
+}
+#test "a conversation at work is Running whoever's it is; else Claude Code's, else Recent" {
+  #assert ss_section(true, false) == SS_RUNNING && ss_section(true, true) == SS_RUNNING;
+  #assert ss_section(false, true) == SS_CLAUDE && ss_section(false, false) == SS_RECENT;
+  names := SS_SECTION_NAMES; #assert names[SS_RECENT] == "Recent" && SS_SECTIONS == 3;
+}

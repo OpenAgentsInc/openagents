@@ -16,7 +16,8 @@
 //
 // The components: frame, text, icon, icon button, button, link, select, secret, card, field, composer, the person's
 // message, the agent's message (Markdown), meta line, tool call, tool line, code block,
-// notice, row, header, menu; and three a page that stages its own moments builds with: a frame it
+// notice, row, place, side (places, a page's list, and who is logged in: k_side, k_side_list, k_side_end, k_who),
+// drop, file, header, menu; and three a page that stages its own moments builds with: a frame it
 // draws at its own time (k_frame_at), a measure for the stylesheet (k_var) and a value that deciphers
 // in (k_decipher). The stage's own pieces are in stage.coax.
 //   coax/bin/coax test components/kit/frames.coax
@@ -468,6 +469,92 @@ k_place :: (t: [] Tree, u: [] Ui, id: string, icon: int, title: string, href: st
   tr_close(t);
   return i;
 }
+// Side: the app's frame down the left of every page for someone logged in (docs/app-shell.md), top to bottom:
+// a head (the product's mark and name, a link home, and the page's actions as icon buttons), the places
+// (k_place rows), the page's own list (it alone scrolls; k_side_mark heads each section of it, k_search
+// above it narrows it), and a foot with who is logged in (k_who). The page builds them in that order:
+//   k_side(t, "side", "Places");
+//   k_side_head(t, "side.h", "OpenAgents", "/"); k_icon_button(...); tr_close(t);
+//   k_side_places(t, "side"); k_place(...); ...
+//   k_side_list(t, "side"); k_side_mark(...); k_row(...); ...
+//   k_side_end(t); k_who(...); tr_close(t);
+// A page that lets the side be put away draws k_side_open in its place, a button that brings it back.
+k_side :: (t: [] Tree, id: string, label: string) -> int {
+  i := tr_open(t, id, TG_NAV, "side");
+  tr_attr(t, i, AT_LABEL, label);
+  return i;
+}
+// The head: the mark and the name, a link to `home`. Its actions follow as icon buttons; close it with tr_close.
+k_side_head :: (t: [] Tree, id: string, name: string, home: string) -> int {
+  ida: [UI_ID] u8; idb: [UI_ID] u8; idc: [UI_ID] u8; idd: [UI_ID] u8;
+  i := tr_open(t, id, TG_DIV, "side-h");
+  a := tr_open(t, tr_cat(ida[..], id, ".home"), TG_A, "side-b");
+  tr_attr(t, a, AT_HREF, home);
+  m := tr_open(t, tr_cat(idb[..], id, ".mark"), TG_SVG, "ic");
+  tr_attr(t, m, AT_HIDDEN, "true");
+  g := tr_open(t, tr_cat(idc[..], id, ".mark.use"), TG_USE, "");
+  tr_attr(t, g, AT_HREF, MONO_MARK);
+  tr_close(t);
+  tr_close(t);
+  l := tr_leaf(t, tr_cat(idd[..], id, ".name"), TG_SPAN, "side-n", name);
+  tr_close(t);
+  return i;
+}
+// The places begin.
+k_side_places :: (t: [] Tree, id: string) -> int {
+  ida: [UI_ID] u8;
+  return tr_open(t, tr_cat(ida[..], id, ".p"), TG_DIV, "side-p");
+}
+// The places end and the page's own list begins.
+k_side_list :: (t: [] Tree, id: string) -> int {
+  ida: [UI_ID] u8;
+  tr_close(t);
+  return tr_open(t, tr_cat(ida[..], id, ".l"), TG_DIV, "side-l");
+}
+// The list ends; the foot (k_who) follows, then the side closes with tr_close.
+k_side_end :: (t: [] Tree) { tr_close(t); }
+// A section's head in the list: its name and how many are in it.
+k_side_mark :: (t: [] Tree, id: string, label: string, count: int) -> int {
+  ida: [UI_ID] u8; idb: [UI_ID] u8; num: [24] u8;
+  i := tr_open(t, id, TG_H3, "side-m");
+  a := tr_leaf(t, tr_cat(ida[..], id, ".t"), TG_SPAN, "", label);
+  b := tr_leaf(t, tr_cat(idb[..], id, ".n"), TG_SPAN, "side-c", tr_join(num[..], "", count));
+  tr_close(t);
+  return i;
+}
+// Search: a one-line field with a magnifier that narrows a list as it is typed. Answers the field's node.
+k_search :: (t: [] Tree, id: string, placeholder: string, label: string) -> int {
+  ida: [UI_ID] u8; idb: [UI_ID] u8;
+  w := tr_open(t, tr_cat(ida[..], id, ".w"), TG_DIV, "side-s");
+  g := k_icon(t, tr_cat(idb[..], id, ".ic"), IC_SEARCH);
+  f := tr_open(t, id, TG_INPUT, "");
+  tr_attr(t, f, AT_TYPE, "search"); tr_attr(t, f, AT_COMPLETE, "off");
+  tr_attr(t, f, AT_PLACEHOLDER, placeholder); tr_attr(t, f, AT_LABEL, label);
+  tr_close(t);
+  tr_close(t);
+  return f;
+}
+// Who: the person logged in, at the foot. Their name or address is a link to their settings (`href`), and a
+// Log out button sits beside it when `out` is true (the page does the logging out). With no name, the foot is
+// a Log in link to `href` instead.
+k_who :: (t: [] Tree, u: [] Ui, id: string, name: string, href: string, out: bool) -> int {
+  ida: [UI_ID] u8; idb: [UI_ID] u8;
+  i := tr_open(t, id, TG_DIV, "side-f");
+  if name.count == 0 { a := k_place(t, u, tr_cat(ida[..], id, ".go"), IC_ENTER_LOGIN, "Log in", href, false); }
+  else {
+    a := k_place(t, u, tr_cat(ida[..], id, ".go"), IC_AVATAR_PROFILE, name, href, false);
+    tr_attr(t, a, AT_TITLE, "Settings");
+    if out { b := k_icon_button(t, tr_cat(idb[..], id, ".out"), IC_LOGOUT, "Log out"); }
+  }
+  tr_close(t);
+  return i;
+}
+// The side put away: a button at the top left that brings it back.
+k_side_open :: (t: [] Tree, id: string, label: string) -> int {
+  i := k_icon_button(t, id, IC_MENU_SIDEBAR, label);
+  tr_attr(t, i, AT_STATE, "side");
+  return i;
+}
 // Drop: a place a file is dropped on, or picked from: a press opens the browser's picker, which
 // offers the kinds `accept` names (".glb,.png"). It says what to do and, under it, what it takes.
 // The host tells the page a file's name and size, and the page says what becomes of it
@@ -649,3 +736,42 @@ k_menu :: (t: [] Tree, u: [] Ui, id: string, label: string) -> int {
   names := AT_NAMES; #assert names[AT_DROP] == "data-drop" && names[AT_STEP] == "step" && AT_COUNT == 23;
 }
 DkDropTest :: struct { t: [1] Tree; u: [1] Ui; }
+
+#test "a side is a head, places, a list that scrolls with its sections, then who is logged in" {
+  h: [1] DkDropTest; t := h[0].t[..]; u := h[0].u[..];
+  ui_begin(u, 0, true); tr_begin(t);
+  s := k_side(t, "side", "Places");
+  hd := k_side_head(t, "side.h", "OpenAgents", "/");
+  x := k_icon_button(t, "side.hide", IC_MENU_SIDEBAR, "Hide the side");
+  tr_close(t);
+  p := k_side_places(t, "side");
+  a := k_place(t, u, "place.a", IC_CHATS, "Chats", "/chat", true);
+  b := k_place(t, u, "place.b", IC_FOLDER, "Projects", "/projects", false);
+  l := k_side_list(t, "side");
+  q := k_search(t, "side.q", "Search", "Search the chats");
+  m := k_side_mark(t, "side.run", "Running", 2);
+  r := k_row(t, u, "row.1", "A chat", "", false);
+  k_side_end(t);
+  w := k_who(t, u, "who", "a@example.com", "/settings", true);
+  tr_close(t);
+  ui_end(u);
+  #assert t[0].lost == 0 && t[0].depth == 0;
+  #assert t[0].nodes[s].tag == TG_NAV && tr_class(t, s) == "side" && tr_attr_of(t, s, AT_LABEL) == "Places";
+  #assert tr_class(t, hd) == "side-h" && t[0].nodes[hd].parent == s && t[0].nodes[x].parent == hd;
+  home := tr_find(t, "side.h.home");
+  #assert tr_attr_of(t, home, AT_HREF) == "/" && tr_text_of(t, tr_find(t, "side.h.name")) == "OpenAgents" && tr_attr_of(t, tr_find(t, "side.h.mark.use"), AT_HREF) == MONO_MARK;
+  #assert tr_class(t, p) == "side-p" && t[0].nodes[p].parent == s && t[0].nodes[a].parent == p && t[0].nodes[b].parent == p;
+  #assert tr_class(t, l) == "side-l" && t[0].nodes[l].parent == s && t[0].nodes[r].parent == l && t[0].nodes[m].parent == l;
+  #assert t[0].nodes[q].tag == TG_INPUT && tr_attr_of(t, q, AT_TYPE) == "search" && tr_attr_of(t, q, AT_LABEL) == "Search the chats";
+  #assert tr_text_of(t, tr_find(t, "side.run.t")) == "Running" && tr_text_of(t, tr_find(t, "side.run.n")) == "2";
+  #assert tr_class(t, w) == "side-f" && t[0].nodes[w].parent == s;
+  #assert tr_attr_of(t, a, AT_CURRENT) == "true" && !tr_has(t, b, AT_CURRENT) && tr_attr_of(t, b, AT_HREF) == "/projects";
+  go := tr_find(t, "who.go");
+  #assert t[0].nodes[go].tag == TG_A && tr_attr_of(t, go, AT_HREF) == "/settings" && tr_text_of(t, tr_find(t, "who.go.t")) == "a@example.com";
+  #assert tr_attr_of(t, tr_find(t, "who.out"), AT_LABEL) == "Log out";
+  tr_begin(t);
+  w = k_who(t, u, "who", "", "/login", true);
+  o := k_side_open(t, "side.show", "Show the side");
+  #assert tr_find(t, "who.out") < 0 && tr_text_of(t, tr_find(t, "who.go.t")) == "Log in" && tr_attr_of(t, tr_find(t, "who.go"), AT_HREF) == "/login";
+  #assert tr_attr_of(t, o, AT_LABEL) == "Show the side" && tr_attr_of(t, o, AT_STATE) == "side";
+}

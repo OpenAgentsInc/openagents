@@ -16,6 +16,9 @@ IMPORT("dom_stream") void dom_stream(uint32_t url, uint32_t url_len, uint32_t bo
 IMPORT("dom_stream_stop") void dom_stream_stop(void);
 // A setting kept in this browser (Settings, This machine), given back as event 12 when the page starts.
 IMPORT("dom_keep") void dom_keep(uint32_t at, uint32_t len);
+// An address on this site: pushed, the page stays and the address bar shows it (the app shell drew it);
+// else the browser goes there.
+IMPORT("dom_go") void dom_go(uint32_t at, uint32_t len, uint32_t push);
 
 static coax_v_t_ChatWeb at(uint32_t state) { return (coax_v_t_ChatWeb){(coax_t_ChatWeb *)(uintptr_t)state, 1}; }
 static coax_t_ChatWeb *raw(uint32_t state) { return (coax_t_ChatWeb *)(uintptr_t)state; }
@@ -26,6 +29,8 @@ static void asks(uint32_t state) {
   if (coaxial_chatweb_stop(at(state))) dom_stream_stop();
   int64_t kept = coaxial_chatweb_keep_len(at(state));
   if (kept > 0) { dom_keep((uint32_t)(uintptr_t)s->keep.e, (uint32_t)kept); coaxial_chatweb_keep_done(at(state)); }
+  int64_t go = coaxial_chatweb_go_len(at(state));
+  if (go > 0) { uint32_t push = coaxial_chatweb_go_push(at(state)) ? 1u : 0u; coaxial_chatweb_go_done(at(state)); dom_go((uint32_t)(uintptr_t)s->go.e, (uint32_t)go, push); }
   if (coaxial_chatweb_asking(at(state))) {   // a POST of its body, or a GET when it has none
     int64_t n = coaxial_chatweb_ask(at(state));
     dom_stream((uint32_t)(uintptr_t)s->door.e, (uint32_t)s->door_n, (uint32_t)(uintptr_t)s->request.e, (uint32_t)(n < 0 ? 0 : n));

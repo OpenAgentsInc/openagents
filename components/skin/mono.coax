@@ -19,6 +19,8 @@ MF_BUTTON :: 0; MF_PANEL :: 1; MF_FIELD :: 2; MF_NOTICE :: 3; MF_HEADER :: 4; MF
 MF_STAGE :: 7; MF_CARD :: 8; MF_MARK :: 9; MF_BOX :: 10;
 MF_COUNT :: 11;
 // ARWES's kinds (frames.coax af_frame_settings): 0 underline, 1 lines, 2 corners, 3 octagon, 5 nefrex, 7 header.
+// The product's mark (the power symbol), drawn in the colour of the text round it: the side's head shows it.
+MONO_MARK :: "/mark.svg#i";
 MONO_KINDS :: [11] int.[3, 2, 0, 1, 7, 0, 2, 5, 3, 3, 3];
 mono_kind :: (role: int) -> int { kinds := MONO_KINDS; return ifx role >= 0 && role < MF_COUNT then kinds[role] else 2; }
 mono_frames :: (out: [] AfSettings) -> int {
@@ -202,17 +204,31 @@ mono_css :: (out: [] u8) -> int {
   n = mc(out, n, "@media (prefers-reduced-motion:reduce){.msg-ai,.acts{animation:none}}");
   // the chat page is as tall as the window and never scrolls or bounces: only what is inside it scrolls
   n = mc(out, n, "html:has(.chat),body:has(.chat){height:100%;overflow:hidden;overscroll-behavior:none}body:has(.chat){position:fixed;inset:0}");
-  // the sessions beside the chat: every Coder session on this machine, newest first
-  n = mc(out, n, ".side{position:fixed;left:0;top:0;bottom:0;width:264px;padding:12px 8px;display:flex;flex-direction:column;gap:2px;overflow-y:auto;overscroll-behavior:contain;border-right:1px solid var(--line-dim);scrollbar-width:thin;scrollbar-color:var(--line-dim) transparent}");
-  n = mc(out, n, ".side .row{padding:7px 10px}.side .row-t{font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.side .row .meta{text-transform:none;letter-spacing:0;font:11px/1.4 var(--mono)}.side>.meta{padding:10px 10px 4px}");
-  // a place: an icon beside its name, a link; the app's frame is a side of places and nothing else
-  n = mc(out, n, ".row-i{flex-direction:row;align-items:center;gap:10px;text-decoration:none;box-sizing:border-box}.row.row-i>.ic{position:static;width:16px;height:16px;margin:0;color:inherit;animation:none}.row-i:hover,.row-i:focus-visible{color:#fff;outline:none}.app{min-height:100dvh}");
+  // the side (frames.coax k_side, docs/app-shell.md): the app's frame down the left of every page for someone
+  // logged in. A head with the mark, the places, the page's own list (it alone scrolls) and who is logged in.
+  // It keeps still while the page beside it changes, inside the app shell and across a whole new page.
+  n = mc(out, n, "@view-transition{navigation:auto}");
+  n = mc(out, n, ".side{position:fixed;left:0;top:0;bottom:0;z-index:4;width:300px;box-sizing:border-box;padding:10px 8px;display:flex;flex-direction:column;gap:6px;background:var(--ground);border-right:1px solid var(--line-dim);view-transition-name:side}");
+  n = mc(out, n, ".side-h{display:flex;align-items:center;gap:2px;min-height:36px;padding:0 2px 0 10px}.side-b{flex:1;min-width:0;display:flex;align-items:center;gap:9px;color:var(--ink);text-decoration:none;font:600 14px/1 var(--sans);letter-spacing:.01em}");
+  n = mc(out, n, ".side-b>.ic{width:18px;height:18px;flex:none}.side-b:hover,.side-b:focus-visible{color:#fff;outline:none}.side-n{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}");
+  n = mc(out, n, ".side-p{display:flex;flex-direction:column;gap:2px;padding-bottom:8px;border-bottom:1px solid var(--line-dim)}");
+  n = mc(out, n, ".side-l{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;display:flex;flex-direction:column;gap:2px;scrollbar-width:thin;scrollbar-color:var(--line-dim) transparent}");
+  n = mc(out, n, ".side-m{display:flex;justify-content:space-between;gap:8px;margin:0;padding:12px 10px 4px;font:500 11px/1.4 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--ink-faint)}.side-c{letter-spacing:0}");
+  n = mc(out, n, ".side-s{display:flex;align-items:center;gap:8px;margin:2px 0;padding:6px 10px;border-bottom:1px solid var(--line-dim);color:var(--ink-muted)}.side-s:focus-within{border-color:var(--line);color:var(--ink)}.side-s>.ic{width:14px;height:14px;flex:none}");
+  n = mc(out, n, ".side-s input{flex:1;min-width:0;appearance:none;background:none;border:0;outline:none;padding:0;color:var(--ink);font:13px/1.4 var(--sans)}.side-s input::placeholder{color:var(--ink-faint)}");
+  n = mc(out, n, ".side-f{display:flex;align-items:center;gap:2px;padding-top:8px;border-top:1px solid var(--line-dim)}.side-f>.row{flex:1;min-width:0;width:auto}");
+  n = mc(out, n, ".side .row{padding:7px 10px}.side .row-t{font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.side .row .meta{text-transform:none;letter-spacing:0;font:11px/1.4 var(--mono)}");
+  n = mc(out, n, ".ib[data-state=side]{position:fixed;left:10px;top:10px;z-index:4;view-transition-name:side}");
+  // a place: an icon beside its name, a link
+  n = mc(out, n, ".row-i{flex-direction:row;align-items:center;gap:10px;text-decoration:none;box-sizing:border-box}.row.row-i>.ic{position:static;width:16px;height:16px;margin:0;color:inherit;animation:none}.row-i:hover,.row-i:focus-visible{color:#fff;outline:none}");
+  // the home page for someone logged in: the side and an empty room beside it
+  n = mc(out, n, ".home{min-height:100dvh}");
   n = mc(out, n, ".row[data-state=busy]{position:relative;padding-right:32px}.row[data-state=busy] .meta{color:var(--ink)}");
   n = mc(out, n, ".row>.ic{position:absolute;right:10px;top:50%;width:14px;height:14px;margin-top:-7px;color:var(--ink);animation:turn 2.4s linear infinite}");
   n = mc(out, n, "@keyframes turn{to{transform:rotate(360deg)}}@media (prefers-reduced-motion:reduce){.row>.ic{animation:none}}");
-  n = mc(out, n, ".chat:has(.side){margin-left:max(280px,calc(50% - 396px))}");
+  n = mc(out, n, ".chat:has(.side){margin-left:max(300px,calc(50% - 246px));margin-right:auto}");
   n = mc(out, n, ".tools{display:flex;flex-direction:column;gap:2px;margin:10px 0}.tools .work{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}");
-  n = mc(out, n, "@media (max-width:760px){.side{display:none}.chat:has(.side){margin-left:auto}}");
+  n = mc(out, n, "@media (max-width:760px){.side,.ib[data-state=side]{display:none}.chat:has(.side){margin-left:auto}}");
   n = mc(out, n, "@media (max-width:600px){.page{padding:20px 16px 64px;gap:36px}.list,.menu{width:100%}.msg-user{max-width:88%}}");
   n = mc(out, n, "@media (prefers-reduced-motion:reduce){*{transition:none!important}}");
   // under a finger every control is at least 44 px either way; with a mouse nothing changes (#13448)
@@ -351,7 +367,7 @@ mono_dock_css :: (out: [] u8, at: int) -> int {
   // (the chat's conversation) is as tall as the pane, with its own list of sessions left out; a page that hides its
   // own main (a canvas page's words for readers) does not hide this one
   n = mc(out, n, ".dock:has(.pane-bm){grid-template-rows:auto minmax(0,1fr) auto}.pane-bm{grid-column:1/-1;grid-row:3}.dock-over>.pane-bm{height:min(26vh,240px)}.pane[aria-hidden=true]{display:none}");
-  n = mc(out, n, ".slot{flex:1;min-height:0;display:flex;flex-direction:column}.slot .chat{position:static;clip-path:none;white-space:normal;height:100%;max-width:none;width:100%;margin:0;padding:0}.slot .side{display:none}.slot .chat:has(.side){margin-left:0}");
+  n = mc(out, n, ".slot{flex:1;min-height:0;display:flex;flex-direction:column}.slot .chat{position:static;clip-path:none;white-space:normal;height:100%;max-width:none;width:100%;margin:0;padding:0}.slot .side,.slot .ib[data-state=side]{display:none}.slot .chat:has(.side){margin-left:0}");
   // a row with a control beside it
   n = mc(out, n, ".row-x{display:flex;align-items:center;gap:2px}.row-x>.row{flex:1;min-width:0;width:auto}");
   // a prop: its name, then its field

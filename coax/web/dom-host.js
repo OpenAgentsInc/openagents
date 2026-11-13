@@ -20,6 +20,11 @@
 // A module that imports dom_keep(at, len) keeps one short text in this browser (localStorage
 // coaxial.dom.<app>.kept, at most 4 KB: a setting, never a secret), and is given it back as event 12
 // as it starts. Storage can be refused, so it is only a convenience.
+// A module that imports dom_go(at, len, push) is an app shell (docs/app-shell.md): it is told the address as it
+// starts and after Back or Forward (event 13, the path), and it may change it. A push keeps the page and puts
+// the address in the bar (the module drew what is there); otherwise the browser goes to it. A press on a link
+// in the module is reported as a press (event 1): when the module pushes in answer, the browser doesn't follow
+// the link, so the shell stays; when it doesn't, the link is followed as usual.
 const named = new URL(import.meta.url).searchParams;
 const script = named.has("app") ? null : document.querySelector("script[data-app]");
 const app = named.get("app") || script.dataset.app;
@@ -27,7 +32,7 @@ const root = document.getElementById(named.get("root") || script?.dataset.root |
 const NONE = 0xffff, SVG = "http://www.w3.org/2000/svg", LAYERS = ["fr-bg", "fr-line", "fr-deco"];
 const text = new TextDecoder(), bytes = new TextEncoder();
 const reduced = matchMedia("(prefers-reduced-motion: reduce)");
-let memory, x, state = 0, els = [], frames = new Map(), asked = false, last = 0;
+let memory, x, state = 0, els = [], frames = new Map(), asked = false, last = 0, pushed = false;
 const clipping = globalThis.coaxialClip === true || new URLSearchParams(location.search).has("clip");
 let clipNow = 0, clipReady = false;
 const clipBorn = new WeakMap();
@@ -301,7 +306,14 @@ async function start() {
   memory = new WebAssembly.Memory({ initial: 256, maximum: 1024 });
   const keptKey = `coaxial.dom.${app}.kept`;
   const keep = (at, len) => { if (len > 4096) return; try { localStorage.setItem(keptKey, text.decode(new Uint8Array(memory.buffer, at, len))); } catch { /* refused: kept for this visit only */ } };
-  const imports = { env: { memory, dom_stream: streamOpen, dom_stream_stop: streamStop, dom_file_send: fileSend, dom_file_step: fileStep, dom_keep: keep } };
+  const go = (at, len, push) => {
+    const url = text.decode(new Uint8Array(memory.buffer, at, len));
+    if (!url.startsWith("/") || url.startsWith("//")) return;
+    if (!push) { location.assign(url); return; }
+    pushed = true;
+    if (url !== location.pathname + location.search) history.pushState(null, "", url);
+  };
+  const imports = { env: { memory, dom_stream: streamOpen, dom_stream_stop: streamStop, dom_file_send: fileSend, dom_file_step: fileStep, dom_keep: keep, dom_go: go } };
   for (const imp of WebAssembly.Module.imports(module)) {
     if (imp.kind !== "function") continue;
     (imports[imp.module] ||= {})[imp.name] ||= imp.name === "fd_write"
@@ -324,11 +336,16 @@ async function start() {
     let kept = ""; try { kept = localStorage.getItem(keptKey) || ""; } catch { /* refused */ }
     send(12, 0, kept);
   }
+  const shell = WebAssembly.Module.imports(module).some((i) => i.name === "dom_go");
+  if (shell) { send(13, 0, location.pathname); addEventListener("popstate", () => send(13, 0, location.pathname)); }
   root.addEventListener("click", (e) => {
     const drop = e.target.closest?.('button[data-drop]:not([data-drop=""])');
     if (drop && root.contains(drop)) { pick(drop); return; }   // a drop target that names what it takes: a press opens the picker
     const slot = slotOf(e.target, "button[data-slot]");
-    if (slot >= 0) send(1, slot);
+    if (slot >= 0) { send(1, slot); return; }
+    // a link in an app shell: a plain press is the module's to keep in the shell (it pushes) or let go
+    const link = shell && !e.defaultPrevented && e.button === 0 && !(e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) ? slotOf(e.target, "a[data-slot]") : -1;
+    if (link >= 0) { pushed = false; send(1, link); if (pushed) e.preventDefault(); }
   });
   addEventListener("dragover", (e) => { const el = dropOn(e); if (el === undefined) return; e.preventDefault(); overNow(el); });
   addEventListener("dragleave", (e) => { if (!e.relatedTarget) overNow(null); });
