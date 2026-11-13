@@ -5,7 +5,7 @@
 // grid over each patch at several times, and the blooms the page draws.
 #import "Basic";
 #load "../../../metaverse-engine/cam/camera.coax";
-#load "../../../metaverse-engine/world/terrain.coax";
+#load "../../../metaverse-engine/move/path-follower.coax";
 #load "../../../metaverse/fairy-forest/forest.coax";
 
 fx_print :: (f: [] Forest, now: f64) {

@@ -1,6 +1,6 @@
 // The engine's points and the small arithmetic over them, shared by the
 // modules that move things through a world: camera.coax (the overview, the
-// dolly and the free orbit), terrain.coax (the ground and its paths),
+// dolly and the free orbit), path-graph.coax (a realm's paths and the ground levelled along them),
 // throw.coax (thrown things and carrying) and arrange.coax (the close-up
 // arranging view). Each loads this file; one compilation keeps one copy.
 //

@@ -69,7 +69,7 @@
 
 #load "../metaverse-engine/core/points.coax";
 #load "../metaverse-engine/physics/sim/rigid.coax";
-#load "../metaverse-engine/world/terrain.coax";
+#load "../metaverse-engine/physics/ground-point.coax";
 #load "../metaverse-engine/physics/stand.coax";
 #load "../metaverse-engine/core/loop.coax";   // the steps are the Metaverse Engine's one clock's
 
@@ -1369,7 +1369,7 @@ demo_fine :: (w: [] DemoWorld, g: Ground, heights: [] f32, dt: f32) {
     if !b.resting {
       b.vel = add(b.vel, times(pd3(fa), dt));
       b.at = add(b.at, times(b.vel, dt));
-      ground := metaverse_terrain_height(g, heights, b.at.x, b.at.z) + b.size * 0.3;
+      ground := ground_height(g, heights, b.at.x, b.at.z) + b.size * 0.3;
       if b.at.y < ground {
         b.at.y = ground;
         if b.vel.y < -1.2 { b.vel = v3(b.vel.x * 0.5, -b.vel.y * 0.3, b.vel.z * 0.5); b.spin = times(b.spin, 0.6); }
@@ -1872,7 +1872,7 @@ demo_step_wet :: (w: [] DemoWorld, g: Ground, heights: [] f32, water: [] f32, dt
       one[0] = demo_body(w, b);
       half := demo_half(w[0].meta[b]);
       at := one[0].pos;
-      ground_y := f64(metaverse_terrain_height(g, heights, f32(at.x), f32(at.z)));
+      ground_y := f64(ground_height(g, heights, f32(at.x), f32(at.z)));
       // in the water: it floats or sinks by its matter and the current carries it
       wet := false;
       pi := w[0].meta[b].piece;

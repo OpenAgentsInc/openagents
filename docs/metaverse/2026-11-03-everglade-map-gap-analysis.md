@@ -316,7 +316,7 @@ estuary 250 m down the stream (`previous/coast.md:147`).
 drawn with contour rings. The previous build levelled a 272 m clearing
 (`previous/everglade.md:331`).
 
-**Now.** A heightfield (`metaverse-engine/world/terrain.coax`) with gentle hills inside
+**Now.** A heightfield (`metaverse-engine/world/path-graph.coax`) with gentle hills inside
 the walls, flat under every building and square, rising into the forest
 from 80 m (`EG_RIM_FROM`, `EG_RIM`, `plan.coax:28-29`). The river's south
 end cuts a ravine (`plan.coax:312-313`). No named hill rises; Temple Hill
@@ -402,7 +402,7 @@ plan and the realm; **L** a week or more, new buildings or systems;
   `everglade/legacy/v1/river.coax`).
 - Twenty-two named people and cats who talk and remember you
   (`EG_SPOT`, `plan.coax:162-189`; `everglade/legacy/v1/people.coax`).
-- Hills inside and round the town (`metaverse-engine/world/terrain.coax`).
+- Hills inside and round the town (`metaverse-engine/world/path-graph.coax`).
 - The 5e spell bar, destruction and the watch
   (`docs/metaverse/everglade.md:574-799`), and admin edit mode
   (`docs/metaverse/everglade.md:800-916`).
@@ -463,7 +463,7 @@ ends with `coax/bin/coax test --library everglade/legacy/v1/plan.coax` and
 6. **Raise Observatory Hill (M).** A raised flat with a slope, the
    observatory on top, in the south-east past the Knowledge District, with
    the Long Meadow below it. Touches the flats (`EG_SQUARE`,
-   `everglade_flats`, `plan.coax:206-226`) and `metaverse-engine/world/terrain.coax` if
+   `everglade_flats`, `plan.coax:206-226`) and `metaverse-engine/world/path-graph.coax` if
    FLAT needs a raised level with a ramp.
 7. **Fill the districts with houses (XL).** Terraces along cross streets
    in Stoop Lane, Brownstone Row and the other arcs. Sixteen boxes become

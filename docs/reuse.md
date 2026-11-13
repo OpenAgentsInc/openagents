@@ -56,7 +56,7 @@ undo was hand-rolled and had no redo, while the OpenAgents Metaverse Engine's ed
 | An angle: atan2, a yaw from a direction, wrapping to [-PI, PI) | The engine's angle module, which any module can load (a file without a module of its own can't be loaded under two) | `metaverse-engine/core/angle.coax` (`angle_atan2`, `angle_yaw_of`, `angle_wrap`) |
 | A follow, orbit or free camera | The Metaverse Engine's cameras | `metaverse-engine/cam/follow.coax`, `metaverse-engine/physics/orbit.coax`, `metaverse-engine/cam/camera.coax`, `metaverse-engine/cam/` |
 | Characters, rigs, faces, poses, materials | The Metaverse Engine's character | `metaverse-engine/character/`, `metaverse-engine/character/character-appearance.coax` |
-| Ground, terrain, heights, ground rays | The Metaverse Engine's terrain | `metaverse-engine/world/terrain.coax`, `metaverse-engine/world/terrain-tile.coax`, `metaverse-engine/physics/ground-query.coax` |
+| Ground, terrain, heights, ground rays | The Metaverse Engine's terrain | `metaverse-engine/world/terrain-tile.coax`, `metaverse-engine/physics/ground.coax` (the one sampler), `metaverse-engine/physics/ground-query.coax` (rays), `metaverse-engine/physics/ground-point.coax` (plain height, normal and ray readers) |
 | Collision, contact, queries | Metaverse Engine | `metaverse-engine/physics/collide.coax`, `metaverse-engine/physics/sim/contact.coax`, `metaverse-engine/physics/query.coax` |
 | Scattering things, grass, props | Metaverse Engine | `metaverse-engine/world/scatter.coax`, `metaverse-engine/render/` |
 | Rendering, lighting, shadows, quality tiers | The Metaverse Engine's renderer and governor | `metaverse-engine/render/`, `metaverse-engine/core/quality.coax`, `metaverse-engine/core/frame-pacing.coax` |

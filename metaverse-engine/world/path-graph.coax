@@ -1,0 +1,421 @@
+// A realm's garden paths: the graph, the ground levelled along it, and the way through it.
+//
+// Paths are a graph: nodes (x, z each) and links (two node numbers each); every link is a strip
+// half metres either side of its line. path_ground_build fills a Ground's heights
+// (metaverse-engine/physics/ground.coax) from rolling hills that rise toward the edge, levelled
+// where the paths run and on flats (plazas, ponds). metaverse_route_next picks the next point to
+// walk toward from where you stand: by the paths when that is the shorter way, counting a metre
+// over grass as OFF_PATH metres on a path, and straight over the grass for the last stretch.
+// Followers that walk these routes are metaverse-engine/move/path-follower.coax.
+//   coax/bin/coax test --library metaverse-engine/world/path-graph.coax
+
+#load "../core/points.coax";
+#load "../physics/ground.coax";
+#load "../physics/ground-point.coax";
+
+// rim_from and rim shape the bowl's edge: a city wider than a garden
+// moves it out and eases it (everglade/legacy/v1/plan.coax).
+// rows, when set, makes the ground a rectangle: n cells west to east and
+// rows south to north ((n + 1) * (rows + 1) heights, still by rows from the
+// south); 0 keeps it square.
+
+HILL :: 1.6;           // metres: the rolling hills' height
+RIM_FROM :: 32.0;      // metres from the middle where the ground starts rising
+RIM :: 0.022;          // and how steeply (metres per metre squared)
+PATH_LEVEL :: 0.4;     // a path runs at this share of the hills under it
+PATH_BLEND :: 3.0;     // metres beyond a path's edge the ground eases back to the hills
+FLAT :: 4;             // numbers per flat: x, z, radius, level
+NODE :: 2;             // numbers per node: x, z
+LINK :: 2;             // numbers per link: two nodes
+MAX_NODES :: 64;
+OFF_PATH :: 2.2;       // a metre over grass costs this much
+ARRIVE :: 0.8;         // metres: at a node, it heads for the next one
+DIRECT :: 5.0;         // metres: this near the target, it walks straight there
+
+// The hills the ground would have with no paths or flats: rolling, and
+// rising toward the edge so a realm sits in a shallow bowl.
+path_ground_hills :: (x: f32, z: f32) -> f32 #export_c #effects(all) { return hills_rim(x, z, f32(RIM_FROM), f32(RIM)); }
+
+// The same hills with the bowl's edge from rim_from metres out, rising rim
+// metres per metre squared.
+hills_rim :: (x: f32, z: f32, rim_from: f32, rim: f32) -> f32 {
+  h := f32(HILL) * (0.55 * sin(x * 0.11 + 0.3) * cos(z * 0.093 - 0.4)
+                  + 0.3 * sin(x * 0.23 - z * 0.17 + 1.1)
+                  + 0.15 * sin(z * 0.31 + x * 0.07));
+  r := sqrt(x * x + z * z);
+  if r > rim_from { h += (r - rim_from) * (r - rim_from) * rim; }
+  return h;
+}
+
+// The nearest point on a link's line, and how far it is (flat).
+Near :: struct { x: f32; z: f32; d: f32; link: int; }
+
+nearest_on :: (ax: f32, az: f32, bx: f32, bz: f32, x: f32, z: f32) -> Near {
+  dx := bx - ax; dz := bz - az;
+  size := dx * dx + dz * dz;
+  t := ifx size > 0.000001 then clamp01(((x - ax) * dx + (z - az) * dz) / size) else 0.0f32;
+  n: Near;
+  n.x = ax + dx * t; n.z = az + dz * t;
+  n.d = sqrt((x - n.x) * (x - n.x) + (z - n.z) * (z - n.z));
+  n.link = -1;
+  return n;
+}
+
+link_ok :: (nodes: [] f32, links: [] int, i: int) -> bool {
+  a := links[i * LINK]; b := links[i * LINK + 1];
+  m := nodes.count / NODE;
+  return a >= 0 && b >= 0 && a < m && b < m && a != b;
+}
+
+// The nearest point on any path.
+metaverse_path_nearest :: (nodes: [] f32, links: [] int, x: f32, z: f32) -> Near #export_c #effects(all) {
+  best: Near;
+  best.d = 1000000; best.link = -1; best.x = x; best.z = z;
+  most := 1000000000000.0f32;
+  m := nodes.count / NODE;
+  for i: 0..<links.count / LINK {
+    a := links[i * LINK]; b := links[i * LINK + 1];
+    if a < 0 || b < 0 || a >= m || b >= m || a == b { continue; }
+    ax := nodes[a * NODE]; az := nodes[a * NODE + 1];
+    dx := nodes[b * NODE] - ax; dz := nodes[b * NODE + 1] - az;
+    size := dx * dx + dz * dz;
+    t := ifx size > 0.000001 then clamp01(((x - ax) * dx + (z - az) * dz) / size) else 0.0f32;
+    px := ax + dx * t; pz := az + dz * t;
+    gap2 := (x - px) * (x - px) + (z - pz) * (z - pz);
+    if gap2 < most { most = gap2; best.x = px; best.z = pz; best.link = i; }
+  }
+  if best.link >= 0 { best.d = sqrt(most); }
+  return best;
+}
+
+smooth :: (e0: f32, e1: f32, x: f32) -> f32 { t := clamp01((x - e0) / (e1 - e0)); return t * t * (3 - 2 * t); }
+
+// The ground's height at x, z before it is sampled into the heightfield.
+// Only links within reach (half + 0.2 + PATH_BLEND) of the point can level
+// it, so only the links in close (their numbers) are measured: the nearest
+// of them is the nearest of all whenever it matters.
+shaped :: (g: Ground, nodes: [] f32, links: [] int, close: [] int, half: f32, flats: [] f32, x: f32, z: f32) -> f32 {
+  h := hills_rim(x, z, g.rim_from, g.rim);
+  reach := half + 0.2 + f32(PATH_BLEND);
+  most := 1000000000000.0f32; bx := x; bz := z; found := false;
+  for n: 0..<close.count {
+    i := close[n];
+    ax := nodes[links[i * LINK] * NODE]; az := nodes[links[i * LINK] * NODE + 1];
+    ex := nodes[links[i * LINK + 1] * NODE]; ez := nodes[links[i * LINK + 1] * NODE + 1];
+    if x < lo(ax, ex) - reach || x > hi(ax, ex) + reach { continue; }
+    dx := ex - ax; dz := ez - az;
+    size := dx * dx + dz * dz;
+    t := ifx size > 0.000001 then clamp01(((x - ax) * dx + (z - az) * dz) / size) else 0.0f32;
+    px := ax + dx * t; pz := az + dz * t;
+    gap2 := (x - px) * (x - px) + (z - pz) * (z - pz);
+    if gap2 < most { most = gap2; bx = px; bz = pz; found = true; }
+  }
+  if found {
+    k := smooth(half + 0.2, half + 0.2 + f32(PATH_BLEND), sqrt(most));
+    if k < 1 { h = lerp(hills_rim(bx, bz, g.rim_from, g.rim) * f32(PATH_LEVEL), h, k); }
+  }
+  for i: 0..<flats.count / FLAT {
+    fx := flats[i * FLAT]; fz := flats[i * FLAT + 1]; r := flats[i * FLAT + 2]; level := flats[i * FLAT + 3];
+    // past the flat's blend on either axis its smooth step is exactly 1: the same sum, without the root
+    far := r + f32(PATH_BLEND);
+    if x - fx > far || fx - x > far || z - fz > far || fz - z > far { h = level + (h - level); continue; }
+    d := sqrt((x - fx) * (x - fx) + (z - fz) * (z - fz));
+    h = lerp(level, h, smooth(r, r + f32(PATH_BLEND), d));
+  }
+  return h;
+}
+
+// Fills heights for g; false when there isn't room for them (or there are
+// more than PATH_GROUND_LINKS links). Each row measures only the links whose
+// span comes within reach of it.
+PATH_GROUND_LINKS :: 256;
+path_ground_build :: (g: Ground, heights: [] f32, nodes: [] f32, links: [] int, half: f32, flats: [] f32) -> bool #export_c #effects(all) {
+  needed := ground_points(g);
+  if needed == 0 || heights.count < needed || links.count / LINK > PATH_GROUND_LINKS { return false; }
+  reach := half + 0.2 + f32(PATH_BLEND);
+  close: [PATH_GROUND_LINKS] int;
+  for j: 0..<ground_rows(g) + 1 {
+    z := g.south + f32(j) * g.cell;
+    cn := 0;
+    for i: 0..<links.count / LINK {
+      if !link_ok(nodes, links, i) { continue; }
+      az := nodes[links[i * LINK] * NODE + 1]; ez := nodes[links[i * LINK + 1] * NODE + 1];
+      if z < lo(az, ez) - reach || z > hi(az, ez) + reach { continue; }
+      close[cn] = i; cn += 1;
+    }
+    for i: 0..<g.n + 1 {
+      heights[j * (g.n + 1) + i] = shaped(g, nodes, links, close[0..<cn], half, flats, g.west + f32(i) * g.cell, z);
+    }
+  }
+  return true;
+}
+
+// ---- Following the paths
+
+node_at :: (nodes: [] f32, k: int) -> Point { return v3(nodes[k * NODE], 0, nodes[k * NODE + 1]); }
+flat_gap :: (a: Point, b: Point) -> f32 { return sqrt((a.x - b.x) * (a.x - b.x) + (a.z - b.z) * (a.z - b.z)); }
+
+// What it costs to reach `to` from each node: over the paths to some
+// node, then straight over the grass. Filled into cost (one per node).
+costs :: (nodes: [] f32, links: [] int, to: Point, cost: [] f32) -> int {
+  m := lo(f32(nodes.count / NODE), f32(lo(f32(MAX_NODES), f32(cost.count))));
+  count := cast(int) m;
+  done: [MAX_NODES] bool;
+  for k: 0..<count { cost[k] = flat_gap(node_at(nodes, k), to) * f32(OFF_PATH); done[k] = false; }
+  // Dijkstra over at most MAX_NODES nodes: settle the cheapest, relax its links.
+  for round: 0..<count {
+    best := -1;
+    for k: 0..<count { if !done[k] && (best < 0 || cost[k] < cost[best]) { best = k; } }
+    if best < 0 { break; }
+    done[best] = true;
+    for i: 0..<links.count / LINK {
+      if !link_ok(nodes, links, i) { continue; }
+      a := links[i * LINK]; b := links[i * LINK + 1];
+      if a >= count || b >= count { continue; }
+      other := ifx a == best then b else ifx b == best then a else -1;
+      if other < 0 || done[other] { continue; }
+      through := cost[best] + flat_gap(node_at(nodes, a), node_at(nodes, b));
+      if through < cost[other] { cost[other] = through; }
+    }
+  }
+  return count;
+}
+
+// Whether a link touching node k is under you: then going to k is along a path.
+on_link_to :: (nodes: [] f32, links: [] int, half: f32, from: Point, k: int) -> bool {
+  for i: 0..<links.count / LINK {
+    if !link_ok(nodes, links, i) { continue; }
+    a := links[i * LINK]; b := links[i * LINK + 1];
+    if a != k && b != k { continue; }
+    n := nearest_on(nodes[a * NODE], nodes[a * NODE + 1], nodes[b * NODE], nodes[b * NODE + 1], from.x, from.z);
+    if n.d <= half { return true; }
+  }
+  return false;
+}
+
+// The point to walk toward now, from `from`, to reach `to`.
+metaverse_route_next :: (nodes: [] f32, links: [] int, half: f32, from: Point, to: Point) -> Point #export_c #effects(all) {
+  if flat_gap(from, to) <= f32(DIRECT) { return to; }
+  cost: [MAX_NODES] f32;
+  count := costs(nodes, links, to, cost[..]);
+  best := flat_gap(from, to) * f32(OFF_PATH);
+  pick := -1;
+  for k: 0..<count {
+    n := node_at(nodes, k);
+    gap := flat_gap(from, n);
+    if gap <= f32(ARRIVE) { continue; }
+    way := ifx on_link_to(nodes, links, half, from, k) then gap else gap * f32(OFF_PATH);
+    if way + cost[k] < best - 0.001 { best = way + cost[k]; pick = k; }
+  }
+  if pick < 0 { return to; }
+  return node_at(nodes, pick);
+}
+
+// The whole way from `from` to `to`, as a guide line draws it: from, the
+// path nodes metaverse_route_next walks through, then `to`; x, z pairs into out.
+// Returns how many points (at least 2 when out has room for them).
+metaverse_route_points :: (nodes: [] f32, links: [] int, half: f32, from: Point, to: Point, out: [] f32) -> int #export_c #effects(all) {
+  most := out.count / 2;
+  if most < 2 { return 0; }
+  out[0] = from.x; out[1] = from.z;
+  n := 1;
+  at := from;
+  while n < most - 1 {
+    next := metaverse_route_next(nodes, links, half, at, to);
+    if flat_gap(next, to) < 0.001 { break; }
+    out[n * 2] = next.x; out[n * 2 + 1] = next.z; n += 1;
+    at = next;
+  }
+  out[n * 2] = to.x; out[n * 2 + 1] = to.z;
+  return n + 1;
+}
+
+// ---- Checks
+
+#forall "the path ground build refuses a rejected descriptor before publishing heights" which: 0..<5 {
+  g := Ground.{n = 1, rows = 1, cell = 1, west = 0, south = 0};
+  h := [4] f32.[11, 12, 13, 14];
+  if which == 0 { g.rows = -1; }
+  if which == 1 { g.cell = 0; }
+  if which == 2 { g.cell = 0.0f32 / 0.0f32; }
+  if which == 3 { g.west = 1000000; }
+  if which == 4 { g.n = GROUND_MAX_AXIS + 1; }
+  floats: [1] f32; integers: [1] int;
+  #assert !path_ground_build(g, h[..], floats[0..<0], integers[0..<0], 0, floats[0..<0]);
+  for i: 0..<4 { #assert h[i] == f32(11 + i); }
+}
+
+// A small garden: a square of paths with a tail to the south.
+TEST_NODES :: [10] f32.[-10, -10, 10, -10, 10, 10, -10, 10, 0, -25];
+TEST_LINKS :: [10] int.[0, 1, 1, 2, 2, 3, 3, 0, 0, 4];
+TEST_FLATS :: [4] f32.[0, 0, 6, 0.2];
+
+// A coarser ground than a realm's, so the checks stay quick.
+TG :: 16;
+TP :: (TG + 1) * (TG + 1);
+tg :: () -> Ground { g: Ground; g.n = TG; g.cell = 4; g.west = -32; g.south = -32; return g; }
+built :: (heights: [] f32) -> bool {
+  g := tg();
+  n := TEST_NODES; l := TEST_LINKS; f := TEST_FLATS;
+  return path_ground_build(g, heights, n[..], l[..], 0.9, f[..]);
+}
+
+#test "the ground is built only where it fits" {
+  g := tg();
+  small: [10] f32;
+  n := TEST_NODES; l := TEST_LINKS; f := TEST_FLATS;
+  #assert !path_ground_build(g, small[..], n[..], l[..], 0.9, f[..]);
+  big: [TP] f32;
+  #assert built(big[..]);
+}
+
+#test "paths are level across and gentle along" {
+  g := tg();
+  h: [TP] f32;
+  #assert built(h[..]);
+  for k: 0..<41 {
+    x := -10 + f32(k) * 0.5;
+    mid := ground_height(g, h[..], x, -10);
+    // Across the strip it barely changes.
+    #assert abs(ground_height(g, h[..], x, -10.6) - mid) < 0.12;
+    #assert abs(ground_height(g, h[..], x, -9.4) - mid) < 0.12;
+    if k > 0 { #assert abs(mid - ground_height(g, h[..], x - 0.5, -10)) < 0.12; }
+  }
+  // The flat in the middle is at its level.
+  #assert near(ground_height(g, h[..], 0.5, 0.5), 0.2, 0.06);
+}
+
+#test "the ground rises toward the edge, and off the edge holds" {
+  #assert path_ground_hills(46, 0) > path_ground_hills(20, 0) + 1.5;
+  #assert path_ground_hills(31, 0) > path_ground_hills(20, 0) - 3;
+  g := tg();
+  h: [TP] f32;
+  #assert built(h[..]);
+  #assert near(ground_height(g, h[..], 500, 0), ground_height(g, h[..], 31.999, 0), 0.05);
+  #assert finite(ground_height(g, h[..], f32(0.0 / 0.0), 3));
+  flat: Ground; flat.n = 0;
+  #assert ground_height(flat, h[..], 1, 1) == 0;
+}
+
+#test "a wider ground moves the bowl's edge out" {
+  wide: Ground; wide.rim_from = 80; wide.rim = 0.004;
+  #assert near(hills_rim(46, 0, wide.rim_from, wide.rim), hills_rim(46, 0, 1000, 0), 0.0001);
+  #assert hills_rim(95, 0, wide.rim_from, wide.rim) > hills_rim(95, 0, 1000, 0) + 0.8;
+  #assert near(hills_rim(46, 0, 32, 0.022), path_ground_hills(46, 0), 0.0001);
+}
+
+#test "the whole route: from where you stand, by the path's nodes, to the end" {
+  n := TEST_NODES; l := TEST_LINKS;
+  pts: [64] f32;
+  c := metaverse_route_points(n[..], l[..], 0.9, v3(0, 0, -24), v3(10, 0, 10), pts[..]);
+  #assert c >= 3 && pts[0] == 0 && pts[1] == -24 && pts[(c - 1) * 2] == 10 && pts[(c - 1) * 2 + 1] == 10;
+  #assert pts[2] == -10 && pts[3] == -10;   // up the south path to node 0 first
+  // every middle point is a node
+  for i: 1..<c - 1 {
+    hit := false;
+    for k: 0..<n.count / 2 { if n[k * 2] == pts[i * 2] && n[k * 2 + 1] == pts[i * 2 + 1] { hit = true; } }
+    #assert hit;
+  }
+  // near: straight there, two points
+  #assert metaverse_route_points(n[..], l[..], 0.9, v3(0, 0, -9), v3(2, 0, -9), pts[..]) == 2;
+  small: [2] f32;
+  #assert metaverse_route_points(n[..], l[..], 0.9, v3(0, 0, -9), v3(2, 0, -9), small[..]) == 0;
+}
+
+#test "the route goes by the paths when that is shorter, and straight when near" {
+  n := TEST_NODES; l := TEST_LINKS;
+  // Near: straight there.
+  to := v3(2, 0, -9);
+  #assert same(metaverse_route_next(n[..], l[..], 0.9, v3(0, 0, -9), to), to, 0);
+  // On the south path, going to the far corner: up the path to node 0 first.
+  a := metaverse_route_next(n[..], l[..], 0.9, v3(0, 0, -24), v3(10, 0, 10));
+  #assert same(a, v3(-10, 0, -10), 0);
+  // At node 0 it heads on along the square, not back.
+  b := metaverse_route_next(n[..], l[..], 0.9, v3(-10, 0, -10), v3(10, 0, 10));
+  #assert same(b, v3(10, 0, -10), 0) || same(b, v3(-10, 0, 10), 0);
+  // Part way along a link it keeps on to its far end.
+  c := metaverse_route_next(n[..], l[..], 0.9, v3(-8.9, 0, -10), v3(10, 0, -10.5));
+  #assert same(c, v3(10, 0, -10), 0);
+  // Off in the grass with the target across it: straight over.
+  d := metaverse_route_next(n[..], l[..], 0.9, v3(-5, 0, 0), v3(5, 0, 0));
+  #assert same(d, v3(5, 0, 0), 0);
+}
+
+#test "the height is the drawn surface: exact at every grid point" {
+  g := tg();
+  h: [TP] f32;
+  #assert built(h[..]);
+  for j: 0..<TG + 1 {
+    for i: 0..<TG + 1 {
+      x := g.west + f32(i) * g.cell; z := g.south + f32(j) * g.cell;
+      #assert near(ground_height(g, h[..], x, z), h[j * (TG + 1) + i], 0.001);
+    }
+  }
+}
+
+#test "the surface is continuous and has no cliffs" {
+  g := tg();
+  h: [TP] f32;
+  #assert built(h[..]);
+  for i: 0..<20 {
+    for j: 0..<20 {
+      x := -30 + f32(i) * 3.07; z := -30 + f32(j) * 2.93;
+      a := ground_height(g, h[..], x, z);
+      #assert abs(a - ground_height(g, h[..], x + 0.01, z)) < 0.01;
+      #assert abs(a - ground_height(g, h[..], x, z + 0.01)) < 0.01;
+      n := ground_normal_at(g, h[..], x, z);
+      #assert n.y > 0.6 && near(length(n), 1, 0.0001);
+    }
+  }
+}
+
+#test "the painterly ground normal is exact on a slope and has no facet steps" {
+  g := tg();
+  // a plane rising 0.2 m per metre east: the smooth normal is the plane's
+  slope: [TP] f32;
+  for j: 0..<TG + 1 { for i: 0..<TG + 1 { slope[j * (TG + 1) + i] = 0.2 * (g.west + f32(i) * g.cell); } }
+  n := ground_normal_smooth(g, slope[..], 3.3, -7.1);
+  #assert near(n.x, -0.2 / sqrt(1.04), 0.0001) && near(n.z, 0, 0.0001);
+  // the built ground: across a cell's diagonal the faceted normal jumps, the smooth one barely moves
+  h: [TP] f32;
+  #assert built(h[..]);
+  worst_facet := 0.0f32; worst_smooth := 0.0f32;
+  for i: 0..<40 {
+    x := -20 + f32(i) * 0.977; z := x;   // a point on a cell's diagonal, and its neighbour across
+    a := ground_normal_at(g, h[..], x + 0.002, z - 0.002); b := ground_normal_at(g, h[..], x - 0.002, z + 0.002);
+    c := ground_normal_smooth(g, h[..], x + 0.002, z - 0.002); d := ground_normal_smooth(g, h[..], x - 0.002, z + 0.002);
+    worst_facet = hi(worst_facet, length(sub(a, b))); worst_smooth = hi(worst_smooth, length(sub(c, d)));
+    #assert c.y > 0.6 && near(length(c), 1, 0.0001);
+  }
+  #assert worst_smooth < 0.01 && worst_smooth < worst_facet;
+}
+
+#test "a ray stops at the ground, just above it" {
+  g := tg();
+  h: [TP] f32;
+  #assert built(h[..]);
+  from := v3(0, 6, 0);
+  down := ground_ray_reach(g, h[..], from, v3(0, -1, 0), 20);
+  #assert near(from.y - down, ground_height(g, h[..], 0, 0), 0.01);
+  // Level and high, it never meets it.
+  #assert ground_ray_reach(g, h[..], from, v3(1, 0, 0), 20) == 20;
+  slant := unit_or(v3(1, -0.4, 0.3), v3(0, -1, 0));
+  d := ground_ray_reach(g, h[..], from, slant, 40);
+  p := add(from, times(slant, d));
+  #assert d < 40 && p.y >= ground_height(g, h[..], p.x, p.z) - 0.001 && p.y - ground_height(g, h[..], p.x, p.z) < 0.05;
+  // Starting under it: no room.
+  #assert ground_ray_reach(g, h[..], v3(0, -5, 0), v3(0, 1, 0), 10) == 0;
+}
+
+#test "a rectangular ground: rows south to north, the height exact at its far corner" {
+  g := tg(); g.rows = TG * 3;
+  heights: [(TG + 1) * (TG * 3 + 1)] f32;
+  #assert ground_points(g) == heights.count;
+  nodes := TEST_NODES; links := TEST_LINKS; flats := TEST_FLATS;
+  #assert path_ground_build(g, heights[..], nodes[..], links[..], 1.0, flats[..]);
+  far_z := g.south + f32(g.rows) * g.cell;
+  #assert near(ground_height(g, heights[..], g.west, far_z), heights[g.rows * (TG + 1)], 0.01);
+  #assert near(ground_height(g, heights[..], g.west + 4, g.south + 4 * 40), heights[40 * (TG + 1) + 1], 0.0001);
+}
+
+// An L: ten metres east, then ten north.

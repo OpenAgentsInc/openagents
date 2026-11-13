@@ -8,7 +8,7 @@ The free orbit (`metaverse-engine/cam/camera.coax`, Orbit): a third-person camer
 
 ## The ground and the paths
 
-The ground (`metaverse-engine/world/terrain.coax`) is a heightfield: rolling hills in a shallow bowl, levelled where the garden's paths run and flat on the plaza and under the pond. The paths are a graph of points and links: a ring round the plaza, the way in from the south, branches to the pond, the orchard and the meadow, and two loops joining them. Everything stands on the ground as it is drawn, and the camera keeps above it.
+The ground (`metaverse-engine/world/path-graph.coax`) is a heightfield: rolling hills in a shallow bowl, levelled where the garden's paths run and flat on the plaza and under the pond. The paths are a graph of points and links: a ring round the plaza, the way in from the south, branches to the pond, the orchard and the meadow, and two loops joining them. Everything stands on the ground as it is drawn, and the camera keeps above it.
 
 The dog follows you by the paths. From where it stands it works out the cheapest way to you, counting a metre over grass as 2.2 metres on a path, walks the paths when that is shorter, crosses the grass for the last few metres, runs when you are far off, and stops a couple of metres short of you.
 
@@ -28,6 +28,6 @@ On the pedestal in the middle of the plaza stands a blue vase with a few flowers
 
 ## How it is made
 
-- `metaverse-engine/cam/camera.coax` is the camera, `metaverse-engine/world/terrain.coax` the ground, the paths and the dog's way along them, `metaverse-engine/physics/throw.coax` the ball's flight, bounce and roll and the dog's fetch, `metaverse-engine/cam/arrange.coax` the close-up on the vase, `metaverse-engine/move/player.coax` walks you among the trees, hedges and the pedestal (as in the Haunted House; on a flat floor, drawn on the ground), and `metaverse/grid.coax` reads a phone's thumbs.
+- `metaverse-engine/cam/camera.coax` is the camera, `metaverse-engine/world/path-graph.coax` the ground and the paths, `metaverse-engine/move/path-follower.coax` the dog's way along them, `metaverse-engine/physics/throw.coax` the ball's flight, bounce and roll and the dog's fetch, `metaverse-engine/cam/arrange.coax` the close-up on the vase, `metaverse-engine/move/player.coax` walks you among the trees, hedges and the pedestal (as in the Haunted House; on a flat floor, drawn on the ground), and `metaverse/grid.coax` reads a phone's thumbs.
 - `apps/openagents-web/garden.coax` lays out the garden and draws the HUD; `garden-face.c` binds it for the browser; `garden.wgsl` draws the ground with its paths, every object as a box, sphere, cylinder or cone, soft shadows and fog.
 - Nothing is downloaded but the page, its code and a 4 KB index list.

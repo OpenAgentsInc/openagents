@@ -87,15 +87,17 @@ glade_shadow_draws :: (s: [] Everglade) -> int {
 // The camera's room over the ground near the glade (everglade.coax ground_room). Past the seam
 // Everglade's height field holds only its clamped edge, the ridge's height, which would stand over
 // the clearing and pull the camera into your head; there the ground is the one you walk on
-// (glade-zone.coax ez_walk_height), marched as metaverse_terrain_ray marches the town's.
+// (glade-zone.coax ez_walk_height), which is a formula and not a height field, so it is marched
+// in GLADE_RAY_STEP samples and halved down; the town's own ray is exact (ground_ray_reach).
+GLADE_RAY_STEP :: 0.35;   // metres between the march's samples
 glade_ray_near :: (from: Point, dir: Point, far: f32) -> bool { return lo(from.z, from.z + dir.z * far) < f32(EZ_JOIN) + 2; }
-glade_ground_at :: (s: [] Everglade, x: f32, z: f32) -> f32 { return ez_walk_height(metaverse_terrain_height(everglade_ground(), s[0].heights[..], x, z), x, z); }
+glade_ground_at :: (s: [] Everglade, x: f32, z: f32) -> f32 { return ez_walk_height(ground_height(everglade_ground(), s[0].heights[..], x, z), x, z); }
 glade_ground_ray :: (s: [] Everglade, from: Point, dir: Point, far: f32) -> f32 {
   if !finite3(from) || !finite3(dir) || !(far > 0) { return 0; }
   if from.y <= glade_ground_at(s, from.x, from.z) { return 0; }
   t := 0.0f32;
   while t < far {
-    next := lo(t + f32(RAY_STEP), far);
+    next := lo(t + f32(GLADE_RAY_STEP), far);
     p := add(from, times(dir, next));
     if p.y <= glade_ground_at(s, p.x, p.z) {
       a := t; b := next;

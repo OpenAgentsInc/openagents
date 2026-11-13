@@ -1943,7 +1943,7 @@ the south-west/north-east diagonal. Exact stored vertices retain their bits.
 Its metre-quantity boundary refuses invalid dimensions, spacing, coordinates,
 sampled heights and gradients. Beyond the mesh, consumers zero the gradient
 on each clamped axis before forming the constant continuation's normal.
-`metaverse-engine/world/terrain.coax` retains its Ground C layout and delegates sampling to it.
+`metaverse-engine/physics/ground-point.coax` holds the plain height, normal and ray readers on the same Ground C layout and samples through it.
 
 `query.coax` admits at most 16 heightfields. The exact ray and sphere-contact
 helpers have explicit cell budgets; exhaustion is a refusal, never a miss.

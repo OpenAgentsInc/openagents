@@ -62,7 +62,7 @@ python3 everglade/legacy/v1/map.py --times
   is half a minute's walk across, and the farthest trail end under a minute
   from the South Gate. That keeps a hub dense enough to meet people in and
   small enough to learn in one visit.
-- The ground is `metaverse-engine/world/terrain.coax`'s heightfield, with the bowl's rim
+- The ground is `metaverse-engine/world/path-graph.coax`'s heightfield, with the bowl's rim
   moved out to 80 m (`Ground.rim_from`, `rim`): gentle hills inside the
   walls, flat under every building and square, rising into the forest
   past the trails' ends.
@@ -342,7 +342,7 @@ as grey boxes at full size, built on the realm host
 
 - `everglade/legacy/v1/plan.coax`: the layout and its checks.
 - `apps/openagents-web/everglade.coax`, `everglade-face.c`, `everglade.wgsl`:
-  the realm. It draws the ground and streets (`metaverse-engine/world/terrain.coax`), the
+  the realm. It draws the ground and streets (`metaverse-engine/world/path-graph.coax`), the
   palisade, every building as a box with a gable roof, the props, the
   forest (below), you as the Ranger (below), the people (Quaternius
   characters, above) and the cats (still plain shapes), and each

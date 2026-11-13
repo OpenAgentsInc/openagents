@@ -1,7 +1,7 @@
 // Thrown things, and characters picking them up and carrying them.
 //
 // A Ball is a small round thing that flies, bounces, rolls downhill and
-// comes to rest on the ground (terrain.coax), and knocks off round and
+// comes to rest on the ground (ground-point.coax), and knocks off round and
 // boxed scenery: spheres (ROUND numbers each: centre, radius) and boxes
 // (BLOCK numbers each: min and max corners), the same lists the camera
 // keeps clear of. While someone holds it (held: 0 you, 1 or more a
@@ -13,7 +13,7 @@
 // it back by the paths and drops it at your feet.
 //   coax/bin/coax test --library metaverse-engine/physics/throw.coax
 
-#load "../world/terrain.coax";
+#load "../move/path-follower.coax";
 
 GRAVITY :: 9.8;          // m/s^2
 AIR :: 0.05;             // per second: air slows it a little
@@ -44,7 +44,7 @@ Ball :: struct {
 metaverse_ball_place :: (g: Ground, heights: [] f32, x: f32, z: f32, radius: f32) -> Ball #export_c #effects(all) {
   b: Ball;
   if radius > 0 && finite(radius) { b.radius = radius; }
-  b.pos = v3(x, metaverse_terrain_height(g, heights, x, z) + b.radius, z);
+  b.pos = v3(x, ground_height(g, heights, x, z) + b.radius, z);
   b.resting = true;
   return b;
 }
@@ -52,9 +52,9 @@ metaverse_ball_place :: (g: Ground, heights: [] f32, x: f32, z: f32, radius: f32
 // The ground under it pushes it out and takes the speed going in.
 ground_contact :: (b: Ball, g: Ground, heights: [] f32) -> Ball {
   next := b;
-  h := metaverse_terrain_height(g, heights, b.pos.x, b.pos.z);
+  h := ground_height(g, heights, b.pos.x, b.pos.z);
   if b.pos.y - b.radius >= h { return next; }
-  n := metaverse_terrain_normal(g, heights, b.pos.x, b.pos.z);
+  n := ground_normal_at(g, heights, b.pos.x, b.pos.z);
   next.pos.y = h + b.radius;
   into := dot(b.vel, n);
   if into < 0 {
@@ -120,9 +120,9 @@ ball_substep :: (b: Ball, g: Ground, heights: [] f32, spheres: [] f32, boxes: []
   next = scenery_contact(next, spheres, boxes);
   next = ground_contact(next, g, heights);
   // Touching the ground: it rolls, slowing; on gentle ground, slow enough, it stops.
-  h := metaverse_terrain_height(g, heights, next.pos.x, next.pos.z);
+  h := ground_height(g, heights, next.pos.x, next.pos.z);
   if next.pos.y - next.radius <= h + 0.002 {
-    n := metaverse_terrain_normal(g, heights, next.pos.x, next.pos.z);
+    n := ground_normal_at(g, heights, next.pos.x, next.pos.z);
     along := sub(next.vel, times(n, dot(next.vel, n)));
     speed := length(along);
     if speed > 0 {
@@ -214,7 +214,7 @@ metaverse_throw_arc :: (g: Ground, heights: [] f32, hand: Point, vel: Point, out
   while (n + 1) * 3 <= out.count {
     out[n * 3] = p.x; out[n * 3 + 1] = p.y; out[n * 3 + 2] = p.z;
     n += 1;
-    if p.y < metaverse_terrain_height(g, heights, p.x, p.z) { break; }
+    if p.y < ground_height(g, heights, p.x, p.z) { break; }
     for k: 0..<3 {
       v.y -= f32(GRAVITY) * f32(ARC_STEP) / 3;
       p = add(p, times(v, f32(ARC_STEP) / 3));
@@ -248,7 +248,7 @@ metaverse_fetch_step :: (f: Fetch, g: Ground, heights: [] f32, nodes: [] f32, li
   return metaverse_fetch_step_among(f, g, heights, nodes, links, half, you, dt, none[0..<0]);
 }
 
-// The same among scenery the dog goes round (terrain.coax blocks).
+// The same among scenery the dog goes round (path-follower.coax blocks).
 metaverse_fetch_step_among :: (f: Fetch, g: Ground, heights: [] f32, nodes: [] f32, links: [] int, half: f32,
                            you: Point, dt: f32, blocks: [] f32) -> Fetch #export_c #effects(all) {
   next := f;
@@ -295,7 +295,7 @@ tb_ground :: () -> Ground { g: Ground; g.n = 16; g.cell = 4; g.west = -32; g.sou
 tb_build :: (h: [] f32) -> bool {
   n := TB_NODES; l := TB_LINKS;
   flats := [8] f32.[0, 0, 7, 0,   20, 0, 3, 0];
-  return metaverse_terrain_build(tb_ground(), h, n[..], l[..], 0.9, flats[..]);
+  return path_ground_build(tb_ground(), h, n[..], l[..], 0.9, flats[..]);
 }
 
 #test "dropped, it bounces lower each time and comes to rest on the ground" {
@@ -304,19 +304,19 @@ tb_build :: (h: [] f32) -> bool {
   #assert tb_build(h[..]);
   nothing: [1] f32;
   b := metaverse_ball_place(g, h[..], 1, 1, 0.12);
-  #assert b.resting && near(b.pos.y, metaverse_terrain_height(g, h[..], 1, 1) + 0.12, 0.0001);
+  #assert b.resting && near(b.pos.y, ground_height(g, h[..], 1, 1) + 0.12, 0.0001);
   b = metaverse_ball_release(b, v3(1, 3, 1), v3(0, 0, 0));
   top := b.pos.y; going_up := false; bounces := 0;
   for i: 0..<600 {
     was := b.vel.y;
     b = metaverse_ball_step(b, g, h[..], nothing[0..<0], nothing[0..<0], 1.0 / 60.0);
-    #assert b.pos.y >= metaverse_terrain_height(g, h[..], b.pos.x, b.pos.z) + b.radius - 0.0001;
+    #assert b.pos.y >= ground_height(g, h[..], b.pos.x, b.pos.z) + b.radius - 0.0001;
     if was <= 0 && b.vel.y > 0 { bounces += 1; going_up = true; }
     if going_up && b.vel.y <= 0 { #assert b.pos.y < top; top = b.pos.y; going_up = false; }
   }
   #assert bounces >= 2;
   #assert b.resting && length(b.vel) == 0;
-  #assert near(b.pos.y, metaverse_terrain_height(g, h[..], b.pos.x, b.pos.z) + b.radius, 0.002);
+  #assert near(b.pos.y, ground_height(g, h[..], b.pos.x, b.pos.z) + b.radius, 0.002);
 }
 
 #forall "a throw never ends up under the ground or faster than it went" k: 0..<8 #steps 37000000 {
@@ -332,7 +332,7 @@ tb_build :: (h: [] f32) -> bool {
   for i: 0..<100 {
     b = metaverse_ball_step(b, g, h[..], nothing[0..<0], nothing[0..<0], 1.0 / 15.0);
     #assert finite3(b.pos);
-    #assert b.pos.y >= metaverse_terrain_height(g, h[..], b.pos.x, b.pos.z) + b.radius - 0.001;
+    #assert b.pos.y >= ground_height(g, h[..], b.pos.x, b.pos.z) + b.radius - 0.001;
     // Falling can add speed; never more than the drop allows.
     #assert length(b.vel) * length(b.vel) <= first * first + 2 * f32(GRAVITY) * 12 + 0.01;
   }
@@ -348,13 +348,13 @@ tb_build :: (h: [] f32) -> bool {
   for i: 0..<12 {
     for j: 0..<12 {
       x := -28 + f32(i) * 5; z := -28 + f32(j) * 5;
-      n := metaverse_terrain_normal(g, h[..], x, z);
+      n := ground_normal_at(g, h[..], x, z);
       if n.y < steep { steep = n.y; best = v3(x, 0, z); }
     }
   }
   #assert steep < f32(REST_SLOPE);
-  down := metaverse_terrain_normal(g, h[..], best.x, best.z);
-  b := metaverse_ball_release(metaverse_ball_place(g, h[..], best.x, best.z, 0.12), v3(best.x, metaverse_terrain_height(g, h[..], best.x, best.z) + 0.12, best.z), v3(0, 0, 0));
+  down := ground_normal_at(g, h[..], best.x, best.z);
+  b := metaverse_ball_release(metaverse_ball_place(g, h[..], best.x, best.z, 0.12), v3(best.x, ground_height(g, h[..], best.x, best.z) + 0.12, best.z), v3(0, 0, 0));
   for i: 0..<30 { b = metaverse_ball_step(b, g, h[..], nothing[0..<0], nothing[0..<0], 1.0 / 30.0); }
   #assert (b.pos.x - best.x) * down.x + (b.pos.z - best.z) * down.z > 0.05 && b.spin > 0;
   level := metaverse_ball_place(g, h[..], 1, 1, 0.12);
@@ -422,7 +422,7 @@ tb_build :: (h: [] f32) -> bool {
   #assert n > 5 && n <= 40;
   #assert out[0] == 0 && near(out[1], 1.4, 0.0001);
   last := v3(out[(n - 1) * 3], out[(n - 1) * 3 + 1], out[(n - 1) * 3 + 2]);
-  #assert last.y < metaverse_terrain_height(g, h[..], last.x, last.z) + 0.5 && last.z > 5;
+  #assert last.y < ground_height(g, h[..], last.x, last.z) + 0.5 && last.z > 5;
 }
 
 #test "fetch: the dog runs to the ball, brings it back by the paths and drops it at your feet" {
@@ -431,7 +431,7 @@ tb_build :: (h: [] f32) -> bool {
   #assert tb_build(h[..]);
   n := TB_NODES; l := TB_LINKS;
   nothing: [1] f32;
-  you := v3(-8, metaverse_terrain_height(g, h[..], -8, 0), 0);
+  you := v3(-8, ground_height(g, h[..], -8, 0), 0);
   f: Fetch;
   f.dog = metaverse_follower_place(g, h[..], -6, 1.5, 0);
   f.ball = metaverse_ball_place(g, h[..], -8, 0.5, 0.12);

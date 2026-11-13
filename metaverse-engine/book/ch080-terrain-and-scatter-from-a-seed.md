@@ -1,7 +1,7 @@
 # 80. Terrain and scatter from a seed
 
 > **Status: partly implemented.** The ground is chapter 8's heightfield,
-> [metaverse-engine/world/terrain.coax](../world/terrain.coax): rolling hills in a
+> [metaverse-engine/world/path-graph.coax](../world/path-graph.coax): rolling hills in a
 > shallow bowl, levelled where paths run and on flats, sampled exactly as it
 > is drawn. Scatter is new and shared:
 > [metaverse-engine/world/scatter.coax](../world/scatter.coax) places things on a
@@ -57,21 +57,21 @@ GroundSample :: struct {
 GroundNormal :: struct { x: f32; y: f32 = 1; z: f32; }
 ```
 
-`metaverse_terrain_build` fills the heights. The hills are `HILL` (1.6 m) high
+`path_ground_build` fills the heights. The hills are `HILL` (1.6 m) high
 and rise toward the edge from `rim_from` metres out at `rim` metres per
 metre squared, so a realm sits in a shallow bowl. Everglade sets its own rim
 (`EG_RIM_FROM`, 80 m, at `EG_RIM`, 0.004). On each path strip the ground
 runs at `PATH_LEVEL` (0.4) of the hills under it. On a flat (a plaza, a
 pond) it runs at the flat's level. Both ease back to the hills over
-`PATH_BLEND` (3 m). The builder refuses more than `TERRAIN_LINKS` (256) path
+`PATH_BLEND` (3 m). The builder refuses more than `PATH_GROUND_LINKS` (256) path
 links. A height is read from the drawn triangle, so a foot set on it stands
 on what you see:
 
-<!-- source: metaverse-engine/world/terrain.coax height -->
+<!-- source: metaverse-engine/physics/ground-point.coax height -->
 ```jai
 // The height of the drawn surface at x, z (the edge's beyond it).
-metaverse_terrain_height :: (g: Ground, heights: [] f32, x: f32, z: f32) -> f32 #export_c #effects(all) {
-  q := ground_sample(g, heights, terrain_units.Quantity.{value = x}, terrain_units.Quantity.{value = z});
+ground_height :: (g: Ground, heights: [] f32, x: f32, z: f32) -> f32 #export_c #effects(all) {
+  q := ground_sample(g, heights, ground_point_units.Quantity.{value = x}, ground_point_units.Quantity.{value = z});
   return q.height.value;   // an invalid sample publishes the legacy zero height
 }
 ```
@@ -338,7 +338,7 @@ main :: () {
   print("trees inside a keep-out: %\n", inside);
   for t: 0..<3 {
     p := out[t];
-    y := metaverse_terrain_height(sh_ground(), heights[..], p.x, p.z);
+    y := ground_height(sh_ground(), heights[..], p.x, p.z);
     print("tree (%, %): at (% cm, % cm, % cm), scale %/100, kind %\n", p.i, p.j, cm(p.x), cm(y), cm(p.z), cm(p.size), p.kind);
   }
 
@@ -443,9 +443,10 @@ The vegetation module's 92 root mutants and the sky module's 54 are killed.
 
 ## What exists today
 
-- [metaverse-engine/world/terrain.coax](../world/terrain.coax) and
-  [metaverse-engine/physics/ground.coax](../physics/ground.coax): the heightfield, hills,
-  path levelling, height, normal and ray queries.
+- [metaverse-engine/world/path-graph.coax](../world/path-graph.coax): the hills and the
+  path levelling. [metaverse-engine/physics/ground.coax](../physics/ground.coax) and
+  [metaverse-engine/physics/ground-point.coax](../physics/ground-point.coax): the heightfield's
+  height, normal and ray queries.
 - [metaverse-engine/world/scatter.coax](../world/scatter.coax): keyed scatter with
   keep-outs.
 - [metaverse-engine/core/rand.coax](../core/rand.coax): the counter-based draw, with
@@ -464,7 +465,7 @@ The vegetation module's 92 root mutants and the sky module's 54 are killed.
 
 The chapter is done when:
 
-- `metaverse_terrain_height` and the drawn mesh agree at every vertex and at
+- `ground_height` and the drawn mesh agree at every vertex and at
   sampled interior points. Chapter 8's checks hold this.
 - No scattered thing stands in a keep-out, for every realm. Holds for the
   module. Realms are not on it yet.

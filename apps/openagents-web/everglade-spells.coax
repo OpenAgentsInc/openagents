@@ -629,7 +629,7 @@ sp_aim :: (s: [] Everglade) {
   x := s[0].sp.px; y := s[0].sp.py;
   if !s[0].sp.seen { x = s[0].width / 2; y = s[0].height * 0.55; }
   r := sp_ray(s, x, y);
-  best := metaverse_terrain_ray(everglade_ground(), s[0].heights[..], r.from, r.dir, 400);
+  best := ground_ray_reach(everglade_ground(), s[0].heights[..], r.from, r.dir, 400);
   ground := best < 399;
   n := v3(0, 1, 0);
   for i: 0..<w[0].n {

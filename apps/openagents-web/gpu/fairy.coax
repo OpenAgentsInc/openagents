@@ -260,7 +260,7 @@ fairy_path_planes :: (x:s32,z:s32,u:[]f32,heights:[]f32)->V2 {
   p:u32=wg_u32_f(u[239]);
   return v2(heights[cast(int)add_wrap(p,i)],heights[cast(int)add_wrap(mul_wrap(cast(u32)2,p),i)]);
 }
-// The ground's height at xz, the same two triangles a cell as it is drawn (terrain.coax).
+// The ground's height at xz, the same two triangles a cell as it is drawn (ground.coax).
 fairy_ground_h :: (xz:V2,u:[]f32,heights:[]f32)->f32 {
   n:f32=u[32];
   g:V2=wg_clamp_f2f2f2(wg_div_f2f(wg_sub_f2f2(xz,v2(u[34],u[35])),u[33]),v2(0.0f32,0.0f32),wg_sub_f2f2(v2(n,u[238]),v2(0.0001f32,0.0001f32)));

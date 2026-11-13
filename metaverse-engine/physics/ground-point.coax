@@ -1,0 +1,158 @@
+// Plain f32 and Point readers of the sampled ground (metaverse-engine/physics/ground.coax, the
+// sampler the terrain tiles share): the height and the upward normal of the drawn surface at
+// x, z, the normal taken over three cells for painterly light, and how far a ray goes before it
+// meets the ground (ground-query.coax's exact ray). A realm that holds one Ground and its heights
+// reads them here; a realm of tiles reads metaverse-engine/world/terrain-tile.coax, which samples
+// through the same ground_sample.
+//   coax/bin/coax test --library metaverse-engine/physics/ground-point.coax
+
+#load "../core/points.coax";
+#load "ground.coax";
+#load "ground-query.coax";
+#load "../../coax/lib/quantity.coax" as ground_point_units;
+
+// Where x, z falls: its cell and how far across it (0 to 1 each way).
+Spot :: struct { i: int; j: int; fx: f32; fz: f32; }
+ground_spot :: (g: Ground, x: f32, z: f32) -> Spot {
+  if !ground_valid(g) || !ground_finite(x) || !ground_finite(z) { return Spot.{}; }
+  ax := ground_axis(g.west, g.cell, g.n, x);
+  az := ground_axis(g.south, g.cell, ground_rows(g), z);
+  return Spot.{i = ax.i, j = az.i, fx = f32(ax.fraction), fz = f32(az.fraction)};
+}
+
+// book:begin height
+// The height of the drawn surface at x, z (the edge's beyond it).
+ground_height :: (g: Ground, heights: [] f32, x: f32, z: f32) -> f32 #export_c #effects(all) {
+  q := ground_sample(g, heights, ground_point_units.Quantity.{value = x}, ground_point_units.Quantity.{value = z});
+  return q.height.value;   // an invalid sample publishes the legacy zero height
+}
+// book:end height
+
+
+#test "the terrain normal follows constant edge continuation outside the mesh" {
+  descriptor := Ground.{n = 1, cell = 1, west = 0, south = 0};
+  values := [4] f32.[0, 1, 2, 4];
+  western_normal := ground_normal_at(descriptor, values[..], -2, 0.5);
+  corner_normal := ground_normal_at(descriptor, values[..], 3, 4);
+  #assert western_normal.x == 0 && near(western_normal.y, 0.4472136, 0.000001) && near(western_normal.z, -0.8944272, 0.000001);
+  #assert corner_normal.x == 0 && corner_normal.y == 1 && corner_normal.z == 0;
+}
+
+// The surface's upward normal at x, z.
+ground_normal_at :: (g: Ground, heights: [] f32, x: f32, z: f32) -> Point #export_c #effects(all) {
+  q := ground_sample(g, heights, ground_point_units.Quantity.{value = x}, ground_point_units.Quantity.{value = z});
+  if q.clamped_x { q.gx = 0; }
+  if q.clamped_z { q.gz = 0; }
+  normal := ground_normal(q);
+  return v3(normal.x, normal.y, normal.z);
+}
+
+// The painterly ground's normal (docs/metaverse/art-styles.md, 1): the height
+// field's slope taken over 3 cells (1.5 each side), so the triangles' facets
+// don't show in the light bands. Exact on a plane; continuous across cells.
+ground_normal_smooth :: (g: Ground, heights: [] f32, x: f32, z: f32) -> Point #export_c #effects(all) {
+  if g.n < 1 || g.cell <= 0 { return v3(0, 1, 0); }
+  r := 1.5 * g.cell;
+  sx := ground_height(g, heights, x + r, z) - ground_height(g, heights, x - r, z);
+  sz := ground_height(g, heights, x, z + r) - ground_height(g, heights, x, z - r);
+  return unit_or(v3(-sx / (2 * r), 1, -sz / (2 * r)), v3(0, 1, 0));
+}
+
+// How far along a ray (dir a unit vector) before it meets the ground, up to far: the exact ray
+// of ground-query.coax over the drawn triangles. 0 when the ray starts on or under the ground or
+// is not a ray (a nonfinite point, far not above 0). far when it meets nothing, and also when the
+// query gives no answer: a ground with no heights, or a ray that crosses more than
+// GROUND_RAY_CELLS cells (2,000 m of 1 m cells along an axis).
+ground_ray_reach :: (g: Ground, heights: [] f32, from: Point, dir: Point, far: f32) -> f32 #export_c #effects(all) {
+  if !finite3(from) || !finite3(dir) || !(far > 0) { return 0; }
+  hit := ground_ray(g, heights, world_point(from.x, from.y, from.z), world_point(dir.x, dir.y, dir.z), f64(far), GROUND_RAY_CELLS);
+  if hit.status != GroundRayStatus.ok || !hit.hit { return far; }
+  return f32(hit.t);
+}
+
+// ---- Checks
+
+#forall "the ground keeps every nonbinary drawn vertex exact including its far edges" i: 0..<14, j: 0..<3 {
+  g := Ground.{n = 13, rows = 2, cell = 0.1, west = 100.1, south = -12.3};
+  h: [42] f32;
+  for k: 0..<42 { h[k] = f32(k % 14) * 17 + f32(k / 14) * 0.3; }
+  x := g.west + f32(i) * g.cell; z := g.south + f32(j) * g.cell;
+  #assert f32_bits(ground_height(g, h[..], x, z)) == f32_bits(h[j * 14 + i]);
+}
+
+#forall "the ground copies stored corner words without cancelling away signed zero" corner: 0..<4 {
+  g := Ground.{n = 1, cell = 1, west = 0, south = 0};
+  h := [4] f32.[-93.68108367919922, -72.09828186035156, -0.0, 5.823012351989746];
+  #assert f32_bits(ground_height(g, h[..], f32(corner % 2), f32(corner / 2))) == f32_bits(h[corner]);
+}
+
+#test "the ground keeps adjacent f32 samples on their actual drawn side of a vertex" {
+  g := Ground.{n = 13, rows = 2, cell = 0.1, west = 100.1, south = -12.3};
+  h: [42] f32;
+  for k: 0..<42 { h[k] = f32(k % 14) * 17; }
+  x := g.west + 7.0f32 * g.cell;
+  before := f32_from_bits(f32_bits(x) - 1); after := f32_from_bits(f32_bits(x) + 1);
+  left := g.west + 6.0f32 * g.cell; right := g.west + 8.0f32 * g.cell;
+  expected_before := 102.0 + (f64(before) - f64(left)) / (f64(x) - f64(left)) * 17;
+  expected_after := 119.0 + (f64(after) - f64(x)) / (f64(right) - f64(x)) * 17;
+  a := ground_height(g, h[..], before, g.south);
+  b := ground_height(g, h[..], after, g.south);
+  #assert a < 119 && b > 119;
+  #assert abs(f64(a) - expected_before) < 0.00001 && abs(f64(b) - expected_after) < 0.00001;
+  at := ground_spot(g, x, g.south);
+  far := ground_spot(g, g.west + f32(g.n) * g.cell, g.south + f32(g.rows) * g.cell);
+  #assert at.i == 7 && at.fx == 0 && far.i == 12 && far.j == 1 && far.fx == 1 && far.fz == 1;
+}
+
+#test "the ground height and normal share the qualified ground triangles" {
+  g := Ground.{n = 1, rows = 1, cell = 2, west = -3, south = 5};
+  h := [4] f32.[0, 1, 2, 4];
+  a := ground_normal_at(g, h[..], -1.5, 5.5);
+  b := ground_normal_at(g, h[..], -2.5, 6.5);
+  #assert ground_height(g, h[..], -1.5, 5.5) == 1.5;
+  #assert ground_height(g, h[..], -2.5, 6.5) == 2;
+  #assert near(a.x, -0.5 / sqrt(3.5), 0.000001) && near(a.y, 1 / sqrt(3.5), 0.000001) && near(a.z, -1.5 / sqrt(3.5), 0.000001);
+  #assert near(b.x, -1 / sqrt(3.0), 0.000001) && near(b.y, 1 / sqrt(3.0), 0.000001) && near(b.z, -1 / sqrt(3.0), 0.000001);
+}
+
+#forall "the ground refusal gives zero height and an upward normal" which: 0..<7 {
+  g := Ground.{n = 1, rows = 1, cell = 1, west = 0, south = 0};
+  h := [4] f32.[0, 1, 2, 4]; count := 4; x := 0.75f32; z := 0.25f32;
+  if which == 0 { g.rows = -1; }
+  if which == 1 { g.n = 0; }
+  if which == 2 { g.cell = 0; }
+  if which == 3 { count = 3; }
+  if which == 4 { x = 0.0f32 / 0.0f32; }
+  if which == 5 { z = 1000000; }
+  if which == 6 { h[3] = 1000000; }
+  n := ground_normal_at(g, h[0..<count], x, z);
+  #assert ground_height(g, h[0..<count], x, z) == 0;
+  #assert n.x == 0 && n.y == 1 && n.z == 0;
+}
+
+
+#test "a ray's reach is the exact hit, far when it meets nothing, and 0 from under the ground" {
+  g := Ground.{n = 2, rows = 2, cell = 2, west = -2, south = -2};
+  h := [9] f32.[0, 0, 0, 0, 0, 0, 0, 0, 4];   // flat, with the north-east corner raised
+  #assert ground_ray_reach(g, h[..], v3(-1, 6, -1), v3(0, -1, 0), 20) == 6;
+  #assert ground_ray_reach(g, h[..], v3(-1, 6, -1), v3(0, -1, 0), 5) == 5;
+  #assert ground_ray_reach(g, h[..], v3(-1, 6, -1), v3(1, 0, 0), 20) == 20;
+  #assert ground_ray_reach(g, h[..], v3(-1, -3, -1), v3(0, 1, 0), 10) == 0;
+  #assert ground_ray_reach(g, h[..], v3(-1, 0, -1), v3(0, 1, 0), 10) == 0;
+  // level at 1 m toward the raised corner: it meets the slope where the slope is 1 m high
+  d := ground_ray_reach(g, h[..], v3(-1, 1, 2), v3(1, 0, 0), 20);
+  #assert near(d, 1.5, 0.00001) && near(ground_height(g, h[..], -1 + d, 2), 1, 0.00001);
+  // not a ray, and a ground with no heights
+  #assert ground_ray_reach(g, h[..], v3(0.0f32 / 0.0f32, 6, 0), v3(0, -1, 0), 20) == 0;
+  #assert ground_ray_reach(g, h[..], v3(-1, 6, -1), v3(0, -1, 0), 0) == 0;
+  #assert ground_ray_reach(g, h[0..<8], v3(-1, 6, -1), v3(0, -1, 0), 20) == 20;
+}
+
+#test "a 400 m ray over a town of 2 m cells is inside the ray's cell budget" {
+  g := Ground.{n = 176, cell = 2, west = -176, south = -176};
+  h: [177 * 177] f32;
+  for k: 0..<177 * 177 { h[k] = f32(k % 177) * 0.01; }
+  along := unit_or(v3(1, -0.001, 1), v3(0, -1, 0));
+  hit := ground_ray(g, h[..], world_point(-170, 30, -170), world_point(along.x, along.y, along.z), 400, GROUND_RAY_CELLS);
+  #assert hit.status == GroundRayStatus.ok && hit.visited < 600;
+}

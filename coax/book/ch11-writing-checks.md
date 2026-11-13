@@ -566,11 +566,11 @@ used the most:
 $ coax test fairy.coax --only "trees keep off" --profile steps
 ok   #test trees keep off the trails, the stream and the glades (1 case, 136279918 steps)
         own steps  share   with calls     calls  procedure
-         20906514  15.3%     31837809     28755  shaped  metaverse-engine/world/terrain.coax:114
+         20906514  15.3%     31837809     28755  shaped  metaverse-engine/world/path-graph.coax:114
          16723986  12.3%     18290298     15356  ffp_lake_near  metaverse/fairy-forest/park.coax:32
          15105764  11.1%     20123292         1  path_planes  apps/openagents-web/fairy.coax:291
          13859453  10.2%     15855558      3041  ff_stream_near_some  metaverse/fairy-forest/forest.coax:496
-         13223648   9.7%     14257179      1016  metaverse_path_nearest  metaverse-engine/world/terrain.coax:88
+         13223648   9.7%     14257179      1016  metaverse_path_nearest  metaverse-engine/world/path-graph.coax:88
          10778886   7.9%     13093768      1707  ffpk_path_gap  apps/openagents-web/fairypark.coax:15
           8000610   5.9%      8001730     28755  ffp_rock_lift  metaverse/fairy-forest/park.coax:91
           6713210   4.9%      6713210    897270  lo  metaverse-engine/core/points.coax:27

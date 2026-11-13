@@ -20,7 +20,7 @@
 // the free orbit over your shoulder (metaverse-engine/cam/camera.coax), which turns with a
 // drag, the arrow keys or your right thumb, zooms with the wheel and pulls
 // in where a tombstone, a hedge or a tree is in the way. The ground and
-// the paths are metaverse-engine/world/terrain.coax's; the dog follows you by the paths.
+// the paths are metaverse-engine/world/path-graph.coax's; the dog follows you by the paths.
 //
 // This file is the page: the layout, the controls, the flight, the HUD and
 // what the scene draws (villa.wgsl). villa-face.c binds it for the browser,
@@ -215,7 +215,7 @@ LINK_AB :: [78] int.[
   19, 20,  20, 21,  22, 23,  23, 24,
   14, 25,  25, 26,  26, 27,  27, 28,  28, 29,  29, 14
 ];
-// Level ground: the garden is a terrace (terrain.coax FLAT: x, z, radius, level).
+// Level ground: the garden is a terrace (path-graph.coax FLAT: x, z, radius, level).
 FLATS :: [24] f32.[-27, -10, 11, 0,  -27, 10, 11, 0,  -7, -10, 11, 0,  -7, 10, 11, 0,  -17, 0, 9, 0,  -17, -26, 5, 0];
 
 // The plots: x of each column, z of each row (north rows, then south).
@@ -324,12 +324,12 @@ coaxial_villa_vertex_floats :: () -> int #export_c #effects(all) { return VERTEX
 coaxial_villa_uniform_floats :: () -> int #export_c #effects(all) { return UNIFORM_FLOATS; }
 
 ground :: () -> Ground { g: Ground; g.n = CELLS; g.cell = CELL; g.west = EDGE; g.south = EDGE; g.rim_from = 40; g.rim = 0.02; return g; }
-ground_at :: (s: [] Villa, x: f32, z: f32) -> f32 { return metaverse_terrain_height(ground(), s[0].heights[..], x, z); }
+ground_at :: (s: [] Villa, x: f32, z: f32) -> f32 { return ground_height(ground(), s[0].heights[..], x, z); }
 
 villa_start :: (s: [] Villa) {
   s[0].started = true;
   nodes := NODE_XZ; links := LINK_AB; flats := FLATS;
-  ok := metaverse_terrain_build(ground(), s[0].heights[..], nodes[..], links[..], f32(PATH_HALF), flats[..]);
+  ok := path_ground_build(ground(), s[0].heights[..], nodes[..], links[..], f32(PATH_HALF), flats[..]);
   s[0].feet = v3(f32(SPAWN_X), ground_at(s, f32(SPAWN_X), f32(SPAWN_Z)), f32(SPAWN_Z));
   s[0].orbit = metaverse_orbit_start(s[0].feet, 0);
   s[0].shot = metaverse_orbit_shot(s[0].orbit);
@@ -692,7 +692,7 @@ pet_stones :: (s: [] Villa) {
 
 ground_room :: (s: [] Villa, r: OrbitRay) -> f32 {
   lifted := add(r.from, v3(0, -0.5, 0));
-  return metaverse_terrain_ray(ground(), s[0].heights[..], lifted, r.dir, r.far);
+  return ground_ray_reach(ground(), s[0].heights[..], lifted, r.dir, r.far);
 }
 
 camera_frame :: (s: [] Villa, feet: Point, vx: f32, vz: f32, dt: f32) -> Shot {

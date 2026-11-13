@@ -24,7 +24,7 @@ main :: () {
   print("trees inside a keep-out: %\n", inside);
   for t: 0..<3 {
     p := out[t];
-    y := metaverse_terrain_height(sh_ground(), heights[..], p.x, p.z);
+    y := ground_height(sh_ground(), heights[..], p.x, p.z);
     print("tree (%, %): at (% cm, % cm, % cm), scale %/100, kind %\n", p.i, p.j, cm(p.x), cm(y), cm(p.z), cm(p.size), p.kind);
   }
 

@@ -14,7 +14,7 @@
 > the shared solver with fenced requests and bounded retries (below).
 > Everglade's townsfolk keep their
 > road graph and Hecate's Cemetery its garden paths
-> ([metaverse-engine/world/terrain.coax](../world/terrain.coax)). Path graphs, following
+> ([metaverse-engine/world/path-graph.coax](../world/path-graph.coax)). Path graphs, following
 > and crowd avoidance retain their separate adapter work. See [Still to do](#still-to-do).
 
 A character that walks to a place needs a route that avoids what it can't
@@ -356,7 +356,7 @@ the costs a search lowers.
   it since #12854, and its private search is gone; `nav-deadgears.coax` keeps
   that search as the consumer's trace and holds the module to it. Everglade's townsfolk and guide, and Hecate's dog, use path
   graphs instead.
-- **Path graphs.** Today [metaverse-engine/world/terrain.coax](../world/terrain.coax)
+- **Path graphs.** Today [metaverse-engine/world/path-graph.coax](../world/path-graph.coax)
   holds them: nodes (x, z pairs) and links (two node numbers each), each
   link a strip `half` metres either side of its line. `costs` is Dijkstra
   over at most `MAX_NODES` (48) nodes, where a metre over grass costs
@@ -391,8 +391,9 @@ the costs a search lowers.
   failure/retry, current-owner keys and the playable Actor Lab.
 - [metaverse-engine/world/nav/grid.coax](../world/nav/grid.coax): walking grids and flow
   fields, with its oracle and the Dead Gears identity check.
-- [metaverse-engine/world/terrain.coax](../world/terrain.coax): the path graph,
-  `metaverse_route_next`, `metaverse_route_points`, `Follower`,
+- [metaverse-engine/world/path-graph.coax](../world/path-graph.coax): the path graph,
+  `metaverse_route_next` and `metaverse_route_points`.
+  [metaverse-engine/move/path-follower.coax](../move/path-follower.coax): `Follower`,
   `metaverse_follower_step` and `metaverse_follower_step_among`.
 - [metaverse/deadgears/arena.coax](../../metaverse/deadgears/arena.coax): Dead
   Gears' own walking grid (`NAV_CELL` 0.5 m, 64 × 76 cells, `NAV_CLEAR`

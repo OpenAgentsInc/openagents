@@ -697,7 +697,7 @@ AbPick :: struct { kind: int; idx: int; t: f32; }   // kind: 0 nothing, 1 a body
 ab_tk_pick :: (s: [] Everglade) -> AbPick {
   w := sp_dm(s);
   r := ab_ray(s);
-  pick := AbPick.{kind = 0, idx = -1, t = metaverse_terrain_ray(everglade_ground(), s[0].heights[..], r.from, r.dir, 400)};
+  pick := AbPick.{kind = 0, idx = -1, t = ground_ray_reach(everglade_ground(), s[0].heights[..], r.from, r.dir, 400)};
   for i: 0..<w[0].n {
     p := w[0].pieces[i];
     if p.state != DP_STANDING { continue; }

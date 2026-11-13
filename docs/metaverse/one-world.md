@@ -192,7 +192,6 @@ These are not built. Each is tracked on #13280.
   follows the room and counts the frames (probe 184). A page that could refuse the room's step
   could stall its own character, so the fix for that case is cells that load sooner, not a hold.
 - **Far terrain level of detail** beyond the stitched 1.3 m rows.
-- **The legacy heightfield** (`metaverse-engine/world/terrain.coax`) still has 12 users.
 - **`everglade-parity` and `everglade/features.coax`** stay until every zone is data.
 - **Proof on a phone and in a visible Chrome.** A headless pass is not a claim that the walk is
   seamless.

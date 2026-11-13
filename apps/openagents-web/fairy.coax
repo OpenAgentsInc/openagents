@@ -31,7 +31,7 @@
 #load "../../metaverse-engine/ui/font.coax";
 #load "../../coax/web/analytics.coax";
 #load "../../metaverse-engine/cam/camera.coax";
-#load "../../metaverse-engine/world/terrain.coax";
+#load "../../metaverse-engine/move/path-follower.coax";
 #load "../../metaverse/fairy-forest/forest.coax";
 #load "../../metaverse/fairy-forest/park.coax";   // the park: Central Park at a quarter of its size
 #load "../../metaverse/fairy-forest/talk.coax";
@@ -240,7 +240,7 @@ ground :: () -> Ground {
   g.rim_from = 100000; g.rim = 0;   // no bowl: the park is flat land between the avenues
   return g;
 }
-ground_at :: (s: [] Fairy, x: f32, z: f32) -> f32 { return metaverse_terrain_height(ground(), s[0].heights[..], x, z); }
+ground_at :: (s: [] Fairy, x: f32, z: f32) -> f32 { return ground_height(ground(), s[0].heights[..], x, z); }
 fairy_ground :: (s: [] Fairy, x: f32, z: f32) -> f32 #export_c #effects(all) { return walk_at(s, x, z); }
 // How far a bridge's deck stands over the ground at (x, z) (0 off one): the stream's say on the water adds it to your height.
 fairy_deck_lift :: (s: [] Fairy, x: f32, z: f32) -> f32 #export_c #effects(all) { return walk_at(s, x, z) - ground_at(s, x, z); }
@@ -251,7 +251,7 @@ fairy_start :: (s: [] Fairy) {
   s[0].started = true;
   ff_stream_line(s[0].stream[..]);
   nodes := FF_NODE_XZ; links := FF_LINK_AB; flats := FF_FLATS;
-  shaped_ok := metaverse_terrain_build(ground(), s[0].heights[..], nodes[..], links[..], f32(FF_PATH_HALF), flats[..]);
+  shaped_ok := path_ground_build(ground(), s[0].heights[..], nodes[..], links[..], f32(FF_PATH_HALF), flats[..]);
   park_ground(s);
   carve(s);
   path_planes(s);
@@ -1774,7 +1774,7 @@ project :: (u: [] f32, p: Point, width: f32, height: f32) -> Point {
 
 ground_room :: (s: [] Fairy, r: OrbitRay) -> f32 {
   lifted := add(r.from, v3(0, -0.5, 0));
-  return metaverse_terrain_ray(ground(), s[0].heights[..], lifted, r.dir, r.far);
+  return ground_ray_reach(ground(), s[0].heights[..], lifted, r.dir, r.far);
 }
 
 camera_frame :: (s: [] Fairy, feet: Point, vx: f32, vz: f32, dt: f32) -> Shot {

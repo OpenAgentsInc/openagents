@@ -51,7 +51,7 @@ memorial, with its photos, its story and notes from those who knew it.
   with [metaverse-engine/move/player.coax](../move/player.coax), sees through
   [metaverse-engine/cam/camera.coax](../cam/camera.coax)'s free orbit (pulled in where
   a tombstone, hedge or tree is in the way), and stands on
-  [metaverse-engine/world/terrain.coax](../world/terrain.coax)'s ground and paths.
+  [metaverse-engine/world/path-graph.coax](../world/path-graph.coax)'s ground and paths.
 - Its look: [metaverse/look.coax](../../metaverse/look.coax) for the outline,
   [metaverse-engine/render/particles.coax](../render/particles.coax) for the trail; flat
   style since October 30.

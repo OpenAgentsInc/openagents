@@ -624,7 +624,7 @@
         "apps/openagents-web/everglade-face.c",
         "apps/openagents-web/everglade.wgsl",
         "everglade/legacy/v1/plan.coax",
-        "metaverse-engine/world/terrain.coax"
+        "metaverse-engine/physics/ground-point.coax"
       ],
       "acceptance": [
         "From the South Gate, the river crossing and `#above`, at least two distinct ridge layers show through the haze (shots in a note)",

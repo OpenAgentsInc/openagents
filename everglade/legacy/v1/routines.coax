@@ -287,7 +287,7 @@ folk_surface :: (levels: [] f32, x: f32, z: f32) -> f32 {
 // A walker's medium at (x, z): on the ground, wading or swimming (metaverse/water-wade.coax).
 folk_medium :: (heights: [] f32, levels: [] f32, x: f32, z: f32) -> int {
   if heights.count < EG_GROUND_POINTS { return MEDIUM_GROUND; }
-  return medium_walking(folk_surface(levels, x, z), metaverse_terrain_height(everglade_ground(), heights, x, z));
+  return medium_walking(folk_surface(levels, x, z), ground_height(everglade_ground(), heights, x, z));
 }
 
 // The walk's seconds: each piece at FOLK_WALK times the pace its medium allows (half in the water); a piece

@@ -139,12 +139,12 @@
       "labels": [
         "engine"
       ],
-      "body": "A path in metaverse-engine/world/terrain.coax carries distance along it, enemies move along it at their speed, and first, last, strongest and closest targeting are cheap.",
+      "body": "A path in metaverse-engine/world/lanes.coax carries distance along it, enemies move along it at their speed, and first, last, strongest and closest targeting are cheap.",
       "files": [
-        "metaverse-engine/world/terrain.coax"
+        "metaverse-engine/world/lanes.coax"
       ],
       "acceptance": [
-        "coax test metaverse-engine/world/terrain.coax passes with targeting tests for first, last, strongest and closest"
+        "coax test metaverse-engine/world/lanes.coax passes with targeting tests for first, last, strongest and closest"
       ],
       "blocked_by": [],
       "blocks": [

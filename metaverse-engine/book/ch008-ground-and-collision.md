@@ -2,7 +2,7 @@
 
 > **Status: implemented.** Profile: **native f32 meshes and capsule contacts**.
 > The checked ground, ray, sphere-contact and walking-capsule modules live in
-> `metaverse-engine/`. `metaverse-engine/world/terrain.coax` and the real fixed-step controller use them;
+> `metaverse-engine/`. `metaverse-engine/physics/ground-point.coax` and the real fixed-step controller use them;
 > each walking realm declares its collision profile. This profile qualifies
 > native arithmetic, state publication and the existing C boundaries. Whole-realm
 > coordinate migration remains in [chapter 64](ch064-every-realm-runs-on-aethyr.md).
@@ -100,7 +100,7 @@ ground_sample :: (g: Ground, heights: [] f32,
 A point beyond the rectangle reads its nearest edge. The sample reports the
 selected triangle's slopes and which axes were clamped. A consumer extending
 the edge as a surface sets the slope on each clamped axis to zero before
-forming its normal. Both the spatial queries and `metaverse_terrain_normal` do
+forming its normal. Both the spatial queries and `ground_normal_at` do
 that. At a corner beyond both axes, the continuation's normal is straight up.
 
 The descriptor admits at most 1,048,576 cells on either axis, finite in-range

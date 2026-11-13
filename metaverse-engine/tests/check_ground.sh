@@ -9,13 +9,21 @@ for mode in debug release sanitized; do
   coax_flags=()
   cc_flags=(-O0 -g)
   if [[ $mode == release ]]; then coax_flags=(--release); cc_flags=(-O2); fi
-  if [[ $mode == sanitized ]]; then cc_flags=(-O1 -g -fsanitize=address,undefined -fno-omit-frame-pointer); fi
+  if [[ $mode == sanitized ]]; then cc_flags=(-O1 -g -fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer); fi
   "$compiler" c metaverse-engine/tests/ground-native.coax --library "${coax_flags[@]}" \
     --header "$ground_check_out/ground-native.h" > "$ground_check_out/ground-native.c"
   "${CC:-cc}" -std=c11 -ffp-contract=off -fno-fast-math "${cc_flags[@]}" \
     -I "$ground_check_out" "$ground_check_out/ground-native.c" metaverse-engine/tests/ground-native.c \
     -lm -o "$ground_check_out/ground-native"
   ASAN_OPTIONS=halt_on_error=1 UBSAN_OPTIONS=halt_on_error=1 "$ground_check_out/ground-native"
+  # The plain readers' C boundary (physics/ground-point.coax): the Ground layout, its defaults,
+  # exact vertices, edge normals and refused views, through the production exports.
+  "$compiler" c metaverse-engine/physics/ground-point.coax --library "${coax_flags[@]}" \
+    --header "$ground_check_out/ground-point-native.h" > "$ground_check_out/ground-point-native.c"
+  "${CC:-cc}" -std=c11 -ffp-contract=off -fno-fast-math "${cc_flags[@]}" \
+    -I "$ground_check_out" "$ground_check_out/ground-point-native.c" metaverse-engine/tests/ground-point-native.c \
+    -lm -o "$ground_check_out/ground-point-native"
+  ASAN_OPTIONS=halt_on_error=1 UBSAN_OPTIONS=halt_on_error=1 "$ground_check_out/ground-point-native"
 done
 for name in time raw; do
   status=0

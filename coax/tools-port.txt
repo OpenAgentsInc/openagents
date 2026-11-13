@@ -776,7 +776,6 @@ metaverse-engine/tests/check_ground_contact.sh
 metaverse-engine/tests/check_ground_ray.sh
 metaverse-engine/tests/check_native_gameplay.py
 metaverse-engine/tests/check_render_native.py
-metaverse-engine/tests/check_terrain.sh
 metaverse-engine/tests/check_walk.py
 metaverse-engine/tests/follower-host.js
 metaverse-engine/tests/qualify_book.py

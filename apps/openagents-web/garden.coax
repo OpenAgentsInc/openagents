@@ -4,7 +4,7 @@
 // links it) and see it through the free orbit (metaverse-engine/cam/camera.coax Orbit),
 // which turns with a mouse drag, the arrow keys or your right thumb, zooms
 // with the wheel, swings in behind you as you walk, and pulls in where a
-// tree, a hedge or a hill is in the way. The ground is metaverse-engine/world/terrain.coax's:
+// tree, a hedge or a hill is in the way. The ground is metaverse-engine/world/path-graph.coax's:
 // rolling hills in a shallow bowl, levelled where the garden's paths run,
 // and a dog that follows you by those paths. There is a ball
 // (metaverse-engine/physics/throw.coax): E picks it up, E or a click throws it the way the
@@ -57,7 +57,7 @@ U_PATH_INFO :: U_PATH + PATHS * 4;
 U_PLATE :: U_PATH_INFO + 4;
 UNIFORM_FLOATS :: U_PLATE + PLATES * 8;
 
-// The ground: CELLS a side of CELL metres, centred on the origin (terrain.coax Ground's).
+// The ground: CELLS a side of CELL metres, centred on the origin (ground.coax Ground's).
 CELLS :: 64;
 CELL :: 1.5;
 GROUND_POINTS :: (CELLS + 1) * (CELLS + 1);
@@ -149,7 +149,7 @@ Garden :: struct {
 
 // The paths: a ring round the plaza, the way in from the south, and
 // branches to the pond (east), the orchard (north) and the meadow (west),
-// joined by two loops (terrain.coax nodes and links).
+// joined by two loops (path-graph.coax nodes and links).
 NODES :: 20;
 NODE_XZ :: [40] f32.[
   0, 7,  4.95, 4.95,  7, 0,  4.95, -4.95,  0, -7,  -4.95, -4.95,  -7, 0,  -4.95, 4.95,
@@ -160,7 +160,7 @@ LINK_AB :: [44] int.[
   0, 1,  1, 2,  2, 3,  3, 4,  4, 5,  5, 6,  6, 7,  7, 0,
   4, 8,  2, 9,  9, 10,  0, 11,  11, 12,  12, 13,  6, 14,  14, 15,  9, 16,  16, 17,  17, 11,  8, 18,  18, 19,  19, 9
 ];
-// Level ground: the plaza and the pond's bed (terrain.coax FLAT).
+// Level ground: the plaza and the pond's bed (path-graph.coax FLAT).
 FLAT_DISCS :: [8] f32.[0, 0, 9, 0,   27, 0, 4.5, -0.7];
 POND_X :: 27.0; POND_Z :: 0.0; POND_R :: 4.0; POND_LEVEL :: -0.2;
 
@@ -248,7 +248,7 @@ ground :: () -> Ground { g: Ground; g.n = CELLS; g.cell = CELL; g.west = EDGE; g
 garden_start :: (s: [] Garden) {
   s[0].started = true;
   nodes := NODE_XZ; links := LINK_AB; flats := FLAT_DISCS;
-  ok := metaverse_terrain_build(ground(), s[0].heights[..], nodes[..], links[..], f32(PATH_HALF), flats[..]);
+  ok := path_ground_build(ground(), s[0].heights[..], nodes[..], links[..], f32(PATH_HALF), flats[..]);
   s[0].feet = v3(f32(SPAWN_X), ground_at(s, f32(SPAWN_X), f32(SPAWN_Z)), f32(SPAWN_Z));
   s[0].orbit = metaverse_orbit_start(s[0].feet, 0);
   s[0].fetch.dog = metaverse_follower_place(ground(), s[0].heights[..], f32(DOG_X), f32(DOG_Z), 0);
@@ -619,7 +619,7 @@ shadow :: (s: [] Garden, u: [] f32, x: f32, z: f32, radius: f32, strength: f32) 
   s[0].shadow_n = n + 1;
 }
 
-ground_at :: (s: [] Garden, x: f32, z: f32) -> f32 { return metaverse_terrain_height(ground(), s[0].heights[..], x, z); }
+ground_at :: (s: [] Garden, x: f32, z: f32) -> f32 { return ground_height(ground(), s[0].heights[..], x, z); }
 
 scenery :: (s: [] Garden, u: [] f32) {
   for t: 0..<TREES {
@@ -721,7 +721,7 @@ horizon_y :: (shot: Shot, u: [] f32, height: f32) -> f32 {
 // cast half a metre lower, so the eye keeps that far above the ground.
 ground_room :: (s: [] Garden, r: OrbitRay) -> f32 {
   lifted := add(r.from, v3(0, -0.5, 0));
-  return metaverse_terrain_ray(ground(), s[0].heights[..], lifted, r.dir, r.far);
+  return ground_ray_reach(ground(), s[0].heights[..], lifted, r.dir, r.far);
 }
 
 // The free orbit this frame: it follows you (feet as drawn) and swings in

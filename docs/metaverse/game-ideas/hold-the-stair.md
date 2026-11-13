@@ -95,13 +95,13 @@ other defenders, a life cleric heals the tower).
 | Walls that break into rubble | Wall of Stone with AC and hit points; rubble damage | `metaverse/demolish.coax`, Everglade |
 | Red damage numbers | Rising red numbers over whoever takes damage | Everglade |
 | Waves of enemies on a rules engine | Dead Gears' waves, entities and event log | `metaverse/deadgears/rules.coax`, `metaverse/deadgears/ecs.coax` |
-| Walking a path | Characters following garden paths | `metaverse-engine/world/terrain.coax` |
+| Walking a path | Characters following garden paths | `metaverse-engine/move/path-follower.coax` |
 | Placing things on a grid | Minecraft-style placing from the playtest redesign | `metaverse/edit/`, `metaverse-engine/cam/arrange.coax` |
 | Tap, long-press, drag to swap | Everglade's hotbar | `apps/openagents-web/everglade-hotbar.coax` |
 
 ## What the engine needs
 
-1. **Paths as lanes** (`metaverse-engine/world/terrain.coax`): a path with a distance along
+1. **Paths as lanes** (`metaverse-engine/world/lanes.coax`): a path with a distance along
    it, so "first", "last", "strongest" and "closest" targeting are cheap,
    and enemies that move along it at their speed.
 2. **Splitting enemies**: an entity that, at 0 hit points, spawns its inner
