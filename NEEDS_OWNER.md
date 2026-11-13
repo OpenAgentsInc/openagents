@@ -1,5 +1,25 @@
 # Owner actions
 
+## Coax Native starter on TestFlight (2026-11-13)
+
+Install OpenAgents 1.0.0 build **1068** from the existing Owner TestFlight
+group when processing finishes. It replaces the earlier world/wallet/voice
+interface with the Coax Native starter; existing Keychain records remain.
+Allow the signed update prompt, tap **Apply update**, and check that
+**Updates are live.** appears. Tap **Try the starter**, leave the app in the
+foreground for at least 30 seconds, then close and reopen it. The changed
+screen should remain. **Build and update details** should report native
+build 1068 and signed update 1. Repeat once without network access to check
+the cached launch. Keep any failure's displayed runtime/build/generation.
+
+The same-binary live-feed simulator test passed; an actual TestFlight
+installation on the owner's phone remains the hardware acceptance step.
+Login/chat UI comes next through Coax updates. This build already exposes
+native email/passkey/device-key auth and authenticated chat requests; real
+passkey/device prompts need phone testing when those screens are added.
+See [the starter guide](coax/native/README.md) and
+[verification](docs/verification/coax-native-starter-2026-11-13.md).
+
 ## Claude Code dev boxes on boat, stages 1 to 6 (#13474, 2026-11-13)
 
 The SDK, the policy, `tool.sh boat`, Coder's `--on boat:ID` and /chat's devbox conversations are on `main` and checked against a loopback fake. Nothing has called hosted boat yet, because no box or agent holds a boat key. These steps make it live:

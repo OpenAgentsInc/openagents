@@ -32,8 +32,8 @@ st_frame :: (s: [] Starter, dt: f32, reduced: bool) -> int #export_c #effects(al
   ui_begin(u,s[0].time,reduced); tr_begin(t);
   root := tr_open(t,"starter",TG_MAIN,"starter");
   x := k_text(t,u,"starter.label",TG_P,"","OPENAGENTS / COAX NATIVE");
-  x = k_text(t,u,"starter.title",TG_H1,"","Start here.");
-  x = k_text(t,u,"starter.about",TG_P,"","One Coax app. A native shell. Signed updates, ready when you are.");
+  x = k_text(t,u,"starter.title",TG_H1,"","Updates are live.");
+  x = k_text(t,u,"starter.about",TG_P,"","This Coax screen arrived over the air. Next, build login and agent chat from this starter.");
   count: [32] u8; o: [1] Jo; jo_start(o[..],count[..]); jo_int(o[..],s[0].taps); n := o[0].n;
   x = k_text(t,u,"starter.count",TG_P,"count",cast(string)count[0..<n]);
   x = k_button(t,u,"starter.tap","Try the starter",BS_PRIMARY);
