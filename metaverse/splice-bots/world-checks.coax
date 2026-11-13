@@ -268,9 +268,9 @@ SptShell :: struct { m: [1] EdModel; scratch: [EM_BYTES] u8; name: [EM_NAME] u8;
   #assert spt_round(x[..], 1.1, spt_events(x[..], out, 4)) == WFQ_EVENTS && f[0].rev == 4;
   #assert em_read(m, spw_model(g, p), k[0].scratch[..]) && m[0].ne == 1 && m[0].undo == 1 && m[0].redo == 1 && m[0].e_id[0] == 2;
   // the foes and their plans by time of day, the clock the story's, no foe shown (#13466)
-  pt := m[0].ptable; ck := m[0].clock; an := m[0].a_name[5]; pr := m[0].p_route[em_plan_at(m, 6, "dusk")];
+  pt := m[0].ptable; ck := m[0].clock; an := m[0].a_name[5]; pr := m[0].p_route[em_plan_at(m, 6, "night")];
   #assert m[0].na == FOES && m[0].np == FOES * 4 && m[0].asel == 0 && cast(string) pt[0..<m[0].ptable_n] == "plans" && cast(string) ck[0..<m[0].clock_n] == "story";
-  #assert cast(string) an[0..<m[0].a_name_n[5]] == "Imperial 1" && cast(string) pr[0..<m[0].p_route_n[em_plan_at(m, 6, "dusk")]] == "1010 -18880, 1010 -20080";
+  #assert cast(string) an[0..<m[0].a_name_n[5]] == "Imperial 1" && cast(string) pr[0..<m[0].p_route_n[em_plan_at(m, 6, "night")]] == "1010 -18880, 1010 -20080";
   // a foe shown: the model says so, the game draws its plan, and a page in the village goes to the mine
   spw_actor(g, p, 6);
   #assert em_read(m, spw_model(g, p), k[0].scratch[..]) && m[0].asel == 6 && g[0].shown == 5 && g[0].zone == Z_MINE;
@@ -380,26 +380,26 @@ spt_cell :: (out: [] u8, rev: int, table: string, row: int, col: string, value: 
 #test "Splice Bots' world: a foe's plan and the editor's clock are cells: taken, saved and taken back; a route out of the mine, in a wall or of the wrong shape is refused in words (#13466)" #steps 4000000000 #traversal 2000000000 {
   t := [1] SpwTest.[SpwTest.{}]; g := t[0].g[..]; x := t[0].x[..]; k := [1] SptCell.[SptCell.{}]; body: [WE_BATCH_BODY] u8;
   empty := spw_empty(g, x[0].k[..], t[0].doc[..]);
-  // Imperial 1 at dusk guards the tunnel mouth; the editor shows dusk
-  b := spw_batch(g, x, empty, spt_cell(body[..], 0, "plans", 62, "do", "guard"), true, t[0].next[..], t[0].did[..], t[0].inv[..], t[0].why[..]);
-  #assert b.status == SPB_OK && sc_plan(g[0].c[..], 5, 2).act == NPD_GUARD;
+  // Imperial 1 at night guards the tunnel mouth; the editor shows dusk
+  b := spw_batch(g, x, empty, spt_cell(body[..], 0, "plans", 63, "do", "guard"), true, t[0].next[..], t[0].did[..], t[0].inv[..], t[0].why[..]);
+  #assert b.status == SPB_OK && sc_plan(g[0].c[..], 5, 3).act == NPD_GUARD;
   one := cast(string) k[0].two[0..<ct_copy(k[0].two[..], cast(string) t[0].next[0..<b.doc])];
   b = spw_batch(g, x, one, spt_cell(body[..], 1, "clock", 1, "when", "dusk"), true, t[0].next[..], t[0].did[..], t[0].inv[..], t[0].why[..]);
   #assert b.status == SPB_OK && g[0].c[0].clock == 2;
   two := cast(string) k[0].after[0..<ct_copy(k[0].after[..], cast(string) t[0].next[0..<b.doc])];
   // the tables as saved read back with both
   text := cast(string) k[0].keep[0..<ct_copy(k[0].keep[..], spw_tables_text(x[0].ct[..]))];
-  #assert sc_load(k[0].c[..], text) && k[0].c[0].clock == 2 && sc_plan(k[0].c[..], 5, 2).act == NPD_GUARD;
+  #assert sc_load(k[0].c[..], text) && k[0].c[0].clock == 2 && sc_plan(k[0].c[..], 5, 3).act == NPD_GUARD;
   // its inverse puts the realm's own clock back
   inv := cast(string) t[0].inv[0..<b.inv];
   b = spw_batch(g, x, two, inv, true, t[0].next[..], t[0].did[..], t[0].back[..], t[0].why[..]);
   #assert b.status == SPB_OK && g[0].c[0].clock == -1;
   // the dome village has no foes: a route there is refused, and says where a route may go
   w := [1] SpwWork.[SpwWork.{}];
-  b = spw_batch(g, w[..], empty, spt_cell(body[..], 0, "plans", 62, "route", "17720 -7060, 17720 -6000"), true, t[0].next[..], t[0].did[..], t[0].back[..], t[0].why[..]);
-  #assert b.status == SPB_REFUSED && spt_why(t[..], b) == "plan 62: a foe's route stays in the mine (x -16000 to 16000, z -43000 to 2000 centimetres) or an area added after it (ID 5 and up); the dome village, the gate corridor and the rail stop are stages of their own, with no foes in them" && !w[0].ct[0].changed;
-  b = spw_batch(g, w[..], empty, spt_cell(body[..], 0, "plans", 62, "do", "stand"), true, t[0].next[..], t[0].did[..], t[0].back[..], t[0].why[..]);
-  #assert b.status == SPB_REFUSED && spt_why(t[..], b) == "plan 62: stand, dance, sleep and wander take one point, guard one or two (the post, then where it looks), patrol 2 to 8";
+  b = spw_batch(g, w[..], empty, spt_cell(body[..], 0, "plans", 63, "route", "17720 -7060, 17720 -6000"), true, t[0].next[..], t[0].did[..], t[0].back[..], t[0].why[..]);
+  #assert b.status == SPB_REFUSED && spt_why(t[..], b) == "plan 63: a foe's route stays in the mine (x -16000 to 16000, z -43000 to 2000 centimetres) or an area added after it (ID 5 and up); the dome village, the gate corridor and the rail stop are stages of their own, with no foes in them" && !w[0].ct[0].changed;
+  b = spw_batch(g, w[..], empty, spt_cell(body[..], 0, "plans", 63, "do", "stand"), true, t[0].next[..], t[0].did[..], t[0].back[..], t[0].why[..]);
+  #assert b.status == SPB_REFUSED && spt_why(t[..], b) == "plan 63: stand, dance, sleep and wander take one point, guard one or two (the post, then where it looks), patrol 2 to 8";
   b = spw_batch(g, w[..], empty, spt_cell(body[..], 0, "clock", 1, "when", "noon"), true, t[0].next[..], t[0].did[..], t[0].back[..], t[0].why[..]);
   #assert b.status == SPB_REFUSED && !w[0].ct[0].changed;
   // a point in the mine where no one can stand: the route is refused, naming the plan
@@ -410,14 +410,14 @@ spt_cell :: (out: [] u8, rev: int, table: string, row: int, col: string, value: 
   } }
   #assert wx != 0;
   rt: [64] u8; n := ct_put_int(rt[..], 0, wx); n = ct_put(rt[..], n, " "); n = ct_put_int(rt[..], n, wz); n = ct_put(rt[..], n, ", 1010 -20080");
-  b = spw_batch(g, w[..], empty, spt_cell(body[..], 0, "plans", 62, "route", cast(string) rt[0..<n]), true, t[0].next[..], t[0].did[..], t[0].back[..], t[0].why[..]);
+  b = spw_batch(g, w[..], empty, spt_cell(body[..], 0, "plans", 63, "route", cast(string) rt[0..<n]), true, t[0].next[..], t[0].did[..], t[0].back[..], t[0].why[..]);
   why := spt_why(t[..], b);
-  #assert b.status == SPB_REFUSED && !w[0].ct[0].changed && ct_parts(why, ' ') == 21 && ct_part(why, ' ', 0) == "plan" && ct_part(why, ' ', 1) == "62:";
+  #assert b.status == SPB_REFUSED && !w[0].ct[0].changed && ct_parts(why, ' ') == 21 && ct_part(why, ' ', 0) == "plan" && ct_part(why, ' ', 1) == "63:";
   #assert ct_num(ct_part(why, ' ', 5)).v == wx && ct_num(ct_part(why, ' ', 6)).v == wz && ct_part(why, ' ', 3) == "route's" && ct_part(why, ' ', 12) == "nearest";
   // the nearest place it names is one a foe can stand: a route through it is taken
   nx := ct_num(ct_part(why, ' ', 19)).v; nz := ct_num(ct_part(why, ' ', 20)).v;
   n = ct_put_int(rt[..], 0, nx); n = ct_put(rt[..], n, " "); n = ct_put_int(rt[..], n, nz); n = ct_put(rt[..], n, ", 1010 -20080");
-  b = spw_batch(g, w[..], empty, spt_cell(body[..], 0, "plans", 62, "route", cast(string) rt[0..<n]), true, t[0].next[..], t[0].did[..], t[0].back[..], t[0].why[..]);
+  b = spw_batch(g, w[..], empty, spt_cell(body[..], 0, "plans", 63, "route", cast(string) rt[0..<n]), true, t[0].next[..], t[0].did[..], t[0].back[..], t[0].why[..]);
   #assert b.status == SPB_OK;
 }
 

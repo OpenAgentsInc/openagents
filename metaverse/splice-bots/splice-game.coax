@@ -116,7 +116,8 @@ SpGame :: struct {
   bot: bool;                   // the Digger is built (its three slots are filled): it follows you
   bot_state: int; bot_x: f32; bot_z: f32; bot_yaw: f32; bot_from: f32; bot_step: int; bot_t: f32; bot_fail: f32; bot_wall: bool; bot_spin: f32;
   fx: [FOES] f32; fz: [FOES] f32; fhp: [FOES] int; fhost: [FOES] bool; fstag: [FOES] f32;
-  fyaw: [FOES] f32; fflee: [FOES] bool; fpose: [FOES] int;   // where each faces, whether it runs from you, and its plan's pose (ai/plan.coax MP_*)
+  fyaw: [FOES] f32; fflee: [FOES] bool; fpose: [FOES] int;
+  fout: [FOES] bool;           // out of the garage at this time of day: its plan stands it beyond the ring (g_plan_out)   // where each faces, whether it runs from you, and its plan's pose (ai/plan.coax MP_*)
   // realm scripts (scripts.coax, #13467): the foes' steps so far; for each foe, where its script said to walk
   // and how fast, the step that word is for and the step it asked to strike on; the strikes on foes this step
   // (for on_hit); and how many calls and diagnostics the scripts have made
@@ -242,6 +243,7 @@ g_foes :: (g: [] SpGame) {
     // where its plan for the time of day starts it (the shipped plans start each where its landmark is)
     pl := sc_plan(g[0].c[..], i, g_phase(g));
     if pl.ok && pl.n > 0 { g[0].fx[i] = mp_m(pl.x[0]); g[0].fz[i] = mp_m(pl.z[0]); }
+    g[0].fout[i] = g_plan_out(g, pl);
   }
 }
 // The time of day the foes keep and the light is: the editor's when it set one, else the story's phase.
@@ -585,11 +587,30 @@ g_step :: (g: [] SpGame, dt: f32) {
 // The foes on their plans. A foe that notices you does what its plan says on seeing you: chases, calls
 // the others near it too, flees, or ignores you; one in a fight or on the run gives up past T_GIVE_UP or at
 // the catwalk, and a guard past twice its notice from its post. Simulating (unseen), nobody is there to see.
+// A plan is out of the garage when every point of its route lies beyond the ring and its bays (the
+// garage's landmark and radius, ga_inside): the raiders scavenging the desert at dusk, the Imperial
+// robots recharging at the solar farm (#13505). A foe out of the garage is not there: it isn't drawn,
+// senses no one and can't be pointed at or stunned. Going out or coming back in, it is where its plan starts.
+g_plan_out :: (g: [] SpGame, pl: NplPlan) -> bool {
+  if !pl.ok || pl.n <= 0 || pl.act == NPD_FOLLOW { return false; }
+  for k: 0..<pl.n { if ga_inside(g, mp_m(pl.x[k]), mp_m(pl.z[k])) { return false; } }
+  return true;
+}
+// A foe that is in play: not beaten, and not out of the garage.
+g_foe_in :: (g: [] SpGame, i: int) -> bool { return g[0].fhp[i] > 0 && !g[0].fout[i]; }
 g_foes_step :: (g: [] SpGame, dt: f32) {
   safe := sps_safe(g);
   g[0].steps += 1;
   for i: 0..<FOES {
     if g[0].fhp[i] <= 0 { continue; }
+    {
+      po := sc_plan(g[0].c[..], i, g_phase(g)); out := g_plan_out(g, po);
+      if out != g[0].fout[i] {
+        g[0].fout[i] = out; g[0].fhost[i] = false; g[0].fflee[i] = false; g[0].fstag[i] = 0;
+        if po.ok && po.n > 0 { g[0].fx[i] = mp_m(po.x[0]); g[0].fz[i] = mp_m(po.z[0]); }
+      }
+      if out { continue; }
+    }
     if g[0].fstag[i] > 0 { g[0].fstag[i] -= dt; continue; }
     imperial := i >= F_RAIDERS;
     pl := sc_plan(g[0].c[..], i, g_phase(g));
@@ -599,7 +620,7 @@ g_foes_step :: (g: [] SpGame, dt: f32) {
     spoke := sps_spoke(g, i);
     if !spoke && see > 0 && !g[0].unseen && !g[0].fhost[i] && !g[0].fflee[i] && !safe && d < d_noticed(g, see) {
       if pl.on == NPO_FLEE { g[0].fflee[i] = true; } else { g[0].fhost[i] = true; }
-      if pl.on == NPO_CALL { for j: 0..<FOES { if j != i && g[0].fhp[j] > 0 && dist2(g[0].fx[i], g[0].fz[i], g[0].fx[j], g[0].fz[j]) < T_CALL { g[0].fhost[j] = true; g[0].fflee[j] = false; } } }
+      if pl.on == NPO_CALL { for j: 0..<FOES { if j != i && g_foe_in(g, j) && dist2(g[0].fx[i], g[0].fz[i], g[0].fx[j], g[0].fz[j]) < T_CALL { g[0].fhost[j] = true; g[0].fflee[j] = false; } } }
     }
     if !spoke && g[0].fhost[i] && (safe || d > T_GIVE_UP || g[0].unseen) { g[0].fhost[i] = false; }
     if !spoke && g[0].fflee[i] && (d > T_GIVE_UP || g[0].unseen) { g[0].fflee[i] = false; }
@@ -667,7 +688,7 @@ g_take :: (g: [] SpGame, i: int) {
 g_foe_near :: (g: [] SpGame) -> int {
   best := -1; bd := T_STUN_RANGE;
   if g[0].zone != Z_MINE { return -1; }
-  for i: 0..<FOES { if g[0].fhp[i] > 0 { d := dist2(g[0].px, g[0].pz, g[0].fx[i], g[0].fz[i]); if d < bd { bd = d; best = i; } } }
+  for i: 0..<FOES { if g_foe_in(g, i) { d := dist2(g[0].px, g[0].pz, g[0].fx[i], g[0].fz[i]); if d < bd { bd = d; best = i; } } }
   return best;
 }
 // F: stun a weak point of the banned bot, or a robot within 2 m: it stands still for T_FOE_STUN.
@@ -1008,7 +1029,7 @@ g_live :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
   }
   // the party's people: raiders dancing where they stand, Imperial robots on patrol
   for i: 0..<FOES {
-    if g[0].fhp[i] <= 0 { continue; }
+    if !g_foe_in(g, i) { continue; }
     face := atan2(g[0].px - g[0].fx[i], g[0].pz - g[0].fz[i]);
     fy := ground_y(g, g[0].fx[i], g[0].fz[i]);
     reel := ifx g[0].fstag[i] > 0 then sin(t * 50) * 0.08 else 0.0f32;
@@ -1995,17 +2016,15 @@ g_play_run :: (g: [] SpGame) -> int {
   g[0].px = pick_x(g, PICK_CELL) + 1; g[0].pz = pick_z(g, PICK_CELL) - 1;
   for i: 0..<200 { g_step(g, 0.02); if g[0].cells == 1 { break; } }
   if !(g[0].cells == 1) { return 21; }
-  // sneaking (Shift), F stuns a raider; pointed at it, Digger fights it down and takes a robot piece (the raider mech's was the first)
+  // sneaking (Shift) is there, and the garage at dusk is quiet: the raiders are out scavenging and the
+  // Imperial robots recharging at the solar farm, so no one is in the ring or its bays (#13505)
   if !(g_key(g, -13, true) && d_sneaking(g)) { return 22; }
-  g[0].px = g[0].fx[4] + 1.5; g[0].pz = g[0].fz[4]; g_bot_home(g);   // across the garage: Digger comes along
-  if !(g_key(g, 'f', true) && g[0].fstag[4] > 0) { return 22; }
-  g[0].dr[0].task = DJ_FIGHT; g[0].dr[0].task_i = 4;
-  for i: 0..<300 { g_step(g, 0.02); if g[0].fhp[4] <= 0 { break; } }
-  if !(g[0].scrap == 2 && g[0].heat == 10) { return 23; }
+  g[0].px = g[0].at.dance_x + 2; g[0].pz = g[0].at.dance_z; g_bot_home(g); g_step(g, 0.02);
+  for i: 0..<FOES { if g_foe_in(g, i) || ga_inside(g, g[0].fx[i], g[0].fz[i]) || g[0].fhost[i] { return 23; } }
   _ = g_key(g, -13, false);
   g[0].px = pick_x(g, PICK_PLUS) + 1; g[0].pz = pick_z(g, PICK_PLUS) + 1;
   for i: 0..<200 { g_step(g, 0.02); if g[0].have[H_PLUS] { break; } }
-  if !(g[0].have[H_PLUS] && g[0].heat == 35) { return 24; }
+  if !(g[0].have[H_PLUS] && g[0].heat == T_HEAT_PIECE) { return 24; }   // the one banned piece: +25 Heat
   g[0].px = g[0].at.crate_x + 2; g[0].pz = g[0].at.crate_z;
   for i: 0..<100 { g_step(g, 0.02); }
   if !(g[0].heat < 35) { return 25; }                       // Heat cools at the crate, to the banned piece's floor
@@ -2044,6 +2063,30 @@ g_play_run :: (g: [] SpGame) -> int {
   if !(g_key(g, 'r', true)) { return 40; }
   if !(g[0].mode == M_PLAY && g[0].zone == Z_VILLAGE && !g[0].rubble_gone && g[0].hearts == T_HEARTS) { return 41; }
   return 0;
+}
+// The garage at dusk is quiet (#13505): the raiders are out scavenging and the Imperial robots recharging
+// at the solar farm, so no plan puts anyone in the ring or its bays; at night they are back, the
+// raiders at the party (passive) and the Imperial robots patrolling the rave.
+#test "the garage at dusk: every foe's dusk plan is out of the ring, no one is there to see or sense her; at night the rave has its patrols" #steps 200000000 {
+  g := [1] SpGame.[SpGame.{}];
+  g_stage(g[..], 7);
+  #assert g[0].phase == PH_DUSK && g[0].zone == Z_MINE;
+  for i: 0..<FOES { #assert g_plan_out(g[..], sc_plan(g[0].c[..], i, PH_DUSK)) && !g_plan_out(g[..], sc_plan(g[0].c[..], i, PH_NIGHT)); }
+  // across the field to the dance floor and round the ring's edge with two banned pieces' Heat: nobody comes
+  g[0].heat = 50; g[0].have[H_PLUS] = true; g[0].have[H_CORE] = true;
+  g[0].px = g[0].at.dance_x + 1; g[0].pz = g[0].at.dance_z;
+  for i: 0..<200 { g_step(g[..], 0.02); }
+  for k: 0..<GA_SECTIONS { e := ga_at(g[..], k, g[0].at.gar_r - 4); g[0].px = e.x; g[0].pz = e.z; for i: 0..<20 { g_step(g[..], 0.02); } }
+  for i: 0..<FOES { #assert !g_foe_in(g[..], i) && !ga_inside(g[..], g[0].fx[i], g[0].fz[i]) && !g[0].fhost[i]; }
+  #assert g[0].hearts == T_HEARTS && g_foe_near(g[..]) < 0;
+  // night falls: everyone is back in the garage where the night plan starts it, the Imperial robots on patrol by the rave
+  g[0].phase = PH_NIGHT; g[0].px = g[0].at.rover_x - 3; g[0].pz = g[0].at.rover_z; g_step(g[..], 0.02);
+  for i: 0..<FOES {
+    #assert g_foe_in(g[..], i) && ga_inside(g[..], g[0].fx[i], g[0].fz[i]);
+    pl := sc_plan(g[0].c[..], i, PH_NIGHT);
+    if i >= F_RAIDERS { #assert pl.act == NPD_PATROL && pl.notice > 0 && dist2(g[0].fx[i], g[0].fz[i], g[0].at.dance_x, g[0].at.dance_z) < 40; }
+    else { #assert pl.notice == 0; }   // raiders party, passive
+  }
 }
 #test "the run plays from the title to SCENE RESTORED" #steps 800000000 {
   g := [1] SpGame.[SpGame.{}];

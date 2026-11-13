@@ -210,7 +210,7 @@ d_bot :: (g: [] SpGame, dt: f32) {
   }
   if d[0].task == DJ_FIGHT {
     f := d[0].task_i;
-    if f < 0 || f >= FOES || g[0].fhp[f] <= 0 || dist2(g[0].px, g[0].pz, g[0].fx[f], g[0].fz[f]) > T_GIVE_UP_FIGHT { d_task_end(g); return; }
+    if f < 0 || f >= FOES || !g_foe_in(g, f) || dist2(g[0].px, g[0].pz, g[0].fx[f], g[0].fz[f]) > T_GIVE_UP_FIGHT { d_task_end(g); return; }
     if bot_toward(g, g[0].fx[f], g[0].fz[f], T_BOT_GO, dt) > T_STRIKE_REACH { return; }
     d[0].task_t += dt;
     if d[0].task_t < T_STRIKE { return; }
@@ -255,7 +255,7 @@ d_pointed :: (g: [] SpGame) -> DPoint {
   for i: 0..<PICKS { if !g[0].taken[i] && pick_zone(i) == g[0].zone && d_aim(r, pick_x(g, i), 0.75, pick_z(g, i), 0.9, best[..]) { out = DPoint.{kind = DP_PICK, i = i}; } }
   if d_sensor_here(g) { m := d_sensor_at(g); if d_aim(r, m.x, 0.75, m.z, 0.9, best[..]) { out = DPoint.{kind = DP_SENSOR, i = PICKS}; } }
   if g[0].zone == Z_MINE {
-    for i: 0..<FOES { if g[0].fhp[i] > 0 && d_aim(r, g[0].fx[i], 1.0, g[0].fz[i], 1.0, best[..]) { out = DPoint.{kind = DP_FOE, i = i}; } }
+    for i: 0..<FOES { if g_foe_in(g, i) && d_aim(r, g[0].fx[i], 1.0, g[0].fz[i], 1.0, best[..]) { out = DPoint.{kind = DP_FOE, i = i}; } }
     if !g[0].rubble_gone && d_aim(r, 0, 1.5, g[0].at.rubble_z, 3.0, best[..]) { out = DPoint.{kind = DP_DIG, i = 0}; }
     if g[0].rubble_gone && !g[0].wall_gone && d_aim(r, 0, 2.0, g[0].at.wall_z, 4.0, best[..]) { out = DPoint.{kind = DP_DIG, i = 1}; }
   }
@@ -424,7 +424,7 @@ d_plates :: (g: [] SpGame, out: [] f32, q: Ui, at: int) -> int {
   for i: 0..<FOES + 1 {
     x := 0.0f32; z := 0.0f32; share := 0.0f32; c := HEAT(); top := 2.3f32;
     if i < FOES {
-      if g[0].zone != Z_MINE || g[0].fhp[i] <= 0 { continue; }
+      if g[0].zone != Z_MINE || !g_foe_in(g, i) { continue; }
       x = g[0].fx[i]; z = g[0].fz[i]; share = cast(f32) g[0].fhp[i] / cast(f32) (ifx i < F_RAIDERS then T_RAIDER_HP else T_IMPERIAL_HP);
       top = ifx i < F_RAIDERS then 2.3f32 else 2.0f32;
     } else {

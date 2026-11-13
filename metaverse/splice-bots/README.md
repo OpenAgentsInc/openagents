@@ -208,7 +208,11 @@ no model call at run time ([the module](../../metaverse-engine/ai/npc-plan.coax)
 | `speed`, `notice` | Centimetres a second, and how near you come before it notices (0: never) |
 | `on` | What it does on noticing you: `chase`, `call` (the others near it chase too), `flee` or `ignore` |
 
-The shipped rows are the movement Splice Bots had in code, so play is unchanged. The table `clock` holds
+The shipped rows keep the raiders dancing and the Imperial robots patrolling by the rave, except at dusk
+(#13505): then every foe's plan stands it out on the road beyond the garage (the raiders scavenging, the
+Imperial robots recharging at the solar farm), so the garage is quiet. A plan whose every point lies
+outside the ring and its bays (`g_plan_out`) has the foe out of the garage: it isn't drawn, senses no one,
+and can't be pointed at or stunned; going out or coming back in, it is where its plan starts. The table `clock` holds
 the editor's time of day (`story` in play). A route stays in the mine or in an area added after it
 (ID 5 and up, such as a desert), and a point inside a wall
 is refused with the nearest place a foe can stand. `world.coax` checks both on every cell edit.

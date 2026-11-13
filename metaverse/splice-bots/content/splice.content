@@ -155,39 +155,39 @@ table pieces id name:text kit:text scale:int look:ref.looks hx:int hz:int top:in
 table plans id who:int when:text do:text route:text speed:int notice:int on:text
 10|1|dawn|dance|-440 -19180|180|0|chase
 11|1|day|dance|-440 -19180|180|0|chase
-12|1|dusk|dance|-440 -19180|180|0|chase
+12|1|dusk|stand|-15000 1500|0|0|ignore
 13|1|night|dance|-440 -19180|180|0|chase
 20|2|dawn|dance|60 -19580|180|0|chase
 21|2|day|dance|60 -19580|180|0|chase
-22|2|dusk|dance|60 -19580|180|0|chase
+22|2|dusk|stand|-14500 1500|0|0|ignore
 23|2|night|dance|60 -19580|180|0|chase
 30|3|dawn|dance|560 -19080|180|0|chase
 31|3|day|dance|560 -19080|180|0|chase
-32|3|dusk|dance|560 -19080|180|0|chase
+32|3|dusk|stand|-14000 1500|0|0|ignore
 33|3|night|dance|560 -19080|180|0|chase
 40|4|dawn|dance|-140 -18880|180|0|chase
 41|4|day|dance|-140 -18880|180|0|chase
-42|4|dusk|dance|-140 -18880|180|0|chase
+42|4|dusk|stand|-13500 1500|0|0|ignore
 43|4|night|dance|-140 -18880|180|0|chase
 50|5|dawn|dance|-2040 -18780|180|0|chase
 51|5|day|dance|-2040 -18780|180|0|chase
-52|5|dusk|dance|-2040 -18780|180|0|chase
+52|5|dusk|stand|-13000 1500|0|0|ignore
 53|5|night|dance|-2040 -18780|180|0|chase
 60|6|dawn|patrol|1010 -18880, 1010 -20080|180|500|chase
 61|6|day|patrol|1010 -18880, 1010 -20080|180|500|chase
-62|6|dusk|patrol|1010 -18880, 1010 -20080|180|500|chase
+62|6|dusk|stand|13000 1500|0|0|ignore
 63|6|night|patrol|1010 -18880, 1010 -20080|180|500|chase
 70|7|dawn|patrol|-2240 -18980, -1740 -18980|180|500|chase
 71|7|day|patrol|-2240 -18980, -1740 -18980|180|500|chase
-72|7|dusk|patrol|-2240 -18980, -1740 -18980|180|500|chase
+72|7|dusk|stand|13500 1500|0|0|ignore
 73|7|night|patrol|-2240 -18980, -1740 -18980|180|500|chase
 80|8|dawn|patrol|-2240 -20080, -2740 -20080|180|500|chase
 81|8|day|patrol|-2240 -20080, -2740 -20080|180|500|chase
-82|8|dusk|patrol|-2240 -20080, -2740 -20080|180|500|chase
+82|8|dusk|stand|14000 1500|0|0|ignore
 83|8|night|patrol|-2240 -20080, -2740 -20080|180|500|chase
 90|9|dawn|patrol|-3640 -19080, -3640 -20080|180|500|chase
 91|9|day|patrol|-3640 -19080, -3640 -20080|180|500|chase
-92|9|dusk|patrol|-3640 -19080, -3640 -20080|180|500|chase
+92|9|dusk|stand|14500 1500|0|0|ignore
 93|9|night|patrol|-3640 -19080, -3640 -20080|180|500|chase
 table portals id name:text from:text to:text yaw:int r:int
 table scripts id name:text hash:text for:text

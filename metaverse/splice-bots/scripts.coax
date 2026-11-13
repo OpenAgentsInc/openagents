@@ -53,7 +53,7 @@ sps_frame :: (g: [] SpGame, f: [] ScriptFrame, dt: f32) {
     lead := ifx pl.act == NPD_FOLLOW && pl.lead >= 1 && pl.lead <= FOES then pl.lead - 1 else i;
     gl := mp_goal(pl, g[0].t, cast(f32) i * 1.7, i, g[0].fx[lead], g[0].fz[lead], g[0].fyaw[lead]);
     t := ScriptThing.{id = cast(u64) (SPS_FOE + i + 1), kind = ifx i < F_RAIDERS then cast(s32) SPS_KIND_RAIDER else cast(s32) SPS_KIND_IMPERIAL, team = 1,
-                      script = cast(s32) sps_script(g, i), alive = g[0].fhp[i] > 0 && g[0].zone == Z_MINE,
+                      script = cast(s32) sps_script(g, i), alive = g_foe_in(g, i) && g[0].zone == Z_MINE,
                       x = g[0].fx[i], z = g[0].fz[i], facing = g[0].fyaw[i], speed = ifx i < F_RAIDERS then T_RAIDER_SPEED else T_IMPERIAL_SPEED, health = cast(f32) g[0].fhp[i],
                       goal_x = gl.x, goal_z = gl.z, goal_speed = gl.speed, notice = mp_notice(pl), plan_on = cast(s32) pl.on};
     if !pl.ok { t.goal_x = foe_ax(g, i); t.goal_z = foe_az(g, i); t.goal_speed = T_PATROL; t.notice = 0; t.plan_on = -1; }

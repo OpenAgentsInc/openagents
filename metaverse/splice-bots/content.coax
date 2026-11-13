@@ -559,11 +559,13 @@ sc_plan :: (c: [] SpContent, i: int, when: int) -> NplPlan {
   return ifx k < 0 || k >= SC_PLAN_MAX then NplPlan.{} else c[0].plans[k];
 }
 
-#test "the shipped plans are the run as it always played: raiders dance at their spots, robots patrol their posts, the clock is the story's" {
+#test "the shipped plans: raiders dance at their spots and robots patrol their posts, but at dusk all are out of the garage; the clock is the story's" {
   c: [1] SpContent;
   #assert sc_load(c[..], SC_SHIPPED) && c[0].clock == -1;
   for i: 0..<SC_FOES { for w: 0..<NPL_WHENS {
     p := sc_plan(c[..], i, w); m := sc_mark(c[..], 41 + i);
+    // dusk: everyone is out of the garage, standing out on the road (#13505)
+    if w == 2 { #assert p.ok && p.act == NPD_STAND && p.notice == 0 && p.n == 1 && p.z[0] == 1500 && (p.x[0] >= 13000 || p.x[0] <= -13000); continue; }
     #assert p.ok && p.who == i + 1 && p.when == w && p.x[0] == sc_cm(m.x) && p.z[0] == sc_cm(m.z) && p.speed == 180 && p.on == NPO_CHASE;
     if i < 5 { #assert p.act == NPD_DANCE && p.notice == 0 && p.n == 1; }
     else { t := sc_mark(c[..], 51 + i); #assert p.act == NPD_PATROL && p.notice == 500 && p.n == 2 && p.x[1] == sc_cm(t.x) && p.z[1] == sc_cm(t.z); }
@@ -575,23 +577,23 @@ sc_plan :: (c: [] SpContent, i: int, when: int) -> NplPlan {
   #assert sc_load(c[..], sc_swap("\n1|story\n", "\n1|dusk\n", o[..])) && c[0].clock == 2;
   #assert sc_load(c[..], sc_swap("\n1|story\n", "\n1|dawn\n", o[..])) && c[0].clock == 0;
   #assert !sc_load(c[..], sc_swap("\n1|story\n", "\n1|noon\n", o[..])) && sc_plans_words(sc_swap("\n1|story\n", "\n1|noon\n", o[..]), w[..]) == "the clock's row 1 is story, dawn, day, dusk or night";
-  bad := sc_swap("62|6|dusk|patrol|1010 -18880, 1010 -20080|", "62|6|dusk|patrol|17500 4000, 1010 -20080|", o[..]);
-  #assert !sc_load(c[..], bad) && sc_plans_words(bad, w[..]) == "plan 62: a foe's route stays in the mine (x -16000 to 16000, z -43000 to 2000 centimetres) or an area added after it (ID 5 and up); the dome village, the gate corridor and the rail stop are stages of their own, with no foes in them";
+  bad := sc_swap("63|6|night|patrol|1010 -18880, 1010 -20080|", "63|6|night|patrol|17500 4000, 1010 -20080|", o[..]);
+  #assert !sc_load(c[..], bad) && sc_plans_words(bad, w[..]) == "plan 63: a foe's route stays in the mine (x -16000 to 16000, z -43000 to 2000 centimetres) or an area added after it (ID 5 and up); the dome village, the gate corridor and the rail stop are stages of their own, with no foes in them";
   // an area added after the mine is ground the foes walk too: a box, or a circle
-  far := sc_swap("62|6|dusk|patrol|1010 -18880, 1010 -20080|", "62|6|dusk|patrol|1010 -18880, 1500 4000|", o[..]);
+  far := sc_swap("63|6|night|patrol|1010 -18880, 1010 -20080|", "63|6|night|patrol|1010 -18880, 1500 4000|", o[..]);
   #assert !sc_load(c[..], far);
   w2: [CT_BODY] u8; desert := sc_swap2(far, "4|Mine|0|-20500|16000|22500|0\n", "4|Mine|0|-20500|16000|22500|0\n5|Desert|0|5000|3000|3000|0\n", w2[..]);
-  #assert sc_load(c[..], desert) && sc_plan(c[..], 5, 2).z[1] == 4000;
+  #assert sc_load(c[..], desert) && sc_plan(c[..], 5, 3).z[1] == 4000;
   w3: [CT_BODY] u8; round := sc_swap2(far, "4|Mine|0|-20500|16000|22500|0\n", "4|Mine|0|-20500|16000|22500|0\n5|Solar farm|1500|4000|0|0|500\n", w3[..]);
   #assert sc_load(c[..], round);
   w4: [CT_BODY] u8; edge := sc_swap2(far, "4|Mine|0|-20500|16000|22500|0\n", "4|Mine|0|-20500|16000|22500|0\n5|Solar farm|1500|4500|0|0|499\n", w4[..]);
   #assert !sc_load(c[..], edge);
-  bad = sc_swap("62|6|dusk|patrol|", "62|6|dusk|fly|", o[..]);
-  #assert !sc_load(c[..], bad) && sc_plans_words(bad, w[..]) == "plan 62: DO is stand, dance, sleep, guard, patrol, wander or follow";
-  bad = sc_swap("62|6|dusk|patrol|1010 -18880, 1010 -20080|180|500|chase\n", "", o[..]);
+  bad = sc_swap("63|6|night|patrol|", "63|6|night|fly|", o[..]);
+  #assert !sc_load(c[..], bad) && sc_plans_words(bad, w[..]) == "plan 63: DO is stand, dance, sleep, guard, patrol, wander or follow";
+  bad = sc_swap("63|6|night|patrol|1010 -18880, 1010 -20080|180|500|chase\n", "", o[..]);
   #assert !sc_load(c[..], bad) && sc_plans_words(bad, w[..]) == "every foe keeps a plan for dawn, day, dusk and night: set a plan's cells, never drop its row";
-  good := sc_swap("62|6|dusk|patrol|1010 -18880, 1010 -20080|180|500|chase", "62|6|dusk|guard|0 -3700, 0 -3000|0|800|call", o[..]);
-  #assert sc_load(c[..], good) && sc_plan(c[..], 5, 2).act == NPD_GUARD && sc_plans_words(good, w[..]) == "" && sc_plans_words("oops", w[..]) == "";
+  good := sc_swap("63|6|night|patrol|1010 -18880, 1010 -20080|180|500|chase", "63|6|night|guard|0 -3700, 0 -3000|0|800|call", o[..]);
+  #assert sc_load(c[..], good) && sc_plan(c[..], 5, 3).act == NPD_GUARD && sc_plans_words(good, w[..]) == "" && sc_plans_words("oops", w[..]) == "";
 }
 #test "tables saved before the actors, the plans and the clock read with the shipped ones put in" {
   c: [1] SpContent; o: [CT_BODY] u8; up: [CT_BODY] u8; t: [CT_BODY] u8;
