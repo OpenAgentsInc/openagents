@@ -630,7 +630,7 @@ static bool files_named(PGconn *db, files_ctx *x, const char *hash) {
   return named;
 }
 static void files_answer(int fd, files_ctx *x) {
-  coax_string s = wf_answer(fw_of(x));
+  coax_string s = wf_list_answer(fw_of(x));
   if (!s.count) refuse(fd, 500, cs("not written"), -1);
   else api_respond(fd, 200, "text/plain; charset=utf-8", "Cache-Control: no-store\r\n", s.data, (size_t)s.count);
 }

@@ -67,7 +67,7 @@ wf_attach :: (w: [] FlWork, a: [] FwAsk, head: string, now: int, by: string) -> 
 }
 wf_apply :: (w: [] FlWork, a: [] FwAsk, now: int, by: string) -> int #export_c #effects(all) { return fl_apply(w, a, now, by); }
 wf_said :: (w: [] FlWork) -> string #export_c #effects(all) { return fl_words_of(w); }
-wf_answer :: (w: [] FlWork) -> string #export_c #effects(all) { return fl_answer(w); }
+wf_list_answer :: (w: [] FlWork) -> string #export_c #effects(all) { return fl_answer(w); }
 // A scope's stored list into out: its length, or -1 (that scope has no list here).
 wf_stored :: (w: [] FlWork, scope: int, out: [] u8) -> int #export_c #effects(all) {
   s := fl_stored(w, scope, out);
