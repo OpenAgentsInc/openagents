@@ -100,7 +100,7 @@ net_shot_end_read :: (t: string) -> NetShotEnd {
 
 // ---- the bodies' past: where each of a realm's bodies stood at each of the last NET_REWIND_TICKS
 // ticks, so a flight stepped for a past moment meets them where the archer's page drew them.
-NET_PAST_BODIES :: 256;     // a zone's creatures and its seats (#13289: every body that can be hit)
+NET_PAST_BODIES :: 320;     // a zone's creatures, its seats and each seat's familiar (#13289: every body that can be hit)
 NetPastRow :: struct { tick: int = -1; up: [NET_PAST_BODIES] bool; x: [NET_PAST_BODIES] f32; z: [NET_PAST_BODIES] f32; }
 NetPast :: struct { row: [NET_REWIND_TICKS] NetPastRow; newest: int = -1; kept: int; }
 // The tick's row begun (every body down until net_past_put says where it stands).

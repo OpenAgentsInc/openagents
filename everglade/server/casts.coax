@@ -92,7 +92,7 @@ e2_cast_view_tick :: (v: [] RmServer, k: int, view_ms: int) -> int {
 // The rules' squares of every other body that stood at tick `at`, set to where it stood then for one
 // press and put back after it (e2_cast_release). A body that is down now is not held: it cannot be
 // hit. A body the past does not hold standing then stays where it is.
-E2CastHold :: struct { n: int; who: [E2AR_BODIES + EG_ZONE_SEATS] int; x: [E2AR_BODIES + EG_ZONE_SEATS] int; y: [E2AR_BODIES + EG_ZONE_SEATS] int; }
+E2CastHold :: struct { n: int; who: [E2AR_BODIES + EG_ZONE_SEATS * 2] int; x: [E2AR_BODIES + EG_ZONE_SEATS * 2] int; y: [E2AR_BODIES + EG_ZONE_SEATS * 2] int; }
 e2_cast_hold :: (v: [] RmServer, k: int, seat: int, at: int, h: [] E2CastHold) {
   h[0].n = 0;
   a := e2a_room(v, k); t := v[0].eg[k].tick;
@@ -100,12 +100,17 @@ e2_cast_hold :: (v: [] RmServer, k: int, seat: int, at: int, h: [] E2CastHold) {
   if at >= t { return; }
   a[0].casts_back += 1;
   r := v[0].eg[k].rules[..];
-  for b: 0..<E2AR_BODIES + eg_cap(v, k) {
-    i := -1;
-    if b < E2AR_BODIES { i = e2a_creature(v, k, b); }
-    else {
-      s := b - E2A_SEAT0;
+  cap := eg_cap(v, k);
+  for q: 0..<E2AR_BODIES + cap * 2 {
+    i := -1; b := q;
+    if q < E2AR_BODIES { i = e2a_creature(v, k, q); }
+    else if q < E2AR_BODIES + cap {
+      s := q - E2A_SEAT0;
       if s != seat && v[0].eg[k].seat[s].live && v[0].eg[k].seat[s].placed { i = EGB_SEAT + s; }
+    } else {
+      // every other seat's familiar that is out (a Wizard's, a Druid's Wild Companion): a body that can be hit
+      s := q - E2AR_BODIES - cap; b = E2A_FAM0 + s;
+      if s != seat { i = e2a_familiar(v, k, s); }
     }
     if i < 0 { continue; }
     p := net_past_at(a[0].past[..], b, at, 0);

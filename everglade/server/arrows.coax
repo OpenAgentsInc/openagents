@@ -57,6 +57,14 @@ e2_arrow_heard :: (v: [] RmServer, k: int, seat_id: SeatId, text: string) { seat
 // This tick's bodies written down: every monster that stands, the guard, and every placed player
 // (#13289: every body that can be hit is in the past, so a cast is judged where its page drew them).
 E2A_SEAT0 :: E2AR_BODIES;   // seat s's body in the past: after the creatures'
+E2A_FAM0 :: E2A_SEAT0 + EG_ZONE_SEATS;   // and seat s's familiar (a Wizard's, a Druid's Wild Companion) after the seats'
+// Owner seat s's familiar as the rules have it: its creature when it is out (as its row is written, familiar.coax e2_familiars_rows), else -1.
+e2a_familiar :: (v: [] RmServer, k: int, s: int) -> int {
+  r := v[0].eg[k].rules[..];
+  if !r[0].familiar_ready || s < 0 || s >= eg_cap(v, k) || !v[0].eg[k].seat[s].live || !v[0].eg[k].seat[s].placed { return -1; }
+  f := r[0].familiar[s].me; c := r[0].b[0].c[f];
+  return ifx c.dead || c.hp <= 0 || e2_familiar_form(c.familiar_form) < 0 then -1 else f;
+}
 e2a_remember :: (v: [] RmServer, k: int) {
   a := e2a_room(v, k); t := v[0].eg[k].tick; ms := e2mo_room(v, k);
   net_past_begin(a[0].past[..], t);
@@ -65,6 +73,8 @@ e2a_remember :: (v: [] RmServer, k: int) {
   if g[0].q >= 0 && g[0].state != E2G_DOWN && g[0].state != E2G_NONE { net_past_put(a[0].past[..], E2AR_GUARD, g[0].x, g[0].z); }
   for s: 0..<eg_cap(v, k) {
     if v[0].eg[k].seat[s].live && v[0].eg[k].seat[s].placed { net_past_put(a[0].past[..], E2A_SEAT0 + s, v[0].eg[k].seat[s].pose.x, v[0].eg[k].seat[s].pose.z); }
+    f := e2a_familiar(v, k, s);
+    if f >= 0 { r := v[0].eg[k].rules[..]; net_past_put(a[0].past[..], E2A_FAM0 + s, egb_cell_m(r[0].b[0].c[f].x), egb_cell_z(r, r[0].b[0].c[f].y)); }
   }
 }
 // Where body b stood at tick `at` when the past holds it standing then, else where it is now (x, z).
@@ -367,7 +377,7 @@ e2ct_swing :: (v: [] RmServer, seq: int, ax: f32, az: f32, view_tick: int) {
   t := v[0].eg[k].tick; _ := e2rt_heard(v[..], 0, out[..]);
   // every placed player is in the past too, the swinger among them
   seat_was := net_past_at(a[0].past[..], E2A_SEAT0, t, 0);
-  #assert seat_was.up && seat_was.x == 0 && seat_was.z == -42 && E2A_SEAT0 + EG_ZONE_SEATS <= NET_PAST_BODIES;
+  #assert seat_was.up && seat_was.x == 0 && seat_was.z == -42 && E2A_FAM0 == E2A_SEAT0 + EG_ZONE_SEATS && E2A_FAM0 + EG_ZONE_SEATS <= NET_PAST_BODIES;
   #assert e2_monster_target(v[..], k, 0, wz) == -1 && e2_monster_target_at(v[..], k, 0, wz, t - 5) == foe;
   // its page, drawing five ticks back, swung at it on the path: the swing lands, and the wolf is where it is now after
   e2ct_swing(v[..], 1000001, 0, wz, t - 5);
