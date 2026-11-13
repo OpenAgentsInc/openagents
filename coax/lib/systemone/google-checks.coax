@@ -1,0 +1,363 @@
+// google.coax's checks: the request bytes, every limit Google states,
+// the answer readers, every error kind, and the mapping to and from our
+// System One contract. GD_FX_TICKET_ANSWER and the invalid_request,
+// not_found and bad key bodies are bytes Google sent on 2026-11-13; the
+// safety body is the documentation's, and the quota and server bodies
+// follow Google's RPC error shape. Loaded by google.coax with #test.
+//   coax/bin/coax test --library coax/lib/systemone/google.coax
+
+
+// The support ticket: one text block, then a choice, a noul and a score.
+GD_FX_TICKET_REQUEST :: "{\"model\":\"gemini-decision-1\",\"input\":[{\"type\":\"text\",\"text\":\"I was charged twice for my subscription. Please refund the duplicate charge.\"}],\"questions\":{\"route\":{\"type\":\"choice\",\"instructions\":\"Which team should handle this request?\",\"criteria\":{\"billing\":\"Billing, payments, and refunds\",\"technical_support\":\"Technical troubleshooting\"}},\"refund\":{\"type\":\"noul\",\"instructions\":\"Is the customer asking for a refund?\"},\"urgency\":{\"type\":\"score\",\"instructions\":\"How urgent is the request?\",\"criteria\":[\"Routine request\",\"Needs attention today\",\"Immediate emergency\"]}}}";
+
+// Google's answer to it, as sent on 2026-11-13 (the score's levels out of order).
+GD_FX_TICKET_ANSWER :: "{\"answers\":{\"route\":{\"confidence\":0.9986959655499161,\"choice\":\"billing\",\"probabilities\":{\"billing\":0.9986959655499161,\"technical_support\":0.0013040344500838044},\"type\":\"choice\"},\"urgency\":{\"confidence\":0.5671853791721988,\"score\":0.8235183156737526,\"probabilities\":{\"1\":0.5671853791721988,\"2\":0.12816646825077688,\"0\":0.3046481525770244},\"legend\":{\"0\":\"Routine request\",\"1\":\"Needs attention today\",\"2\":\"Immediate emergency\"},\"type\":\"score\"},\"refund\":{\"confidence\":0.99,\"noul\":0.99,\"type\":\"noul\"}},\"usage\":{\"total_tokens\":216,\"total_input_tokens\":216,\"input_tokens_by_modality\":[{\"modality\":\"text\",\"tokens\":216}],\"total_output_tokens\":0}}";
+
+// The same answer in our contract.
+GD_FX_TICKET_SYSTEMONE :: "{\"model\":\"gemini-decision-1\",\"answers\":{\"route\":{\"type\":\"choice\",\"choice\":\"billing\",\"confidence\":0.9986959655499161,\"probabilities\":{\"billing\":0.9986959655499161,\"technical_support\":0.0013040344500838044}},\"refund\":{\"type\":\"noul\",\"noul\":0.99},\"urgency\":{\"type\":\"score\",\"score\":0.8235183156737526,\"confidence\":0.5671853791721988,\"legend\":{\"0\":\"Routine request\",\"1\":\"Needs attention today\",\"2\":\"Immediate emergency\"},\"probabilities\":{\"0\":0.3046481525770244,\"1\":0.5671853791721988,\"2\":0.12816646825077688}}},\"usage\":{\"input_tokens\":216,\"output_tokens\":0},\"service\":{\"door\":\"gemini\",\"identity\":\"gemini-decision-1\",\"provider\":\"google\"}}";
+
+// Refusals Google sent on 2026-11-13, and the documented safety block.
+GD_FX_BAD_KEY_NAME :: "{\"error\":{\"message\":\"* CreateDecisionRequest.questions[bad key]: question IDs must be 1-64 characters matching [A-Za-z0-9_-]+\\n\",\"code\":\"invalid_request\"}}";
+GD_FX_ONE_OPTION :: "{\"error\":{\"message\":\"* CreateDecisionRequest.questions[k].choice.criteria: must have between 2 and 255 options\\n\",\"code\":\"invalid_request\"}}";
+GD_FX_EMPTY_LEVEL :: "{\"error\":{\"message\":\"* CreateDecisionRequest.questions[k].score.criteria[1]: level description must not be empty\\n\",\"code\":\"invalid_request\"}}";
+GD_FX_NO_MODEL :: "{\"error\":{\"message\":\"Requested model not found. See https://ai.google.dev/gemini-api/docs/models for a list of available models.\",\"code\":\"not_found\"}}";
+GD_FX_BAD_KEY :: "{\n  \"error\": {\n    \"code\": 400,\n    \"message\": \"API key not valid. Please pass a valid API key.\",\n    \"status\": \"INVALID_ARGUMENT\",\n    \"details\": [\n      {\n        \"@type\": \"type.googleapis.com/google.rpc.ErrorInfo\",\n        \"reason\": \"API_KEY_INVALID\",\n        \"domain\": \"googleapis.com\",\n        \"metadata\": {\n          \"service\": \"generativelanguage.googleapis.com\"\n        }\n      },\n      {\n        \"@type\": \"type.googleapis.com/google.rpc.LocalizedMessage\",\n        \"locale\": \"en-US\",\n        \"message\": \"API key not valid. Please pass a valid API key.\"\n      }\n    ]\n  }\n}\n";
+GD_FX_SAFETY :: "{\"error\":{\"code\":\"safety\",\"message\":\"Request blocked due to safety violations (harmful content). Please modify your input and retry.\"}}";
+GD_FX_QUOTA :: "{\"error\":{\"code\":429,\"message\":\"Resource has been exhausted (e.g. check quota).\",\"status\":\"RESOURCE_EXHAUSTED\"}}";
+GD_FX_SERVER :: "{\"error\":{\"code\":500,\"message\":\"An internal error has occurred.\",\"status\":\"INTERNAL\"}}";
+
+gd_fx_ticket :: (b: [] GdBody, buf: [] u8) -> string {
+  gd_begin(b, buf, GD_MODEL);
+  gd_text(b, "I was charged twice for my subscription. Please refund the duplicate charge.");
+  keys := [2] string.["billing", "technical_support"]; labels := [2] string.["Billing, payments, and refunds", "Technical troubleshooting"];
+  gd_choice(b, "route", "Which team should handle this request?", keys[..], labels[..]);
+  gd_noul(b, "refund", "Is the customer asking for a refund?", "", "");
+  levels := [3] string.["Routine request", "Needs attention today", "Immediate emergency"];
+  gd_score(b, "urgency", "How urgent is the request?", levels[..]);
+  return gd_body(b);
+}
+
+gd_near :: (a: f64, b: f64) -> bool { return a - b < 0.000000001 && b - a < 0.000000001; }
+
+#test "the ticket request, byte for byte" {
+  buf: [2048] u8; b: [1] GdBody;
+  body := gd_fx_ticket(b[..], buf[..]);
+  #assert body == GD_FX_TICKET_REQUEST && json_valid(body) && b[0].questions == 3 && b[0].blocks == 1;
+  #assert b[0].kinds[0] == GdKind.choice && b[0].options[0] == 2 && b[0].kinds[1] == GdKind.noul && b[0].kinds[2] == GdKind.score && b[0].options[2] == 3;
+  #assert gd_estimated_tokens(b[..]) == (b[0].text_bytes + 3) / 4 && b[0].text_bytes > 0;
+}
+
+#test "media: bytes as base64, a URI, a resolution, criteria on a noul" {
+  buf: [1024] u8; b: [1] GdBody;
+  gd_begin(b[..], buf[..], GD_MODEL);
+  gd_text(b[..], "Photo for return #8821.\n");
+  gd_media(b[..], "image/png", "foob", "low");
+  gd_uri(b[..], "video/mp4", "https://storage.googleapis.com/x/clip.mp4", "medium");
+  gd_media_base64(b[..], "application/pdf", "Zm9vYmFy", "");
+  gd_noul(b[..], "damaged", "Is the device damaged?", "Broken or faulty.", "");
+  body := gd_body(b[..]);
+  #assert body == "{\"model\":\"gemini-decision-1\",\"input\":[{\"type\":\"text\",\"text\":\"Photo for return #8821.\\n\"},{\"type\":\"image\",\"mime_type\":\"image/png\",\"resolution\":\"low\",\"data\":\"Zm9vYg==\"},{\"type\":\"video\",\"mime_type\":\"video/mp4\",\"resolution\":\"medium\",\"uri\":\"https://storage.googleapis.com/x/clip.mp4\"},{\"type\":\"document\",\"mime_type\":\"application/pdf\",\"data\":\"Zm9vYmFy\"}],\"questions\":{\"damaged\":{\"type\":\"noul\",\"instructions\":\"Is the device damaged?\",\"criteria\":{\"true_description\":\"Broken or faulty.\"}}}}";
+  #assert b[0].inline_bytes == 10 && b[0].pdf_bytes == 6 && b[0].blocks == 4;
+  gd_begin(b[..], buf[..], GD_MODEL);
+  gd_media(b[..], "audio/wav", "x", "");
+  gd_noul(b[..], "q", "?", "yes", "no");
+  #assert gd_body(b[..]) == "{\"model\":\"gemini-decision-1\",\"input\":[{\"type\":\"audio\",\"mime_type\":\"audio/wav\",\"data\":\"eA==\"}],\"questions\":{\"q\":{\"type\":\"noul\",\"instructions\":\"?\",\"criteria\":{\"true_description\":\"yes\",\"false_description\":\"no\"}}}}";
+}
+
+gd_refused :: (problem: string) -> bool #effects(all) { return problem.count > 0; }
+
+#test "input: empty, unknown types, resolutions, URIs" {
+  buf: [512] u8; b: [1] GdBody;
+  gd_begin(b[..], buf[..], GD_MODEL); gd_noul(b[..], "q", "?", "", "");
+  #assert gd_body(b[..]) == "" && b[0].problem == "the input is empty";
+  gd_begin(b[..], buf[..], GD_MODEL);
+  #assert gd_body(b[..]) == "" && b[0].problem == "the input is empty";
+  gd_begin(b[..], buf[..], GD_MODEL); gd_text(b[..], "x");
+  #assert gd_body(b[..]) == "" && b[0].problem == "no questions";
+  gd_begin(b[..], buf[..], ""); #assert b[0].problem == "no model";
+  gd_begin(b[..], buf[..], GD_MODEL); gd_text(b[..], "");
+  #assert b[0].problem == "a text block is empty";
+  gd_begin(b[..], buf[..], GD_MODEL); gd_media(b[..], "application/octet-stream", "x", "");
+  #assert b[0].problem == "Google takes no block of this MIME type";
+  gd_begin(b[..], buf[..], GD_MODEL); gd_media(b[..], "image/png", "", "");
+  #assert b[0].problem == "a media block is empty";
+  gd_begin(b[..], buf[..], GD_MODEL); gd_text(b[..], "x"); gd_noul(b[..], "q", "?", "", ""); gd_text(b[..], "late");
+  #assert b[0].problem == "input blocks come before the questions";
+  #assert gd_resolution_problem("image", "ultra_high") == "" && gd_resolution_problem("video", "high") == "";
+  #assert gd_resolution_problem("video", "ultra_high") == "ultra_high is for images only";
+  #assert gd_resolution_problem("audio", "low") == "only image and video blocks take a resolution";
+  #assert gd_resolution_problem("document", "low") == "only image and video blocks take a resolution";
+  #assert gd_resolution_problem("image", "max") == "a resolution is low, medium, high or ultra_high";
+  #assert gd_mime_kind("image/heic") == "image" && gd_mime_kind("audio/mulaw") == "audio" && gd_mime_kind("video/3gpp") == "video";
+  #assert gd_mime_kind("application/pdf") == "document" && gd_mime_kind("image/svg+xml") == "" && gd_mime_kind("text/plain") == "";
+  #assert gd_uri_problem("https://example.com/a.png") == "";
+  #assert gd_uri_problem("https://generativelanguage.googleapis.com/v1beta/files/abc123") == "";
+  #assert gd_uri_problem("gs://bucket/a.png") == "Google takes no gs:// URI here: use a Files API URI or an HTTPS URL";
+  #assert gd_uri_problem("http://example.com/a.png") == "a media URI is an HTTPS URL or a Files API URI";
+  #assert gd_uri_problem("https://www.youtube.com/watch?v=x") == "Google takes no YouTube URL here";
+  #assert gd_uri_problem("https://youtu.be/x") == "Google takes no YouTube URL here";
+  #assert gd_uri_problem("https://youtube.com") == "Google takes no YouTube URL here";
+  #assert gd_uri_problem("https://notyoutube.com/x") == "";
+  #assert gd_uri_problem("https:///x") == "a media URI has no host";
+  #assert gd_uri_problem("") == "a media URI is empty or over 2,048 bytes";
+  #assert gd_uri_problem("https://a b") == "a media URI holds a character a URL cannot";
+  gd_begin(b[..], buf[..], GD_MODEL); gd_uri(b[..], "image/png", "gs://b/x.png", "");
+  #assert b[0].problem == "Google takes no gs:// URI here: use a Files API URI or an HTTPS URL";
+  gd_begin(b[..], buf[..], GD_MODEL); gd_media_base64(b[..], "image/png", "Zm9", "");
+  #assert b[0].problem == "inline data is not padded base64";
+  gd_begin(b[..], buf[..], GD_MODEL); gd_media_base64(b[..], "image/png", "Zm9v!A==", "");
+  #assert b[0].problem == "inline data is not padded base64";
+  small: [40] u8; gd_begin(b[..], small[..], GD_MODEL); gd_text(b[..], "a text that is too long for forty bytes");
+  #assert b[0].problem == "the request does not fit its buffer";
+}
+
+#test "inline media: 100 MB a request, 50 MB of PDF" {
+  buf: [64] u8; b: [1] GdBody;
+  gd_begin(b[..], buf[..], GD_MODEL);
+  #assert gd_count_inline(b[..], "image", GD_INLINE_BYTES - 10) && gd_count_inline(b[..], "audio", 10);
+  #assert !gd_count_inline(b[..], "image", 1) && b[0].problem == "inline media is over 100 MB a request";
+  gd_begin(b[..], buf[..], GD_MODEL);
+  #assert gd_count_inline(b[..], "document", GD_PDF_BYTES);
+  #assert !gd_count_inline(b[..], "document", 1) && b[0].problem == "inline PDFs are over 50 MB a request";
+  gd_begin(b[..], buf[..], GD_MODEL);
+  #assert !gd_count_inline(b[..], "image", 0) && b[0].problem == "a media block is empty";
+  #assert GD_INLINE_BYTES == 100 * 1048576 && GD_PDF_BYTES == 50 * 1048576;
+}
+
+#test "question keys: 1 to 64 of A-Z a-z 0-9 _ -, never twice" {
+  #assert gd_key_ok("a") && gd_key_ok("is_damaged-2") && gd_key_ok("ABC_xyz-09");
+  #assert !gd_key_ok("") && !gd_key_ok("bad key") && !gd_key_ok("dot.ted") && !gd_key_ok("é");
+  k64: [65] u8; for i: 0..<65 { k64[i] = 'k'; }
+  #assert gd_key_ok(cast(string) k64[0..<64]) && !gd_key_ok(cast(string) k64[0..<65]);
+  buf: [512] u8; b: [1] GdBody;
+  gd_begin(b[..], buf[..], GD_MODEL); gd_text(b[..], "x"); gd_noul(b[..], "bad key", "?", "", "");
+  #assert b[0].problem == "a question key is 1 to 64 of A-Z, a-z, 0-9, _ and -";
+  gd_begin(b[..], buf[..], GD_MODEL); gd_text(b[..], "x"); gd_noul(b[..], "a", "?", "", ""); gd_noul(b[..], "a", "?", "", "");
+  #assert b[0].problem == "two questions share a key";
+  gd_begin(b[..], buf[..], GD_MODEL); gd_text(b[..], "x"); gd_noul(b[..], "a", "", "", "");
+  #assert b[0].problem == "a question has no instructions";
+}
+
+#test "1,000 questions fit and the 1,001st does not" {
+  buf: [65536] u8; b: [1] GdBody; names: [1001] [8] u8; lens: [1001] int;
+  gd_begin(b[..], buf[..], GD_MODEL); gd_text(b[..], "x");
+  for i: 0..<1001 { names[i][0] = 'q'; lens[i] = json_write_int(names[i][..], 1, i); }
+  for i: 0..<1000 { gd_noul(b[..], cast(string) names[i][0..<lens[i]], "?", "", ""); }
+  #assert b[0].at > 0 && b[0].questions == 1000;
+  gd_noul(b[..], cast(string) names[1000][0..<lens[1000]], "?", "", "");
+  #assert b[0].problem == "over 1,000 questions";
+}
+
+#test "choices: 2 to 255 options with keys Google takes" {
+  buf: [65536] u8; b: [1] GdBody;
+  one := [1] string.["only"];
+  gd_begin(b[..], buf[..], GD_MODEL); gd_text(b[..], "x"); gd_choice(b[..], "c", "?", one[..], one[..]);
+  #assert b[0].problem == "a choice takes 2 to 255 options";
+  keys: [256] string; labels: [256] string; kb: [256] [4] u8;
+  for i: 0..<256 { kb[i][0] = 'o'; n := json_write_int(kb[i][..], 1, i); keys[i] = cast(string) kb[i][0..<n]; labels[i] = ""; }
+  gd_begin(b[..], buf[..], GD_MODEL); gd_text(b[..], "x"); gd_choice(b[..], "c", "?", keys[0..<255], labels[0..<255]);
+  #assert gd_body(b[..]).count > 0 && b[0].options[0] == 255;
+  gd_begin(b[..], buf[..], GD_MODEL); gd_text(b[..], "x"); gd_choice(b[..], "c", "?", keys[..], labels[..]);
+  #assert b[0].problem == "a choice takes 2 to 255 options";
+  gd_begin(b[..], buf[..], GD_MODEL); gd_text(b[..], "x"); gd_choice(b[..], "c", "?", keys[0..<2], labels[0..<3]);
+  #assert b[0].problem == "a choice needs one label per key";
+  twice := [2] string.["a", "a"];
+  gd_begin(b[..], buf[..], GD_MODEL); gd_text(b[..], "x"); gd_choice(b[..], "c", "?", twice[..], twice[..]);
+  #assert b[0].problem == "two choice options share a key";
+  #assert gd_option_problem("human escalation") == "" && gd_option_problem("é") == "";
+  #assert gd_option_problem("") == "a choice option has no key";
+  #assert gd_option_problem(" a") == "a choice option's key starts or ends with a space" && gd_option_problem("a ") == "a choice option's key starts or ends with a space";
+  #assert gd_option_problem("a\tb") == "a choice option's key holds a control character";
+  del: [3] u8; del[0] = 'a'; del[1] = 127; del[2] = 'b';
+  #assert gd_option_problem(cast(string) del[..]) == "a choice option's key holds a control character";
+  #assert gd_option_problem("a b") == "a choice option's key holds a space that is not ASCII";
+  #assert gd_option_problem("a b") == "a choice option's key holds a space that is not ASCII";
+  #assert gd_option_problem("a　b") == "a choice option's key holds a space that is not ASCII";
+  #assert gd_option_problem("a​b") == "";
+  long: [520] u8; for i: 0..<520 { long[i] = 'x'; }
+  #assert gd_option_problem(cast(string) long[0..<128]) == "" && gd_option_problem(cast(string) long[0..<129]) == "a choice option's key is over 128 characters";
+  wide: [520] u8; for i: 0..<130 { wide[i * 4] = 0xf0; wide[i * 4 + 1] = 0x9f; wide[i * 4 + 2] = 0x98; wide[i * 4 + 3] = 0x80; }
+  #assert gd_option_problem(cast(string) wide[0..<512]) == "" && gd_option_problem(cast(string) wide[0..<516]) == "a choice option's key is over 512 bytes";
+  bad := [2] string.["ok", " padded"];
+  gd_begin(b[..], buf[..], GD_MODEL); gd_text(b[..], "x"); gd_choice(b[..], "c", "?", bad[..], bad[..]);
+  #assert b[0].problem == "a choice option's key starts or ends with a space";
+}
+
+#test "scores: 2 to 255 levels, none empty" {
+  buf: [8192] u8; b: [1] GdBody;
+  levels: [256] string; for i: 0..<256 { levels[i] = "L"; }
+  gd_begin(b[..], buf[..], GD_MODEL); gd_text(b[..], "x"); gd_score(b[..], "s", "?", levels[0..<1]);
+  #assert b[0].problem == "a score takes 2 to 255 levels";
+  gd_begin(b[..], buf[..], GD_MODEL); gd_text(b[..], "x"); gd_score(b[..], "s", "?", levels[0..<255]);
+  #assert gd_body(b[..]).count > 0;
+  gd_begin(b[..], buf[..], GD_MODEL); gd_text(b[..], "x"); gd_score(b[..], "s", "?", levels[..]);
+  #assert b[0].problem == "a score takes 2 to 255 levels";
+  empty := [2] string.["low", ""];
+  gd_begin(b[..], buf[..], GD_MODEL); gd_text(b[..], "x"); gd_score(b[..], "s", "?", empty[..]);
+  #assert b[0].problem == "a score level is empty";
+}
+
+#test "the context window: 262,144 tokens of text, estimated at 4 bytes a token" {
+  buf: [512] u8; b: [1] GdBody;
+  gd_begin(b[..], buf[..], GD_MODEL); gd_text(b[..], "x"); gd_noul(b[..], "q", "?", "", "");
+  b[0].text_bytes = GD_CONTEXT_TOKENS * 4;
+  #assert gd_estimated_tokens(b[..]) == GD_CONTEXT_TOKENS && gd_body(b[..]).count > 0;
+  gd_begin(b[..], buf[..], GD_MODEL); gd_text(b[..], "x"); gd_noul(b[..], "q", "?", "", "");
+  b[0].text_bytes = GD_CONTEXT_TOKENS * 4 + 1;
+  #assert gd_body(b[..]) == "" && b[0].problem == "the text is over 262,144 tokens (estimated at 4 bytes a token)";
+  #assert gd_body(b[..]) == "";
+  gd_begin(b[..], buf[..], GD_MODEL); gd_text(b[..], "x"); gd_noul(b[..], "q", "?", "", "");
+  #assert gd_body(b[..]).count > 0 && gd_body(b[..]) == "" && b[0].problem == "the body is already finished";
+}
+
+#test "Google's answer reads back and holds to its questions" {
+  buf: [2048] u8; b: [1] GdBody;
+  body := gd_fx_ticket(b[..], buf[..]);
+  #assert gd_check(b[..], GD_FX_TICKET_ANSWER) == "";
+  ab: [64] u8; ar: [1] ClArena; ar[0].buf = ab[..];
+  c := gd_choice_of(ar[..], GD_FX_TICKET_ANSWER, "route");
+  #assert c.ok && c.choice == "billing" && gd_near(c.probability, 0.9986959655499161) && gd_near(c.confidence, 0.9986959655499161);
+  r := gd_noul_of(GD_FX_TICKET_ANSWER, "refund");
+  #assert r.ok && gd_near(r.noul, 0.99) && gd_near(r.confidence, 0.99);
+  s := gd_score_of(GD_FX_TICKET_ANSWER, "urgency");
+  #assert s.ok && gd_near(s.score, 0.8235183156737526) && s.level == 1 && s.levels == 3 && gd_near(s.confidence, 0.5671853791721988);
+  #assert gd_near(gd_probability(GD_FX_TICKET_ANSWER, "urgency", "2").value, 0.12816646825077688) && !gd_probability(GD_FX_TICKET_ANSWER, "route", "sales").ok;
+  #assert !gd_noul_of(GD_FX_TICKET_ANSWER, "route").ok && !gd_choice_of(ar[..], GD_FX_TICKET_ANSWER, "refund").ok && !gd_score_of(GD_FX_TICKET_ANSWER, "refund").ok;
+  u := gd_usage(GD_FX_TICKET_ANSWER);
+  #assert u.ok && u.input_tokens == 216 && u.output_tokens == 0 && u.total_tokens == 216 && u.text_tokens == 216 && u.image_tokens == 0;
+  img := gd_usage("{\"usage\":{\"total_tokens\":400,\"total_input_tokens\":400,\"input_tokens_by_modality\":[{\"modality\":\"text\",\"tokens\":142},{\"modality\":\"image\",\"tokens\":258}],\"total_output_tokens\":0}}");
+  #assert img.ok && img.text_tokens == 142 && img.image_tokens == 258 && img.audio_tokens == 0;
+  #assert !gd_usage("{}").ok;
+}
+
+#test "the answer check refuses a missing answer, a wrong type, a bad distribution" {
+  buf: [2048] u8; b: [1] GdBody;
+  body := gd_fx_ticket(b[..], buf[..]);
+  #assert gd_check(b[..], "[]") == "the response is not a JSON object";
+  #assert gd_check(b[..], GD_FX_SAFETY) == "the response has no answers";
+  #assert gd_check(b[..], "{\"answers\":{}}") == "a question has no answer";
+  #assert gd_check(b[..], "{\"answers\":{\"route\":{\"type\":\"noul\",\"noul\":0.5,\"confidence\":0.5}}}") == "a choice answer has another type";
+  #assert gd_check(b[..], "{\"answers\":{\"route\":{\"type\":\"choice\",\"choice\":\"billing\",\"confidence\":1.5,\"probabilities\":{\"billing\":0.9,\"technical_support\":0.1}}}}") == "an answer's confidence is not in [0, 1]";
+  #assert gd_check(b[..], "{\"answers\":{\"route\":{\"type\":\"choice\",\"choice\":\"billing\",\"confidence\":0.9,\"probabilities\":{\"billing\":0.9,\"technical_support\":0.3}}}}") == "a choice answer's probabilities are not a distribution over its options";
+  #assert gd_check(b[..], "{\"answers\":{\"route\":{\"type\":\"choice\",\"choice\":\"sales\",\"confidence\":0.9,\"probabilities\":{\"billing\":0.9,\"technical_support\":0.1}}}}") == "a choice answer names an option it has no probability for";
+  #assert gd_check(b[..], "{\"answers\":{\"route\":{\"type\":\"choice\",\"choice\":1,\"confidence\":0.9,\"probabilities\":{\"billing\":0.9,\"technical_support\":0.1}}}}") == "a choice answer names no option";
+  ok_route := "\"route\":{\"type\":\"choice\",\"choice\":\"billing\",\"confidence\":0.9,\"probabilities\":{\"billing\":0.9,\"technical_support\":0.1}}";
+  t: [1024] u8; n := json_raw(t[..], 0, "{\"answers\":{"); n = json_raw(t[..], n, ok_route); n = json_raw(t[..], n, ",\"refund\":{\"type\":\"noul\",\"noul\":1.5,\"confidence\":0.9}}}");
+  #assert gd_check(b[..], cast(string) t[0..<n]) == "a noul answer is not a probability";
+  n = json_raw(t[..], 0, "{\"answers\":{"); n = json_raw(t[..], n, ok_route); n = json_raw(t[..], n, ",\"refund\":{\"type\":\"score\",\"noul\":0.5,\"confidence\":0.9}}}");
+  #assert gd_check(b[..], cast(string) t[0..<n]) == "a noul answer has another type";
+  ok_refund := ",\"refund\":{\"type\":\"noul\",\"noul\":0.5,\"confidence\":0.5}";
+  n = json_raw(t[..], 0, "{\"answers\":{"); n = json_raw(t[..], n, ok_route); n = json_raw(t[..], n, ok_refund); n = json_raw(t[..], n, ",\"urgency\":{\"type\":\"score\",\"score\":2.5,\"confidence\":0.9,\"probabilities\":{\"0\":0.1,\"1\":0.1,\"2\":0.8}}}}");
+  #assert gd_check(b[..], cast(string) t[0..<n]) == "a score answer is outside its levels";
+  n = json_raw(t[..], 0, "{\"answers\":{"); n = json_raw(t[..], n, ok_route); n = json_raw(t[..], n, ok_refund); n = json_raw(t[..], n, ",\"urgency\":{\"type\":\"score\",\"score\":1,\"confidence\":0.9,\"probabilities\":{\"0\":0.1,\"1\":0.9}}}}");
+  #assert gd_check(b[..], cast(string) t[0..<n]) == "a score answer's probabilities are not a distribution over its levels";
+  n = json_raw(t[..], 0, "{\"answers\":{"); n = json_raw(t[..], n, ok_route); n = json_raw(t[..], n, ok_refund); n = json_raw(t[..], n, ",\"urgency\":{\"type\":\"choice\",\"score\":1,\"confidence\":0.9}}}");
+  #assert gd_check(b[..], cast(string) t[0..<n]) == "a score answer has another type";
+}
+
+#test "every error kind, from Google's own bodies" {
+  ab: [4096] u8; ar: [1] ClArena; ar[0].buf = ab[..];
+  e := gd_error(ar[..], 400, GD_FX_BAD_KEY_NAME);
+  #assert e.kind == GdErrorKind.invalid_request && e.code == "invalid_request" && e.status == 400;
+  #assert e.message == "* CreateDecisionRequest.questions[bad key]: question IDs must be 1-64 characters matching [A-Za-z0-9_-]+\n";
+  #assert gd_error(ar[..], 400, GD_FX_ONE_OPTION).kind == GdErrorKind.invalid_request && gd_error(ar[..], 400, GD_FX_EMPTY_LEVEL).kind == GdErrorKind.invalid_request;
+  #assert gd_error(ar[..], 404, GD_FX_NO_MODEL).kind == GdErrorKind.not_found;
+  k := gd_error(ar[..], 400, GD_FX_BAD_KEY);
+  #assert k.kind == GdErrorKind.key && k.code == "API_KEY_INVALID" && k.message == "API key not valid. Please pass a valid API key.";
+  #assert gd_error(ar[..], 403, "{\"error\":{\"code\":403,\"message\":\"denied\",\"status\":\"PERMISSION_DENIED\"}}").kind == GdErrorKind.key;
+  #assert gd_error(ar[..], 401, "").kind == GdErrorKind.key;
+  #assert gd_error(ar[..], 403, "{\"error\":{\"code\":403,\"status\":\"PERMISSION_DENIED\",\"details\":[{\"reason\":\"SERVICE_DISABLED\"}]}}").code == "SERVICE_DISABLED";
+  for code: [5] string.["safety", "prohibited_content", "blocklist", "image_safety", "content_blocked"] {
+    t: [256] u8; n := json_raw(t[..], 0, "{\"error\":{\"code\":"); n = json_write_string(t[..], n, code); n = json_raw(t[..], n, ",\"message\":\"blocked\"}}");
+    s := gd_error(ar[..], 400, cast(string) t[0..<n]);
+    #assert s.kind == GdErrorKind.safety && s.code == code && s.message == "blocked";
+  }
+  #assert gd_error(ar[..], 400, GD_FX_SAFETY).kind == GdErrorKind.safety;
+  #assert gd_error(ar[..], 429, GD_FX_QUOTA).kind == GdErrorKind.rate;
+  #assert gd_error(ar[..], 500, GD_FX_SERVER).kind == GdErrorKind.server && gd_error(ar[..], 503, "").kind == GdErrorKind.server;
+  #assert gd_error(ar[..], 0, "").kind == GdErrorKind.transport;
+  #assert gd_error(ar[..], 302, "").kind == GdErrorKind.malformed;
+  #assert gd_error(ar[..], 200, GD_FX_TICKET_ANSWER).kind == GdErrorKind.none;
+  names := [9] string.["none", "invalid_request", "safety", "not_found", "key", "rate", "server", "transport", "malformed"];
+  kinds := [9] GdErrorKind.[GdErrorKind.none, GdErrorKind.invalid_request, GdErrorKind.safety, GdErrorKind.not_found, GdErrorKind.key, GdErrorKind.rate, GdErrorKind.server, GdErrorKind.transport, GdErrorKind.malformed];
+  for i: 0..<9 { #assert gd_kind_name(kinds[i]) == names[i]; }
+  out: [256] u8;
+  #assert gd_systemone_error(gd_error(ar[..], 400, GD_FX_SAFETY), out[..]) == "{\"error\":{\"code\":\"safety\",\"message\":\"Request blocked due to safety violations (harmful content). Please modify your input and retry.\"}}";
+}
+
+#test "our System One request maps to Google's, byte for byte, and the answer maps back" {
+  buf: [2048] u8; b: [1] GdBody; ab: [1024] u8; ar: [1] ClArena; ar[0].buf = ab[..];
+  google := gd_from_systemone(b[..], SO_TEST_BODY, buf[..], ar[..]);
+  #assert google == GD_FX_TICKET_REQUEST;
+  out: [4096] u8;
+  ours := gd_to_systemone(b[..], "gemini-decision-1", GD_FX_TICKET_ANSWER, out[..]);
+  #assert ours == GD_FX_TICKET_SYSTEMONE;
+  sb: [2048] u8; s: [1] SoBody;
+  x := so_test_ticket(s[..], sb[..]);
+  #assert so_check(s[..], ours) == "";
+  sar: [1] ClArena; sab: [64] u8; sar[0].buf = sab[..];
+  #assert so_choice_of(sar[..], ours, "route").choice == "billing" && so_score_of(ours, "urgency").levels == 3 && so_usage(ours).input_tokens == 216;
+  #assert so_score_of(ours, "urgency").level == 1;
+  #assert gd_to_systemone(b[..], "gemini-decision-1", "{\"answers\":{}}", out[..]) == "";
+  tiny: [16] u8;
+  #assert gd_to_systemone(b[..], "gemini-decision-1", GD_FX_TICKET_ANSWER, tiny[..]) == "";
+}
+
+#test "mapping: escapes decode, messages and images become blocks, other JSON becomes text" {
+  buf: [4096] u8; b: [1] GdBody; ab: [1024] u8; ar: [1] ClArena; ar[0].buf = ab[..];
+  esc := "{\"model\":\"x\",\"state\":{\"order\":8821},\"questions\":{\"q\\u0031\":{\"type\":\"choice\",\"instructions\":\"Say \\\"yes\\\"?\",\"criteria\":{\"y\\u00e9s\":null,\"no\":\"Not \\\"yes\\\"\"}},\"n\":{\"type\":\"noul\",\"instructions\":{\"ask\":\"wet?\"},\"criteria\":{\"true_description\":\"a\\nb\",\"false_description\":\"dry\"}},\"s\":{\"type\":\"score\",\"instructions\":\"?\",\"criteria\":[\"lo\\u0077\",\"high\"]}}}";
+  g := gd_from_systemone(b[..], esc, buf[..], ar[..]);
+  #assert g == "{\"model\":\"gemini-decision-1\",\"input\":[{\"type\":\"text\",\"text\":\"{\\\"order\\\":8821}\"}],\"questions\":{\"q1\":{\"type\":\"choice\",\"instructions\":\"Say \\\"yes\\\"?\",\"criteria\":{\"yés\":\"\",\"no\":\"Not \\\"yes\\\"\"}},\"n\":{\"type\":\"noul\",\"instructions\":\"{\\\"ask\\\":\\\"wet?\\\"}\",\"criteria\":{\"true_description\":\"a\\nb\",\"false_description\":\"dry\"}},\"s\":{\"type\":\"score\",\"instructions\":\"?\",\"criteria\":[\"low\",\"high\"]}}}";
+  #assert b[0].names[0] == "q1";
+  msgs := "{\"state\":{\"messages\":[{\"role\":\"user\",\"content\":\"Is this mug damaged?\"},{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"Photo:\"},{\"type\":\"image_url\",\"image_url\":{\"url\":\"data:image/png;base64,Zm9vYg==\"}},{\"type\":\"image_url\",\"image_url\":\"https://example.com/a.jpg?x=1\"}]}]},\"questions\":{\"d\":{\"type\":\"noul\",\"instructions\":\"Damaged?\"}}}";
+  m := gd_from_systemone(b[..], msgs, buf[..], ar[..]);
+  #assert m == "{\"model\":\"gemini-decision-1\",\"input\":[{\"type\":\"text\",\"text\":\"user: Is this mug damaged?\\n\"},{\"type\":\"text\",\"text\":\"user: \"},{\"type\":\"text\",\"text\":\"Photo:\"},{\"type\":\"image\",\"mime_type\":\"image/png\",\"data\":\"Zm9vYg==\"},{\"type\":\"image\",\"mime_type\":\"image/jpeg\",\"uri\":\"https://example.com/a.jpg?x=1\"},{\"type\":\"text\",\"text\":\"\\n\"}],\"questions\":{\"d\":{\"type\":\"noul\",\"instructions\":\"Damaged?\"}}}";
+  arr := gd_from_systemone(b[..], "{\"state\":[1,2],\"questions\":{\"c\":{\"type\":\"choice\",\"instructions\":\"?\",\"criteria\":[\"a\",\"b\"]}}}", buf[..], ar[..]);
+  #assert arr == "{\"model\":\"gemini-decision-1\",\"input\":[{\"type\":\"text\",\"text\":\"[1,2]\"}],\"questions\":{\"c\":{\"type\":\"choice\",\"instructions\":\"?\",\"criteria\":{\"a\":\"\",\"b\":\"\"}}}}";
+}
+
+#test "mapping refusals name what Gemini Decision 1 can't take" {
+  buf: [2048] u8; b: [1] GdBody; ab: [256] u8; ar: [1] ClArena; ar[0].buf = ab[..];
+  cases := [14] string.[
+    "[]",
+    "{\"state\":3,\"questions\":{}}",
+    "{\"state\":\"x\"}",
+    "{\"state\":\"x\",\"questions\":{\"c\":{\"type\":\"choice\",\"instructions\":\"?\",\"criteria\":{\"only\":null}}}}",
+    "{\"state\":\"x\",\"questions\":{\"c\":{\"type\":\"choice\",\"instructions\":\"?\"}}}",
+    "{\"state\":\"x\",\"questions\":{\"c\":{\"type\":\"choice\",\"instructions\":\"?\",\"criteria\":{\"a\":1,\"b\":null}}}}",
+    "{\"state\":\"x\",\"questions\":{\"c\":{\"type\":\"choice\",\"instructions\":\"?\",\"criteria\":[\"a\",2]}}}",
+    "{\"state\":\"x\",\"questions\":{\"s\":{\"type\":\"score\",\"instructions\":\"?\",\"criteria\":{\"a\":\"b\"}}}}",
+    "{\"state\":\"x\",\"questions\":{\"s\":{\"type\":\"score\",\"instructions\":\"?\",\"criteria\":[\"a\",3]}}}",
+    "{\"state\":\"x\",\"questions\":{\"q\":{\"type\":\"rank\",\"instructions\":\"?\"}}}",
+    "{\"state\":\"x\",\"questions\":{\"q\":{\"type\":\"noul\",\"instructions\":null}}}",
+    "{\"state\":\"x\",\"questions\":{\"q\":3}}",
+    "{\"state\":{\"messages\":[]},\"questions\":{\"q\":{\"type\":\"noul\",\"instructions\":\"?\"}}}",
+    "{\"state\":{\"messages\":[{\"role\":\"user\",\"content\":[{\"type\":\"audio\"}]}]},\"questions\":{\"q\":{\"type\":\"noul\",\"instructions\":\"?\"}}}"];
+  why := [14] string.[
+    "the request is not a JSON object",
+    "the state is a string or a JSON object or array",
+    "the request has no questions",
+    "a choice takes 2 to 255 options on Gemini Decision 1",
+    "a choice has no criteria",
+    "a choice option's label is a string or null",
+    "a choice's options are strings",
+    "a score's criteria are an array of levels",
+    "a score's levels are strings",
+    "a question's type is noul, choice or score",
+    "a question has no instructions",
+    "a question is not an object",
+    "the state has no messages",
+    "a message part is text or image_url"];
+  for i: 0..<14 {
+    ar[0].at = 0;
+    #assert gd_from_systemone(b[..], cases[i], buf[..], ar[..]) == "" && b[0].problem == why[i];
+  }
+  ar[0].at = 0;
+  #assert gd_from_systemone(b[..], "{\"state\":{\"messages\":[{\"role\":\"user\",\"content\":3}]},\"questions\":{}}", buf[..], ar[..]) == "" && b[0].problem == "a message's content is a string or an array of parts";
+  ar[0].at = 0;
+  #assert gd_from_systemone(b[..], "{\"state\":{\"messages\":[{\"content\":[{\"type\":\"image_url\",\"image_url\":{\"url\":\"data:image/png,abc\"}}]}]},\"questions\":{}}", buf[..], ar[..]) == "" && b[0].problem == "an image data URL is not base64";
+  ar[0].at = 0;
+  #assert gd_from_systemone(b[..], "{\"state\":{\"messages\":[{\"content\":[{\"type\":\"image_url\",\"image_url\":{\"url\":\"https://x.com/a\"}}]}]},\"questions\":{}}", buf[..], ar[..]) == "" && b[0].problem == "an image URL's type is not known from its name: use a data URL";
+  tiny: [2] u8; tar: [1] ClArena; tar[0].buf = tiny[..];
+  #assert gd_from_systemone(b[..], "{\"state\":\"x\",\"questions\":{\"q\":{\"type\":\"noul\",\"instructions\":\"\\u0041BC\"}}}", buf[..], tar[..]) == "" && b[0].problem == "the decoded strings do not fit their arena";
+}

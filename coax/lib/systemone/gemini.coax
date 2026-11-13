@@ -1,0 +1,137 @@
+// Gemini Decision 1 as a door of our Decisions API (GitHub #13469). Two ways
+// in, one transport (curl as a child, transport.coax; the key reaches curl's
+// environment and Google's x-goog-api-key header, never an argument):
+//
+//  - gd_decide sends a Google request built with google.coax
+//    (text, image, audio, video and PDF blocks; noul, choice and score) and
+//    returns a GdResult: the answer, its usage, or a typed GdError.
+//  - so_decide_gemini takes a System One body (request.coax) as every other
+//    door does, maps it to Google's shape, and maps the answer back, so a
+//    caller of so_decide switches doors without changing how it reads
+//    answers. The server's /api/v1/systemone uses the same mapping.
+//
+//   c := so_gemini(key);                  // key from GEMINI_API_KEY, or a file's value
+//   r := so_decide_gemini(c, b[..], out[..], err[..], scratch[..]);
+//
+// docs/research/2026-11-13-gemini-decision-1.md: the mapping, what it loses,
+// the price, the rate limits and what can't be sent.
+
+#load "outcomes.coax";
+#load "google.coax";
+
+SO_GEMINI_TIMEOUT_S :: 30;
+
+// A client for Google's Decisions API. key_value "" reads GEMINI_API_KEY
+// from this process's environment.
+so_gemini :: (key_value: string) -> SoClient {
+  return SoClient.{url = GD_URL, key_env = GD_KEY_ENV, key_header = GD_KEY_HEADER, scheme = "", key_value = key_value, timeout_s = SO_GEMINI_TIMEOUT_S};
+}
+
+GdResult :: struct {
+  status: int;           // HTTP status; 0 when no response came
+  body: string;          // Google's response, in the caller's out
+  problem: string;       // "" when the body answers every question
+  error: GdError;        // kind none on success
+  usage: GdUsage;
+  stderr: string;        // curl's, when curl failed
+}
+
+gd_problem_of :: (k: GdErrorKind) -> string {
+  return ifx k == GdErrorKind.invalid_request then "Google refused the request: invalid_request"
+    else ifx k == GdErrorKind.safety then "Google blocked the input: safety"
+    else ifx k == GdErrorKind.not_found then "Google has no such model: not_found"
+    else ifx k == GdErrorKind.key then "Google refused the key: key"
+    else ifx k == GdErrorKind.rate then "Google's rate limit: rate"
+    else ifx k == GdErrorKind.server then "Google failed: server"
+    else ifx k == GdErrorKind.transport then "no response from Google: transport"
+    else ifx k == GdErrorKind.malformed then "Google's answer does not hold: malformed" else "";
+}
+
+// What a finished exchange means: the answer checked against b, or the error.
+gd_result :: (b: [] GdBody, ar: [] ClArena, status: int, body: string) -> GdResult {
+  r := GdResult.{status = status, body = body};
+  r.error = gd_error(ar, status, body);
+  if status == 200 {
+    why := gd_check(b, body);
+    if why.count > 0 { r.error.kind = GdErrorKind.malformed; r.error.message = why; r.problem = gd_problem_of(GdErrorKind.malformed); return r; }
+    r.usage = gd_usage(body);
+    return r;
+  }
+  r.problem = gd_problem_of(r.error.kind);
+  return r;
+}
+
+// Finish b, send it, and check the answer. ar holds decoded error strings.
+gd_decide :: (c: SoClient, b: [] GdBody, out: [] u8, err: [] u8, ar: [] ClArena) -> GdResult {
+  body := gd_body(b);
+  if body.count == 0 { return GdResult.{problem = b[0].problem, error = GdError.{kind = GdErrorKind.invalid_request, message = b[0].problem}}; }
+  return gd_send(c, b, body, out, err, ar);
+}
+
+gd_send :: (c: SoClient, b: [] GdBody, body: string, out: [] u8, err: [] u8, ar: [] ClArena) -> GdResult {
+  s := so_post(c, body, out, err);
+  if s.status == 0 {
+    r := GdResult.{error = GdError.{kind = GdErrorKind.transport, message = s.problem}, problem = gd_problem_of(GdErrorKind.transport), stderr = s.stderr};
+    return r;
+  }
+  return gd_result(b, ar, s.status, s.body);
+}
+
+// A System One body through Gemini Decision 1: out receives our System One
+// response (so_check, so_choice_of and the rest read it as from any door),
+// or Google's error body when it refused. scratch holds Google's request
+// and response (half each).
+so_decide_gemini :: (c: SoClient, b: [] SoBody, out: [] u8, err: [] u8, scratch: [] u8) -> SoResult {
+  r: SoResult;
+  body := ifx b[0].stage == 3 && b[0].at > 0 then cast(string) b[0].buf[0..<b[0].at] else so_body(b);   // finished already, or now
+  if body.count == 0 { r.problem = b[0].problem; return r; }
+  g: [1] GdBody; ab: [16384] u8; ar: [1] ClArena; ar[0].buf = ab[..];
+  half := scratch.count / 2;
+  request := gd_from_systemone(g[..], body, scratch[0..<half], ar[..]);
+  if request.count == 0 { r.problem = g[0].problem; return r; }
+  eb: [4096] u8; ear: [1] ClArena; ear[0].buf = eb[..];
+  gr := gd_send(c, g[..], request, scratch[half..<scratch.count], err, ear[..]);
+  r.status = gr.status; r.stderr = gr.stderr;
+  if gr.problem.count > 0 { r.body = gr.body; r.problem = gr.problem; return r; }
+  mapped := gd_to_systemone(g[..], GD_MODEL, gr.body, out);
+  if mapped.count == 0 { r.problem = "the mapped answer does not fit its buffer"; return r; }
+  r.body = mapped; r.problem = so_check(b, mapped); r.usage = so_usage(mapped);
+  return r;
+}
+
+#test "the client sends the key in x-goog-api-key with no scheme, for 30 seconds" {
+  c := so_gemini("");
+  #assert c.url == "https://generativelanguage.googleapis.com/v1beta/decisions" && c.key_env == "GEMINI_API_KEY";
+  #assert c.key_header == "x-goog-api-key" && c.scheme == "" && c.timeout_s == 30 && c.key_value == "";
+  #assert so_gemini("k").key_value == "k";
+}
+
+#test "a finished exchange: an answer, a malformed answer, each refusal" {
+  buf: [2048] u8; b: [1] GdBody; ab: [1024] u8; ar: [1] ClArena; ar[0].buf = ab[..];
+  body := gd_fx_ticket(b[..], buf[..]);
+  ok := gd_result(b[..], ar[..], 200, GD_FX_TICKET_ANSWER);
+  #assert ok.problem == "" && ok.error.kind == GdErrorKind.none && ok.usage.input_tokens == 216;
+  bad := gd_result(b[..], ar[..], 200, "{\"answers\":{}}");
+  #assert bad.error.kind == GdErrorKind.malformed && bad.problem == "Google's answer does not hold: malformed" && bad.error.message == "a question has no answer";
+  #assert gd_result(b[..], ar[..], 400, GD_FX_SAFETY).problem == "Google blocked the input: safety";
+  #assert gd_result(b[..], ar[..], 400, GD_FX_BAD_KEY).problem == "Google refused the key: key";
+  #assert gd_result(b[..], ar[..], 400, GD_FX_ONE_OPTION).problem == "Google refused the request: invalid_request";
+  #assert gd_result(b[..], ar[..], 404, GD_FX_NO_MODEL).problem == "Google has no such model: not_found";
+  #assert gd_result(b[..], ar[..], 429, GD_FX_QUOTA).problem == "Google's rate limit: rate";
+  #assert gd_result(b[..], ar[..], 500, GD_FX_SERVER).problem == "Google failed: server";
+  #assert gd_problem_of(GdErrorKind.transport) == "no response from Google: transport" && gd_problem_of(GdErrorKind.none) == "";
+  e: [1] GdBody; eb: [64] u8; gd_begin(e[..], eb[..], GD_MODEL);
+  r := gd_decide(so_gemini(""), e[..], eb[..], eb[..], ar[..]);
+  #assert r.problem == "the input is empty" && r.error.kind == GdErrorKind.invalid_request && r.status == 0;
+}
+
+#test "so_decide_gemini refuses before sending what Google can't take" {
+  buf: [512] u8; b: [1] SoBody; out: [256] u8; err: [64] u8; scratch: [1024] u8;
+  so_begin(b[..], buf[..], GD_MODEL, ""); so_state_text(b[..], "x");
+  one := [1] string.["only"];
+  so_choice(b[..], "c", "?", one[..], one[..]);
+  r := so_decide_gemini(so_gemini(""), b[..], out[..], err[..], scratch[..]);
+  #assert r.problem == "a choice takes 2 to 255 options on Gemini Decision 1" && r.status == 0;
+  so_begin(b[..], buf[..], GD_MODEL, ""); so_state_text(b[..], "x");
+  #assert so_decide_gemini(so_gemini(""), b[..], out[..], err[..], scratch[..]).problem == "no questions";
+}

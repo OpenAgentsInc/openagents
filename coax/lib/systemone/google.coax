@@ -1,0 +1,730 @@
+// Google's Decisions API: Gemini Decision 1 (`gemini-decision-1`, November
+// 2026) on the Gemini Developer API (v1beta only, not Vertex). One request
+// carries shared input (text, image, audio, video and PDF blocks) and 1 to
+// 1,000 typed questions (noul, choice, score); the answer to each comes back
+// under its key with calibrated probabilities and no output tokens.
+// docs/research/2026-11-13-gemini-decision-1.md is the guide: the wire, the
+// limits, the published price and rate limits, and how it maps onto our
+// System One contract (openagents.systemone.v1).
+//
+// This file is the one codec for Google's bodies (proto/registry.json,
+// google.decisions.v1beta): the decision models' providers are parsed in
+// coax/lib/systemone/, as Baseten's System One API is. It
+// writes a request into a caller's buffer, refusing before any byte is sent
+// what Google would refuse, reads an answer, names an error, and translates
+// between Google's shape and ours. It sends nothing; the transport is
+// gemini.coax.
+//
+//   b: [1] GdBody;
+//   gd_begin(b[..], buf[..], GD_MODEL);
+//   gd_text(b[..], "The blue mug I ordered on Monday arrived cracked.");
+//   gd_image(b[..], "image/png", png_bytes, "low");
+//   gd_noul(b[..], "damaged", "Did the item arrive damaged?", "", "");
+//   gd_choice(b[..], "queue", "Which support queue should handle this?", keys[..], labels[..]);
+//   gd_score(b[..], "urgency", "How urgent is it?", levels[..]);
+//   body := gd_body(b[..]);      // "" when it failed; b[0].problem says why
+//
+// Calls go in that order: begin, one or more input blocks, questions,
+// finish. A call out of order, a value that doesn't fit or a shape Google
+// would refuse fails the body, and every later call does nothing.
+
+#load "answers.coax";            // the JSON reader and writer every door shares
+#load "../text/base64.coax";
+
+GD_URL :: "https://generativelanguage.googleapis.com/v1beta/decisions";
+GD_MODEL :: "gemini-decision-1";
+GD_KEY_ENV :: "GEMINI_API_KEY";
+GD_KEY_HEADER :: "x-goog-api-key";       // no scheme: the key is the header's whole value
+
+GD_MAX_QUESTIONS :: 1000;
+GD_KEY_MAX :: 64;                         // a question key: [A-Za-z0-9_-], 1 to 64
+GD_MIN_OPTIONS :: 2;                      // a choice's options, a score's levels
+GD_MAX_OPTIONS :: 255;
+GD_OPTION_CHARS :: 128;                   // an option key: 1 to 128 characters,
+GD_OPTION_BYTES :: 512;                   // at most 512 UTF-8 bytes
+GD_CONTEXT_TOKENS :: 262144;              // input and questions together
+GD_TEXT_BYTES_PER_TOKEN :: 4;             // our estimate; Google's count decides
+GD_INLINE_BYTES :: 104857600;             // inline media, decoded, a request: 100 MB
+GD_PDF_BYTES :: 52428800;                 // of which PDFs: 50 MB
+GD_URI_MAX :: 2048;
+
+GdKind :: enum u8 { none; noul; choice; score; }
+
+GdBody :: struct {
+  buf: [] u8;
+  at: int = -1;                  // -1 once the body failed
+  stage: int;                    // 1 input, 2 questions, 3 finished
+  problem: string;
+  blocks: int;                   // input blocks written
+  text_bytes: int;               // text in the input and the questions, for the token estimate
+  inline_bytes: int;             // decoded inline media
+  pdf_bytes: int;
+  questions: int;
+  names: [GD_MAX_QUESTIONS] string;    // borrowed from the caller
+  kinds: [GD_MAX_QUESTIONS] GdKind;
+  options: [GD_MAX_QUESTIONS] int;     // a choice's options, a score's levels
+}
+
+gd_fail :: (b: [] GdBody, problem: string) {
+  if b[0].at >= 0 { b[0].problem = problem; }
+  b[0].at = -1;
+}
+
+gd_put :: (b: [] GdBody, raw: string) {
+  if b[0].at < 0 { return; }
+  b[0].at = json_raw(b[0].buf, b[0].at, raw);
+  if b[0].at < 0 { b[0].problem = "the request does not fit its buffer"; }
+}
+
+gd_put_string :: (b: [] GdBody, s: string) {
+  if b[0].at < 0 { return; }
+  b[0].at = json_write_string(b[0].buf, b[0].at, s);
+  if b[0].at < 0 { b[0].problem = "the request does not fit its buffer"; }
+}
+
+gd_begin :: (b: [] GdBody, buf: [] u8, model: string) {
+  b[0].buf = buf; b[0].at = 0; b[0].stage = 1; b[0].problem = "";
+  b[0].blocks = 0; b[0].text_bytes = 0; b[0].inline_bytes = 0; b[0].pdf_bytes = 0; b[0].questions = 0;
+  if model.count == 0 { gd_fail(b, "no model"); return; }
+  gd_put(b, "{\"model\":"); gd_put_string(b, model); gd_put(b, ",\"input\":[");
+}
+
+gd_block_open :: (b: [] GdBody) -> bool {
+  if b[0].at < 0 { return false; }
+  if b[0].stage != 1 { gd_fail(b, "input blocks come before the questions"); return false; }
+  if b[0].blocks > 0 { gd_put(b, ","); }
+  b[0].blocks += 1;
+  return b[0].at >= 0;
+}
+
+// A text block. Google joins neighbouring text blocks with no separator:
+// end a block with "\n" when the next one starts a new thought.
+gd_text :: (b: [] GdBody, text: string) {
+  if b[0].at >= 0 && text.count == 0 { gd_fail(b, "a text block is empty"); return; }
+  if !gd_block_open(b) { return; }
+  b[0].text_bytes += text.count;
+  gd_put(b, "{\"type\":\"text\",\"text\":"); gd_put_string(b, text); gd_put(b, "}");
+}
+
+// The block type a MIME type belongs to ("image", "audio", "video",
+// "document"), or "" when Google takes it in no block.
+gd_mime_kind :: (mime: string) -> string {
+  images := [8] string.["image/png", "image/jpeg", "image/webp", "image/heic", "image/heif", "image/gif", "image/bmp", "image/tiff"];
+  audio := [13] string.["audio/wav", "audio/mp3", "audio/mpeg", "audio/aiff", "audio/aac", "audio/ogg", "audio/flac", "audio/m4a", "audio/opus", "audio/webm", "audio/l16", "audio/alaw", "audio/mulaw"];
+  video := [8] string.["video/mp4", "video/mpeg", "video/mov", "video/avi", "video/webm", "video/wmv", "video/x-flv", "video/3gpp"];
+  for m: images { if m == mime { return "image"; } }
+  for m: audio { if m == mime { return "audio"; } }
+  for m: video { if m == mime { return "video"; } }
+  if mime == "application/pdf" { return "document"; }
+  return "";
+}
+
+// "" when resolution may go on a block of kind, else why not.
+gd_resolution_problem :: (kind: string, resolution: string) -> string {
+  if resolution.count == 0 { return ""; }
+  if kind != "image" && kind != "video" { return "only image and video blocks take a resolution"; }
+  if resolution == "low" || resolution == "medium" || resolution == "high" { return ""; }
+  if resolution == "ultra_high" { return ifx kind == "image" then "" else "ultra_high is for images only"; }
+  return "a resolution is low, medium, high or ultra_high";
+}
+
+gd_media_open :: (b: [] GdBody, mime: string, resolution: string) -> string {
+  if b[0].at < 0 { return ""; }
+  kind := gd_mime_kind(mime);
+  if kind.count == 0 { gd_fail(b, "Google takes no block of this MIME type"); return ""; }
+  why := gd_resolution_problem(kind, resolution);
+  if why.count > 0 { gd_fail(b, why); return ""; }
+  if !gd_block_open(b) { return ""; }
+  gd_put(b, "{\"type\":"); gd_put_string(b, kind); gd_put(b, ",\"mime_type\":"); gd_put_string(b, mime);
+  if resolution.count > 0 { gd_put(b, ",\"resolution\":"); gd_put_string(b, resolution); }
+  return kind;
+}
+
+gd_count_inline :: (b: [] GdBody, kind: string, decoded: int) -> bool {
+  if decoded <= 0 { gd_fail(b, "a media block is empty"); return false; }
+  b[0].inline_bytes += decoded;
+  if kind == "document" { b[0].pdf_bytes += decoded; }
+  if b[0].inline_bytes > GD_INLINE_BYTES { gd_fail(b, "inline media is over 100 MB a request"); return false; }
+  if b[0].pdf_bytes > GD_PDF_BYTES { gd_fail(b, "inline PDFs are over 50 MB a request"); return false; }
+  return true;
+}
+
+// Media from its bytes, sent inline as base64: an image, audio, video or
+// a PDF, by its MIME type. resolution is "" or low, medium, high or
+// ultra_high (images and video only; ultra_high images only).
+gd_media :: (b: [] GdBody, mime: string, bytes: string, resolution: string) {
+  if b[0].at >= 0 && bytes.count == 0 { gd_fail(b, "a media block is empty"); return; }
+  kind := gd_media_open(b, mime, resolution);
+  if kind.count == 0 || !gd_count_inline(b, kind, bytes.count) { return; }
+  gd_put(b, ",\"data\":\"");
+  if b[0].at < 0 { return; }
+  n := b64_encode(bytes, b[0].buf[b[0].at..<b[0].buf.count]);
+  if n < 0 { gd_fail(b, "the request does not fit its buffer"); return; }
+  b[0].at += n;
+  gd_put(b, "\"}");
+}
+
+// The same, from base64 text the caller already has (a data URL's tail).
+gd_media_base64 :: (b: [] GdBody, mime: string, base64: string, resolution: string) {
+  if b[0].at >= 0 {
+    if base64.count == 0 || base64.count % 4 != 0 { gd_fail(b, "inline data is not padded base64"); return; }
+    for c: base64 { if !((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '+' || c == '/' || c == '=') { gd_fail(b, "inline data is not padded base64"); return; } }
+  }
+  kind := gd_media_open(b, mime, resolution);
+  pad := 0; if base64.count > 0 && base64[base64.count - 1] == '=' { pad += 1; } if base64.count > 1 && base64[base64.count - 2] == '=' { pad += 1; }
+  if kind.count == 0 || !gd_count_inline(b, kind, base64.count / 4 * 3 - pad) { return; }
+  gd_put(b, ",\"data\":\""); gd_put(b, base64); gd_put(b, "\"}");
+}
+
+// "" when Google takes uri as a media source, else why not: an HTTPS URL
+// (public or signed, up to 15 MB, which only Google can check) or a Files
+// API URI. No gs:// and no YouTube.
+gd_uri_problem :: (uri: string) -> string {
+  if uri.count == 0 || uri.count > GD_URI_MAX { return "a media URI is empty or over 2,048 bytes"; }
+  for c: uri { if c <= 32 || c >= 127 || c == '"' || c == '\\' { return "a media URI holds a character a URL cannot"; } }
+  if gd_starts(uri, "gs://") { return "Google takes no gs:// URI here: use a Files API URI or an HTTPS URL"; }
+  if !gd_starts(uri, "https://") { return "a media URI is an HTTPS URL or a Files API URI"; }
+  host := uri[8..<uri.count];
+  end := 0; while end < host.count && host[end] != '/' && host[end] != '?' && host[end] != '#' { end += 1; }
+  host = host[0..<end];
+  if end == 0 { return "a media URI has no host"; }
+  youtube := [7] string.["youtube.com", "www.youtube.com", "m.youtube.com", "music.youtube.com", "youtu.be", "youtube-nocookie.com", "www.youtube-nocookie.com"];
+  for h: youtube { if host == h { return "Google takes no YouTube URL here"; } }
+  return "";
+}
+
+// Media by reference: a Files API URI or an HTTPS URL.
+gd_uri :: (b: [] GdBody, mime: string, uri: string, resolution: string) {
+  if b[0].at >= 0 { why := gd_uri_problem(uri); if why.count > 0 { gd_fail(b, why); return; } }
+  kind := gd_media_open(b, mime, resolution);
+  if kind.count == 0 { return; }
+  gd_put(b, ",\"uri\":"); gd_put_string(b, uri); gd_put(b, "}");
+}
+
+gd_starts :: (s: string, p: string) -> bool { return s.count >= p.count && s[0..<p.count] == p; }
+
+// Whether name is a question key Google takes: 1 to 64 of [A-Za-z0-9_-].
+gd_key_ok :: (name: string) -> bool {
+  if name.count == 0 || name.count > GD_KEY_MAX { return false; }
+  for c: name { if !((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_' || c == '-') { return false; } }
+  return true;
+}
+
+// "" when key is an option key Google takes, else why not: 1 to 128
+// characters in at most 512 bytes of UTF-8, inner ASCII spaces only, no
+// control characters, no other spaces.
+gd_option_problem :: (key: string) -> string {
+  if key.count == 0 { return "a choice option has no key"; }
+  if key.count > GD_OPTION_BYTES { return "a choice option's key is over 512 bytes"; }
+  if key[0] == ' ' || key[key.count - 1] == ' ' { return "a choice option's key starts or ends with a space"; }
+  chars := 0; i := 0;
+  while i < key.count {
+    c := key[i];
+    if c < 32 || c == 127 { return "a choice option's key holds a control character"; }
+    if (c & 0xc0) != 0x80 { chars += 1; }
+    // U+0085, U+00A0, U+1680, U+2000-U+200A, U+2028, U+2029, U+202F, U+205F, U+3000, U+FEFF
+    if c == 0xc2 && i + 1 < key.count && (key[i + 1] == 0x85 || key[i + 1] == 0xa0) { return "a choice option's key holds a space that is not ASCII"; }
+    if c == 0xe1 && i + 2 < key.count && key[i + 1] == 0x9a && key[i + 2] == 0x80 { return "a choice option's key holds a space that is not ASCII"; }
+    if c == 0xe2 && i + 2 < key.count && key[i + 1] == 0x80 && (key[i + 2] <= 0x8a || key[i + 2] == 0xa8 || key[i + 2] == 0xa9 || key[i + 2] == 0xaf) { return "a choice option's key holds a space that is not ASCII"; }
+    if c == 0xe2 && i + 2 < key.count && key[i + 1] == 0x81 && key[i + 2] == 0x9f { return "a choice option's key holds a space that is not ASCII"; }
+    if c == 0xe3 && i + 2 < key.count && key[i + 1] == 0x80 && key[i + 2] == 0x80 { return "a choice option's key holds a space that is not ASCII"; }
+    if c == 0xef && i + 2 < key.count && key[i + 1] == 0xbb && key[i + 2] == 0xbf { return "a choice option's key holds a space that is not ASCII"; }
+    i += 1;
+  }
+  if chars > GD_OPTION_CHARS { return "a choice option's key is over 128 characters"; }
+  return "";
+}
+
+gd_question :: (b: [] GdBody, name: string, kind: GdKind, options: int, instructions: string) -> bool {
+  if b[0].at < 0 { return false; }
+  if b[0].stage == 1 {
+    if b[0].blocks == 0 { gd_fail(b, "the input is empty"); return false; }
+    b[0].stage = 2; gd_put(b, "],\"questions\":{");
+  } else if b[0].stage != 2 { gd_fail(b, "questions come after the input"); return false; }
+  if !gd_key_ok(name) { gd_fail(b, "a question key is 1 to 64 of A-Z, a-z, 0-9, _ and -"); return false; }
+  if instructions.count == 0 { gd_fail(b, "a question has no instructions"); return false; }
+  if b[0].questions == GD_MAX_QUESTIONS { gd_fail(b, "over 1,000 questions"); return false; }
+  for i: 0..<b[0].questions { if b[0].names[i] == name { gd_fail(b, "two questions share a key"); return false; } }
+  k := b[0].questions;
+  b[0].names[k] = name; b[0].kinds[k] = kind; b[0].options[k] = options;
+  b[0].questions += 1;
+  b[0].text_bytes += instructions.count;
+  if k > 0 { gd_put(b, ","); }
+  gd_put_string(b, name);
+  gd_put(b, ifx kind == GdKind.noul then ":{\"type\":\"noul\",\"instructions\":"
+            else ifx kind == GdKind.choice then ":{\"type\":\"choice\",\"instructions\":"
+            else ":{\"type\":\"score\",\"instructions\":");
+  gd_put_string(b, instructions);
+  return b[0].at >= 0;
+}
+
+// A yes/no question; the answer is P(yes), 0.01 to 0.99. true_description
+// and false_description say what yes and no mean ("" leaves one out).
+gd_noul :: (b: [] GdBody, name: string, instructions: string, true_description: string, false_description: string) {
+  if !gd_question(b, name, GdKind.noul, 0, instructions) { return; }
+  b[0].text_bytes += true_description.count + false_description.count;
+  if true_description.count > 0 || false_description.count > 0 {
+    gd_put(b, ",\"criteria\":{");
+    if true_description.count > 0 { gd_put(b, "\"true_description\":"); gd_put_string(b, true_description); }
+    if true_description.count > 0 && false_description.count > 0 { gd_put(b, ","); }
+    if false_description.count > 0 { gd_put(b, "\"false_description\":"); gd_put_string(b, false_description); }
+    gd_put(b, "}");
+  }
+  gd_put(b, "}");
+}
+
+// Pick one of 2 to 255 options: keys[i] is what the answer names, labels[i]
+// says when it applies ("" when the key says it all). Google sorts the keys
+// by their UTF-8 bytes before it asks, so the order here changes nothing.
+gd_choice :: (b: [] GdBody, name: string, instructions: string, keys: [] string, labels: [] string) {
+  if b[0].at < 0 { return; }
+  if keys.count != labels.count { gd_fail(b, "a choice needs one label per key"); return; }
+  if keys.count < GD_MIN_OPTIONS || keys.count > GD_MAX_OPTIONS { gd_fail(b, "a choice takes 2 to 255 options"); return; }
+  for i: 0..<keys.count {
+    why := gd_option_problem(keys[i]);
+    if why.count > 0 { gd_fail(b, why); return; }
+    for j: 0..<i { if keys[j] == keys[i] { gd_fail(b, "two choice options share a key"); return; } }
+  }
+  if !gd_question(b, name, GdKind.choice, keys.count, instructions) { return; }
+  gd_put(b, ",\"criteria\":{");
+  for i: 0..<keys.count {
+    if i > 0 { gd_put(b, ","); }
+    gd_put_string(b, keys[i]); gd_put(b, ":"); gd_put_string(b, labels[i]);
+    b[0].text_bytes += keys[i].count + labels[i].count;
+  }
+  gd_put(b, "}}");
+}
+
+// Ordered levels, lowest first, 2 to 255, none empty; the answer is the
+// probability-weighted mean of the level indices (0-based).
+gd_score :: (b: [] GdBody, name: string, instructions: string, levels: [] string) {
+  if b[0].at < 0 { return; }
+  if levels.count < GD_MIN_OPTIONS || levels.count > GD_MAX_OPTIONS { gd_fail(b, "a score takes 2 to 255 levels"); return; }
+  for l: levels { if l.count == 0 { gd_fail(b, "a score level is empty"); return; } }
+  if !gd_question(b, name, GdKind.score, levels.count, instructions) { return; }
+  gd_put(b, ",\"criteria\":[");
+  for i: 0..<levels.count {
+    if i > 0 { gd_put(b, ","); }
+    gd_put_string(b, levels[i]);
+    b[0].text_bytes += levels[i].count;
+  }
+  gd_put(b, "]}");
+}
+
+// Text tokens as we estimate them (4 bytes a token). Media tokens depend on
+// the resolution and are Google's to count.
+gd_estimated_tokens :: (b: [] GdBody) -> int { return (b[0].text_bytes + GD_TEXT_BYTES_PER_TOKEN - 1) / GD_TEXT_BYTES_PER_TOKEN; }
+
+// The finished body, or "" (b[0].problem says why).
+gd_body :: (b: [] GdBody) -> string {
+  if b[0].at < 0 { return ""; }
+  if b[0].stage == 1 { gd_fail(b, ifx b[0].blocks == 0 then "the input is empty" else "no questions"); return ""; }
+  if b[0].stage != 2 { gd_fail(b, "the body is already finished"); return ""; }
+  if gd_estimated_tokens(b) > GD_CONTEXT_TOKENS { gd_fail(b, "the text is over 262,144 tokens (estimated at 4 bytes a token)"); return ""; }
+  gd_put(b, "}}");
+  if b[0].at < 0 { return ""; }
+  b[0].stage = 3;
+  return cast(string) b[0].buf[0..<b[0].at];
+}
+
+// ---- answers
+//
+//   noul    {"type":"noul","noul":P,"confidence":C}         P = P(yes), C = max(P, 1 - P)
+//   choice  {"type":"choice","choice":KEY,"probabilities":{KEY:P},"confidence":C}   C = the top P
+//   score   {"type":"score","score":E,"legend":{"0":LEVEL},"probabilities":{"0":P},"confidence":C}
+//
+// with usage {"total_input_tokens","input_tokens_by_modality":[{"modality","tokens"}],
+// "total_output_tokens" (always 0),"total_tokens"}.
+
+GD_SUM_SLACK :: 0.001;
+
+GdNoul :: struct { ok: bool; noul: f64; confidence: f64; }
+GdChoice :: struct { ok: bool; choice: string; probability: f64; confidence: f64; }
+GdScore :: struct { ok: bool; score: f64; confidence: f64; level: int; levels: int; }
+GdUsage :: struct { ok: bool; input_tokens: int; output_tokens: int; total_tokens: int; text_tokens: int; image_tokens: int; audio_tokens: int; }
+
+gd_answer :: (text: string, name: string) -> ClSlice { return cl_member(text, cl_member(text, cl_root(text), "answers"), name); }
+gd_unit :: (p: JsonF64) -> bool { return p.ok && p.value >= 0.0 && p.value <= 1.0; }
+
+gd_distribution :: (text: string, probs: ClSlice, n: int) -> bool {
+  if !probs.ok || probs.tok != JSON_OBJECT || cl_count(text[probs.from..<probs.to]) != n { return false; }
+  sum := 0.0;
+  for k: 0..<n {
+    p := cl_num_of(text, cl_element(text, probs, k));
+    if !gd_unit(p) { return false; }
+    sum += p.value;
+  }
+  return sum > 1.0 - GD_SUM_SLACK && sum < 1.0 + GD_SUM_SLACK;
+}
+
+// What is wrong with text as Google's answer to b's questions, or "".
+gd_check :: (b: [] GdBody, text: string) -> string {
+  root := cl_root(text);
+  if !root.ok || root.tok != JSON_OBJECT { return "the response is not a JSON object"; }
+  answers := cl_member(text, root, "answers");
+  if !answers.ok || answers.tok != JSON_OBJECT { return "the response has no answers"; }
+  for i: 0..<b[0].questions {
+    a := cl_member(text, answers, b[0].names[i]);
+    if !a.ok || a.tok != JSON_OBJECT { return "a question has no answer"; }
+    n := b[0].options[i];
+    type := cl_member(text, a, "type");
+    if !gd_unit(cl_num_of(text, cl_member(text, a, "confidence"))) { return "an answer's confidence is not in [0, 1]"; }
+    if b[0].kinds[i] == GdKind.noul {
+      if !cl_eq(text, type, "noul") { return "a noul answer has another type"; }
+      if !gd_unit(cl_num_of(text, cl_member(text, a, "noul"))) { return "a noul answer is not a probability"; }
+    } else if b[0].kinds[i] == GdKind.choice {
+      if !cl_eq(text, type, "choice") { return "a choice answer has another type"; }
+      probs := cl_member(text, a, "probabilities");
+      if !gd_distribution(text, probs, n) { return "a choice answer's probabilities are not a distribution over its options"; }
+      chosen := cl_member(text, a, "choice");
+      if !chosen.ok || chosen.tok != JSON_STRING { return "a choice answer names no option"; }
+      ab: [1024] u8; ar: [1] ClArena; ar[0].buf = ab[..];
+      if !cl_member(text, probs, cl_text(ar[..], text, chosen)).ok { return "a choice answer names an option it has no probability for"; }
+    } else {
+      if !cl_eq(text, type, "score") { return "a score answer has another type"; }
+      if !gd_distribution(text, cl_member(text, a, "probabilities"), n) { return "a score answer's probabilities are not a distribution over its levels"; }
+      s := cl_num_of(text, cl_member(text, a, "score"));
+      if !s.ok || s.value < 0.0 || s.value > cast(f64) (n - 1) { return "a score answer is outside its levels"; }
+    }
+  }
+  return "";
+}
+
+gd_noul_of :: (text: string, name: string) -> GdNoul {
+  r: GdNoul;
+  a := gd_answer(text, name);
+  if !cl_eq(text, cl_member(text, a, "type"), "noul") { return r; }
+  p := cl_num_of(text, cl_member(text, a, "noul")); c := cl_num_of(text, cl_member(text, a, "confidence"));
+  if !gd_unit(p) || !gd_unit(c) { return r; }
+  return GdNoul.{ok = true, noul = p.value, confidence = c.value};
+}
+
+// The chosen option. A key with escapes is decoded into ar.
+gd_choice_of :: (ar: [] ClArena, text: string, name: string) -> GdChoice {
+  r: GdChoice;
+  a := gd_answer(text, name);
+  if !cl_eq(text, cl_member(text, a, "type"), "choice") { return r; }
+  key := cl_text(ar, text, cl_member(text, a, "choice"));
+  if key.count == 0 { return r; }
+  p := cl_num_of(text, cl_member(text, cl_member(text, a, "probabilities"), key));
+  c := cl_num_of(text, cl_member(text, a, "confidence"));
+  if !gd_unit(p) || !gd_unit(c) { return r; }
+  return GdChoice.{ok = true, choice = key, probability = p.value, confidence = c.value};
+}
+
+// The probability of one option of a choice, or of level "0", "1" ... of a score.
+gd_probability :: (text: string, name: string, option: string) -> JsonF64 {
+  r: JsonF64;
+  p := cl_num_of(text, cl_member(text, cl_member(text, gd_answer(text, name), "probabilities"), option));
+  if !gd_unit(p) { return r; }
+  return p;
+}
+
+gd_score_of :: (text: string, name: string) -> GdScore {
+  r: GdScore;
+  a := gd_answer(text, name);
+  if !cl_eq(text, cl_member(text, a, "type"), "score") { return r; }
+  s := cl_num_of(text, cl_member(text, a, "score")); c := cl_num_of(text, cl_member(text, a, "confidence"));
+  if !s.ok || !gd_unit(c) { return r; }
+  probs := cl_member(text, a, "probabilities");
+  n := ifx probs.ok && probs.tok == JSON_OBJECT then cl_count(text[probs.from..<probs.to]) else 0;
+  best := -1.0; level := 0;
+  for k: 0..<n {
+    nb: [8] u8; kn := json_write_int(nb[..], 0, k);
+    p := cl_num_of(text, cl_member(text, probs, cast(string) nb[0..<kn]));
+    if p.ok && p.value > best { best = p.value; level = k; }
+  }
+  return GdScore.{ok = true, score = s.value, confidence = c.value, level = level, levels = n};
+}
+
+gd_usage :: (text: string) -> GdUsage {
+  r: GdUsage;
+  i := cl_int(text, "usage.total_input_tokens"); o := cl_int(text, "usage.total_output_tokens"); t := cl_int(text, "usage.total_tokens");
+  if !i.ok || !o.ok || !t.ok { return r; }
+  r = GdUsage.{ok = true, input_tokens = i.value, output_tokens = o.value, total_tokens = t.value};
+  by := cl_at(text, "usage.input_tokens_by_modality");
+  n := ifx by.ok && by.tok == JSON_ARRAY then cl_count(text[by.from..<by.to]) else 0;
+  for k: 0..<n {
+    row := cl_element(text, by, k);
+    tokens := cl_int_of(text, cl_member(text, row, "tokens"));
+    if !tokens.ok { continue; }
+    m := cl_member(text, row, "modality");
+    if cl_eq(text, m, "text") { r.text_tokens += tokens.value; }
+    else if cl_eq(text, m, "image") { r.image_tokens += tokens.value; }
+    else if cl_eq(text, m, "audio") { r.audio_tokens += tokens.value; }
+  }
+  return r;
+}
+
+// ---- errors
+//
+// A refused request is an HTTP status and an error object. The Decisions
+// API's own: 400 {"error":{"code":"invalid_request","message":"* ... names the
+// rule"}}, 400 with a safety code, 404 {"code":"not_found"}. Google's front
+// door (a bad key, quota): {"error":{"code":400,"status":"INVALID_ARGUMENT",
+// "details":[{"reason":"API_KEY_INVALID",...}]}}.
+
+GdErrorKind :: enum u8 {
+  none;            // 200
+  invalid_request; // 400: a rule of the request; the message names it
+  safety;          // 400: input blocked (safety, prohibited_content, blocklist, image_safety, content_blocked)
+  not_found;       // 404: no such model
+  key;             // the key is missing, invalid, or not allowed this API (400 API_KEY_INVALID, 401, 403)
+  rate;            // 429: over a rate limit or quota
+  server;          // 5xx: Google's side; another door may answer
+  transport;       // no response: curl failed or timed out
+  malformed;       // 200 that is not an answer to the questions
+}
+
+GdError :: struct {
+  kind: GdErrorKind;
+  status: int;
+  code: string;          // Google's code ("invalid_request", "safety", "API_KEY_INVALID" ...), decoded into ar
+  message: string;
+}
+
+gd_safety_code :: (code: string) -> bool {
+  return code == "safety" || code == "prohibited_content" || code == "blocklist" || code == "image_safety" || code == "content_blocked";
+}
+
+// What status and body say went wrong; kind none for a 200.
+gd_error :: (ar: [] ClArena, status: int, body: string) -> GdError {
+  e: GdError; e.status = status;
+  if status == 200 { return e; }
+  e.message = cl_str(ar, body, "error.message");
+  code := cl_at(body, "error.code");
+  e.code = cl_text(ar, body, code);
+  reason := "";
+  details := cl_at(body, "error.details");
+  n := ifx details.ok && details.tok == JSON_ARRAY then cl_count(body[details.from..<details.to]) else 0;
+  for k: 0..<n {
+    r := cl_text(ar, body, cl_member(body, cl_element(body, details, k), "reason"));
+    if r.count > 0 && reason.count == 0 { reason = r; }
+  }
+  if reason.count > 0 && e.code.count == 0 { e.code = reason; }
+  if status == 0 { e.kind = GdErrorKind.transport; }
+  else if gd_safety_code(e.code) { e.kind = GdErrorKind.safety; }
+  else if reason == "API_KEY_INVALID" || reason == "API_KEY_SERVICE_BLOCKED" || reason == "SERVICE_DISABLED" || status == 401 || status == 403 { e.kind = GdErrorKind.key; }
+  else if status == 429 { e.kind = GdErrorKind.rate; }
+  else if status == 404 || e.code == "not_found" { e.kind = GdErrorKind.not_found; }
+  else if status >= 500 { e.kind = GdErrorKind.server; }
+  else if status == 400 { e.kind = GdErrorKind.invalid_request; }
+  else { e.kind = GdErrorKind.malformed; }
+  return e;
+}
+
+gd_kind_name :: (k: GdErrorKind) -> string {
+  return ifx k == GdErrorKind.none then "none" else ifx k == GdErrorKind.invalid_request then "invalid_request"
+    else ifx k == GdErrorKind.safety then "safety" else ifx k == GdErrorKind.not_found then "not_found"
+    else ifx k == GdErrorKind.key then "key" else ifx k == GdErrorKind.rate then "rate"
+    else ifx k == GdErrorKind.server then "server" else ifx k == GdErrorKind.transport then "transport" else "malformed";
+}
+
+// ---- our System One contract (openagents.systemone.v1) to Google and back
+//
+// docs/research/2026-11-13-gemini-decision-1.md, "Mapping", says what each
+// step keeps and loses. In short: the state becomes the input (a string as
+// one text block, {"messages": [...]} as one block a part, image_url data
+// URLs and HTTPS URLs as image blocks, any other JSON as its text); each
+// question keeps its key, type, instructions and criteria (null labels
+// become ""); a choice needs 2 options here, not 1; the model is always
+// GD_MODEL. The answer keeps every probability and Google's confidence as
+// they are, and its usage becomes input_tokens and output_tokens (0).
+
+// The state as input blocks. A messages state becomes "ROLE: " text blocks
+// and its image parts image blocks.
+gd_state_input :: (b: [] GdBody, request: string, state: ClSlice) {
+  if b[0].at < 0 { return; }
+  ab: [65536] u8; ar: [1] ClArena; ar[0].buf = ab[..];
+  if state.ok && state.tok == JSON_STRING { gd_text(b, cl_text(ar[..], request, state)); return; }
+  if !state.ok || (state.tok != JSON_OBJECT && state.tok != JSON_ARRAY) { gd_fail(b, "the state is a string or a JSON object or array"); return; }
+  messages := cl_member(request, state, "messages");
+  if state.tok != JSON_OBJECT || !messages.ok || messages.tok != JSON_ARRAY || cl_count(request[state.from..<state.to]) != 1 {
+    gd_text(b, cl_json(request, state)); return;
+  }
+  n := cl_count(request[messages.from..<messages.to]);
+  if n <= 0 { gd_fail(b, "the state has no messages"); return; }
+  for m: 0..<n {
+    msg := cl_element(request, messages, m);
+    role := cl_text(ar[..], request, cl_member(request, msg, "role"));
+    content := cl_member(request, msg, "content");
+    rb: [64] u8; rn := json_raw(rb[..], 0, ifx role.count > 0 && role.count < 48 then role else "user"); rn = json_raw(rb[..], rn, ": ");
+    if content.ok && content.tok == JSON_STRING {
+      tb: [65600] u8; tn := json_raw(tb[..], 0, cast(string) rb[0..<rn]); tn = json_raw(tb[..], tn, cl_text(ar[..], request, content)); tn = json_raw(tb[..], tn, "\n");
+      if tn < 0 { gd_fail(b, "a message does not fit"); return; }
+      gd_text(b, cast(string) tb[0..<tn]);
+      continue;
+    }
+    if !content.ok || content.tok != JSON_ARRAY { gd_fail(b, "a message's content is a string or an array of parts"); return; }
+    gd_text(b, cast(string) rb[0..<rn]);
+    parts := cl_count(request[content.from..<content.to]);
+    for p: 0..<parts {
+      part := cl_element(request, content, p);
+      type := cl_member(request, part, "type");
+      if cl_eq(request, type, "text") {
+        t := cl_text(ar[..], request, cl_member(request, part, "text"));
+        if t.count > 0 { gd_text(b, t); }
+      } else if cl_eq(request, type, "image_url") {
+        url := cl_member(request, part, "image_url");
+        u := cl_text(ar[..], request, ifx url.ok && url.tok == JSON_OBJECT then cl_member(request, url, "url") else url);
+        gd_image_url(b, u);
+      } else { gd_fail(b, "a message part is text or image_url"); return; }
+    }
+    gd_text(b, "\n");
+  }
+}
+
+// An image_url part: data:MIME;base64,DATA inline, or an HTTPS URL (its
+// MIME type from the name's extension).
+gd_image_url :: (b: [] GdBody, url: string) {
+  if b[0].at < 0 { return; }
+  if gd_starts(url, "data:") {
+    semi := 5; while semi < url.count && url[semi] != ';' && url[semi] != ',' { semi += 1; }
+    if semi + 8 > url.count || url[semi..<semi + 8] != ";base64," { gd_fail(b, "an image data URL is not base64"); return; }
+    gd_media_base64(b, url[5..<semi], url[semi + 8..<url.count], "");
+    return;
+  }
+  path := url; q := 0; while q < path.count && path[q] != '?' && path[q] != '#' { q += 1; } path = path[0..<q];
+  mime := ifx gd_ends(path, ".png") then "image/png" else ifx gd_ends(path, ".jpg") || gd_ends(path, ".jpeg") then "image/jpeg"
+    else ifx gd_ends(path, ".webp") then "image/webp" else ifx gd_ends(path, ".gif") then "image/gif" else "";
+  if mime.count == 0 { gd_fail(b, "an image URL's type is not known from its name: use a data URL"); return; }
+  gd_uri(b, mime, url, "");
+}
+
+gd_ends :: (s: string, p: string) -> bool { return s.count >= p.count && s[s.count - p.count..<s.count] == p; }
+
+// Google's request for a System One request, into out, with b tracking the
+// questions for gd_check and gd_to_systemone. Keys, instructions and labels
+// with escapes are decoded into ar, which must live as long as b does. ""
+// when the request can't be mapped (b[0].problem says why).
+gd_from_systemone :: (b: [] GdBody, request: string, out: [] u8, ar: [] ClArena) -> string {
+  gd_begin(b, out, GD_MODEL);
+  root := cl_root(request);
+  if !root.ok || root.tok != JSON_OBJECT { gd_fail(b, "the request is not a JSON object"); return ""; }
+  gd_state_input(b, request, cl_member(request, root, "state"));
+  questions := cl_member(request, root, "questions");
+  if b[0].at >= 0 && (!questions.ok || questions.tok != JSON_OBJECT) { gd_fail(b, "the request has no questions"); return ""; }
+  n := ifx b[0].at >= 0 then cl_count(request[questions.from..<questions.to]) else 0;
+  qtext := request[questions.from..<questions.to];
+  for i: 0..<n {
+    if b[0].at < 0 { break; }
+    ks := cl_key(qtext, i);
+    name := gd_decoded(b, ar, qtext, ClSlice.{ok = true, tok = JSON_STRING, from = ks.from, to = ks.to});
+    q := cl_element(request, questions, i);
+    if !q.ok || q.tok != JSON_OBJECT { gd_fail(b, "a question is not an object"); return ""; }
+    type := cl_member(request, q, "type");
+    ins := cl_member(request, q, "instructions");
+    if !ins.ok || ins.tok == JSON_NULL { gd_fail(b, "a question has no instructions"); return ""; }
+    instructions := ifx ins.tok == JSON_STRING then gd_decoded(b, ar, request, ins) else cl_json(request, ins);
+    criteria := cl_member(request, q, "criteria");
+    if cl_eq(request, type, "noul") {
+      t := ""; f := "";
+      if criteria.ok && criteria.tok == JSON_OBJECT {
+        ts := cl_member(request, criteria, "true_description"); fs := cl_member(request, criteria, "false_description");
+        if ts.ok && ts.tok == JSON_STRING { t = gd_decoded(b, ar, request, ts); }
+        if fs.ok && fs.tok == JSON_STRING { f = gd_decoded(b, ar, request, fs); }
+      }
+      gd_noul(b, name, instructions, t, f);
+    } else if cl_eq(request, type, "choice") {
+      if !criteria.ok || (criteria.tok != JSON_OBJECT && criteria.tok != JSON_ARRAY) { gd_fail(b, "a choice has no criteria"); return ""; }
+      gd_choice_mapped(b, ar, name, instructions, request, criteria);
+    } else if cl_eq(request, type, "score") {
+      if !criteria.ok || criteria.tok != JSON_ARRAY { gd_fail(b, "a score's criteria are an array of levels"); return ""; }
+      gd_score_mapped(b, ar, name, instructions, request, criteria);
+    } else { gd_fail(b, "a question's type is noul, choice or score"); return ""; }
+  }
+  return gd_body(b);
+}
+
+// A string value, decoded into ar; the body fails when ar is full.
+gd_decoded :: (b: [] GdBody, ar: [] ClArena, text: string, v: ClSlice) -> string {
+  s := cl_text(ar, text, v);
+  if ar.count > 0 && ar[0].full { gd_fail(b, "the decoded strings do not fit their arena"); }
+  return s;
+}
+
+gd_choice_mapped :: (b: [] GdBody, ar: [] ClArena, name: string, instructions: string, request: string, criteria: ClSlice) {
+  n := cl_count(request[criteria.from..<criteria.to]);
+  if n < GD_MIN_OPTIONS || n > GD_MAX_OPTIONS { gd_fail(b, "a choice takes 2 to 255 options on Gemini Decision 1"); return; }
+  keys: [GD_MAX_OPTIONS] string; labels: [GD_MAX_OPTIONS] string;
+  ctext := request[criteria.from..<criteria.to];
+  for k: 0..<n {
+    v := cl_element(request, criteria, k);
+    if criteria.tok == JSON_OBJECT {
+      ks := cl_key(ctext, k);
+      keys[k] = gd_decoded(b, ar, ctext, ClSlice.{ok = true, tok = JSON_STRING, from = ks.from, to = ks.to});
+      if v.tok == JSON_STRING { labels[k] = gd_decoded(b, ar, request, v); }
+      else if v.tok == JSON_NULL { labels[k] = ""; }
+      else { gd_fail(b, "a choice option's label is a string or null"); return; }
+    } else {
+      if v.tok != JSON_STRING { gd_fail(b, "a choice's options are strings"); return; }
+      keys[k] = gd_decoded(b, ar, request, v); labels[k] = "";
+    }
+  }
+  gd_choice(b, name, instructions, keys[0..<n], labels[0..<n]);
+}
+
+gd_score_mapped :: (b: [] GdBody, ar: [] ClArena, name: string, instructions: string, request: string, criteria: ClSlice) {
+  n := cl_count(request[criteria.from..<criteria.to]);
+  if n < GD_MIN_OPTIONS || n > GD_MAX_OPTIONS { gd_fail(b, "a score takes 2 to 255 levels"); return; }
+  levels: [GD_MAX_OPTIONS] string;
+  for k: 0..<n {
+    v := cl_element(request, criteria, k);
+    if v.tok != JSON_STRING { gd_fail(b, "a score's levels are strings"); return; }
+    levels[k] = gd_decoded(b, ar, request, v);
+  }
+  gd_score(b, name, instructions, levels[0..<n]);
+}
+
+GD_SERVICE :: ",\"service\":{\"door\":\"gemini\",\"identity\":\"gemini-decision-1\",\"provider\":\"google\"}";
+
+// Our System One response for Google's answer to b's questions, into out
+// ("" when the answer doesn't hold: gd_check says why). model is the name
+// the caller asked for, which the response repeats.
+gd_to_systemone :: (b: [] GdBody, model: string, google: string, out: [] u8) -> string {
+  if gd_check(b, google).count > 0 { return ""; }
+  answers := cl_member(google, cl_root(google), "answers");
+  n := json_raw(out, 0, "{\"model\":"); n = json_write_string(out, n, model); n = json_raw(out, n, ",\"answers\":{");
+  for i: 0..<b[0].questions {
+    a := cl_member(google, answers, b[0].names[i]);
+    if i > 0 { n = json_raw(out, n, ","); }
+    n = json_write_string(out, n, b[0].names[i]);
+    if b[0].kinds[i] == GdKind.noul {
+      n = json_raw(out, n, ":{\"type\":\"noul\",\"noul\":"); n = json_raw(out, n, cl_json(google, cl_member(google, a, "noul")));
+    } else if b[0].kinds[i] == GdKind.choice {
+      n = json_raw(out, n, ":{\"type\":\"choice\",\"choice\":"); n = json_raw(out, n, cl_json(google, cl_member(google, a, "choice")));
+      n = json_raw(out, n, ",\"confidence\":"); n = json_raw(out, n, cl_json(google, cl_member(google, a, "confidence")));
+      n = json_raw(out, n, ",\"probabilities\":"); n = json_raw(out, n, cl_json(google, cl_member(google, a, "probabilities")));
+    } else {
+      n = json_raw(out, n, ":{\"type\":\"score\",\"score\":"); n = json_raw(out, n, cl_json(google, cl_member(google, a, "score")));
+      n = json_raw(out, n, ",\"confidence\":"); n = json_raw(out, n, cl_json(google, cl_member(google, a, "confidence")));
+      // Google sends the levels in any order; ours go 0, 1, 2 ... (so_score_of reads them by position).
+      legend := cl_member(google, a, "legend"); probs := cl_member(google, a, "probabilities");
+      for part: 0..<2 {
+        from := ifx part == 0 then legend else probs;
+        if part == 0 && (!legend.ok || legend.tok != JSON_OBJECT) { continue; }
+        n = json_raw(out, n, ifx part == 0 then ",\"legend\":{" else ",\"probabilities\":{");
+        for k: 0..<b[0].options[i] {
+          kb: [8] u8; kn := json_write_int(kb[..], 0, k);
+          if k > 0 { n = json_raw(out, n, ","); }
+          n = json_write_string(out, n, cast(string) kb[0..<kn]); n = json_raw(out, n, ":"); n = json_raw(out, n, cl_json(google, cl_member(google, from, cast(string) kb[0..<kn])));
+        }
+        n = json_raw(out, n, "}");
+      }
+    }
+    n = json_raw(out, n, "}");
+  }
+  u := gd_usage(google);
+  n = json_raw(out, n, "},\"usage\":{\"input_tokens\":"); n = json_write_int(out, n, ifx u.ok then u.input_tokens else 0);
+  n = json_raw(out, n, ",\"output_tokens\":0}"); n = json_raw(out, n, GD_SERVICE); n = json_raw(out, n, "}");
+  return ifx n < 0 then "" else cast(string) out[0..<n];
+}
+
+// A System One error body for a Google refusal: {"error":{"code","message"}}.
+gd_systemone_error :: (e: GdError, out: [] u8) -> string {
+  n := json_raw(out, 0, "{\"error\":{\"code\":"); n = json_write_string(out, n, gd_kind_name(e.kind));
+  n = json_raw(out, n, ",\"message\":"); n = json_write_string(out, n, e.message); n = json_raw(out, n, "}}");
+  return ifx n < 0 then "" else cast(string) out[0..<n];
+}
+
+#load "google-checks.coax" #test;

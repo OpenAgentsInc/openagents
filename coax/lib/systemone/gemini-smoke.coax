@@ -1,0 +1,118 @@
+// Gemini Decision 1 through our client (gemini-smoke.sh runs it).
+//
+// Against the stand-in (GD_SMOKE_URL set, gemini_fake.py): the ticket goes
+// through so_decide_gemini and must arrive as Google's request byte for
+// byte, with the key in x-goog-api-key only; the image request must carry
+// the image's bytes; each refusal path must come back as its own error
+// kind, and an unreachable server as transport.
+//
+// Live (no GD_SMOKE_URL, GEMINI_API_KEY in the environment): one request
+// mixing the three question types, the ticket through the System One
+// mapping, and one with an image. Each prints its answers, tokens and
+// latency. About 1,000 input tokens in all: $0.0001 at the published price.
+
+#import "Basic";
+#load "systemone.coax";
+#load "gemini.coax";
+#load "../sys/fs.coax";
+
+GS_IMAGE :: "apps/openagents-web/realms/everglade/hotbar/ray-of-frost-card-1x.jpg";
+
+gs_url :: (base: string, path: string, out: [] u8) -> string {
+  n := json_raw(out, 0, base); n = json_raw(out, n, path);
+  return ifx n < 0 then "" else cast(string) out[0..<n];
+}
+
+// Three kinds of question over one support message.
+gs_mixed :: (c: SoClient) -> bool {
+  buf: [4096] u8; out: [16384] u8; err: [2048] u8; b: [1] GdBody; ab: [2048] u8; ar: [1] ClArena; ar[0].buf = ab[..];
+  gd_begin(b[..], buf[..], GD_MODEL);
+  gd_text(b[..], "{\"order\":{\"id\":\"8821\",\"item\":\"headphones\",\"price_usd\":240},\"tier\":\"Gold\"}\n");
+  gd_text(b[..], "{\"message\":\"Audio cuts out on the left earcup. Fix it today or I cancel my membership.\"}");
+  gd_noul(b[..], "is_defect", "Does `message` describe a hardware defect?", "", "");
+  keys := [4] string.["instant_refund", "replacement_shipment", "troubleshooting_flow", "human_escalation"];
+  labels := [4] string.["Refund without return. Low value or clear fault.", "Ship a replacement. Customer returns the original.", "The issue may be fixable by the customer.", ""];
+  gd_choice(b[..], "next_action", "What is the right resolution given `tier` and `order`?", keys[..], labels[..]);
+  levels := [4] string.["No churn signal", "Mild frustration", "Mentions alternatives", "Threatens to cancel"];
+  gd_score(b[..], "churn_risk", "How likely is the customer to churn if the issue is not resolved now?", levels[..]);
+  t0 := cxproc_now_ms();
+  r := gd_decide(c, b[..], out[..], err[..], ar[..]);
+  ms := cxproc_now_ms() - t0;
+  if r.problem.count > 0 { print("mixed: % (status %, %) %\n", r.problem, r.status, r.error.code, r.error.message); return false; }
+  d := gd_noul_of(r.body, "is_defect"); a := gd_choice_of(ar[..], r.body, "next_action"); s := gd_score_of(r.body, "churn_risk");
+  print("mixed: is_defect=% next_action=% (p %, confidence %) churn_risk=% (level %) tokens=% %ms\n", d.noul, a.choice, a.probability, a.confidence, s.score, s.level, r.usage.input_tokens, ms);
+  return d.ok && a.ok && s.ok && r.usage.output_tokens == 0;
+}
+
+// The System One ticket through the mapping; returns its body in out.
+gs_ticket :: (c: SoClient, label: string) -> bool {
+  buf: [2048] u8; out: [16384] u8; err: [2048] u8; scratch: [32768] u8; b: [1] SoBody;
+  body := so_test_ticket(b[..], buf[..]);
+  t0 := cxproc_now_ms();
+  r := so_decide_gemini(c, b[..], out[..], err[..], scratch[..]);
+  ms := cxproc_now_ms() - t0;
+  if r.problem.count > 0 { print("%: % (status %) %\n", label, r.problem, r.status, r.body); return false; }
+  ab: [256] u8; ar: [1] ClArena; ar[0].buf = ab[..];
+  route := so_choice_of(ar[..], r.body, "route"); refund := so_noul_of(r.body, "refund"); urgency := so_score_of(r.body, "urgency");
+  print("%: route=% p=% refund=% urgency=% (level %) tokens=% %ms\n", label, route.choice, route.probability, refund.value, urgency.score, urgency.level, r.usage.input_tokens, ms);
+  print("%: body %\n", label, r.body);
+  return route.choice == "billing" && refund.value > 0.9;
+}
+
+gs_image :: (c: SoClient, live: bool) -> bool {
+  img: [65536] u8; n := fs_read(GS_IMAGE, img[..]);
+  if n <= 0 { print("image: can't read %\n", GS_IMAGE); return false; }
+  buf: [98304] u8; out: [16384] u8; err: [2048] u8; b: [1] GdBody; ab: [2048] u8; ar: [1] ClArena; ar[0].buf = ab[..];
+  gd_begin(b[..], buf[..], GD_MODEL);
+  gd_text(b[..], "A card from a game's hotbar.\n");
+  gd_media(b[..], "image/jpeg", cast(string) img[0..<n], "low");
+  gd_noul(b[..], "cold", "Does the card describe a spell that deals cold damage?", "", "");
+  keys := [3] string.["fire_bolt", "ray_of_frost", "thunderwave"]; labels := [3] string.["Fire Bolt", "Ray of Frost", "Thunderwave"];
+  gd_choice(b[..], "spell", "Which spell is on the card?", keys[..], labels[..]);
+  levels := [3] string.["Under 30 feet", "30 to 90 feet", "Over 90 feet"];
+  gd_score(b[..], "range", "How far is the spell's range?", levels[..]);
+  t0 := cxproc_now_ms();
+  r := gd_decide(c, b[..], out[..], err[..], ar[..]);
+  ms := cxproc_now_ms() - t0;
+  if r.problem.count > 0 { print("image: % (status %, %) %\n", r.problem, r.status, r.error.code, r.error.message); return false; }
+  cold := gd_noul_of(r.body, "cold"); spell := gd_choice_of(ar[..], r.body, "spell"); range := gd_score_of(r.body, "range");
+  print("image: % bytes, cold=% spell=% (p %) range=% (level %) tokens=% (text %, image %) %ms\n", n, cold.noul, spell.choice, spell.probability, range.score, range.level, r.usage.input_tokens, r.usage.text_tokens, r.usage.image_tokens, ms);
+  return !live || (spell.choice == "ray_of_frost" && cold.noul > 0.5);
+}
+
+// A refusal path of the stand-in comes back as kind.
+gs_refusal :: (base: string, path: string, kind: GdErrorKind) -> bool {
+  ub: [512] u8; c := so_gemini(""); c.url = gs_url(base, path, ub[..]);
+  buf: [2048] u8; out: [4096] u8; err: [2048] u8; b: [1] GdBody; ab: [1024] u8; ar: [1] ClArena; ar[0].buf = ab[..];
+  gd_begin(b[..], buf[..], GD_MODEL); gd_text(b[..], "x"); gd_noul(b[..], "q", "?", "", "");
+  body := gd_body(b[..]);
+  r := gd_send(c, b[..], body, out[..], err[..], ar[..]);
+  print("refusal %: status % kind % code % problem %\n", path, r.status, gd_kind_name(r.error.kind), r.error.code, r.problem);
+  return r.error.kind == kind;
+}
+
+main :: () {
+  ub: [512] u8; base := cl_getenv("GD_SMOKE_URL", ub[..]);
+  c := so_gemini("");
+  ok := true;
+  if base.count > 0 {
+    tb: [512] u8; c.url = gs_url(base, "ticket", tb[..]);
+    ok = gs_ticket(c, "fake ticket") && ok;
+    ib: [512] u8; c.url = gs_url(base, "image", ib[..]);
+    ok = gs_image(c, false) && ok;
+    ok = gs_refusal(base, "invalid", GdErrorKind.invalid_request) && ok;
+    ok = gs_refusal(base, "safety", GdErrorKind.safety) && ok;
+    ok = gs_refusal(base, "content_blocked", GdErrorKind.safety) && ok;
+    ok = gs_refusal(base, "not_found", GdErrorKind.not_found) && ok;
+    ok = gs_refusal(base, "bad_key", GdErrorKind.key) && ok;
+    ok = gs_refusal(base, "quota", GdErrorKind.rate) && ok;
+    ok = gs_refusal(base, "server", GdErrorKind.server) && ok;
+    ok = gs_refusal(base, "malformed", GdErrorKind.malformed) && ok;
+    ok = gs_refusal("http://127.0.0.1:9/", "", GdErrorKind.transport) && ok;
+  } else {
+    ok = gs_mixed(c) && ok;
+    ok = gs_ticket(c, "live ticket") && ok;
+    ok = gs_image(c, true) && ok;
+  }
+  print("smoke: %\n", ifx ok then "ok" else "FAILED");
+}

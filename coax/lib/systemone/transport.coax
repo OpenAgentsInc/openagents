@@ -19,6 +19,7 @@ SoClient :: struct {
   curl: string = "curl";         // found on PATH; needs curl 8.3 or later
   timeout_s: int = 60;
   key_value: string;             // the key read from a file: set in curl's environment only, as key_env; "" when key_env is already in this process's
+  key_header: string = "Authorization";   // Google's Decisions API: x-goog-api-key, with scheme ""
 }
 
 SoResult :: struct {
@@ -32,6 +33,12 @@ SoResult :: struct {
 so_name_ok :: (s: string) -> bool {
   if s.count == 0 { return false; }
   for c: s { if !((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_') { return false; } }
+  return true;
+}
+
+so_header_ok :: (s: string) -> bool {
+  if s.count == 0 { return false; }
+  for c: s { if !((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-') { return false; } }
   return true;
 }
 
@@ -81,6 +88,7 @@ so_start :: (c: SoClient, body: string, call: [] SoCall, out: [] u8, err: [] u8)
   keyed := c.key_env.count > 0;
   if keyed {
     if !so_name_ok(c.key_env) { return so_fail_call(call, "key_env must be a plain variable name"); }
+    if !so_header_ok(c.key_header) { return so_fail_call(call, "key_header must be a plain header name"); }
     if c.key_value.count > 0 {
       for ch: c.key_value { if ch < 33 || ch > 126 { return so_fail_call(call, "the API key holds a character a header cannot"); } }
     } else {
@@ -95,8 +103,9 @@ so_start :: (c: SoClient, body: string, call: [] SoCall, out: [] u8, err: [] u8)
   ok := so_arg(h, c.curl) && so_arg(h, "-sS") && so_arg(h, "--max-time") && so_arg(h, so_digits(num[..], c.timeout_s));
   if keyed {
     ok = ok && so_arg(h, "--variable") && so_push_part(h, CL_FIELD_ARG, "%") && so_arg(h, c.key_env);
-    ok = ok && so_arg(h, "--expand-header") && so_push_part(h, CL_FIELD_ARG, "Authorization: ") && so_push_part(h, CL_FIELD_ARG, c.scheme)
-            && so_push_part(h, CL_FIELD_ARG, " {{") && so_push_part(h, CL_FIELD_ARG, c.key_env) && so_arg(h, "}}");
+    ok = ok && so_arg(h, "--expand-header") && so_push_part(h, CL_FIELD_ARG, c.key_header) && so_push_part(h, CL_FIELD_ARG, ": ")
+            && so_push_part(h, CL_FIELD_ARG, c.scheme) && so_push_part(h, CL_FIELD_ARG, ifx c.scheme.count > 0 then " {{" else "{{")
+            && so_push_part(h, CL_FIELD_ARG, c.key_env) && so_arg(h, "}}");
   }
   if keyed && c.key_value.count > 0 {
     ok = ok && so_push_part(h, CL_FIELD_ENV, c.key_env) && so_push_part(h, CL_FIELD_ENV, "=") && so_push_part(h, CL_FIELD_ENV, c.key_value) && cxproc_end(h, CL_FIELD_ENV) == 0;
