@@ -8,7 +8,7 @@
 // external terms). Read the old code with
 // `git show 0b401561a0^:crates/physics/src/{body,world,ledger}.rs`.
 //
-// Every body is dynamic and has one collider at its centre (verse/water.coax
+// Every body is dynamic and has one collider at its centre (metaverse/water.coax
 // keeps the colliders). Contacts, joints, kinematic and static bodies are
 // not ported: nothing in water's phase W1 needs them.
 //

@@ -145,7 +145,7 @@ def content_outside(content_dir, generated_rel):
 
 
 # ---- the look: the Metaverse Engine's cel shading and sky, translated from its own shader source
-# (apps/openagents-web/gpu/animelab.coax scene_fs, al_sky and post_fs; verse/style.coax). The
+# (apps/openagents-web/gpu/animelab.coax scene_fs, al_sky and post_fs; metaverse/style.coax). The
 # materials are unlit and write the picture's final colour, so they need no buffer the web's
 # forward tier lacks. What the bridge copies into the collection each frame is the world's own
 # uniform block: vector parameter U<n> holds floats n to n + 3.

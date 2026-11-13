@@ -2,7 +2,7 @@
 // is the page (the stage, the crowd, the camera and the draws). grid.data
 // (asset 0) goes to the page; the other GPU assets are the GPU's and the page
 // is only told they came. Cast.bin (asset 5, and 6 as the GPU's copy; 7 its
-// texture sheets) is opened here with verse/cast.coax, which plays each
+// texture sheets) is opened here with metaverse/cast.coax, which plays each
 // player's clips on the crowd's own clock and writes their joint palettes,
 // scaled to their height, into store 1 after every player's look (the
 // page's colours for them, four vec4s each). It decides nothing and sends nothing: the crowd is simulated, not
@@ -18,7 +18,7 @@
 
 static uint8_t inbox[4096];
 static uint8_t data[65536];
-// Cast.bin: the character, read by verse/cast.coax
+// Cast.bin: the character, read by metaverse/cast.coax
 #define CAST_CAP (6u << 20)
 static uint8_t cast_bytes[CAST_CAP];
 static uint32_t cast_n;

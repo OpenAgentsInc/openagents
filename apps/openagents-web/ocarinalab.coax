@@ -1,2 +1,2 @@
 // Browser facade; source playback, materials and the forest remain in shared Coax modules.
-#load "../../verse/ocarina/play.coax";
+#load "../../metaverse/ocarina/play.coax";

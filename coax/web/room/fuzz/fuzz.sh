@@ -43,7 +43,7 @@ build() {   # dir
   local quic=(-D_DEFAULT_SOURCE -DNGTCP2_STATICLIB -DNGHTTP3_STATICLIB -I"$T/ngtcp2/lib/includes" -I"$T/ngtcp2/crypto/includes" -I"$T/nghttp3/lib/includes" -I"$T/picotls/include")
   "$cc" -std=c11 "${san[@]}" -fsanitize=fuzzer -I"$b" "$here/fuzz-room.c" "$b/wire-fuzz.o" "$b/room-math.o" -lm -o "$b/fuzz-room" &
   "$cc" -std=c11 "${san[@]}" -fsanitize=fuzzer "${quic[@]}" "$here/fuzz-wt.c" "$b/quic/libquic.a" -o "$b/fuzz-wt" &
-  "$cc" -std=c11 "${san[@]}" -fsanitize=fuzzer "${quic[@]}" "$here/fuzz-frames.c" "$root/verse/voice-host/ws.c" "$room/wt.c" "$b/quic/libquic.a" -o "$b/fuzz-frames" &
+  "$cc" -std=c11 "${san[@]}" -fsanitize=fuzzer "${quic[@]}" "$here/fuzz-frames.c" "$root/metaverse/voice-host/ws.c" "$room/wt.c" "$b/quic/libquic.a" -o "$b/fuzz-frames" &
   wait
   for n in "${names[@]}"; do [[ -x "$b/fuzz-$n" ]] || die "fuzz-$n did not build"; done
   [[ -s "$b/cert.pem" ]] || "$room/wt-cert.sh" "$b/cert.pem" "$b/key.pem" > /dev/null || die "no certificate"

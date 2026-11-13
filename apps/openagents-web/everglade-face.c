@@ -1,6 +1,6 @@
 // Everglade's C face for the browser (coax/web/host.js): everglade.coax is
 // the page, metaverse-engine/move/player.coax walks you (its own library, as the realm
-// links it) and verse/grid.coax reads a phone's thumbs. Once a frame it
+// links it) and metaverse/grid.coax reads a phone's thumbs. Once a frame it
 // passes values between them in order: the page's controls, the player's
 // step among the city's walls, then the page's frame with where you
 // ended up, after the city keeps you inside the world's edge (everglade_hold).
@@ -229,7 +229,7 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   walk_x = walk_x < -1 ? -1 : walk_x > 1 ? 1 : walk_x; walk_y = walk_y < -1 ? -1 : walk_y > 1 ? 1 : walk_y;
   coax_t_EgMoveIn input = {g->key_x, g->key_y, walk_x, walk_y, verse_runs(g->run, sticks.run, walk_x, walk_y),
                            g->jump || sticks.jump, everglade_player_theta(at(state))};
-  if (sticks.zoom != 0) everglade_wheel(at(state), sticks.zoom);   /* a pinch zooms as the wheel does (verse/grid.coax) */
+  if (sticks.zoom != 0) everglade_wheel(at(state), sticks.zoom);   /* a pinch zooms as the wheel does (metaverse/grid.coax) */
   sticks = verse_sticks_used(sticks);
   coax_t_Seat seat = {0};
   if (river.aboard >= 0) {

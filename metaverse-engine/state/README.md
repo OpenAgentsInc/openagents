@@ -37,7 +37,7 @@ defaulted/repaired fields. It refuses newer or unknown schemas without that
 approval, unknown IDs, duplicate IDs, stale references, nonfinite values,
 truncation, corrupt hashes and owner/kind coercion. Revisions of the same schema
 can migrate; foreign schema IDs cannot. Existing HH_Save v1 bytes are unchanged:
-`verse/haunt-state.coax` admits their quest step and fired-zone facts through the
+`metaverse/haunt-state.coax` admits their quest step and fired-zone facts through the
 shared declarations instead of the old duplicated range logic.
 
 ## Bounded supported profile

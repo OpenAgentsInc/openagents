@@ -7,7 +7,7 @@
 tool_main :: ()->int #export_c #effects(all) {
  a:[1]Args;if !args_load(a[..]) || args_count(a[..])<3 {tool_errln("usage: metal-check ROOT RESOURCES OUTPUT [--live] [--facts FILE]");return 2;}
  root:=args_at(a[..],0);resources:=args_at(a[..],1);out:=args_at(a[..],2);if !fs_mkdir(out) {return 1;}
- path:[4096]u8;facts:[16384]u8;n:=fs_read(args_value(a[..],"--facts",fs_join(root,"verse/native/everglade.facts",path[..])),facts[..]);if n<1 {return 1;}
+ path:[4096]u8;facts:[16384]u8;n:=fs_read(args_value(a[..],"--facts",fs_join(root,"metaverse/native/everglade.facts",path[..])),facts[..]);if n<1 {return 1;}
  plan:[65536]u8;o:[1]Jo;jo_start(o[..],plan[..]);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],"aethyr.metal.effects.v1");jo_key(o[..],"golden");jo_bool(o[..],!args_has(a[..],"--live"));jo_key(o[..],"operations");jo_arr(o[..]);
  jo_obj(o[..]);jo_key(o[..],"op");jo_str(o[..],"message");jo_key(o[..],"kind");jo_int(o[..],600);jo_key(o[..],"text");jo_str(o[..],cast(string)facts[0..<n]);jo_end(o[..]);
  for i:0..<90 {jo_obj(o[..]);jo_key(o[..],"op");jo_str(o[..],"frame");jo_key(o[..],"width");jo_int(o[..],320);jo_key(o[..],"height");jo_int(o[..],180);jo_key(o[..],"scale");jo_int(o[..],1);jo_key(o[..],"dt");jo_raw(o[..],"0.016666666666666666");jo_end(o[..]);}

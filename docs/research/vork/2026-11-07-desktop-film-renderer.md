@@ -50,10 +50,10 @@ engine.
   procedures emit WGSL for the web build (G6). `coax metal --vertex
   --fragment` emits complete Metal stages; all eleven Everglade entry pairs
   compile, and the Mac host runs Everglade at 120 Hz (#12867, #12868).
-- **A headless native render already exists.** `verse/gpu/vk-realm.c`
+- **A headless native render already exists.** `metaverse/gpu/vk-realm.c`
   takes `--headless FRAMES [--out OUT.f32]`: it steps the realm at 1/60 s,
   draws every frame and writes the last frame's targets as float RGBA. Its
-  graph target is `R16G16B16A16_SFLOAT`. `verse/gpu/realm.sh HOST check`
+  graph target is `R16G16B16A16_SFLOAT`. `metaverse/gpu/realm.sh HOST check`
   already times frames at 320×180, 2560×1440 and 3840×2160. Headless key
   input (`F:KEY:DOWN,...`) is there too.
 - **The worlds replay exactly.** `metaverse-engine/core/loop.coax` has one clock with a
@@ -207,7 +207,7 @@ the scale of G1 or G2. F4 and F5 should wait until a film needs them.
 | `metaverse-engine/core/loop.coax`, `replay.coax`, `rand.coax` | Exact replay at film time; sample streams |
 | Realm Coax and its stages (`?stage=`, `?raid=preview&cine=1`) | Unchanged scene content |
 | `apps/openagents-web/gpu/everglade-v1/gpu.coax`, `gpu-fx.coax`, `metaverse-engine/render/character.coax`, `apps/openagents-web/gpu/*.coax` | The same shading functions, with film visibility inputs |
-| `coax spirv`, `coax metal`, `verse/gpu/vk-*.c` | The native pipeline and host, extended |
+| `coax spirv`, `coax metal`, `metaverse/gpu/vk-*.c` | The native pipeline and host, extended |
 | `metaverse-engine/render/passes.coax`, `catalog.coax` | The pass graph as data; the film profile selects extra passes |
 | `metaverse-engine/render/reference-*.coax` | CPU oracles for each new pass |
 | Animation Lab ALP1, `anim.cut.v1`, `labs anim play` | The edit, cameras and audio clock for films |

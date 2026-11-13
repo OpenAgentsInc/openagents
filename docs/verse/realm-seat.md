@@ -220,13 +220,13 @@ m, tree 4.0 m."). CLOSE ends the seat on the runner as well. A refusal gets one
 plain sentence, for example "Log in to start your agent: it plays as your
 account." or "All 8 agent seats are busy. Try again in a few minutes."
 
-The pane's state and verbs are `verse/edit/agent.coax`, and it is drawn in the
-edit layer (`verse/edit/edit.coax`, `redit_agent_pane`). A realm offers the
+The pane's state and verbs are `metaverse/edit/agent.coax`, and it is drawn in the
+edit layer (`metaverse/edit/edit.coax`, `redit_agent_pane`). A realm offers the
 pane with `redit_agent`, as `myrealm.coax` does. The forge screen's YOUR
 AGENT tab (`aethyrforge.md`) is the same pane.
 
 Checks:
-- `verse/edit/agent_test.coax`: the verbs, each request and answer, refusals,
+- `metaverse/edit/agent_test.coax`: the verbs, each request and answer, refusals,
   the log, and the pane on a desktop and a phone.
 - `coax/web/api/test_room.py`: a logged-in page opens, acts in and closes a
   hosted seat. The session sent from another site's page is refused, and so

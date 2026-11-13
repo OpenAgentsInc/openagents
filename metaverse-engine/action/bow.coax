@@ -12,7 +12,7 @@
 //   the aim (arrow_aim_velocity): the launch that lands an arrow at a point at a given speed, so a
 //   full draw lands where the crosshair points; and arrow_timed_velocity, the launch that arrives
 //   at a point after a given time (a ruleset that resolves a shot on arrival: Experimental's
-//   Goblins, verse/experimental-hostiles.coax hostile_fly).
+//   Goblins, metaverse/experimental-hostiles.coax hostile_fly).
 //
 // A realm adopts it by keeping one BowDraw per archer and one Arrows pool, stepping each arrow's
 // segment against its own world (arrow_segment, then arrow_hit / arrow_stick), and drawing the

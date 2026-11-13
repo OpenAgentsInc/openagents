@@ -110,7 +110,7 @@ Non-goals for now: trading, an economy, PvP by default, and voice chat.
 
 - `coax/web/room/` builds one binary, `room`, from `room.coax` (Coax, compiled
   to C) and `room-host.c` (TCP, the RFC 6455 handshake via
-  `verse/voice-host/ws.c`, and a 60 Hz beat). Locally it listens on 8830.
+  `metaverse/voice-host/ws.c`, and a 60 Hz beat). Locally it listens on 8830.
 - It serves two things:
   - Orbit League's server-authoritative rooms at
     `/api/room/orbit-league/NAME`. The server steps the ball at 120 Hz
@@ -195,7 +195,7 @@ see different results.
 | The flock that follows you | `metaverse-engine/anim/flock.coax` | No |
 | Weather | `weather_facts`, `everglade.coax:3074`: seeded with `EG_WEATHER_SEED` and the page's `now` | Same only by construction, as the folk |
 | Time of day | `folk_clock`; the realm's `clock: cycle` | Same only by construction |
-| Admin edits (the OpenAgents Metaverse Engine, voice edits, placed things) | `everglade-forge.coax`, `everglade-edit.coax`, `verse/edit/edit.coax` | Published to `/api/playtest/world/<id>`. Other pages see them on reload; only an owner's page rereads the spec every second (`verse/edit/edit.coax:589`) |
+| Admin edits (the OpenAgents Metaverse Engine, voice edits, placed things) | `everglade-forge.coax`, `everglade-edit.coax`, `metaverse/edit/edit.coax` | Published to `/api/playtest/world/<id>`. Other pages see them on reload; only an owner's page rereads the spec every second (`metaverse/edit/edit.coax:589`) |
 | Dropped items | None exist in Everglade today | Not applicable |
 
 ## 3. Architecture

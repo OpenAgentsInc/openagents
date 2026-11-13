@@ -23,8 +23,8 @@ work="$here/../build/android"
 mkdir -p "$work/c"
 "$coax" c "$here/../linux.coax" --library --header "$work/c/gallery.h" > "$work/c/gallery.c"
 "$coax" spirv "$repo/components/backend/gpu-shader.coax" --vertex chat_fx_vs --fragment chat_fx_fs -o "$work/components.spv" 2> "$work/components.spv.bindings"
-"$llvm/bin/aarch64-linux-android30-clang" -std=gnu11 -O2 -ffp-contract=off -fno-fast-math -w -I"$work/c" -I"$repo/apps/shared/host/linux" -I"$repo/verse/gpu" \
-  "$here/../linux/main.c" "$work/c/gallery.c" "$repo/apps/shared/host/android/ui-host.c" "$repo/verse/gpu/vkc.c" "$repo/verse/gpu/vks.c" \
+"$llvm/bin/aarch64-linux-android30-clang" -std=gnu11 -O2 -ffp-contract=off -fno-fast-math -w -I"$work/c" -I"$repo/apps/shared/host/linux" -I"$repo/metaverse/gpu" \
+  "$here/../linux/main.c" "$work/c/gallery.c" "$repo/apps/shared/host/android/ui-host.c" "$repo/metaverse/gpu/vkc.c" "$repo/metaverse/gpu/vks.c" \
   -lvulkan -lm -o "$work/Components.new"
 rm -rf "$work/fonts" "$work/icons"
 cp -R "$repo/components/zeron/fonts" "$repo/components/zeron/icons" "$work/"
@@ -35,9 +35,9 @@ if [[ "${1:-}" == --apk || "${1:-}" == --install ]]; then
   glue="$ndk/sources/android/native_app_glue"
   mkdir -p "$work/apk/lib/arm64-v8a" "$work/apk/assets"
   "$llvm/bin/aarch64-linux-android30-clang" -std=gnu11 -O2 -fPIC -shared -ffp-contract=off -fno-fast-math -w -DUI_ANDROID_WINDOW -Dmain=gallery_main \
-    -I"$work/c" -I"$repo/apps/shared/host/linux" -I"$repo/apps/shared/host/android" -I"$repo/verse/gpu" -I"$glue" \
+    -I"$work/c" -I"$repo/apps/shared/host/linux" -I"$repo/apps/shared/host/android" -I"$repo/metaverse/gpu" -I"$glue" \
     "$here/activity.c" "$here/../linux/main.c" "$work/c/gallery.c" "$repo/apps/shared/host/android/ui-host.c" \
-    "$repo/verse/gpu/vkc.c" "$repo/verse/gpu/vks.c" "$repo/verse/gpu/vkp.c" "$glue/android_native_app_glue.c" \
+    "$repo/metaverse/gpu/vkc.c" "$repo/metaverse/gpu/vks.c" "$repo/metaverse/gpu/vkp.c" "$glue/android_native_app_glue.c" \
     -u ANativeActivity_onCreate -lvulkan -landroid -llog -lm -o "$work/apk/lib/arm64-v8a/libcomponents.so"
   rm -rf "$work/apk/assets/fonts" "$work/apk/assets/icons"
   cp -R "$work/fonts" "$work/icons" "$work/apk/assets/"; cp "$work/components.spv" "$work/apk/assets/"

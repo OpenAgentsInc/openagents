@@ -7,7 +7,7 @@ tool_main :: ()->int #export_c #effects(all) {
  root:=args_at(a[..],0);out:=args_at(a[..],1);if !fs_mkdir(out) {return 1;}paths:[8][4096]u8;cache:=fs_join(out,"emitted",paths[0][..]);if !fs_mkdir(cache) {return 1;}
  argv:=[5]string.["bash",fs_join(root,"coax/web/wasm.sh",paths[1][..]),fs_join(root,"apps/openagents-web/everglade5e.coax",paths[2][..]),fs_join(root,"apps/openagents-web/everglade5e-face.c",paths[3][..]),fs_join(out,"everglade5e.wasm",paths[4][..])];
  // Resolve the canonical side-unit list through the existing web build.
- list:=[4]string.["bash",fs_join(root,"verse/native/build.sh",paths[5][..]),"--libraries","everglade5e"];raw:[1048576]u8;err:[1048576]u8;empty:[]string;r:=rtq_command(list[..],empty,proc_now_ms()+30000,out,"libraries",raw[..],err[..]);if !rtq_ok(r) {return 1;}
+ list:=[4]string.["bash",fs_join(root,"metaverse/native/build.sh",paths[5][..]),"--libraries","everglade5e"];raw:[1048576]u8;err:[1048576]u8;empty:[]string;r:=rtq_command(list[..],empty,proc_now_ms()+30000,out,"libraries",raw[..],err[..]);if !rtq_ok(r) {return 1;}
  full:[32]string;for i:0..<5 {full[i]=argv[i];}n:=5;start:=0;for c,i:cast(string)raw[0..<r.out_n] {if c=='\n' {if i>start {if n==full.count {return 1;}full[n]=cast(string)raw[start..<i];n+=1;}start=i+1;}}
  env_bytes:[8192]u8;o:[1]Jo;jo_start(o[..],env_bytes[..]);jo_put(o[..],"COAXIAL_WASM_CACHE=");jo_put(o[..],cache);env:=[2]string.["COAXIAL_MODE=dev",jo_text(o[..])];output:[1048576]u8;r=rtq_command(full[0..<n],env[..],proc_now_ms()+840000,out,"world-build",output[..],err[..]);return ifx rtq_ok(r) then 0 else 1;
 }

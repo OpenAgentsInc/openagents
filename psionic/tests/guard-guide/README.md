@@ -42,7 +42,7 @@ shasum -a 256 -c psionic/fixtures/guard-guide-requests-v1/SHA256SUMS
 ```
 
 The shared tool runner invalidates cached binaries for imported Coax changes in
-`coax/`, `verse/`, `psionic/`, `apps/` and `proto/`. It also retains the entry
+`coax/`, `metaverse/`, `psionic/`, `apps/` and `proto/`. It also retains the entry
 file, native platform and compiler checks, including entry files outside the
 repository. A focused transitive-import smoke kept that external entry unchanged
 and observed 3 → 4 → 13 → 112 after isolated proto, Coax web and the OpenAgents Metaverse edits.

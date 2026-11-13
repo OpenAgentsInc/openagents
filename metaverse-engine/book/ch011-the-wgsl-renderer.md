@@ -28,7 +28,7 @@ does not infer readiness from the buffers it happened to create.
 
 The published CPU metadata interface in
 [frame.coax](../render/frame.coax) also remains a public component.
-[verse/grid-render.coax](../../verse/grid-render.coax) uses it before the
+[metaverse/grid-render.coax](../../metaverse/grid-render.coax) uses it before the
 native Grid projection writes its sixteen matrix words, preserving output
 on a short destination or a nonfinite viewport. That component's retained
 [qualification](../fixtures/render/qualification.json) establishes symbolic
@@ -308,9 +308,9 @@ from before the loss is never live again, even after its slot is reused.
 
 Both hosts use it. The browser's [render.js](../../coax/web/render.js)
 reaches it through the Wasm face. The Vulkan host's
-[render-host.c](../../verse/native/render-host.c),
-[render-realm.c](../../verse/native/render-realm.c) and
-[render-textures.c](../../verse/native/render-textures.c) call the same
+[render-host.c](../../metaverse/native/render-host.c),
+[render-realm.c](../../metaverse/native/render-realm.c) and
+[render-textures.c](../../metaverse/native/render-textures.c) call the same
 exports from C. The browser record is
 [render-ledger.coax](../tests/render-ledger.coax) on the Grid and the fixture
 realm. It checks the exact count, one epoch per frame, a frame refused under
@@ -514,7 +514,7 @@ package's borrowed strings and records alive.
 The native build records the same expected identity in a generated header:
 
 ```shell
-verse/native/build.sh watchtower /tmp/watchtower --render-profile watchtower
+metaverse/native/build.sh watchtower /tmp/watchtower --render-profile watchtower
 ```
 
 The Coax builder writes the complete package into `/tmp/watchtower/render`.

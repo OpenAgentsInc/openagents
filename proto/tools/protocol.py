@@ -200,7 +200,7 @@ def main():
         # Resource generation uses the same freshly compiled owned schema.
         from google.protobuf import text_format
         from openagents.metareal.home.v1alpha1.home_pb2 import HomeConfiguration
-        home = text_format.Parse((ROOT.parent/'verse/home.textproto').read_text(), HomeConfiguration())
+        home = text_format.Parse((ROOT.parent/'metaverse/home.textproto').read_text(), HomeConfiguration())
         home_path = output/'Home.pb'
         home_path.write_bytes(home.SerializeToString(deterministic=True))
         artifacts['../apps/openagents-ios/OpenAgents/Resources/Home.pb'] = home_path

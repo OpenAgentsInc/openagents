@@ -22,7 +22,7 @@
 // Every other player in view within REMOTE_NEAR gets a body (REMOTE_BODIES at most: a full room). The
 // nearest REMOTE_WHOLE (REMOTE_WHOLE_PHONE on a phone) within REMOTE_LOD_FROM have the whole mesh, one
 // draw with yours (RANGER_DRAW: your object at RANGER_AT, theirs after it at REMOTE_AT); the rest the
-// pack's far mesh, the same vertices and a fifth of the triangles (verse/tools/pack_realm.py far_mesh),
+// pack's far mesh, the same vertices and a fifth of the triangles (metaverse/tools/pack_realm.py far_mesh),
 // their own draw (RANGER_FAR_DRAW, objects at REMOTE_FAR_AT). Each object points the shader at its own
 // block of joint matrices in store 2 (colour.z REMOTE_MARK, colour.y the block's first row) and at its
 // look's two rows (the kind word over 256; apps/openagents-web/gpu/everglade-v1/gpu.coax). Posing by distance: a body nearer
@@ -54,7 +54,7 @@ REMOTE_PLATE_NEAR :: 60.0;     // m: a player's nameplate shows this near (a tow
 REMOTE_PLATE_FADE :: 15.0;     // fading out over the last this many
 REMOTE_AWAY_SHOWN :: 0.35;     // how much of a body shows while the server hasn't heard its page (WF_AWAY)
 REMOTE_FADE_RATE :: 2.0;       // of that a second, out and back
-RANGER_LOD_NAME :: "player/male-ranger.lod";   // the far mesh's catalog line (verse/tools/pack_realm.py far_mesh)
+RANGER_LOD_NAME :: "player/male-ranger.lod";   // the far mesh's catalog line (metaverse/tools/pack_realm.py far_mesh)
 // A class's gear: the druid carries a staff on their back, roots clasping a glowing emerald at its head
 // (druid_staff); the Warlock a black rod with a violet orb. A class the page doesn't know is drawn as the druid.
 CLASS_DRUID :: 0; CLASS_WARLOCK :: 1;   // the Warlock: a black rod, a violet orb at its head (everglade-warlock.coax)
@@ -555,7 +555,7 @@ rangers_labels :: (s: [] Everglade, ls: [] Label, c: int, you: Point, k: f32, rs
   return m;
 }
 
-// The pack's catalog names the Ranger's texture layers "player/..." (verse/tools/pack_realm.py: the
+// The pack's catalog names the Ranger's texture layers "player/..." (metaverse/tools/pack_realm.py: the
 // character's, in its materials' first use, the outfit's first): the first one's number.
 rangers_catalog_line :: (g: [] Rangers, line: string) {
   if line.count < 4 || line[0] != 84 || line[1] != 32 { return; }

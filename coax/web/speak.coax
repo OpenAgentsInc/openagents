@@ -76,7 +76,7 @@ hash_hex :: (text: string, out: [] u8) -> string {
 }
 say_err :: (a: string, b: string) { tool_err("speak: "); tool_err(a); tool_errln(b); }
 
-// ---- the cast file (verse/cast/cast.txt)
+// ---- the cast file (metaverse/cast/cast.txt)
 
 Who :: struct {
   id: [24] u8; id_n: int; name: [48] u8; name_n: int; pack: [48] u8; pack_n: int;
@@ -514,7 +514,7 @@ tool_main :: () -> int #export_c #effects(all) {
   if count == 0 { say_err("no cue lines in ", cues_path); return 1; }
   if video.count == 0 || !fs_exists(video) { say_err("no video at ", video); return 1; }
   ct: [65536] u8;
-  cn := fs_read(args_value(a[..], "--cast", "verse/cast/cast.txt"), ct[..]);
+  cn := fs_read(args_value(a[..], "--cast", "metaverse/cast/cast.txt"), ct[..]);
   if cn <= 0 { say_err("no cast file", ""); return 1; }
   pt: [8192] u8;
   pp: [4200] u8; pn := fs_read(fs_join(cache, "packs.txt", pp[..]), pt[..]);

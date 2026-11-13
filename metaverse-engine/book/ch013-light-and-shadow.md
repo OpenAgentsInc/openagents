@@ -2,7 +2,7 @@
 
 > **Status: partly implemented.** The hemisphere ambient, the shadow map's
 > reach, snap, place, depth and tap count, the contact shadow and the haze
-> moved from `verse/style.coax` into
+> moved from `metaverse/style.coax` into
 > [metaverse-engine/render/light.coax](../render/light.coax), with every realm's WGSL
 > byte-identical. The module adds the key light from the clock, the shadow
 > map's space with its snapped middle, and a bounded list of local lights.
@@ -49,7 +49,7 @@ The clock runs from 0 at midnight through 0.25 at dawn, 0.5 at noon and
 preset's `low` at midnight and `high` at noon. Below `moon_below` the moon
 leads, opposite the sun, so exactly one of the two is the key at any time.
 `light_key` uses the same arithmetic, in the same order, as the realms'
-uniform writer, `verse_style_at` in `verse/style-preset.coax`, which puts
+uniform writer, `verse_style_at` in `metaverse/style-preset.coax`, which puts
 the direction into the block's `SU_KEY_DIR` words.
 
 ## A shadow map that holds still
@@ -110,7 +110,7 @@ LocalLight :: struct { x: f32; y: f32; z: f32; radius: f32; r: f32; g: f32; b: f
 LocalLights :: struct { lights: [LIGHT_LOCAL_MAX] LocalLight; count: int; refused: int; }
 
 // A local light's share at distance d of its radius r: (1 - d/r)^2, none at r and past it
-// (verse/haunt-light.coax verse_haunt_attenuate, the Haunted House's).
+// (metaverse/haunt-light.coax verse_haunt_attenuate, the Haunted House's).
 light_falloff :: (d: f32, r: f32) -> f32 {
   q := st_max(0, 1 - d / st_max(r, 0.01));
   return q * q;
@@ -257,7 +257,7 @@ from each platform's maths library.
 ```shell
 coax/bin/coax test metaverse-engine/render/light.coax
 coax/bin/coax mutate metaverse-engine/render/light.coax --root-only
-coax/bin/coax test verse/style.coax
+coax/bin/coax test metaverse/style.coax
 ```
 
 `metaverse-engine/render/light.coax` has 21 checks of its own (it loads
@@ -302,8 +302,8 @@ themselves qualify every backend's rendered image.
   Tap positions and radius are already shared in `shadow-filter.coax`;
   full pass ownership remains.
 - **Encoding and native profile.** Tone, bloom and light-shaft arithmetic
-  are shared in `post.coax` through `verse/style.coax`. The separate Metal
-  profile in `verse/light.coax` and its display encoding still remain.
+  are shared in `post.coax` through `metaverse/style.coax`. The separate Metal
+  profile in `metaverse/light.coax` and its display encoding still remain.
 - **Local lights in a realm.** No realm draws from the bounded list yet;
   the Haunted House uses the same falloff in its own shader. Counting them
   against [chapter 16](ch016-budgets-that-refuse.md)'s budgets is still to

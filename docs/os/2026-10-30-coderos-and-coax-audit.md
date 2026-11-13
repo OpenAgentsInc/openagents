@@ -56,7 +56,7 @@ be read with `git show 0b401561a0^:os/<path>`.
 Also gone: `crates/psionic`, the Rust inference engine (2,963 files), and
 `crates/jev`. Psionic has since been rebuilt in Coax (`psionic/`), and it
 already runs CUDA kernels that `coax cuda` emits on `coderos-4080`. The
-game engine is `verse/` (it was `metareal/` when this was first written).
+game engine is `metaverse/` (it was `metareal/` when this was first written).
 
 ## What `coderos-4080` runs today
 
@@ -133,12 +133,12 @@ switches one program at a time and rolls back with the generation.
 | 1 | CPU limits | `cpu-limits.nix` + shell, every 5 min | A small program that reads sysfs and RAPL and writes the limits; the policy as an `#authority` file under `coax mutate` | File I/O in the host C, which a 30-line C face supplies |
 | 2 | Update agent | `bin/coder-update` (245 lines of shell) + `coder-service` trial and rollback (Rust) | One Coax program: fetch, build with `coax build`, trial, roll back. The trial rules are policy, so `#authority` | Process spawn and file I/O in the host face; a Coax `coder` to update |
 | 3 | Desk command | `coder-desk-cli` (Rust) speaking JSON to the compositor | Coax client of the same socket protocol, with the protocol in `proto/` | Unix socket in the host face |
-| 4 | Recording and presentation | `screen-record` (1,523 lines), `recording-hud`, `presentation-mode`, `dictate-toggle` | Coax programs. Dictation shares the voice engine in `verse/voice.coax` (VAD, end of turn) | PipeWire through C; header import |
+| 4 | Recording and presentation | `screen-record` (1,523 lines), `recording-hud`, `presentation-mode`, `dictate-toggle` | Coax programs. Dictation shares the voice engine in `metaverse/voice.coax` (VAD, end of turn) | PipeWire through C; header import |
 | 5 | Camera daemon | `coderos-camera` (Rust, V4L2, ONNX Runtime) | Coax capture over V4L2; the hand model as a Coax kernel | Pointer FFI; an inference kernel in Coax |
 | 6 | Compositor | `coder-compositor` + `coder-wm` (Rust, Smithay, about 15,500 lines) | A Coax compositor over wlroots, or Coax window policy inside an existing wlroots compositor first | Header import (§17.2), callbacks, raw pointers into C structs |
 
 Rows 1 to 3 are within reach of today's bootstrap plus a thin C face, the
-same pattern as `verse/platform/host.c`. Rows 4 to 6 wait on the C
+same pattern as `metaverse/platform/host.c`. Rows 4 to 6 wait on the C
 interface work the spec already plans: header import through libclang, and
 foreign calls beyond scalars. That makes CoderOS a real consumer for
 ROADMAP R1 (target ABI) and a Linux evidence row in §17.2, which today says
@@ -184,10 +184,10 @@ to the default one automatically. This is small, testable and unusual.
 
 ### The engine as the session
 
-**First light, 2026-10-30:** `verse/kms/` runs Star Catcher on
+**First light, 2026-10-30:** `metaverse/kms/` runs Star Catcher on
 `coderos-4080` this way, with DRM/KMS dumb buffers, evdev and a CPU
 rasterizer over the realm's Coax light, at about 40 fps at 2560x1440. See
-`verse/kms/README.md`.
+`metaverse/kms/README.md`.
 
 The Metaverse draws through Metal on Apple hardware. On Linux it could own the
 display directly through DRM/KMS and GBM, as a session with no compositor:
@@ -478,7 +478,7 @@ compiler and the examples have not been run on Linux yet.
   `coder-close`'s arguments, and to the compositor's output.
 
   The compositor's two faces to the machine are written, after
-  `verse/kms`: `coax/platform/screen-native.c` takes one screen through
+  `metaverse/kms`: `coax/platform/screen-native.c` takes one screen through
   KMS dumb buffers with page flips, and grabs keyboards and mice through
   evdev. `--screen` uses both, draws a pointer arrow, and puts the screen
   back on Ctrl+Alt+Backspace. `--input FILE` plays recorded evdev records

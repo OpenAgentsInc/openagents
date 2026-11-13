@@ -258,9 +258,9 @@ python3 -I psionic/tests/parakeet_reference_native.py "$PARAKEET_MODEL" /tmp/pk/
 and the 25 FLEURS clips in `psionic/fixtures/parakeet-reference/`, in the
 reference record's order.
 
-End to end, after `apps/openagents-cli/build.sh` and `verse/voice-host/build.sh`:
+End to end, after `apps/openagents-cli/build.sh` and `metaverse/voice-host/build.sh`:
 
 ```shell
 coax/web/tool.sh apps/openagents-cli/tests/dictate-check.coax "$PARAKEET_MODEL"
-coax/web/tool.sh verse/voice-host/parakeet-check.coax "$PARAKEET_MODEL"
+coax/web/tool.sh metaverse/voice-host/parakeet-check.coax "$PARAKEET_MODEL"
 ```

@@ -12,7 +12,7 @@
 #load "../../metaverse-engine/physics/query.coax";
 
 EG_CHARACTER_PACK :: "valley-slay";
-// Echo's vertex words (verse/valley/slay-gpu-policy.coax slay_gpu_storage): the storage binding the
+// Echo's vertex words (metaverse/valley/slay-gpu-policy.coax slay_gpu_storage): the storage binding the
 // host asks the device for when a world may place her.
 EG_CHARACTER_STORAGE :: 187564308;
 // The normal offset and the depth bias the town's own surfaces read its shadow map with (eg_map_lit).

@@ -1,6 +1,6 @@
 // A realm's edits on the wire (compliance plan step E11, GitHub #13250;
 // proto/openagents/verse/doc/v1alpha1/edits.proto): the bodies that change a realm through
-// coax/web/api/realms.c, written here for every caller: the realm edit layer (verse/edit/edit.coax),
+// coax/web/api/realms.c, written here for every caller: the realm edit layer (metaverse/edit/edit.coax),
 // My Realm (apps/openagents-web/myrealm.coax) and the CLI (apps/openagents-cli/realm.coax).
 //   POST .../<slug>/settings   {"tools":{"build":true,...}}                     forge_settings_body
 //   POST .../<slug>/switch     {"row":KEY,"on":true}                            forge_switch_body

@@ -7,7 +7,7 @@
 // this places her where the world's stage put her (the block's feet and heading), steps her on a
 // 1/64 s clock, fills the block's character slots (the hair's share, the morph switch, the head
 // profile) and her palette, and names her draws. Her body and face run on Aethyr's character
-// runtime (metaverse-engine/character/), with Echo's declarations (verse/valley/echo.coax): her rig's idle
+// runtime (metaverse-engine/character/), with Echo's declarations (metaverse/valley/echo.coax): her rig's idle
 // clip looped (clip 0), her idle face segments on their cycle, and her idle life over them (blinks,
 // glances and breath, metaverse-engine/character/idle.coax) on the joints and targets ECHO_IDLE_RIG names.
 // When the world moves her (the block's motion slots, #12996: the Cultist Raid's room runs her) her
@@ -16,14 +16,14 @@
 // (metaverse-engine/character/fix.coax) plant her feet on the world's ground, turn her head to the spell's
 // point and reach her orb hand toward it.
 //   coax/bin/coax test apps/openagents-web/character-host.coax
-#load "../../verse/valley/echo.coax";
-#load "../../verse/valley/canyon-pack-policy.coax";
-#load "../../verse/valley/slay-gpu-policy.coax";
+#load "../../metaverse/valley/echo.coax";
+#load "../../metaverse/valley/canyon-pack-policy.coax";
+#load "../../metaverse/valley/slay-gpu-policy.coax";
 #load "../../metaverse-engine/render/scene-lights.coax";
 #load "../../metaverse-engine/character/idle.coax";
 #load "../../metaverse-engine/character/detail.coax" as detail;
 #load "../../metaverse-engine/character/fix.coax";
-#load "../../verse/valley/slay-shot-play.coax";
+#load "../../metaverse/valley/slay-shot-play.coax";
 
 // The valley-slay pack's parts and Echo's draws in its index buffer (Valley Lab's canyon_frame): her
 // body, her strands (drawn blended) and her strands again for the world's shadow map.

@@ -1,6 +1,6 @@
 // Standing on what stands (metaverse-engine/physics/stand.coax): every surface you come down
 // onto holds you, you and the town's people alike. The town's pieces are
-// floors (verse/demolish.coax demo_stand: a box's top, a roof's two slopes,
+// floors (metaverse/demolish.coax demo_stand: a box's top, a roof's two slopes,
 // a tower roof's cone, the rubble lying still), and over them the
 // observatory's dome and the fountain's two lips, which are no kit pieces.
 // A roof blown away holds no one; its rubble does.
@@ -93,7 +93,7 @@ eg_wall_top :: (x0: f32, z0: f32, x1: f32, z1: f32, h: f32) -> f32 {
   }
   return h;
 }
-// What each kit piece's top is to stand on (verse/demolish.coax demo_set_top): a tower roof's a cone, a
+// What each kit piece's top is to stand on (metaverse/demolish.coax demo_set_top): a tower roof's a cone, a
 // gable front's two slopes; a door's leaf, a window's frame and a banner nothing.
 eg_piece_top :: (m: int) -> int {
   if m == M_TOWER_ROOF { return DEMO_TOP_CONE; }

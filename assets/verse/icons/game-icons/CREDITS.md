@@ -5,11 +5,11 @@ on a transparent background, the same files the previous engine's hotbars
 drew (`git show 0b401561a0^:assets/verse/icons/game-icons/CREDITS.md`). They
 are licensed under [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/);
 `license.txt` is the archive's license file. The files are unmodified.
-`verse/tools/everglade_hotbar.coax` rasterizes and tints them for Everglade's
+`metaverse/tools/everglade_hotbar.coax` rasterizes and tints them for Everglade's
 spell bar, as the old engine did (`crates/verse-content/src/compiler/icons.rs`).
 
 The icons marked "5E MMO" below were added for the 5E MMO hotbar
-(`verse/tools/fivemmo_hotbar.coax`). They come from the game-icons.net GitHub
+(`metaverse/tools/fivemmo_hotbar.coax`). They come from the game-icons.net GitHub
 repository, which draws each icon over a black square; that square
 (`<path d="M0 0h512v512H0z"/>`) was removed, which leaves the same white icon on
 a transparent background that the site's download gives. They are otherwise

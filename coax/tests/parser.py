@@ -191,7 +191,7 @@ class Parser(unittest.TestCase):
         # sanitizers, 660 CPU seconds: 77 s on an idle host and several times that
         # on a busy one, so SB.run's backstop, not 180 s on the clock.
         began=time.monotonic()
-        for source in (ROOT/'lib/compiler/parser.coax',ROOT/'lib/compiler/checker.coax',ROOT.parent/'verse/home.coax',ROOT.parent/'verse/grid.coax'):
+        for source in (ROOT/'lib/compiler/parser.coax',ROOT/'lib/compiler/checker.coax',ROOT.parent/'metaverse/home.coax',ROOT.parent/'metaverse/grid.coax'):
             SB.run([exe,'check',source],env={**os.environ,'ASAN_OPTIONS':'detect_leaks=0'})
         print(f'sanitized checks: 4 sources in {time.monotonic()-began:.1f} s',file=sys.stderr,flush=True)
         # Wide source with a deep semantic dependency chain: the parser's

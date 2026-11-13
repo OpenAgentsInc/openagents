@@ -184,7 +184,7 @@ This is the part that matters most for Everglade II.
 
 | Area | Metaverse Engine/Verse | Where |
 | --- | --- | --- |
-| Shaders | Coax lowered to WGSL (`coax wgsl`) for the browser, and to SPIR-V and Metal for native hosts. Shared functions run on the CPU in `#test` blocks. | `coax/web/wgsl-module.coax`, `metaverse-engine/gpu/wgsl.coax`, `verse/gpu/spirv.coax`, `verse/gpu/metal-pass.coax` |
+| Shaders | Coax lowered to WGSL (`coax wgsl`) for the browser, and to SPIR-V and Metal for native hosts. Shared functions run on the CPU in `#test` blocks. | `coax/web/wgsl-module.coax`, `metaverse-engine/gpu/wgsl.coax`, `metaverse/gpu/spirv.coax`, `metaverse/gpu/metal-pass.coax` |
 | Draws | The CPU picks visible pieces and sorts them into one instanced draw per kit piece and LOD: about 75 draws per frame. No compute pass and no indirect draws in the web pages. | `apps/openagents-web/everglade2.coax:626-670` |
 | Grass | Placed by the vertex shader from the cell hash, in four nested tiers fixed to the land (0.5/1/2/4 m cells out to 28/40/52/140 m). Each coarser tuft is one of the four finer tufts it covers. Past 16 m, tufts drop out by rank and the survivors widen. | `everglade/world/field.coax`, `apps/openagents-web/gpu/everglade2.coax:52-74` |
 | Trees | Three LODs at hard distances: whole to 36 m, crown cards to 70 m. Past 70 m only items with `q % 3 == 0` remain, scaled 1.3x. Past 160 m only `q % 6 == 0`, scaled 1.5x. | `everglade/world/plant.coax:21-23`, `apps/openagents-web/everglade2.coax:648-663` |
@@ -307,7 +307,7 @@ runs on our browser host as it stands.
 - **Why.** At each handover our crown cards must match the whole tree in colour and brightness, or
   the swap shows even with a dither. Spartan found that cards without crown self-occlusion read
   pale.
-- **Map.** In `verse/tools/assets/everglade2_pack.coax`, bake each card's normals as a sphere-ish
+- **Map.** In `metaverse/tools/assets/everglade2_pack.coax`, bake each card's normals as a sphere-ish
   crown normal and its AO from the whole tree, not from the flat card. In
   `apps/openagents-web/gpu/everglade2.coax`, run cards through the same `leaves` branch with that
   normal and AO. Compare whole and card at the handover distance in a golden pair.
@@ -342,7 +342,7 @@ runs on our browser host as it stands.
 - **Why.** Our kit LODs are hand-built cards. As we add simplified meshes (rocks, bushes, the
   glade's composition), a pixel-error rule ties each level to the coverage it is drawn at and
   prevents silhouette pops.
-- **Map.** The pack tool's simplifier (`verse/tools/assets/`) and the coverage thresholds from
+- **Map.** The pack tool's simplifier (`metaverse/tools/assets/`) and the coverage thresholds from
   lesson 2.
 - **Effort.** M. **WebGPU.** Not applicable: this runs offline.
 

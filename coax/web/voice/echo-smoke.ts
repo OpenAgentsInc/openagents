@@ -5,7 +5,7 @@
 // QUIET=1: the echo opens a turn but never barges in (the engine judged it
 // too weak to interrupt): the host must not answer it, and the reply plays on.
 //   [QUIET=1] bun coax/web/voice/echo-smoke.ts WASM [ws://127.0.0.1:8787 | wss://...] [FIXTURE.wav] [ROUTE]
-const [wasmPath, host = "ws://127.0.0.1:8787", wav = "verse/voice-host/fixtures/hello-foreman.wav", route = "haunted-house"] = process.argv.slice(2)
+const [wasmPath, host = "ws://127.0.0.1:8787", wav = "metaverse/voice-host/fixtures/hello-foreman.wav", route = "haunted-house"] = process.argv.slice(2)
 const wasi = new Proxy({}, { get: (_, n) => (n === "proc_exit" ? () => { throw new Error("exit") } : () => 52) })
 const { instance } = await WebAssembly.instantiate(await Bun.file(wasmPath).arrayBuffer(), { wasi_snapshot_preview1: wasi })
 const x: any = instance.exports, mem = x.memory as WebAssembly.Memory

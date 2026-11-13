@@ -129,7 +129,7 @@ Everglade II's first frame planted the woods (`e2_plant`, 71,384 pieces from
 194,000 samples of the land) for 1.8 to 1.9 s on the page's thread. Now
 `build.sh` plants them once, with this tree's `plant.coax`, and writes the
 answer into the `.vpk3`'s catalog as `P` lines
-(`verse/tools/assets/everglade2_plant.coax`): base64 of `first[]`, the pieces'
+(`metaverse/tools/assets/everglade2_plant.coax`): base64 of `first[]`, the pieces'
 floats as their bits and their kinds, 3.1 MB of text. The tracked
 `everglade2.pack` is unchanged; the planted copy lives only in the build.
 

@@ -306,7 +306,7 @@ O0/O2. Counts below exclude the separate evaluator-only `#authority` claims.
 
 | Entry | Authored bodies | Cases per optimization | Physical scope |
 | --- | ---: | ---: | --- |
-| `verse/hud.coax` | 3 `#test` | 3 | 2 root bodies; 1 from `hud/frame.coax` |
+| `metaverse/hud.coax` | 3 `#test` | 3 | 2 root bodies; 1 from `hud/frame.coax` |
 | `psionic/lib/tensor.coax` | 8 `#test`, 4 `#forall` | 219 | All root bodies |
 | `psionic/lib/game/decision.coax` | 7 `#test` | 7 | All root bodies |
 
@@ -331,7 +331,7 @@ The record also retains two real limits:
   the retained compiler diagnostic identifies this unsupported profile form.
   No native body runs. Ordinary product C still emits and compiles, so this
   verification refusal adds no language restriction to that product graph.
-- `verse/water-spectrum.coax` has 30 original claims at the default budget:
+- `metaverse/water-spectrum.coax` has 30 original claims at the default budget:
   11 pass and 19 exhaust 20M steps with `E0400`. The result is inconclusive;
   native emission and execution never start. No larger-budget rerun or
   supplemental native result is substituted for this original baseline.
@@ -429,7 +429,7 @@ evaluator or emitter refuses, a missing compiler and a timeout make its checks
 "passed", and the run exits nonzero. The record names the compiler SHA-256, C
 compiler, target and per-profile C and binary SHA-256s, every lifted `#test` in
 each selected file with its outcome, and (with `--selection`) the lifted
-`#test`s under `verse/` and `psionic/` the selection doesn't run.
+`#test`s under `metaverse/` and `psionic/` the selection doesn't run.
 
 `--seed emitter` swaps the emitted checked multiply for a checked add;
 `--seed evaluator` reports the evaluator's first passing check as failing at
@@ -449,7 +449,7 @@ change `coax.native-checks.v1` or the evaluator-only `coax.evidence.v1` contract
 Run from the repository root:
 
 ```sh
-python3 coax/tools/native_check_baseline.py verse/look.coax --json --out /tmp/coax-native-baseline.json --keep /tmp/coax-native-artifacts
+python3 coax/tools/native_check_baseline.py metaverse/look.coax --json --out /tmp/coax-native-baseline.json --keep /tmp/coax-native-artifacts
 python3 coax/tools/native_check_baseline.py --selection coax/tests/native-checks.json --json --out /tmp/coax-native-selection.json
 ```
 

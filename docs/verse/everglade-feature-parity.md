@@ -14,7 +14,7 @@ wires it in.
 | Zone | Its files | Entry units the check follows |
 | --- | --- | --- |
 | Everglade II (`everglade-ii`) | `apps/openagents-web/everglade2*.coax`, the room's `everglade/server/*.coax` and `room-everglade.coax` | `everglade/client/client.coax`, `room-everglade.coax` |
-| Experimental (`experimental`) | `apps/openagents-web/fivelab*.coax`, `charactercreator*.coax`, `experimental-*.coax`, and `verse/experimental-*.coax` | `fivelab.coax` (the module for both `/worlds/everglade-experimental` and the 5E Lab) |
+| Experimental (`experimental`) | `apps/openagents-web/fivelab*.coax`, `charactercreator*.coax`, `experimental-*.coax`, and `metaverse/experimental-*.coax` | `fivelab.coax` (the module for both `/worlds/everglade-experimental` and the 5E Lab) |
 | Everglade v1 (`everglade-v1`) | `apps/openagents-web/everglade.coax` and `everglade-*.coax` | `everglade.coax` |
 
 Some files sit under one zone's paths but serve more than one zone:
@@ -39,7 +39,7 @@ Each row says where a zone gets the feature. **Shared** means the zone wires a
 module outside its own paths. **Local** means the zone carries its own code;
 the burn-down section below lists every such definition. **Absent** means the
 zone doesn't have the feature. Paths are under `apps/openagents-web/` unless
-they start with `metaverse-engine/`, `verse/`, `coax/` or `everglade/`.
+they start with `metaverse-engine/`, `metaverse/`, `coax/` or `everglade/`.
 
 ### Bow carry and draw
 
@@ -103,7 +103,7 @@ clock of an effect a page counts down (`CdClock`).
 ### HUD parts
 
 The shared modules are `metaverse-engine/ui/` (HUD atlas boxes, settings, feed),
-`verse/hud.coax` and `verse/hud/` (slot geometry and frames), `class-look.coax`
+`metaverse/hud.coax` and `metaverse/hud/` (slot geometry and frames), `class-look.coax`
 (`xc_slot_at`, the bar's boxes), `class-menu.coax` (the CLASSES column) and
 `everglade/hud/`: `parts.coax` (the portrait plate, the bar's tray, the map,
 plates, numbers), `class-bar.coax` (the side bar), `windows.coax` (the prompt
@@ -120,7 +120,7 @@ rate's corner and where the top buttons, the picker and the hotbar go).
 | --- | --- |
 | Everglade II | Shared: `e2_overlay` wires `everglade/hud/` (`e2k_bar_draw`, `e2c_draw`, `e2p_overlay`, `e2b_overlay`, `e2mn_wedge`, `e2_gfx_control`, `e2_light_readout`, `e2_floats_draw`, `e2k_down_line`). |
 | Experimental | Shared: the 5E Lab (`lab_layout`, `lab_panel_view`, `lab_player_bar`, `lab_top_bar`, `lab_sliders`) draws through `everglade/hud/lines.coax`; Character Create (`creator_layout`, `dev_panel`, `combat_overlay`) and the combat's slot boxes, frames and the ride prompt (`lab_ride_prompt`) through `everglade/hud/screens.coax`. |
-| Everglade v1 | Local: `hud` everglade.coax:4084, the spell bar `spells_hud` everglade-spells.coax:2023 and `sp_bar` :2254, the generated icon table everglade-hotbar.coax, party frames `pt_draw` everglade-party.coax:222, and a HUD a subsystem (`watch_hud`, `st_hud`, `ege_hud`, `ega_hud` and more). Shared `verse/hud/frame.coax` for the forge panels only (everglade-forge.coax:20). |
+| Everglade v1 | Local: `hud` everglade.coax:4084, the spell bar `spells_hud` everglade-spells.coax:2023 and `sp_bar` :2254, the generated icon table everglade-hotbar.coax, party frames `pt_draw` everglade-party.coax:222, and a HUD a subsystem (`watch_hud`, `st_hud`, `ege_hud`, `ega_hud` and more). Shared `metaverse/hud/frame.coax` for the forge panels only (everglade-forge.coax:20). |
 
 ### Class bars
 

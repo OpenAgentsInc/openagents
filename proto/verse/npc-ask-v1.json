@@ -69,7 +69,7 @@
     },
     {
       "name": "Fairy Forest: Bramble, how far its glade is helped as the scene",
-      "source": "verse/fairy-forest/talk.coax ff_ask_body for creature 0 in a new forest (written by the page, 2026-11-12)",
+      "source": "metaverse/fairy-forest/talk.coax ff_ask_body for creature 0 in a new forest (written by the page, 2026-11-12)",
       "values": {
         "npc": "bramble",
         "world": "fairy-forest",
@@ -92,7 +92,7 @@
     },
     {
       "name": "Fairy Forest: Rowan the woodcutter, no scene",
-      "source": "verse/fairy-forest/talk.coax ff_ask_body for FF_WOODCUTTER (written by the page, 2026-11-12)",
+      "source": "metaverse/fairy-forest/talk.coax ff_ask_body for FF_WOODCUTTER (written by the page, 2026-11-12)",
       "values": {
         "npc": "rowan",
         "world": "fairy-forest",

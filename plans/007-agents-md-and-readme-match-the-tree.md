@@ -36,7 +36,7 @@ the archive ends at episode 290, and episodes 291 to 293 are in the tree.
 ### AGENTS.md
 
 The table is under `## What is here`, `AGENTS.md:12-25`. Its rows are:
-`coax/`, `metaverse-engine/`, `verse/`, `psionic/`, `apps/openagents-ios/`,
+`coax/`, `metaverse-engine/`, `metaverse/`, `psionic/`, `apps/openagents-ios/`,
 `apps/openagents-web/`, `apps/openagents-cli/`, `os/`, `proto/`,
 `docs/protocol/`, a combined docs row, and `nostr/`.
 
@@ -46,16 +46,16 @@ Tracked areas with no row, and what each is (verified against the tree):
 | --- | --- | --- |
 | `bitcoin/` | 501 | *Bitcoin From Scratch*, the book that builds Bitcoin and Lightning in Coax, and its examples. The code it teaches is under `coax/lib/crypto/`, `coax/lib/bitcoin/` and `coax/lib/lightning/`. Check: `python3 psionic/tests/book.py --book bitcoin`. |
 | `coder/` | 143 | Coder, the coding agent: `book/` (*Coder: Coding Agents From Scratch*), `plugins/`, `tests/` and `tui/`. Check: `python3 psionic/tests/book.py --book coder`. |
-| `everglade/` | 34 | Everglade, the MMORPG on the D&D 5E SRD: `book/`, `docs/` (the Housewright, Golemancy and mounts specs), `world/`, `hud/` and `features.coax`. Most of its game code is still in `apps/openagents-web/` and `verse/`. Check: `coax/web/tool.sh everglade-parity`. |
+| `everglade/` | 34 | Everglade, the MMORPG on the D&D 5E SRD: `book/`, `docs/` (the Housewright, Golemancy and mounts specs), `world/`, `hud/` and `features.coax`. Most of its game code is still in `apps/openagents-web/` and `metaverse/`. Check: `coax/web/tool.sh everglade-parity`. |
 | `apps/openagents-desktop/` | 88 | The macOS desktop app in Coax, with `build.sh` and `check.sh`. Design: `docs/desktop/coax-desktop.md`. |
 | `apps/aethyrforge-desktop/` | 113 | Metaverse Engine desktop (experimental): the native realm builder. It has its own `README.md`. |
 | `apps/shared/` | 50 | Coax shared between apps: dictation (`dictation*.coax`) and the Zeron UI library (`zeron/`). |
-| `tools/` | 133 | `coax-nostr/` (guard, fuzz and audit harnesses for the Nostr and cryptography libraries) and `coax-unicode/tables.py`. Not to be confused with `verse/tools/`. |
+| `tools/` | 133 | `coax-nostr/` (guard, fuzz and audit harnesses for the Nostr and cryptography libraries) and `coax-unicode/tables.py`. Not to be confused with `metaverse/tools/`. |
 | `bench/` | 2 | Recorded voice benchmark results (`bench/voice/`). |
 
 ### README.md
 
-`README.md:84-86`, in the bullet about `verse/`:
+`README.md:84-86`, in the bullet about `metaverse/`:
 
 ```text
   its shader math (`light.coax`). Start opens the Grid (`grid.coax`), where
@@ -63,7 +63,7 @@ Tracked areas with no row, and what each is (verified against the tree):
   (`cast.coax`). A thin C and Swift layer owns storage and
 ```
 
-`verse/player.coax` does not exist. The file is `metaverse-engine/move/player.coax`.
+`metaverse/player.coax` does not exist. The file is `metaverse-engine/move/player.coax`.
 
 `README.md:188-189`, under `## Try it`:
 
@@ -168,7 +168,7 @@ prints nothing.
 
 ### Step 2: Fix the README
 
-1. In the `verse/` bullet, change `` (`player.coax`) `` to
+1. In the `metaverse/` bullet, change `` (`player.coax`) `` to
    `` (`metaverse-engine/move/player.coax`) ``.
 2. Under `## Try it`, replace the first command line with these two:
 

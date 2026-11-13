@@ -31,14 +31,14 @@
 // voice.js is told whom you face (realm_voice_to), so the voice host leaves
 // those turns to this page instead of answering as the house.
 // Facing no one, the realm's owner and admins face the realm itself: what VOICE
-// hears goes to the edit layer's selector (realm_hear; verse/edit/edit.coax),
+// hears goes to the edit layer's selector (realm_hear; metaverse/edit/edit.coax),
 // which switches the realm's rows, opens the editing screen, looks at the
 // screen or answers, and its reply is shown and spoken.
 //
 // The Sandbox's set pieces (rl-sandbox-pieces): in edit mode MAKE A SET
 // PIECE (P) takes one sentence to the server's selector
 // (/api/playtest/sandbox/piece), where Gemini picks a piece from the
-// catalogue in verse/setpiece.coax; its answer is checked there again, laid
+// catalogue in metaverse/setpiece.coax; its answer is checked there again, laid
 // out by its seeded generator in front of you, added as one undo step, and
 // published to the shared Sandbox at once.
 #include "realm.h"

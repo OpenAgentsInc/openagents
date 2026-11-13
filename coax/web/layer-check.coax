@@ -1,5 +1,5 @@
 // The engine's layers, checked (GitHub #13264; audit docs/audits/2026-11-11-everglade-aethyr-aaa-audit.md, G6).
-// metaverse-engine/ is the engine, everglade/ the game on it, verse/, apps/ and coax/web/ the realms and pages
+// metaverse-engine/ is the engine, everglade/ the game on it, metaverse/, apps/ and coax/web/ the realms and pages
 // on both. A load goes down the layers, never up, and product code does not load test code. This
 // tool reads every `#load "..."` line (git grep), resolves its path against the loading file's
 // folder, and fails on a load that breaks a rule and that metaverse-engine/layer-allowlist.txt does not
@@ -11,7 +11,7 @@
 //   coax/bin/coax test coax/web/layer-check.coax --library
 //
 // The rules, for a loading file that is not support code (below):
-//   aethyr-up     a file under metaverse-engine/ or rules/ (the SRD rules, out of the engine since #13270) loads from verse/, apps/, everglade/ or coax/web/
+//   aethyr-up     a file under metaverse-engine/ or rules/ (the SRD rules, out of the engine since #13270) loads from metaverse/, apps/, everglade/ or coax/web/
 //   everglade-up  a file under everglade/ loads from apps/
 //   tests         a file under metaverse-engine/, rules/, everglade/, coax/web/api/, coax/web/room/ or pay/ loads a file in a tests/ or
 //                 test/ folder, or a checks file beside it (X-checks.E, checks.E, test_X, test-X, X_test.E, X-test.E), with a
@@ -348,7 +348,7 @@ lc_context_allows :: (m: LcCtxMap, a: int, b: int) -> bool {
 }
 // The fixed layer rule a load from `from` (not support code) to `to` breaks, or 0.
 lc_rule :: (from: string, to: string) -> int {
-  if (lc_starts(from, "metaverse-engine/") || lc_starts(from, "rules/")) && (lc_starts(to, "verse/") || lc_starts(to, "apps/") || lc_starts(to, "everglade/") || lc_starts(to, "coax/web/")) { return LC_UP_AETHYR; }
+  if (lc_starts(from, "metaverse-engine/") || lc_starts(from, "rules/")) && (lc_starts(to, "metaverse/") || lc_starts(to, "verse/") || lc_starts(to, "apps/") || lc_starts(to, "everglade/") || lc_starts(to, "coax/web/")) { return LC_UP_AETHYR; }
   if lc_starts(from, "everglade/") && lc_starts(to, "apps/") { return LC_UP_EVERGLADE; }
   if (lc_starts(from, "metaverse-engine/") || lc_starts(from, "rules/") || lc_starts(from, "everglade/") || lc_starts(from, "coax/web/api/") || lc_starts(from, "coax/web/room/") || lc_starts(from, "pay/")) && (lc_in_tests(to) || lc_checks_file(to)) { return LC_TESTS; }
   return 0;
@@ -521,7 +521,7 @@ lc_judge_with_contexts :: (loads: string, tools: string, allow: string, ctxs: Lc
     if at >= 0 { if at < used.count { used[at] = true; } continue; }
     bad += 1;
     if run.quiet { continue; }
-    if rule == LC_UP_AETHYR { print("FAIL aethyr-up: %:% loads %. metaverse-engine/ is the engine: it loads nothing from verse/, apps/, everglade/ or coax/web/. Fix: move what it needs down into metaverse-engine/, or have the caller pass it in (%).\n", l.from, l.line, to, LC_HOW); }
+    if rule == LC_UP_AETHYR { print("FAIL aethyr-up: %:% loads %. metaverse-engine/ is the engine: it loads nothing from metaverse/, apps/, everglade/ or coax/web/. Fix: move what it needs down into metaverse-engine/, or have the caller pass it in (%).\n", l.from, l.line, to, LC_HOW); }
     else if rule == LC_UP_EVERGLADE { print("FAIL everglade-up: %:% loads %. everglade/ is the game: it loads nothing from apps/. Fix: move what it needs into everglade/ or metaverse-engine/ (%).\n", l.from, l.line, to, LC_HOW); }
     else if rule == LC_TESTS { print("FAIL tests: %:% loads %, a tests-folder or checks file, with a plain #load, and % is not a test, check or tool. Fix: load a module's own checks with #load \"FILE\" #test; and move what product code needs out of the checks file into a module (%).\n", l.from, l.line, to, l.from, LC_HOW); }
     else { print("FAIL context: %:% (%) loads % (%), which %'s line in % does not allow. Fix: move the dependency behind an allowed context or published contract (%).\n", l.from, l.line, ctxs.ctxs[fc[0]].slug, to, ctxs.ctxs[tc[0]].slug, ctxs.ctxs[fc[0]].slug, LC_CONTEXTS, LC_HOW); }
@@ -844,13 +844,13 @@ tool_main :: () -> int #export_c #effects(all) {
 LC_T_QUIET :: LcRun.{quiet = true};
 // git grep -n output: an engine module loading the page's wire, a test and a sibling; a test that
 // may load anything; a tool program; a game file loading the web app; a page loading the engine.
-LC_T_LOADS :: "metaverse-engine/net/latency.coax:5:#load \"../../everglade/shared/everglade-wire.coax\";\nmetaverse-engine/net/latency.coax:6:#load \"../tests/net-fixture.coax\";\nmetaverse-engine/net/latency.coax:7:#load \"clock.coax\";\nmetaverse-engine/tests/net-checks.coax:3:#load \"../../verse/everglade/zone.coax\";\nmetaverse-engine/host/build-x.coax:2:#load \"../../coax/web/wasm-chrome.coax\";\neverglade/zone.coax:4:#load \"../apps/openagents-web/hud.coax\";\neverglade/zone.coax:5:#load \"../metaverse-engine/net/latency.coax\";\napps/openagents-web/page.coax:9:#load \"../../metaverse-engine/net/latency.coax\";\n";
+LC_T_LOADS :: "metaverse-engine/net/latency.coax:5:#load \"../../everglade/shared/everglade-wire.coax\";\nmetaverse-engine/net/latency.coax:6:#load \"../tests/net-fixture.coax\";\nmetaverse-engine/net/latency.coax:7:#load \"clock.coax\";\nmetaverse-engine/tests/net-checks.coax:3:#load \"../../metaverse/everglade/zone.coax\";\nmetaverse-engine/host/build-x.coax:2:#load \"../../coax/web/wasm-chrome.coax\";\neverglade/zone.coax:4:#load \"../apps/openagents-web/hud.coax\";\neverglade/zone.coax:5:#load \"../metaverse-engine/net/latency.coax\";\napps/openagents-web/page.coax:9:#load \"../../metaverse-engine/net/latency.coax\";\n";
 LC_T_TOOLS :: "metaverse-engine/host/build-x.coax\n";
 LC_T_ALLOW :: "# seed\naethyr-up metaverse-engine/net/latency.coax -> everglade/shared/everglade-wire.coax\ntests metaverse-engine/net/latency.coax -> metaverse-engine/tests/net-fixture.coax\neverglade-up everglade/zone.coax -> apps/openagents-web/hud.coax\n";
 
 #test "a load line: its file, its line and the path it names" {
-  l := lc_parse("metaverse-engine/ui/draw.coax:6:#load \"../../verse/hud/frame.coax\" as frame;");
-  #assert l.ok && l.from == "metaverse-engine/ui/draw.coax" && l.line == 6 && l.rel == "../../verse/hud/frame.coax";
+  l := lc_parse("metaverse-engine/ui/draw.coax:6:#load \"../../metaverse/hud/frame.coax\" as frame;");
+  #assert l.ok && l.from == "metaverse-engine/ui/draw.coax" && l.line == 6 && l.rel == "../../metaverse/hud/frame.coax";
   #assert !lc_parse("a.coax:3:// #load \"x.coax\";").ok && !lc_parse("a.coax:3:#load \"\";").ok && !lc_parse("a.coax:x:#load \"b.coax\";").ok && !lc_parse("").ok;
   o: [256] u8;
   #assert lc_resolve("metaverse-engine/net", "../../everglade/shared/everglade-wire.coax", o[..]) == "everglade/shared/everglade-wire.coax";
@@ -868,20 +868,20 @@ LC_T_ALLOW :: "# seed\naethyr-up metaverse-engine/net/latency.coax -> everglade/
 }
 #test "the rules: up from aethyr, up from everglade, and product code loading tests" {
   #assert lc_rule("metaverse-engine/net/latency.coax", "everglade/shared/everglade-wire.coax") == LC_UP_AETHYR;
-  #assert lc_rule("metaverse-engine/ui/draw.coax", "verse/hud/frame.coax") == LC_UP_AETHYR && lc_rule("metaverse-engine/a.coax", "everglade/zone.coax") == LC_UP_AETHYR && lc_rule("metaverse-engine/a.coax", "coax/web/wasm-chrome.coax") == LC_UP_AETHYR;
+  #assert lc_rule("metaverse-engine/ui/draw.coax", "metaverse/hud/frame.coax") == LC_UP_AETHYR && lc_rule("metaverse-engine/a.coax", "everglade/zone.coax") == LC_UP_AETHYR && lc_rule("metaverse-engine/a.coax", "coax/web/wasm-chrome.coax") == LC_UP_AETHYR;
   #assert lc_rule("metaverse-engine/a.coax", "coax/lib/json/json.coax") == 0 && lc_rule("metaverse-engine/a.coax", "psionic/lib/a.coax") == 0 && lc_rule("metaverse-engine/a.coax", "metaverse-engine/b.coax") == 0;
-  #assert lc_rule("everglade/zone.coax", "apps/openagents-web/hud.coax") == LC_UP_EVERGLADE && lc_rule("everglade/zone.coax", "verse/everglade/a.coax") == 0 && lc_rule("everglade/zone.coax", "metaverse-engine/a.coax") == 0;
+  #assert lc_rule("everglade/zone.coax", "apps/openagents-web/hud.coax") == LC_UP_EVERGLADE && lc_rule("everglade/zone.coax", "metaverse/everglade/a.coax") == 0 && lc_rule("everglade/zone.coax", "metaverse-engine/a.coax") == 0;
   #assert lc_rule("metaverse-engine/move/walk.coax", "metaverse-engine/tests/walk-fixture.coax") == LC_TESTS && lc_rule("everglade/a.coax", "coax/lib/tests/x.coax") == LC_TESTS && lc_rule("coax/web/api/a.coax", "coax/web/api/tests/x.coax") == LC_TESTS && lc_rule("coax/web/room/a.coax", "coax/web/room/tests/x.coax") == LC_TESTS && lc_rule("pay/a.coax", "coax/tests/x.coax") == LC_TESTS && lc_rule("pay/a.coax", "coax/lib/x.coax") == 0;
   // the other trees are not judged here
-  #assert lc_rule("rules/srd/a-probes.coax", "verse/experimental-hostiles.coax") == LC_UP_AETHYR && lc_rule("rules/srd/a.coax", "metaverse-engine/tests/x.coax") == LC_TESTS && lc_rule("rules/srd/a.coax", "metaverse-engine/core/math.coax") == 0;
-  #assert lc_rule("verse/a.coax", "apps/b.coax") == 0 && lc_rule("coax/lib/a.coax", "coax/lib/tests/b.coax") == 0;
+  #assert lc_rule("rules/srd/a-probes.coax", "metaverse/experimental-hostiles.coax") == LC_UP_AETHYR && lc_rule("rules/srd/a.coax", "metaverse-engine/tests/x.coax") == LC_TESTS && lc_rule("rules/srd/a.coax", "metaverse-engine/core/math.coax") == 0;
+  #assert lc_rule("metaverse/a.coax", "apps/b.coax") == 0 && lc_rule("coax/lib/a.coax", "coax/lib/tests/b.coax") == 0;
 }
 #test "a checks file beside its module: a plain load fails, a check load passes, and a module that is only named like one is product code" {
   #assert lc_checks_file("metaverse-engine/anim/bundle-checks.coax") && lc_checks_file("everglade/server/checks.coax") && lc_checks_file("pay/test_wallet.coax") && lc_checks_file("pay/test-wallet.coax") && lc_checks_file("a_test.coax") && lc_checks_file("rules/srd/a-test.coax");
   // programs and diagnostics are not checks files, and neither is a name that only contains the word
   #assert !lc_checks_file("metaverse-engine/host/check-browser.coax") && !lc_checks_file("metaverse-engine/anim/pose-check.coax") && !lc_checks_file("metaverse-engine/a_check.coax") && !lc_checks_file("metaverse-engine/render/checker.coax") && !lc_checks_file("metaverse-engine/checks/a.coax") && !lc_checks_file("metaverse-engine/mychecks.coax") && !lc_checks_file("metaverse-engine/latest.coax");
   #assert lc_rule("metaverse-engine/anim/bundle.coax", "metaverse-engine/anim/bundle-checks.coax") == LC_TESTS && lc_rule("coax/web/api/a-policy.coax", "coax/web/api/a-checks.coax") == LC_TESTS && lc_rule("pay/wallet.coax", "pay/checks.coax") == LC_TESTS;
-  #assert lc_rule("verse/a.coax", "verse/a-checks.coax") == 0 && lc_rule("metaverse-engine/host/x-tool.coax", "metaverse-engine/host/check-x.coax") == 0;
+  #assert lc_rule("metaverse/a.coax", "metaverse/a-checks.coax") == 0 && lc_rule("metaverse-engine/host/x-tool.coax", "metaverse-engine/host/check-x.coax") == 0;
   used: [4] bool;
   f: [LC_RULES] int;
   #assert lc_judge("everglade/server/room-everglade.coax:9:#load \"room-checks.coax\";\n", "", "", used[..], LC_T_QUIET, f[..]) == 1 && f[LC_TESTS] == 1;
@@ -908,10 +908,10 @@ LC_T_ALLOW :: "# seed\naethyr-up metaverse-engine/net/latency.coax -> everglade/
   #assert lc_judge("metaverse-engine/move/walk.coax:27:#load \"../tests/walk-oracle.coax\";\npay/a.coax:2:#load \"tests/a.coax\";\n", "", "", used[..], LC_T_QUIET, g[..]) == 2 && g[LC_TESTS] == 2;
   // a checks file is support code: it loads its fixtures plainly; a file outside the ruled folders is not judged
   h: [LC_RULES] int;
-  #assert lc_judge("metaverse-engine/move/walk-tuning-checks.coax:2:#load \"../tests/walk-fixture.coax\";\nverse/a.coax:2:#load \"tests/a.coax\";\n", "", "", used[..], LC_T_QUIET, h[..]) == 0;
+  #assert lc_judge("metaverse-engine/move/walk-tuning-checks.coax:2:#load \"../tests/walk-fixture.coax\";\nmetaverse/a.coax:2:#load \"tests/a.coax\";\n", "", "", used[..], LC_T_QUIET, h[..]) == 0;
   // a check load up the layers is still an upward load
   k: [LC_RULES] int;
-  #assert lc_judge("metaverse-engine/move/walk.coax:3:#load \"../../verse/tests/x.coax\" #test;\n", "", "", used[..], LC_T_QUIET, k[..]) == 1 && k[LC_UP_AETHYR] == 1 && k[LC_TESTS] == 0;
+  #assert lc_judge("metaverse-engine/move/walk.coax:3:#load \"../../metaverse/tests/x.coax\" #test;\n", "", "", used[..], LC_T_QUIET, k[..]) == 1 && k[LC_UP_AETHYR] == 1 && k[LC_TESTS] == 0;
 }
 #test "the seeded allowlist passes; a new upward load fails" {
   used: [8] bool; found: [LC_RULES] int;
@@ -919,7 +919,7 @@ LC_T_ALLOW :: "# seed\naethyr-up metaverse-engine/net/latency.coax -> everglade/
   #assert found[LC_UP_AETHYR] == 1 && found[LC_UP_EVERGLADE] == 1 && found[LC_TESTS] == 1 && used[1] && used[2] && used[3] && !used[0];
   #assert lc_judge_allow(LC_T_ALLOW, used[..], LC_T_QUIET) == 0;
   // one more load from the engine up into a realm
-  more := "metaverse-engine/ui/draw.coax:6:#load \"../../verse/hud/frame.coax\";\n";
+  more := "metaverse-engine/ui/draw.coax:6:#load \"../../metaverse/hud/frame.coax\";\n";
   fresh: [8] bool; f2: [LC_RULES] int;
   joined: [4096] u8; n := 0;
   for c: LC_T_LOADS { joined[n] = c; n += 1; }
@@ -930,7 +930,7 @@ LC_T_ALLOW :: "# seed\naethyr-up metaverse-engine/net/latency.coax -> everglade/
   #assert lc_judge("metaverse-engine/move/walk.coax:26:#load \"tests/walk-fixture.coax\";\neverglade/dash.coax:2:#load \"../apps/a/b.coax\";\n", "", "", fresh[..], LC_T_QUIET, f3[..]) == 2 && f3[LC_TESTS] == 1 && f3[LC_UP_EVERGLADE] == 1;
   // the same path loaded twice is one load; an absolute path is not judged
   f4: [LC_RULES] int;
-  #assert lc_judge("metaverse-engine/a.coax:1:#load \"../verse/b.coax\";\nmetaverse-engine/a.coax:2:#load \"../verse/b.coax\";\nmetaverse-engine/a.coax:3:#load \"/x/verse/b.coax\";\n", "", "", fresh[..], LC_T_QUIET, f4[..]) == 1 && f4[LC_UP_AETHYR] == 1;
+  #assert lc_judge("metaverse-engine/a.coax:1:#load \"../metaverse/b.coax\";\nmetaverse-engine/a.coax:2:#load \"../metaverse/b.coax\";\nmetaverse-engine/a.coax:3:#load \"/x/metaverse/b.coax\";\n", "", "", fresh[..], LC_T_QUIET, f4[..]) == 1 && f4[LC_UP_AETHYR] == 1;
 }
 #test "the room's closure: an Everglade v1 file it reaches through another fails; everglade/shared/ and v1's own loads do not (#13346)" {
   loads := "coax/web/room/room.coax:3:#load \"room-a.coax\";\ncoax/web/room/room-a.coax:1:#load \"../../../everglade/shared/everglade-wire.coax\";\neverglade/shared/everglade-wire.coax:2:#load \"everglade-forest-profile.coax\";\napps/openagents-web/everglade.coax:9:#load \"everglade5e-rules.coax\";\n";
@@ -945,12 +945,12 @@ LC_T_ALLOW :: "# seed\naethyr-up metaverse-engine/net/latency.coax -> everglade/
 #test "the allowlist stays true and only shrinks" {
   used: [8] bool;
   // a line no load needs, and lines that are not RULE FROM -> TO
-  #assert lc_judge_allow("aethyr-up metaverse-engine/gone.coax -> verse/a.coax\n", used[..], LC_T_QUIET) == 1;
+  #assert lc_judge_allow("aethyr-up metaverse-engine/gone.coax -> metaverse/a.coax\n", used[..], LC_T_QUIET) == 1;
   used[0] = true;
-  #assert lc_judge_allow("aethyr-up metaverse-engine/gone.coax -> verse/a.coax\n", used[..], LC_T_QUIET) == 0;
-  #assert lc_judge_allow("up metaverse-engine/a.coax -> verse/a.coax\n", used[..], LC_T_QUIET) == 1 && lc_judge_allow("aethyr-up metaverse-engine/a.coax verse/a.coax\n", used[..], LC_T_QUIET) == 1 && lc_judge_allow("tests a -> b c\n", used[..], LC_T_QUIET) == 1;
+  #assert lc_judge_allow("aethyr-up metaverse-engine/gone.coax -> metaverse/a.coax\n", used[..], LC_T_QUIET) == 0;
+  #assert lc_judge_allow("up metaverse-engine/a.coax -> metaverse/a.coax\n", used[..], LC_T_QUIET) == 1 && lc_judge_allow("aethyr-up metaverse-engine/a.coax metaverse/a.coax\n", used[..], LC_T_QUIET) == 1 && lc_judge_allow("tests a -> b c\n", used[..], LC_T_QUIET) == 1;
   #assert lc_entry_rule("tests metaverse-engine/a.coax -> metaverse-engine/tests/b.coax") == LC_TESTS && lc_entry_rule("everglade-up a -> b") == LC_UP_EVERGLADE && lc_entry_rule("context a -> b") == LC_CONTEXT;
-  base := "# seed\naethyr-up metaverse-engine/a.coax -> verse/a.coax\ntests metaverse-engine/b.coax -> metaverse-engine/tests/b.coax\n";
+  base := "# seed\naethyr-up metaverse-engine/a.coax -> metaverse/a.coax\ntests metaverse-engine/b.coax -> metaverse-engine/tests/b.coax\n";
   added: [1] int;
   #assert lc_grown(base, base, LC_T_QUIET, added[..]) == 0 && lc_grown("tests metaverse-engine/b.coax -> metaverse-engine/tests/b.coax\n", base, LC_T_QUIET, added[..]) == 0 && added[0] == 0;
   #assert lc_grown("aethyr-up metaverse-engine/c.coax -> apps/x.coax\n", base, LC_T_QUIET, added[..]) == 1 && added[0] == 1;
@@ -1021,7 +1021,7 @@ LC_T_ALLOW :: "# seed\naethyr-up metaverse-engine/net/latency.coax -> everglade/
   #assert lc_judge_consumers(mods[..], 1, all[..], "book metaverse-engine/world/\n", LC_T_QUIET, c4[..], u4[..]) == 1;
   #assert lc_judge_consumers(mods[..], 1, all[..], "keep metaverse-engine/world/ #1\n", LC_T_QUIET, c4[..], u4[..]) == 1;
   #assert lc_judge_consumers(mods[..], 1, all[..], "# a comment\n\n", LC_T_QUIET, c4[..], u4[..]) == 0;
-  #assert lc_evidence_names("book metaverse-engine/world/weather.coax ch", "see [weather](../world/weather.coax)") && !lc_evidence_names("book metaverse-engine/world/weather.coax ch", "see weather") && !lc_evidence_names("book verse/a.coax ch", "verse/a.coax");
+  #assert lc_evidence_names("book metaverse-engine/world/weather.coax ch", "see [weather](../world/weather.coax)") && !lc_evidence_names("book metaverse-engine/world/weather.coax ch", "see weather") && !lc_evidence_names("book metaverse/a.coax ch", "metaverse/a.coax");
   #assert lc_evidence_names("pipeline metaverse-engine/audio/measure.coax t", "#load \"measure.coax\";") && !lc_evidence_names("adopt metaverse-engine/audio/ t", "audio") && lc_evidence_names("book metaverse-engine/space/ ch", "(../space/frames.coax)");
 }
 #test "consumers: a module a product loads, directly or through another module, is consumed" {

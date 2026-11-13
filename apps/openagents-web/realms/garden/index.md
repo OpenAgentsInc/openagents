@@ -28,6 +28,6 @@ On the pedestal in the middle of the plaza stands a blue vase with a few flowers
 
 ## How it is made
 
-- `metaverse-engine/cam/camera.coax` is the camera, `metaverse-engine/world/terrain.coax` the ground, the paths and the dog's way along them, `metaverse-engine/physics/throw.coax` the ball's flight, bounce and roll and the dog's fetch, `metaverse-engine/cam/arrange.coax` the close-up on the vase, `metaverse-engine/move/player.coax` walks you among the trees, hedges and the pedestal (as in the Haunted House; on a flat floor, drawn on the ground), and `verse/grid.coax` reads a phone's thumbs.
+- `metaverse-engine/cam/camera.coax` is the camera, `metaverse-engine/world/terrain.coax` the ground, the paths and the dog's way along them, `metaverse-engine/physics/throw.coax` the ball's flight, bounce and roll and the dog's fetch, `metaverse-engine/cam/arrange.coax` the close-up on the vase, `metaverse-engine/move/player.coax` walks you among the trees, hedges and the pedestal (as in the Haunted House; on a flat floor, drawn on the ground), and `metaverse/grid.coax` reads a phone's thumbs.
 - `apps/openagents-web/garden.coax` lays out the garden and draws the HUD; `garden-face.c` binds it for the browser; `garden.wgsl` draws the ground with its paths, every object as a box, sphere, cylinder or cone, soft shadows and fog.
 - Nothing is downloaded but the page, its code and a 4 KB index list.

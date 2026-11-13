@@ -13,7 +13,7 @@ en_clone :: (repository:string,work:string,sine:bool,original:[]RtqInputs,varian
   }return true;
 }
 en_historical :: (work:string)->bool {
-  for which:0..<2 {file:=ifx which==0 then "a1a35280cd:apps/openagents-web/gpu/everglade-v1/gpu.coax" else "a1a35280cd:verse/style.coax";label:=ifx which==0 then "historical-gpu" else "historical-style";argv:=[3]string.["git","show",file];env:[]string;out:[524288]u8;err:[65536]u8;r:=rtq_command(argv[..],env,proc_now_ms()+30000,work,label,out[..],err[..]);if !rtq_ok(r) {return false;}
+  for which:0..<2 {file:=ifx which==0 then "a1a35280cd:apps/openagents-web/gpu/everglade-v1/gpu.coax" else "a1a35280cd:metaverse/style.coax";label:=ifx which==0 then "historical-gpu" else "historical-style";argv:=[3]string.["git","show",file];env:[]string;out:[524288]u8;err:[65536]u8;r:=rtq_command(argv[..],env,proc_now_ms()+30000,work,label,out[..],err[..]);if !rtq_ok(r) {return false;}
     scratch:[524288]u8;for site:0..<ifx which==0 then 5 else 1 {needle:=ifx which==0 then EN_EG_OLD[site] else EN_STYLE_OLD;if rto_replace(cast(string)out[0..<r.out_n],needle,needle,scratch[..])<0 {tool_errln("historical noise body does not match exact git bytes");return false;}}
   }return true;
 }

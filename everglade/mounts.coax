@@ -2,7 +2,7 @@
 // the Metaverse Engine's mounts (metaverse-engine/action/mount.coax, the mount, its gaits, steering, mounting and riding
 // collision; metaverse-engine/action/ride-pose.coax, the rider's seat). This module owns what makes them
 // Everglade's: the SRD's Riding Horse handling, the white horse's baked frames in a zone's pack
-// (glade/horse0..35: Idle, Walk, Gallop, twelve frames each; verse/tools/assets/horse_pack.coax) and
+// (glade/horse0..35: Idle, Walk, Gallop, twelve frames each; metaverse/tools/assets/horse_pack.coax) and
 // its saddle points, E to mount and dismount, the prompts, the phone's button, the stick's steering,
 // and where the rider sits. A zone places its horses (eg_mount_add), hands this the boxes its walker
 // collides with, and draws what it returns. Nothing here knows a zone.

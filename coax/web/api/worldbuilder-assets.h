@@ -1,4 +1,4 @@
-// Written by verse/tools/assets/worldbuilder_pack.coax: the WorldBuilder models, NAME|w,h,d|tags a line.
+// Written by metaverse/tools/assets/worldbuilder_pack.coax: the WorldBuilder models, NAME|w,h,d|tags a line.
 #define WB_ASSET_COUNT 785
 static const char WB_ASSETS[] =
   "bestiary-dungeon/imp|1.75,1.68,0.68|monster\n"

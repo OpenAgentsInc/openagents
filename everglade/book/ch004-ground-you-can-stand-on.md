@@ -30,7 +30,7 @@ looking solid.
 | The ground's colour at a pixel | `e2_ground_albedo` in [`everglade/client/gpu/everglade2.coax`](../client/gpu/everglade2.coax) |
 
 Inside the glade, the land is exactly Character Create's own (`cg_height` in
-[`verse/character-glade.coax`](../../verse/character-glade.coax)). Outside it,
+[`metaverse/character-glade.coax`](../../metaverse/character-glade.coax)). Outside it,
 `e2_height` adds the path's valley and the wooded ridges.
 
 ## The method

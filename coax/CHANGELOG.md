@@ -229,7 +229,7 @@ Commit: [`1f9d64a193fcd45d08ff775fbc7f034d2ead84ba`](https://github.com/OpenAgen
   `bounded_set`, `bounded_clear`, `bounded_view` and `bounded_full`. A full or
   empty store and a slot that isn't live are refused with `false` and no
   change. Psionic's model registry (`psionic/lib/shadow.coax`) and the fairy
-  forest's blooms (`verse/fairy-forest/forest.coax`) use it, with their
+  forest's blooms (`metaverse/fairy-forest/forest.coax`) use it, with their
   fixtures' outputs unchanged.
 - Programs that compiled before emit identical C.
 - Follow-up (build, `ax-build-cache`): a warm `coax/build.sh` installs the

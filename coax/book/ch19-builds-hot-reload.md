@@ -252,9 +252,9 @@ earlier six-library source set plus one Metal module, on an Apple M5 Max running
 ```shell
 $ cat gen.sh
 for n in home player grid cast camera wallet; do
-  coax/bin/coax c verse/$n.coax --library --header /tmp/$n.h > /tmp/$n.c
+  coax/bin/coax c metaverse/$n.coax --library --header /tmp/$n.h > /tmp/$n.c
 done
-coax/bin/coax metal verse/light.coax > /tmp/light.metal
+coax/bin/coax metal metaverse/light.coax > /tmp/light.metal
 $ for i in 1 2 3; do /usr/bin/time -p bash gen.sh 2>&1 | grep real; done
 real 0.09
 real 0.09
@@ -263,7 +263,7 @@ real 0.09
 
 That's about 28,000 lines of C and Metal from roughly 4,300 lines of
 Coax. Most of it is `Home.c`, 22,615 lines, nearly all of them the
-generated protocol codecs from Chapter 18; `coax c verse/home.coax`
+generated protocol codecs from Chapter 18; `coax c metaverse/home.coax`
 takes about 0.04 seconds by itself. Our glow build script in Listing 19-2,
 which also runs the C compiler and links, takes about 0.22 seconds.
 
@@ -379,7 +379,7 @@ cache does not establish a universal kernel cache or a startup deadline.
 
 ## Hot reload is an engine design
 
-> Note: Not implemented. Nothing in `coax0`, `verse/` or the iOS app
+> Note: Not implemented. Nothing in `coax0`, `metaverse/` or the iOS app
 > reloads code today. A resident compiler and reload are stage 8 of the
 > plan (spec §16.3).
 

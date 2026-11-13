@@ -1,7 +1,7 @@
 // The live homepage C face: scalar Wasm exports over the Coax procedures.
 // The state the host keeps is the page's clock, its tables and its input.
 // The same module is the Grid (/worlds/the-grid, data-page 1, newland-walk.coax): the same
-// scene walked. There verse/gridwalk.coax (its own library) is the session: you, the phone's
+// scene walked. There metaverse/gridwalk.coax (its own library) is the session: you, the phone's
 // thumbs and the record of what you did, stepped on Aethyr's engine core. Once a frame this face
 // hands it the page's controls and the frame's time, then hands the page where you are. Where
 // you are goes to the playtest room the-grid about five times a second (a browser with no player
@@ -47,7 +47,7 @@ static void drain(uint32_t state) {
   }p->n=0;p->used=0;
 }
 // The Grid's half (newland-walk.coax): you, the thumbs, and the room.
-static coax_t_GridWalk walk;   /* the Grid's session (verse/gridwalk.coax) */
+static coax_t_GridWalk walk;   /* the Grid's session (metaverse/gridwalk.coax) */
 static coax_v_t_GridWalk gw(void) { return (coax_v_t_GridWalk){&walk, 1}; }
 static _Bool placed, entered, facts_seen, has_player, mint_tried, keeping;
 static double now, room_at = -10, room_asked_at;

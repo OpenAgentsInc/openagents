@@ -6,7 +6,7 @@ declaration IDs that `coax deps --declarations` reports from the checked graph.
 QualifiedLookup: `#load "FILE.coax" as NAME;` path imports and NAME.Decl
 bindings resolved in the checked graph (r1a-qualified-lookup).
 Visibility: `#export` lists seal a module; private declarations are refused
-outside it, and the real verse/hud.coax graph keeps its native API
+outside it, and the real metaverse/hud.coax graph keeps its native API
 (r1a-public-hud-module).
 TargetSpans: the native-lp64 target record against an independent C oracle,
 unsupported layout targets, and exact authored declaration spans
@@ -574,7 +574,7 @@ class Visibility(unittest.TestCase):
         self.assertEqual(self.ok("run", root / "main.coax"), "42\n")
 
     def test_the_hud_graph_exposes_its_native_api(self):
-        hud = ROOT.parent / "verse/hud.coax"
+        hud = ROOT.parent / "metaverse/hud.coax"
         self.assertIn("3 checks, 3 passed", self.ok("test", hud))
         m = json.loads(self.ok("deps", hud, "--modules"))
         (mod,) = m["modules"]

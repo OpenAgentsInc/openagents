@@ -151,7 +151,7 @@ coax/lib/nostr/
   block/                 identity, channels, artifacts and private-agent policy
 coax/web/host.js          generic effects, never Nostr policy or UI
 apps/openagents-ios/     Keychain/network/camera effects; Coax state and decisions
-verse/                   the same verified projections and authority path
+metaverse/                   the same verified projections and authority path
 tools/coax-nostr/       native keygen, verify, fetch, publish, seal and gate
 ```
 

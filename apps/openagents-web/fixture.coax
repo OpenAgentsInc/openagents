@@ -17,13 +17,13 @@
 // preset instead, at the page's clock (?clock=T; noon without one): a sphere
 // and a cube, a blob tree, a patch of grass, a pond, a standing figure, and
 // three ridges stepping back at 60, 140 and 260 m, from a fixed camera.
-// fixture.wgsl's paint_fs traces it with verse/style.coax's shading, fed by
-// the preset's STYLE_FLOATS (verse/style-preset.coax). Every painterly engine
+// fixture.wgsl's paint_fs traces it with metaverse/style.coax's shading, fed by
+// the preset's STYLE_FLOATS (metaverse/style-preset.coax). Every painterly engine
 // task shows its work here; its goldens are fixture-painterly-<clock>.png.
 
 #load "../../metaverse-engine/ui/font.coax";
 #load "ui.coax";
-#load "../../verse/style-preset.coax";
+#load "../../metaverse/style-preset.coax";
 #load "../../metaverse-engine/core/budget.coax";
 
 VERTEX_FLOATS :: 16;   // x, y, along, across, length, core, light, glow, red, green, blue, mode, 0, 0, 0, 0
@@ -31,7 +31,7 @@ MAX_VERTICES :: 24000;
 PLATES :: 16;
 // width, height, time, fade, still, plates, dpr, painted (1: the style fixture); the view's four rows; the
 // lamp (x, y, z, strength); then per plate x0, y0, x1, y1, scale, alpha, look, 0; then the style's
-// STYLE_FLOATS at the clock (verse/style-preset.coax SU_*), read only when painted
+// STYLE_FLOATS at the clock (metaverse/style-preset.coax SU_*), read only when painted
 VIEW_AT :: 8; LAMP_AT :: 24;
 PANEL_AT :: 28;
 STYLE_AT :: PANEL_AT + PLATES * 8;
@@ -100,7 +100,7 @@ OUTBOX :: 256;
 SPEED :: 0.9;           // floor radii a second
 HOLD_UP :: 1; HOLD_DOWN :: 2; HOLD_LEFT :: 4; HOLD_RIGHT :: 8;
 BTN_GALAXY :: 0; BUTTONS :: 1;
-// The pack (verse/tools/pack_realm.py): its catalog is asset 0, its vertices,
+// The pack (metaverse/tools/pack_realm.py): its catalog is asset 0, its vertices,
 // indices and layers 1 to 3 (host.js pack:URL); the host says how it streams.
 MSG_PACK :: 605;
 MESHES :: 16; LICENCES :: 8; NAME :: 32; LICENCE_NAME :: 64;

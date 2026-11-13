@@ -27,7 +27,7 @@
     "metaverse-engine/tests/query-heightfield.coax": "89116124a89c073af84ec10298345bbb5039d5c8b85db0ac125581ab080aa510",
     "metaverse-engine/tests/query-oracle.coax": "e088ba9b7be06e2a19d263e5b45859fddeae1f22523c3fdb45948abd895e3cb8",
     "coax/lib/quantity.coax": "325e9e7152de442b2da210cc0075ca4bb231d5a4c862898a6ee88ab161eeb583",
-    "verse/stand.coax": "a6c5d351b77cf14313a7cb97232894ad10525f148aa499ab87c01fc908e4f35b"
+    "metaverse/stand.coax": "a6c5d351b77cf14313a7cb97232894ad10525f148aa499ab87c01fc908e4f35b"
   },
   "commands": [
     {
@@ -97,7 +97,7 @@
       "metaverse-engine/tests/query-heightfield.coax": "e5c0fbee5b540926f2b4eebc9df928527e8662e8c801baab57040295c7aa76cc",
       "metaverse-engine/tests/query-oracle.coax": "e088ba9b7be06e2a19d263e5b45859fddeae1f22523c3fdb45948abd895e3cb8",
       "coax/lib/quantity.coax": "325e9e7152de442b2da210cc0075ca4bb231d5a4c862898a6ee88ab161eeb583",
-      "verse/stand.coax": "a6c5d351b77cf14313a7cb97232894ad10525f148aa499ab87c01fc908e4f35b"
+      "metaverse/stand.coax": "a6c5d351b77cf14313a7cb97232894ad10525f148aa499ab87c01fc908e4f35b"
     }
   },
   "requalification_reason": "A combined box+heightfield red regression showed that the legacy minimum could publish a distance beyond the shortened terrain probe. The nonempty-heightfield branch now probes precisely the prospective distance that the final minimum/max rule can publish.",

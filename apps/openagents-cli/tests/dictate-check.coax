@@ -1,7 +1,7 @@
 // `openagents dictate` through the real CLI (GitHub #12667): every case runs
 // apps/openagents-cli/build/openagents dictate, which runs the dictation host.
 // No microphone is opened and no sound is played: audio comes from the
-// recorded-audio capture backend (verse/voice-host/fixtures), or, for the
+// recorded-audio capture backend (metaverse/voice-host/fixtures), or, for the
 // Linux recorder path, from a stand-in `pw-record` on PATH that writes zeros
 // or ends at once. Run from the repository root after apps/openagents-cli/build.sh:
 //   coax/web/tool.sh apps/openagents-cli/tests/dictate-check.coax [MODEL_DIR [CASE]]
@@ -101,7 +101,7 @@ tool_main :: () -> int #export_c #effects(all) {
   cw: [4096] u8; root := fs_cwd(cw[..]);
   cb: [4200] u8; cli := fs_join(root, "apps/openagents-cli/build/openagents", cb[..]);
   if fs_kind(cli) != FS_FILE { tool_errln("build the CLI first: apps/openagents-cli/build.sh"); return 2; }
-  wb: [4200] u8; wav := fs_join(root, "verse/voice-host/fixtures/wait-stop.wav", wb[..]);
+  wb: [4200] u8; wav := fs_join(root, "metaverse/voice-host/fixtures/wait-stop.wav", wb[..]);
   tb: [1024] u8; tmp := fs_temp("dictate-check", tb[..]);
   if tmp == "" { tool_errln("no temporary directory"); return 2; }
   // 1.5 s of digital silence, as a recorded input.

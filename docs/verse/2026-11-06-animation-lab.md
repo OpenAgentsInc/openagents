@@ -28,11 +28,11 @@ Draconia, The Guardian").
 | Piece | Where | What it does today |
 | --- | --- | --- |
 | Animation documents (A0) | [Formats](anim-documents-v1.md), `metaverse-engine/anim/*-document.coax` | Six bounded document readers, compiled-DNA admission, lossless private Echo/Slay conversion and shared source adapters; [verification](../verification/animation-lab-a0-2026-11-06/README.md) |
-| Rig and clip stations (A1) | `verse/animlab/`, `/worlds/animation-lab` | Neutral inspection, weights, shapes, scrub/play/step, skeleton ghosts and cached plots; [verification](../verification/animation-lab-a1-2026-11-06/README.md) |
+| Rig and clip stations (A1) | `metaverse/animlab/`, `/worlds/animation-lab` | Neutral inspection, weights, shapes, scrub/play/step, skeleton ghosts and cached plots; [verification](../verification/animation-lab-a1-2026-11-06/README.md) |
 | Retargeting (A2) | `metaverse-engine/anim/retarget*.coax`, `#retarget`, `labs anim retarget` | Rest-corrected anchor rotations, leg-scaled root motion, private exports and paired views; [verification](../verification/animation-lab-a2-2026-11-06/README.md) |
 | Layers and fix-ups (A3) | `metaverse-engine/anim/layers.coax`, `fixup.coax`, `#layers` | Base, masked override, additive and facial layers; planted feet, head/eye aims and hand targets; [verification](../verification/animation-lab-a3-2026-11-06/README.md) |
 | Imports (A4) | `metaverse-engine/anim/import-*.coax`, `gltf-*.coax`, `labs anim import` | glTF/FBX, BVH, ARKit CSV and bounded Unreal body imports; [limits](anim-imports-v1.md) and [verification](../verification/animation-lab-a4-2026-11-06/README.md) |
-| Scenes and cuts (A5) | `verse/animlab/scene.coax`, `cut.coax`, `#scene`, `#cut`, `labs anim play/check` | Staged projects, authored cameras, light/effect keys, speech-driven stand-in faces, headless films and JSON checks; [profile](anim-scenes-v1.md) and [verification](../verification/animation-lab-a5-2026-11-06/README.md) |
+| Scenes and cuts (A5) | `metaverse/animlab/scene.coax`, `cut.coax`, `#scene`, `#cut`, `labs anim play/check` | Staged projects, authored cameras, light/effect keys, speech-driven stand-in faces, headless films and JSON checks; [profile](anim-scenes-v1.md) and [verification](../verification/animation-lab-a5-2026-11-06/README.md) |
 | Pose math | `metaverse-engine/anim/pose.coax` | Quaternions, local poses, blending, the joint chain and the skinning palette |
 | Blend shapes | `metaverse-engine/anim/morph.coax`, `morph-gpu.coax` | Sampled curves; sparse morph deltas applied on the GPU before skinning |
 | Face playback | `metaverse-engine/anim/face.coax`, `face-pack.coax` | Plays face clips as morph weights plus face-bone overlays on a body pose; the EFC1 face pack format and its checks |
@@ -42,9 +42,9 @@ Draconia, The Guardian").
 | Cameras | `metaverse-engine/cam/cinematic.coax`, `metaverse-engine/cam/shot.coax` | Authored camera flights with keys, easing and cuts; orbit and dive shots |
 | Determinism | `metaverse-engine/core/replay.coax` | Record and replay of inputs, so the same inputs give the same frames |
 | Speaking | `metaverse-engine/audio/speak.coax`, `coax/web/tool.sh speak` | Text to speech, word timing, visemes and moods on a MetaHuman face, rendered to video |
-| Echo port | `verse/valley/echo*.coax`, `verse/tools/valley-echo-*`, `metaverse-engine/tools/unreal-echo-sdk/` | Echo's mesh, 334 joints, 24 clips and source walking profile, in a private pack |
-| Slay face | `verse/valley/slay-shot.coax`, `slay-shot-play.coax` (#12962) | Slay's facial clips on Echo, with a fixed source-shot view |
-| Anime director | `verse/anime/director.coax`, `take.coax`, `stage.coax`, `coax/web/api/anime-director-policy.coax` | Words to typed directions with confidence; `.take` files (`anime.v1`); timeline grammar |
+| Echo port | `metaverse/valley/echo*.coax`, `metaverse/tools/valley-echo-*`, `metaverse-engine/tools/unreal-echo-sdk/` | Echo's mesh, 334 joints, 24 clips and source walking profile, in a private pack |
+| Slay face | `metaverse/valley/slay-shot.coax`, `slay-shot-play.coax` (#12962) | Slay's facial clips on Echo, with a fixed source-shot view |
+| Anime director | `metaverse/anime/director.coax`, `take.coax`, `stage.coax`, `coax/web/api/anime-director-policy.coax` | Words to typed directions with confidence; `.take` files (`anime.v1`); timeline grammar |
 | Labs CLI | `apps/openagents-cli/labs.coax`, `docs/cli/2026-11-01-openagents-labs.md` | `labs shot`, `clip`, `frames`, `cut`, `compare`, `anime` |
 | Private packs | `docs/verse/private-assets.md`, `docs/verse/metahuman-support.md` | Licensed data stays out of git, addressed by SHA-256, resolved owner-locally |
 
@@ -85,7 +85,7 @@ on them.
 ## The model
 
 Six document types. Each is JSON with a schema name, bounds, and a Coax
-`#authority` admission procedure, the way `verse/anime/take.coax` admits
+`#authority` admission procedure, the way `metaverse/anime/take.coax` admits
 `anime.v1` takes.
 
 ### Rig (`anim.rig.v1`)
@@ -476,7 +476,7 @@ original props and bird geometry, and an offline stock voice with
 speech-aligned jaw motion. Stage weather/time and camera focus remain
 metadata until the finished A6 rendering work. The study is not the A8
 publishable scene. The [scene profile](anim-scenes-v1.md) records these
-limits and the [recipe](../../verse/animlab/guardian/README.md) reproduces it.
+limits and the [recipe](../../metaverse/animlab/guardian/README.md) reproduces it.
 
 JSON diagnostics name their models: canonical elbow/knee angle screening
 and upright character capsules. Rig v1 does not declare per-joint limits,

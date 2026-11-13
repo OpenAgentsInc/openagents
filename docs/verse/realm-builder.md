@@ -127,9 +127,9 @@ A realm's revision in edit mode sets it too, and an ask's DELETE puts the one be
 
 Grounds: meadow, forest, desert, snow, stone, beach. Times: day, dawn, dusk, night. Styles:
 lowpoly, painterly and flat (photoreal is not built yet, so it is not offered). A painterly or flat
-realm draws with `verse/style-preset.coax`: painterly is `STYLE_PAINTERLY`, flat is
+realm draws with `metaverse/style-preset.coax`: painterly is `STYLE_PAINTERLY`, flat is
 `verse_style_flat(FLAT_GARDEN, tier)`, each at the realm's time of day (`verse_style_at`) and the
-phone tier under 600 CSS pixels wide; `myrealm.wgsl` carries `verse/style.coax`'s functions
+phone tier under 600 CSS pixels wide; `myrealm.wgsl` carries `metaverse/style.coax`'s functions
 (`build.sh` splices them). Low poly draws as before.
 
 ## The site

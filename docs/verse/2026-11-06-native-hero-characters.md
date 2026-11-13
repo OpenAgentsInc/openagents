@@ -39,11 +39,11 @@ describe the delivered implementation and its measured limits.
 
 | Piece | Where it lives | State |
 | --- | --- | --- |
-| Rig, body pose, face playback | `metaverse-engine/character/` (on `metaverse-engine/anim/pose.coax` and `face.coax`); Echo's declarations in `verse/valley/echo.coax` | Moved out of Valley Lab in R2 (#12986): a `Character` record over a world's pack table, sizes under declared maximums, an idle face. Valley Lab runs on it with its TF0290 frames unchanged |
+| Rig, body pose, face playback | `metaverse-engine/character/` (on `metaverse-engine/anim/pose.coax` and `face.coax`); Echo's declarations in `metaverse/valley/echo.coax` | Moved out of Valley Lab in R2 (#12986): a `Character` record over a world's pack table, sizes under declared maximums, an idle face. Valley Lab runs on it with its TF0290 frames unchanged |
 | Skinning, morphs, groom, materials (GPU) | `apps/openagents-web/gpu/valleycanyon.coax` with `metaverse-engine/render/hair-fiber.coax`, `metaverse-engine/anim/morph-gpu.coax`, `metaverse-engine/render/pbr-env.coax` | Works in the Valley page only. Character shading is branches inside that page's `scene_fs` |
 | Lights | `metaverse-engine/render/slay-lights.coax` | The TF0290 studio rig, in the Valley page's own uniform slots |
 | Post pass (depth of field, skin blur) | `vc_post_fs`, run by `coax/web/host.js` | Generic host feature; any page with a `post_fs` gets it |
-| Pack | `~/.openagents/verse/private-build/web/valley-slay.pack`, pinned by `verse/valley/canyon-pack-policy.coax` | 1,023,634,576 bytes, owner-local. Its 35 mipmapped 4K RGBA8 layers reserve about 3.13 GB of GPU memory |
+| Pack | `~/.openagents/verse/private-build/web/valley-slay.pack`, pinned by `metaverse/valley/canyon-pack-policy.coax` | 1,023,634,576 bytes, owner-local. Its 35 mipmapped 4K RGBA8 layers reserve about 3.13 GB of GPU memory |
 | Groom | Valley pack | 118,339 curves, drawn as strands at a share set by the head's size on screen |
 | Everglade's characters | `apps/openagents-web/gpu/everglade-v1/gpu.coax` (3,597 lines), `metaverse-engine/anim/skin.coax` | CC0 Quaternius people, skinned from a storage buffer with four joints each, painterly shading |
 | Everglade's budgets | `apps/openagents-web/wasm-budgets.txt` | 2,000,446 of 2,150,000 wasm bytes used; 60 FPS rule from `metaverse-engine/core/frame-report.coax` |
@@ -69,7 +69,7 @@ Three constraints shaped the original plan:
 
 ### 1. One character runtime in the Metaverse Engine
 
-Move the CPU side out of `verse/valley/` into `metaverse-engine/character/` and make
+Move the CPU side out of `metaverse/valley/` into `metaverse-engine/character/` and make
 it work for any asset source:
 
 - `rig.coax`: joints, bind matrices, rest pose and capsules, sized from the
@@ -110,7 +110,7 @@ carries tiers, and the runtime streams the tier the camera needs:
 - **Groom levels.** Strand LODs already exist (the share rule). Add a cards
   tier, built by the packer from the same curves, for far views and phones.
 - The packer is a Coax tool that reads the existing Valley exports
-  (`verse/tools/valley-echo-bundle.coax` and `slay-shot-pack.coax` are the
+  (`metaverse/tools/valley-echo-bundle.coax` and `slay-shot-pack.coax` are the
   starting point). Rules from [private assets](private-assets.md) apply:
   packs stay out of git, and manifests in the repository name no private
   digest or placement.
@@ -172,7 +172,7 @@ supports both.
   or not permitted to load it, draw the far tier or the capsule fallback
   that [MetaHuman support](metahuman-support.md) already defines.
 - Echo's spot in Everglade, and the orbit camera, become an ordinary staged
-  shot: `?stage=echo` spawns her and runs `verse/valley/echo-orbit.coax`
+  shot: `?stage=echo` spawns her and runs `metaverse/valley/echo-orbit.coax`
   directly. The Valley page's N mode and the composite script then retire.
 
 ### 7. Native hosts
@@ -294,7 +294,7 @@ orbit with no second page:
   which `metaverse-engine/move/walk.coax` resolves through `metaverse-engine/physics/query.coax`), and in the
   follow camera's way (`camera_frame`, by `query_ray`). A page that never
   gets her pack has nothing unseen in its way.
-- **The orbit.** N runs `verse/valley/echo-orbit.coax` as a staged camera
+- **The orbit.** N runs `metaverse/valley/echo-orbit.coax` as a staged camera
   in her own frame. It holds its last frame until you move, then your own
   camera comes back.
 - **No room.** A staged page opens no room socket and no local host

@@ -45,12 +45,12 @@ keeps its state.
 | Content tables | **Exists, CLI only.** The editor isn't reachable from a page; the page doesn't load the tables yet (#13381) | `metaverse-engine/content/tables.coax`, `metaverse-engine/editor/content-edit.coax` |
 | Picking | **Partial.** `query_ray` exists; every editor picks its own way (Everglade by 56 px screen distance) | `metaverse-engine/physics/query.coax` |
 | Gizmos, outliner, inspector, fly camera, snapping, asset browser, play/simulate | **Missing** | — |
-| In-world editors | **Four, separate.** Everglade admin EDIT, the realm edit layer and agent pane, WorldBuilder (with a terrain brush, browser save only), Splice's layer (fixture only) | `everglade-edit.coax`, `verse/edit/`, `worldbuilder*.coax`, `verse/splice/layer*.coax` |
+| In-world editors | **Four, separate.** Everglade admin EDIT, the realm edit layer and agent pane, WorldBuilder (with a terrain brush, browser save only), Splice's layer (fixture only) | `everglade-edit.coax`, `metaverse/edit/`, `worldbuilder*.coax`, `metaverse/splice/layer*.coax` |
 | Programmatic building | **Partial.** `openagents realm` has 37 verbs and MCP `realm_*` tools. No `world_*` tools, and no world document with an id | `apps/openagents-cli/` |
 | Code changes from a browser | **Missing.** Coax compiles to C, then clang builds Wasm on a machine with the toolchain. A paired Coder has one; a browser doesn't | `coax/web/wasm.sh` |
 | Agents in `/chat` | **Exists.** Claude Code, Codex, Antigravity and Microcoder through the local Coder | `apps/openagents-web/chat-web.coax`, `coder/tui/mcp_http.coax` |
 | UI components | **Exist.** The frames set (frame, text, button, field, select, card, row, header, menu, notice, composer, tool call, code block), skinned by `mono.coax`, drawn by the browser through `dom.coax`: real text, Find, selection and screen readers | `components/kit/frames.coax`, `components/skin/mono.coax`, `components/backend/dom.coax` |
-| Retained rendering | **Splice's layer only.** Shared retained rendering is P6.1 (#13303) | `verse/splice/layer-draw.coax` |
+| Retained rendering | **Splice's layer only.** Shared retained rendering is P6.1 (#13303) | `metaverse/splice/layer-draw.coax` |
 
 ## What the sessions teach
 

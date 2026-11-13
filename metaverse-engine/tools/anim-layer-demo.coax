@@ -3,7 +3,7 @@
 #load "../../coax/lib/sys/tool.coax";
 #load "../../coax/lib/sys/fs.coax";
 #load "../../coax/lib/sys/proc.coax";
-#load "../../verse/animlab/layer-demo.coax";
+#load "../../metaverse/animlab/layer-demo.coax";
 #load "../anim/write.coax";
 #load "../anim/export-policy.coax";
 tool_main :: ()->int #export_c #effects(all) {

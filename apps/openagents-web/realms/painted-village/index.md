@@ -20,10 +20,10 @@ Houses, walls, trees, stalls, lamps, the bridge's rails and the cliff block you;
 - `metaverse-engine/arch/village.coax`, `metaverse-engine/arch/plaza.coax` and `metaverse-engine/arch/flora.coax` are the asset library: generators for a cottage, a stone house, a round tower, a church, a dry-stone wall, a coped wall, a gate pier, a lamp post, a banner pole, a signpost, bunting, a market stall, a crate, steps, a terrace, a fountain, a bench, banners, trees by species and season, bushes, far hills and the ground. Each takes a record of sizes and colours, and writes the solids that block you with its triangles (`metaverse-engine/arch/solids.coax`). `metaverse-engine/arch/README.md` lists every parameter.
 - `metaverse-engine/render/stylized.coax` is the look, an engine feature any world can use: materials painted from metres (courses of stone, scalloped roof tiles, boards, plaster, leaded lit windows, stained glass, banners, flagstones, leaves in four tones), sunlight in soft bands, soft shadows from a shadow map, aerial haze, painterly grass, dirt paths with soft edges, and a sky with heaped clouds placed by hand. `metaverse-engine/render/stylized-frame.coax` writes a frame's numbers for it.
 - `metaverse-engine/arch/land.coax` is the wild land: a cliff, boulders, a river, a waterfall, spray, a rainbow, a plank bridge, reeds and flowers. Water is drawn last in the engine's stylized water pass: depth tint, ripples that run downstream, and foam at the shore and round rocks.
-- `verse/painted/village-road.coax` is the village, and `verse/painted/wilds.coax` the country south of it. It only says which generators, with what parameters, and where.
+- `metaverse/painted/village-road.coax` is the village, and `metaverse/painted/wilds.coax` the country south of it. It only says which generators, with what parameters, and where.
 - `apps/openagents-web/painted.coax` is the page: the camera you walk and the HUD. `painted-face.c` binds it for the browser, and `gpu/painted.coax` names the engine's shaders (`build.sh` writes `painted.wgsl` from it).
 - Without WebGPU (a current Chrome, Edge or Safari) the page shows only its name and a link here.
 
 ## Make your own realm
 
-An agent can build one from a shallow clone of the repository and open a pull request: [verse/SKILL.md](https://github.com/OpenAgentsInc/openagents/blob/main/verse/SKILL.md).
+An agent can build one from a shallow clone of the repository and open a pull request: [metaverse/SKILL.md](https://github.com/OpenAgentsInc/openagents/blob/main/metaverse/SKILL.md).

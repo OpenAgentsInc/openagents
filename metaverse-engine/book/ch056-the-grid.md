@@ -1,7 +1,7 @@
 # 56. The Grid
 
 > **Status: partly implemented.** The Grid's session,
-> [verse/gridwalk.coax](../../verse/gridwalk.coax), is built from the
+> [metaverse/gridwalk.coax](../../metaverse/gridwalk.coax), is built from the
 > foundation chapters: chapter 1's clock, chapter 4's typed actions and the
 > touch sticks, chapter 9's walking controller over the Grid's declared
 > collision profile, chapter 10's camera follow, and chapter 5's replay,
@@ -38,7 +38,7 @@ A `GridWalk` is everything the Grid steps: you (chapter 9's `Player`, whose
 clock is chapter 1's), the input buffer the steps read (chapter 4), the
 phone's thumbs, and the record (chapter 5) with the state it starts from:
 
-<!-- source: verse/gridwalk.coax gridwalk-state -->
+<!-- source: metaverse/gridwalk.coax gridwalk-state -->
 ```jai
 GridWalk :: struct {
   profile: int = GW_PROFILE;
@@ -69,7 +69,7 @@ intent is one event in the record; then the steps the frame's time makes due
 run. A frozen frame (the page's golden pictures) runs no step and records
 nothing:
 
-<!-- source: verse/gridwalk.coax gridwalk-frame -->
+<!-- source: metaverse/gridwalk.coax gridwalk-frame -->
 ```jai
 // This frame's controls as one Intent: the touch stick when it is pushed past the dead zone,
 // else the keys; a jump from Space or a tap; the drag's, the arrows' and the right thumb's look
@@ -116,7 +116,7 @@ samples the input buffer once, and runs one step of the walking controller
 in the Grid's world (its declared collision profile, `the-grid`). The step
 leaves its state's digest in the record:
 
-<!-- source: verse/gridwalk.coax gridwalk-step -->
+<!-- source: metaverse/gridwalk.coax gridwalk-step -->
 ```jai
 // The frames the record holds for the next step, into the input buffer.
 gw_take :: (g: [] GridWalk, s: ReplaySession) #effects(all) {
@@ -158,7 +158,7 @@ The latest record replays from where it began into a second session. It is
 true only when every step gives the recorded digest and every frame is taken
 at its step:
 
-<!-- source: verse/gridwalk.coax gridwalk-replay -->
+<!-- source: metaverse/gridwalk.coax gridwalk-replay -->
 ```jai
 // Replays the latest record from where it began into `again`, which must not be the session
 // itself: true when every step gave the recorded digest and every frame was taken at its step.
@@ -211,7 +211,7 @@ middle:
 
 <!-- source: metaverse-engine/examples/walk-the-grid.coax example -->
 ```jai
-#load "../../verse/gridwalk.coax";
+#load "../../metaverse/gridwalk.coax";
 #import "Basic";
 
 cm :: (m: f32) -> int { return cast(int) (m * 100 + ifx m < 0 then -0.5f32 else 0.5f32); }
@@ -264,15 +264,15 @@ push, changed, is caught at the step where that frame's input is first read.
 
 ## Checks
 
-- `coax/bin/coax test verse/gridwalk.coax --library` (and `coax mutate
-  verse/gridwalk.coax --root-only`, `#authority`): placing, recording,
+- `coax/bin/coax test metaverse/gridwalk.coax --library` (and `coax mutate
+  metaverse/gridwalk.coax --root-only`, `#authority`): placing, recording,
   keyboard and stick reaching the same digests, the dead zone and taps, turns
   equal at 30, 60 and 144 FPS, the camera drawn between steps, replay and
   its fault, records that fill or are blurred starting new ones that replay,
   the digest's fields, and the camera following at 60 FPS without a jump.
 - The independent check is the browser. `coax/web/tool.sh replay-hosts grid`
   ([replay-hosts.coax](../../coax/web/replay-hosts.coax)) builds
-  [verse/tests/grid-session.coax](../../verse/tests/grid-session.coax), 1,000
+  [metaverse/tests/grid-session.coax](../../metaverse/tests/grid-session.coax), 1,000
   frames at 60, 120 and 144 FPS with a stall, keys, a drag, the wheel, the
   stick, a pinch and taps, to Wasm the way pages are built, runs it in
   headless, muted Chrome and compares every step's digest with the native
@@ -284,7 +284,7 @@ push, changed, is caught at the step where that frame's input is first read.
 
 ## What else the Grid draws today
 
-- [verse/grid.coax](../../verse/grid.coax): the bare world as aethyr-cpp's
+- [metaverse/grid.coax](../../metaverse/grid.coax): the bare world as aethyr-cpp's
   `grid.cpp` drew it (lines every 4 m to 264 m, street lines midway between
   24 m lots, fading from 6 m to 110 m, a ring at your feet, the Pylon
   terminal 4 m ahead), drawn from the touch sticks of
@@ -307,7 +307,7 @@ push, changed, is caught at the step where that frame's input is first read.
 
 - **The floor as one world-space grid, checked.** A line at world
   `x = 24` m must project to the same place for the same camera whether you
-  stand at the origin or 200 m away. `verse/grid.coax` draws its lines in
+  stand at the origin or 200 m away. `metaverse/grid.coax` draws its lines in
   world space; there is no check of that property yet.
 - **People as entities.** Everyone else from the room becomes a chapter 6
   entity with a stable ID; today the page keeps the room's answer itself

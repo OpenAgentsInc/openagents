@@ -116,7 +116,7 @@ Lab :: struct {
   panning: bool; shift: bool;        // Shift held: a drag pans
   fingers: int; fing_id: [2] int; fing_x: [2] f32; fing_y: [2] f32;   // touches down, for a pinch
   eye: Point; fwd: Point; right: Point; up: Point; focal: f32; cx: f32; cy: f32;
-  // a human pack (verse/tools/humans/pack_human.coax), when one has loaded: its joints' bind
+  // a human pack (metaverse/tools/humans/pack_human.coax), when one has loaded: its joints' bind
   // positions, its materials, its pieces as draws (u32 first, count, 0, 1) and the pose's
   // palette for the vertex shader (three rows of four per joint)
   mesh: bool; pack_in: int; pack_failed: bool; pack_body: int = -1;
@@ -233,7 +233,7 @@ head_axis :: (s: [] Lab, local: Point) -> Point { return turn_y(quat_rotate(s[0]
 // sit as the rig's upright rest and the clip's motion plays round that; standing clips do the
 // same with the legs (feet level, weight on both); every clip opens the fingers to
 // POSTURE_HAND of their curl (POSTURE_GRIP in a clip whose hand holds something). Clips that end on the ground (die, knock, cower) keep their trunk.
-// verse/tools/humans/ph_clips.coax applies the same for its checks.
+// metaverse/tools/humans/ph_clips.coax applies the same for its checks.
 POSTURE_SAMPLES :: 24;
 POSTURE_HAND :: 0.22;   // an empty hand: a relaxed curl, not a fist
 POSTURE_GRIP :: 0.7;    // a hand that holds (the lantern, the sword): most of the clip's grip
@@ -673,7 +673,7 @@ switch_body :: (s: [] Lab) {
   if mesh_on(s) { next_outfit(s); return; }   // a mesh is one body: the button steps its outfits
   s[0].female = !s[0].female; pose(s);
 }
-// The outfits a pack comes in (pack_human.coax --outfit, verse/tools/humans/ph_outfits.coax), after its
+// The outfits a pack comes in (pack_human.coax --outfit, metaverse/tools/humans/ph_outfits.coax), after its
 // own clothes: each is its own pack, base-OUTFIT.
 OUTFITS_N :: 3;
 outfit_name :: (i: int) -> string {

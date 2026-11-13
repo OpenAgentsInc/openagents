@@ -1,4 +1,4 @@
-// Before/after fixture for verse/fairy-forest/forest.coax's blooms, which
+// Before/after fixture for metaverse/fairy-forest/forest.coax's blooms, which
 // moved from a hand-written [FF_BLOOMS] Bloom and count to coax/lib/bounded.coax
 // (r4a-generic-values). It blooms every patch, then adds blooms past the
 // capacity, and prints what a caller can observe: the restored colour on a
@@ -6,7 +6,7 @@
 #import "Basic";
 #load "../../../metaverse-engine/cam/camera.coax";
 #load "../../../metaverse-engine/world/terrain.coax";
-#load "../../../verse/fairy-forest/forest.coax";
+#load "../../../metaverse/fairy-forest/forest.coax";
 
 fx_print :: (f: [] Forest, now: f64) {
   sum := 0.0;

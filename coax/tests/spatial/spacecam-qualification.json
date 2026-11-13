@@ -7,7 +7,7 @@
     "coax/tests/spatial/spacecam-native.coax": "8cf9e959f13332ea1e0a00494f23c90c817fc0ea734536df657aea10bca88168",
     "coax/tests/spatial-spacecam-native.c": "c40bc483d9c6887552a4ca461122af7f34550d936a4fdd105967a440c88878da",
     "coax/tests/spatial_spacecam.py": "734eabbe3ab833dc2e8583859249b853e6d5b0f34c6d1d2f12fd27b31f32ae25",
-    "verse/spacecam.coax": "0162f2fd8d4d6c1658a347ff98656ca374a9b5a1d3fbe29fe8bc92aa6f58dc35"
+    "metaverse/spacecam.coax": "0162f2fd8d4d6c1658a347ff98656ca374a9b5a1d3fbe29fe8bc92aa6f58dc35"
   },
   "cases_per_mode": 512,
   "coordinate_observations_per_mode": 1536,
@@ -194,7 +194,7 @@
         "/tmp/coax-spatial-first/coax",
         "test",
         "--library",
-        "verse/spacecam.coax",
+        "metaverse/spacecam.coax",
         "--only",
         "camera-relative displacement"
       ],
@@ -208,7 +208,7 @@
         "/tmp/coax-spatial-first/coax",
         "test",
         "--library",
-        "verse/spacecam.coax",
+        "metaverse/spacecam.coax",
         "--only",
         "a hull at 5 AU"
       ],
@@ -227,7 +227,7 @@
         "coax/tests/spatial/spacecam-native.coax": "ab69ad5ad2284d4967700ae8b23d8eaf772fc0293293098492894d49f583396c",
         "coax/tests/spatial-spacecam-native.c": "ebf661b55d6f2a61216bb0511ba553b47626963ec167465e8e19fec8427303c6",
         "coax/tests/spatial_spacecam.py": "b0dfdd3cdd9a87c1a3b85e67ba00d382cc93f77082471be52ebbc832d276625e",
-        "verse/spacecam.coax": "0162f2fd8d4d6c1658a347ff98656ca374a9b5a1d3fbe29fe8bc92aa6f58dc35"
+        "metaverse/spacecam.coax": "0162f2fd8d4d6c1658a347ff98656ca374a9b5a1d3fbe29fe8bc92aa6f58dc35"
       },
       "cases_per_mode": 512,
       "coordinate_observations_per_mode": 1536,

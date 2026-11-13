@@ -49,7 +49,7 @@ RUN :: 7.5;
 // The one setting for how you move (the owner's, 2026-10-29; meant to become
 // a player's setting): true, moving runs (RUN) and holding Shift walks
 // (WALK); false, moving walks and Shift runs. On a phone the stick decides
-// either way: a full push runs, a light one walks (verse/grid.coax RUN_PAST).
+// either way: a full push runs, a light one walks (metaverse/grid.coax RUN_PAST).
 RUN_BY_DEFAULT :: INPUT_RUN_BY_DEFAULT;   // metaverse-engine/core/input.coax holds the rule
 GRAVITY :: 24.0;        // m/s^2
 JUMP :: 7.5;            // m/s up: a 1.17 m peak
@@ -339,7 +339,7 @@ walk_input :: (p: Player, key_x: f32, key_y: f32, pad_x: f32, pad_y: f32,
 
 // Whether you run this frame, for every realm's face: shift is Shift held
 // (the key the realms call HOLD_RUN), stick_run the stick's full push
-// (verse/grid.coax), pad its travel. A stick past the dead zone decides; the
+// (metaverse/grid.coax), pad its travel. A stick past the dead zone decides; the
 // keys go by RUN_BY_DEFAULT, Shift turning it the other way.
 // A flying realm's frame of controls: walk_input's, plus `taps` (a tap is a press even while
 // the jump is held; one per frame, as the face counted them), whether you may beat and climb

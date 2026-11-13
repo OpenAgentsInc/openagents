@@ -1,7 +1,7 @@
 // Everglade's people as they look and live (eg-folk): each of the city's
 // people is put together from the Quaternius Universal Base Characters and
 // Modular Character Outfits - Fantasy parts in the realm's pack (a body's
-// outfit, a head, a hairstyle, maybe a beard or a hood; verse/tools/people.py
+// outfit, a head, a hairstyle, maybe a beard or a hood; metaverse/tools/people.py
 // rebinds every part onto one of two skeletons), and plays the Universal
 // Animation Library's clips through everglade/scene/people-rig.coax.
 // Who wears what, their skin, hair and dye are here, a row a spot of
@@ -35,8 +35,8 @@ PART_FEMALE_PEASANT :: 3; PART_FEMALE_RANGER :: 4; PART_FEMALE_HOOD :: 5;
 PART_MALE_HEAD :: 6; PART_FEMALE_HEAD :: 7;
 PART_HAIR_PARTED :: 8; PART_HAIR_BUZZED :: 9; PART_BEARD :: 10;
 PART_HAIR_LONG :: 11; PART_HAIR_BUNS :: 12; PART_HAIR_BUZZED_FEMALE :: 13;
-PART_MALE_ROBE :: 14; PART_FEMALE_ROBE :: 15;   // a long robe over the outfit (verse/tools/people.py robe_mesh)
-// The Cultist Raid's robes (verse/tools/humans/cult_robe.py), on the male body: hood, sleeves, belt and
+PART_MALE_ROBE :: 14; PART_FEMALE_ROBE :: 15;   // a long robe over the outfit (metaverse/tools/people.py robe_mesh)
+// The Cultist Raid's robes (metaverse/tools/humans/cult_robe.py), on the male body: hood, sleeves, belt and
 // boots in one, dyed with the person's dye (variant 1: gold trim); a far copy each for the crowd;
 // and the bare hands that show from their sleeves. A raider wears robe, hands and PART_MALE_HEAD.
 PART_CULT_ROBE :: 16; PART_CULT_ROBE_FAR :: 17; PART_DARIAN_ROBE :: 18; PART_DARIAN_ROBE_FAR :: 19;

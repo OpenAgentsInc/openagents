@@ -8,7 +8,7 @@ Two styles exist:
 
 - **SCIFI**: the OpenAgents Metaverse's instrument look. Grey and cyan glow lines, cut corners
   and thin bars. Most realms use it, and its drawing code stays where it is:
-  `verse/hud/frame.coax`, `metaverse-engine/ui/draw.coax` and the Arwes frames in
+  `metaverse/hud/frame.coax`, `metaverse-engine/ui/draw.coax` and the Arwes frames in
   `metaverse-engine/ui/arwes-*.coax`.
 - **FANTASY**: dark iron and bronze frames, warm gold type, parchment, rounded
   corners with diamond studs, framed segmented bars, recessed slots and a gold

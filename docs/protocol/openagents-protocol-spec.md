@@ -573,7 +573,7 @@ proto/openagents/
   # Interface (§29)
   ui/v1/                Verse view tree (legacy/ui-v1), intents, activation, tokens
   engine/v1/            (exists) engine-neutral runtime contracts
-  verse/...             Chapter V: everything 3D
+  metaverse/...             Chapter V: everything 3D
 
   # Telemetry and evidence (§30)
   telemetry/v1/         product events, playtest events, consent, automation marking

@@ -11,7 +11,7 @@
 // and its checks can read.
 // It replaced the realms' own accumulators: metaverse-engine/move/player.coax's (f32 seconds, 1/64 s, 8 steps,
 // 0.25 s), Orbit League's (f64, 1/120 s, a carry capped at 8 steps), Dead Gears' ECS clock
-// (f64, 1/60 s, 0.1 s, 8 steps), verse/demolish.coax's (f64, 1/60 s, 0.25 s, 6 steps), Hold the
+// (f64, 1/60 s, 0.1 s, 8 steps), metaverse/demolish.coax's (f64, 1/60 s, 0.25 s, 6 steps), Hold the
 // Stair's (f32, 1/60 s, 0.1 s, up to 64 steps) and the 0.1 s clamps in the page faces' C.
 //   coax/bin/coax test metaverse-engine/core/loop.coax --library
 //   coax/bin/coax mutate metaverse-engine/core/loop.coax

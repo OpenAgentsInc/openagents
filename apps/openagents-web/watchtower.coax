@@ -15,7 +15,7 @@
 
 #load "../../metaverse-engine/ui/font.coax";
 #load "../../coax/web/analytics.coax";
-#load "../../verse/edit/edit.coax";   // EDIT for its owner and admins (docs/verse/realm-edit.md)
+#load "../../metaverse/edit/edit.coax";   // EDIT for its owner and admins (docs/verse/realm-edit.md)
 #load "../../metaverse-engine/core/loop.coax";   // the fixed steps: Aethyr's one clock (metaverse-engine/book ch001)
 
 VERTEX_FLOATS :: 16;
@@ -1028,7 +1028,7 @@ draw_hud :: (s: [] Watch, out: [] f32, at: int, w: f32, h: f32, k: f32, t: f32) 
   n = say_at(out, n, "DEFENSE RANGE · SIMULATED", pad + 4 * k, pad + title + 4 * k + cap * 1.6, cap * 0.8, ink(k, 0.6, DIM));
   // REALMS
   n = draw_button(s, out, n, s[0].galaxy, "WORLDS", k, WHITE, false, s[0].pressing == 100);
-  // EDIT, left of REALMS, for its owner and admins (verse/edit/edit.coax); open, the shift waits
+  // EDIT, left of REALMS, for its owner and admins (metaverse/edit/edit.coax); open, the shift waits
   g := s[0].galaxy;
   ew := text_width("EDIT", 9 * k) + 32 * k;
   n = redit_hud(s[0].ed[..], out, n, RBox.{x0 = g.x0 - 8 * k - ew, y0 = g.y0, x1 = g.x0 - 8 * k, y1 = g.y1});

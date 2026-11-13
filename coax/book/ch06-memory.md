@@ -628,7 +628,7 @@ the view `squares` writes through is valid the whole time. The first line of
 of writing part of the answer and trapping halfway.
 
 This is the most common shape of procedure in the Metaverse code. The camera
-in `verse/grid.coax` writes a 4x4 matrix for the native renderer like
+in `metaverse/grid.coax` writes a 4x4 matrix for the native renderer like
 this:
 
 ```jai
@@ -847,7 +847,7 @@ IEEE bit pattern for 1.0, which is the `scale` we got. Its partners are
 share any memory; it's for code that copies between buffers and must not
 copy a buffer onto itself.
 
-> Note: This is how `verse/cast.coax` loads the character and robot
+> Note: This is how `metaverse/cast.coax` loads the character and robot
 > animation file. `verse_cast_open :: (b: [] u8) -> Cast` checks the
 > file's length, magic, version and buffer count with `int_at`, `u32_at`
 > and friends, and returns a `Cast` that isn't `ok` if anything is off. The

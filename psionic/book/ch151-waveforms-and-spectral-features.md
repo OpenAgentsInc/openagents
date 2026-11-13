@@ -25,9 +25,9 @@ unit, [`spectral.coax`](../lib/spectral.coax):
 - log-mel features with an added or clamped guard, and per-feature
   normalization.
 
-The verse voice engine (`verse/voice.coax`) already resamples microphone
+The verse voice engine (`metaverse/voice.coax`) already resamples microphone
 audio to 16 kHz and measures levels and voice activity; it has no transform.
-The water renderer (`verse/water-spectrum.coax`) has a two-dimensional
+The water renderer (`metaverse/water-spectrum.coax`) has a two-dimensional
 single-precision inverse FFT tied to its ocean tiles. Neither fits here: this
 unit works in binary64, in one dimension, on any size, with a reference to
 check it against. Audio at another rate is refused, not resampled; the caller

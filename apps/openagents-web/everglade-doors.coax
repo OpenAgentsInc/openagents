@@ -14,7 +14,7 @@
 //     the doorway; open, it stands against the room's side of the wall, out of the way in.
 //   - E's order when several things are in reach: a person to talk to, then a door, then the quest
 //     board, then a rowboat (everglade.coax everglade_key, talk_pointer and talk_prompt).
-//   - A door broken by a spell (verse/demolish.coax) is the debris's: it has no prompt until R stands
+//   - A door broken by a spell (metaverse/demolish.coax) is the debris's: it has no prompt until R stands
 //     it again.
 //
 //   coax/bin/coax test apps/openagents-web/everglade.coax --only "doors"

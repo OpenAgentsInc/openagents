@@ -47,9 +47,9 @@
       "title": "Build a realm from Claude Code: the skill, the shallow clone, the pull request",
       "size": "M",
       "labels": ["episode-290", "docs", "realm-builder"],
-      "body": "What the talk told the room to do: clone the repo one level deep, open Claude Code, point it at the repo, build a realm and open a pull request. A skill file (verse/SKILL.md, linked from /llms.txt and the realm pages' index.md) that tells an agent how a realm is made (realms.json entry, the .coax module, the style block, stage=highlight, tests, goldens), the shallow-clone command, how to run it locally, and what the PR must pass. Test it: a fresh agent with only a shallow clone and the skill makes a small new realm that passes the checks.",
+      "body": "What the talk told the room to do: clone the repo one level deep, open Claude Code, point it at the repo, build a realm and open a pull request. A skill file (metaverse/SKILL.md, linked from /llms.txt and the realm pages' index.md) that tells an agent how a realm is made (realms.json entry, the .coax module, the style block, stage=highlight, tests, goldens), the shallow-clone command, how to run it locally, and what the PR must pass. Test it: a fresh agent with only a shallow clone and the skill makes a small new realm that passes the checks.",
       "acceptance": [
-        "verse/SKILL.md exists and /llms.txt points to it",
+        "metaverse/SKILL.md exists and /llms.txt points to it",
         "A fresh agent run from a --depth 1 clone, given only the skill, produces a realm that passes coax test, realms.test.ts and builds locally (transcript of the run noted on the task)"
       ],
       "blocked_by": []

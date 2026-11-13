@@ -10,10 +10,10 @@
   },
   "source_sha256": {
     "metaverse-engine/render/native-host.coax": "63ea840411544aa4bf690538265f1ed9547a87a50fb991ef74d2e2b4753c1fde",
-    "verse/native/render-realm.c": "3bd499d748819fdf28832b69eec7719d4081b1ce96dc166b87c446fc1a66fa37",
-    "verse/native/face.h": "5cd6f0ca28b05049d876f9464a12406dd6bff83e735adf648d8c21915180b96b",
-    "verse/native/realm-host.c": "c0643710e17024bb46992f00ac99364221be94b3dcb341c8b41dbe26691a16db",
-    "verse/gpu/vk-realm.c": "aa351a15345db4e63d71415cf2d7e6c89412f6ff17268806a9c60aba6ecccde7"
+    "metaverse/native/render-realm.c": "3bd499d748819fdf28832b69eec7719d4081b1ce96dc166b87c446fc1a66fa37",
+    "metaverse/native/face.h": "5cd6f0ca28b05049d876f9464a12406dd6bff83e735adf648d8c21915180b96b",
+    "metaverse/native/realm-host.c": "c0643710e17024bb46992f00ac99364221be94b3dcb341c8b41dbe26691a16db",
+    "metaverse/gpu/vk-realm.c": "aa351a15345db4e63d71415cf2d7e6c89412f6ff17268806a9c60aba6ecccde7"
   },
   "data_owner_capacity_exports": [
     "realm",

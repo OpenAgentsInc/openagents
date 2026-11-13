@@ -69,7 +69,7 @@ def main():
     toolchain = run(cc + ["--version"], "native-compiler-version").stdout.splitlines()[0]
     sources = {
         "sequence": ROOT / "coax/tests/sequence/fixture.coax",
-        "verse": ROOT / "verse/gpu/everglade-pass.coax",
+        "verse": ROOT / "metaverse/gpu/everglade-pass.coax",
         "psionic": ROOT / "psionic/lib/serve-engine.coax",
     }
     generated = {}

@@ -1,0 +1,293 @@
+// MetaHuman Lab's human pack (docs/verse/metahuman-support.md, "MetaHuman Lab"): one skinned
+// human, its meshes, skin weights on the 65-joint people rig and its texture maps, compiled into
+// one VPK1 file (metaverse/tools/pack_realm.py has the container) that the lab's page loads with
+// `private:human` (coax/web/host.js). Offline tooling; never shipped or run by a page.
+//
+//     coax/web/tool.sh metaverse/tools/humans/pack_human.coax standin [OUT.pack] [--outfit NAME]
+//     coax/web/tool.sh metaverse/tools/humans/pack_human.coax metahuman EXPORT_DIR [OUT.pack] [--outfit NAME] [--phone]
+//
+// --phone also writes NAME-phone.pack beside it (write(): smaller layers, the body and clothes from
+// their first lower level of detail, a lean face rig), the one host.js asks for on a phone.
+// --outfit dresses the body in a Quaternius fantasy outfit (ph_outfits.coax: fantasy, hooded, robe, mayoral)
+// instead of the portrait's clothes (a MetaHuman) or none (the stand-in). OUT.pack defaults to
+// ~/.openagents/verse/private-build/web/NAME.pack (standin.pack or human.pack, or with the
+// outfit's name after a dash: human-fantasy.pack), the directory coax/web/serve.c serves as /private/ on a local address. Nothing
+// this writes goes into git: a MetaHuman pack is a MetaHuman asset (private, never used to train
+// AI models), and the stand-in stays beside it so both load the same way.
+//
+// Sources:
+//   standin    the Quaternius Universal Base Characters' superhero male (CC0), with its eyes,
+//              brows and parted hair, already on the people rig's 65 joints (ph_gltf.coax, people.py's
+//              part_file, rebinds it onto the rig's male rest pose).
+//   metahuman  a MetaHuman export's DNA meshes, dumped by OpenRigLogic's dna_dump --skin
+//              (scripts in the export's tree; see ph_metahuman.coax), each joint folded onto the
+//              rig's 65 (metaverse-engine/anim/mannequin.coax mannequin_fold) and posed from MetaHuman's A pose
+//              into the rig's T pose.
+//
+// The pack's entries: the catalog (text), the vertices, the indices (u32), then the layers
+// (JPEG, or PNG where a layer has alpha), every layer the same size.
+//
+// The catalog, a line each:
+//   human NAME                    the source's name
+//   body male|female              the people rig's body whose clips it plays
+//   licence TEXT                  what its art is under
+//   outfit NAME BASE              what it wears (student, bare, or a ph_outfits.coax outfit) and the
+//                                 pack's name without it (the lab's OUTFIT button: ?pack=BASE&outfit=)
+//   B J X Y Z                     joint J's bind position (metres, the figure's own space, the
+//                                 rig's rest pose: +y up, +z forward, the figure's left +x)
+//   M MATERIAL R G B ROUGH        a material's tint (thousandths, linear) and roughness scale
+//   P NAME FIRST COUNT MATERIAL   a piece: its indices into the index buffer, its material
+//   L LAYER ROLE SOURCE           a layer: base, normal (tangent space, green toward +v, down the
+//                                 image: a map whose green points up is flipped, green_up()) or
+//                                 rough (G)
+//   box X0 Y0 Z0 X1 Y1 Z1         the bind pose's bounds
+//   D LOD NAME FIRST COUNT MATERIAL  a piece at a lower level of detail (1, 2: reduce()), after
+//                                 every P line, the levels in order; the eyes' blended layers
+//                                 have none
+//   F FIRST COUNT BYTES           a face rig (ph_face.coax): its vertices' range in the vertex
+//                                 buffer, and its block's length; the block follows the text
+//                                 after a NUL (metaverse-engine/anim/facerig.coax reads it)
+//
+// A vertex is 32 bytes (vertex() below): position (x, y, z unorm16 across SPAN from LOW), its
+// piece's material, the normal and tangent (octahedral, 2 x unorm16 each), the bitangent's
+// sign, uv (2 x unorm16), four joints (u8) and their weights (u8, 255ths summing to 255), and the
+// layers its material reads (base, normal, rough; 255 none).
+//
+// Materials: 1 skin, 2 eye, 3 hair, 4 brow, 5 cloth, 6 teeth, 7 eye wet layer, 8 to 16 more
+// cloths (a colour each, from the portrait's materials; 8 to 24), 25 the eyes' occlusion. A material
+// with no base layer is its tint. The wet layer and the occlusion are blended over the eyes (the lab draws
+// them last, as the host's water: one pass multiplies what lies behind, one adds): their uv is not
+// a texture's but lid_coords', u from the lid's margin (0) inward (1), v up the eye's opening, and
+// the wet layer's tint is its roughness (the occlusion's colour is scene_fs's: past the lab's 24
+// material rows).
+//
+// The port keeps the Python tool's numbers bit for bit (ph_num.coax: its sum(), float(), round()
+// and "%.nf"; ph_core.coax: its dict and set orders), so for the same inputs the packs are the
+// same: the catalog, vertices, indices and JPEG layers byte for byte, a PNG layer's pixels (its
+// zlib stream is pillow.coax's, not Pillow's).
+// tool.sh: stack-gib 8
+// tool.sh: release
+#load "../../../coax/lib/sys/tool.coax";
+#load "../../../coax/lib/sys/proc.coax";
+#load "ph_pack.coax";
+#load "ph_outfits.coax";
+#load "ph_face.coax";
+#load "ph_metahuman.coax";
+#load "ph_portrait.coax";
+#import "Basic";
+
+QUATERNIUS :: "/Downloads/Universal Base Characters[Standard]";
+OUTFITS_REL :: "/Downloads/Modular Character Outfits - Fantasy[Standard]/Exports/glTF (Godot-Unreal)/Outfits";
+
+// Everything the tool holds, in one place on its stack (a Coax program keeps its buffers in locals).
+World :: struct {
+  home: string; homeb: [1024] u8;
+  txt: [1] Txt; st: [1] Store; g: [1] Gltf; pk: [1] Pack; iw: []ImgWork; wr: [1] Writer; rd: [1] Reduce;
+  h1: [1] Hmap; h2: [1] Hmap; lw: [1] LidWork; fr: []FaceRig; ow: []OutfitWork; mw: []MhWork; pt: []PortWork;
+  cl: [1] Clips; ps: [1] Poses; ew: [1] EdgeWork; pw: []PeekWork; u: [1] Under; mats: [1] OutMats;
+  bflag: [TG_MAX] bool; leg: [TG_MAX] bool; thigh: [TG_MAX] bool; force: [TG_MAX] bool; gid: [GL_VERTS * 2] int; cnt: [UGROUPS] int;
+  kept: [GL_VERTS * 2][3] int; under_t: [GL_VERTS * 2][3] int;
+}
+home_path :: (w: []World, rel: string) -> string { return txt_cat(w[0].txt[..], w[0].home, rel); }
+
+// an image a glTF names, or its sibling without the exporter's "_png" (the kit ships those); "" for none
+found :: (w: []World, path: string) -> string {
+  if fs_exists(path) { return path; }
+  if ends(path, "_png.png") {
+    alt := txt_cat(w[0].txt[..], path[0..<path.count - 8], ".png");
+    if fs_exists(alt) { return alt; }
+  }
+  return "";
+}
+// a material's maps (base, normal, rough): "" where it has none
+material_maps :: (w: []World, g: []Gltf, mat_name: string) -> [3] string {
+  r: [3] string;
+  for mi: 0..<g[0].nx[GA_MAT] {
+    m := g[0].ix[GA_MAT][mi];
+    if gl_str(g, m, "name") != mat_name { continue; }
+    pbr := gl_get(g, m, "pbrMetallicRoughness");
+    r[0] = gl_tex_path(w, g, ifx pbr >= 0 then gl_get(g, pbr, "baseColorTexture") else -1);
+    r[1] = gl_tex_path(w, g, gl_get(g, m, "normalTexture"));
+    r[2] = gl_tex_path(w, g, ifx pbr >= 0 then gl_get(g, pbr, "metallicRoughnessTexture") else -1);
+    return r;
+  }
+  return r;
+}
+gl_tex_path :: (w: []World, g: []Gltf, t: int) -> string {
+  if t < 0 { return ""; }
+  img := gl_at(g, GA_IMG, gl_int(g, gl_at(g, GA_TEX, gl_int(g, t, "index", 0)), "source", 0));
+  return found(w, txt_cat3(w[0].txt[..], g[0].dir, "/", gl_str(g, img, "uri")));
+}
+
+// ---- the stand-in: Quaternius' superhero male, CC0
+standin :: (w: []World, outfit: int) {
+  skel: [1] Skel;
+  sk_file(home_path(w, txt_cat(w[0].txt[..], OUTFITS_REL, "/Male_Peasant.gltf")), skel[..], w[0].g[..]);
+  if skel[0].n != JOINTS { ph_die("pack_human: the people rig isn't 65 joints"); }
+  pk := w[0].pk[..];
+  pk[0].nb = JOINTS; pk[0].bw = 3;
+  for k: 0..<JOINTS { p := sk_pos(skel[0], k); for c: 0..<3 { pk[0].binds[k][c] = p[c]; } }
+  base := home_path(w, txt_cat(w[0].txt[..], QUATERNIUS, "/Base Characters/Godot - UE"));
+  hair := home_path(w, txt_cat(w[0].txt[..], QUATERNIUS, "/Hairstyles/Rigged to Head Bone/glTF (Godot -Unreal)"));
+  paths: [2] string; force: [2] string; ns := 1;
+  paths[0] = txt_cat(w[0].txt[..], base, "/Superhero_Male_FullBody.gltf"); force[0] = "";
+  if outfit < 0 || OUTFIT_HAIR[outfit] { paths[1] = txt_cat(w[0].txt[..], hair, "/Hair_SimpleParted.gltf"); force[1] = "hair"; ns = 2; }
+  for s: 0..<ns {
+    path := paths[s];
+    prims: [1] Prims;
+    none: [1] string;
+    part_file(path, none[0..<0], skel[0], w[0].st[..], w[0].txt[..], prims[..], w[0].g[..]);
+    // (part_file left this file loaded: its materials' maps)
+    for q: 0..<prims[0].n {
+      pr := prims[0].p[q];
+      material := force[s];
+      if material.count == 0 {
+        material = ifx pr.material == "MI_Superhero_Male" then "skin" else ifx pr.material == "MI_Eyes" then "eye" else ifx pr.material == "MI_Hair_1" then "brow" else "cloth";
+      }
+      maps := material_maps(w, w[0].g[..], pr.material);
+      tf := pr.tf; tn := pr.tn;
+      if outfit >= 0 && material == "skin" {
+        r := dressed_standin(w, outfit, pr, skel[0]);
+        tf = r[0]; tn = r[1];
+      }
+      if outfit >= 0 && material == "hair" && OUTFIT_CLIP_HAIR[outfit].count > 0 {
+        r := clip_hair(w, outfit, pr.vf, pr.vn, tf, tn);
+        tf = r[0]; tn = r[1];
+      }
+      pack_piece(pk, txt_cat3(w[0].txt[..], stem(path), "/", pr.material), pr.vf, pr.vn, tf, tn, material, maps[0], maps[1], maps[2], w[0].iw[..]);
+    }
+  }
+  pack_tint(pk, "skin", [4] f64.[1.0, 1.0, 1.0, 1.0]);
+  pack_tint(pk, "eye", [4] f64.[1.0, 1.0, 1.0, 0.4]);
+  pack_tint(pk, "hair", [4] f64.[0.16, 0.1, 0.06, 0.55]);
+  pack_tint(pk, "brow", [4] f64.[0.16, 0.1, 0.06, 0.6]);
+  pack_tint(pk, "cloth", [4] f64.[1.0, 1.0, 1.0, 1.0]);
+  pack_tint(pk, "wet", [4] f64.[1.0, 1.0, 1.0, 0.06]);
+  for i: 0..<pk[0].np {
+    if pk[0].pieces[i].material == MAT_EYE { eye_layers(pk, w[0].st[..], pk[0].pieces[i], w[0].lw[..], w[0].h1[..], w[0].iw[..]); break; }
+  }
+}
+
+// dressed_standin(): the outfit fitted onto the stand-in's body (the same steps as a MetaHuman's),
+// its edges checked in the lab's clips; the body's triangles not under the cloth (tf, tn)
+dressed_standin :: (w: []World, outfit: int, body: Prim, skel: Skel) -> [2] int {
+  ow := w[0].ow[..]; st := w[0].st[..];
+  ow[0].ntg = body.vn;
+  if body.vn > TG_MAX { ph_die("pack_human: a body past the port's target"); }
+  for i: 0..<body.vn {
+    v := st[0].v[body.vf + i];
+    ow[0].tx[i] = vscale(v.p, 100.0); ow[0].tn[i] = v.n;
+    wl: Wl; for k: 0..<4 { if v.w[k] > 0 { wl = wl_push(wl, cast(int) v.j[k], cast(f64) v.w[k] / 255.0); } }
+    ow[0].tw[i] = wl;
+  }
+  for k: 0..<skel.n { ow[0].tj[k] = vscale(sk_pos(skel, k), 100.0); }
+  outfit_fit(outfit, ow, st, w[0].txt[..], w[0].g[..], w[0].iw[..], w[0].home);
+  clips_load(w[0].cl[..], false, w[0].g[..], w[0].txt[..], w[0].home);
+  clip_poses(w[0].cl[..], w[0].pk[0].binds[..], w[0].pk[0].bw, false, w[0].ps[..]);
+  bb: [4096] u8; bad: [1] Sb; bad[0] = sb(bb[..]);
+  if outfit_edges(ow, w[0].ps[..], w[0].ew[..], w[0].h1[..], bad[..]) { ph_die2("standin: torn cloth (edge outliers) in ", sb_text(bad[..])); }
+  w[0].mats[0].n = 0;
+  outfit_packed(ow, w[0].pk[..], st, w[0].mats[..], w[0].iw[..]);
+  n := body.vn;
+  xs := ow[0].tx[0..<n]; ws := ow[0].tw[0..<n];
+  lower := ow[0].lower[0..<ow[0].nj];
+  outfit_legs(outfit, lower, ws, w[0].leg[..]);
+  covered(ow, xs, ow[0].tn[0..<n], ws, w[0].bflag[..]);
+  nh := 0; for i: 0..<n { w[0].bflag[i] = w[0].bflag[i] || w[0].leg[i]; if w[0].bflag[i] { nh += 1; } }
+  outfit_thighs(ow, w[0].leg[..], xs, w[0].thigh[..]);
+  for i: 0..<n { w[0].force[i] = w[0].leg[i] && !w[0].thigh[i]; }
+  outfit_under(ow, lower, xs, ws, w[0].thigh[..], w[0].force[..], w[0].u[..], w[0].iw[..]);
+  lb: [4096] u8; o: [1] Sb; o[0] = sb(lb[..]);
+  sb_put(o[..], "standin: body points under the cloth: "); sb_int(o[..], nh); sb_put(o[..], " of "); sb_int(o[..], n); sb_put(o[..], "; drawn as the cloth under it: ");
+  for g: 0..<w[0].u[0].n { if g > 0 { sb_put(o[..], ", "); } sb_put(o[..], w[0].u[0].g[g].name); sb_byte(o[..], ' '); sb_int(o[..], w[0].u[0].g[g].n); }
+  sb_line(o[..]);
+  if body.tn > w[0].gid.count { ph_die("pack_human: a body past the port's triangles"); }
+  x := split_under(st, body.tf, body.tn, w[0].u[..], w[0].cnt[..], w[0].kept[..], w[0].gid[..]);
+  // the kept: the skin's triangles not all hidden, appended anew
+  tf := st[0].nt; nk := 0;
+  for e: 0..<body.tn {
+    if w[0].gid[e] >= 0 { continue; }
+    t := st[0].t[body.tf + e];
+    if w[0].bflag[t[0]] && w[0].bflag[t[1]] && w[0].bflag[t[2]] { continue; }
+    w[0].kept[nk] = t; nk += 1;
+  }
+  for e: 0..<nk { y := st_tri(st, w[0].kept[e][0], w[0].kept[e][1], w[0].kept[e][2]); }
+  nu := 0;
+  for g: 0..<w[0].u[0].n { for e: 0..<body.tn { if w[0].gid[e] == g { w[0].under_t[nu] = st[0].t[body.tf + e]; nu += 1; } } }
+  outfit_pack_under(w[0].pk[..], st, body.vf, body.tf, body.tn, w[0].gid[..], w[0].u[..], w[0].mats[..], w[0].txt[..], w[0].iw[..], w[0].home, "under");
+  bad[0].n = 0;
+  if peeks(ow, lower, xs, ws, w[0].kept[0..<nk], w[0].under_t[0..<nu], w[0].ps[..], w[0].pw[..], bad[..]) { ph_die2("standin: skin shows through the cloth: ", sb_text(bad[..])); }
+  return [2] int.[tf, nk];
+}
+clip_hair :: (w: []World, outfit: int, vf: int, vn: int, tf: int, tn: int) -> [2] int {
+  t0 := w[0].st[0].nt;
+  n := outfit_clipped(w[0].ow[..], w[0].st[..], vf, vn, tf, tn, OUTFIT_CLIP_HAIR[outfit]);
+  return [2] int.[t0, n];
+}
+
+USAGE :: "usage: coax/web/tool.sh metaverse/tools/humans/pack_human.coax standin [OUT.pack] [--outfit NAME] [--phone] [--size N]\n       coax/web/tool.sh metaverse/tools/humans/pack_human.coax metahuman EXPORT_DIR [OUT.pack] [--outfit NAME] [--phone] [--size N]";
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) { ph_die("pack_human: arguments past the port's buffer"); }
+  w: [1] World;
+  iw: [1] ImgWork; ow: [1] OutfitWork; pw: [1] PeekWork; fr: [1] FaceRig; mw: [1] MhWork; pt: [1] PortWork;
+  w[0].iw = iw[..]; w[0].ow = ow[..]; w[0].pw = pw[..]; w[0].fr = fr[..]; w[0].mw = mw[..]; w[0].pt = pt[..];
+  w[0].home = proc_getenv("HOME", w[0].homeb[..]);
+  pos: [8] string; npos := 0; size := 1024; size_given := false; phone := false; outfit := -1;
+  i := 0;
+  while i < args_count(a[..]) {
+    s := args_at(a[..], i);
+    if s == "--size" && i + 1 < args_count(a[..]) { size = pint(args_at(a[..], i + 1)); size_given = true; i += 2; continue; }
+    if s == "--phone" { phone = true; i += 1; continue; }
+    if s == "--outfit" && i + 1 < args_count(a[..]) {
+      outfit = outfit_index(args_at(a[..], i + 1));
+      if outfit < 0 { ph_die("pack_human: outfits are ['fantasy', 'hooded', 'mayoral', 'robe']"); }
+      i += 2; continue;
+    }
+    if npos < 8 { pos[npos] = s; npos += 1; }
+    i += 1;
+  }
+  if npos == 0 || (pos[0] != "standin" && pos[0] != "metahuman") { ph_die(USAGE); }
+  pk := w[0].pk[..];
+  suffix := ifx outfit >= 0 then txt_cat(w[0].txt[..], "-", OUTFIT_NAMES[outfit]) else "";
+  out: string;
+  out_dir := home_path(w[..], "/.openagents/verse/private-build/web");
+  if pos[0] == "standin" {
+    pk[0].name = "standin"; pk[0].body = "male";
+    pk[0].licence = ifx outfit >= 0 then txt_cat(w[0].txt[..], "Quaternius Universal Base Characters|CC0 1.0; ", OUTFIT_LICENCE) else "Quaternius Universal Base Characters|CC0 1.0";
+    pk[0].outfit = ifx outfit >= 0 then OUTFIT_NAMES[outfit] else "bare"; pk[0].outfit_base = "standin";
+    standin(w[..], outfit);
+    out = ifx npos > 1 then pos[1] else txt_cat(w[0].txt[..], out_dir, txt_cat3(w[0].txt[..], "/standin", suffix, ".pack"));
+  } else {
+    if npos < 2 { ph_die("pack_human: metahuman EXPORT_DIR [OUT.pack]"); }
+    pk[0].name = "metahuman"; pk[0].body = "male";
+    lic := "MetaHuman (private; never committed, never used to train AI models)";
+    pk[0].licence = ifx outfit >= 0 then txt_cat3(w[0].txt[..], lic, "; ", OUTFIT_LICENCE) else lic;
+    export := pos[1];
+    if starts(export, "~/") { export = home_path(w[..], export[1..<export.count]); }
+    while export.count > 1 && export[export.count - 1] == '/' { export = export[0..<export.count - 1]; }
+    out = ifx npos > 2 then pos[2] else txt_cat(w[0].txt[..], out_dir, txt_cat3(w[0].txt[..], "/human", suffix, ".pack"));
+    st := stem(out);
+    base := ifx suffix.count > 0 && ends(st, suffix) then st[0..<st.count - suffix.count] else st;
+    dressed := fs_exists(txt_cat(w[0].txt[..], dir_name(export), "/latest/mh.neutral.glb"));
+    pk[0].outfit = ifx outfit >= 0 then OUTFIT_NAMES[outfit] else ifx dressed then "student" else "bare";
+    pk[0].outfit_base = base;
+    mh_build(w[..], export, outfit);
+    if !size_given { size = imax(size, 2048); }
+  }
+  total := pack_write(pk, w[0].st[..], out, size, false, w[0].wr[..], w[0].rd[..], w[0].h1[..], w[0].h2[..], w[0].iw[..], w[0].fr);
+  report(w[..], out, total);
+  if phone {
+    small := txt_cat3(w[0].txt[..], dir_name(out), "/", txt_cat(w[0].txt[..], stem(out), "-phone.pack"));
+    total = pack_write(pk, w[0].st[..], small, PHONE_SIZE, true, w[0].wr[..], w[0].rd[..], w[0].h1[..], w[0].h2[..], w[0].iw[..], w[0].fr);
+    report(w[..], small, total);
+  }
+  return 0;
+}
+// the catalog's last line, "-> OUT (N bytes)"
+report :: (w: []World, out: string, total: int) {
+  t := cast(string) w[0].wr[0].text[0..<w[0].wr[0].ntext];
+  s := t.count - 1; while s > 0 && t[s - 1] != '\n' { s -= 1; }
+  print("% -> % (% bytes)\n", t[s..<t.count - 1], out, total);
+}

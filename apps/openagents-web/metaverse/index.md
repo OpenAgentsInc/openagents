@@ -4,7 +4,7 @@ The way into the Metaverse playtest at https://openagents.com/metaverse: A HAUNT
 
 In the house there is one camera, behind you, and only your name, the minimap, a voice button and the hotbar on screen: take a thing from the hotbar and click or tap where it goes ([the world's page](../realms/haunted-house/index.md) has the controls).
 
-Under the button is the Agent orb, the playtest's guide. Hold it and talk: it answers out loud what the playtest is for, what the OpenAgents Metaverse is and what the Haunted House is, and its words show under it. The microphone is on only while you hold it (push to talk, `coax/web/voice.js`, the voice host's `guide` route in `verse/voice-host/speech.c`).
+Under the button is the Agent orb, the playtest's guide. Hold it and talk: it answers out loud what the playtest is for, what the OpenAgents Metaverse is and what the Haunted House is, and its words show under it. The microphone is on only while you hold it (push to talk, `coax/web/voice.js`, the voice host's `guide` route in `metaverse/voice-host/speech.c`).
 
 Behind it, faint grey worlds pull on each other. Press and hold in the stars to make one: it grows while held, joins the rest when let go, bounces once off another and then merges with it in a burst of sparks.
 

@@ -349,7 +349,7 @@ if os.environ.get("WAKE_PORT"):
     seat_saw("runner-open", [b for p, b in runner_raw if p == "/seat/open"][0])
     seat_saw("runner-close", [b for p, b in runner_raw if p == "/seat/close"][0])
     seat_saw("runner-act", [b for p, b in runner_raw if p == "/seat/act"][0])
-    # The YOUR AGENT pane (verse/edit/agent.coax): the realm's own page, logged in on this site, opens,
+    # The YOUR AGENT pane (metaverse/edit/agent.coax): the realm's own page, logged in on this site, opens,
     # acts in and closes a hosted seat with its session; another site's page and the player key can't.
     site_cookie = login_cookie(pubkey_of(OK_))
     on_page = {"Content-Type": "application/json", "Cookie": site_cookie, "Origin": API}

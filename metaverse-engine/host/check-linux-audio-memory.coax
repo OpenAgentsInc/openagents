@@ -20,7 +20,7 @@ hma_close :: () #foreign #effects(all);
 tool_main :: ()->int #export_c #effects(all) {
  a:[1]Args;if !args_load(a[..])||args_count(a[..])!=2 {tool_errln("usage: check-linux-audio-memory NEW_OUT REPO");return 2;}
  dir:=args_at(a[..],0);root:=args_at(a[..],1);if !fs_mkdir(dir) {return 1;}
- paths:[2][4096]u8;inputs:[1]RtqInputs;for name:[3]string.["verse/native/audio-host.c","verse/native/audio-host.h","metaverse-engine/host/tests/linux-audio-memory-effects.c"] {if !rtq_input_add(inputs[..],fs_join(root,name,paths[0][..])) {return 1;}}
+ paths:[2][4096]u8;inputs:[1]RtqInputs;for name:[3]string.["metaverse/native/audio-host.c","metaverse/native/audio-host.h","metaverse-engine/host/tests/linux-audio-memory-effects.c"] {if !rtq_input_add(inputs[..],fs_join(root,name,paths[0][..])) {return 1;}}
  self:[4096]u8;n:=cxproc_self_path(self[..]);if n<1||!rtq_input_add(inputs[..],cast(string)self[0..<n]) {return 1;}
  source:[44]u8;for i:0..<44 {source[i]=u8(37+i);}if hma_open(source[..])!=1 {return 1;}defer {hma_close();}
  memory:[20]int;bad_frames:=[6]int.[-1,0,9223372036854775807,1,1,4194305];bad_channels:=[6]int.[1,1,1,0,3,2];

@@ -1,7 +1,7 @@
 // In-memory dictation audio, using the Metaverse's existing resampler and VAD.
 #load "dictation-policy.coax";
 #load "dictation-device.coax";
-#load "../../verse/voice.coax";
+#load "../../metaverse/voice.coax";
 DCT_RING :: 16000;
 DctState :: struct {
  gate:DctGate;clip:[]f32;n:int;speech:int;last_tick:int = -1;

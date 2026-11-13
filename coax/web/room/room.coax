@@ -9,7 +9,7 @@
 // registration in room-games.coax, which names them. Up to CONNS sockets.
 //
 // room-host.c moves the bytes: TCP, the RFC 6455 handshake and frames
-// (verse/voice-host/ws.c), and the clock. It calls the exports here and
+// (metaverse/voice-host/ws.c), and the clock. It calls the exports here and
 // sends what they write. (The Coax WebSocket server, coax/lib/net/ws_server.coax,
 // is #authority, and an authority file runs every loaded check on every
 // build within 20,000,000 steps; the games' physics checks run longer, so the

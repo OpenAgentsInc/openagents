@@ -169,9 +169,9 @@ numbers moved out of the app into the OpenAgents Metaverse Engine:
 | `cg_sign`, `cg_normal_pack`, `cg_normal_unpack`, the view-point reconstruction and contact taps | `metaverse-engine/render/contact-shade.coax` (`shade_*`) |
 
 The `cg_*` names stay as thin delegates, so Everglade II, Experimental and the lighting probes
-compile unchanged until their consumers read the resolver (#13066). `verse/character-glade.coax`
+compile unchanged until their consumers read the resolver (#13066). `metaverse/character-glade.coax`
 holds the glade's composition (terrain, path, planting, town) and no lighting, so nothing moved from
-it. `verse/style-preset.coax`'s painterly preset names the glade profile as its default environment
+it. `metaverse/style-preset.coax`'s painterly preset names the glade profile as its default environment
 (`environment = ENV_GLADE_ID`, `verse_style_environment`); its bands, rim, dab and `shadow_cool`
 stay as the material response on top, and the other styles name none.
 

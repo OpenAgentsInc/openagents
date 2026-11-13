@@ -107,7 +107,7 @@
       "limitations": [
         "The small teaching session does not qualify a rendered or playable full realm, general rigid-body simulation or Forge artifacts.",
         "Browser/Wasm parity belongs to a separate retained harness. This CPU route starts no server, WebGPU page or audio playback.",
-        "Existing component consumers such as verse/gridwalk.coax keep their recorded adoption scope. These examples neither migrate a whole realm nor add an adopted_by relationship."
+        "Existing component consumers such as metaverse/gridwalk.coax keep their recorded adoption scope. These examples neither migrate a whole realm nor add an adopted_by relationship."
       ],
       "prerequisites": {
         "compiler": "An existing Coax executable with native C emission, supplied with --coax. Receipts bind its actual bytes and options; the runner does not build it.",
@@ -130,7 +130,7 @@
       "evidence": [
         "metaverse-engine/book/examples.json",
         "metaverse-engine/tests/book-chapter9-qualification.json",
-        "verse/gridwalk.coax"
+        "metaverse/gridwalk.coax"
       ],
       "steps": [
         {

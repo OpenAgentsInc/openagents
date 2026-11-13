@@ -1398,7 +1398,7 @@ ab_frame_more :: (s: [] Everglade, dt: f32) {
 
 // ---- each frame
 
-// The fields over what flies (verse/demolish.coax DemoWorld.fields), the people off their feet,
+// The fields over what flies (metaverse/demolish.coax DemoWorld.fields), the people off their feet,
 // the smoke the walls keep out; before the debris steps.
 ab_frame :: (s: [] Everglade, dt: f32) {
   a := ab_of(s);
@@ -1440,7 +1440,7 @@ ab_frame :: (s: [] Everglade, dt: f32) {
     }
   }
 }
-// The fields as verse/demolish.coax reads them; how many.
+// The fields as metaverse/demolish.coax reads them; how many.
 ab_fields :: (s: [] Everglade, out: [] DemoField) -> int {
   a := ab_of(s);
   n := 0;

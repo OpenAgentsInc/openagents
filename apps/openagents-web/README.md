@@ -29,7 +29,7 @@ The page's old address, `/verse`, and the project page's, `/projects/verse`, mov
 
 ```sh
 coax/bin/coax test apps/openagents-web/newland.coax --steps 400000000
-coax/web/tool.sh suites                              # every suite here, in verse/, coax/web/ and coax/lib/, each at its header's budget
+coax/web/tool.sh suites                              # every suite here, in metaverse/, coax/web/ and coax/lib/, each at its header's budget
 coax/web/serve.sh apps/openagents-web                # http://127.0.0.1:8800/, hot reload
 apps/openagents-web/build.sh                         # release build: all page modules
 coax/remote/pages.sh origin/main                     # main's built pages from the shared store, built once per commit

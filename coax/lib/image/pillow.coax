@@ -1,5 +1,5 @@
 // Image operations as Pillow 13 computes them, for tools ported from Python that must make the
-// same pixels (verse/tools/humans/pack_human.coax, #12859). Each follows Pillow's C
+// same pixels (metaverse/tools/humans/pack_human.coax, #12859). Each follows Pillow's C
 // (src/libImaging): Resample.c (BICUBIC and LANCZOS: double coefficients, normalized, then
 // 22-bit fixed point; two passes, the order Pillow picks), Convert.c (L from RGB by its 16-bit
 // luma, RGBA to and from premultiplied RGBa, which Image.resize uses for RGBA), BoxBlur.c

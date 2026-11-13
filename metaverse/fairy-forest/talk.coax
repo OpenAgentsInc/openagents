@@ -1,0 +1,166 @@
+// Fairy Forest's creatures talk (task ff-talk, metaverse/fairy-forest/README.md
+// "The core: helping people"): who each one is, what it says as you pass,
+// and the question's body for the character chat (POST
+// /api/playtest/npc/ask, coax/web/api/npc.c). The server remembers a player
+// for each of them by name (migrations/0031_npc_memory.sql), so what you
+// told one on an earlier visit it can recall. Its trouble and how far you
+// have helped go into what it knows, so it asks for help while its glade is
+// grey and thanks you once it is green again. The page (fairy.coax) opens
+// the talk; its face (fairy-face.c) sends the body and hands back the answer.
+//   coax/bin/coax test apps/openagents-web/fairy.coax   (these checks run with the page's)
+#load "talk-words.coax";   // who they are, as words (the server reads the same)
+#load "../../metaverse-engine/talk/wire.coax";   // the NPC ask's one codec (E4, #13247)
+
+FF_REMARK_NEAR :: 12.0;    // metres: near enough to hear a creature's passing remark
+
+FF_ROWAN_GIVES :: "TAKE MY OLD AXE, LITTLE ONE. DEADWOOD CHOKES THE PATHS.";
+FF_ROWAN_SAYS :: "HOW IS THAT AXE? DEADWOOD MAKES GOOD TOOLS.";
+// What talker c says first: a creature's trouble or thanks, or Rowan's word.
+ff_talker_says :: (f: [] Forest, c: int, axe: bool) -> string {
+  if c == FF_WOODCUTTER { return ifx axe then FF_ROWAN_SAYS else FF_ROWAN_GIVES; }
+  return ff_says(f, c);
+}
+
+// What each says as you pass, a little way off: three while its glade is grey
+// (how it feels), two once it is green. Each time you come by it says the next.
+FF_GREY_REMARKS :: 3; FF_GREEN_REMARKS :: 2;
+FF_REMARKS :: [25] string.[
+  "THE MOSS SMELLS OF NOTHING TODAY.", "NOT ONE BERRY ON THE BUSHES.", "MY TUMMY IS RUMBLING.",
+  "MY BURROW IS COSY AGAIN.", "THE MUSHROOMS ARE BACK. SUPPER!",
+  "IS IT FAR TO THE REEDS? I'VE NOT HOPPED THAT FAR IN AGES.", "SO SLEEPY. THE POND IS TOO QUIET.", "MY VOICE IS ALL WORN OUT.",
+  "LISTEN TO THE CHOIR.", "BRRRUP! I FEEL TEN YEARS YOUNGER.",
+  "IT'S SO DARK UNDER THESE TREES.", "DID SOMETHING MOVE OVER THERE?", "PLEASE DON'T GO TOO FAR.",
+  "THE FRUIT IS GLOWING. LOOK!", "I'M NOT SCARED ANY MORE.",
+  "MIND THE THORNS, LITTLE ONE.", "WHICH WAY IS HOME? I FORGET.", "EVERY PATH LOOKS THE SAME.",
+  "SMELL THOSE ROSES.", "HOME IS JUST THERE. I CAN SEE IT.",
+  "THE STONES ARE COLD AND QUIET.", "I HAVEN'T SLEPT IN DAYS.", "YAWN. THE STONES KEEP ME UP.",
+  "THE STONES ARE SINGING TONIGHT.", "A GOOD DAY TO REMEMBER."
+];
+FF_REMARKS_EACH :: FF_GREY_REMARKS + FF_GREEN_REMARKS;
+FF_FEEL_WORDS :: [5] string.["happy", "worried", "lost", "hungry", "tired"];
+
+// Its passing remark the turn'th time you come by: never the same twice running.
+ff_remark :: (f: [] Forest, c: int, turn: int) -> string {
+  if c < 0 || c >= FF_CREATURES { return ""; }
+  t := ifx turn < 0 then 0 else turn;
+  if ff_feel(f, c) == FEEL_HAPPY { return FF_REMARKS[c * FF_REMARKS_EACH + FF_GREY_REMARKS + t % FF_GREEN_REMARKS]; }
+  return FF_REMARKS[c * FF_REMARKS_EACH + t % FF_GREY_REMARKS];
+}
+
+// ---- the question's scene, as words (the NPC ask's codec, metaverse-engine/talk/wire.coax, writes the body)
+
+// A JSON string's inside (" and \ escaped, a control byte as a space), for fairyroom.coax's own
+// messages; the NPC ask is the codec's.
+ff_json :: (out: [] u8, at: int, text: string) -> int {
+  n := at;
+  for i: 0..<text.count {
+    c := text[i];
+    if n + 2 >= out.count { return n; }
+    if c == '"' || c == '\\' { out[n] = '\\'; out[n + 1] = c; n += 2; continue; }
+    out[n] = ifx c < 32 then cast(u8) ' ' else c; n += 1;
+  }
+  return n;
+}
+ff_raw :: (out: [] u8, at: int, text: string) -> int {
+  n := at;
+  for i: 0..<text.count { if n < out.count { out[n] = text[i]; n += 1; } }
+  return n;
+}
+ff_digit :: (out: [] u8, at: int, v: int) -> int {
+  if at >= out.count { return at; }
+  out[at] = cast(u8) ('0' + clamp_i(v, 0, 9));
+  return at + 1;
+}
+clamp_i :: (v: int, a: int, b: int) -> int { if v < a { return a; } if v > b { return b; } return v; }
+
+// What creature c's glade is like now, as the page sees it: how far the fairy has helped it, how
+// it feels, the roots and the heart tree. Who it is and its trouble are the server's
+// (talk-words.coax); this goes as the question's scene, which the server quotes in the player's turn.
+ff_scene :: (out: [] u8, at: int, f: [] Forest, c: int) -> int {
+  g := cast(int) FF_CREATURE[c * 4 + 2];
+  done := ff_glade_done(f, g); all := ff_glade_patches(g);
+  n := ff_raw(out, at, "Patches the fairy has bloomed in your glade so far: ");
+  n = ff_digit(out, n, done); n = ff_raw(out, n, " of "); n = ff_digit(out, n, all); n = ff_raw(out, n, ".");
+  if done >= all {
+    n = ff_raw(out, n, " Your trouble is solved: the fairy talking to you did it. Thank them warmly, and say what has changed for you.");
+  } else if done > 0 {
+    n = ff_raw(out, n, " The fairy has started to help you; say what is still grey and where.");
+  } else {
+    n = ff_raw(out, n, " Ask the fairy for help with it, kindly.");
+  }
+  n = ff_raw(out, n, " You feel ");
+  n = ff_raw(out, n, FF_FEEL_WORDS[ff_feel(f, c)]);
+  n = ff_raw(out, n, " now.");
+  n = ff_raw(out, n, " Roots of the heart tree awake: ");
+  n = ff_digit(out, n, ff_roots_awake(f)); n = ff_raw(out, n, " of 5.");
+  if f[0].heart { n = ff_raw(out, n, " The heart tree has bloomed and colour is back in the whole park: the fairy saved the forest."); }
+  return n;
+}
+
+// One line of the talk so far: who said it (true: the creature) and what.
+FfLine :: struct { npc: bool; text: string; }
+
+// The body for /api/playtest/npc/ask (#13261): talker c's id, the world, this visit's stamp, a
+// creature's scene (ff_scene; Rowan has none), the talk so far (oldest first) and the question,
+// written by the NPC ask's one codec (metaverse-engine/talk/wire.coax). Who it is, its trouble, the park and
+// its keeper's lore (edit mode's panes) are the server's. The bytes written, or 0 when it didn't fit.
+ff_ask_body :: (out: [] u8, f: [] Forest, c: int, lines: [] FfLine, question: string, visit: string) -> int {
+  if c < 0 || c >= FF_TALKERS || lines.count > NPC_HISTORY { return 0; }
+  id: [16] u8;
+  idn := ff_talker_id(c, id[..]);
+  scene: [2048] u8; sn := 0;
+  if c != FF_WOODCUTTER { sn = ff_scene(scene[..], 0, f, c); }
+  turns: [NPC_HISTORY] NpcTurn;
+  for k: 0..<lines.count { turns[k] = NpcTurn.{npc = lines[k].npc, text = lines[k].text}; }
+  n := npc_ask_write(NpcAsk.{npc = cast(string) id[0..<idn], world = FF_WORLD_ID, has_visit = true, visit = visit,
+                             scene = cast(string) scene[0..<sn], history = turns[0..<lines.count], question = question}, out);
+  return ifx n > 0 then n else 0;
+}
+
+ff_has :: (text: string, part: string) -> bool {
+  if part.count > text.count { return false; }
+  for i: 0..<text.count - part.count + 1 { if text[i..<i + part.count] == part { return true; } }
+  return false;
+}
+
+#test "every creature has a persona under the server's cap, a trouble and its remarks, never the same twice running" {
+  f: [1] Forest; f[0].news = -1;
+  for c: 0..<FF_CREATURES {
+    #assert FF_PERSONA[c].count > 20 && FF_PERSONA[c].count <= 120;
+    #assert FF_TROUBLE[c].count > 20;
+    for r: 0..<FF_REMARKS_EACH { #assert FF_REMARKS[c * FF_REMARKS_EACH + r].count > 0 && FF_REMARKS[c * FF_REMARKS_EACH + r].count < 64; }
+    for t: 0..<6 { #assert ff_remark(f[..], c, t) != ff_remark(f[..], c, t + 1); }
+    #assert ff_feel(f[..], c) == FF_TROUBLE_FEEL[c] && ff_feel(f[..], c) != FEEL_HAPPY;
+  }
+  // helped: a happy creature says its green remarks
+  for i: 0..<FF_PATCHES { if cast(int) FF_PATCH[i * 4 + 3] == cast(int) FF_CREATURE[2] { #assert ff_bloom(f[..], i, 1); } }
+  #assert ff_feel(f[..], 0) == FEEL_HAPPY && ff_remark(f[..], 0, 0) == FF_REMARKS[FF_GREY_REMARKS];
+  name: [16] u8;
+  #assert cast(string) name[0..<ff_name(3, name[..])] == "Burdock";
+}
+
+#test "the question's body is JSON, the talker by id and how far it's been helped as the scene" {
+  f: [1] Forest; f[0].news = -1;
+  out: [8192] u8;
+  lines := [2] FfLine.[FfLine.{npc = true, text = "Hello."}, FfLine.{npc = false, text = "I'm \"Wren\"\nhi"}];
+  n := ff_ask_body(out[..], f[..], 0, lines[..], "What's wrong?", "1730000000000");
+  body := cast(string) out[0..<n];
+  #assert n > 0 && body[0] == '{' && body[n - 1] == '}';
+  #assert ff_has(body, "{\"npc\":\"bramble\",\"world\":\"fairy-forest\",\"visit\":\"1730000000000\",\"scene\":\"Patches the fairy");
+  #assert ff_has(body, "so far: 0 of 3.") && ff_has(body, "Ask the fairy for help") && !ff_has(body, "hedgehog") && !ff_has(body, "knowledge");
+  #assert ff_has(body, "{\"from\":\"player\",\"text\":\"I'm \\\"Wren\\\" hi\"}");
+  #assert ff_has(body, "\"question\":\"What's wrong?\"}");
+  // helped: it thanks you
+  for i: 1..<4 { #assert ff_bloom(f[..], i, 1); }
+  n = ff_ask_body(out[..], f[..], 0, lines[0..<0], "Hi", "1");
+  body = cast(string) out[0..<n];
+  #assert ff_has(body, "so far: 3 of 3.") && ff_has(body, "Thank them warmly") && ff_has(body, "\"history\":[]");
+  small: [64] u8;
+  #assert ff_ask_body(small[..], f[..], 0, lines[..], "x", "1") == 0 && ff_ask_body(out[..], f[..], FF_TALKERS, lines[..], "x", "1") == 0;
+  n = ff_ask_body(out[..], f[..], FF_WOODCUTTER, lines[..], "x", "1");
+  #assert n > 0 && ff_has(cast(string) out[0..<n], "{\"npc\":\"rowan\",") && !ff_has(cast(string) out[0..<n], "scene") && FF_ROWAN_PERSONA.count <= 120;
+  // the answer is the codec's to read (npc_answer_text): one line, as the server writes it
+  t: [64] u8;
+  m := npc_answer_text("{\"text\": \"Oh, \\\"thank\\\" you!\\nTruly.\", \"model\": \"gemini\"}", t[..]);
+  #assert cast(string) t[0..<m] == "Oh, \"thank\" you! Truly.";
+}

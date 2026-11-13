@@ -22,7 +22,7 @@ tool_main :: ()->int #export_c #effects(all) {
  paths:[4][4096]u8;lp:=fs_join(out,"layers.list",paths[0][..]);dest:=fs_join(out,"layers.rgba",paths[1][..]);
  if o[0].bad || !fs_write(lp,jo_text(o[..])) {return 1;}
  digits:[32]u8;w:[1]Jo;jo_start(w[..],digits[..]);jo_int(w[..],side);
- cmd:=[5]string.[fs_join(root,"coax/web/tool.sh",paths[2][..]),fs_join(root,"verse/gpu/layers.coax",paths[3][..]),lp,dest,jo_text(w[..])];
+ cmd:=[5]string.[fs_join(root,"coax/web/tool.sh",paths[2][..]),fs_join(root,"metaverse/gpu/layers.coax",paths[3][..]),lp,dest,jo_text(w[..])];
  stdout:[65536]u8;stderr:[65536]u8;run:=proc_run(cmd[..],840000,stdout[..],stderr[..]);
  if run.started!=0 || run.status!=0 || run.timed_out || run.cut {tool_errln(cast(string)stderr[0..<run.err_n]);return 1;}
  stage:=render_native_texture_stage(2,RenderNativeTextureKind.layers,side,side,layers,img_levels(side,side),u64(fs_size(dest)),67108864);

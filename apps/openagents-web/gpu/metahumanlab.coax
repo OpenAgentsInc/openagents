@@ -1,7 +1,7 @@
 // MetaHuman Lab's shaders (metahumanlab.coax): build.sh writes apps/openagents-web/metahumanlab.wgsl
 // from this with coax/web/wgsl-module.coax (metahumanlab.module and metahumanlab.bindings beside it).
 #load "../../../metaverse-engine/gpu/wgsl.coax";
-#load "../../../verse/style.coax";
+#load "../../../metaverse/style.coax";
 #load "../../../metaverse-engine/render/sampling.coax";
 
 // bg_fs traces each pixel against the scene: a studio floor (a soft grey with a metre grid, fading
@@ -282,7 +282,7 @@ mhlab_bg_fs :: (pos:V4,u:[]f32,shadow_map:TexDepth,shadow_cmp:SamplerCompare)->M
   }
   return MhlabBg.{light=v4(c.x,c.y,c.z,0.0f32),aux=v4(0.0f32,0.0f32,0.0f32,0.0f32),depth=depth};
 }
-// ---- the mesh (a human pack, verse/tools/humans/pack_human.coax): GPU skinning by four joints of
+// ---- the mesh (a human pack, metaverse/tools/humans/pack_human.coax): GPU skinning by four joints of
 // the pose (metahumanlab.coax lab_palette: three rows of four per joint), drawn into the depth
 // buffer bg_fs has written the floor into, lit by the key (with its shadow map), a fill, a rim
 // and the sky. MhlabU's mesh rows (floats):

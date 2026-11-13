@@ -203,7 +203,7 @@ timing, stance swap, feedback) as long as the SRD still decides each outcome.
   (`experimental-combat.coax:1270`), and visible enemy arrows and rocks
   (`experimental-combat.coax:665`).
 - **Enemy tells.** A shot has a 0.6 s draw or wind-up before it leaves the hand
-  (`verse/experimental-hostiles.coax:29-31`). Melee swings and area attacks have
+  (`metaverse/experimental-hostiles.coax:29-31`). Melee swings and area attacks have
   no ground telegraph.
 - **Your own areas.** Hovering Thunderwave previews its footprint, and a cast
   keeps it in place (`experimental-combat.coax:1774`).
@@ -257,7 +257,7 @@ timing, stance swap, feedback) as long as the SRD still decides each outcome.
 2. **Red ground telegraphs for monster attacks (medium).** Each monster's melee
    reach and area attack shows a red zone for its wind-up. A melee swing you
    leave before impact misses, and leaving still provokes the Opportunity
-   Attack the SRD allows. Files: `verse/experimental-hostiles.coax`,
+   Attack the SRD allows. Files: `metaverse/experimental-hostiles.coax`,
    `apps/openagents-web/experimental-combat.coax` (draw beside the Thunderwave
    footprint at line 1774).
 3. **A dodge step that is the SRD's Disengage or Dodge (medium).** Shift hops
@@ -300,7 +300,7 @@ timing, stance swap, feedback) as long as the SRD still decides each outcome.
    961), `metaverse-engine/action/bow.coax`.
 10. **Health bars on targeted and recently damaged foes, and a combat-start
     sting (small).** Files: `apps/openagents-web/experimental-combat.coax`,
-    `verse/experimental-hostiles.coax`.
+    `metaverse/experimental-hostiles.coax`.
 11. **A Ranger stealth beat (large, later).** Neverwinter's 5-second stealth
     daily has an SRD path: Hide, then attack from hiding with Advantage. Make
     Hide readable (a fade and a "hidden" mark) before adding more. Files:

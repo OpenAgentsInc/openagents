@@ -77,7 +77,7 @@ Stream :: struct {
 }
 
 clr_ramp :: (a: f32, b: f32, x: f32) -> f32 { t := (x - a) / (b - a); t = ifx t < 0 then 0 else ifx t > 1 then 1 else t; return t * t * (3 - 2 * t); }
-// The glade's hash (verse/character-glade.coax cg_hash) and value noise over whole-number cells, so a
+// The glade's hash (metaverse/character-glade.coax cg_hash) and value noise over whole-number cells, so a
 // zone that already ragged its clearing with them keeps the same edge.
 clr_hash :: (a: f32, b: f32) -> f32 { v := sin(a * 127.1 + b * 311.7) * 43758.5453; return v - floor(v); }
 clr_noise :: (x: f32, z: f32) -> f32 {

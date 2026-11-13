@@ -93,7 +93,7 @@ them.
   it.
 - **#ef04, #5869:** both change the generated protobuf importer. Their
   acceptance needs the affected iOS consumers built and run
-  (`verse/home.coax`'s generated configuration codecs), and this host has no
+  (`metaverse/home.coax`'s generated configuration codecs), and this host has no
   Xcode. Their designs (`docs/research/nostr-proto-*-design.md`) are drafts,
   not accepted API decisions. They are best done on the Mac, or after the
   owner accepts a Linux-only partial.

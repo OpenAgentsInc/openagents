@@ -101,7 +101,7 @@ def scoped_files():
             out.append((f, "links"))
         elif f.startswith("docs/transcripts/"):
             continue
-        elif f.endswith(".md") and (f.startswith(("docs/", "coax/", "verse/")) or f in ("README.md", "AGENTS.md", "INVARIANTS.md", "NEEDS_OWNER.md")):
+        elif f.endswith(".md") and (f.startswith(("docs/", "coax/", "metaverse/")) or f in ("README.md", "AGENTS.md", "INVARIANTS.md", "NEEDS_OWNER.md")):
             out.append((f, "cited"))
         elif re.fullmatch(r"psionic/(examples|lib)/.+\.coax", f) or re.fullmatch(r"psionic/tests/[^/]+\.(py|sh|c)", f):
             out.append((f, "code"))

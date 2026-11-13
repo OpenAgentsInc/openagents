@@ -1,6 +1,6 @@
 # Fairy Forest
 
-A Metaverse realm, drawn flat, you walk in the browser at https://openagents.com/worlds/fairy-forest. It is a first version, unlisted: the [worlds list](https://openagents.com/worlds) leaves it out, so you open it by its address. The plan for the whole world is in `verse/fairy-forest/README.md`.
+A Metaverse realm, drawn flat, you walk in the browser at https://openagents.com/worlds/fairy-forest. It is a first version, unlisted: the [worlds list](https://openagents.com/worlds) leaves it out, so you open it by its address. The plan for the whole world is in `metaverse/fairy-forest/README.md`.
 
 ## The park
 
@@ -24,11 +24,11 @@ Each glade has a creature with a trouble: Bramble the hedgehog in Mossbank, Pip 
 
 ## Talking
 
-Press E by a creature, or click or tap it (TALK on a phone), to talk to it. Type and press Enter to say something; Esc or BYE ends the talk. It answers in character, knows its trouble and how far you have helped, thanks you once its glade is green, and remembers what you told it on earlier visits (the character chat, `POST /api/playtest/npc/ask`). Who each creature is lives in `verse/fairy-forest/talk.coax`.
+Press E by a creature, or click or tap it (TALK on a phone), to talk to it. Type and press Enter to say something; Esc or BYE ends the talk. It answers in character, knows its trouble and how far you have helped, thanks you once its glade is green, and remembers what you told it on earlier visits (the character chat, `POST /api/playtest/npc/ask`). Who each creature is lives in `metaverse/fairy-forest/talk.coax`.
 
 ## The look
 
-The flat style (`docs/verse/art-styles.md`, Flat): flat-shaded low poly in a cosy pastel palette of olive and lime, cattail orange, pale mint, lavender and cream, three flat tones of light a shape, flat translucent shadows, a flat sky over a soft horizon band, no grass, the stream in flat bands with a cream shore line, and the lakes in a few flat tones by depth with light bands along the shore and slow ripple lines. The shading functions and the palette are `verse/style.coax`; the layout, creatures and the restore loop are `verse/fairy-forest/forest.coax` and `verse/fairy-forest/park.coax`, and the stream and pond are `verse/fairy-forest/stream.coax`.
+The flat style (`docs/verse/art-styles.md`, Flat): flat-shaded low poly in a cosy pastel palette of olive and lime, cattail orange, pale mint, lavender and cream, three flat tones of light a shape, flat translucent shadows, a flat sky over a soft horizon band, no grass, the stream in flat bands with a cream shore line, and the lakes in a few flat tones by depth with light bands along the shore and slow ripple lines. The shading functions and the palette are `metaverse/style.coax`; the layout, creatures and the restore loop are `metaverse/fairy-forest/forest.coax` and `metaverse/fairy-forest/park.coax`, and the stream and pond are `metaverse/fairy-forest/stream.coax`.
 
 ## Saving
 
@@ -40,4 +40,4 @@ No voice talk yet.
 
 ## Make your own world
 
-An agent can build one from a shallow clone of the repository and open a pull request: [verse/SKILL.md](https://github.com/OpenAgentsInc/openagents/blob/main/verse/SKILL.md).
+An agent can build one from a shallow clone of the repository and open a pull request: [metaverse/SKILL.md](https://github.com/OpenAgentsInc/openagents/blob/main/metaverse/SKILL.md).

@@ -198,7 +198,7 @@ The range's mesh is one entry in the glade pack (`C glade/range`), added
 with:
 
 ```sh
-coax/web/tool.sh verse/tools/assets/character_glade_pack.coax --append-range IN.pack OUT.pack
+coax/web/tool.sh metaverse/tools/assets/character_glade_pack.coax --append-range IN.pack OUT.pack
 ```
 
 Everglade Experimental and the range run the same zone: the same walker, bow,
@@ -250,7 +250,7 @@ which fivelab also runs, and the range's four.
 In the Mac app the world list's row for the Archery Range opens this realm
 natively, through the OpenAgents Metaverse Engine's page host, with its sound
 ([app scenes spec](app-scenes-spec.md), section 4). The app builds the module
-as the site does (`verse/native/build.sh archery-range OUT` takes the module,
+as the site does (`metaverse/native/build.sh archery-range OUT` takes the module,
 its face and the libraries `build.sh` links it with) into
 `libarchery-range.dylib`, and the realm table (`Realms.swift`) names it. Its
 pack is Experimental's, so the app keeps one copy. The range and Experimental

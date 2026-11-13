@@ -28,7 +28,7 @@ their stage of the rename lands.
 | The planner | `POST /api/playtest/realms/plan`, migrations 0048-0097 | Gemini under a schema built from the catalogue; 1-2 s a board; scored by `eval-builder.sh` (99% of asked things covered, 76% drawn as asked). |
 | The catalogue | `verse.builder_catalogue()` | 20 features: land, buildings, water, trees, plants, lanterns, flocks, props, characters, houses, herds, mist, dwellings, village, enclosure, centre, layout, path, tools; 4 cameras, 3 styles, 6 grounds, 4 times, 4 palettes. |
 | The made realm | `/realms/<slug>`, `myrealm.coax` (3,858 lines + shapes, site, things) | Live. Reads its spec once a second for its owner, so any edit shows within a second (4a0ba95164). |
-| Editing in the realm | `verse/edit/edit.coax`: EDIT, FEATURES, SETTINGS, cards, lore, quests | Live for owners and admins. |
+| Editing in the realm | `metaverse/edit/edit.coax`: EDIT, FEATURES, SETTINGS, cards, lore, quests | Live for owners and admins. |
 | Typed edits | `metaverse-engine/editor/edit.coax`; the server's log, `coax/web/api/migrations/0111_realm_edit_log.sql` | Every revision path as one invertible edit, undo/redo, saves fenced by revision (409 on a stale one). The server keeps the same per-slot log: undo and redo apply one step's inverses, and lore and quests are in the document. |
 | The voice | migrations 0104-0106 | Switch a feature, open a panel, ask for a thing, ask about the screen (the frame goes to Gemini). |
 | The CLI and MCP | `openagents realm ...` (35 verbs), `openagents mcp` | `new`, `revise`, `switch`, `move`, `place`, `ask`, `undo`, `publish`, `fork`, `shot`, `play`/`look`/`go`/`say`, `apply FILE.jsonl`. Each verb is an MCP tool. |
@@ -84,7 +84,7 @@ in the OpenAgents Metaverse's look (thin lines, plates, capitals; `verse.coax`).
   plain words, each part a chip you can tap to undo just that part. Nothing else
   talks: no "thinking", no "working on it" (docs say no filler).
   Locally, HOLD TO TALK is recognized by Psionic's resident Parakeet through the voice
-  host (`verse/voice-host --recognizer parakeet`; [setup and measurements](../voice/dev.md#parakeet-local-recognition)),
+  host (`metaverse/voice-host --recognizer parakeet`; [setup and measurements](../voice/dev.md#parakeet-local-recognition)),
   and each final transcript reaches the realm through the Metaverse Engine's event gate
   ([`metaverse-engine/audio/voice.coax`](../../metaverse-engine/audio/voice.coax)): one answer per hold, none after a cancel.
 - **The feature rail (left).** The board, always visible: each feature a row with its
@@ -207,7 +207,7 @@ like anyone's. Coder gets the realm tools (`openagents mcp`) by default.
 6. **Publish sheet** with the card from the forge camera; `openagents forge SLUG`.
 7. **Your agent tab.** The paired Coder (#12642) or the hosted builder; BUILD IT on an
    asked thing. The hosted agent that plays the realm is built (#12655): the edit layer's
-   AGENT pane (`verse/edit/agent.coax`, [realm-seat.md](realm-seat.md) "The agent pane"),
+   AGENT pane (`metaverse/edit/agent.coax`, [realm-seat.md](realm-seat.md) "The agent pane"),
    which this tab reuses.
 8. **Pin the published build** (#12629): a published realm plays the engine build and
    assets it was published with. Done for made realms (migration 0107,

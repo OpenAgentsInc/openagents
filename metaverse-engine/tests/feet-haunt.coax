@@ -1,7 +1,7 @@
 // Haunted House and Sandbox share this advance→instance writer. A minimal
 // admitted mesh catalogue needs no downloaded geometry to inspect the real
 // ready-to-bind avatar matrix. Test both published guest mesh choices.
-#load "../../verse/haunt.coax";
+#load "../../metaverse/haunt.coax";
 
 drawn_feet_probe :: (fx: f32, fy: f32, fz: f32, result: [] f32) #export_c #effects(all) {
   f := HauntPoint.{x = fx, y = fy, z = fz};

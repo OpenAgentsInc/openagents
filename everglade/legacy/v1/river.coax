@@ -1,9 +1,9 @@
 // Everglade's river on the water system (phase W3 of docs/verse/water.md,
 // adapted to today's Everglade): the 4 m river everglade/legacy/v1/plan.coax
 // carves along x = 88 from the north edge of the world to the south, one
-// verse/water.coax river body with the level profile the plan's carve
+// metaverse/water.coax river body with the level profile the plan's carve
 // follows and a current from water_flow_river round the bridge's piles,
-// drawn with the W2 shader (verse/water-look.coax, everglade.wgsl). It is
+// drawn with the W2 shader (metaverse/water-look.coax, everglade.wgsl). It is
 // its own library, as metaverse-engine/move/player.coax is: the realm's face
 // (apps/openagents-web/everglade-face.c) passes values between it, the page
 // and the controller.
@@ -47,12 +47,12 @@
 //   steam and crown splashes the spells raise (everglade_river_splash).
 //   A fixed pool of FX particles, the oldest replaced; nothing allocates.
 //
-// The townsfolk wade and swim by the same rules (verse/water-wade.coax, everglade/legacy/v1/routines.coax).
+// The townsfolk wade and swim by the same rules (metaverse/water-wade.coax, everglade/legacy/v1/routines.coax).
 // Not yet: the underwater combat rules.
 //   coax/bin/coax test --library everglade/legacy/v1/river.coax --steps 2000000000
 
-#load "../../../verse/water-look.coax";
-#load "../../../verse/water-wade.coax";
+#load "../../../metaverse/water-look.coax";
+#load "../../../metaverse/water-wade.coax";
 #load "../../../metaverse-engine/core/loop.coax";   // the floats' fixed steps: the Metaverse Engine's one clock (metaverse-engine/book ch001)
 
 RIVER_X :: 88.0;          // the plan's river runs along x = 88 (EG_RIVER_X)
@@ -94,7 +94,7 @@ POND_POINTS :: 24;        // each pond's outline, a polygon round its rim
 MEDIUM_BOAT :: 4;         // seated in a rowboat (Swim.medium; out of the water for lightning)
 
 // The swimmer (medium.rs).
-// (WADE_DEPTH, SWIM_DEPTH, FLOAT_DEPTH, EYE_HEIGHT, STANDING and the media are verse/water-wade.coax's)
+// (WADE_DEPTH, SWIM_DEPTH, FLOAT_DEPTH, EYE_HEIGHT, STANDING and the media are metaverse/water-wade.coax's)
 RISE_SPEED :: 0.6;
 SETTLE_RATE :: 6.0;
 DIVE_SPEED :: 1.5;        // m/s down while you hold dive (ours; the old diver followed the camera's pitch)
@@ -382,7 +382,7 @@ everglade_river_surface :: (r: [] River, x: f32, z: f32, time: f64) -> f32 #expo
 
 // ---- the swimmer (medium.rs)
 
-// The medium is verse/water-wade.coax's medium_of, the people's rule too.
+// The medium is metaverse/water-wade.coax's medium_of, the people's rule too.
 
 // A swimmer's feet after dt: at the float line it settles onto it, an idle
 // diver rises at RISE_SPEED, a stroke moves it at the asked speed, never
@@ -399,7 +399,7 @@ swim_height :: (feet: f32, surface: f32, bed: f32, vertical: f32, dt: f32) -> f3
   return clamp_f(next, floor_, top);
 }
 
-// The pace is verse/water-wade.coax's pace_of.
+// The pace is metaverse/water-wade.coax's pace_of.
 
 // ---- breath (water.rs Breath)
 
@@ -1163,14 +1163,14 @@ everglade_river_shove :: (r: [] River, x: f32, z: f32, reach: f32, impulse: f32,
   return n;
 }
 
-// The spells' fields over the floats (the page's everglade_spell_fields, laid out as verse/
+// The spells' fields over the floats (the page's everglade_spell_fields, laid out as metaverse/
 // demolish.coax DemoField: kind, ax, az, bx, bz, base, top, r, wide, force), till the next call.
 everglade_river_fields :: (r: [] River, fields: [] f32, n: int) #export_c #effects(all) {
   r[0].field_n = n; if n < 0 { r[0].field_n = 0; } if n > RIVER_FIELDS { r[0].field_n = RIVER_FIELDS; }
   if fields.count < r[0].field_n * RIVER_FIELD_FLOATS { r[0].field_n = fields.count / RIVER_FIELD_FLOATS; }
   for k: 0..<r[0].field_n * RIVER_FIELD_FLOATS { r[0].fields[k] = fields[k]; }
 }
-// What the fields do to float i over h, besides gravity (as verse/demolish.coax demo_field_accel
+// What the fields do to float i over h, besides gravity (as metaverse/demolish.coax demo_field_accel
 // moves the debris): in Reverse Gravity's cylinder it falls upward and hovers under the top; in a
 // Wind Wall a duck or a pad (2 kg at most) flies up its updraft held to its middle, a rowboat is
 // lightened by 3 m/s². In ice (kind 6) it is held still; Control Water whirls it (7), puts it out of

@@ -5,7 +5,7 @@
 #include "myrealm.h"
 #include "analytics-face.h"
 #include "edit-face.h"
-// YOUR COMPUTER (verse/edit/computer-wire.coax, linked beside it): the owner's own Coder, over the relay
+// YOUR COMPUTER (metaverse/edit/computer-wire.coax, linked beside it): the owner's own Coder, over the relay
 #include "computer-face.h"
 // The browser's secure random (crypto.getRandomValues) under the shared Coax entropy policy (coax/lib/crypto/entropy.coax).
 #define COAX_ENTROPY_HEADER "Entropy.h"

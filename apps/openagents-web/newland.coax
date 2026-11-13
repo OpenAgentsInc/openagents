@@ -17,7 +17,7 @@
 #load "newland-network.coax";
 #load "newland-xp.coax";
 #load "../../coax/web/analytics.coax";
-#load "../../verse/edit/edit.coax";   // the Grid's EDIT and its feature list (docs/verse/realm-edit.md)
+#load "../../metaverse/edit/edit.coax";   // the Grid's EDIT and its feature list (docs/verse/realm-edit.md)
 #load "newland-walkers.coax";
 #load "newland-portal.coax";   // Everglade's portal and "Create your character": the way into Character Create
 #load "newland-walk.coax";   // the Grid, /worlds/the-grid: this scene, walked (data-page 1)
@@ -37,7 +37,7 @@ VERTEX_FLOATS :: 12;      // x, y, along, across, length, core, light, glow, red
 MAX_VERTICES :: 400000;
 TEST_VERTICES :: 75000;   // what the checks give a frame: a page draws well under it
 PANELS :: 5;              // the page's own glass: title, HOME, REALMS, the hint, the card
-EDIT_PANELS :: 8;         // and the Grid's edit layer's plates after them (verse/edit/edit.coax REDIT_PLATES)
+EDIT_PANELS :: 8;         // and the Grid's edit layer's plates after them (metaverse/edit/edit.coax REDIT_PLATES)
 UNIFORM_FLOATS :: 8 + (PANELS + EDIT_PANELS) * 8;   // width, height, time, fade, still, panels, vignette, 0, then the panels
 
 MODE_STROKE :: 0.0;

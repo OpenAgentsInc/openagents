@@ -18,7 +18,7 @@ Everglade's page started at its clearing (docs/verse/everglade.md, "The glade
 south of the gate"). The zone pack, `everglade-zone.pack`, carries the glade
 without its sky shell or its distant town: Everglade's sky and Everglade's real
 town stand in for them. Build it with
-`coax/web/tool.sh verse/tools/assets/character_glade_pack.coax ... zone`; the
+`coax/web/tool.sh metaverse/tools/assets/character_glade_pack.coax ... zone`; the
 sections below describe the glade's composition and its original standalone
 renderer (`everglade/scene/gpu/character-glade.coax`), kept as the lighting
 reference for the glade checks.
@@ -42,15 +42,15 @@ mislabeling the overview map as the preview scene.
 
 ## Build
 
-`verse/character-glade.coax` owns terrain, the path, deterministic planting,
-placements and foliage palettes. `verse/tools/assets/character_glade_pack.coax`
+`metaverse/character-glade.coax` owns terrain, the path, deterministic planting,
+placements and foliage palettes. `metaverse/tools/assets/character_glade_pack.coax`
 reads the pinned source glTF files through the existing Coax reader and adds
 one static environment draw, three source grass instance groups and eleven texture layers to the original wardrobe
 pack. It preserves the original character payloads byte for byte.
 
 ```sh
-SOURCE="$(coax/web/tool.sh verse/tools/assets/registry.coax source nature "$HOME/.openagents/assets")"
-coax/web/tool.sh verse/tools/assets/character_glade_pack.coax \
+SOURCE="$(coax/web/tool.sh metaverse/tools/assets/registry.coax source nature "$HOME/.openagents/assets")"
+coax/web/tool.sh metaverse/tools/assets/character_glade_pack.coax \
   "$SOURCE" apps/openagents-web/realms/character-creator/assets/fantasy.pack \
   apps/openagents-web/realms/character-creator/assets/glade.pack
 ```
@@ -172,7 +172,7 @@ Evidence: `docs/verification/character-glade-crowns-2026-11-06/`.
 ## The road and the town
 
 Past the clearing, the path becomes a road (`cg_road_x` in
-`verse/character-glade.coax`). The road climbs a carved grade over the back
+`metaverse/character-glade.coax`). The road climbs a carved grade over the back
 ridge to a plateau at z -46. Past the plateau, low far hills close the view.
 On the plateau stands Everglade's town (`cg_city`): a stone wall with merlons,
 two gate towers with a timber lintel, round towers with cones, a keep with a

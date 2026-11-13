@@ -172,7 +172,7 @@ input_keys :: (key_x: f32, key_y: f32, shift: bool, jumping: bool, acting: bool,
   i := Intent.{move_x = x.value, move_y = y.value, run = input_keys_run(shift), jump = jumping, act = acting, mended = x.mended + y.mended};
   return input_amounts(i, look_x, look_y, zoom);
 }
-// The touch stick (verse/grid.coax Sticks) or a pad: a push inside the dead zone is no move,
+// The touch stick (metaverse/grid.coax Sticks) or a pad: a push inside the dead zone is no move,
 // a full push runs, a quick tap jumps. A bad number on either axis is no push at all.
 input_stick :: (pad_x: f32, pad_y: f32, full_push: bool, tap: bool, acting: bool, look_x: f32, look_y: f32, zoom: f32) -> Intent {
   x := input_axis(pad_x); y := input_axis(pad_y);
@@ -547,9 +547,9 @@ realm migration ([chapter 64](ch064-every-realm-runs-on-aethyr.md)) also covers
 UI, remote input and other gameplay-specific action types:
 
 - gameplay-specific uses of the Grid's touch controls (`Sticks` in
-  [verse/grid.coax](../../verse/grid.coax));
+  [metaverse/grid.coax](../../metaverse/grid.coax));
 - Ice Cream Man's held-key bits (`H_W`, `H_SPACE`, and the others) in
-  `verse/icecream/play.coax`;
+  `metaverse/icecream/play.coax`;
 - the page shells' C code, which can then report key and tap events with
   `input_press` instead of a held level, so that a key pressed and released
   between two frames still counts;

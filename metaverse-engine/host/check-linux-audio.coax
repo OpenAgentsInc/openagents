@@ -39,7 +39,7 @@ hla_device_json :: (o:[]Jo,v:HostAudioDeviceObserved) {
 tool_main :: ()->int #export_c #effects(all) {
  a:[1]Args;if !args_load(a[..])||args_count(a[..])<6||args_count(a[..])>7||(args_count(a[..])==7&&args_at(a[..],6)!="--device-only") {tool_errln("usage: check-linux-audio BANK.json BANK_DIR PLAN.json PLAN_DIR NEW_OUT REPO [--device-only]");return 2;}
  out:=args_at(a[..],4);repo:=args_at(a[..],5);paths:[8][4096]u8;if !fs_mkdir(out)||!fs_mkdir(fs_join(out,"decoded",paths[0][..])) {return 1;}
- inputs:[1]RtqInputs;for file:[4]string.[args_at(a[..],0),args_at(a[..],2),fs_join(repo,"verse/native/audio-host.c",paths[0][..]),fs_join(repo,"verse/native/audio-pipewire.c",paths[1][..])] {if !rtq_input_add(inputs[..],file) {return 1;}}
+ inputs:[1]RtqInputs;for file:[4]string.[args_at(a[..],0),args_at(a[..],2),fs_join(repo,"metaverse/native/audio-host.c",paths[0][..]),fs_join(repo,"metaverse/native/audio-pipewire.c",paths[1][..])] {if !rtq_input_add(inputs[..],file) {return 1;}}
  self:[4096]u8;sn:=cxproc_self_path(self[..]);if sn<1||!rtq_input_add(inputs[..],cast(string)self[0..<sn]) {return 1;}
  if hva_open()!=1 {tool_errln("Linux audio SDK open failed");return 1;}defer {hva_close();}
  text:[262144]u8;nodes:[16384]JvNode;d:[1]Jv;if !rtq_json_file(args_at(a[..],0),text[..],nodes[..],d[..]) {return 1;}

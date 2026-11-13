@@ -1,6 +1,6 @@
 # The Metaverse's realms and the boot session, built for an image (docs/os/2026-11-02-verse-os.md, V7).
 #
-# `src` is what `verse/gpu/realm.sh local ship DIR` writes: each realm's Coax as C, its specs,
+# `src` is what `metaverse/gpu/realm.sh local ship DIR` writes: each realm's Coax as C, its specs,
 # packs and render assets, the network helper's and verse-session's C, and the shared Vulkan host.
 # This builds it exactly as realm.sh builds it on a machine (no PIE, no FP contraction, musl's
 # transcendental math ahead of glibc's so a realm computes what its wasm computes) and installs the
@@ -38,7 +38,7 @@ stdenv.mkDerivation {
      # the desk's headless compositor (os/compositor.coax), which vk-realm --desk runs
      gcc -std=c11 -O2 -D_DEFAULT_SOURCE -DCOAX_WAYLAND_GPU -w -I. $(pkg-config --cflags libdrm egl glesv2 gbm) ../desk/compositor.c tool-native.c process-native.c store-file-native.c read-file-native.c \
        socket-native.c entropy-native.c entropy-foreign.c entropy.c wayland-native.c screen-native.c $(pkg-config --libs libdrm egl glesv2 gbm) -lpthread -lm -o ../desk/compositor)
-    # musl's math (verse/native/musl-math.sh), taken from its libc.a
+    # musl's math (metaverse/native/musl-math.sh), taken from its libc.a
     mkdir musl-math
     names=""
     for f in sin cos sincos tan asin acos atan atan2 sinh cosh tanh exp exp2 expm1 log log2 log10 log1p pow cbrt hypot; do names="$names $f.lo ''${f}f.lo"; done

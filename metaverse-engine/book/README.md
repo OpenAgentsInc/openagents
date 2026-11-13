@@ -47,7 +47,7 @@ chapter.
 A chapter whose status is *Unimplemented: design draft* is written ahead of
 its code. Its first line under the title is a quoted
 `**Status: unimplemented — design draft.**` marker. It says what exists today
-(the private copies in `verse/` and `apps/openagents-web/` that the chapter
+(the private copies in `metaverse/` and `apps/openagents-web/` that the chapter
 replaces), the method and design, what it builds in `metaverse-engine/`, its acceptance
 checks and oracles, and its dependencies. It has no source-linked listings or
 examples; sketches in it are illustrative only.
@@ -278,10 +278,10 @@ capability of Genesis World 1.4.5 to a Part IV chapter.
 
 | Chapter | Status | Result |
 | --- | --- | --- |
-| [70. Rivers, ponds and the sea](ch070-rivers-ponds-and-the-sea.md) | Unimplemented: design draft | Water from `verse/water*.coax` (W1–W11) as one module: typed water bodies, a wave surface fixed to the tick, buoyancy and drag, the spectral sea and the underwater view, with the same gameplay surface on every client and the water lab held to 1 ms of GPU on a phone and 3 ms on a desktop. |
+| [70. Rivers, ponds and the sea](ch070-rivers-ponds-and-the-sea.md) | Unimplemented: design draft | Water from `metaverse/water*.coax` (W1–W11) as one module: typed water bodies, a wave surface fixed to the tick, buoyancy and drag, the spectral sea and the underwater view, with the same gameplay surface on every client and the water lab held to 1 ms of GPU on a phone and 3 ms on a desktop. |
 | [71. Sky, weather and the time of day](ch071-sky-weather-and-the-time-of-day.md) | Partly implemented: bounded declared day/phase facts; sky/weather renderer remains draft | One day clock (`real`, `cycle` or `fixed:T`) drives the sun, the moon's real phase, palettes, the starfield, a seeded weather schedule and ground wetness, so every visitor and replay sees the same sky. |
 | [72. Effects made of particles](ch072-effects-made-of-particles.md) | Partly implemented: browser WebGPU (puffs; stateless emitters remain a design draft) | Event puffs from seventeen recipes, a pure function of seed, index and age, under declared budgets (96 live causes, 2,400 puffs a frame) and drawn on a traced page in 5E Lab; the stateless emitters (embers, dust, fireflies) and fire and smoke are not built yet, kept separate from chapter 23's simulated particles. |
-| [73. Things that break](ch073-things-that-break.md) | Unimplemented: design draft | `verse/demolish.coax` on Part IV's bodies and contact: Voronoi fracture into 2–24 chunks, a support graph that topples pieces, budgets for chunks and loose pieces, regrowth, and the destructible-wall integration test. |
+| [73. Things that break](ch073-things-that-break.md) | Unimplemented: design draft | `metaverse/demolish.coax` on Part IV's bodies and contact: Voronoi fracture into 2–24 chunks, a support graph that topples pieces, budgets for chunks and loose pieces, regrowth, and the destructible-wall integration test. |
 | [74. Wheels on the ground](ch074-wheels-on-the-ground.md) | Unimplemented: design draft | Orbit League's raycast vehicle on the Metaverse Engine's queries and rigid bodies: spring-damper suspension, tyres inside the friction circle, steering that fades with speed, game rules declared as rules, and a recorded match that replays to the same digests. |
 | [75. Creatures that follow and watch](ch075-creatures-that-follow-and-watch.md) | Partly implemented: bounded compiled actor profile 1, native C and Wasm; legacy realm adapters remain | Creatures sense, decide and act at a fixed step from typed sight and hearing stimuli kept apart from truth; the flock becomes a general follow, the watch's state machines and seeded dice replay, and a remote decision model picks only from a fixed enum. |
 | [76. Find a way through](ch076-find-a-way-through.md) | Partly implemented: bounded grid navigation and actor request fences, native C and Wasm; graph and avoidance adapters remain | Walking grids with no corner cutting and Dijkstra flow fields with a fixed tie-break, bounded by cost and settled cells, with typed results naming the nearest reachable cell, checked cell by cell against a brute-force oracle and equal bit for bit to Dead Gears' fields; graph routing, avoidance and remaining realm adapters retain separate work. |

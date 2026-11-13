@@ -141,7 +141,7 @@
       "labels": [
         "engine"
       ],
-      "body": "Add contacts to metaverse-engine/physics/rigid.coax: sphere against box, box against box (the car as an oriented box), sphere against mesh (the arena), with friction and restitution. Swept tests for the ball at speed so it never passes through a goal frame. Generalise Dead Gears' arena_sweep (verse/deadgears/arena.coax).",
+      "body": "Add contacts to metaverse-engine/physics/rigid.coax: sphere against box, box against box (the car as an oriented box), sphere against mesh (the arena), with friction and restitution. Swept tests for the ball at speed so it never passes through a goal frame. Generalise Dead Gears' arena_sweep (metaverse/deadgears/arena.coax).",
       "files": [
         "metaverse-engine/physics/rigid.coax"
       ],
@@ -415,7 +415,7 @@
       "title": "Goal replays of the last five seconds from three cameras",
       "size": "M",
       "labels": [],
-      "body": "Record inputs per tick and replay them through the same deterministic physics, as Ice Cream Man's trace and replay do (verse/icecream/). After a goal, the last five seconds play from three cameras.",
+      "body": "Record inputs per tick and replay them through the same deterministic physics, as Ice Cream Man's trace and replay do (metaverse/icecream/). After a goal, the last five seconds play from three cameras.",
       "files": [
         "apps/openagents-web/realms/orbit-league/"
       ],

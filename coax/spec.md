@@ -1984,7 +1984,7 @@ listed twice is E0391, `alias.Name` (a reexport) is E0614, malformed syntax
 is E0613 and `#export` in a unit with no logical module is E0615. Visibility
 never changes C spelling or ABI: `#export_c` remains the separate native
 export decision. `coax deps --modules` reports each module's sorted
-`exports`, or null when it has no list. verse/hud.coax (`verse.hud`) is the
+`exports`, or null when it has no list. metaverse/hud.coax (`verse.hud`) is the
 first sealed module.
 
 Since 0.29.0 (r1a-target-spans), both reports carry two typed records kept

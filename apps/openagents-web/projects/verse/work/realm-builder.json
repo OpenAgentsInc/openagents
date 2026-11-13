@@ -234,7 +234,7 @@
         "engine",
         "art-styles"
       ],
-      "body": "Made realms use the fixture pack's meshes with simple sky, ground and water. Draw a painterly board with the painterly presets (verse/style.coax, paint packs, painted sky and water) and a low poly one with the low poly look.",
+      "body": "Made realms use the fixture pack's meshes with simple sky, ground and water. Draw a painterly board with the painterly presets (metaverse/style.coax, paint packs, painted sky and water) and a low poly one with the low poly look.",
       "files": [
         "apps/openagents-web/myrealm.coax",
         "apps/openagents-web/myrealm.wgsl"
@@ -347,7 +347,7 @@
         "realms",
         "art-styles"
       ],
-      "body": "coax/web/realms.test.ts fails: \"fairy-forest is drawn painterly but fairy.wgsl has no style block\". Splice verse/style.coax into fairy.wgsl with coax/web/wgsl.py --into, or lift fairy's paint.coax into the shared presets.",
+      "body": "coax/web/realms.test.ts fails: \"fairy-forest is drawn painterly but fairy.wgsl has no style block\". Splice metaverse/style.coax into fairy.wgsl with coax/web/wgsl.py --into, or lift fairy's paint.coax into the shared presets.",
       "files": [
         "apps/openagents-web/fairy.wgsl",
         "coax/web/wgsl.py"
@@ -367,7 +367,7 @@
         "web",
         "api"
       ],
-      "body": "Lift the builder's board, settings pane and proposal cards out of myrealm.coax into a shared module (verse/edit/*.coax plus one face hook) that any realm page loads. Owners and admins of a realm get EDIT; the board describes the realm as it is now (its features and pieces), and talking revises it: check a feature on or off and the realm changes.",
+      "body": "Lift the builder's board, settings pane and proposal cards out of myrealm.coax into a shared module (metaverse/edit/*.coax plus one face hook) that any realm page loads. Owners and admins of a realm get EDIT; the board describes the realm as it is now (its features and pieces), and talking revises it: check a feature on or off and the realm changes.",
       "files": [],
       "acceptance": [
         "A hand-built realm and a made realm both open the same edit layer",

@@ -61,7 +61,7 @@ left out.
 The parts are data in `everglade/world/housewright.coax`; the staged-build
 piece is `metaverse-engine/world/build-site.coax`, and the packer meshes the parts
 with `metaverse-engine/world/build-site-mesh.coax`. The layout and the signs are in
-`verse/experimental-terrain.coax`. The timber house uses the Medieval Village
+`metaverse/experimental-terrain.coax`. The timber house uses the Medieval Village
 kit's wall, door, window and roof modules. Colliders match what each stage
 shows: you can walk between bare frame posts, and finished walls block you
 everywhere except through the doorway.
@@ -145,7 +145,7 @@ You fight the monsters with your class's level 1 kit
   takes the whole body, even on the run, and is blended over the two-handed hold, never over
   the jump. A jump with a two-hander blends in a tenth of the jump pose, not the usual 45%,
   because the jump's free arms would swing the weapon into you.
-- The two-handed clips are authored in Blender by `verse/tools/assets/two_hand_clips.py` over
+- The two-handed clips are authored in Blender by `metaverse/tools/assets/two_hand_clips.py` over
   the Universal Animation Library 1 rig: the haft is keyed in the chest's space, each wrist is
   pinned to it with IK, and the result is baked to plain keys at 60 frames a second.
 - The weapon keeps clear of your body. The head is a 12 cm sphere and the neck a capsule,
@@ -156,8 +156,8 @@ You fight the monsters with your class's level 1 kit
   through the blends into and out of the cleave, the jump and the idle-to-run change.
 - The `.blend` source, the GLB and
   their provenance are the registered package `openagents-two-hand-clips` (see
-  `assets/registry/README.md`). `verse/tools/clip_rig.py` retargets them from
-  `verse/packs/everglade-two-hand.json` into `everglade/scene/two-hand-rig.coax`.
+  `assets/registry/README.md`). `metaverse/tools/clip_rig.py` retargets them from
+  `metaverse/packs/everglade-two-hand.json` into `everglade/scene/two-hand-rig.coax`.
 
 Thirty-six additional flower, plant, fern, clover, mushroom, bush and grass variants grow in
 the eastern meadow. The remaining sixty nature models, including trees, rocks and paths,
@@ -175,7 +175,7 @@ A walled and roofed stone dungeon stands southwest of spawn. Its entrance is at 
 - An antechamber.
 - The Warlord's hall at the far end.
 
-`verse/experimental-dungeon.coax` holds the layout. The scene packer builds the Modular Dungeon pieces from it, and the walker, the camera and the monsters collide with boxes computed from the same layout:
+`metaverse/experimental-dungeon.coax` holds the layout. The scene packer builds the Modular Dungeon pieces from it, and the walker, the camera and the monsters collide with boxes computed from the same layout:
 
 - Floor_Modular and Wall_Modular are placed at 2.5 times, with walls 5 metres tall. The walls meet at corners and doorway jambs without gaps or overlapping faces.
 - Each doorway is an Arch. Its posts and lintel are also colliders.
@@ -222,7 +222,7 @@ built yet. The parts live where they belong:
   id, a place to stand, a facing and a reach.
 - Game: `everglade/world/home.coax` is the home itself: its kit pieces, its
   furniture and the workbench's spot. Any Everglade zone can place it.
-- Zone wiring: `verse/experimental-terrain.coax` places it (`exp_home`), and
+- Zone wiring: `metaverse/experimental-terrain.coax` places it (`exp_home`), and
   the village, props, hostiles and the scene packer read that frame.
 
 The walls and the workbench stop you and the monsters, the doorway is open,
@@ -237,28 +237,28 @@ layout, wardrobe pack, generators, shader and runtime bytes. Rebuild from the
 shared library (the archived scene is read as data; its scripts are never run):
 
 ```sh
-nature_root="$(coax/web/tool.sh verse/tools/assets/registry.coax source nature "$HOME/.openagents/assets")"
-village_root="$(coax/web/tool.sh verse/tools/assets/registry.coax source village "$HOME/.openagents/assets")"
-props_root="$(coax/web/tool.sh verse/tools/assets/registry.coax source fantasy-props "$HOME/.openagents/assets")"
-food_root="$(coax/web/tool.sh verse/tools/assets/registry.coax source ultimate-food "$HOME/.openagents/assets")"
-rpg_root="$(coax/web/tool.sh verse/tools/assets/registry.coax source ultimate-rpg "$HOME/.openagents/assets")"
-dungeon_root="$(coax/web/tool.sh verse/tools/assets/registry.coax source dungeon "$HOME/.openagents/assets")"
-animal_root="$(coax/web/tool.sh verse/tools/assets/registry.coax source ultimate-animals-static "$HOME/.openagents/assets")"
-animal_original="$(coax/web/tool.sh verse/tools/assets/registry.coax source ultimate-animals-source "$HOME/.openagents/assets")"
+nature_root="$(coax/web/tool.sh metaverse/tools/assets/registry.coax source nature "$HOME/.openagents/assets")"
+village_root="$(coax/web/tool.sh metaverse/tools/assets/registry.coax source village "$HOME/.openagents/assets")"
+props_root="$(coax/web/tool.sh metaverse/tools/assets/registry.coax source fantasy-props "$HOME/.openagents/assets")"
+food_root="$(coax/web/tool.sh metaverse/tools/assets/registry.coax source ultimate-food "$HOME/.openagents/assets")"
+rpg_root="$(coax/web/tool.sh metaverse/tools/assets/registry.coax source ultimate-rpg "$HOME/.openagents/assets")"
+dungeon_root="$(coax/web/tool.sh metaverse/tools/assets/registry.coax source dungeon "$HOME/.openagents/assets")"
+animal_root="$(coax/web/tool.sh metaverse/tools/assets/registry.coax source ultimate-animals-static "$HOME/.openagents/assets")"
+animal_original="$(coax/web/tool.sh metaverse/tools/assets/registry.coax source ultimate-animals-source "$HOME/.openagents/assets")"
 animal_frames="$HOME/.openagents/assets/cache/ultimate-animals-run"
-monster_root="$(coax/web/tool.sh verse/tools/assets/registry.coax source bestiary-dungeon "$HOME/.openagents/assets")"
-ual_root="$(coax/web/tool.sh verse/tools/assets/registry.coax source ual1 "$HOME/.openagents/assets")"
+monster_root="$(coax/web/tool.sh metaverse/tools/assets/registry.coax source bestiary-dungeon "$HOME/.openagents/assets")"
+ual_root="$(coax/web/tool.sh metaverse/tools/assets/registry.coax source ual1 "$HOME/.openagents/assets")"
 monster_frames="$HOME/.openagents/assets/cache/bestiary-dungeon-scene"
 /Applications/Blender.app/Contents/MacOS/Blender --background --factory-startup --disable-autoexec \
-  --python-exit-code 1 --python verse/tools/assets/animal_bake.py -- "$animal_original" "$animal_frames"
+  --python-exit-code 1 --python metaverse/tools/assets/animal_bake.py -- "$animal_original" "$animal_frames"
 /Applications/Blender.app/Contents/MacOS/Blender --background --factory-startup --disable-autoexec \
-  --python-exit-code 1 --python verse/tools/assets/bestiary_bake.py -- "$monster_root" "$monster_frames" \
+  --python-exit-code 1 --python metaverse/tools/assets/bestiary_bake.py -- "$monster_root" "$monster_frames" \
   "$ual_root/Unreal-Godot/UAL1_Standard.glb"
 unzip -p "$village_root/Engine Projects/Godot.zip" \
   'Godot/addons/quaternius/medievalvillagemegakit/L_SampleScene_1.tscn' > /tmp/everglade-village-source.tscn
-coax/web/tool.sh verse/tools/assets/village_layout.coax /tmp/everglade-village-source.tscn \
+coax/web/tool.sh metaverse/tools/assets/village_layout.coax /tmp/everglade-village-source.tscn \
   > assets/registry/scenes/everglade-experimental-village.layout
-coax/web/tool.sh verse/tools/assets/character_glade_pack.coax "$nature_root" \
+coax/web/tool.sh metaverse/tools/assets/character_glade_pack.coax "$nature_root" \
   apps/openagents-web/realms/character-creator/assets/fantasy.pack \
   apps/openagents-web/realms/everglade-experimental/assets/glade.pack --experimental \
   "$village_root" assets/registry/scenes/everglade-experimental-village.layout "$props_root" \
@@ -266,16 +266,16 @@ coax/web/tool.sh verse/tools/assets/character_glade_pack.coax "$nature_root" \
   "$food_root" "$rpg_root" "$dungeon_root" "$animal_root" "$animal_frames" \
   "$monster_root" "$monster_frames" assets/registry/scenes/everglade-experimental-extra-props.layout \
   assets/registry/scenes/everglade-experimental-extra-nature.layout \
-  verse/experimental-scene-colliders.coax "$HOME/.openagents/assets/cache/0ad-gltf"
-coax/web/tool.sh verse/tools/assets/village_collision.coax "$village_root" \
-  assets/registry/scenes/everglade-experimental-village.layout > verse/experimental-village-data.coax
-python3 verse/tools/assets/character_glade_oracle.py \
+  metaverse/experimental-scene-colliders.coax "$HOME/.openagents/assets/cache/0ad-gltf"
+coax/web/tool.sh metaverse/tools/assets/village_collision.coax "$village_root" \
+  assets/registry/scenes/everglade-experimental-village.layout > metaverse/experimental-village-data.coax
+python3 metaverse/tools/assets/character_glade_oracle.py \
   apps/openagents-web/realms/everglade-experimental/assets/glade.pack \
   apps/openagents-web/realms/character-creator/assets/fantasy.pack --experimental --village --props --showcase --animal-run --bestiary --extra-props --extra-nature
 horse_frames="$HOME/.openagents/assets/cache/horse-white-mount"
 /Applications/Blender.app/Contents/MacOS/Blender --background --factory-startup --disable-autoexec \
-  --python-exit-code 1 --python verse/tools/assets/horse_bake.py -- "$animal_original" "$horse_frames"
-coax/web/tool.sh verse/tools/assets/character_glade_pack.coax --append-horse \
+  --python-exit-code 1 --python metaverse/tools/assets/horse_bake.py -- "$animal_original" "$horse_frames"
+coax/web/tool.sh metaverse/tools/assets/character_glade_pack.coax --append-horse \
   apps/openagents-web/realms/everglade-experimental/assets/glade.pack /tmp/glade-horse.pack "$horse_frames"
 mv /tmp/glade-horse.pack apps/openagents-web/realms/everglade-experimental/assets/glade.pack
 gzip -n -6 -c apps/openagents-web/realms/everglade-experimental/assets/glade.pack \
@@ -288,7 +288,7 @@ A full scene pack already holds the build parts. To add them to a pack that
 lacks them without a full repack, append them:
 
 ```sh
-coax/web/tool.sh verse/tools/assets/character_glade_pack.coax --append-build \
+coax/web/tool.sh metaverse/tools/assets/character_glade_pack.coax --append-build \
   apps/openagents-web/realms/everglade-experimental/assets/glade.pack /tmp/glade-build.pack "$village_root"
 ```
 
@@ -296,24 +296,24 @@ The append refuses a pack that already has build parts.
 
 The meadow's ground (`C glade/meadow`) is baked from `exp_height`. When a
 site moves, bake the ground again in place, check it and write the samples
-that the terrain's check reads (`verse/tools/assets/meadow_pack.coax`,
+that the terrain's check reads (`metaverse/tools/assets/meadow_pack.coax`,
 [#13129](https://github.com/OpenAgentsInc/openagents/issues/13129)):
 
 ```sh
 gzip -dc apps/openagents-web/realms/everglade-experimental/assets/glade.pack.gz > /tmp/glade.pack
-coax/web/tool.sh verse/tools/assets/character_glade_pack.coax --replace-meadow /tmp/glade.pack /tmp/glade-new.pack
-coax/web/tool.sh verse/tools/assets/character_glade_pack.coax --check-meadow /tmp/glade-new.pack \
-  verse/experimental-meadow-baked.coax
+coax/web/tool.sh metaverse/tools/assets/character_glade_pack.coax --replace-meadow /tmp/glade.pack /tmp/glade-new.pack
+coax/web/tool.sh metaverse/tools/assets/character_glade_pack.coax --check-meadow /tmp/glade-new.pack \
+  metaverse/experimental-meadow-baked.coax
 gzip -n -6 -c /tmp/glade-new.pack > apps/openagents-web/realms/everglade-experimental/assets/glade.pack.gz
 ```
 
 `--check-meadow` fails when a packed ground vertex is more than 2 mm off
 `exp_height`. The check "the packed meadow ground is exp_height's at every
-sampled point" in `verse/experimental-terrain.coax` fails when a site moves
+sampled point" in `metaverse/experimental-terrain.coax` fails when a site moves
 and the ground wasn't baked again.
 
 The glade's grass seeds (`C glade/grass0`, `1` and `2`: 50,690 tufts) are kept
-sorted by the 8 m cell they stand in (`verse/experimental-grass-grid.coax`,
+sorted by the 8 m cell they stand in (`metaverse/experimental-grass-grid.coax`,
 [#13147](https://github.com/OpenAgentsInc/openagents/issues/13147)), so the page
 draws only the cells in view, nearest first
 (`charactercreator.coax` `grass_cull`). A cell draws fewer of its seeds the
@@ -326,9 +326,9 @@ commit that file with the pack:
 
 ```sh
 gzip -dc apps/openagents-web/realms/everglade-experimental/assets/glade.pack.gz > /tmp/glade.pack
-coax/web/tool.sh verse/tools/assets/grass_cells.coax --sort /tmp/glade.pack /tmp/glade-new.pack \
-  verse/experimental-grass-baked.coax
-coax/web/tool.sh verse/tools/assets/grass_cells.coax --check /tmp/glade-new.pack verse/experimental-grass-baked.coax
+coax/web/tool.sh metaverse/tools/assets/grass_cells.coax --sort /tmp/glade.pack /tmp/glade-new.pack \
+  metaverse/experimental-grass-baked.coax
+coax/web/tool.sh metaverse/tools/assets/grass_cells.coax --check /tmp/glade-new.pack metaverse/experimental-grass-baked.coax
 gzip -n -6 -c /tmp/glade-new.pack > apps/openagents-web/realms/everglade-experimental/assets/glade.pack.gz
 ```
 
@@ -341,18 +341,18 @@ draws its butts, sky faces, posts and chalk line from the same pack, as one mesh
 then compress the pack again:
 
 ```sh
-coax/web/tool.sh verse/tools/assets/character_glade_pack.coax --append-range \
+coax/web/tool.sh metaverse/tools/assets/character_glade_pack.coax --append-range \
   apps/openagents-web/realms/everglade-experimental/assets/glade.pack /tmp/glade-range.pack
 ```
 
-The scene packer also writes the placed assets’ world-space collision bounds to `verse/experimental-scene-colliders.coax`. Tree collision uses trunk geometry, and living hostiles use moving body capsules. Rebuild the bounds whenever the scene pack changes.
+The scene packer also writes the placed assets’ world-space collision bounds to `metaverse/experimental-scene-colliders.coax`. Tree collision uses trunk geometry, and living hostiles use moving body capsules. Rebuild the bounds whenever the scene pack changes.
 
 A white horse stands just ahead of the spawn at (4, 6). Walk up to it and press
 **E** (or tap MOUNT on a phone) to ride: W and S go and slow, A and D turn, Shift
 gallops at 14 m/s against 7.5 m/s running on foot, and E gets you off. It stays
 where you leave it. You can draw and loose the Longbow from the saddle. The
 horse is Quaternius's CC0 Horse_White, lightened to white and baked by
-`verse/tools/assets/horse_bake.py` (Idle, Walk and Gallop, appended to the pack
+`metaverse/tools/assets/horse_bake.py` (Idle, Walk and Gallop, appended to the pack
 as `glade/horse0` to `glade/horse35`). See the
 [mounts spec](../../everglade/docs/mounts-spec.md) for the engine
 (`metaverse-engine/action/mount.coax`, `metaverse-engine/action/ride-pose.coax`), game

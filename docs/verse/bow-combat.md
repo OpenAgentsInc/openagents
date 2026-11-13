@@ -118,7 +118,7 @@ every monster's hurt capsule.
 
 The Goblins' shortbow arrows are the same arrows in the same pool. Each Goblin
 arrow arcs from its hand to where you stood and arrives as the Goblin's attack
-resolves (`verse/experimental-hostiles.coax` `hostile_fly`). One that misses
+resolves (`metaverse/experimental-hostiles.coax` `hostile_fly`). One that misses
 flies on until it sticks in the ground.
 
 ## Targets

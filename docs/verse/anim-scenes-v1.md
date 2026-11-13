@@ -128,7 +128,7 @@ remain metadata. A6 owns the finished render styles and depth of field.
 This profile is a blocking renderer, not source-material parity or the
 publishable Guardian.
 
-The [Guardian recipe](../../verse/animlab/guardian/README.md) combines private
+The [Guardian recipe](../../metaverse/animlab/guardian/README.md) combines private
 Valley motion with original staging, wand keys, props, extras, a procedural
 bird and a speech-driven stand-in face. All licensed payloads, speech,
 reports, frames and videos stay outside git. A8 replaces study motion,

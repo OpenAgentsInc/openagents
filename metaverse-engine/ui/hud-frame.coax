@@ -1,4 +1,4 @@
-// The HUD frame (moved from verse/hud/frame.coax, #13303: the engine's HUD library draws it) both the new landing (apps/openagents-web/newland.coax
+// The HUD frame (moved from metaverse/hud/frame.coax, #13303: the engine's HUD library draws it) both the new landing (apps/openagents-web/newland.coax
 // frame and button) and the iOS app (SignInScreens.swift HudFrame) draw:
 // a faint outline with 45° cuts on the top-right and bottom-left corners,
 // bright L brackets on the other two, and the four greys and the one blue

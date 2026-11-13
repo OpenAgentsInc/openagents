@@ -1,5 +1,5 @@
 // 5E MMO's hotbar pictures (realms/5e-mmo/hotbar/), drawn as Everglade's bar is: written by
-// verse/tools/fivemmo_hotbar.coax, do not edit. Each ability's name (a spell's engine id, else its
+// metaverse/tools/fivemmo_hotbar.coax, do not edit. Each ability's name (a spell's engine id, else its
 // feature's), the icon sizes (px a side), each card at 1x, 2x and 3x (device px, ability * 3 +
 // scale - 1), and a key's tab (key-K-SIZE.jpg) at each icon size.
 MH_ABILITIES :: 44;

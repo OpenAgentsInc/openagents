@@ -552,7 +552,7 @@ static char *sql_text(PGconn *c, const char *sql, int n, const char *const *v) {
 }
 
 // ---- the first realm (rc-first-realm, 0040_project_realm.sql): the drop's .glb models in one asset pack
-// (the realm host's VPK1, docs/verse/realm-host.md and verse/tools/pack_realm.py) and a page that walks it.
+// (the realm host's VPK1, docs/verse/realm-host.md and metaverse/tools/pack_realm.py) and a page that walks it.
 // SQL reads each model's glTF (drops.glb_plan, drops.glb_images); here the bytes are copied out of its
 // binary chunk, every read checked against the chunk, the accessor's buffer view and the limits below.
 #define REALM_BUDGET (32u << 20)        // the pack, at most

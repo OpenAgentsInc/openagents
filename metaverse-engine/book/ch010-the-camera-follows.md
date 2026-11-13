@@ -745,7 +745,7 @@ changes by at most 0.016 m from one frame to the next (measured 0.013 m). It
 rises on every frame of a rising arc. Drawing the last step instead of the
 mixed one changes the move by more than three times the bound:
 
-<!-- source: verse/gridwalk.coax smooth -->
+<!-- source: metaverse/gridwalk.coax smooth -->
 ```jai
 // The camera follows without a jump (the Metaverse Engine's follow, metaverse-engine/cam/follow.coax, book chapter 10): at
 // 60 FPS the 64 Hz steps don't land one to a frame, yet as you walk, run and jump the eye drawn
@@ -788,7 +788,7 @@ coax/bin/coax mutate metaverse-engine/cam/follow.coax
 coax/bin/coax test metaverse-engine/cam/shot.coax --library
 coax/bin/coax mutate metaverse-engine/cam/shot.coax
 coax/bin/coax test metaverse-engine/move/player.coax --library
-coax/bin/coax test verse/gridwalk.coax --library
+coax/bin/coax test metaverse/gridwalk.coax --library
 ```
 
 `metaverse-engine/cam/follow.coax` has fifteen checks. They cover:
@@ -847,7 +847,7 @@ moves the rest of the realms' cameras onto `CameraShot`:
 - The homepage's dive into the Grid (`apps/openagents-web/newland-walk.coax`,
   `wk_dive`) moves onto `shot_dive`.
 - `SpaceCam` (`metaverse-engine/cam/spacecam.coax`) makes `CameraShot`s. (Ice Cream
-  Man's boom is done: `verse/icecream/camera.coax` is a `Follow` now.)
+  Man's boom is done: `metaverse/icecream/camera.coax` is a `Follow` now.)
 - The free orbit's easing (`verse_orbit_follow`, `verse_orbit_limit`) moves
   from the frame to the fixed step, and `verse_orbit_room` reads the realm's
   `Colliders` through `follow_room`.

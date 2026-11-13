@@ -25,7 +25,7 @@ Owner decision, 2026-11-07: film mode is approved (see the film note's
 - **Build a desktop film renderer, but as a profile of the Metaverse Engine, not a second
   engine.** All 16 realms already run natively on Vulkan (G0–G6,
   `docs/verse/native-gpu.md`), the Mac Metal host runs Everglade at 120 Hz,
-  and `verse/gpu/vk-realm.c --headless` already writes float frames. Every
+  and `metaverse/gpu/vk-realm.c --headless` already writes float frames. Every
   movie today is a screenshot of the real-time WebGPU frame in headless
   Chrome (`coax/web/clip.coax`, `metaverse-engine/tools/anim-scene-play.coax`). The
   biggest quality jump is from removing that ceiling, not from ray tracing.

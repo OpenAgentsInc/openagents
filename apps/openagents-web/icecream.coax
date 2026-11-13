@@ -1,5 +1,5 @@
 // Ice Cream Man's realm (openagents.com/worlds/ice-cream-man): the HUD over
-// the run (verse/icecream/scene.coax and play.coax, their own library),
+// the run (metaverse/icecream/scene.coax and play.coax, their own library),
 // world.cpp's and web/icecream.js's, drawn in Coax in the house's fantasy
 // button style: health and keys, the timer and Menu, the toast, the boss
 // bar, the crosshair, the prompt with the front door's unlock bar, the hot
@@ -12,14 +12,14 @@
 #load "../../metaverse-engine/ui/font.coax";
 #load "ui.coax";
 #load "../../coax/web/analytics.coax";
-#load "../../verse/edit/edit.coax";   // EDIT for its owner and admins (docs/verse/realm-edit.md)
+#load "../../metaverse/edit/edit.coax";   // EDIT for its owner and admins (docs/verse/realm-edit.md)
 #load "../../metaverse-engine/core/budget.coax";
 
 VERTEX_FLOATS :: 16;   // x, y, along, across, length, core, light, glow, red, green, blue, mode, 0, 0, 0, 0
 MAX_VERTICES :: 16000;
 PLATES :: 40;
 // width, height, time, fade, still, plates, dpr, the outline's width; then
-// the scene's (verse/icecream/scene.coax SCENE_AT, SCENE_FLOATS); then per
+// the scene's (metaverse/icecream/scene.coax SCENE_AT, SCENE_FLOATS); then per
 // plate x0, y0, x1, y1, scale, alpha, look, radius
 SCENE_FLOATS :: 436;
 PANEL_AT :: 8 + SCENE_FLOATS;
@@ -665,7 +665,7 @@ ice_frame :: (s: [] IceRealm, out: [] f32, uniforms: [] f32, width: f32, height:
   s[0].plate_n = 0;
   s[0].button_n = 0;
   n := h_draw_hud(s, out);
-  // EDIT, top right, while a card is up (in the run the pointer aims), for its owner and admins (verse/edit/edit.coax)
+  // EDIT, top right, while a card is up (in the run the pointer aims), for its owner and admins (metaverse/edit/edit.coax)
   redit_start(s[0].ed[..], "ice-cream-man");
   redit_step(s[0].ed[..], s[0].time, width, height, dpr);
   if !h_card_on(s) { s[0].ed[0].pane = REDIT_SHUT; }

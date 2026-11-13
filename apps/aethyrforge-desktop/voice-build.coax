@@ -30,11 +30,11 @@ tool_main :: () -> int #export_c #effects(all) {
   archive := fv_path(p[..], root, "psionic/build/parakeet/libpsionic-parakeet.a");
   if fs_kind(archive) != FS_FILE { tool_errln("Build the shared CLI/Parakeet helper first."); return 1; }
   deadline := proc_now_ms() + 840000; out: [16777216] u8;
-  sources := [6] string.["verse/voice.coax", "verse/voice-wire.coax", "verse/voice-floor.coax", "pay/voice-meter.coax", "verse/voice-asr.coax", "verse/voice-host/voice-reply.coax"];
+  sources := [6] string.["metaverse/voice.coax", "metaverse/voice-wire.coax", "metaverse/voice-floor.coax", "pay/voice-meter.coax", "metaverse/voice-asr.coax", "metaverse/voice-host/voice-reply.coax"];
   names := [6] string.["VoiceEngine", "VoiceWire", "VoiceFloor", "VoiceMeter", "VoiceAsr", "VoiceReply"];
   newest := fs_mtime_ns(compiler); stamp := fs_mtime_ns(archive); if stamp > newest { newest = stamp; }
   for source: sources { b: [4096] u8; t := fs_mtime_ns(fs_join(root, source, b[..])); if t > newest { newest = t; } }
-  for source: [15] string.["verse/platform/voice.c", "verse/platform/voice.h", "verse/voice-host/host.c", "verse/voice-host/ws.c", "verse/voice-host/ws.h", "verse/voice-host/wav.c", "verse/voice-host/wav.h", "verse/voice-host/speech.c", "verse/voice-host/speech.h", "coax/web/voice/voice-web.c", "coax/web/voice/build.sh", "apps/aethyrforge-desktop/voice-build.coax", "verse/asr-cut.coax", "proto/descriptors/voice.pb", "psionic/platform/psionic-parakeet.h"] {
+  for source: [15] string.["metaverse/platform/voice.c", "metaverse/platform/voice.h", "metaverse/voice-host/host.c", "metaverse/voice-host/ws.c", "metaverse/voice-host/ws.h", "metaverse/voice-host/wav.c", "metaverse/voice-host/wav.h", "metaverse/voice-host/speech.c", "metaverse/voice-host/speech.h", "coax/web/voice/voice-web.c", "coax/web/voice/build.sh", "apps/aethyrforge-desktop/voice-build.coax", "metaverse/asr-cut.coax", "proto/descriptors/voice.pb", "psionic/platform/psionic-parakeet.h"] {
     b: [4096] u8; t := fs_mtime_ns(fs_join(root, source, b[..])); if t > newest { newest = t; }
   }
   host := fv_path(p[..], work, "voice-host"); wasm := fv_path(p[..], work, "voice.wasm");
@@ -48,10 +48,10 @@ tool_main :: () -> int #export_c #effects(all) {
       n := fv_run(argv[..], out[..], deadline); if n < 0 || !fs_write(files[i], cast(string) out[0..<n]) { return 1; }
     }
     args: [64] string; n := 0;
-    for arg: [13] string.["/usr/bin/clang", "-std=c11", "-O2", "-w", "-D_DARWIN_C_SOURCE", "-DOA_VOICE_NO_WHISPER", "-I", work, "-I", fv_path(p[..], root, "verse/platform"), "-I", fv_path(p[..], root, "psionic/platform"), "-o"] { args[n] = arg; n += 1; }
+    for arg: [13] string.["/usr/bin/clang", "-std=c11", "-O2", "-w", "-D_DARWIN_C_SOURCE", "-DOA_VOICE_NO_WHISPER", "-I", work, "-I", fv_path(p[..], root, "metaverse/platform"), "-I", fv_path(p[..], root, "psionic/platform"), "-o"] { args[n] = arg; n += 1; }
     args[n] = host; n += 1;
     for file: files { args[n] = file; n += 1; }
-    for source: [5] string.["verse/platform/voice.c", "verse/voice-host/host.c", "verse/voice-host/ws.c", "verse/voice-host/wav.c", "verse/voice-host/speech.c"] { args[n] = fv_path(p[..], root, source); n += 1; }
+    for source: [5] string.["metaverse/platform/voice.c", "metaverse/voice-host/host.c", "metaverse/voice-host/ws.c", "metaverse/voice-host/wav.c", "metaverse/voice-host/speech.c"] { args[n] = fv_path(p[..], root, source); n += 1; }
     args[n] = archive; n += 1;
     for arg: [7] string.["-framework", "Metal", "-framework", "Foundation", "-lcurl", "-lpthread", "-lm"] { args[n] = arg; n += 1; }
     if fv_run(args[0..<n], out[..], deadline) < 0 { return 1; }

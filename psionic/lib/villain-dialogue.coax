@@ -1,7 +1,7 @@
 // Frozen creative-dialogue study. Arithmetic helpers require admitted views.
 #load "original-window.coax";
 #load "original-study.coax";
-#load "../../verse/characters/veyr.coax";
+#load "../../metaverse/characters/veyr.coax";
 VwCase :: struct {label:string;state:string;question:string;previous_player:string;previous_npc:string;split:int;}
 VW_CASES :: [18]VwCase.[
  VwCase.{label="arrival",state="The player has just entered the crypt. No bargain exists.",question="Who are you, and why should I listen to you?"},

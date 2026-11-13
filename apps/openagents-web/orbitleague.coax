@@ -15,7 +15,7 @@
 // the left thumb steers and drives; JUMP and BOOST are on the right.
 // ?stage=highlight plays a staged goal for clips (docs/verse/clips.md).
 // ?arena=drum (or PLAY IN THE DRUM when a match ends) plays inside a spinning drum
-// (verse/drum.coax): the floor curves up into the walls and over into the
+// (metaverse/drum.coax): the floor curves up into the walls and over into the
 // ceiling, the spin holds you to all of it, and the goals sit at the foot of
 // each end wall.
 //
@@ -2141,7 +2141,7 @@ drum_game :: (s: [] OrbitLeague) {
   #assert s[0].heard==2 && s[0].room_tick==10 && !s[0].room_present[0] && s[0].bodies[BOT].pos.y< -100;
 }
 // ---- ol-predict's checks: a page against a room over a late link
-// The room's side of one seat, as orbit/server/room.coax runs it (its own checks are the room
+// The room's side of one seat, as metaverse/orbit-league/server/room.coax runs it (its own checks are the room
 // suite's): controls wait their turn, one is stepped a tick with the game's step, and the seat
 // hears a whole snapshot naming the last control stepped.
 PT_Q :: 256;

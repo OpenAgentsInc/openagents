@@ -159,7 +159,7 @@ render_adoption :: (slug: string, app: string) -> RenderAdoption #export_c #effe
   if slug == "built" && app == "myrealm" { return RenderAdoption.{tracked_legacy = true}; }
   if slug == "bitcoin-lab" && app == "bitcoin-lab" { return RenderAdoption.{tracked_legacy = true}; }
   if slug == "bitcoin-lab" && app == "bitcoin-lab-walk" { return RenderAdoption.{tracked_legacy = true}; }   // the walk: an Everglade zone on Character Create's passes
-  if slug == "nostr-lab" && app == "nostr-lab-walk" { return RenderAdoption.{tracked_legacy = true}; }   // the same lab walk (verse/lab-walk.coax)
+  if slug == "nostr-lab" && app == "nostr-lab-walk" { return RenderAdoption.{tracked_legacy = true}; }   // the same lab walk (metaverse/lab-walk.coax)
   if slug == "portal-lab" && app == "portallab" { return RenderAdoption.{tracked_legacy = true}; }
   index := render_catalog_find(slug);
   if index >= 0 {
@@ -183,7 +183,7 @@ render_adoption :: (slug: string, app: string) -> RenderAdoption #export_c #effe
   if slug == "penultimate-frontier" && app == "newland" { return RenderAdoption.{tracked_legacy = true}; }
   if slug == "painted-village" && app == "painted" { return RenderAdoption.{tracked_legacy = true}; }   // the Metaverse Engine's stylized shading (metaverse-engine/render/stylized.coax) on the page's own passes
   if slug == "create-world" && app == "worldbuilder" { return RenderAdoption.{tracked_legacy = true}; }
-  if slug == "splice" && app == "splice" { return RenderAdoption.{tracked_legacy = true}; }   // Splice: Mars at dusk on Anime Lab's shading (verse/splice/splice.coax)   // WorldBuilder: chat a world onto the Grid, on its own passes
+  if slug == "splice" && app == "splice" { return RenderAdoption.{tracked_legacy = true}; }   // Splice: Mars at dusk on Anime Lab's shading (metaverse/splice/splice.coax)   // WorldBuilder: chat a world onto the Grid, on its own passes
   return RenderAdoption.{};
 }
 #test "WorldBuilder binds its own passes only to its own producer" {

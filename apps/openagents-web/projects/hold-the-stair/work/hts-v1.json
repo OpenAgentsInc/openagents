@@ -218,7 +218,7 @@
       "title": "Layers, defenders, levels and maps as text tables",
       "size": "M",
       "labels": [],
-      "body": "Content as data an agent can write and the engine checks, like motions (metaverse-engine/anim/motion.coax) and set pieces (verse/setpiece.coax).",
+      "body": "Content as data an agent can write and the engine checks, like motions (metaverse-engine/anim/motion.coax) and set pieces (metaverse/setpiece.coax).",
       "files": [
         "apps/openagents-web/realms/hold-the-stair/"
       ],
@@ -239,7 +239,7 @@
       "title": "All seven classes: fighter, rogue, wizard, cleric, ranger, bard, paladin",
       "size": "L",
       "labels": [],
-      "body": "Each SRD class as a placeable defender: Sneak Attack, area spells, Spirit Guardians and Daylight, a favoured enemy layer, Bardic Inspiration and a paladin's aura, using verse/rules/srd5.coax and verse/rules/srd5-combat.coax.",
+      "body": "Each SRD class as a placeable defender: Sneak Attack, area spells, Spirit Guardians and Daylight, a favoured enemy layer, Bardic Inspiration and a paladin's aura, using metaverse/rules/srd5.coax and metaverse/rules/srd5-combat.coax.",
       "files": [
         "apps/openagents-web/realms/hold-the-stair/"
       ],
@@ -397,7 +397,7 @@
       "title": "Your own spells: Wall of Stone, Wall of Fire, Slow",
       "size": "M",
       "labels": [],
-      "body": "The tower's wizard (you) has a few spells per map: Wall of Stone across the path (verse/demolish.coax), Wall of Fire, Slow on a wave.",
+      "body": "The tower's wizard (you) has a few spells per map: Wall of Stone across the path (metaverse/demolish.coax), Wall of Fire, Slow on a wave.",
       "files": [
         "apps/openagents-web/realms/hold-the-stair/"
       ],

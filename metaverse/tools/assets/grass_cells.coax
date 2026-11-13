@@ -1,0 +1,149 @@
+// The glade's grass seeds sorted into cells, in a pack that is already built (GitHub #13147).
+// metaverse/experimental-grass-grid.coax says why and holds the grid and the sort; the pack's builder
+// (character_glade_pack.coax gp_grass_seeds) sorts the seeds it writes the same way. This sorts a
+// pack that holds them unsorted, where they are (no byte of the pack moves but the seeds of each
+// "C glade/grassK" row), and writes where each cell's seeds start as Coax, which the page reads
+// (everglade/scene/charactercreator.coax meadow_cull):
+//
+//   gzip -dc apps/openagents-web/realms/everglade-experimental/assets/glade.pack.gz > /tmp/glade.pack
+//   coax/web/tool.sh metaverse/tools/assets/grass_cells.coax --sort /tmp/glade.pack /tmp/glade-new.pack metaverse/experimental-grass-baked.coax
+//   gzip -n -6 -c /tmp/glade-new.pack > apps/openagents-web/realms/everglade-experimental/assets/glade.pack.gz
+//
+//   coax/web/tool.sh metaverse/tools/assets/grass_cells.coax --check /tmp/glade.pack metaverse/experimental-grass-baked.coax
+//     fails when the pack's seeds are not sorted, or CELLS.coax is not what this pack gives: sort it again.
+//
+// After any change to the pack's grass (a new bake), run --sort (a sorted pack stays as it is) and
+// commit metaverse/experimental-grass-baked.coax with the pack. A page whose pack has other seed counts
+// than the file's draws every seed, as before.
+//   coax/bin/coax test metaverse/tools/assets/grass_cells.coax
+// tool.sh: release
+// tool.sh: stack-gib 2
+#import "Basic";
+#load "../../../coax/lib/sys/tool.coax";
+#load "../../../coax/lib/sys/fs.coax";
+#load "../../experimental-grass-grid.coax";
+
+GC_PACK :: 536870912;   // bytes a pack may be (the glade pack's own budget)
+GC_TEXT :: 65536;
+Gc :: struct { pack: [GC_PACK] u8; scratch: [EXG_MOST * EXG_SEED] u8; }
+
+gc_put :: (b: [] u8, at: int, t: string) -> int { n := at; for ch: t { if n < b.count { b[n] = ch; n += 1; } } return n; }
+gc_put_int :: (b: [] u8, at: int, v: int) -> int {
+  d: [20] u8; k := 0; x := v; n := at;
+  if x == 0 { d[0] = '0'; k = 1; }
+  while x > 0 { d[k] = cast,trunc(u8) ('0' + x % 10); x /= 10; k += 1; }
+  for i: 0..<k { if n < b.count { b[n] = d[k - 1 - i]; n += 1; } }
+  return n;
+}
+// Field k (from 0, split by spaces) of a catalog line as a number, or -1.
+gc_field :: (line: string, k: int) -> int {
+  at := 0; f := 0;
+  while at < line.count {
+    while at < line.count && line[at] == ' ' { at += 1; }
+    from := at; while at < line.count && line[at] != ' ' { at += 1; }
+    if f == k { if at == from { return -1; } v := 0; for i: from..<at { c := line[i]; if c < '0' || c > '9' { return -1; } v = v * 10 + cast(int) (c - '0'); } return v; }
+    f += 1;
+  }
+  return -1;
+}
+gc_starts :: (line: string, with: string) -> bool { if line.count < with.count { return false; } for i: 0..<with.count { if line[i] != with[i] { return false; } } return true; }
+// Where a pack keeps each group's seeds: the byte the first starts at and how many (n -1: no such row).
+GcSeeds :: struct { ok: bool; at: [EXG_GROUPS] int; n: [EXG_GROUPS] int; }
+gc_seeds :: (src: [] u8, size: int) -> GcSeeds {
+  none: GcSeeds; s: GcSeeds; for g: 0..<EXG_GROUPS { s.n[g] = -1; }
+  if size < 128 || src[0] != 'V' || src[1] != 'P' || src[2] != 'K' || src[3] != '1' || cast(int) exg_u32(src, 8) != size { return none; }
+  table := cast(int) exg_u32(src, 16); entries := cast(int) exg_u32(src, 4);
+  if table != 32 || entries < 2 || entries > (size - table) / 48 || src[table] != 1 || src[table + 48] != 2 { return none; }
+  cat_at := cast(int) exg_u32(src, table + 4); cat_n := cast(int) exg_u32(src, table + 8); v_at := cast(int) exg_u32(src, table + 52); v_n := cast(int) exg_u32(src, table + 56);
+  if cat_at > size || cat_n > size - cat_at || v_at > size || v_n > size - v_at { return none; }
+  cat := cast(string) src[cat_at..<cat_at + cat_n]; at := 0;
+  while at < cat.count {
+    end := at; while end < cat.count && cat[end] != '\n' { end += 1; }
+    line := cat[at..<end];
+    if gc_starts(line, "C glade/grass") && line.count > 14 && line[14] == ' ' {
+      g := cast(int) line[13] - cast(int) '0'; word := gc_field(line, 5); n := gc_field(line, 6);
+      if g < 0 || g >= EXG_GROUPS || word < 0 || n < 0 || n > EXG_MOST || word * 4 + n * EXG_SEED > v_n || s.n[g] >= 0 { return none; }
+      s.at[g] = v_at + word * 4; s.n[g] = n;
+    }
+    at = end + 1;
+  }
+  s.ok = true;
+  return s;
+}
+// metaverse/experimental-grass-baked.coax for these seeds: each group's count and where each cell's start.
+gc_text :: (out: [] u8, n: [EXG_GROUPS] int, first: [EXG_GROUPS] [EXG_CELLS + 1] int) -> int {
+  t := gc_put(out, 0, "// Where each cell's grass seeds start in Everglade Experimental's glade pack (GitHub #13147): written from\n");
+  t = gc_put(out, t, "// apps/openagents-web/realms/everglade-experimental/assets/glade.pack.gz by\n");
+  t = gc_put(out, t, "//   coax/web/tool.sh metaverse/tools/assets/grass_cells.coax --sort IN.pack OUT.pack metaverse/experimental-grass-baked.coax\n");
+  t = gc_put(out, t, "// (metaverse/experimental-grass-grid.coax holds the grid). Don't edit it: sort the pack again and write it again.\n");
+  t = gc_put(out, t, "#module \"verse.experimentalgrassbaked\";\n");
+  t = gc_put(out, t, "// each group's seeds (glade/grass0, 1, 2): a pack with other counts is not this one, and draws every seed\n");
+  t = gc_put(out, t, "EXG_BAKED_N :: [3] int.[");
+  for g: 0..<EXG_GROUPS { if g > 0 { t = gc_put(out, t, ", "); } t = gc_put_int(out, t, ifx n[g] < 0 then 0 else n[g]); }
+  t = gc_put(out, t, "];\n// where each cell's seeds start in its group's run (577 numbers a group: 576 cells and the end)\nEXG_BAKED_AT :: [3] [577] int.[\n");
+  for g: 0..<EXG_GROUPS {
+    t = gc_put(out, t, "  [577] int.[");
+    for c: 0..<EXG_CELLS + 1 { if c > 0 { t = gc_put(out, t, ifx c % 24 == 0 then ",\n    " else ", "); } t = gc_put_int(out, t, first[g][c]); }
+    t = gc_put(out, t, ifx g + 1 < EXG_GROUPS then "],\n" else "]\n");
+  }
+  t = gc_put(out, t, "];\n");
+  return t;
+}
+gc_same :: (a: string, b: [] u8, n: int) -> bool { if a.count != n { return false; } for i: 0..<n { if a[i] != b[i] { return false; } } return true; }
+
+tool_main :: () -> int #export_c #effects(all) {
+  args: [1] Args;
+  if !args_load(args[..]) || args_count(args[..]) < 3 { tool_errln("usage: grass_cells --sort IN.pack OUT.pack CELLS.coax | --check IN.pack CELLS.coax"); return 2; }
+  mode := args_at(args[..], 0); sort := mode == "--sort"; check := mode == "--check";
+  if (!sort && !check) || (sort && args_count(args[..]) != 4) || (check && args_count(args[..]) != 3) { tool_errln("usage: grass_cells --sort IN.pack OUT.pack CELLS.coax | --check IN.pack CELLS.coax"); return 2; }
+  w: [1] Gc; src := w[0].pack[..];
+  size := fs_read(args_at(args[..], 1), src);
+  s := gc_seeds(src, size);
+  if !s.ok { tool_errln("grass_cells: not a glade pack (VPK1, its catalog and its vertices first)"); return 1; }
+  first: [EXG_GROUPS] [EXG_CELLS + 1] int; moved := 0;
+  for g: 0..<EXG_GROUPS {
+    if s.n[g] < 0 { continue; }
+    if !exg_sorted(src, s.at[g], s.n[g]) {
+      if check { tool_errln("grass_cells: the pack's grass seeds are not sorted into cells: sort it with --sort"); return 1; }
+      moved += 1;
+    }
+    if sort { if !exg_sort(src, s.at[g], s.n[g], w[0].scratch[..], first[g][..]) { tool_errln("grass_cells: a group's seeds could not be sorted"); return 1; } }
+    else { exg_starts(src, s.at[g], s.n[g], first[g][..]); }
+    most := 0; held := 0; for c: 0..<EXG_CELLS { k := first[g][c + 1] - first[g][c]; if k > most { most = k; } if k > 0 { held += 1; } }
+    print("glade/grass%: % seeds in % cells, the fullest holds %\n", g, s.n[g], held, most);
+  }
+  text: [GC_TEXT] u8; t := gc_text(text[..], s.n, first);
+  cells := args_at(args[..], ifx sort then 3 else 2);
+  if check {
+    was: [GC_TEXT] u8; k := fs_read(cells, was[..]);
+    if !gc_same(cast(string) text[0..<t], was[..], k) { tool_err("grass_cells: "); tool_err(cells); tool_errln(" is not what this pack's seeds give: write it again with --sort"); return 1; }
+    print("the pack's grass is sorted and % matches it\n", cells);
+    return 0;
+  }
+  if !fs_write(args_at(args[..], 2), cast(string) src[0..<size]) { tool_errln("grass_cells: could not write the pack"); return 1; }
+  if !fs_write(cells, cast(string) text[0..<t]) { tool_errln("grass_cells: could not write the cells"); return 1; }
+  print("% group(s) sorted; % (% bytes) and % written\n", moved, args_at(args[..], 2), size, cells);
+  return 0;
+}
+
+// ---- checks
+
+gc_test_u32 :: (b: [] u8, at: int, v: int) { for k: 0..<4 { b[at + k] = cast,trunc(u8) (v >> (k * 8)); } }
+#test "grass cells: a pack's grass rows are found, a pack that is not one is refused, and the cells' text names every start" {
+  b: [4096] u8; cat := "C glade/environment 9 12 250 100 8 0\nC glade/grass0 21 465 250 4 3 0\nC glade/grass2 30 90 250 40 2 0\n";
+  b[0] = 'V'; b[1] = 'P'; b[2] = 'K'; b[3] = '1'; gc_test_u32(b[..], 4, 2); gc_test_u32(b[..], 8, 1000); gc_test_u32(b[..], 16, 32);
+  b[32] = 1; gc_test_u32(b[..], 36, 128); gc_test_u32(b[..], 40, cat.count); b[80] = 2; gc_test_u32(b[..], 84, 400); gc_test_u32(b[..], 88, 600);
+  for i: 0..<cat.count { b[128 + i] = cat[i]; }
+  s := gc_seeds(b[..], 1000);
+  #assert s.ok && s.at[0] == 400 + 16 && s.n[0] == 3 && s.n[1] == -1 && s.at[2] == 400 + 160 && s.n[2] == 2;
+  #assert !gc_seeds(b[..], 999).ok;   // its size is not the pack's
+  b[80] = 3; #assert !gc_seeds(b[..], 1000).ok; b[80] = 2;   // no vertices second
+  gc_test_u32(b[..], 88, 100); #assert !gc_seeds(b[..], 1000).ok;   // the seeds run past the vertices
+  #assert gc_field("C glade/grass2 30 90 250 40 2 0", 5) == 40 && gc_field("C a", 5) == -1 && gc_starts("C glade/grass2 3", "C glade/grass") && !gc_starts("C", "C glade");
+  n: [EXG_GROUPS] int; first: [EXG_GROUPS] [EXG_CELLS + 1] int; n[0] = 3; n[1] = -1; n[2] = 2;
+  for c: 1..<EXG_CELLS + 1 { first[0][c] = 3; first[2][c] = ifx c > 100 then 2 else 0; }
+  text: [GC_TEXT] u8; t := gc_text(text[..], n, first); out := cast(string) text[0..<t];
+  #assert t > 1000 && t < GC_TEXT - 1 && gc_same(out, text[..], t) && !gc_same(out, text[..], t - 1);
+  commas := 0; for ch: out { if ch == ',' { commas += 1; } }
+  #assert commas >= 2 + 3 * EXG_CELLS + 2;
+}

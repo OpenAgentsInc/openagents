@@ -15,7 +15,7 @@ interruptions, decisions, buffering, the two `#authority` files, the C face,
 the server, the phone, and the tests that hold it all together. At each
 step we'll write a small runnable version of the idea in
 `coax/book/examples/ch25_*.coax`, run it, and then look at how the real code
-in `verse/` does the same thing with more care.
+in `metaverse/` does the same thing with more care.
 
 By the end you'll have seen most of what the book has covered so far used
 in one place: `#import_proto`, fixed arrays and views, `#run`, `#test` and
@@ -73,13 +73,13 @@ can't: talk to audio hardware, open sockets, and make HTTPS calls.
 | Piece | File | What it decides or does |
 | --- | --- | --- |
 | The schema | `proto/openagents/voice/v1alpha1/voice.proto` | Every message on the wire, with its bounds |
-| The engine | `verse/voice.coax` | Resampling, levels, voice activity, end of turn, barge-in, jitter buffer, gain, features, decisions |
-| The wire | `verse/voice-wire.coax` | Frame codecs, generated from the schema |
-| The floor | `verse/voice-floor.coax` | Consent, who holds the floor, media epochs (`#authority`) |
+| The engine | `metaverse/voice.coax` | Resampling, levels, voice activity, end of turn, barge-in, jitter buffer, gain, features, decisions |
+| The wire | `metaverse/voice-wire.coax` | Frame codecs, generated from the schema |
+| The floor | `metaverse/voice-floor.coax` | Consent, who holds the floor, media epochs (`#authority`) |
 | The meter | `pay/voice-meter.coax` | Free tier, prices, whether a turn may run (`#authority`) |
-| The C face | `verse/platform/voice.h`, `voice.c` | A stable C API over the four libraries |
-| The voice host | `verse/voice-host/` | WebSocket server, sessions, Google calls, a dev client |
-| The reply path | `verse/voice-host/voice-reply.coax` | When a partial may stand as the final transcript, and where a reply splits into sentences (`#authority`, newest and still changing) |
+| The C face | `metaverse/platform/voice.h`, `voice.c` | A stable C API over the four libraries |
+| The voice host | `metaverse/voice-host/` | WebSocket server, sessions, Google calls, a dev client |
+| The reply path | `metaverse/voice-host/voice-reply.coax` | When a partial may stand as the final transcript, and where a reply splits into sentences (`#authority`, newest and still changing) |
 | The phone | `apps/openagents-ios/OpenAgents/Voice/` | Capture, playback, the socket, the UI |
 
 ## Start with the protocol
@@ -144,7 +144,7 @@ Chapter 18 showed how a schema reaches Coax. The repository's
 `proto/descriptors/voice.pb` from it. Then a single directive in the wire
 file generates every codec:
 
-Filename: verse/voice-wire.coax
+Filename: metaverse/voice-wire.coax
 
 ```jai
 #import_proto "../proto/descriptors/voice.pb" as V;
@@ -171,7 +171,7 @@ types and plain structs the C face can fill in. Each builder follows the
 rule Chapter 18 described for generated setters: an edit reads one scratch
 buffer and writes the other, so the two alternate.
 
-Filename: verse/voice-wire.coax
+Filename: metaverse/voice-wire.coax
 
 ```jai
 pick :: (k: int, a: [] u8, b: [] u8) -> [] u8 { return ifx k % 2 == 0 then a else b; }
@@ -194,12 +194,12 @@ There's one thing the wire checks can't do in the evaluator. The setters
 check at runtime that the input and output buffers don't overlap, and the
 compile-time evaluator can't observe native addresses (Chapter 24 hit the
 same wall, as error E0404). So the file's `#test` blocks decode frames, and
-encoding is tested natively by `verse/test_voice.sh`, which we'll run at
+encoding is tested natively by `metaverse/test_voice.sh`, which we'll run at
 the end of the chapter. The comment in the file says exactly that:
 
 ```jai
 // The setters need a runtime address check (bytes_overlap), so encoding runs
-// only natively: verse/test_voice.sh round-trips every kind through the C
+// only natively: metaverse/test_voice.sh round-trips every kind through the C
 // face and has protoc decode each encoded frame. These checks decode those
 // exact protoc-verified frames.
 ```
@@ -220,7 +220,7 @@ The resampler uses a windowed-sinc filter, and its table is a nice use of
 program contains only the finished numbers, and two `#assert`s check the
 table before any code uses it:
 
-Filename: verse/voice.coax
+Filename: metaverse/voice.coax
 
 ```jai
 make_kernel :: () -> [KN] f32 {
@@ -346,7 +346,7 @@ sample at 16 kHz. Over one 320-sample frame we measured 0.034. The 3 kHz
 tone crosses ten times as often. Voices sit low on this scale; hiss and
 fricatives like "s" sit high.
 
-Our `measure` is very nearly the one in `verse/voice.coax`. That's
+Our `measure` is very nearly the one in `metaverse/voice.coax`. That's
 deliberate: once you understand this listing you can read the real one.
 
 ### From levels to "is someone speaking?"
@@ -357,7 +357,7 @@ running estimate of the noise floor, and judges each frame against it. The
 floor follows quiet frames down quickly, and creeps up slowly only while
 nobody is talking:
 
-Filename: verse/voice.coax
+Filename: metaverse/voice.coax
 
 ```jai
 // The floor follows quiet frames down fast and rises slowly (at most
@@ -460,11 +460,11 @@ speech while this chapter was being written. One of the test recordings
 begins "Let's take the long way through the garden", and the "s" of
 "Let's" is hiss: high zero crossings, no voicing. Scored like our example,
 it stopped counting as speech partway through a word. The current
-`speech_likelihood` in `verse/voice.coax` keeps the voicing penalty for
+`speech_likelihood` in `metaverse/voice.coax` keeps the voicing penalty for
 frames near the floor, but lets a frame that stands far above the floor
 through as an unvoiced consonant:
 
-Filename: verse/voice.coax
+Filename: metaverse/voice.coax
 
 ```jai
   // High zero crossings mean noise, unless the frame stands far above the
@@ -622,7 +622,7 @@ machine counted three speech frames across the gap and started a turn,
 which our rule says needs three in a row. The `#forall` found the
 smallest pattern that shows it.
 
-The real machine in `verse/voice.coax` has the same shape with more
+The real machine in `metaverse/voice.coax` has the same shape with more
 inputs. It works in milliseconds rather than frames, has a maximum turn
 length, can be told to hold the turn open a little longer or to end it
 now, and tracks how much near-speech energy is in the trailing silence.
@@ -633,7 +633,7 @@ the closure before a "t" or a "k" is a frame or two of near silence. A
 machine that resets on any quiet frame can miss the start of a word, so
 the real one deliberately bridges short gaps in an onset, and says so:
 
-Filename: verse/voice.coax
+Filename: metaverse/voice.coax
 
 ```jai
 turn_step :: (t0: Turn, speech: bool, above: bool, p: f32, end_now: bool, end_silence: u32, min_speech: u32, max_turn: u32) -> TurnOut {
@@ -696,7 +696,7 @@ goes up exactly when playback is cut. Every audio packet carries the epoch
 it was made in. After a cut, anything stamped with an older epoch is
 dropped on arrival. Here's the cut itself:
 
-Filename: verse/voice.coax
+Filename: metaverse/voice.coax
 
 ```jai
 // Cut playback: a new media epoch, nothing buffered, no duck or pause, and
@@ -785,7 +785,7 @@ turn t2 ENDED epoch=2
 summary finals=2 partials=4 speeches=2 speech_ends=1 interrupted=1 audio_in=24 downlink_samples=114000 stale=0 features=0 decisions=0 meters=4 errors=0 peak=9000
 ```
 
-This run, from `verse/voice-host/`, used the host's offline provider,
+This run, from `metaverse/voice-host/`, used the host's offline provider,
 which we'll meet later; it "recognizes" by reporting how long the turn
 was. The first reply was cut
 after 27,816 of its samples at 24 kHz, a little over a second. The epoch
@@ -954,7 +954,7 @@ belongs on the stream (you can duck the downlink, but you can't duck the
 microphone), and instead of applying at once it parks the decision until
 its `apply_from_sequence` comes due:
 
-Filename: verse/voice.coax
+Filename: metaverse/voice.coax
 
 ```jai
 // The one gate every decision passes. True if kept.
@@ -1153,7 +1153,7 @@ silence. Then a packet from epoch 2 arrived, which flushed the buffer, and
 late audio from epoch 1 was refused. That last line is barge-in seen from
 the receiving end.
 
-The real buffer in `verse/voice.coax` is the same idea at full size: 16
+The real buffer in `metaverse/voice.coax` is the same idea at full size: 16
 slots of up to 200 ms each, playout that starts once two packets are
 buffered, a rebase when an earlier packet arrives before playout starts,
 and concealment that repeats the last 10 ms of audio while fading it to
@@ -1325,19 +1325,19 @@ doesn't prove the model is the *right* rule; Chapter 23 is careful about
 that difference. But it rules out a whole class of "the tests were
 looking somewhere else".
 
-The real `verse/voice-floor.coax` has eight slots, binds each slot to a
+The real `metaverse/voice-floor.coax` has eight slots, binds each slot to a
 route target, and keeps the floor's media epoch. Its model check runs
 every three-step sequence of 19 operations, including bad slot numbers,
 on three slots: 6,859 cases. From the repository root:
 
 ```shell
-$ coax/bin/coax test verse/voice-floor.coax
+$ coax/bin/coax test metaverse/voice-floor.coax
 ok   #forall the floor matches its model (6859 cases, 7838207 steps)
 ok   #forall bad slots (20 cases, 4078 steps)
 ok   #test the top slot and negative grants (1 case, 603 steps)
 ok   #test epochs move forward and stop at the top (1 case, 286 steps)
 4 checks, 4 passed, 0 failed
-$ coax/bin/coax mutate verse/voice-floor.coax
+$ coax/bin/coax mutate metaverse/voice-floor.coax
 77 mutants, 77 killed, 0 survived
 ```
 
@@ -1405,8 +1405,8 @@ So far everything has been Coax. The phone is Swift and the server is C,
 so they need a way in. `coax c FILE --library --header Name.h` turns each
 of the four voice files into a C library with a generated header, as
 Chapter 20 described. But the hosts don't include those headers directly.
-They include one hand-written file, `verse/platform/voice.h`, backed by
-`verse/platform/voice.c`. Why the extra layer?
+They include one hand-written file, `metaverse/platform/voice.h`, backed by
+`metaverse/platform/voice.c`. Why the extra layer?
 
 Start with where the engine's state lives. Coax has no heap and no global
 variables:
@@ -1444,11 +1444,11 @@ things after Coax (`coax_t_VoiceDecision`, `coax_v_t_VoiceState`) and
 change when the Coax structs change. The hosts need something steadier,
 and the header says what it promises:
 
-Filename: verse/platform/voice.h
+Filename: metaverse/platform/voice.h
 
 ```c
  * This is the plain-C face of the voice engine. The voice host
- * (verse/voice-host/) and the iOS app (apps/openagents-ios/OpenAgents/Voice/)
+ * (metaverse/voice-host/) and the iOS app (apps/openagents-ios/OpenAgents/Voice/)
  * both code against exactly this file. Changes from here on are additive only:
  * new functions, new constants, new fields appended at the END of a struct
  * (callers zero-initialize structs, so a zero new field must mean "absent" or
@@ -1462,7 +1462,7 @@ compile time with `_Static_assert`. Everything else in `voice.c` is
 conversion. Here's the uplink, which builds the views Coax expects from
 plain pointers:
 
-Filename: verse/platform/voice.c
+Filename: metaverse/platform/voice.c
 
 ```c
 uint32_t oa_voice_uplink(oa_voice *v, const int16_t *pcm, int16_t *out16k, oa_voice_features *f) {
@@ -1492,7 +1492,7 @@ and the others `VoiceWire`, `VoiceFloor` and `VoiceMeter`.
 
 ## The voice host: a thin C host
 
-The voice host is one C process in `verse/voice-host/`. It does the
+The voice host is one C process in `metaverse/voice-host/`. It does the
 things Coax can't: it listens on a socket (`127.0.0.1:8787` by default),
 speaks WebSocket (a small RFC 6455 implementation in `ws.c`), and makes
 HTTPS calls to Google with libcurl. It links the same four engine
@@ -1500,7 +1500,7 @@ libraries through the same C face as the phone, plus `voice-reply.coax`,
 its own reply-path decisions. The top of `host.c` states the one
 threading rule that keeps it simple:
 
-Filename: verse/voice-host/host.c
+Filename: metaverse/voice-host/host.c
 
 ```c
 // The voice engine (voice.coax via voice.h) is confined to the main thread:
@@ -1546,7 +1546,7 @@ depends on the text. There are two agents as well: `echo`, which replies
 "You said: ..." and `gemini`, which asks Vertex AI for a short spoken
 reply.
 
-`build.sh` turns each `verse/voice*.coax`, and `voice-reply.coax`, into
+`build.sh` turns each `metaverse/voice*.coax`, and `voice-reply.coax`, into
 a C library with `coax c --library --header`, compiles the C face over them, and links the host
 against libcurl from the macOS SDK. Because `#authority` files run their
 checks inside `coax c`, a failing floor or meter check stops the build
@@ -1554,7 +1554,7 @@ before a host exists.
 
 Here's a full offline session with the dev client, which plays a WAV
 recording in real time through `oa_voice_uplink`, exactly as the phone
-does with its microphone. These commands run in `verse/voice-host/`
+does with its microphone. These commands run in `metaverse/voice-host/`
 after `./build.sh`:
 
 ```shell
@@ -1592,7 +1592,7 @@ frame, it may stand as the final, so the agent can start at once. The
 host's log line for the turn says so, `t1 final (partial) in 0 ms`. That
 decision, along with when to recognize early during trailing silence and
 where a streaming reply may be cut into sentences, lives in a fifth Coax
-file, `verse/voice-host/voice-reply.coax`. It's an `#authority` file
+file, `metaverse/voice-host/voice-reply.coax`. It's an `#authority` file
 too, because whether a partial may stand decides whether the agent hears
 every word. It appeared while this chapter was being written and was
 still changing, so we only point at it here; when we ran it, `coax test`
@@ -1665,7 +1665,7 @@ Filename: apps/openagents-ios/OpenAgents/Voice/VoiceSession.swift
 Swift never decides that a turn started or ended, or that you barged in.
 It's told, and it does the platform part: send a control frame, stop the
 player, update the screen. If you compare this with the dev client in
-`verse/voice-host/client.c`, you'll find the same sequence, which is
+`metaverse/voice-host/client.c`, you'll find the same sequence, which is
 why the dev client is a fair stand-in for the phone in the host's tests.
 
 A launch argument, `-OAVoiceFixture`, streams a bundled recording into
@@ -1692,11 +1692,11 @@ others can't.
 
 | Layer | Command | What it establishes |
 | --- | --- | --- |
-| Coax checks | `coax test verse/voice*.coax --steps 20000000` | Every rule and example in the evaluator, with each check's step count |
-| Mutation | `coax mutate verse/voice-floor.coax`, `voice-meter.coax` | The authority checks pin every decision |
-| Native engine | `verse/test_voice.sh` | The libraries and C face under AddressSanitizer and UBSan, every frame kind round-tripped, `protoc` cross-check |
-| Host, offline | `verse/voice-host/test.sh --offline` | Whole sessions over a real socket with the deterministic local provider |
-| Host, live | `verse/voice-host/test.sh` | One real Google recognition on a committed fixture |
+| Coax checks | `coax test metaverse/voice*.coax --steps 20000000` | Every rule and example in the evaluator, with each check's step count |
+| Mutation | `coax mutate metaverse/voice-floor.coax`, `voice-meter.coax` | The authority checks pin every decision |
+| Native engine | `metaverse/test_voice.sh` | The libraries and C face under AddressSanitizer and UBSan, every frame kind round-tripped, `protoc` cross-check |
+| Host, offline | `metaverse/voice-host/test.sh --offline` | Whole sessions over a real socket with the deterministic local provider |
+| Host, live | `metaverse/voice-host/test.sh` | One real Google recognition on a committed fixture |
 | Simulator | `apps/openagents-ios/tools/voice-sim-test.sh` | The app in the Grid, end to end, with a bundled recording |
 
 ### Worst-case frames under a step budget
@@ -1708,7 +1708,7 @@ and bounds its cost. The last five checks in `voice.coax` are exactly
 that:
 
 ```shell
-$ coax/bin/coax test verse/voice.coax --steps 20000000
+$ coax/bin/coax test metaverse/voice.coax --steps 20000000
 ...
 ok   #test worst case: uplink frame at 48 kHz (1 case, 2074649 steps)
 ok   #test worst case: uplink frame at 44.1 kHz (1 case, 1888894 steps)
@@ -1723,10 +1723,10 @@ about two million evaluator steps. If someone makes it more expensive, the
 count goes up, and a tight enough budget turns that into a failure:
 
 ```shell
-$ coax/bin/coax test verse/voice.coax --steps 2000000
+$ coax/bin/coax test metaverse/voice.coax --steps 2000000
 ...
 FAIL #test worst case: uplink frame at 48 kHz
-verse/voice.coax:265:3: error[E0400]: compile-time evaluation exceeded 2000000 steps
+metaverse/voice.coax:265:3: error[E0400]: compile-time evaluation exceeded 2000000 steps
     return KERNEL[i] + (KERNEL[i + 1] - KERNEL[i]) * f;
     ^
 ```
@@ -1743,14 +1743,14 @@ that may run on the audio thread is planned, not built.
 
 ### The engine natively, under sanitizers
 
-`verse/test_voice.sh` runs the Coax checks and both mutation gates,
+`metaverse/test_voice.sh` runs the Coax checks and both mutation gates,
 then builds the four libraries and the C face with
 `-fsanitize=address,undefined` and runs a C smoke test over them. If
 `protoc` is installed, it also decodes every frame the smoke test encoded,
 as a second implementation of the wire. Here's a full run:
 
 ```shell
-$ verse/test_voice.sh
+$ metaverse/test_voice.sh
 voice: 41 checks, 41 passed, 0 failed
 voice-wire: 7 checks, 7 passed, 0 failed
 voice-floor: 4 checks, 4 passed, 0 failed
@@ -1808,7 +1808,7 @@ deterministic, these tests don't need a network and give the same answers
 every run. After a line reporting the build:
 
 ```shell
-$ verse/voice-host/test.sh --offline
+$ metaverse/voice-host/test.sh --offline
 ...
 offline: --provider local --agent echo
 ok   health
@@ -1917,7 +1917,7 @@ should hear it. "Who hears whom" is meant to be a Coax decision in a
 forwarder nor that file exists yet.
 
 Deployment. The original local runs did not qualify a production service.
-The repository now includes `verse/voice-host/deploy.sh`, which builds a
+The repository now includes `metaverse/voice-host/deploy.sh`, which builds a
 container, deploys Cloud Run and runs browser-engine voice smoke cases.
 That script and the local results are separate from retained evidence for
 a particular deployment. Authentication, durable metering and operational
@@ -1959,6 +1959,6 @@ own test, from step-counted worst-case frames to a live Google run.
 
 [Chapter 26](ch26-library-recipes.md) adds small library recipes, and Part
 VI opens up the compiler. If you want to keep going with voice, the real
-files are the best next step: `verse/voice.coax` is about 1,450 lines, and after
+files are the best next step: `metaverse/voice.coax` is about 1,450 lines, and after
 this chapter you should be able to read all of it. The appendices collect
 the keywords, error codes and terms we've used along the way.

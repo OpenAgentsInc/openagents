@@ -9,7 +9,7 @@
 // The pass's module is apps/openagents-web/character.wgsl, written from this file by
 // coax/web/wgsl-module.coax (apps/openagents-web/gpu/character.module and character.bindings):
 //   coax/web/tool.sh coax/web/wgsl-module.coax apps/openagents-web/gpu/character.coax apps/openagents-web/character.wgsl apps/openagents-web/gpu/character.module
-// Echo's word offsets and material slots are her pack's (verse/valley/); they move into the
+// Echo's word offsets and material slots are her pack's (metaverse/valley/); they move into the
 // character pack's own data with Character pack v1 (H3).
 //   coax/bin/coax test metaverse-engine/render/character.coax
 #load "../gpu/wgsl.coax";

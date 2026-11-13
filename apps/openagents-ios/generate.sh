@@ -30,19 +30,19 @@ for name in home player grid cast camera wallet haunt hud benchmarks; do
   "$compiler" c "$src/$name.coax" --library --header "$out/$base.h" "${debug_flags[@]}" > "$out/$base.c.tmp"
   mv "$out/$base.c.tmp" "$out/$base.c"
 done
-"$compiler" c verse/haunt-buffer.coax --library --header "$out/HauntBuffer.h" > "$out/HauntBuffer.c"
+"$compiler" c metaverse/haunt-buffer.coax --library --header "$out/HauntBuffer.h" > "$out/HauntBuffer.c"
 # Voice: the engine, its wire codecs and the floor/meter authorities, under
-# names that cannot collide with verse/platform/voice.h on a
+# names that cannot collide with metaverse/platform/voice.h on a
 # case-insensitive disk (so the engine is VoiceEngine, not Voice). Floor and
 # meter are #authority: their checks run in this compile.
 # The meter is the Payments context's (pay/, #13320).
-for pair in verse/voice:VoiceEngine verse/voice-wire:VoiceWire verse/voice-floor:VoiceFloor pay/voice-meter:VoiceMeter; do
+for pair in metaverse/voice:VoiceEngine metaverse/voice-wire:VoiceWire metaverse/voice-floor:VoiceFloor pay/voice-meter:VoiceMeter; do
   "$compiler" c "${pair%%:*}.coax" --library --header "$out/${pair##*:}.h" > "$out/${pair##*:}.c.tmp"
   mv "$out/${pair##*:}.c.tmp" "$out/${pair##*:}.c"
 done
-# Phone sign-in (verse/phone-signin.coax, #authority): which codes the phone
+# Phone sign-in (metaverse/phone-signin.coax, #authority): which codes the phone
 # signs for and the NIP-98 request it writes.
-"$compiler" c verse/phone-signin.coax --library --header "$out/PhoneSignin.h" > "$out/PhoneSignin.c.tmp"
+"$compiler" c metaverse/phone-signin.coax --library --header "$out/PhoneSignin.h" > "$out/PhoneSignin.c.tmp"
 mv "$out/PhoneSignin.c.tmp" "$out/PhoneSignin.c"
 # The wallet's encrypted backup and daily limit (#13217, both #authority): pay/wallet-backup.coax
 # is what the app shows and does; pay/wallet-vault.coax is the sealing and opening
@@ -53,8 +53,8 @@ mv "$out/PhoneSignin.c.tmp" "$out/PhoneSignin.c"
 mv "$out/WalletBackup.c.tmp" "$out/WalletBackup.c"
 "$compiler" c pay/wallet-vault.coax --library --run-steps 250000000 --header "$out/WalletVault.h" > "$out/WalletVault.c.tmp"
 mv "$out/WalletVault.c.tmp" "$out/WalletVault.c"
-"$compiler" metal verse/light.coax > "$out/HomeShaders.txt.tmp"
-"$compiler" metal verse/haunt-light.coax >> "$out/HomeShaders.txt.tmp"
+"$compiler" metal metaverse/light.coax > "$out/HomeShaders.txt.tmp"
+"$compiler" metal metaverse/haunt-light.coax >> "$out/HomeShaders.txt.tmp"
 cat apps/openagents-ios/OpenAgents/Platform/Stages.metal >> "$out/HomeShaders.txt.tmp"
 mv "$out/HomeShaders.txt.tmp" "$out/HomeShaders.txt"
 for f in "$out"/*; do

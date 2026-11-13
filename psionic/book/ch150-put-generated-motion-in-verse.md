@@ -4,7 +4,7 @@
 > toward a destination, on synthetic weights, is converted to the OpenAgents Metaverse
 > character's convention, retargeted through an explicit joint map onto the
 > 65-joint skeleton of the Metaverse's `Cast.bin`, written into a Cast's dance slot
-> and played by `verse/cast.coax`, fading in from the idle and out to the
+> and played by `metaverse/cast.coax`, fading in from the idle and out to the
 > walk. Still to do: motion from the real MotionBricks weights (chapter 149
 > runs only its codebook on them), a map for the whole body rather than one
 > leg, writing the clip into the shipped `Cast.bin` on a device, a frame of
@@ -15,7 +15,7 @@
 decodes them into a clip. This chapter hands that clip to a Metaverse
 character. You name a destination; Psionic generates a clip toward it,
 converts it to what the Metaverse expects, and writes it where the Metaverse's character
-system ([`verse/cast.coax`](../../verse/cast.coax)) plays clips from. The
+system ([`metaverse/cast.coax`](../../metaverse/cast.coax)) plays clips from. The
 code is [`motion-verse.coax`](../lib/motion-verse.coax), in five steps:
 
 - **the target**: The Metaverse's skeleton and its conventions, read from the real
@@ -53,8 +53,8 @@ python3 -I psionic/tests/verse_cast_fixture.py
 
 ## The target
 
-`Cast.bin` is the file [`verse/tools/pack_cast.py`](../../verse/tools/pack_cast.py)
-packs and `verse/cast.coax` reads on iOS and the web. It holds the
+`Cast.bin` is the file [`metaverse/tools/pack_cast.py`](../../metaverse/tools/pack_cast.py)
+packs and `metaverse/cast.coax` reads on iOS and the web. It holds the
 character's 65 joints (a parent and a bind position each), seven clips
 (idle, walk, sprint, the three parts of a jump, and a dance) and, per frame
 and joint, a **skinning transform**: a rotation q and a translation t that
@@ -85,13 +85,13 @@ mv_verse_rig :: ()->MvRig {
     return r;
 }
 // Cast.bin's clips: Y up, +Z forward, right-handed, quaternions x, y, z, w,
-// metres, absolute roots, 30 frames a second (verse/cast.coax's FPS).
+// metres, absolute roots, 30 frames a second (metaverse/cast.coax's FPS).
 mv_verse :: ()->PoseConvention {
     return PoseConvention.{up=PoseAxis.pos_y,forward=PoseAxis.pos_z,hand=PoseHand.right,order=PoseOrder.xyzw,unit=PoseUnit.metre,root=PoseRoot.absolute,rate=30};
 }
 ```
 
-`verse/cast.coax` samples clips at 30 frames a second (`FPS`), turns the
+`metaverse/cast.coax` samples clips at 30 frames a second (`FPS`), turns the
 character by a yaw about +Y with yaw 0 facing +Z, and stores quaternions as
 x, y, z, w. Chapter 149's clips are in chapter 147's glTF convention, which
 differs only in the quaternion order (w first). Converting between the two
@@ -368,7 +368,7 @@ mv_splice :: (b:[]u8,h:MvHandoff)->MvStatus {
 ```
 
 The splice writes into the dance slot because the dance is the clip
-`verse/cast.coax` plays on request (`verse_cast_dance`) while you stand,
+`metaverse/cast.coax` plays on request (`verse_cast_dance`) while you stand,
 fading 0.18 s into it, and moving or jumping fades it back out. Nothing in
 the Metaverse changes: the Cast is the same format, admitted by the same
 `verse_cast_open`, and only the slot's frames and its frame count differ.
@@ -592,12 +592,12 @@ is not admitted.
 
 [motion-verse.coax](../lib/motion-verse.coax) holds 16 checks of its own, with their hand-built clips and handoffs in
 [motion-verse-checks.coax](../tests/motion-verse-checks.coax);
-loading it also runs those of chapters 147 to 149 and of `verse/cast.coax`.
+loading it also runs those of chapters 147 to 149 and of `metaverse/cast.coax`.
 
 - **The target.** The skeleton's parents come before their children, the
   left leg's joints and bind positions are those read off `Cast.bin` to the
   millimetre, and the convention is declared in full at 30 frames a second,
-  equal to `verse/cast.coax`'s `FPS`.
+  equal to `metaverse/cast.coax`'s `FPS`.
 - **The map.** Every refusal at the joint it names, including the root
   without a target and a rig too small for a target; the right leg maps as
   the left does; the source root on the ground root moves the hips with it,
@@ -612,7 +612,7 @@ loading it also runs those of chapters 147 to 149 and of `verse/cast.coax`.
   every mapped the Metaverse joint's position and rotation equal `pose_forward` on
   the mapped skeleton within 10⁻⁹, and every other joint keeps its bone
   length and turns with its parent.
-- **The Metaverse.** A splice writes x, y, z, w and the translation as `verse/cast.coax`
+- **The Metaverse.** A splice writes x, y, z, w and the translation as `metaverse/cast.coax`
   reads them; `verse_cast_pose` draws each dance frame within 10 µm of the
   handoff; the fade starts at the idle, ends at the dance, keeps each bone's
   length between the idle's and the dance's halfway, and fades out to the
@@ -624,7 +624,7 @@ loading it also runs those of chapters 147 to 149 and of `verse/cast.coax`.
 
 `coax mutate --root-only` on the unit leaves zero survivors.
 
-`verse/cast.coax` changed in one place: a helper its checks use, `turn`,
+`metaverse/cast.coax` changed in one place: a helper its checks use, `turn`,
 is now `yaw_turn`, so the file loads beside chapter 147's units, whose
 checks name a variable `turn`.
 
@@ -657,6 +657,6 @@ checks name a variable `turn`.
 - [Chapter 149](ch149-execute-motionbricks.md): MotionBricks execution.
 - The OpenAgents Metaverse Engine's figures and animation
   ([Metaverse Engine chapter 14](../../metaverse-engine/book/ch014-figures-and-animation.md)).
-- [`verse/cast.coax`](../../verse/cast.coax) and
-  [`verse/tools/pack_cast.py`](../../verse/tools/pack_cast.py): the Cast
+- [`metaverse/cast.coax`](../../metaverse/cast.coax) and
+  [`metaverse/tools/pack_cast.py`](../../metaverse/tools/pack_cast.py): the Cast
   format and how the Metaverse plays it.

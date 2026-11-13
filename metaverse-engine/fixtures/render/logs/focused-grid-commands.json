@@ -3,7 +3,7 @@
     "argv": [
       "/Users/christopherdavid/.cache/coax-release/06b30d5381a42d50980e5961928e5b657043e4758a1e87fa0a6dfd64d732d039/coax",
       "test",
-      "verse/grid-render.coax",
+      "metaverse/grid-render.coax",
       "--library",
       "--only",
       "Grid view admission"
@@ -16,7 +16,7 @@
     "argv": [
       "/Users/christopherdavid/.cache/coax-release/06b30d5381a42d50980e5961928e5b657043e4758a1e87fa0a6dfd64d732d039/coax",
       "test",
-      "verse/grid-render.coax",
+      "metaverse/grid-render.coax",
       "--library",
       "--only",
       "Grid view admission",
@@ -30,7 +30,7 @@
     "argv": [
       "/Users/christopherdavid/.cache/coax-release/06b30d5381a42d50980e5961928e5b657043e4758a1e87fa0a6dfd64d732d039/coax",
       "test",
-      "verse/grid.coax",
+      "metaverse/grid.coax",
       "--library",
       "--only",
       "the view matrix puts points"
@@ -43,7 +43,7 @@
     "argv": [
       "/Users/christopherdavid/.cache/coax-release/06b30d5381a42d50980e5961928e5b657043e4758a1e87fa0a6dfd64d732d039/coax",
       "test",
-      "verse/grid.coax",
+      "metaverse/grid.coax",
       "--library",
       "--only",
       "the view matrix puts points",
@@ -57,7 +57,7 @@
     "argv": [
       "/Users/christopherdavid/.cache/coax-release/06b30d5381a42d50980e5961928e5b657043e4758a1e87fa0a6dfd64d732d039/coax",
       "test",
-      "verse/grid.coax",
+      "metaverse/grid.coax",
       "--library",
       "--only",
       "no view for an empty screen"
@@ -70,7 +70,7 @@
     "argv": [
       "/Users/christopherdavid/.cache/coax-release/06b30d5381a42d50980e5961928e5b657043e4758a1e87fa0a6dfd64d732d039/coax",
       "test",
-      "verse/grid.coax",
+      "metaverse/grid.coax",
       "--library",
       "--only",
       "no view for an empty screen",

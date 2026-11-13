@@ -206,7 +206,7 @@ The current iOS app uses this shape with richer native adapters:
 The actual app's verification entry points are documented in
 [apps/openagents-ios/README.md](https://github.com/OpenAgentsInc/openagents/blob/main/apps/openagents-ios/README.md)
 and
-[verse/haunt/verification.md](https://github.com/OpenAgentsInc/openagents/blob/main/verse/haunt/verification.md).
+[metaverse/haunt/verification.md](https://github.com/OpenAgentsInc/openagents/blob/main/metaverse/haunt/verification.md).
 The capstone does not run those device or simulator tests for you.
 
 When extending it, keep the same discipline. Add a contract before a new

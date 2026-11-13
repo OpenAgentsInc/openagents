@@ -22,8 +22,8 @@ Click a project, a person, an agent or a Pylon (a click, not a drag) and its car
 ## How it is made
 
 - The Grid is the homepage's own module: `apps/openagents-web/newland.coax` draws the scene (`land_scene`) for both pages, through `newland.wgsl`, from the same live fold. The page asks for it with `data-page="1"`, and `newland-walk.coax` gives it a camera behind you and the Grid's HUD.
-- You walk with the engine's controller (`metaverse-engine/move/player.coax`) and a phone's thumbs (`verse/grid.coax`), linked into the same module; who is here comes from the playtest room `the-grid`.
+- You walk with the engine's controller (`metaverse-engine/move/player.coax`) and a phone's thumbs (`metaverse/grid.coax`), linked into the same module; who is here comes from the playtest room `the-grid`.
 
 ## Make your own world
 
-An agent can build one from a shallow clone of the repository and open a pull request: [verse/SKILL.md](https://github.com/OpenAgentsInc/openagents/blob/main/verse/SKILL.md).
+An agent can build one from a shallow clone of the repository and open a pull request: [metaverse/SKILL.md](https://github.com/OpenAgentsInc/openagents/blob/main/metaverse/SKILL.md).

@@ -94,7 +94,7 @@ The reusable admission primitive is
 finite positions, matching near-unit normals, nonempty triangle-aligned
 indices, valid index ranges, positive triangle area, provenance and byte
 limits. Its authority root mutation gate has zero survivors. The original
-source is [`verse/valley/rock.coax`](../../verse/valley/rock.coax), which uses
+source is [`metaverse/valley/rock.coax`](../../metaverse/valley/rock.coax), which uses
 shared random streams, material admission and lighting functions, plus the
 existing content-hash asset registry. Canonical bytes include generator
 version, seed, subdivision count, little-endian f32 geometry and u32 indices.
@@ -107,7 +107,7 @@ The source and generated art use the repository's Apache-2.0 licence.
 | 32 | 6,534 | 12,288 | 304,296 |
 
 Generate the identical native assets and import-style provenance report with
-`coax/web/tool.sh verse/tools/valley-rock.coax OUTPUT_DIRECTORY`.
+`coax/web/tool.sh metaverse/tools/valley-rock.coax OUTPUT_DIRECTORY`.
 Browser tests compare all three hashes to the native writer and check actual
 GPU readback differences between inspection views. Test/build records and
 pictures are in the [rock slice receipt](../verification/valley-lab-rock-2026-11-05/README.md).
@@ -162,7 +162,7 @@ compare the decoded lit reference patch with the original path and inspect
 cluster-ID pixels on desktop/phone viewports.
 
 Run the native builder/report with
-`coax/web/tool.sh verse/tools/valley-clusters.coax`.
+`coax/web/tool.sh metaverse/tools/valley-clusters.coax`.
 Evidence is in the [cluster slice receipt](../verification/valley-lab-clusters-2026-11-05/README.md).
 
 ## Landed: ownership hierarchy and boundary-preserving fixtures
@@ -204,7 +204,7 @@ preserve the three original rock hashes. Actual hardware WebGPU checks cover
 parent colors/counts, both patch resolutions/errors, keyboard and phone touch,
 and the existing reference-pixel and controller regressions. Evidence is in
 the [hierarchy receipt](../verification/valley-lab-hierarchy-2026-11-05/README.md).
-Run `coax/web/tool.sh verse/tools/valley-hierarchy.coax` for the native report.
+Run `coax/web/tool.sh metaverse/tools/valley-hierarchy.coax` for the native report.
 
 This slice does not simplify the rock, choose levels by screen error, stream
 pages or qualify a shared/native renderer. It establishes the ownership and
@@ -228,7 +228,7 @@ parent error adds the child's error, rounding upward in f32. This composes
 errors monotonically rather than resetting them at each level.
 
 Two original irregular adjacent patches in
-[`verse/valley/parents.coax`](../../verse/valley/parents.coax) each have six
+[`metaverse/valley/parents.coax`](../../metaverse/valley/parents.coax) each have six
 source triangles and four parent triangles. Their shared edge has identical
 positions and segmentation in source, mixed and coarse views. `H` cycles
 12 / 10 / 8 drawn triangles. The planar parent has zero error and the bent
@@ -304,7 +304,7 @@ bound, rather than a fitted or sampled error, drives the existing perspective
 selector. Unsupported inputs refuse atomically. The authority gate kills all
 90 root mutants, with no survivors or equivalents.
 
-[`rock-parent.coax`](../../verse/valley/rock-parent.coax) extracts and verifies
+[`rock-parent.coax`](../../metaverse/valley/rock-parent.coax) extracts and verifies
 one six-triangle star on the +X face of each original rock. This is an
 intentionally narrow first real-geometry qualification: **one interior vertex**,
 not a reducer for arbitrary cluster groups with several interior vertices.
@@ -640,7 +640,7 @@ working deep links; do not wait for milestone 6 to make the lab useful.
 
 Planned locations, to refine against existing APIs before adding files:
 
-- `verse/valley/`: original scene data, route, session, stations and encounter.
+- `metaverse/valley/`: original scene data, route, session, stations and encounter.
 - `apps/openagents-web/valleylab.coax` and `gpu/valleylab.coax`: thin realm
   composition and Coax shader entry points using shared renderer contracts.
 - `metaverse-engine/render/geometry/`: reusable cluster, hierarchy, error, cut,

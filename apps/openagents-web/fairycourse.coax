@@ -1,4 +1,4 @@
-// Courses (ff-courses, verse/fairy-forest/README.md "Trails and courses"):
+// Courses (ff-courses, metaverse/fairy-forest/README.md "Trails and courses"):
 // COURSE, by the title, opens a bar along the bottom. HOOP (or E) hangs a
 // vine hoop ahead of you, in the air as well; UNDO takes the last off; FLY
 // flies it against the clock (the timer starts at the first hoop and stops at
@@ -6,7 +6,7 @@
 // server (/api/playtest/course/<id>, migrations/0057_fairy_courses.sql).
 // Whoever opens the link finds the same hoops in their forest; their runs go
 // on the course's times, the ten fastest shown beside it. Your own course and
-// your best are kept in the save's tail (verse/fairy-forest/life.coax).
+// your best are kept in the save's tail (metaverse/fairy-forest/life.coax).
 //   coax/bin/coax test apps/openagents-web/fairy.coax --steps 400000000
 
 FFC_ACTS :: 5;

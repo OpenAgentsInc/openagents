@@ -2,7 +2,7 @@
 #load "../../coax/lib/sys/tool.coax";
 #load "../../coax/lib/sys/fs.coax";
 #load "../../coax/lib/sys/proc.coax";
-#load "../../verse/animlab/mannequin.coax";
+#load "../../metaverse/animlab/mannequin.coax";
 #load "../anim/retarget-clip.coax";
 #load "../anim/export-policy.coax";
 ArResult :: struct {code:int;frames:int;joints:int;bytes:int;paired:int;dropped_curves:int;dropped_events:int;}

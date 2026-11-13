@@ -489,9 +489,9 @@ Winter. He has a defensible obsession, a concrete bargain and a dry voice.
 The Black Lantern anchors his magic; he cannot cross running water. These
 are authored encounter-prototype facts, not newly placed canonical content.
 
-The usable prototype is the [Veyr v2 character card](../../verse/characters/veyr-v2.coax)
+The usable prototype is the [Veyr v2 character card](../../metaverse/characters/veyr-v2.coax)
 on the existing authenticated `claude-opus-5-5` writing client, low effort.
-Its [exported NPC brief](../../verse/characters/veyr-v2.json) carries name,
+Its [exported NPC brief](../../metaverse/characters/veyr-v2.json) carries name,
 role, knowledge and an authored fallback greeting. A fresh line takes one
 external model call:
 
@@ -501,7 +501,7 @@ coax/web/tool.sh psionic/tools/villain-text.coax ask "What frightens you when th
 
 This prints new dialogue, not a canned lookup. It uses the arrival encounter
 state and a fresh single-turn conversation; it is not a persistent NPC
-service. The [integration notes](../../verse/characters/README.md) explain
+service. The [integration notes](../../metaverse/characters/README.md) explain
 the distinction between this tested renderer and an existing Metaverse route.
 No live realm or NPC service was changed, and no dialogue can transfer a
 quest item or heal a player. Those decisions belong to the game.

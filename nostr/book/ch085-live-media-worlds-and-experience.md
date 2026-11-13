@@ -49,11 +49,11 @@ is described, not built.
   [coax/tests/nostr/xp_mv_vectors.py](../../coax/tests/nostr/xp_mv_vectors.py)
   writes.
 
-The Metaverse realms in `verse/` simulate and draw worlds (`player.coax`,
+The Metaverse realms in `metaverse/` simulate and draw worlds (`player.coax`,
 `space.coax`, `throw.coax`); none of them reads or writes NIP-MV events
 yet, so this chapter shares no code with them. The voice floors and media
 epochs NIP-LIVE describes have a local Coax form in
-`verse/voice-floor.coax`, which is not a Nostr reader either.
+`metaverse/voice-floor.coax`, which is not a Nostr reader either.
 
 ## Three NIPs, one place
 

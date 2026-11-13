@@ -2,7 +2,7 @@
 // section 8) and a town built on them, house by house, for the town shot and as the first fixture of
 // many build sites at once. The plots and sites are the engine's (metaverse-engine/world/plots.coax); the
 // houses are Housewright's tiers (housewright.coax); where the grid stands is the zone's (Everglade
-// II's city clearing, or Everglade Experimental's stand-in meadow, verse/experimental-terrain.coax
+// II's city clearing, or Everglade Experimental's stand-in meadow, metaverse/experimental-terrain.coax
 // exp_town).
 //
 // The town plan: each plot's owner, its tier and the workday its work starts. Small houses start

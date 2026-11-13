@@ -171,7 +171,7 @@ ep_resolve :: (dir: string, rel: string, out: [] u8) -> string {
   o: [256] u8;
   #assert ep_resolve("apps/openagents-web", "../../metaverse-engine/action/bow.coax", o[..]) == "metaverse-engine/action/bow.coax";
   #assert ep_resolve("apps/openagents-web", "fivebar.coax", o[..]) == "apps/openagents-web/fivebar.coax";
-  #assert ep_resolve("verse", "./a/../b.coax", o[..]) == "verse/b.coax" && ep_resolve("", "a.coax", o[..]) == "a.coax";
+  #assert ep_resolve("metaverse", "./a/../b.coax", o[..]) == "metaverse/b.coax" && ep_resolve("", "a.coax", o[..]) == "a.coax";
   #assert ep_resolve("a", "../../b.coax", o[..]) == "" && ep_resolve("a/b", "../c/../d.coax", o[..]) == "a/d.coax";
 }
 
@@ -310,7 +310,7 @@ ep_copy :: (z: EfZone, f: EfFeature, path: string, line: int, symbol: string, m:
 }
 
 tool_main :: () -> int #export_c #effects(all) {
-  argv := [6] string.["git", "ls-files", "apps/openagents-web", "verse", "coax/web/room", "everglade"];
+  argv := [6] string.["git", "ls-files", "apps/openagents-web", "metaverse", "coax/web/room", "everglade"];
   listing: [4194304] u8; err: [4096] u8;
   r := proc_run(argv[..], 60000, listing[..], err[..]);
   if r.started != 0 || r.status != 0 || r.cut { tool_errln("everglade-parity: git ls-files failed (run from the repository root)"); return 2; }

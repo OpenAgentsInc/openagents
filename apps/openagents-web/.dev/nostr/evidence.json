@@ -112,8 +112,8 @@
     "coax/tests/nostr/schnorr_checks.coax": "0dc51ad4161a227c9d51d8ffdfeab8543b4945e82eb4c8b7acb1f797f72af2fc",
     "coax/tests/nostr/schnorr_fixtures.coax": "c02d1bad643a6da2331bf95bcdd573e99d9b4e6e61f4fb86f6372f6ca4d71756",
     "tools/coax-nostr/fuzz/oracle.py": "d690d0f5e5318e96fc6c6c5f56ce87af5543d90d8acb8f53abc67381d7626cd9",
-    "verse/hud.coax": "b5c77728ac1e510341be59d5f8c4efe2c297b2619573f492ede45b049aaa67e3",
-    "verse/hud/types.coax": "9d938915e8c308352c2437b55820f86f7394d96225aba2885a69869c4058a797"
+    "metaverse/hud.coax": "b5c77728ac1e510341be59d5f8c4efe2c297b2619573f492ede45b049aaa67e3",
+    "metaverse/hud/types.coax": "9d938915e8c308352c2437b55820f86f7394d96225aba2885a69869c4058a797"
   },
   "wasm": {
     "artifact_sha256": "2517403be1341ebbb65894348fbedd3b7c64dced3c31cb570def6c5b8f003636",

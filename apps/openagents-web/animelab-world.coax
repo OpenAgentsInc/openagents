@@ -4,10 +4,10 @@
 // and its spire, corner towers, banners, braziers, trees, the cliff) is
 // written once into the world store; the fire, the spells, smoke, rubble,
 // the breach in the east wall and the ink dragon are written every frame
-// into the live store, from the stage (verse/anime/stage.coax) at t.
+// into the live store, from the stage (metaverse/anime/stage.coax) at t.
 // Every motion is a function of t, so a take draws the same frames twice.
 
-// Colours (sRGB), from the anime palette (verse/style.coax ANIME_*), a few of the stage's own.
+// Colours (sRGB), from the anime palette (metaverse/style.coax ANIME_*), a few of the stage's own.
 STONE_R :: 0.74; STONE_G :: 0.68; STONE_B :: 0.62;   // a warm grey stone, a little darker than the palette's pale
 ROOF_R :: 0.267; ROOF_G :: 0.420; ROOF_B :: 0.659;
 OBJ_FLOOR :: 1; OBJ_WALL :: 2; OBJ_GATE :: 3; OBJ_DOOR :: 4; OBJ_HALL :: 5; OBJ_TOWER :: 6;   // towers 6..13

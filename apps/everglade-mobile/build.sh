@@ -48,7 +48,7 @@ build_realm() {   # NAME: Frameworks/NAME.framework
   mkdir -p "$realm" "$objects" "$framework" "$app/$name"
   if [[ "$(cat "$realm/key" 2>/dev/null)" != "$key" || ! -f "$realm/sources" ]]; then
     rm -f "$realm/key"
-    COAX="$coax" "$repo/verse/native/build.sh" "$name" "$realm" >/dev/null
+    COAX="$coax" "$repo/metaverse/native/build.sh" "$name" "$realm" >/dev/null
     echo "$key" > "$realm/key"
   fi
   if [[ "$(cat "$objects/key" 2>/dev/null)" != "$key" || ! -f "$objects/$name" ]]; then
@@ -73,7 +73,7 @@ build_realm() {   # NAME: Frameworks/NAME.framework
 # A realm's shaders: the web's own Coax (apps/openagents-web/gpu/), emitted for Metal a pair at a
 # time, each with the list of what it reads (.bind), in Metal's relaxed math mode as on the Mac.
 emit_pair() {   # REALM ROLE SOURCE VERTEX FRAGMENT
-  "$coax" metal "$("$repo/verse/native/build.sh" --gpu "$3")" --vertex "$4" --fragment "$5" -o "$work/c/$1-$2.metal" 2> "$app/$1/$2.bind"
+  "$coax" metal "$("$repo/metaverse/native/build.sh" --gpu "$3")" --vertex "$4" --fragment "$5" -o "$work/c/$1-$2.metal" 2> "$app/$1/$2.bind"
   xcrun -sdk "$sdk" metal -w $min -fmetal-math-mode=relaxed -fmetal-math-fp32-functions=precise "$work/c/$1-$2.metal" -o "$app/$1/$2.metallib"
 }
 emit_page() {   # REALM SOURCE PREFIX FX FXPREFIX
@@ -88,7 +88,7 @@ emit_page() {   # REALM SOURCE PREFIX FX FXPREFIX
   emit_pair "$1" particle "$4" "$5_particle_vs" "$5_particle_fs" & pids+=($!)
   emit_pair "$1" particle_over "$4" "$5_particle_over_vs" "$5_particle_over_fs" & pids+=($!)
   for pid in "${pids[@]}"; do wait "$pid"; done
-  local passes; passes="$("$repo/verse/native/build.sh" --gpu "$2")"
+  local passes; passes="$("$repo/metaverse/native/build.sh" --gpu "$2")"
   cp "${passes%.coax}.bindings" "$app/$1/page.bindings"
   cp "$work/c/page-host.metallib" "$app/$1/page-host.metallib"
 }

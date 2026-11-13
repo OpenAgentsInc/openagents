@@ -98,7 +98,7 @@ check("every question and answer is kept, under our names",
       == "Marta|Everglade|Where is the cellar key?|Mortimer, at your service. The house keeps its own counsel.")
 check("its running row is let go once the answer is kept", sql("select count(*) from verse.npc_running") == "0")
 
-# Fairy Forest (verse/fairy-forest/talk.coax ff_ask_body): a creature, how far it's been helped as the scene;
+# Fairy Forest (metaverse/fairy-forest/talk.coax ff_ask_body): a creature, how far it's been helped as the scene;
 # its keeper's lore is the panes' (verse.realm_lore), not the page's
 sql("insert into verse.realm_lore (slug, who, text, ms) values ('fairy-forest', 'bramble', 'Hoards acorns.', 0) on conflict do nothing")
 status, a, _ = ask({"npc": "bramble", "world": "fairy-forest", "visit": "v0", "scene": "Patches the fairy has bloomed in your glade so far: 0 of 3.",
@@ -112,8 +112,8 @@ check("its progress is the player's turn's scene", "0 of 3" in seen[-1]["body"][
 sql("delete from verse.realm_lore where slug = 'fairy-forest' and who = 'bramble' and text = 'Hoards acorns.'")
 
 # The Haunted House (apps/openagents-web/realm.coax realm_npc_body): the character's id in the house, what
-# players taught them as the scene. Our table is verse/haunt/house.json's npcs: fail when the two differ.
-house = json.load(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "verse", "haunt", "house.json")))
+# players taught them as the scene. Our table is metaverse/haunt/house.json's npcs: fail when the two differ.
+house = json.load(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "metaverse", "haunt", "house.json")))
 for person in house["npcs"]:
     npc_reset()
     status, a, _ = ask({"npc": person["id"], "world": "haunted-house", "scene": "Players have taught you this, and it is true here: the key is under the rug.",

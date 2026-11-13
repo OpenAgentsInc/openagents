@@ -10,7 +10,7 @@ fall back to a platform decoder. The source cap remains the canonical
 decoder's 8 MiB, workspace 32 MiB and natural extent 2048×2048. A source
 identity is immutable for an engine/cache owner, including failure.
 
-The portable SDK is `verse/native/render-images.{c,h}`. `RhgiSource.size`
+The portable SDK is `metaverse/native/render-images.{c,h}`. `RhgiSource.size`
 observes the physical encoded extent before the module allocates its source
 buffer; `read` returns 1 only after filling exactly that buffer. Zero and
 negative results refuse. The caller owns URL mounting, physical root

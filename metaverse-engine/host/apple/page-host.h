@@ -1,6 +1,6 @@
 // Firm reason: 6 (Metal, URLSession and CoreText have no C API; this holds no product logic).
 // A realm's page on Apple's GPUs: what coax/web/host.js does for a realm in a browser, done with
-// Metal for the same face built natively (verse/native/build.sh) and the same shaders emitted by
+// Metal for the same face built natively (metaverse/native/build.sh) and the same shaders emitted by
 // `coax metal`. It draws any realm that uses the page's own passes (a background, a shadow map, a
 // scene of indexed draws over stores, particles, bloom and post, and the HUD's strokes): Everglade
 // II, Character Create, Everglade Experimental and the Archery Range today. It decides nothing about

@@ -87,7 +87,7 @@ and off screen count as hidden.
 | Layer | Owns | Files |
 | --- | --- | --- |
 | Engine | The query, both sources, the settle state; the overlap geometry | `metaverse-engine/physics/visibility.coax`, `metaverse-engine/action/attach-overlap.coax` |
-| Game | The world's colliders and land for a line; posing an item for the check | `verse/experimental-dungeon.coax` (`dg_sight`), `verse/experimental-village.coax` (`ev_sight`), `charactercreator.coax` (`cc_bow_sweep`) |
+| Game | The world's colliders and land for a line; posing an item for the check | `metaverse/experimental-dungeon.coax` (`dg_sight`), `metaverse/experimental-village.coax` (`ev_sight`), `charactercreator.coax` (`cc_bow_sweep`) |
 | Zone | Wiring: which eye, which target, which hold | the zone's HUD and combat files |
 
 `dg_sight` is the dungeon's line of sight. Monster sight (`hostile_sees`),

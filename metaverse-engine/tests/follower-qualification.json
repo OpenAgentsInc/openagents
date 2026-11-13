@@ -15,9 +15,9 @@
     "metaverse-engine/tests/math-oracle.coax": "ae7605651c27cedb34c4585aebc3d5df778d844a3b1fb7cf328be26bcd1d0305",
     "metaverse-engine/walk-frame.coax": "19694947b923308e4deaf80662670a1935a7ec08d05ef8d45e2f615991d78028",
     "coax/lib/quantity.coax": "325e9e7152de442b2da210cc0075ca4bb231d5a4c862898a6ee88ab161eeb583",
-    "verse/space.coax": "735c5646da9dcf8387fecb909bfae2aec483161dbee6837923dc9ae8c3a3df77",
-    "verse/terrain.coax": "b454422a7b00a7571f0c373400b9385592b6e645d4ab5397555cf2551260b8c7",
-    "verse/throw.coax": "b7b0c4beaad204cade66602ffabb0eeaa49f3dd640699fd612620f4ca6ee4a33"
+    "metaverse/space.coax": "735c5646da9dcf8387fecb909bfae2aec483161dbee6837923dc9ae8c3a3df77",
+    "metaverse/terrain.coax": "b454422a7b00a7571f0c373400b9385592b6e645d4ab5397555cf2551260b8c7",
+    "metaverse/throw.coax": "b7b0c4beaad204cade66602ffabb0eeaa49f3dd640699fd612620f4ca6ee4a33"
   },
   "command": [
     "coax/bin/coax",

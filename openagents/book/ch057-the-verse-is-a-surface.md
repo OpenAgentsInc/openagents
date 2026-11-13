@@ -54,7 +54,7 @@ It builds on what exists today:
 - [`metaverse-engine/talk`](../../metaverse-engine/talk)
 - [`metaverse-engine/ui`](../../metaverse-engine/ui)
 - [`metaverse-engine/net`](../../metaverse-engine/net)
-- [`verse`](../../verse)
+- [`verse`](../../metaverse)
 - [`apps/openagents-web`](../../apps/openagents-web)
 - [`coax/lib/nostr/nipmv.coax`](../../coax/lib/nostr/nipmv.coax)
 - [`metaverse-engine/book/README.md`](../../metaverse-engine/book/README.md)

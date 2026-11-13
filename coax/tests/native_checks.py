@@ -224,7 +224,7 @@ class NativeChecks(unittest.TestCase):
 
     def test_the_selection_of_real_verse_and_psionic_checks_agrees(self):
         sel = json.loads((ROOT / "tests/native-checks.json").read_text())
-        self.assertTrue(any(f.startswith("verse/") for f in sel["files"]) and any(f.startswith("psionic/") for f in sel["files"]))
+        self.assertTrue(any(f.startswith("metaverse/") for f in sel["files"]) and any(f.startswith("psionic/") for f in sel["files"]))
         rec = nc.run([ROOT.parent / f for f in sel["files"]], keep=self.dir / "keep")
         bad = [(f["file"], c["name"], c["outcome"]) for f in rec["files"] for c in f["checks"]
                if c["outcome"] not in ("passed", "rejected")]
@@ -241,13 +241,13 @@ class NativeChecks(unittest.TestCase):
     def test_the_record_names_unselected_checks(self):
         out = self.dir / "rec.json"
         sel = self.dir / "sel.json"
-        sel.write_text(json.dumps({"files": ["verse/look.coax"], "roots": ["verse"]}))
+        sel.write_text(json.dumps({"files": ["metaverse/look.coax"], "roots": ["verse"]}))
         code = nc.main(["--selection", str(sel), "--out", str(out), "--keep", str(self.dir / "keep")])
         rec = json.loads(out.read_text())
         self.assertEqual(code, 0)
         files = {u["file"] for u in rec["unselected"]}
-        self.assertIn("verse/stars.coax", files)
-        self.assertNotIn("verse/look.coax", files)
+        self.assertIn("metaverse/stars.coax", files)
+        self.assertNotIn("metaverse/look.coax", files)
         self.assertTrue(all(u["checks"] for u in rec["unselected"]))
 
     def test_kept_regressions_agree(self):

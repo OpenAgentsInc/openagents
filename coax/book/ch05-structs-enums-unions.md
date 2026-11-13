@@ -1113,7 +1113,7 @@ u32_at :: (b: [] u8, at: int) -> u32 {
 }
 ```
 
-That's from `verse/cast.coax`. Every read is bounds-checked, and the
+That's from `metaverse/cast.coax`. Every read is bounds-checked, and the
 struct it fills can change shape without changing the file. Chapter 6 looks
 at byte views like `b` in detail.
 

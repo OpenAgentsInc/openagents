@@ -36,7 +36,7 @@ done
 # The realms: the Everglade row is the web's everglade2 realm (Character Create, then the glade),
 # and the Experimental row is the web's fivelab realm on its Experimental page, both natively,
 # drawn by the Metaverse Engine's page host for Metal (metaverse-engine/host/apple/). A realm's Coax as C and its face are
-# built as verse/native/build.sh builds any realm, into a library the host loads; its shaders are
+# built as metaverse/native/build.sh builds any realm, into a library the host loads; its shaders are
 # the web's own Coax (apps/openagents-web/gpu/), emitted for Metal a pair at a time, each with the
 # list of what it reads (.bind). The C takes over a minute to emit, so it is kept until its sources
 # change.
@@ -46,7 +46,7 @@ build_realm() {   # NAME: build/realm/NAME/libNAME.dylib, and a copy in the app'
   mkdir -p "$realm" "$pages"
   if [[ "$(cat "$realm/key" 2>/dev/null)" != "$key" || ! -f "$realm/lib$name.dylib" ]]; then
     rm -f "$realm/key"
-    COAX="$coax" "$repo/verse/native/build.sh" "$name" "$realm" >/dev/null
+    COAX="$coax" "$repo/metaverse/native/build.sh" "$name" "$realm" >/dev/null
     local realm_sources realm_objects=() realm_pids=() s pid
     read -r -a realm_sources < "$realm/sources"
     for s in "${realm_sources[@]}"; do
@@ -63,7 +63,7 @@ build_realm() {   # NAME: build/realm/NAME/libNAME.dylib, and a copy in the app'
 # the scene has millions of vertices a frame, and its vertex stage takes about 45% longer in the
 # safe mode on this Mac (19.4 ms against 13.5 ms a frame at 990 by 660).
 emit_pair() {   # REALM ROLE SOURCE VERTEX FRAGMENT
-  "$coax" metal "$("$repo/verse/native/build.sh" --gpu "$3")" --vertex "$4" --fragment "$5" -o "$work/c/$1-$2.metal" 2> "$app/Contents/Resources/$1/$2.bind"
+  "$coax" metal "$("$repo/metaverse/native/build.sh" --gpu "$3")" --vertex "$4" --fragment "$5" -o "$work/c/$1-$2.metal" 2> "$app/Contents/Resources/$1/$2.bind"
   xcrun -sdk macosx metal -w -fmetal-math-mode=relaxed -fmetal-math-fp32-functions=precise "$work/c/$1-$2.metal" -o "$app/Contents/Resources/$1/$2.metallib"
 }
 # A realm's eight pairs: the page's six from SOURCE (its entries begin PREFIX_), the particles' two
@@ -80,7 +80,7 @@ emit_page() {   # REALM SOURCE PREFIX FX FXPREFIX
   emit_pair "$1" particle "$4" "$5_particle_vs" "$5_particle_fs" & pids+=($!)
   emit_pair "$1" particle_over "$4" "$5_particle_over_vs" "$5_particle_over_fs" & pids+=($!)
   for pid in "${pids[@]}"; do wait "$pid"; done
-  local passes; passes="$("$repo/verse/native/build.sh" --gpu "$2")"
+  local passes; passes="$("$repo/metaverse/native/build.sh" --gpu "$2")"
   cp "${passes%.coax}.bindings" "$app/Contents/Resources/$1/page.bindings"
   cp "$work/c/page-host.metallib" "$app/Contents/Resources/$1/page-host.metallib"
 }

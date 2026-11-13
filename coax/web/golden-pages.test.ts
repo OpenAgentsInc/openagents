@@ -29,7 +29,7 @@ test("a page's own inputs change it and not the others", () => {
   expect(affected(["apps/openagents-web/fixture.coax"], p)).toEqual(["fixture", "fixture-painterly-0", "fixture-painterly-0.25", "fixture-painterly-0.5", "fixture-painterly-0.75",
     "fixture-painterly-phone-0", "fixture-painterly-phone-0.25", "fixture-painterly-phone-0.5", "fixture-painterly-phone-0.75", "fixture-painterly-shafts"])
   // the engine is every realm's (its functions go into their shaders), not the landing's
-  const engine = affected(["verse/haunt.coax"], p)
+  const engine = affected(["metaverse/haunt.coax"], p)
   expect(engine).toContain("haunted-house")
   expect(engine).not.toContain("landing")
   expect(affected(["coax/web/goldens/landing.png"], p)).toEqual(["landing"])
@@ -49,23 +49,23 @@ test("the likeliest break touches the page's own inputs, newest first; shared on
   expect(touches("landing", ["apps/openagents-web/projects/coax/work/nostr.json"], p)).toBe("")
   // the house's own libraries before the rest of the engine, which every realm takes
   const house = [
-    { hash: "e1", author: "a", subject: "style", files: ["verse/style.coax"] },
-    { hash: "e0", author: "b", subject: "house", files: ["verse/haunt.coax"] },
+    { hash: "e1", author: "a", subject: "style", files: ["metaverse/style.coax"] },
+    { hash: "e0", author: "b", subject: "house", files: ["metaverse/haunt.coax"] },
   ]
   expect(suspects("haunted-house", house, p).map((s) => [s.hash, s.why])).toEqual([["e0", "own"], ["e1", "engine"]])
 })
 
 test("a page's bytes in the bucket: its bare path and its index.html, not its twin or its children", () => {
   const r = new RegExp(pageObjects("/verse"))
-  expect(["verse", "verse/index.html"].every((o) => r.test(o))).toBe(true)
-  expect(["verse/index.md", "verse/og-verse.jpg", "verse/child/index.html", "verses"].some((o) => r.test(o))).toBe(false)
+  expect(["verse", "metaverse/index.html"].every((o) => r.test(o))).toBe(true)
+  expect(["metaverse/index.md", "metaverse/og-verse.jpg", "metaverse/child/index.html", "verses"].some((o) => r.test(o))).toBe(false)
   expect(new RegExp(pageObjects("/realms/fixture?style=painterly&clock=0.5")).test("realms/fixture")).toBe(true)
 })
 
 test("the check's server answers like the bucket", () => {
   const site = mkdtempSync(join(tmpdir(), "golden-serve-"))
   mkdirSync(join(site, "realms/fixture"), { recursive: true }); mkdirSync(join(site, "verse"))
-  writeFileSync(join(site, "verse/index.html"), "v"); writeFileSync(join(site, "verse.page"), "v"); writeFileSync(join(site, "realms/fixture/index.html"), "g")
+  writeFileSync(join(site, "metaverse/index.html"), "v"); writeFileSync(join(site, "verse.page"), "v"); writeFileSync(join(site, "realms/fixture/index.html"), "g")
   writeFileSync(join(site, "host.abc.js"), "js")
   expect(resolve(site, "/verse")?.file).toBe(join(site, "verse.page"))
   expect(resolve(site, "/realms/fixture")?.file).toBe(join(site, "realms/fixture/index.html"))

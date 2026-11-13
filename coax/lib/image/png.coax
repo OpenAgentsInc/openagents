@@ -1,4 +1,4 @@
-// PNG (ISO/IEC 15948) to RGBA8, for the textures a realm's pack holds (verse/gpu, the scene
+// PNG (ISO/IEC 15948) to RGBA8, for the textures a realm's pack holds (metaverse/gpu, the scene
 // host): 8 bits a channel, gray, gray and alpha, RGB or RGBA, not interlaced; every chunk's CRC
 // checked, ancillary chunks passed over, an unknown critical one refused. The caller gives the
 // buffers (png_info says how large); nothing is allocated. Colour chunks (gAMA, iCCP) are not

@@ -2,7 +2,7 @@
 
 > **Status: partly implemented.** Everglade II builds and runs from text today.
 > Its files are spread across `apps/openagents-web/`, `everglade/` and
-> `verse/tools/assets/`. They move into `everglade/` after the work in progress
+> `metaverse/tools/assets/`. They move into `everglade/` after the work in progress
 > lands, one directory per commit. Until then this chapter names files and has
 > no source listings.
 
@@ -31,7 +31,7 @@ change one?"
 | The planting | [`everglade/world/plant.coax`](../../everglade/world/plant.coax) | Which kit piece stands where |
 | The ground tiles | [`everglade/world/ground.coax`](../../everglade/world/ground.coax) | The admitted terrain tiles and their baked light |
 | The light | [`everglade/world/environment.coax`](../../everglade/world/environment.coax) | The places' light as an environment set |
-| The pack tool | [`verse/tools/assets/everglade2_pack.coax`](../../verse/tools/assets/everglade2_pack.coax) | The asset pack the page loads |
+| The pack tool | [`metaverse/tools/assets/everglade2_pack.coax`](../../metaverse/tools/assets/everglade2_pack.coax) | The asset pack the page loads |
 
 The land functions are the centre of the design. The pack tool, the planting,
 the walk and the shaders all call the same `e2_height`, `e2_path` and

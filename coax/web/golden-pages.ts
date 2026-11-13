@@ -12,7 +12,7 @@
 //            M.wgsl), the files those #load or #include in the app
 //            directory, the Coax libraries build.sh links into build/M.wasm,
 //            its page's directory and its assets; a realm's also the engine
-//            (verse/), whose functions build.sh writes into the realms' shaders
+//            (metaverse/), whose functions build.sh writes into the realms' shaders
 // Generous on purpose: a page named here that didn't change costs a render,
 // a page missed would let a break through.
 import { existsSync, readFileSync, statSync } from "node:fs"
@@ -38,7 +38,7 @@ export type Pages = { pages: Record<string, Page>; byAddress: Record<string, Pag
 export function goldenPages(file = join(ROOT, APP, "realms.json")): Pages {
   const pages: Record<string, Page> = { landing: { path: "/metaverse", lit: 0.004, settle: 2500, blocks: 4, module: "verse" } }
   // Every realm, the open worlds in realms.json's order.
-  const open = worlds(file, { site: join(ROOT, APP), packs: join(ROOT, "verse/packs"), styleBlock: existsSync(join(ROOT, "verse/style.coax")) }).filter((w) => w.kind === "open" && w.realm)
+  const open = worlds(file, { site: join(ROOT, APP), packs: join(ROOT, "metaverse/packs"), styleBlock: existsSync(join(ROOT, "metaverse/style.coax")) }).filter((w) => w.kind === "open" && w.realm)
   for (const w of open) pages[w.realm!.slug] = { path: `/worlds/${w.realm!.slug}`, ...w.realm!.golden, module: w.realm!.module }
   // Realms /realms doesn't list yet: with no golden, their shot waits in pending/ (golden-policy.ts).
   const unlisted = new Set(open.filter((w) => w.listed === false).map((w) => w.realm!.slug))
@@ -109,12 +109,12 @@ function sources(start: string[], out = new Set<string>()) {
   }
   return out
 }
-// The Coax libraries build.sh links into build/M.wasm ("$m/x.coax" is verse/x.coax, "$here/x" the app's).
+// The Coax libraries build.sh links into build/M.wasm ("$m/x.coax" is metaverse/x.coax, "$here/x" the app's).
 function linked(module: string, build = read(`${APP}/build.sh`)) {
   const out: string[] = []
   for (const line of build.replace(/\\\n/g, " ").split("\n")) {
     if (!line.includes(`build/${module}.wasm`)) continue
-    for (const m of line.matchAll(/"\$(m|here)\/([^"$]+\.coax)"/g)) out.push(m[1] === "m" ? `verse/${m[2]}` : `${APP}/${m[2]}`)
+    for (const m of line.matchAll(/"\$(m|here)\/([^"$]+\.coax)"/g)) out.push(m[1] === "m" ? `metaverse/${m[2]}` : `${APP}/${m[2]}`)
   }
   return out
 }
@@ -141,7 +141,7 @@ export function pageInputs(name: string, p: Pages = goldenPages()): string[] {
   const realm = p.open.find((w) => w.realm!.slug === name)?.realm
   // an asset is "kind:/path", or several paths apart by "|"
   for (const a of realm?.assets ?? []) for (const part of a.replace(/^[a-z]+:/, "").split("|")) if (part.startsWith("/")) out.add(`${APP}${part}`)
-  if (m !== "verse") out.add("verse/")
+  if (m !== "verse") out.add("metaverse/")
   return [...out].sort()
 }
 
@@ -157,12 +157,12 @@ export function affected(changed: string[], p: Pages = goldenPages()): string[] 
 }
 
 /** Why a commit's files may change a page: "own" (an input of its own: its module, what that loads or links, its
- *  page, assets or golden), "engine" (only the rest of verse/, which every realm takes), "shared", or "" (they can't). */
+ *  page, assets or golden), "engine" (only the rest of metaverse/, which every realm takes), "shared", or "" (they can't). */
 export type Why = "own" | "engine" | "shared"
 export function touches(name: string, files: string[], p: Pages = goldenPages()): Why | "" {
   const ins = pageInputs(name, p)
-  if (files.some((f) => ins.some((i) => i !== "verse/" && under(f, i)))) return "own"
-  if (files.some((f) => under(f, "verse/") && ins.includes("verse/"))) return "engine"
+  if (files.some((f) => ins.some((i) => i !== "metaverse/" && under(f, i)))) return "own"
+  if (files.some((f) => under(f, "metaverse/") && ins.includes("metaverse/"))) return "engine"
   return files.some(sharedHit) ? "shared" : ""
 }
 

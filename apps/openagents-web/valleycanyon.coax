@@ -1,12 +1,12 @@
 // Valley Lab's isolated exact source pair. GPU-resident source geometry; shared Aethyr camera/UI.
-#load "../../verse/valley/canyon.coax";
-#load "../../verse/valley/canyon-pack-policy.coax";
-#load "../../verse/valley/slay-gpu-policy.coax";
+#load "../../metaverse/valley/canyon.coax";
+#load "../../metaverse/valley/canyon-pack-policy.coax";
+#load "../../metaverse/valley/slay-gpu-policy.coax";
 #load "../../metaverse-engine/ui/draw.coax";
 #load "../../metaverse-engine/core/budget.coax";
 #load "../../metaverse-engine/core/assets.coax";
 #load "../../metaverse-engine/core/sticks.coax";
-#load "../../verse/valley/slay-shot-play.coax";
+#load "../../metaverse/valley/slay-shot-play.coax";
 #load "../../metaverse-engine/render/slay-lights.coax";
 #load "../../metaverse-engine/move/locomotion.coax" as locomotion;
 #load "../../metaverse-engine/move/walk.coax" as pc;

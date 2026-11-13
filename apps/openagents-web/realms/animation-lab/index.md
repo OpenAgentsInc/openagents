@@ -99,7 +99,7 @@ frames. `openagents labs anim check FILE` reports continuity, face ranges,
 joint/capsule screening, planted-foot travel and determinism as JSON.
 JSON inputs use an adjacent `project.json`; an ALP1 bundle carries the whole
 admitted project. See the [A5 scene profile](/docs/verse/anim-scenes-v1.md)
-and the original Guardian staging recipe in `verse/animlab/guardian/`.
+and the original Guardian staging recipe in `metaverse/animlab/guardian/`.
 
 For local playback, expose an ALP1 file as `TOKEN.bundle` in the private web
 folder, then open `?project=TOKEN#scene` or `?project=TOKEN#cut`.

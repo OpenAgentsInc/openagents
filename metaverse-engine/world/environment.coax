@@ -643,10 +643,10 @@ env_glade_profile :: () -> EnvironmentProfile #effects(all) {
   return p;
 }
 env_rgb :: (r: f32, g: f32, b: f32) -> EnvRgb #effects(all) { return EnvRgb.{r = r, g = g, b = b}; }
-// The glade's day (#13065, moved here from verse/style-preset.coax for #13107 so any realm can sweep
+// The glade's day (#13065, moved here from metaverse/style-preset.coax for #13107 so any realm can sweep
 // a day under the glade): four knots, night (the moon), dawn, noon (the glade, every field) and dusk,
 // each a bounded delta on the glade that keeps its film, saturation, exposure and shapes.
-ENV_GLADE_DAY_ID :: 2;     // the painterly day's profile id (verse/style-preset.coax STYLE_ENV_PAINTERLY)
+ENV_GLADE_DAY_ID :: 2;     // the painterly day's profile id (metaverse/style-preset.coax STYLE_ENV_PAINTERLY)
 ENV_GLADE_DAY_KEYS :: 4;
 ENV_GLADE_DAY_TIMES :: [ENV_GLADE_DAY_KEYS] f32.[0, 0.25, 0.5, 0.75];
 // Toward a body at `elevation` (rad) whose bearing is the glade sun's turned by `turn` (rad about +y).

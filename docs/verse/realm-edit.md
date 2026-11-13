@@ -47,7 +47,7 @@ one-a-player-every-2-seconds pace. No words are matched anywhere: the model pick
 
 ## The layer
 
-`verse/edit/edit.coax` (checks: `coax/bin/coax test verse/edit/edit_test.coax`). A realm keeps one
+`metaverse/edit/edit.coax` (checks: `coax/bin/coax test metaverse/edit/edit_test.coax`). A realm keeps one
 `RealmEdit` (`ed: [1] RealmEdit`) and wires small hooks:
 
 - each frame: `redit_start(ed, SLUG)`, `redit_step(ed, time, width, height, dpr)`;
@@ -119,7 +119,7 @@ Wired today:
 | Haunted House (and every page on realm.coax) | VOICE, while you face no one: the page faces the realm (`REDIT_FACING`) for its owner and admins, and `realm_hear` hands the words over |
 | A made realm (myrealm.coax) | V, HOLD TO TALK under EDIT, or Enter, outside a character talk (`redit_hears`) |
 
-EDIT opens one pane at a time (the panes rule, verse/fairy-forest/README.md "Making the world:
+EDIT opens one pane at a time (the panes rule, metaverse/fairy-forest/README.md "Making the world:
 panes"): FEATURES (the list below; HOLD TO TALK on a page with a voice, typing everywhere),
 SETTINGS (what visitors get; a realm whose code honours no visitor tool says so), and N WAITING
 (the first card: who, what, where, the count before and after, ACCEPT and DECLINE).
@@ -212,7 +212,7 @@ with just what it changed (so its DELETE takes back only that), or NOT APPLIED, 
 What the answer changed that no line names is one more line ("The rest of NAME"); a document that
 named nothing still waits as one line. The answer: `doc N A applied W waiting`, then the rows.
 
-`verse/SKILL.md` ("Asks waiting on code") is how an agent works the waiting ones.
+`metaverse/SKILL.md` ("Asks waiting on code") is how an agent works the waiting ones.
 
 ## Your computer
 
@@ -237,10 +237,10 @@ The realm reloads by itself as the job's edits land.
 
 How it works:
 
-- `verse/edit/computer.coax` is the pane's state and nothing else (checks:
-  `coax/bin/coax test verse/edit/computer_test.coax`). `rc_next_op` names the one request to send
+- `metaverse/edit/computer.coax` is the pane's state and nothing else (checks:
+  `coax/bin/coax test metaverse/edit/computer_test.coax`). `rc_next_op` names the one request to send
   next; `rc_reply` reads the computer's answers as plain lines from the wire.
-- `verse/edit/computer-wire.coax` is its own wasm unit, linked beside the realm (its signing tables
+- `metaverse/edit/computer-wire.coax` is its own wasm unit, linked beside the realm (its signing tables
   are computed at compile time, so `build.sh` builds `myrealm.wasm` with
   `COAXIAL_RUN_STEPS=250000000`). It keeps this browser's key, signs NIP-42 AUTH for
   `wss://relay.openagents.com`, and seals each request with the NIP-HOST browser codec
@@ -248,7 +248,7 @@ How it works:
   encrypted, after subscribing to its reply's mailbox. A reply counts only when it opens for this
   key, is signed by the computer the owner pasted, names our request and event, and answers our
   operation. Asking the same thing again within 50 s resends the exact signed event. Checks:
-  `coax/bin/coax test verse/edit/computer-wire.coax --library --run-steps 250000000 --only "wire: "`.
+  `coax/bin/coax test metaverse/edit/computer-wire.coax --library --run-steps 250000000 --only "wire: "`.
 - `apps/openagents-web/computer-face.h` moves the bytes: the record in IndexedDB (namespace
   `openagents.computer`, key `browser`: the browser's secret key, the grant, the computer's key and
   the ask), the relay socket, the browser's random bytes and the clock. The socket opens only for an
@@ -273,7 +273,7 @@ page's writes in the browser, and reads the pane through `coaxial.guardProbe(240
     nostr/relay/build.sh /tmp/relay && /tmp/relay --listen 127.0.0.1 --port 7777 --url ws://localhost:7777
     OPENAGENTS_NIP_HOST_RELAY=ws://localhost:7777 CODER_HOME=/tmp/host-home coder/tui/coder.sh host --engine echo
     COAXIAL_RUN_STEPS=250000000 coax/web/wasm.sh apps/openagents-web/myrealm.coax apps/openagents-web/myrealm-face.c \
-      /tmp/myrealm.wasm verse/edit/computer-wire.coax coax/lib/crypto/entropy.coax
+      /tmp/myrealm.wasm metaverse/edit/computer-wire.coax coax/lib/crypto/entropy.coax
     CODER_HOME=/tmp/host-home BROWSER=/usr/bin/true coax/web/tool.sh computer-flow ws://localhost:7777 /tmp/myrealm.wasm [SHOTS_DIR]
 
 `--local` runs the same flow with nothing remote (#12640). This checkout's page is served by

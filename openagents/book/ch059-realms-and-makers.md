@@ -51,7 +51,7 @@ A plan for what this chapter ships once the draft is approved:
 
 It builds on what exists today:
 
-- [`verse`](../../verse)
+- [`verse`](../../metaverse)
 - [`metaverse-engine/editor`](../../metaverse-engine/editor)
 - [`apps/openagents-cli/realm.coax`](../../apps/openagents-cli/realm.coax)
 - [`apps/openagents-cli/project-publish.coax`](../../apps/openagents-cli/project-publish.coax)

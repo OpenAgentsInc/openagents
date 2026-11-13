@@ -2,7 +2,7 @@
 
 > **Status: unimplemented — design draft.** Today two paths turn words into
 > world content. The Sandbox's set pieces
-> ([`verse/setpiece.coax`](../../verse/setpiece.coax),
+> ([`metaverse/setpiece.coax`](../../metaverse/setpiece.coax),
 > `POST /api/playtest/sandbox/piece` in
 > [`coax/web/api/npc.c`](../../coax/web/api/npc.c)) make one piece from one
 > sentence. The OpenAgents Metaverse Engine's board
@@ -72,7 +72,7 @@ builds that path.
 
 ## What exists today
 
-- [verse/setpiece.coax](../../verse/setpiece.coax): the Sandbox catalogue,
+- [metaverse/setpiece.coax](../../metaverse/setpiece.coax): the Sandbox catalogue,
   `verse_piece_read`, `verse_piece_layout` and their checks.
 - [coax/web/api/npc.c](../../coax/web/api/npc.c): the set piece route and
   the spoken realm edit route.

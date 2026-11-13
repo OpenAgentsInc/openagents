@@ -1,0 +1,53 @@
+// Replays Rust-recorded Ice Cream Man traces on the Coax rules, in the
+// evaluator: the same check as metaverse/icecream/replay.c (which runs every
+// whole trace natively), here on the first steps of three traces embedded in
+// fixtures/prefixes.coax. A trace is the run's setup, then one line per step:
+// the input, the state fingerprint after the step and the step's events, in
+// the format of ~/work/aethyr-demo/tools/icecream-trace. A step costs the
+// evaluator about two million steps, so run it with a larger budget:
+//   coax/bin/coax test metaverse/icecream/trace.coax --library --steps 2000000000
+#load "trace-text.coax";
+#load "fixtures/prefixes.coax";
+
+#test "trace format: words, numbers and event text" {
+  #assert hex_value("3f800000") == 0x3f800000 && float_of("3f800000") == 1 && float_of("0") == 0;
+  #assert dec_value("400") == 400 && dec_value("0.45") == 0.45;
+  buf: [128] u8;
+  n := event_text(Event.{kind = EventKind.fudge_splat, n = 0, a = v2(1, -2), b = v2(0, 0)}, buf[..]);
+  #assert cast(string) buf[0..<n] == "FudgeSplat:3f800000,c0000000";
+  n = event_text(Event.{kind = EventKind.key, n = 12, a = v2(0, 0), b = v2(0, 0)}, buf[..]);
+  #assert cast(string) buf[0..<n] == "Key:12";
+  n = event_text(Event.{kind = EventKind.earned, n = cast(u32) Tool.sugar, a = v2(0, 0), b = v2(0, 0)}, buf[..]);
+  #assert cast(string) buf[0..<n] == "Earned:Sugar";
+  w := word_at("  ab cd", 0);
+  #assert w.start == 2 && w.end == 4;
+}
+
+#test "trace fuzz-armed: 150 steps armed, with minions, match the Rust build" {
+  games: [1] Game;
+  bots: [1] Bot;
+  r := replay_text(games[..], bots[..], TRACE_FUZZ_ARMED);
+  #assert r.diverged == -1 && r.steps == 150;
+}
+
+#test "trace tour: 150 steps chased, grabbed and shot at, match the Rust build" {
+  games: [1] Game;
+  bots: [1] Bot;
+  r := replay_text(games[..], bots[..], TRACE_TOUR);
+  #assert r.diverged == -1 && r.steps == 150;
+}
+
+#test "trace escape: 120 steps of the bot, its inputs too, match the Rust build" {
+  games: [1] Game;
+  bots: [1] Bot;
+  r := replay_text(games[..], bots[..], TRACE_ESCAPE);
+  #assert r.diverged == -1 && r.steps == 120;
+}
+
+#test "trace: a changed fingerprint is caught on its line" {
+  games: [1] Game;
+  bots: [1] Bot;
+  bad := "icecream-trace 1\nname bad\nseed 1\ndifficulty normal\nman 0\ndriver fuzz\n0 0 - 0 0 - 1\n";
+  r := replay_text(games[..], bots[..], bad);
+  #assert r.diverged == 7;
+}

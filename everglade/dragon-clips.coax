@@ -1,7 +1,7 @@
 #module "everglade.dragonclips";
 // The Shapechange dragon's clips as baked frames (Everglade's game layer, shared by every Everglade
 // zone). The model is assets/verse/beasts/dragon.gltf, made by scripts/blender/dragon.py (CC0). The
-// baker (verse/tools/assets/dragon_bake.py) writes the clips in this order, DR_FRAMES[c] frames
+// baker (metaverse/tools/assets/dragon_bake.py) writes the clips in this order, DR_FRAMES[c] frames
 // each, and the pack names them glade/dragon0 to glade/dragon(DR_TOTAL - 1) in the same order. A loop's
 // frames run round the clip (its last frame is not its first again); a clip played once runs to its
 // last pose.

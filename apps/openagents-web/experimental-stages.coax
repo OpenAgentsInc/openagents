@@ -109,7 +109,7 @@ lab_ride_stage :: (s: [] Lab, d: int) {
 // until an arrow hits; then the camera cuts from behind the rider's right shoulder (the bow's own aiming
 // view) to beside the horse, which trots on a few strides.
 LAB_ARCHER_CANTER :: 0.6;      // of the gallop's speed: 8.4 m/s
-LAB_ARCHER_FOES :: [2] int.[3, 4];   // the village's gremlins (verse/experimental-hostiles.coax hostile_kind)
+LAB_ARCHER_FOES :: [2] int.[3, 4];   // the village's gremlins (metaverse/experimental-hostiles.coax hostile_kind)
 LAB_ARCHER_AHEAD :: [2] f32.[58, 68];   // metres ahead of the horse, and to its right (- left)
 LAB_ARCHER_ACROSS :: [2] f32.[-2.5, 3.5];
 LAB_ARCHER_SHOOT_M :: 42.0;    // the draw begins this close: inside the Longbow's 150 feet

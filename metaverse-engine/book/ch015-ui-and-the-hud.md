@@ -5,7 +5,7 @@
 > state and an action, drawn, tapped and focused from the same rectangles.
 > It refuses an interactive element without a label, moves focus in reading
 > order, traps it in a dialog and never moves it to nothing. The hotbar
-> layout (`verse/hud.coax`) and frame (`metaverse-engine/ui/hud-frame.coax`) remain shared
+> layout (`metaverse/hud.coax`) and frame (`metaverse-engine/ui/hud-frame.coax`) remain shared
 > Coax, and [metaverse-engine/ui/hud.coax](../ui/hud.coax) and
 > [metaverse-engine/ui/draw.coax](../ui/draw.coax) hold the rectangles and the
 > eighteen drawing components. No realm builds its HUD as a tree yet, and the
@@ -39,7 +39,7 @@ slot_i.x = (width − total) / 2 + i · (size + gap)
 slot_i.y = height − bottom − size − 12
 ```
 
-`verse_hud_slot` in [verse/hud.coax](../../verse/hud.coax) is this layout.
+`verse_hud_slot` in [metaverse/hud.coax](../../metaverse/hud.coax) is this layout.
 The HUD frame is a faint outline with 45° cuts on two corners and bright L
 brackets on the other two, its arm at most a quarter of the box's width
 ([metaverse-engine/ui/hud-frame.coax](../ui/hud-frame.coax)).
@@ -330,7 +330,7 @@ coax/bin/coax test metaverse-engine/ui/hud.coax --library
 
 ## What exists today
 
-- [verse/hud.coax](../../verse/hud.coax): the `verse.hud` module,
+- [metaverse/hud.coax](../../metaverse/hud.coax): the `verse.hud` module,
   `verse_hud_slot`, with checks that the hotbar fits a 320-point phone above
   the home indicator and that slots stay separate in landscape.
 - [metaverse-engine/ui/hud-frame.coax](../ui/hud-frame.coax): the frame's points,
@@ -357,7 +357,7 @@ coax/bin/coax test metaverse-engine/ui/hud.coax --library
   The [porting report](../../docs/verse/2026-11-01-arwes-coax.md) records exact
   sources, the MIT notice and the boundary between reusable algorithms and
   DOM/framework/audio effects owned by hosts.
-- [verse/light.coax](../../verse/light.coax): the slot and bar shading
+- [metaverse/light.coax](../../metaverse/light.coax): the slot and bar shading
   (`verse_slot_light`, `verse_slot_cover`, `verse_bar`, `verse_slot_icon`).
 - Filament, the stroke font in `metaverse-engine/ui/font.coax`
   ([coax/font.md](../../coax/font.md)), and GPUI's atlas for Geist in
@@ -424,8 +424,8 @@ tree itself; the journey runs them through a realm and its host.
 - **An explicit focus order** for a container whose reading order is wrong,
   with the check that it doesn't skip an interactive element.
 - **Text layout** over the stroke font's advance widths
-  (`metaverse-engine/ui/text.coax`), and moving the hotbar and frame from `verse/hud`
-  into `metaverse-engine/ui/layout.coax`. `verse/hud.coax` is also the Coax compiler's
+  (`metaverse-engine/ui/text.coax`), and moving the hotbar and frame from `metaverse/hud`
+  into `metaverse-engine/ui/layout.coax`. `metaverse/hud.coax` is also the Coax compiler's
   public-module fixture, so the move has to keep `verse.hud`'s exports.
 
 ## Dependencies

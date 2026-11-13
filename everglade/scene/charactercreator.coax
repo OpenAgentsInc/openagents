@@ -3,13 +3,13 @@
 #module "openagents.charactercreator";
 #load "../../metaverse-engine/ui/font.coax";
 #load "../dragon-clips.coax" as dragon;   // the Shapechange dragon's baked frames
-#load "../../verse/character-glade.coax" as glade;
-#load "../../verse/experimental-terrain.coax" as meadow;
-#load "../../verse/experimental-grass-grid.coax" as ggrid;    // the glade's grass seeds by cell (meadow_cull)
-#load "../../verse/experimental-grass-baked.coax" as gbaked;  // where each cell's seeds start in the committed glade pack
+#load "../../metaverse/character-glade.coax" as glade;
+#load "../../metaverse/experimental-terrain.coax" as meadow;
+#load "../../metaverse/experimental-grass-grid.coax" as ggrid;    // the glade's grass seeds by cell (meadow_cull)
+#load "../../metaverse/experimental-grass-baked.coax" as gbaked;  // where each cell's seeds start in the committed glade pack
 #load "../../metaverse-engine/render/grid-cull.coax" as gcull;   // the open field draws only the cells its view can see (meadow_cull)
 #load "../world/meadow-grid.coax" as grid;   // the open field's scatter grids (everglade/world/meadow.coax)
-#load "../../verse/experimental-village.coax" as village;
+#load "../../metaverse/experimental-village.coax" as village;
 #load "../../metaverse-engine/cam/follow.coax" as follow;
 #load "../../metaverse-engine/physics/query.coax" as query;
 #load "../../metaverse-engine/core/space.coax" as world;
@@ -19,9 +19,9 @@
 #load "../hud/parts.coax";   // Everglade's HUD parts in that style (the game's, every zone's)
 #load "../hud/screens.coax";   // Everglade's plain HUD parts: the clip list, health, the boxes (#13083)
 #load "../hud/numbers.coax";   // Everglade's damage numbers, every zone's (#13080)
-#load "../../verse/experimental-hostiles.coax" as hostile;
-#load "../../verse/experimental-dungeon.coax" as dungeon;
-#load "../../verse/experimental-aribeth.coax" as aribeth;
+#load "../../metaverse/experimental-hostiles.coax" as hostile;
+#load "../../metaverse/experimental-dungeon.coax" as dungeon;
+#load "../../metaverse/experimental-aribeth.coax" as aribeth;
 #load "charactercreator-walk.coax";
 #load "charactercreator-crew.coax";   // the builders at the build sites (#13108)
 #load "../../metaverse-engine/character/character-appearance.coax" as appearance;
@@ -61,7 +61,7 @@ fps_draw :: (ui:[]UitTrace,f:FpsCounter,out:[]f32,at:int,w:f32,h:f32,k:f32)->int
  uit_part(ui,"fps");return ttext(ui,UIT_NONE,out,at,cast(string)buf[0..<n],w-16*k-wide,h-16*k,cap,ink(k,0.95,0.93,0.82),"FPS");
 }
 Box :: struct { x0:f32; y0:f32; x1:f32; y1:f32; }
-GrassDraw :: struct {first:int;count:int;word:int;n:int;group:int = -1;}   // group: which of the pack's grass groups, when its seeds are the sorted ones (verse/experimental-grass-baked.coax); else -1
+GrassDraw :: struct {first:int;count:int;word:int;n:int;group:int = -1;}   // group: which of the pack's grass groups, when its seeds are the sorted ones (metaverse/experimental-grass-baked.coax); else -1
 Creator :: struct {
   build_first:[hw.HW_PARTS]int; build_count:[hw.HW_PARTS]int; build_word:int; build_n:int; sites:[BUILD_SITES]BuildSite;   // build sites (build_site_set)
   build_review:bool; build_t0:f32 = -1;   // ?stage=build-cottage: one cottage from 0 to 7 (build_review_frame)
@@ -398,7 +398,7 @@ experimental_swing_weight :: (s:[]Creator)->f32 {
 }
 #load "../held-kit.coax";   // the weapon in your hand: every class's kit, the Ranger's bow carried and drawn (#13079)
 // ---- a two-hander's room (#13025): the weapon's mesh as boxes, kept 8 cm off the head and neck and out of
-// the torso in every pose the game shows (verse/tools/assets/two_hand_clips.py checks the same in Blender).
+// the torso in every pose the game shows (metaverse/tools/assets/two_hand_clips.py checks the same in Blender).
 // Each kit's boxes in source units: y0, y1 (up the haft), x0, x1 (the edge), z0, z1, from Axe_Double and Sword_big.
 CC_KIT_BOXES :: [2][24]f32.[
  [24]f32.[-0.664,0.462,-0.06,0.152,-0.064,0.064, 0.462,0.62,-0.30,0.325,-0.066,0.066, 0.62,1.30,-0.423,0.448,-0.068,0.068, 1.30,1.487,-0.30,0.325,-0.068,0.068],
@@ -989,7 +989,7 @@ meadow_cull :: (s:[]Creator,b:[]figs.Bodies,out:[]f32,n0:int,cap:int)->int {
   }
   return n;
 }
-// The glade's grass, culled (verse/experimental-grass-grid.coax): a group whose seeds the pack holds
+// The glade's grass, culled (metaverse/experimental-grass-grid.coax): a group whose seeds the pack holds
 // sorted into cells draws only the cells the view can see, nearest first, each the quality's share
 // of its seeds (a cell's first seeds are an even thinning of it). The draw takes the first cell and
 // a draw is added for each further one. With no room for them the group keeps its one whole draw.

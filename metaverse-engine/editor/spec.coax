@@ -1,7 +1,7 @@
 // A realm's spec on the wire (compliance plan step E11, GitHub #13250): what
 // GET /api/playtest/realms/<slug> answers, text a line each, written in SQL (verse.realm_edit_spec:
 // builder_spec for a made realm, edit_spec for every realm). The one reader: My Realm
-// (apps/openagents-web/myrealm.coax), the realm edit layer (verse/edit/edit.coax) and the CLI
+// (apps/openagents-web/myrealm.coax), the realm edit layer (metaverse/edit/edit.coax) and the CLI
 // (apps/openagents-cli) take each line and its fields from here. proto/verse/realm-spec-v1.json
 // names every line and holds specs as the server answers them; metaverse-engine/editor/spec-goldens.coax
 // reads them through this file and coax/web/api/tests/realm_record_checks.coax asks the API for them.

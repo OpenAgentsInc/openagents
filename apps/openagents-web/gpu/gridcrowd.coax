@@ -11,7 +11,7 @@
 // built here from its two ends and kept a pixel and a half wide on the
 // screen) and the agents, the Grid's robot skinned here from its clips'
 // frames, one instance each. The players are the human character from
-// Cast.bin (verse/cast.coax), drawn in vertex order from its triangles and
+// Cast.bin (metaverse/cast.coax), drawn in vertex order from its triangles and
 // skinned with the joint palettes the face writes each frame, textured from
 // its sheets and lit softly from above. Every number comes from gridcrowd.coax.
 // GridcrowdU, a uniform block, is read from a []f32 at these offsets (floats):

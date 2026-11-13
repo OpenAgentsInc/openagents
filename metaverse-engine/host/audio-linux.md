@@ -1,6 +1,6 @@
 # Linux audio effects
 
-`verse/native/audio-host.c` executes the same Coax canonical WAV decoder,
+`metaverse/native/audio-host.c` executes the same Coax canonical WAV decoder,
 PCM interpreter, bank admission and decoded-memory tickets as the other
 version 1 hosts. C owns allocations, immutable references, locks and SDK
 copies. It supplies no resampler, filter, convolution or dynamics algorithm.

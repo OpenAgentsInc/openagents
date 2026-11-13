@@ -1,13 +1,13 @@
 // Who the character chat's built-in characters are (#13261): POST /api/playtest/npc/ask names a
 // character by id in a world (npc.c), and the persona the model is given comes from here, never
 // from the page. Everglade's people and Fairy Forest's talkers are the constants their pages read
-// (everglade/npc/people-words.coax, verse/fairy-forest/talk-words.coax), loaded here, so the two
-// can't drift. The Haunted House's two are verse/haunt/house.json's npcs (packed into the page's
+// (everglade/npc/people-words.coax, metaverse/fairy-forest/talk-words.coax), loaded here, so the two
+// can't drift. The Haunted House's two are metaverse/haunt/house.json's npcs (packed into the page's
 // Haunt.pb); test_npc.py fails when this table and house.json differ. A made realm's characters
 // come from its document, in SQL (migrations/0157_npc_ask_keyed.sql).
 //   coax/bin/coax test coax/web/api/npc-personas.coax --library
 #load "../../../everglade/npc/people-words.coax";
-#load "../../../verse/fairy-forest/talk-words.coax";
+#load "../../../metaverse/fairy-forest/talk-words.coax";
 #load "../../lib/json/json.coax";
 
 // The Haunted House's people (house.json's npcs: id, name, role, the first greeting). Their

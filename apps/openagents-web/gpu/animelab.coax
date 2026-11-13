@@ -3,8 +3,8 @@
 // (animelab.module and animelab.bindings beside it). No WGSL is written by hand.
 //
 // The look is the anime style's (docs/verse/art-styles.md, Anime), every
-// number from its preset block (verse/style-preset.coax verse_style_at, the
-// action variant), every shading step one of verse/style.coax's
+// number from its preset block (metaverse/style-preset.coax verse_style_at, the
+// action variant), every shading step one of metaverse/style.coax's
 // verse_style_anime_* functions:
 // - bg_fs: the sky, a vivid gradient with the warm band toward the sun, the
 //   towering cumulus bank shaded in flat tones, stars and a big moon; below
@@ -20,7 +20,7 @@
 //   and flashes; the overlay's panels under the text.
 // - fx_vs/fx_fs: the overlay's strokes and sans text (font.coax).
 #load "../../../metaverse-engine/gpu/wgsl.coax";
-#load "../../../verse/style.coax";
+#load "../../../metaverse/style.coax";
 
 // AnimelabU, the uniform block (animelab.coax U_*), floats:
 //   size 0 (width, height, time, dpr)

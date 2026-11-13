@@ -29,9 +29,9 @@
 
 #load "../../metaverse-engine/ui/font.coax";
 #load "../../everglade/scene/charactercreator.coax" as cc;
-#load "../../verse/experimental-village.coax" as village;
-#load "../../verse/experimental-hostiles.coax" as hostile;
-#load "../../verse/experimental-dungeon.coax" as xdungeon;
+#load "../../metaverse/experimental-village.coax" as village;
+#load "../../metaverse/experimental-hostiles.coax" as hostile;
+#load "../../metaverse/experimental-dungeon.coax" as xdungeon;
 #load "../../metaverse-engine/core/loop.coax";
 #load "../../rules/srd/battle.coax";
 #load "../../rules/srd/condition-display.coax";   // the conditions' words and icons, every zone's (#13082)
@@ -46,10 +46,10 @@
 #load "fivelab-siege.coax";
 #load "fivelab-film.coax";   // ?stage=armies, siege, horde: film stages for clips (docs/verse/clips.md)
 #load "../../everglade/sound.coax" as exsound;
-#load "../../verse/experimental-comparison.coax" as compare;
-#load "../../verse/experimental-biomes.coax" as biomes;
-#load "../../verse/experimental-aribeth.coax" as nwna;
-#load "../../verse/experimental-terrain.coax" as xterrain;
+#load "../../metaverse/experimental-comparison.coax" as compare;
+#load "../../metaverse/experimental-biomes.coax" as biomes;
+#load "../../metaverse/experimental-aribeth.coax" as nwna;
+#load "../../metaverse/experimental-terrain.coax" as xterrain;
 #load "../../metaverse-engine/world/building.coax" as building;
 #load "../../everglade/world/housewright.coax" as hw;   // the housewright showcase's labels (lab_showcase_titles)
 #load "../../metaverse-engine/cam/mouselook.coax" as mlook;   // Experimental's mouse looks round with no button held
@@ -2657,7 +2657,7 @@ lab_aribeth_label :: (s:[]Lab,out:[]f32,at:int,w:f32,h:f32,k:f32)->int {
 #test "biome labels are absent without the private terrain catalog marker" {
  s:[1]Lab;b:[16]f32;#assert lab_pack_titles(s[..],b[..],0,1600,1000,1)==0;
 }
-// The housewright showcase (verse/experimental-terrain.coax exp_showcase): each house's label on
+// The housewright showcase (metaverse/experimental-terrain.coax exp_showcase): each house's label on
 // the board of its sign, the tier on one line and the stage under it ("Woven hut" over "2 of 4:
 // walls woven"), sized to the board as you see it, for the houses within 16 m.
 #test "the showcase labels the houses near you and none far away" {
@@ -2665,7 +2665,7 @@ lab_aribeth_label :: (s:[]Lab,out:[]f32,at:int,w:f32,h:f32,k:f32)->int {
  #assert lab_label_split("Woven hut, 2 of 4: walls woven")==9 && lab_label_split("none")==4;
 }
 // A check of its own: two Labs in one check are more arrays and structs than a check may hold
-// (E0400), and the app's native build runs these checks (verse/native/build.sh).
+// (E0400), and the app's native build runs these checks (metaverse/native/build.sh).
 #test "on the open field, where no showcase stands, no label is drawn even where the village's row would be (the Druid's meadow)" {
  f:[1]Lab;f[0].w[0].creator[0].experimental=true;f[0].w[0].creator[0].field=true;site:=xterrain.exp_site(xterrain.EXP_SHOWCASE_SITE);f[0].w[0].creator[0].player_x=site.x;f[0].w[0].creator[0].player_z=site.z+2;o:[4096]f32;#assert lab_showcase_titles(f[..],o[..],0,1600,1000,1)==0;
 }
@@ -2744,7 +2744,7 @@ lab_stage :: (s: [] Lab, facts: string) {
 }
 lab_stage_t :: (s: [] Lab) -> f32 { return trk.cam_track_clock(s[0].stage_steps, hws.HWS_HZ); }
 // Where the time-lapses stand: the open grass of the glade south of its village, west of the
-// dungeon and clear of every building site (verse/experimental-terrain.coax EXP_SITES). Every house
+// dungeon and clear of every building site (metaverse/experimental-terrain.coax EXP_SITES). Every house
 // fronts -z (a half turn), so the sun lights its front and the camera looks north over the village.
 LAB_STAGE_X :: -60.0;
 LAB_STAGE_Z :: -38.0;

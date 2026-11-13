@@ -459,8 +459,8 @@ lb_word_in :: (list: string, word: string) -> bool {
 // Ice Cream Man played headless: the bot plays a seeded house to its end
 // with no window, as Game Lab measured a tuning (24 houses, 600 seconds
 // each, the Ice Cream Man in). The CLI's `openagents labs playtest icecream`
-// runs it (ice_run below); verse/icecream/replay.c steps the same rules natively.
-#load "../../verse/icecream/rules.coax";
+// runs it (ice_run below); metaverse/icecream/replay.c steps the same rules natively.
+#load "../../metaverse/icecream/rules.coax";
 
 ICE_RUNS :: 24;         // the houses Game Lab measured a tuning on
 ICE_LIMIT_S :: 600;     // the longest a bot run lasts, seconds

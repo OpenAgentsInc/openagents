@@ -1,5 +1,5 @@
 // Baseline JPEG (ITU-T T.81, sequential Huffman, 8 bits) to RGBA8, for the textures a realm's
-// pack holds (verse/gpu, the scene host). It decodes as libjpeg-turbo does by default, which is
+// pack holds (metaverse/gpu, the scene host). It decodes as libjpeg-turbo does by default, which is
 // what the browser and PIL use: the integer IDCT (jidctint.c), "fancy" triangle upsampling of
 // 2x1 and 2x2 chroma (jdsample.c), and the fixed-point YCbCr conversion (jdcolor.c). One or
 // three components (gray, or YCbCr as JFIF has it), sampling factors 1 or 2, restart intervals,

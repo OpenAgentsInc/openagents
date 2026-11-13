@@ -7,7 +7,7 @@
 > collision profile. Dead Gears' entities are
 > [metaverse-engine/core/entity.coax](../core/entity.coax)'s, and Ice Cream Man's
 > camera is [metaverse-engine/cam/follow.coax](../cam/follow.coax), stepped with its
-> rules. The engine modules moved from `verse/` to `metaverse-engine/`.
+> rules. The engine modules moved from `metaverse/` to `metaverse-engine/`.
 > [metaverse-engine/tools/realm-inventory.coax](../tools/realm-inventory.coax) reads
 > each realm engine's `#load` closure and fails a realm that no longer loads
 > a shared module it is recorded to run on. The cross-realm checks hold the
@@ -50,7 +50,7 @@ The commits on `main` follow this method:
 
 | Realm | What moved | Commit |
 | --- | --- | --- |
-| All | Player, camera, terrain, figure, sticks and 17 more modules from `verse/` to `metaverse-engine/`, with every `#load` and build line | 2df3c484bf |
+| All | Player, camera, terrain, figure, sticks and 17 more modules from `metaverse/` to `metaverse-engine/`, with every `#load` and build line | 2df3c484bf |
 | Belt 2200 | Its lockstep ticks onto a `FrameClock` of 50 ms steps, at most 6 a frame. A tick waiting on the partner stays owed (`loop_ran_some`) | 5c8606795a |
 | Ice Cream Man | Keys and thumb to one `Intent` through `metaverse-engine/core/input.coax`, with one dead zone | 43e396014d |
 | Fairy Forest | Flight from `fairy-face.c` to `metaverse-engine/move/flight.coax`, a per-step hook in the walker, so a glide is the same at 30 and 144 FPS | f2a8d11368 |
@@ -91,25 +91,25 @@ built beside it), and the modules it is recorded to run on:
 InvRealm :: struct { slug: string; want: string; units: string; }
 INV_REALMS :: [15] InvRealm.[
   InvRealm.{slug = "the-grid", want = "loop input replay rand query ground walk follow flight",
-    units = "apps/openagents-web/newland.coax verse/gridwalk.coax"},
+    units = "apps/openagents-web/newland.coax metaverse/gridwalk.coax"},
   InvRealm.{slug = "made realms", want = "loop input query ground walk follow flight",
-    units = "apps/openagents-web/myrealm.coax verse/edit/computer-wire.coax coax/lib/crypto/entropy.coax"},
+    units = "apps/openagents-web/myrealm.coax metaverse/edit/computer-wire.coax coax/lib/crypto/entropy.coax"},
   InvRealm.{slug = "haunted-house", want = "loop input query ground walk player follow flight",
-    units = "apps/openagents-web/realm.coax verse/haunt.coax verse/haunt-buffer.coax metaverse-engine/move/player.coax verse/grid.coax metaverse-engine/render/particles.coax metaverse-engine/cam/cinematic.coax verse/setpiece.coax"},
+    units = "apps/openagents-web/realm.coax metaverse/haunt.coax metaverse/haunt-buffer.coax metaverse-engine/move/player.coax metaverse/grid.coax metaverse-engine/render/particles.coax metaverse-engine/cam/cinematic.coax metaverse/setpiece.coax"},
   InvRealm.{slug = "garden", want = "loop input query ground walk player follow camera flight",
-    units = "apps/openagents-web/garden.coax metaverse-engine/move/player.coax verse/grid.coax"},
+    units = "apps/openagents-web/garden.coax metaverse-engine/move/player.coax metaverse/grid.coax"},
   InvRealm.{slug = "everglade", want = "loop input query ground walk player follow camera flight quality",
-    units = "apps/openagents-web/everglade5e.coax everglade/shared/everglade-step.coax verse/grid.coax everglade/legacy/v1/river.coax everglade/npc/guard-guide-policy.coax apps/openagents-web/everglade5e-rules.coax"},
+    units = "apps/openagents-web/everglade5e.coax everglade/shared/everglade-step.coax metaverse/grid.coax everglade/legacy/v1/river.coax everglade/npc/guard-guide-policy.coax apps/openagents-web/everglade5e-rules.coax"},
   InvRealm.{slug = "everglade-classic", want = "loop input query ground walk player follow camera flight quality",
-    units = "apps/openagents-web/everglade.coax everglade/shared/everglade-step.coax verse/grid.coax everglade/legacy/v1/river.coax everglade/npc/guard-guide-policy.coax"},
+    units = "apps/openagents-web/everglade.coax everglade/shared/everglade-step.coax metaverse/grid.coax everglade/legacy/v1/river.coax everglade/npc/guard-guide-policy.coax"},
   InvRealm.{slug = "dead-gears", want = "loop input entity query ground walk follow flight",
     units = "apps/openagents-web/deadgears.coax"},
   InvRealm.{slug = "ice-cream-man", want = "loop input query ground follow",
-    units = "apps/openagents-web/icecream.coax verse/icecream/scene.coax"},
+    units = "apps/openagents-web/icecream.coax metaverse/icecream/scene.coax"},
   InvRealm.{slug = "hecates-cemetery", want = "loop input query ground walk player follow camera flight",
-    units = "apps/openagents-web/villa.coax metaverse-engine/move/player.coax verse/grid.coax apps/openagents-web/villafig.coax"},
+    units = "apps/openagents-web/villa.coax metaverse-engine/move/player.coax metaverse/grid.coax apps/openagents-web/villafig.coax"},
   InvRealm.{slug = "fairy-forest", want = "loop input query ground walk player follow camera flight",
-    units = "apps/openagents-web/fairy.coax metaverse-engine/move/player.coax verse/grid.coax verse/fairy-forest/stream.coax coax/lib/qr/qr-memory.coax"},
+    units = "apps/openagents-web/fairy.coax metaverse-engine/move/player.coax metaverse/grid.coax metaverse/fairy-forest/stream.coax coax/lib/qr/qr-memory.coax"},
   InvRealm.{slug = "orbit-league", want = "loop",
     units = "apps/openagents-web/orbitleague.coax"},
   InvRealm.{slug = "belt-2200", want = "loop",
@@ -342,7 +342,7 @@ From `ec-migrate`:
   Holds: `cross-realm-floor.coax`, from 121 positions.
 
 From the chapters it depends on: each realm's own tests
-(`verse/deadgears/test.sh`, `verse/icecream/test.sh` and the modules'
+(`metaverse/deadgears/test.sh`, `metaverse/icecream/test.sh` and the modules'
 `#test`s), a recorded session per realm that replays bit for bit natively
 and in the browser, and every realm declaring its budgets.
 

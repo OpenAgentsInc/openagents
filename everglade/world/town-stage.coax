@@ -7,7 +7,7 @@
 //                      so the stage says so on screen)
 // A stage is a function of its clock, seconds from cam_track_clock (whole game steps), so a recorded
 // clip is the same every time. It takes the zone's plot grid: Everglade Experimental's stand-in
-// meadow now (verse/experimental-terrain.coax exp_town), Everglade II's city clearing later. The
+// meadow now (metaverse/experimental-terrain.coax exp_town), Everglade II's city clearing later. The
 // page draws what it hands back: each plot's house at its progress, the camera and the day, the
 // outlines, the name and the label.
 #module "everglade.townstage";

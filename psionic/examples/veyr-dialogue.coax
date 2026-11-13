@@ -1,6 +1,6 @@
 // Offline replay of real held-out writing-model replies, not live inference.
 #import "Basic";
-#load "../../verse/characters/veyr-v2.coax";
+#load "../../metaverse/characters/veyr-v2.coax";
 #load "../fixtures/verse-villain/dialogue.coax";
 
 // book:begin example

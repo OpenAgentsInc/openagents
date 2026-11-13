@@ -4,9 +4,9 @@
 > realm, [metaverse-engine/audio/voice.coax](../audio/voice.coax) (#12669). A hold to talk is a
 > question on the replay gate and the voice host's final transcript its
 > answer, admitted once and only in its epoch, and replayed with no
-> recognizer. The voice engine [`verse/voice.coax`](../../verse/voice.coax)
+> recognizer. The voice engine [`metaverse/voice.coax`](../../metaverse/voice.coax)
 > decides turns, barge-in and playback for talking to an agent, and the C
-> voice host in [`verse/voice-host/`](../../verse/voice-host/host.c) carries
+> voice host in [`metaverse/voice-host/`](../../metaverse/voice-host/host.c) carries
 > its frames (locally recognized by resident Parakeet). Players can't hear
 > each other yet: the forwarder and `voice-space.coax` are phase V5 of the
 > [voice plan](../../docs/voice/coax-native-voice.md), not built. The rest of
@@ -36,14 +36,14 @@ consent and explicit grants, never by the words spoken.
    voice comes from (chapter 6's stable `EntityId`), or none for a flat
    narrator. An `Utterance` carries text up to 600 bytes, a priority, and
    `interruptible`, `spatial` and `batch` flags (`WUtterance` in
-   [`verse/voice-wire.coax`](../../verse/voice-wire.coax)).
+   [`metaverse/voice-wire.coax`](../../metaverse/voice-wire.coax)).
 2. **Frames and turns.** Uplink audio arrives in 20 ms frames (`FRAME`, 320
    samples at 16 kHz; `MAX_IN` 960 at 48 kHz). The turn machine moves
    through `TURN_IDLE`, `TURN_SPEAKING`, `TURN_TRAILING` and `TURN_ENDED`,
    with a 640 ms pre-roll (`PREROLL`, 32 frames) and an onset that confirms
    within 500 ms (`ONSET_SPAN`). Every decision passes one gate: clamps,
    epoch, deadline and a confidence floor.
-3. **Who may be heard.** [`verse/voice-floor.coax`](../../verse/voice-floor.coax)
+3. **Who may be heard.** [`metaverse/voice-floor.coax`](../../metaverse/voice-floor.coax)
    holds up to 8 slots (`SLOTS`), each with consent and a route target, one
    input-floor holder and a media epoch. Withdrawing consent unbinds the
    slot and takes back its floor. A new epoch fences audio from before a
@@ -96,7 +96,7 @@ new epoch, so a transcript still on its way is stale.
 
 // The Metaverse Engine's HOLD TO TALK through its event gate (metaverse-engine/audio/voice.coax). Each hold is a
 // question the realm asks; the voice host's final transcript (Parakeet, run locally:
-// verse/voice-host --recognizer parakeet) is its answer. The transcripts below are the ones the
+// metaverse/voice-host --recognizer parakeet) is its answer. The transcripts below are the ones the
 // host returned for the committed fixtures (docs/verification/verse-parakeet-2026-11-02).
 // A duplicate, an answer after a cancel and a silent hold are shown, then the record replays.
 show :: (r: [] VoiceRealm, what: string, verdict: int) {
@@ -162,28 +162,28 @@ replay of 6 steps matched: true
   step: hold 3 no speech ""
 ```
 
-The same gate runs on live recognition: `verse/voice-host/build/voice-client
+The same gate runs on live recognition: `metaverse/voice-host/build/voice-client
 --hold --aethyr` holds recorded audio as one turn, offers each final transcript
 from the voice host (`--recognizer parakeet`) to the gate and replays the
 record at the end ([record](../../docs/verification/verse-parakeet-2026-11-02/README.md)).
 
 ## What exists today
 
-- [verse/voice.coax](../../verse/voice.coax): resampler, levels, voice
+- [metaverse/voice.coax](../../metaverse/voice.coax): resampler, levels, voice
   activity, end of turn, barge-in and the jitter buffer, checked on
   recorded fixtures.
-- [verse/voice-floor.coax](../../verse/voice-floor.coax),
-  [verse/voice-wire.coax](../../verse/voice-wire.coax) and
+- [metaverse/voice-floor.coax](../../metaverse/voice-floor.coax),
+  [metaverse/voice-wire.coax](../../metaverse/voice-wire.coax) and
   [pay/voice-meter.coax](../../pay/voice-meter.coax): consent and
   floors, the `openagents.voice.v1alpha1.Frame` wire (16 KiB frames), and
   metering.
-- [verse/voice-host/](../../verse/voice-host/host.c): the C host with
+- [metaverse/voice-host/](../../metaverse/voice-host/host.c): the C host with
   WebSocket, speech and WAV adapters, run locally on a Mac.
 - [metaverse-engine/audio/voice.coax](../audio/voice.coax): a spoken request into a realm. A hold is a
   question on the replay gate and the voice host's final transcript its answer
-  (local recognition: resident Parakeet, `verse/voice-host --recognizer parakeet`);
+  (local recognition: resident Parakeet, `metaverse/voice-host --recognizer parakeet`);
   [examples/hold-to-talk.coax](../examples/hold-to-talk.coax) runs it.
-- [verse/haunt.coax](../../verse/haunt.coax): a bounded, symmetric gain and
+- [metaverse/haunt.coax](../../metaverse/haunt.coax): a bounded, symmetric gain and
   pan per sound from the eye and heading (`hh_gain`, `hh_pan`).
 - [Coax chapter 25](../../coax/book/ch25-case-study-voice.md): how the voice
   engine is built from small checked policies.

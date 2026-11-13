@@ -2,7 +2,7 @@
 
 Most of the code in the OpenAgents repositories is written by coding
 agents and reviewed by people. That includes most of the Coax in
-`verse/`: the camera from Chapter 20, the wallet's payment rules, the
+`metaverse/`: the camera from Chapter 20, the wallet's payment rules, the
 compiler's own lexer, parser and type checker. An agent's working loop is simple. It
 edits a file, runs a tool, reads what the tool printed, and decides what
 to do next. Whatever the compiler prints is, in effect, the agent's whole

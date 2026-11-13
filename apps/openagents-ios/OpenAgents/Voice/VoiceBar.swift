@@ -19,9 +19,9 @@ final class VoiceBar: UIView {
 
     static var defaultHost: String? {
         #if targetEnvironment(simulator)
-        return "ws://127.0.0.1:8787" // the Mac's voice host: verse/voice-host/run.sh
+        return "ws://127.0.0.1:8787" // the Mac's voice host: metaverse/voice-host/run.sh
         #else
-        return "wss://voice.openagents.com" // Cloud Run oa-voice: verse/voice-host/deploy.sh
+        return "wss://voice.openagents.com" // Cloud Run oa-voice: metaverse/voice-host/deploy.sh
         #endif
     }
     /// `-OAVoiceHost ws://…` on launch, or the long press; else the simulator default.

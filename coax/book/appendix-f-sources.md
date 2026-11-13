@@ -17,7 +17,7 @@
 ## Coax in OpenAgents
 
 - [OpenAgents iOS app](https://github.com/OpenAgentsInc/openagents/tree/main/apps/openagents-ios/README.md): how the app
-  builds and calls the Coax files in `verse/`.
+  builds and calls the Coax files in `metaverse/`.
 - [the Metaverse](https://github.com/OpenAgentsInc/openagents/tree/main/docs/verse/engine.md): engine scope and native paths.
 
 ## Protocol

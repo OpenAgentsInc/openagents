@@ -2,7 +2,7 @@
 
 > **Status: unimplemented — design draft.** Orbit League and Belt 2200 run
 > today on their own code at `/realms/orbit-league` and `/realms/belt-2200`,
-> over the space primitives already in `verse/`
+> over the space primitives already in `metaverse/`
 > ([docs/verse/space.md](../../docs/verse/space.md)). This chapter plans
 > rebuilding both only from the OpenAgents Metaverse Engine's earlier chapters. Nothing here runs yet.
 
@@ -67,12 +67,12 @@ delta-v, propellant and time are computed, not invented.
   [gravity.coax](../physics/gravity.coax),
   [thrust.coax](../physics/thrust.coax),
   [rigid.coax](../physics/rigid.coax) and
-  [drum.coax](../../verse/drum.coax); the room server in
+  [drum.coax](../../metaverse/drum.coax); the room server in
   [coax/web/room/room.coax](../../coax/web/room/room.coax).
 - Belt 2200: [belt.coax](../../apps/openagents-web/belt.coax) over
   [metaverse-engine/physics/orbit.coax](../physics/orbit.coax),
   [spacecam.coax](../cam/spacecam.coax) and
-  [stars.coax](../../verse/stars.coax);
+  [stars.coax](../../metaverse/stars.coax);
   [belt-lockstep.coax](../../apps/openagents-web/belt-lockstep.coax) and
   [belt-net.coax](../../apps/openagents-web/belt-net.coax) for two players.
 - The modules' checks in [space.md](../../docs/verse/space.md) (a dropped
@@ -84,7 +84,7 @@ delta-v, propellant and time are computed, not invented.
 ## What it builds
 
 - Both games' rules and drawing over `metaverse-engine/`'s physics and space
-  chapters; `verse/`'s space modules kept as independent references until
+  chapters; `metaverse/`'s space modules kept as independent references until
   the Metaverse Engine's own pass the same checks.
 
 ## Acceptance checks and oracles

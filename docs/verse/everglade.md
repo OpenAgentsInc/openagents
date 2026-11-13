@@ -146,7 +146,7 @@ At a walk (3.5 m/s), by the streets, then straight to the door
 ## Kit pieces
 
 Everything is from the three CC0 Quaternius kits aethyr-cpp already packs
-(its SCN4 `scene.bin`, read by `verse/tools/pack_realm.py`): Stylized Nature
+(its SCN4 `scene.bin`, read by `metaverse/tools/pack_realm.py`): Stylized Nature
 (SN), Medieval Village (MV) and Fantasy Props (FP). The names are the kits'
 meshes. Where a kit has no piece, the line says what is assembled instead.
 
@@ -200,7 +200,7 @@ them with the walk clip, no physics. Shopkeepers open their stalls in the
 morning and walk home at dusk, where they go indoors until dawn; Sable,
 Elowen and Quill stroll round the commons; the gate guards walk a beat and
 pause at each end; Pip swims across the Lantern Pond after lunch, wading
-and swimming by the player's rules (`verse/water-wade.coax`). Where someone
+and swimming by the player's rules (`metaverse/water-wade.coax`). Where someone
 is comes only from the day clock and the route, so every visitor sees the
 same town. Talking to someone, or standing in their way, stops them and
 turns them to face you; they hurry to catch up after. With the clock held
@@ -235,7 +235,7 @@ one of the Fantasy outfits, `Peasant` or `Ranger` (with its second and third
 colourways), with or without the Ranger's hood, a head and one of six
 hairstyles; `everglade/legacy/v1/folk.coax` picks each person's parts, skin,
 hair colour, outfit dye and stance (`FOLK_*`, by spot). The 14 parts are
-packed once (`"people"` in the manifest, built by `verse/tools/people.py`)
+packed once (`"people"` in the manifest, built by `metaverse/tools/people.py`)
 and every person shares them: a part is drawn once per frame for everyone
 wearing it, each person's pose and colours a block of rows in the pose
 store. The outfits' pale or green cloth takes the person's dye in the
@@ -348,7 +348,7 @@ as grey boxes at full size, built on the realm host
   characters, above) and the cats (still plain shapes), and each
   place's name as you come near. The free orbit
   (`metaverse-engine/cam/camera.coax`) follows you and keeps out of the walls; walking is
-  `metaverse-engine/move/player.coax` among the plan's solids, thumbs `verse/grid.coax`.
+  `metaverse-engine/move/player.coax` among the plan's solids, thumbs `metaverse/grid.coax`.
 - M or MAP lifts the camera over the whole city; `#above` opens there, and a
   place's id in the hash starts you at it (`#commons`, `#market`, `#guilds`,
   `#temple`, `#observatory`, `#inn`, `#road`, `#deep-wood`, `#ruins`,
@@ -383,7 +383,7 @@ clips are exactly the old ones:
   backpedal, strafe left and right, and the tree-chopping swing, with the
   old engine's seconds and metres per loop.
 
-`verse/tools/pack_realm.py` (manifest `"character"`) copies it into the pack
+`metaverse/tools/pack_realm.py` (manifest `"character"`) copies it into the pack
 (32 bytes a vertex: position, normal and layer, uv, four joints and
 weights) and writes its rig to `everglade/legacy/v1/ranger.coax`. `metaverse-engine/anim/skin.coax`
 plays it as the old engine did (`Motion::of`, `ClipPlayer`): standing below
@@ -444,7 +444,7 @@ fails on any patch of open ground left over).
   `CommonTree_3`, `CommonTree_4`, each with its `_Leaves`.
 - **Along the tree line:** `Bush_Common_Flowers`, `Fern_1`,
   `Rock_Medium_1` and `_2`.
-- **The pack:** `verse/packs/everglade.json`, compiled to
+- **The pack:** `metaverse/packs/everglade.json`, compiled to
   `realms/everglade/assets/everglade.pack` (9.0 MB,
   budget 9,050,000) with `licences.md`; it carries the town's 44 Medieval
   Village and Fantasy Props pieces as well as the forest's, the Ranger
@@ -617,7 +617,7 @@ eg-launch ([realms-port.md](realms-port.md)).
 
 Everglade plays by the SRD 5e ruleset: realms.json gives it
 `"ruleset": "srd5"`, the page carries it (`data-ruleset`, the page facts'
-`ruleset=` line) and `verse/rules/srd5.coax` holds the rules a realm with
+`ruleset=` line) and `metaverse/rules/srd5.coax` holds the rules a realm with
 that ruleset uses: the dice (a seeded SplitMix64), the saving throw and the
 spell save DC, damage types, the spells' damage, and an object's armor class
 and hit points by material and size (SRD 5.2.1, Breaking Objects: cloth 11,
@@ -657,7 +657,7 @@ and you may walk while it fills.
 engine gave it to its dev builds, but here what a player breaks is only on
 their own page, so it costs nobody else anything and is the realm's toy.
 
-**What breaks** (`verse/demolish.coax`): every kit piece of the town
+**What breaks** (`metaverse/demolish.coax`): every kit piece of the town
 (walls, windows, doors, corners, roofs, log roofs, floors, chimneys,
 stairs, stalls, barrels, crates, tables, benches, fences, props: about
 3,000) has its SRD AC and hit points by its mesh's material and size.
@@ -724,7 +724,7 @@ beat, in hand when they hunt you); the kits have no plate armour.
   guard who sees it (34 m, line of sight past the town's walls) or hears it
   (Meteor Swarm and the Mega Thunderbolt 85 m, Thunderbolt 60 m) turns on
   you; WANTED shows under your HP.
-- **Combat** (verse/rules/srd5-combat.coax, SRD 5.2.1): a guard is AC 16,
+- **Combat** (metaverse/rules/srd5-combat.coax, SRD 5.2.1): a guard is AC 16,
   11 HP, +3 to hit for 1d6 + 1; a commoner AC 10, 4 HP; you a 5th-level
   Ranger, AC 15, 44 HP. A swing is d20 + 3 against your AC; a natural 20
   crits, a natural 1 misses. A spell's blast does its SRD damage to anyone
@@ -961,7 +961,7 @@ state, so the pieces' caps (EDIT_CAPS, 1,432 in all) are kept lean.
 Everglade is lit as Character Create's glade (docs/verse/character-glade-lighting.md), at the
 owner's request to rebuild it with that lighting and foliage:
 
-- `verse_style_glade_light` (verse/style-preset.coax), applied after `verse_style_no_outlines`:
+- `verse_style_glade_light` (metaverse/style-preset.coax), applied after `verse_style_no_outlines`:
   smooth light (band softness .30) in place of hard cel bands, as Ocarina shades; at noon a
   4500 K sun under a 6500 K white balance at 1.2; olive, not blue, shadows (shadow cool .6); clear
   air to 70 m, thinner haze (density .007, cap .45) with a gold glow toward the sun; the glade's

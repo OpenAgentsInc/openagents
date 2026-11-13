@@ -10,6 +10,6 @@ if [[ ! -x "$here/build/serve" || "$here/serve.c" -nt "$here/build/serve" || "$h
   # Always fortified, as Nix's compiler builds it: a buffer glibc's checks refuse fails at once, everywhere.
   "$here/../bin/coax" c "$here/http-range.coax" --library --header "$here/build/http-range.h" > "$here/build/http-range.c"
   "$here/../bin/coax" c "$here/site-routes.coax" --library --header "$here/build/site-routes.h" > "$here/build/site-routes.c"
-  "${cc[@]}" -std=c11 -O2 -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=2 -Wall -Wextra -I"$here/build" -o "$here/build/serve" "$here/serve.c" "$here/build/http-range.c" "$here/build/site-routes.c" "$here/../../verse/voice-host/ws.c" -lm
+  "${cc[@]}" -std=c11 -O2 -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=2 -Wall -Wextra -I"$here/build" -o "$here/build/serve" "$here/serve.c" "$here/build/http-range.c" "$here/build/site-routes.c" "$here/../../metaverse/voice-host/ws.c" -lm
 fi
 COAXIAL_MODE=dev exec "$here/build/serve" "$@"

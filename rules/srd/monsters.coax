@@ -6,7 +6,7 @@
 // rs_monster builds the creature; rs_monster_action is what it does with its Action.
 //
 // Who uses which (docs/dnd/srd-compliance-ledger.md, "Used monsters"): Experimental's village and
-// dungeon (verse/experimental-hostiles.coax DG_KIND_*) field its Bestiary models under these
+// dungeon (metaverse/experimental-hostiles.coax DG_KIND_*) field its Bestiary models under these
 // blocks: the imp as the Imp, the gremlin (the Puglin) as the Goblin Warrior, the Puglin Brute as
 // the Ogre, the Imp Fiend as the Quasit and the Puglin Warlord as the Hill Giant. Conjure Animals'
 // wolves in Everglade 5E's room are Wolves, and Finger of Death's risen are Zombies.

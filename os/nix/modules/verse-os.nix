@@ -2,11 +2,11 @@
 #
 # A VT whose login shows the Metaverse instead of a shell: the login runs
 # verse-session (os/verse-session.coax), which waits until that VT is on the
-# screen, runs the first realm on the bare display (verse/gpu/vk-realm.c), and
+# screen, runs the first realm on the bare display (metaverse/gpu/vk-realm.c), and
 # follows travel between realms. Escape held a second hands the screen to
 # `leaveTo`; switching back to the VT starts the Metaverse again where you were.
 #
-# The realms are not built by Nix yet. `verse/gpu/realm.sh local install DIR`
+# The realms are not built by Nix yet. `metaverse/gpu/realm.sh local install DIR`
 # builds them from an openagents checkout into `dir`, the update agent's job
 # from V1 on; until that directory holds a verse-session, the VT is an
 # ordinary login.
@@ -63,7 +63,7 @@ in
       default = "";
       example = "/home/alice/.local/share/verse-os/current";
       description = ''
-        What `verse/gpu/realm.sh local install DIR` keeps: a directory per
+        What `metaverse/gpu/realm.sh local install DIR` keeps: a directory per
         realm, the travel file, and verse-session.
       '';
     };
@@ -146,7 +146,7 @@ in
         && [ -x "${dir}/verse-session" ]; then
         run="''${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/verse-os"
         # every driver under /run/opengl-driver: vk-realm takes the discrete GPU, else any, and
-        # with no driver for the screen's card it copies its frames there (verse/gpu/vkd.h)
+        # with no driver for the screen's card it copies its frames there (metaverse/gpu/vkd.h)
         "${dir}/verse-session" --dir "${dir}" --run "$run" --first "${cfg.first}" --tty ${tty} \
           --leave-to ${toString cfg.leaveTo} ${lib.optionalString (stateDir != "") "--state \"${stateDir}\""} \
           </dev/null 2>&1 | ${pkgs.systemd}/bin/systemd-cat -t verse-session   # journalctl -t verse-session

@@ -1,9 +1,9 @@
 // The Nature reference's bright cyan sky, wind and warm/cool outdoor light.
-// Loaded after metaverse-engine/gpu/wgsl.coax and verse/style.coax by fivelab.coax.
-#load "../../../verse/character-glade.coax";
+// Loaded after metaverse-engine/gpu/wgsl.coax and metaverse/style.coax by fivelab.coax.
+#load "../../../metaverse/character-glade.coax";
 #load "character-glade-light.coax";
 #load "../../world/meadow.coax";      // the open meadow scattered to the horizon (cg_meadow_vs)
-#load "../../../verse/experimental-ground.coax";   // the ground it stands on (exp_height_gpu); not experimental-terrain.coax, whose dungeon and visibility WGSL does not take (#13132)
+#load "../../../metaverse/experimental-ground.coax";   // the ground it stands on (exp_height_gpu); not experimental-terrain.coax, whose dungeon and visibility WGSL does not take (#13132)
 // The sky, the soil seams and the cloud shadows are the shared painterly default's
 // (metaverse-engine/render/painterly.coax, #13060), with their checks; these names delegate to it. The cloud
 // shadows and the sky read the frame's resolved environment (u at PAINT_ENV_U, #13066).
@@ -137,7 +137,7 @@ cg_meadow_place :: (id:u32,a:V4,sv:f32,sh:f32,tint:V3,autumn:f32,m:FivelabObj,u:
  if (kind==2) {height:=saturate(source.y);o.tint=mix3(tint,v3(0.65f32+0.28f32*autumn,0.88f32-0.20f32*autumn,0.07f32),height);o.local=v3(2,height,1);}
  return o;
 }
-// The town at the end of the road (verse/character-glade.coax cg_city, packed on the rock layer
+// The town at the end of the road (metaverse/character-glade.coax cg_city, packed on the rock layer
 // with one flat tint a material, character_glade_pack.coax gp_town_block): which material a tint is,
 // 0 stone, 1 tower stone, 2 plaster, 3 tile, 4 slate, 5 timber, or -1 for a real rock.
 cg_town_material :: (t:V3)->f32 {
@@ -247,7 +247,7 @@ cg_environment_fs :: (s:FivelabS,tex:V4,front:bool,u:[]f32,shadow:f32)->V4 {
  }
  colour=cg_atmosphere(u,colour,eye,s.world);share:=saturate(verse_style_luma(indirect.x,indirect.y,indirect.z)*exp(-cg_air_depth(u,eye,s.world))/fmax(verse_style_luma(colour.x,colour.y,colour.z),0.00001f32));return v4(colour.x,colour.y,colour.z,share);
 }
-// Everglade Experimental's dungeon (verse/experimental-dungeon.coax), lit by its torches alone:
+// Everglade Experimental's dungeon (metaverse/experimental-dungeon.coax), lit by its torches alone:
 // u[60..63] its block (west, south, east, north), u[64] its ceiling's height (0 when there is none
 // in the scene), u[65] borrowed darkvision range in metres, u[68..103] the nine torches nearest you, each x, y, z and brightness
 // (charactercreator.coax dungeon_light). Its outer walls' faces and its roof stand outside.

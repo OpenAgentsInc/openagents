@@ -4,7 +4,7 @@
 > [metaverse-engine/core/entity.coax](../core/entity.coax), with its reference model in
 > [metaverse-engine/tests/entity-oracle.coax](../tests/entity-oracle.coax). It
 > generalizes Dead Gears' entity system, which now runs on it:
-> [verse/deadgears/ecs.coax](../../verse/deadgears/ecs.coax) keeps only the
+> [metaverse/deadgears/ecs.coax](../../metaverse/deadgears/ecs.coax) keeps only the
 > component bits beside an `EntityStore`.
 
 A realm is full of things that appear and disappear: a thrown cone, a
@@ -466,7 +466,7 @@ moves the realms onto this module:
 
 - Realms that keep fixed arrays addressed by index, such as Orbit League's
   bodies, give their things handles and IDs.
-- The realm board's rows (`verse/edit/edit.coax`) refer to entities by
+- The realm board's rows (`metaverse/edit/edit.coax`) refer to entities by
   `EntityId`.
 
 A map from `EntityId` to handle can replace the scan in `entity_find` when a

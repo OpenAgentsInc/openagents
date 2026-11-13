@@ -23,7 +23,7 @@ work="$(mktemp -d)";trap 'rm -rf "$work"' EXIT
 # defined twice at the link (#12661). wasm-size names the symbol and both units first.
 browser_unit=coax/web/project/landing-browser.coax; [[ "$render" != 1 ]] || browser_unit=apps/openagents-web/carriers/landing-browser.coax
 (cd "$repo" && "$repo/coax/web/tool.sh" wasm-size exports apps/openagents-web/newland.coax "$browser_unit" \
-  coax/web/project/landing-fold.coax verse/gridwalk.coax) || { echo "build-home.sh: the same #export_c symbol in two units" >&2; exit 1; }
+  coax/web/project/landing-fold.coax metaverse/gridwalk.coax) || { echo "build-home.sh: the same #export_c symbol in two units" >&2; exit 1; }
 # The units' C side by side, then every object side by side (#13154): one after another
 # they took the sum of four compiles, and the homepage is the last module a release waits for.
 objects=(); units=(); jobs=()
@@ -38,7 +38,7 @@ for unit in newland landing-browser landing-fold; do
 done
 # The Grid (/realms/the-grid) is this module walked (newland-walk.coax): its session (you, the
 # phone's thumbs and the record, on Aethyr's engine core) is a library of its own (Gridwalk.h).
-for library in verse/gridwalk.coax; do
+for library in metaverse/gridwalk.coax; do
   base="$(basename "$library" .coax)"; base="$(printf '%s' "${base:0:1}" | tr a-z A-Z)${base:1}"
   (cd "$repo" && "$coax_driver" c "$library" --library --header "$work/$base.h" ${run_steps[@]+"${run_steps[@]}"}) > "$work/$base.c" & jobs+=($!)
   units+=("$base")

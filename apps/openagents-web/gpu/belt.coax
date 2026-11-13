@@ -3,10 +3,10 @@
 // belt.bindings beside it). It began as coax/web/wgsl-coax.coax's translation of the hand-written WGSL.
 #load "../../../metaverse-engine/render/noise.coax";
 #load "../../../metaverse-engine/gpu/wgsl.coax";
-#load "../../../verse/stars.coax";
+#load "../../../metaverse/stars.coax";
 
 // Belt 2200's two passes (belt.coax decides every number): the sky behind
-// space (verse/stars.coax: the starfield, the Sun's disc and corona; the
+// space (metaverse/stars.coax: the starfield, the Sun's disc and corona; the
 // block below is generated from it), the Belt's dust, the worlds as shaded
 // discs (bands, clouds, caps, Saturn's rings, air at the limb) and the
 // HUD's glass; then the strokes: glowing line art as the homepage draws it

@@ -6,7 +6,7 @@ tool_main :: ()->int #export_c #effects(all) {
  a:[1]Args;if !args_load(a[..])||args_count(a[..])<3||args_count(a[..])>4||(args_count(a[..])==4&&args_at(a[..],3)!="--sanitize")||cxtool_os()!=2 {tool_errln("usage: build-linux-http ROOT COMPILER NEW_OUT [--sanitize]");return 2;}
  root:=args_at(a[..],0);compiler:=args_at(a[..],1);out:=args_at(a[..],2);sanitized:=args_count(a[..])==4;paths:[16][4096]u8;if !fs_mkdir(out) {return 1;}
  inputs:[1]RtqInputs;env:[]string;stdout:[8388608]u8;stderr:[1048576]u8;deadline:=proc_now_ms()+300000;
- for source,i:[2]string.["verse/native/net.coax","coax/lib/crypto/entropy.coax"] {
+ for source,i:[2]string.["metaverse/native/net.coax","coax/lib/crypto/entropy.coax"] {
   name:=ifx i==0 then "net.c" else "entropy.c";header:=ifx i==0 then "Net.h" else "entropy-policy.h";
   unit:=fs_join(root,source,paths[0][..]);if !rtq_deps(inputs[..],compiler,unit,deadline,out,ifx i==0 then "net-deps" else "entropy-deps") {return 1;}
   argv:=[6]string.[compiler,"c",unit,"--library","--header",fs_join(out,header,paths[1][..])];

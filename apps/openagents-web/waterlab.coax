@@ -4,7 +4,7 @@
 // horizon breaking on a sloping beach, in the painted water look (the
 // Everglade river's preset, docs/verse/art-styles.md 12), under a hazy sky.
 //
-// W4, the spectral sea (verse/water-spectrum.coax): a JONSWAP sea with
+// W4, the spectral sea (metaverse/water-spectrum.coax): a JONSWAP sea with
 // directional spreading synthesized by the CPU FFT each frame on the water's
 // deterministic clock (120 ticks a second, the loop folded), cascades by
 // tier: the desktop draws the gameplay band (cascade 0, 64^2) and a finer
@@ -17,7 +17,7 @@
 // The tiles ride in the uniform block as half floats, two to a word
 // (UW_*): cascade 0's height and foam, its slopes; the fine slopes.
 //
-// W10, ocean and scale (verse/water-ocean.coax): the sea is a clipmap mesh,
+// W10, ocean and scale (metaverse/water-ocean.coax): the sea is a clipmap mesh,
 // nested grids round the eye drawn by waterlab.wgsl's surface_vs from their
 // index alone (host.js: a traced page's surface), with cascade 0's choppy
 // displacement on its vertices; bg_fs traces only the sky and the beach and
@@ -31,7 +31,7 @@
 // ?tier=phone (the phone's cascades on any screen), ?sea=traced (no mesh). Drag or the arrows turn
 // the camera, the wheel or W/S zooms, Q dives and E rises.
 
-#load "../../verse/water-ocean.coax";
+#load "../../metaverse/water-ocean.coax";
 #load "../../metaverse-engine/core/budget.coax";
 
 VERTEX_FLOATS :: 16;

@@ -7,7 +7,7 @@
 // ignore it. Each answer is a probability; the action follows from costs
 // written down first, through chapter 216's th_answer. Every answer is a
 // proposal that arrives some ticks after the question and passes a gate
-// with the voice engine's order (verse/voice.coax decide): the action must
+// with the voice engine's order (metaverse/voice.coax decide): the action must
 // fit the question, the probability lie in [0, 1], the confidence clear a
 // floor, the epoch still be current, and the deadline not have passed.
 // Each drop has a recorded reason. Nothing waits for the model: a missing,

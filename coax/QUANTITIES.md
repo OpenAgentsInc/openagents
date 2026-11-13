@@ -183,7 +183,7 @@ or real-time qualification follows from the C evidence.
 
 ## Consumer and evidence
 
-[the Metaverse's Grid](../verse/grid.coax) now types the three metre-valued inputs of
+[the Metaverse's Grid](../metaverse/grid.coax) now types the three metre-valued inputs of
 `smooth`, used by the fog calculation. Its subtraction uses the built-in
 quantity operators; `.value` makes the dimensionless ratio boundary explicit.
 This is a scalar precursor. The Grid's `Vec3` values and camera/world frames
@@ -269,7 +269,7 @@ already exist:
 python3 coax/tests/quantity_bootstrap.py /tmp/coax-quantity-private --plan > /tmp/coax-quantity-plan.json
 python3 coax/tests/quantity_bootstrap.py /tmp/coax-quantity-private > /tmp/coax-quantity-build.json
 /tmp/coax-quantity-private/coax run coax/tests/quantity/private-bootstrap.coax
-/tmp/coax-quantity-private/coax c verse/grid.coax --library > /tmp/coax-quantity-grid.c
+/tmp/coax-quantity-private/coax c metaverse/grid.coax --library > /tmp/coax-quantity-grid.c
 COAX_TEST_COMPILER=/tmp/coax-quantity-private/coax python3 coax/tests/quantity.py
 ```
 

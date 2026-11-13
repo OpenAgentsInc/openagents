@@ -1,9 +1,9 @@
-// Dead Gears' flow fields on metaverse-engine/world/nav/grid.coax (#12854): verse/deadgears/arena.coax's
+// Dead Gears' flow fields on metaverse-engine/world/nav/grid.coax (#12854): metaverse/deadgears/arena.coax's
 // nav_flow_to and nav_downhill now call the module, and this file keeps the private search they
 // replaced (ndg_old_*, the consumer's trace, as it stood in c3ae074831) to hold them to it: every
 // cell's cost bit for bit, every step and every next cell, for goals across the deck.
 //   coax/bin/coax test metaverse-engine/tests/nav-deadgears.coax --library
-#load "../../verse/deadgears/arena.coax";
+#load "../../metaverse/deadgears/arena.coax";
 
 // ---- the private search Dead Gears ran before #12854, kept as its trace
 

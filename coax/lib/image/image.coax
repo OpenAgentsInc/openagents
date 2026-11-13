@@ -1,5 +1,5 @@
 // An image file (PNG or baseline JPEG) to RGBA8, and the mip levels of a texture made from it,
-// for a realm's texture layers (verse/gpu/layers.coax, the scene host). The browser builds the
+// for a realm's texture layers (metaverse/gpu/layers.coax, the scene host). The browser builds the
 // same levels with createImageBitmap (coax/web/host.js layerTexture); here each level is the
 // one above halved by a 2x2 box, its colour weighted by alpha as a premultiplied resize weighs
 // it, so a transparent texel's colour does not bleed into the next level.

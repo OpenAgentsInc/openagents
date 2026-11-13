@@ -28,7 +28,7 @@ CM_DIELECTRIC_F0 :: 0.04f32;
 // the screen-space cotangent frame (Schueler 2006), since Quaternius vertices carry no tangents.
 // p and uv are the world position and texture coordinate; px, py, ux, uy their screen derivatives,
 // as WGSL's dpdx and dpdy give them: py runs down the framebuffer, so it is turned up first.
-// The packed V coordinate runs down the image (1 - glTF's V, verse/tools/people.py), so the map's
+// The packed V coordinate runs down the image (1 - glTF's V, metaverse/tools/people.py), so the map's
 // +Y is the frame's -V. A degenerate frame (no UV change) keeps the surface normal.
 cm_normal :: (texel:V4,strength:f32,n:V3,px:V3,py:V3,ux:V2,uy:V2)->V3 {
  x:=(texel.x*2.0f32-1.0f32)*strength;y:=(texel.y*2.0f32-1.0f32)*strength;z:=texel.z*2.0f32-1.0f32;

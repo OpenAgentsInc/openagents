@@ -98,7 +98,7 @@ input_keys :: (key_x: f32, key_y: f32, shift: bool, jumping: bool, acting: bool,
   i := Intent.{move_x = x.value, move_y = y.value, run = input_keys_run(shift), jump = jumping, act = acting, mended = x.mended + y.mended};
   return input_amounts(i, look_x, look_y, zoom);
 }
-// The touch stick (verse/grid.coax Sticks) or a pad: a push inside the dead zone is no move,
+// The touch stick (metaverse/grid.coax Sticks) or a pad: a push inside the dead zone is no move,
 // a full push runs, a quick tap jumps. A bad number on either axis is no push at all.
 input_stick :: (pad_x: f32, pad_y: f32, full_push: bool, tap: bool, acting: bool, look_x: f32, look_y: f32, zoom: f32) -> Intent {
   x := input_axis(pad_x); y := input_axis(pad_y);

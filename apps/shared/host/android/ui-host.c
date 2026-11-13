@@ -1,13 +1,13 @@
 // Firm reason: 6 (native Vulkan and Android NDK ABI; every app's behaviour is Coax).
 // The shared Android host (../linux/ui-host.h, GitHub #13156): the Linux host's drawing on the
-// same Vulkan helpers (verse/gpu/vkc, vks), with the component shader emitted from Coax as SPIR-V
+// same Vulkan helpers (metaverse/gpu/vkc, vks), with the component shader emitted from Coax as SPIR-V
 // and the atlas the app builds in Coax (components/raster/atlas.coax).
 //
 // Offscreen frames and pictures (ui_open(app, 1), ui_shot_frame, ui_shot_write) run anywhere,
 // as a check runs them. A window (ui_open(app, 0)) is the activity's: an app built as a
 // NativeActivity (with the NDK's android_native_app_glue and UI_ANDROID_WINDOW defined) hands the
 // host its android_app first (ui-host-android.h), and the host draws to the activity's
-// ANativeWindow through a swapchain (verse/gpu/vkp) and takes its touches as the pointer.
+// ANativeWindow through a swapchain (metaverse/gpu/vkp) and takes its touches as the pointer.
 #include "../linux/ui-host.h"
 #include "../png.h"
 #include "vkc.h"

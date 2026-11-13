@@ -92,7 +92,7 @@ this, and it is the one Metaverse OS keeps.
 
 6. **Later: monitors arriving and leaving** while the compositor runs (a
    DRM uevent, or a connector poll on a timer), and **the Metaverse session**:
-   `verse/gpu/vk-display.c` takes the same rules, turns the picture in the
+   `metaverse/gpu/vk-display.c` takes the same rules, turns the picture in the
    display plane when `VkDisplayPlaneCapabilitiesKHR` supports the
    transform and in the shader when it does not, and draws on the 4080 with
    a copy to the Intel card's display.

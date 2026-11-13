@@ -1,7 +1,7 @@
 // Dictation admission is local, opt-in and ticketed. A transcript is only a
 // draft candidate; this controller has no send or engine-command operation.
 #authority;
-#load "../../verse/asr-cut.coax";
+#load "../../metaverse/asr-cut.coax";
 DCT_OFF :: 0; DCT_IDLE :: 1; DCT_HELD :: 2; DCT_TAIL :: 3; DCT_CLIP :: 4; DCT_WORK :: 5;
 DCT_NONE :: 0; DCT_TAP :: 1; DCT_SILENCE :: 2; DCT_CANCEL :: 3; DCT_ERROR :: 4; DCT_SUCCESS :: 5; DCT_LIMIT :: 6;
 DCT_MAX :: 960000; DCT_PRE :: 7200; DCT_SEGMENT :: 327520;

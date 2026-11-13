@@ -5,7 +5,7 @@
     "slug": "dg-v2",
     "title": "Dead Gears that plays well: aim it, move like a person, fights that feel good",
     "body": "Owner's review of the first version: \"projectiles are weird, like they auto shoot the nearest thing, and no character controller, it's blocky, horrible.\" First fix aiming (shots go where you point), then move onto the Metaverse's shared controller and skinned character, then the feel of the fights.",
-    "spec": "verse/deadgears/"
+    "spec": "metaverse/deadgears/"
   },
   "milestones": [
     {
@@ -30,9 +30,9 @@
       "title": "Shots go where the crosshair is, not to the nearest creature",
       "parent": "dg-aim",
       "size": "M",
-      "body": "Owner: \"projectiles are weird, like they auto shoot the nearest thing\". Today dg_fire (verse/deadgears/rules.coax) calls dg_target, which picks the best mutant inside a cone that widens 0.25 m per metre, and the beam snaps to it whatever the crosshair is on; the aim is only the camera's yaw, so pitch does nothing. Replace it with a ray from the camera through the crosshair (yaw and pitch) into the arena, hitting the first mutant part, cover or wall it meets. Body regions come from where the ray hits, not the mode: high on the body is the head, the limbs sever.",
+      "body": "Owner: \"projectiles are weird, like they auto shoot the nearest thing\". Today dg_fire (metaverse/deadgears/rules.coax) calls dg_target, which picks the best mutant inside a cone that widens 0.25 m per metre, and the beam snaps to it whatever the crosshair is on; the aim is only the camera's yaw, so pitch does nothing. Replace it with a ray from the camera through the crosshair (yaw and pitch) into the arena, hitting the first mutant part, cover or wall it meets. Body regions come from where the ray hits, not the mode: high on the body is the head, the limbs sever.",
       "files": [
-        "verse/deadgears/rules.coax",
+        "metaverse/deadgears/rules.coax",
         "apps/openagents-web/deadgears.coax"
       ],
       "acceptance": [
@@ -82,7 +82,7 @@
       "size": "M",
       "body": "The cutter's beam is a 0.1 s line from you to the target. Make each mode read: Sever a fast spinning blade with a short travel time, Head a thin tracer, Core a heavier slower bolt. Impacts spark on cover and walls. The brute's bolts get a visible wind-up so you can dodge them.",
       "files": [
-        "verse/deadgears/rules.coax",
+        "metaverse/deadgears/rules.coax",
         "apps/openagents-web/deadgears.coax"
       ],
       "acceptance": [
@@ -115,10 +115,10 @@
       "title": "You are a real animated character, not boxes",
       "parent": "dg-character",
       "size": "L",
-      "body": "Today engineer() draws you from a dozen boxes that bob. verse/cast.coax already plays a skinned character with idle, walk, sprint and jump clips cross-fading in 0.18 s (the Grid). Draw you with it, add aim, fire, reload and crouch-at-cover poses on top (an upper-body layer while the legs walk), and give the suit Dead Gears' colours.",
+      "body": "Today engineer() draws you from a dozen boxes that bob. metaverse/cast.coax already plays a skinned character with idle, walk, sprint and jump clips cross-fading in 0.18 s (the Grid). Draw you with it, add aim, fire, reload and crouch-at-cover poses on top (an upper-body layer while the legs walk), and give the suit Dead Gears' colours.",
       "files": [
         "apps/openagents-web/deadgears.coax",
-        "verse/cast.coax"
+        "metaverse/cast.coax"
       ],
       "acceptance": [
         "You walk, run, jump, crouch, aim, fire and reload with distinct animation",
@@ -190,7 +190,7 @@
       "size": "M",
       "body": "Today mutants walk at you and the brute fires bolts. Give them roles: crawlers come from vents and under cover, runners circle to flank, the brute pins you behind cover. They path round cover rather than through it, and come at the reactor when you are far from it.",
       "files": [
-        "verse/deadgears/rules.coax"
+        "metaverse/deadgears/rules.coax"
       ],
       "acceptance": [
         "A test shows a runner reaching you from the side while you face a crawler",
@@ -205,7 +205,7 @@
       "body": "A short dodge roll with a cooldown, and cover by moving into it (the COVER button stays on phones). Peek and fire from cover.",
       "files": [
         "apps/openagents-web/deadgears.coax",
-        "verse/deadgears/rules.coax"
+        "metaverse/deadgears/rules.coax"
       ],
       "acceptance": [
         "Dodging through a brute's bolt avoids it",
@@ -222,7 +222,7 @@
       "size": "S",
       "body": "With aiming now real, the waves are harder. Use the realm's analytics (wave reached, deaths, time per wave) from the playtest to tune counts, health and the reactor's repair time, and save mid-wave-1 (today leaving mid-wave 1 restarts it).",
       "files": [
-        "verse/deadgears/rules.coax",
+        "metaverse/deadgears/rules.coax",
         "apps/openagents-web/deadgears.coax"
       ],
       "acceptance": [

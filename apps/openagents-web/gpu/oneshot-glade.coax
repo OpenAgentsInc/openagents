@@ -6,7 +6,7 @@
 // 5E Lab's shaders (fivelab.coax): build.sh writes apps/openagents-web/fivelab.wgsl from this
 // with coax/web/wgsl-module.coax (fivelab.module and fivelab.bindings beside it).
 #load "../../../metaverse-engine/gpu/wgsl.coax";
-#load "../../../verse/style.coax";
+#load "../../../metaverse/style.coax";
 
 // bg_fs draws one of two views of the battle, as the page picks (V):
 //  - flat: the bare grid of 5-foot squares, every fourth line brighter;
@@ -14,7 +14,7 @@
 //    a grass clearing ringed with trees under a hazy sky, the grid painted faintly on the grass,
 //    the druids standing on their squares, the spells' areas on the ground. It traces each pixel
 //    against the scene's few shapes (spheres and capsules, analytically) and lights it with the
-//    style's soft toon bands, cool shadows and haze (verse/style.coax).
+//    style's soft toon bands, cool shadows and haze (metaverse/style.coax).
 // Either way the log panel's dark glass goes over it. fx_vs/fx_fs draw the strokes
 // glade_frame writes (capsules): the HUD, the text, and in the glade the labels and effects.
 // GladeU, a uniform block, is read from a []f32 at these offsets (floats):
@@ -257,7 +257,7 @@ glade_mark :: (marks:f32,k:f32)->bool {
   return wg_fmod(floor(marks/wg_exp2(k)),2.0f32)>0.5f32;
 }
 
-// ---- the glade's light (the style's: verse/style.coax)
+// ---- the glade's light (the style's: metaverse/style.coax)
 
 glade_sky :: (rd:V3,sun:V3,t:f32)->V3 {
   up:f32=fmax(rd.y,0.0f32);

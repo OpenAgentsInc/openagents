@@ -4,12 +4,12 @@
   "status": "Grid directly adopts the shared Walk core with unchanged execution/digest profile2",
   "compiler_sha256": "d7bb42979103435a0adfd543368fc2e915dad697fe0b877a0296d62fe08a1905",
   "checks": {
-    "command": "coax/bin/coax test verse/gridwalk.coax --library",
+    "command": "coax/bin/coax test metaverse/gridwalk.coax --library",
     "result": "326/326 passed",
     "log_sha256": "42b89693ef8e4880a8476a57c6d8c6b009e06cb191171567d5f62ee9f333c3e5"
   },
   "mutation": {
-    "command": "coax/bin/coax mutate verse/gridwalk.coax --library --root-only --jobs 4",
+    "command": "coax/bin/coax mutate metaverse/gridwalk.coax --library --root-only --jobs 4",
     "result": "234/234 killed,0 survivors,no waivers",
     "stdout": "mutation scope: root-only (entry-source procedures; dependency checks retained)\n234 mutants, 234 killed, 0 survived\n"
   },
@@ -60,10 +60,10 @@
     "metaverse-engine/walk-frame.coax": "19694947b923308e4deaf80662670a1935a7ec08d05ef8d45e2f615991d78028",
     "metaverse-engine/walk.coax": "a85f3e5de807a9e81f0b743080799cee9a8ee9d43d65b8eb0ed056ed10808608",
     "coax/lib/quantity.coax": "325e9e7152de442b2da210cc0075ca4bb231d5a4c862898a6ee88ab161eeb583",
-    "verse/gridwalk.coax": "f2ef5fee8b0fbbe4db4244e68255afb1b6e5ca26c7d8048b5344d2bf56d1a610",
-    "verse/stand.coax": "a6c5d351b77cf14313a7cb97232894ad10525f148aa499ab87c01fc908e4f35b",
-    "verse/sticks.coax": "c2a45fcccc415e7b551366c76ad99683dd19c2e9e110843dbc0465800d858acb",
-    "verse/tests/gridwalk-checks.coax": "16dfb2a0f2e7e3666783f3c5f5e66fbab969949db3fa69e22a21c2884220765b"
+    "metaverse/gridwalk.coax": "f2ef5fee8b0fbbe4db4244e68255afb1b6e5ca26c7d8048b5344d2bf56d1a610",
+    "metaverse/stand.coax": "a6c5d351b77cf14313a7cb97232894ad10525f148aa499ab87c01fc908e4f35b",
+    "metaverse/sticks.coax": "c2a45fcccc415e7b551366c76ad99683dd19c2e9e110843dbc0465800d858acb",
+    "metaverse/tests/gridwalk-checks.coax": "16dfb2a0f2e7e3666783f3c5f5e66fbab969949db3fa69e22a21c2884220765b"
   },
   "source_snapshot_limit": "The hashes identify the current production closure. Grid log captures did not separately snapshot the test-only walk-tuning dependency before execution; only that dependency changed by additive clock-boundary cases. This receipt makes no claim that those later test cases ran in the earlier Grid baseline. Production Walk/Grid hashes are final and unchanged; final Walk authority coverage is recorded separately."
 }

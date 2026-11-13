@@ -1,0 +1,9 @@
+# The Cultist Raid promo: the mayor asks the adventurer for help as the raiders reach Everglade.
+#   coax/web/tool.sh speak metaverse/cast/cues/raid-promo.cues ~/work/film-out/promo/raid-promo-mayor.mp4 --video VIDEO
+# The take is the owner's own recording (an ElevenLabs clone of the owner's voice), owner-local under
+# ~/.openagents/verse/private-build/speak/takes/, never in git.
+video  raid-video-v6-night.mp4
+# the voice only: no game sound
+video-audio off
+00:01.0  mayor  worried  "Adventurer! Our beloved town of Everglade is under attack. These cultists have been probing our defenses for months, and today they've struck -- led by the malicious warlock Darian Odiodei. Can you help us?"
+take mayor-raid-full.mp3

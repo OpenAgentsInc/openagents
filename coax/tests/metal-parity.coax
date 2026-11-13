@@ -16,25 +16,25 @@ tool_main :: ()->int #export_c #effects(all) {
   if !args_has(a[..],"--reuse-shaders"){
     cmd:=[4]string.["coax/web/tool.sh","coax/tests/metal-graphics.coax",compiler,shaders];if !mgp_run(cmd[..],fs_join(dir,"sdk-compile.log",p[2][..])){return 1;}
   }
-  if fs_mtime_ns(image)<fs_mtime_ns("verse/gpu/metal-sdk.swift"){
-    cmd:=[10]string.["xcrun","swiftc","-O","-target","arm64-apple-macos26.0","verse/gpu/metal-sdk.swift","-framework","Metal","-o",image];if !mgp_run(cmd[..],fs_join(dir,"sdk-host-build.log",p[2][..])){return 1;}
+  if fs_mtime_ns(image)<fs_mtime_ns("metaverse/gpu/metal-sdk.swift"){
+    cmd:=[10]string.["xcrun","swiftc","-O","-target","arm64-apple-macos26.0","metaverse/gpu/metal-sdk.swift","-framework","Metal","-o",image];if !mgp_run(cmd[..],fs_join(dir,"sdk-host-build.log",p[2][..])){return 1;}
   }
   cases:=[7]string.["bg","scene","grass","water","fx","post","live"];limits:=[7]string.["40","400","400","2000","10000","2000","2000"];
   for i:from..<7 {
     case_root:=fs_join(dir,"cases",p[2][..]);if !fs_mkdir(case_root){return 1;}here:=fs_join(case_root,cases[i],p[3][..]);
     if !fs_mkdir(here){return 1;}print("G5 Metal qualification: %\n",cases[i]);
     if !args_has(a[..],"--reuse-reference"){
-      emit:=[9]string.["coax/web/tool.sh","verse/gpu/everglade-pass.coax",remote,cases[i],"--wasm",wasm,"--emit",here,""];
+      emit:=[9]string.["coax/web/tool.sh","metaverse/gpu/everglade-pass.coax",remote,cases[i],"--wasm",wasm,"--emit",here,""];
       if !mgp_run(emit[0..<8],fs_join(here,"emit.log",p[4][..])){return 1;}
-      oracle:=[10]string.["coax/web/tool.sh","verse/gpu/pass-check.coax",remote,here,"spec.txt","--allow",limits[i],"--keep",here,""];
+      oracle:=[10]string.["coax/web/tool.sh","metaverse/gpu/pass-check.coax",remote,here,"spec.txt","--allow",limits[i],"--keep",here,""];
       if !mgp_run(oracle[0..<9],fs_join(here,"reference.log",p[4][..])){return 1;}
     }
     plan:=fs_join(here,"metal.json",p[5][..]);rendered:=fs_join(here,"metal.f32",p[6][..]);report:=fs_join(here,"metal-result.json",p[7][..]);
-    planner:=[6]string.["coax/web/tool.sh","verse/gpu/metal-pass.coax",here,"spec.txt",shaders,plan];if !mgp_run(planner[..],fs_join(here,"metal-plan.log",p[4][..])){return 1;}
+    planner:=[6]string.["coax/web/tool.sh","metaverse/gpu/metal-pass.coax",here,"spec.txt",shaders,plan];if !mgp_run(planner[..],fs_join(here,"metal-plan.log",p[4][..])){return 1;}
     run:=[4]string.[image,plan,rendered,report];if !mgp_run(run[..],fs_join(here,"metal-run.log",p[4][..])){return 1;}
     for ref:0..<2 {
       golden:=fs_join(here,ifx ref==0 then "golden.f32" else "native.f32",p[8][..]);
-      compare:=[11]string.["coax/web/tool.sh","verse/gpu/pass-check.coax",remote,here,"spec.txt","--allow",limits[i],"--golden",golden,"--against",rendered];
+      compare:=[11]string.["coax/web/tool.sh","metaverse/gpu/pass-check.coax",remote,here,"spec.txt","--allow",limits[i],"--golden",golden,"--against",rendered];
       if !mgp_run(compare[..],fs_join(here,ifx ref==0 then "metal-wgsl.log" else "metal-spirv.log",p[4][..])){return 1;}
     }
   }

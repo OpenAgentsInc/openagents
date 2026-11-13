@@ -75,12 +75,12 @@ Run the tool from an OpenAgents checkout. `STORE` below means an absolute path;
 the examples use the shared default. No Desktop/Downloads path is committed.
 
 ```sh
-coax/web/tool.sh verse/tools/assets/registry.coax import \
+coax/web/tool.sh metaverse/tools/assets/registry.coax import \
   "$HOME/Desktop/Quaternius/Modular Character Outfits - Fantasy[Source]" \
   fantasy "$HOME/.openagents/assets"
-coax/web/tool.sh verse/tools/assets/registry.coax observe fantasy "$HOME/.openagents/assets"
-coax/web/tool.sh verse/tools/assets/registry.coax index fantasy "$HOME/.openagents/assets"
-coax/web/tool.sh verse/tools/assets/registry.coax representations fantasy
+coax/web/tool.sh metaverse/tools/assets/registry.coax observe fantasy "$HOME/.openagents/assets"
+coax/web/tool.sh metaverse/tools/assets/registry.coax index fantasy "$HOME/.openagents/assets"
+coax/web/tool.sh metaverse/tools/assets/registry.coax representations fantasy
 ```
 
 Use `village` and `nature` for the other two source packages and their checked-in
@@ -119,12 +119,12 @@ unreviewed; the catalog does not invent physical or gameplay properties.
 ## Editing and remixing
 
 ```sh
-coax/web/tool.sh verse/tools/assets/registry.coax fork \
+coax/web/tool.sh metaverse/tools/assets/registry.coax fork \
   quaternius/nature/birch-1 openagents/examples/birch-study "$HOME/.openagents/assets"
 # Edit ~/.openagents/assets/work/openagents/examples/birch-study/birch-study.blend
-coax/web/tool.sh verse/tools/assets/registry.coax publish \
+coax/web/tool.sh metaverse/tools/assets/registry.coax publish \
   openagents/examples/birch-study "$HOME/.openagents/assets"
-coax/web/tool.sh verse/tools/assets/registry.coax index \
+coax/web/tool.sh metaverse/tools/assets/registry.coax index \
   openagents-examples-birch-study "$HOME/.openagents/assets"
 ```
 
@@ -154,12 +154,12 @@ Coax; the Blender bridge performs only SDK inspection/export/rendering.
 ## Checks and local publication
 
 ```sh
-coax/bin/coax test verse/tools/assets/registry.coax --only registry
+coax/bin/coax test metaverse/tools/assets/registry.coax --only registry
 coax/bin/coax test apps/openagents-web/everglade.coax --only create:
-coax/web/tool.sh verse/tools/assets/registry.coax wardrobe --check
-coax/web/tool.sh verse/tools/assets/registry.coax check "$HOME/.openagents/assets"
-python3 verse/tools/assets/registry_oracle.py "$HOME/.openagents/assets"
-coax/web/tool.sh verse/tools/assets/registry.coax sync "$HOME/.openagents/assets"
+coax/web/tool.sh metaverse/tools/assets/registry.coax wardrobe --check
+coax/web/tool.sh metaverse/tools/assets/registry.coax check "$HOME/.openagents/assets"
+python3 metaverse/tools/assets/registry_oracle.py "$HOME/.openagents/assets"
+coax/web/tool.sh metaverse/tools/assets/registry.coax sync "$HOME/.openagents/assets"
 ```
 
 `verify SNAPSHOT` independently rehashes a source snapshot through the Coax
@@ -216,8 +216,8 @@ exports remain in each complete source snapshot.
 Rebuild the clip index from a verified snapshot with:
 
 ```sh
-coax/web/tool.sh verse/tools/assets/registry.coax animations ual1 Unreal-Godot/UAL1_Standard.glb "$HOME/.openagents/assets"
-coax/web/tool.sh verse/tools/assets/registry.coax animations ual2 Unreal-Godot/UAL2_Standard.glb "$HOME/.openagents/assets"
+coax/web/tool.sh metaverse/tools/assets/registry.coax animations ual1 Unreal-Godot/UAL1_Standard.glb "$HOME/.openagents/assets"
+coax/web/tool.sh metaverse/tools/assets/registry.coax animations ual2 Unreal-Godot/UAL2_Standard.glb "$HOME/.openagents/assets"
 ```
 
 ## Two-handed weapon clips
@@ -234,7 +234,7 @@ fist; `report.json` records the closest approach for each clip. To rebuild the s
 
 ```sh
 Blender --background --factory-startup --disable-autoexec --python-exit-code 1 \
-  --python verse/tools/assets/two_hand_clips.py -- \
+  --python metaverse/tools/assets/two_hand_clips.py -- \
   ~/.openagents/assets/originals/e2adadc59702bc88770e299949d1f4c6790db1852133fd1ce374d2a0815537cd/source/Unreal-Godot/UAL1_Standard.glb OUT_DIR
 ```
 
@@ -245,16 +245,16 @@ Then import `OUT_DIR` with `License_Source.txt` and `provenance.json` beside it
 
 `openagents-cat` records `openagents/beasts/cat`, Everglade's cat, an OpenAgents original (CC0).
 No CC0 animated cat with a sit clip was found on 2026-11-09, so
-`verse/tools/assets/cat_bake.py` builds one from primitives: a black and white tuxedo cat with a
+`metaverse/tools/assets/cat_bake.py` builds one from primitives: a black and white tuxedo cat with a
 round, wide head, a short white muzzle, green eyes, upright triangular ears, a white bib and paws
 and a long black tail. The in-house package `openagents-cat` holds the script, `Cat.glb` (the
 sit's first frame, the interchange artifact), `license.txt` and `PROVENANCE.md`; `recipe_sha256`
 pins the script. The bake also writes the frames a zone's pack holds (`glade/cat0..63`: Idle,
-Walk and Sit, `verse/tools/assets/cat_pack.coax`):
+Walk and Sit, `metaverse/tools/assets/cat_pack.coax`):
 
 ```sh
 Blender --background --factory-startup --disable-autoexec --python-exit-code 1 \
-  --python verse/tools/assets/cat_bake.py -- ~/.openagents/assets/cache/cat-e2
+  --python metaverse/tools/assets/cat_bake.py -- ~/.openagents/assets/cache/cat-e2
 ```
 
 ## External asset discovery
@@ -323,10 +323,10 @@ The collection contains Gaul and Briton buildings, rocks and mushrooms used in
 Everglade Experimental. Its immutable source is available with:
 
 ```sh
-coax/web/tool.sh verse/tools/assets/registry.coax source 0ad-selected ~/.openagents/assets
+coax/web/tool.sh metaverse/tools/assets/registry.coax source 0ad-selected ~/.openagents/assets
 ```
 
-`verse/tools/assets/zero_ad_gltf.py` uses Blender's Python API to convert the
+`metaverse/tools/assets/zero_ad_gltf.py` uses Blender's Python API to convert the
 pinned engine GLBs to separate glTF files for the experimental scene packer.
 These are derived files: retain the original snapshot and attribution when
 rebuilding or sharing them.

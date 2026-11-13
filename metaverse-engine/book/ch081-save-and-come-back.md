@@ -232,7 +232,7 @@ save, and a schema newer than the build, which a newer build opens.
 - [coax/web/api/player.c](../../coax/web/api/player.c): the progress routes
   and `container_ok`, the same container checked on the server (at most
   16 MiB).
-- [verse/fairy-forest/life.coax](../../verse/fairy-forest/life.coax): Fairy
+- [metaverse/fairy-forest/life.coax](../../metaverse/fairy-forest/life.coax): Fairy
   Forest packs its own payload (`ffl_save`, read by `ffl_open`).
 
 ## Checks

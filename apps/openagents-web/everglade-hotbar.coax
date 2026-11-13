@@ -1,5 +1,5 @@
 // Everglade's spell bar pictures (realms/everglade/hotbar/), as the previous engine drew the bar:
-// written by verse/tools/everglade_hotbar.coax, do not edit. Each slot's name, the icon sizes
+// written by metaverse/tools/everglade_hotbar.coax, do not edit. Each slot's name, the icon sizes
 // (px a side), and each slot's card at 1x, 2x and 3x (device px, slot * 3 + scale - 1).
 HB_SLOTS :: 49;
 HB_NAME :: [49] string.["meteor-swarm", "thunderbolt", "mega-thunderbolt", "water-orb", "reverse-gravity", "wind-wall", "levitate", "feather-fall", "gust-of-wind", "thunderwave", "wall-of-stone", "telekinesis", "black-tentacles", "ice-knife", "ice-storm", "sleet-storm", "water-walk", "control-water", "create-water", "water-breathing", "moonbeam", "produce-flame", "starry-wisp", "shillelagh", "poison-spray", "elementalism", "entangle", "faerie-fire", "healing-word", "spike-growth", "call-lightning", "wall-of-fire", "conjure-animals", "polymorph", "mass-cure-wounds", "sunbeam", "wall-of-thorns", "fire-storm", "sunburst", "storm-of-vengeance", "shapechange", "speak-with-animals", "wild-resurgence", "ray-of-frost", "fog-cloud", "hold-person", "cone-of-cold", "rebuild", "next-row"];

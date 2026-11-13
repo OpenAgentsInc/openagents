@@ -127,7 +127,7 @@ Version 0.13.0 adds native source debugging and phase reports:
 library builds map to original Coax files by default. Plain `coax c` opts in
 explicitly, so bootstrap output stays reproducible. The optional LLDB helper
 shows authored names and checks source hashes. See [DEBUGGING.md](DEBUGGING.md)
-for commands, artifacts and current limits. The [R0 engine harness](../verse/benchmarks/README.md)
+for commands, artifacts and current limits. The [R0 engine harness](../metaverse/benchmarks/README.md)
 uses the real cast and a pinned native evaluator; [original evidence](../docs/verification/coax-r0-2026-10-28.md)
 records the initial gap, and [follow-up evidence](../docs/verification/coax-r0-pose-2026-10-28.md)
 records the unchanged median gate passing in all three profiles.
@@ -255,8 +255,8 @@ The [native iOS home](../apps/openagents-ios/README.md) runs its scene, HUD and
 resource admission in Coax and its shader math through the Metal emitter:
 
 ```sh
-coax/bin/coax c verse/home.coax --library --header /tmp/Home.h > /tmp/Home.c
-coax/bin/coax metal verse/light.coax > /tmp/Light.metal
+coax/bin/coax c metaverse/home.coax --library --header /tmp/Home.h > /tmp/Home.c
+coax/bin/coax metal metaverse/light.coax > /tmp/Light.metal
 apps/openagents-ios/build.sh
 ```
 
@@ -368,7 +368,7 @@ apps/openagents-ios/build.sh
   or 0). Without `--kernel` the module is a library (the Linkage capability),
   which Vulkan does not load. `pow` keeps C's meaning for a negative or zero
   base, which GLSL's `Pow` leaves undefined. Refusals are E0704.
-  `verse/gpu/light-check.sh` runs every procedure of `verse/light.coax`
+  `metaverse/gpu/light-check.sh` runs every procedure of `metaverse/light.coax`
   against the C build on a Vulkan GPU.
   `--fill A,B,C` and `--stroke NAME` write a draw instead: entry points `vs`
   and `fs` for one graphics pipeline. A fill is one full-screen triangle
@@ -378,8 +378,8 @@ apps/openagents-ios/build.sh
   vec2 position in pixels, vec2 place, vec4 shape and vec4 tint, with the
   width and height first in the push constants; its fragment calls
   NAME(place.x, place.y, shape.x..w, u...) and writes (tint.rgb*k, 0) for
-  one-plus-one blending. `verse/gpu/frame-check.sh` draws a Star Catcher
-  frame this way and compares it with the CPU frame of `verse/kms`.
+  one-plus-one blending. `metaverse/gpu/frame-check.sh` draws a Star Catcher
+  frame this way and compares it with the CPU frame of `metaverse/kms`.
 
 ## Compile-time contract
 

@@ -88,15 +88,15 @@ other defenders, a life cleric heals the tower).
 
 | Need | What we have | Where |
 |---|---|---|
-| SRD 5e dice, spells, saves and objects | The ruleset Everglade opts into | `verse/rules/srd5.coax` |
-| Creatures, armor class, hit points, attacks | Stat blocks and attack rolls | `verse/rules/srd5-combat.coax` |
+| SRD 5e dice, spells, saves and objects | The ruleset Everglade opts into | `metaverse/rules/srd5.coax` |
+| Creatures, armor class, hit points, attacks | Stat blocks and attack rolls | `metaverse/rules/srd5-combat.coax` |
 | Spells with real effects | 48 spell slots: Fire Storm, Wall of Fire, Moonbeam, Magic Missile and the rest | `apps/openagents-web/everglade-spells.coax` |
 | Homing projectiles | WANTED 5's Magic Missile at a levitating player | Everglade |
-| Walls that break into rubble | Wall of Stone with AC and hit points; rubble damage | `verse/demolish.coax`, Everglade |
+| Walls that break into rubble | Wall of Stone with AC and hit points; rubble damage | `metaverse/demolish.coax`, Everglade |
 | Red damage numbers | Rising red numbers over whoever takes damage | Everglade |
-| Waves of enemies on a rules engine | Dead Gears' waves, entities and event log | `verse/deadgears/rules.coax`, `verse/deadgears/ecs.coax` |
+| Waves of enemies on a rules engine | Dead Gears' waves, entities and event log | `metaverse/deadgears/rules.coax`, `metaverse/deadgears/ecs.coax` |
 | Walking a path | Characters following garden paths | `metaverse-engine/world/terrain.coax` |
-| Placing things on a grid | Minecraft-style placing from the playtest redesign | `verse/edit/`, `metaverse-engine/cam/arrange.coax` |
+| Placing things on a grid | Minecraft-style placing from the playtest redesign | `metaverse/edit/`, `metaverse-engine/cam/arrange.coax` |
 | Tap, long-press, drag to swap | Everglade's hotbar | `apps/openagents-web/everglade-hotbar.coax` |
 
 ## What the engine needs
@@ -121,7 +121,7 @@ other defenders, a life cleric heals the tower).
    shared match rolls the same dice (Ice Cream Man is already seeded).
 8. **Content as data**: layers, defenders, levels and maps as text tables
    that an agent can write and the engine checks, like motions
-   (`metaverse-engine/anim/motion.coax`) and set pieces (`verse/setpiece.coax`).
+   (`metaverse-engine/anim/motion.coax`) and set pieces (`metaverse/setpiece.coax`).
 
 ## Milestones
 

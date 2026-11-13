@@ -248,7 +248,7 @@
       "files": [
         "coax/tests/native_checks.py",
         "coax/verification-differential.md",
-        "verse/",
+        "metaverse/",
         "psionic/"
       ],
       "acceptance": [

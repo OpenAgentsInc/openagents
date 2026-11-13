@@ -1,6 +1,6 @@
 #load "../rules/srd/object-cast.coax";
 
-#load "../verse/experimental-object-mesh.coax";
+#load "../metaverse/experimental-object-mesh.coax";
 XcObject :: struct { rules:[1]RsObject; burn_at:int; }
 xc_objects_start :: (x:[]XcCombat) {
   for i:0..<XC_OBJECTS { x[0].objects[i].rules[0]=rs_object("Supply crate",0,0,RS_OBJ_WOOD,RS_MEDIUM,true); }

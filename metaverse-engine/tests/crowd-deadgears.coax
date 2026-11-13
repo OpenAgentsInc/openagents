@@ -1,5 +1,5 @@
 // Dead Gears' mutants on the Metaverse Engine's shared navigation and senses (#12854), held to the independent
-// oracles on the real deck, and in crowds. The flow fields verse/deadgears/arena.coax bakes match
+// oracles on the real deck, and in crowds. The flow fields metaverse/deadgears/arena.coax bakes match
 // metaverse-engine/tests/nav-oracle.coax's brute-force distances cell for cell, before and after rubble
 // blocks a route; what a mutant sees matches metaverse-engine/tests/stimulus-oracle.coax's sampled line on
 // every line the oracle can decide. Two crowds meeting head on in a narrow passage keep right and
@@ -7,7 +7,7 @@
 // same digests natively (metaverse-engine/tests/crowd-deadgears-native.coax) and in wasm
 // (coax/web/tool.sh replay-hosts deadgears, through crowd-deadgears-face.c).
 //   coax/bin/coax test metaverse-engine/tests/crowd-deadgears.coax --library --steps 4000000000
-#load "../../verse/deadgears/rules.coax";
+#load "../../metaverse/deadgears/rules.coax";
 #load "nav-oracle.coax";
 #load "stimulus-oracle.coax";
 #load "../core/rand.coax";

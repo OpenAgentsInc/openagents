@@ -46,7 +46,7 @@ automation the way `/admin/analytics` does.
 | `realm.assets` | The page's `data-assets` (host.js): `pack:` (the realm's asset pack, below), or `data:`, `storage:`, `index:`, `layers:`, `sound:` and `loop:` one file each; and `particles:/particles.wgsl` for particles (Everglade's spells name `particles:/everglade-fx.wgsl`). |
 | `realm.uploads` | What the page's file picker takes (`image/*,video/*`): the page gets `data-uploads`, and its action 30 picks files and sends them to this site's admit/upload/scan protocol (`coax/web/uploads.js`; Planetary Villa's pets). |
 | `realm.golden` | What the release walk asks of the page (below): `lit`, the least share of its pixels lit (the fixture 0.015, the Haunted House 0.03); `settle`, milliseconds to wait before its shot; `blocks`, how many 8 px blocks may differ from its golden. |
-| `realm.style` | Required: the realm's art style, `lowpoly`, `painterly`, `photoreal`, `flat` or `anime` ([art-styles.md](art-styles.md)). The page gets `data-style` and the facts `style=`; `realms.coax` has `PLANET_STYLE`. A painterly, photoreal, flat or anime realm's `<module>.wgsl` must hold the style block (`// ---- generated: verse/style.coax`, or a whole module from Coax that carries the style functions or loads `verse/style.coax`). |
+| `realm.style` | Required: the realm's art style, `lowpoly`, `painterly`, `photoreal`, `flat` or `anime` ([art-styles.md](art-styles.md)). The page gets `data-style` and the facts `style=`; `realms.coax` has `PLANET_STYLE`. A painterly, photoreal, flat or anime realm's `<module>.wgsl` must hold the style block (`// ---- generated: metaverse/style.coax`, or a whole module from Coax that carries the style functions or loads `metaverse/style.coax`). |
 | `realm.variant` | Optional, anime only: the anime look, `pastoral`, `action`, `dusk` or `neon` ([art-styles.md](art-styles.md#anime)); none is `pastoral`. The page gets `data-variant` (always, on an anime realm) and the facts `variant=`; `?variant=NAME` in the URL sets the fact for shots. `realms.ts --check` refuses an unknown variant and a variant on a realm or zone not drawn anime. |
 | `realm.zones` | Optional: the parts drawn in another style, `[{ "id": "crypt", "style": "painterly" }]`; an id once each, a zone without a style takes the realm's. An anime zone may name its own `variant` (else the realm's, else pastoral). The page gets `data-zones="crypt:painterly"` (an anime zone `street:anime:neon`) and the facts `zone.crypt=painterly` (and `zone.street.variant=neon`). |
 | `realm.clock` | Required: how its time of day runs: `cycle` (the day turns), `fixed:T` (always T, 0 midnight to 1, 0.5 noon) or `real` (the visitor's local time). The page gets `data-clock` and the facts `clock=`; `?clock=T` in the URL pins it to `fixed:T` for shots and goldens (`?clock=cycle` or `real` sets the mode); the facts also carry `day`, the visitor's local time of day (0 to 1). `realms.coax` has `PLANET_CLOCK`. |
@@ -84,7 +84,7 @@ What every realm module exports:
 | `coaxial_scene_ready(state)` | with a world drawn as strokes | Coax returns 1 only after drawing nonempty world geometry. The host marks the scene ready after that frame's GPU submission completes. It does not infer a world from HUD text. Bitcoin Lab uses this path. |
 | `coaxial_particle_cap`, `coaxial_particles`, `coaxial_particle_bytes`, `coaxial_particle_instances` | with particles | Emitters from `metaverse-engine/render/particles.coax`, drawn by `particles.wgsl` when the page names `particles:/particles.wgsl`; Everglade's are its spells' fire and smoke puffs (`everglade-fx.wgsl`, whose `particle_over_vs`/`particle_over_fs` draw the smoke first, premultiplied over). |
 
-Shared engine pieces stay in `verse/` and are linked as the Haunted House
+Shared engine pieces stay in `metaverse/` and are linked as the Haunted House
 links them (`build.sh` lists them after the face): `player.coax` walks,
 `grid.coax` reads thumbs, `camera.coax` orbits, `particles.coax` emits,
 `cinematic.coax` flies a camera (`realm-flight.c` shows a realm using it).
@@ -97,12 +97,12 @@ layers and its sounds in a single file the page streams on entry, under a
 size budget, with every asset's licence recorded. The Haunted House keeps its
 separate files; Ice Cream Man, Dead Gears and Everglade use packs.
 
-- **Manifest**, `verse/packs/<realm>.json`: the pack's name and title, its
+- **Manifest**, `metaverse/packs/<realm>.json`: the pack's name and title, its
   `budget` in bytes, the source scene (the OpenAgents Metaverse Engine's SCN4 `scene.bin`, packed from
   the Quaternius kits) and texture layers, `texture_size` (layers are resized
   to it, 512 by default), the `licences` (name, licence, URL each), the
   `meshes` by name and the `sounds` (name, file, licence).
-- **Compiler**: `python3 verse/tools/pack_realm.py verse/packs/<realm>.json
+- **Compiler**: `python3 metaverse/tools/pack_realm.py metaverse/packs/<realm>.json
   apps/openagents-web/realms/<slug>/assets/<realm>.pack
   apps/openagents-web/realms/<slug>/licences.md`. It refuses a pack over its
   budget, an asset without a licence, a mesh it can't find and a texture
@@ -144,7 +144,7 @@ separate files; Ice Cream Man, Dead Gears and Everglade use packs.
   `"paint": true` (or a list of SCN4 layer numbers) runs the paint pass
   first ([art-styles.md](art-styles.md), 10). `realms.ts --check` refuses a
   realm whose pack's style isn't one it draws in. Tests:
-  `python3 verse/tools/test_pack_style.py`.
+  `python3 metaverse/tools/test_pack_style.py`.
 - **Budget**: the fixture's is 1.5 MB. A realm's is what its world needs to
   open on a phone over a slow line; raise it in the manifest deliberately.
 
@@ -202,7 +202,7 @@ and Hecate's Cemetery.
 The web's galaxy page is retired (2026-10-31): `/verse/galaxy` answers 301
 to `/realms` (`coax/web/api/lb.sh`), and every realm's way out goes to
 `/realms`. The galaxy stays as the native host's travel hub, the verse app's
-page 1, which `/realms` opens there (`verse/native/realm-host.c`
+page 1, which `/realms` opens there (`metaverse/native/realm-host.c`
 `rh_realm_of`), and the homepage draws a small one (`newland.coax`).
 
 The galaxy (`verse.coax`) draws `realms.coax`'s worlds in order, then
@@ -286,7 +286,7 @@ Coax's complete-profile readiness determines whether a draw may select them.
 See the [physical spatial-source checks](../verification/valley-lab-source-clusters-2026-11-06/README.md).
 
 1. Its module: `<module>.coax` with checks, `<module>-face.c`, `<module>.wgsl`; a `wasm.sh` line in `build.sh`, and its size budget in `apps/openagents-web/wasm-budgets.txt` (`<module> BYTES`, its release size with about 5% room; `build.sh` stops at once on a module without a line, and the build stops a module over its budget and names its biggest functions).
-2. Its pack: `verse/packs/<realm>.json`, compiled with `pack_realm.py` (above).
+2. Its pack: `metaverse/packs/<realm>.json`, compiled with `pack_realm.py` (above).
 3. Its world in `realms.json`: listed `false` until launch, assets `pack:...`, its `style` and `clock`.
 4. `realms/<slug>/index.md`, linking its `licences.md`.
 5. `bun coax/web/realms.ts`, `coax test <module>.coax`, a headless shot, and its golden (the release walk, above).

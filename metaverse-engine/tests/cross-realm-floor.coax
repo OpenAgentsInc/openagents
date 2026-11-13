@@ -1,10 +1,10 @@
 // Cross-realm check (the Metaverse Engine core, GitHub #12609): the Grid's floor grid
-// (verse/grid.coax) is one world-space lattice from any position. Its own file because
-// verse/grid.coax has no #module and declares names (Vec3, reach) the walker's modules also use;
+// (metaverse/grid.coax) is one world-space lattice from any position. Its own file because
+// metaverse/grid.coax has no #module and declares names (Vec3, reach) the walker's modules also use;
 // the other cross-realm checks are metaverse-engine/tests/cross-realm.coax.
 //   coax/bin/coax test metaverse-engine/tests/cross-realm-floor.coax
 
-#load "../../verse/grid.coax";
+#load "../../metaverse/grid.coax";
 
 // The floor grid is the world's: line i is at i * SPACING whoever looks, and the pieces of a
 // line start on multiples of SEGMENT. From positions across the whole floor, fractional ones and

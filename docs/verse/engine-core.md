@@ -25,7 +25,7 @@ many fixed steps to run and how far the frame lies between the last two.
 
 The player controller (`metaverse-engine/move/player.coax`, every walking realm) steps on it
 at 1/64 s, Orbit League at 1/120 s, and Dead Gears' rules
-(`verse/deadgears/ecs.coax`), Everglade's debris (`verse/demolish.coax`) and
+(`metaverse/deadgears/ecs.coax`), Everglade's debris (`metaverse/demolish.coax`) and
 Hold the Stair at 1/60 s. The page faces of the haunted house, Fairy Forest,
 the Garden, Everglade and the villa no longer clamp the frame to 0.1 s; they
 move their realm by `verse_player_counts`, what the player's clock counts the
@@ -170,7 +170,7 @@ plain list of IDs and values (`metaverse-engine/tests/entity-oracle.coax`);
 despawning while walking visits each live entity once; a session saved
 mid-way and loaded, and the same session replayed from nothing, end with the
 same digest and IDs. Mutation (`--root-only`): 211 of 211 killed. Dead
-Gears runs on it: `verse/deadgears/ecs.coax` keeps only the component bits
+Gears runs on it: `metaverse/deadgears/ecs.coax` keeps only the component bits
 beside an `EntityStore`, and a check drives the same input at 30, 60, 120 and
 144 FPS and uneven frames to the same fight at every fixed step.
 
@@ -243,7 +243,7 @@ line outside, halfway and inside, a dive that lands exactly and moves at most
 3.43 m a frame over 87.78 m in 48 frames, cuts), `metaverse-engine/move/player.coax` ("the
 player is the same whether its camera steps every step, never, or twice a
 step": a walk into a wall, round it and past a body with two jumps and a
-turn at 60 FPS, comparing 21 fields every frame) and `verse/gridwalk.coax`
+turn at 60 FPS, comparing 21 fields every frame) and `metaverse/gridwalk.coax`
 ("the Grid's camera follows a walk, a run and a jump at 60 FPS without a
 jump": the eye drawn each frame moves at most 0.177 m, its move changes by at
 most 0.016 m between frames (measured 0.013 m), it rises every frame of a
@@ -253,10 +253,10 @@ than three times the bound). Mutation: 189 of 189 (`follow.coax`), 54 of 54
 `camera.coax`. `metaverse-engine/core/points.coax`'s `Shot`, the homepage's dive into the
 Grid and `SpaceCam` move onto `CameraShot` with ec-migrate. Ice Cream Man's
 boom is gone: its camera is a `Follow` stepped once per 1/30 s rules step
-(`verse/icecream/camera.coax` `cam_track`), bumping the house's walls,
+(`metaverse/icecream/camera.coax` `cam_track`), bumping the house's walls,
 lintels, floor and ceiling through `follow_room`; the same input gives the
 same camera every step at 30, 60, 120 and 144 FPS and on uneven frames
-(`verse/icecream/play.coax`).
+(`metaverse/icecream/play.coax`).
 
 ## Budgets (`metaverse-engine/core/budget.coax`)
 
@@ -314,7 +314,7 @@ shared bytes, a repeated entry, the limit to the byte, a negative limit and
 full slots; and over 16 seeded sessions of packs and releases, the registry
 matches a plain count of uses and every pack is all or nothing. Mutation:
 162 of 162 killed (`--root-only`; SHA-256 has its own gate). The file is
-`#authority`. Realm packs (`verse/tools/pack_realm.py`, `VPK1`) don't load
+`#authority`. Realm packs (`metaverse/tools/pack_realm.py`, `VPK1`) don't load
 through it yet: that is the asset path of
 [book chapter 53](../../metaverse-engine/book/ch053-bring-in-assets.md). A page that
 links it beside another library that loads `sha256-kernel.coax` gets
@@ -379,7 +379,7 @@ table.
   declared seed. While a face clip is on screen, it owns the eyes and lids.
 
 Echo's own declarations (catalog admission, the orb hand's capsules, her
-idle face segments) are in `verse/valley/echo.coax`. Valley Lab and Valley
+idle face segments) are in `metaverse/valley/echo.coax`. Valley Lab and Valley
 World run her on this module, with the TF0290 frames byte-identical to the
 runtime they replaced. Checks: `metaverse-engine/character/checks.coax`, on authored
 rig and face fixtures with no private data.
@@ -425,7 +425,7 @@ and a 0.4 m step up and off, at 60 FPS against the 64 Hz steps.
   found at 150. Cross-host replay (native against wasm) is the Grid's
   `coax/web/replay-hosts.coax`.
 - **Floor grid** (`cross-realm-floor.coax`, its own file because
-  `verse/grid.coax` has no `#module`): from 121 positions across the floor,
+  `metaverse/grid.coax` has no `#module`): from 121 positions across the floor,
   fractional ones and ones past its edge included, the lines in view are
   exactly the world's 4 m lattice lines within the fog's reach inside the
   edge, the pieces cover them on the 8 m segments, and a step to the side
@@ -439,11 +439,11 @@ and a 0.4 m step up and off, at 60 FPS against the 64 Hz steps.
   0.25 s stall every 97 frames, and a frame changed at 150 is found at 150.
   `myrealm.coax` checks the same walk at 30, 60, 120 and 144 FPS.
 
-## The Grid on the engine core (`verse/gridwalk.coax`)
+## The Grid on the engine core (`metaverse/gridwalk.coax`)
 
 The Grid (`/realms/the-grid`) is the first realm whose simulation is one Coax
 session on the engine core. `GridWalk` holds you (`metaverse-engine/move/player.coax`), the
-phone's thumbs (`metaverse-engine/core/sticks.coax`, moved out of `verse/grid.coax`), the
+phone's thumbs (`metaverse-engine/core/sticks.coax`, moved out of `metaverse/grid.coax`), the
 input buffer and the session's record. The page's C face calls
 `gridwalk_frame` once a frame with the keys held, the drag, arrow, tilt and
 wheel amounts and the frame's time, passes touches to `gridwalk_touch`, and
@@ -461,7 +461,7 @@ time or steps the player itself.
   waiting for a step in its input buffer. A blur, which releases the held
   keys outside any frame, starts a new record the same way.
 
-Checks: `verse/gridwalk.coax` (the keyboard and the touch stick give the
+Checks: `metaverse/gridwalk.coax` (the keyboard and the touch stick give the
 same digests; a tap in a frame with no step jumps on the next; look and zoom
 total the same at 30, 60 and 144 FPS; a recorded session replays to the same
 digest at every step and a changed frame is found at its step; full records

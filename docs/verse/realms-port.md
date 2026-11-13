@@ -23,13 +23,13 @@ Everglade. The tasks are in the Metaverse project under "Port the realms"
      frame.
    - Then the demo's rules and their tests, the ship, the creatures, the
      controls and the day-to-dusk lighting.
-   - The entity system and the rules are in `verse/deadgears/`: `ecs.coax`
+   - The entity system and the rules are in `metaverse/deadgears/`: `ecs.coax`
      (handles, component bits, deferred destroys, the fixed-step clock and
      per-system timing), `arena.coax` (the deck's boxes, swept spheres,
      sliding walks, the walking grid and its flow fields) and `rules.coax`
      (every system and every check of the demo's `dead-gears-test.cpp`).
-     `verse/deadgears/test.sh` runs them and the page's checks, both at
-     `--steps 4000000000` (a full game is ~2.8e9 steps, over the 2e9 other realms use); `verse/deadgears/bench.sh` builds them to WebAssembly and
+     `metaverse/deadgears/test.sh` runs them and the page's checks, both at
+     `--steps 4000000000` (a full game is ~2.8e9 steps, over the 2e9 other realms use); `metaverse/deadgears/bench.sh` builds them to WebAssembly and
      holds 200 mutants to 2 ms a frame.
 4. **Everglade**, the forest city.
    - The demo only had it as a plan, and the old Rust repo had a glade with
@@ -41,7 +41,7 @@ Everglade. The tasks are in the Metaverse project under "Port the realms"
 5. **Later:** the Sandbox, the Grid and Medieval Town. Medieval Town may
    fold into Everglade.
    - The Sandbox is at /realms/sandbox (rl-sandbox): a world document
-     (`verse/tools/pack_sandbox.py`) played by the Haunted House's engine
+     (`metaverse/tools/pack_sandbox.py`) played by the Haunted House's engine
      and edit tools, one shared world `sandbox` on the server that anyone
      with a player key publishes to (`0029_sandbox_open.sql`).
    - **The Sandbox's set pieces** (rl-sandbox-pieces): you type one
@@ -51,13 +51,13 @@ Everglade. The tasks are in the Metaverse project under "Port the realms"
      flock of birds that follows you, a ring of lanterns, a grove of trees,
      a pond) with its bounded count, kind, colour and size. The server
      checks the answer against the catalogue and the page checks it again
-     (`verse/setpiece.coax`). Nothing matches keywords. A seeded generator
+     (`metaverse/setpiece.coax`). Nothing matches keywords. A seeded generator
      in the same file lays the piece out in front of you, as one undo step
-     and one publish. The Sandbox's own engine (`verse/haunt.coax`) draws
+     and one publish. The Sandbox's own engine (`metaverse/haunt.coax`) draws
      it, and the flock flies round whoever is walking.
    - The Grid is at /realms/the-grid (rl-grid), on the galaxy where its
      locked planet was: the demo's own Grid scene (`lander3-scene.json`)
-     packed by `verse/tools/pack_grid.py` into storage buffers that
+     packed by `metaverse/tools/pack_grid.py` into storage buffers that
      `thegrid.wgsl` draws unlit, lines as screen-space quads and the robots
      skinned on the GPU from their clips' frames, replaying their recorded
      rounds. The gate goes to Everglade. Walk up to a station (the Pylon

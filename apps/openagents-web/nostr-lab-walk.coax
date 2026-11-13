@@ -14,12 +14,12 @@
 //
 // The walking, the camera, the HUD, WORLDS, the slabs, the skyline, the Grid and the hub (its plaza,
 // avenues and signs, the index, PREV and NEXT, and each station's address, ?at=nip-44) are the lab
-// walk's (verse/lab-walk.coax), shared with Bitcoin Lab; this module names the stations and districts
+// walk's (metaverse/lab-walk.coax), shared with Bitcoin Lab; this module names the stations and districts
 // and draws the lessons. Its C face is nostr-lab-walk-face.c over lab-walk-face.h.
 //   coax/bin/coax test --library apps/openagents-web/nostr-lab-walk.coax --only "nostr lab walk"
 //   coax/web/tool.sh nostr-lab-check BASE_URL OUT_DIR    the whole walk in headless Chrome, a picture a station
 #run_steps 250000000;   // secp256k1's signing tables, built at compile time (event_sign.coax)
-#load "../../verse/lab-walk.coax";
+#load "../../metaverse/lab-walk.coax";
 #load "nostr-lab-lesson.coax";
 #load "nostr-lab-cards.coax";
 

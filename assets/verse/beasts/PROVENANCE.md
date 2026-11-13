@@ -44,6 +44,6 @@ this script's output under Blender 5.2.2.
 
 ## Baked frames
 
-Everglade's worlds draw the dragon as baked frames: `verse/tools/assets/dragon_bake.py` samples the
+Everglade's worlds draw the dragon as baked frames: `metaverse/tools/assets/dragon_bake.py` samples the
 clips in `everglade/dragon-clips.coax`'s order and `character_glade_pack.coax --append-dragon`
 appends them to Everglade Experimental's pack as `glade/dragon0` and on.

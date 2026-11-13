@@ -17,7 +17,7 @@ and [network notes](lib/net/README.md) describe the larger systems.
 | --- | --- | --- |
 | [`coax.sequence`](lib/sequence.coax): `swap`, `reverse` | Small generic procedures over caller-owned mutable views; used by the Metaverse's pass formatting and Psionic's HTTP buffer rotation | Generated C; no platform shim |
 | [`coax.bounded`](lib/bounded.coax): `Bounded`, `bounded_push`, `bounded_pop`, `bounded_get`, `bounded_set`, `bounded_clear`, `bounded_view`, `bounded_full` | Fixed-capacity storage with explicit refusal, in caller-owned storage; used by Psionic's model registry and the Metaverse's fairy-forest blooms | Generated C; no platform shim |
-| [`verse.hud`](../verse/hud.coax): the listed module exports | Shared CPU HUD geometry, used by native and Coaxial consumers | Generated C and the host's ordinary C/math libraries; no HUD-specific shim |
+| [`verse.hud`](../metaverse/hud.coax): the listed module exports | Shared CPU HUD geometry, used by native and Coaxial consumers | Generated C and the host's ordinary C/math libraries; no HUD-specific shim |
 | [URI syntax](lib/net/uri.coax) and [WebSocket framing](lib/net/ws.coax): `uri_parse`, `ws_frame_write`, `ws_frame_read` | Pure bounded protocol pieces; transport and authentication are separate consumers | Generated C; WebSocket's loaded SHA-1 source is included; no socket/TLS shim for these functions |
 | [Tool JSON](lib/json/json.coax): selected `jv_*` reads and `jo_*` writes | Caller-owned node tree and output buffer, used by Coax tools | Generated C; no platform shim |
 | [Descriptor-generated protobuf](proto.md): selected message `new`, `set_*`, `get_*`, `encode`, `decode` | Versioned schema representation; demonstrated by the existing HUD invocation capstone | Generated self-contained C; checked-in descriptor is a build input; no protobuf runtime or `protoc` required |
@@ -81,7 +81,7 @@ procedure allocates a heap buffer or changes a caller's resource policy.
 An empty `reverse` is valid. Invalid `swap` indices trigger ordinary Coax
 bounds traps; they are not an expected-error return channel.
 
-Actual adoption is in [the Metaverse's pass formatter](../verse/gpu/everglade-pass.coax)
+Actual adoption is in [the Metaverse's pass formatter](../metaverse/gpu/everglade-pass.coax)
 and [Psionic's serving engine](../psionic/lib/serve-engine.coax). The
 [Metaverse recipe](book/examples/ch26_verse.coax) also uses the alias directly.
 These are synchronous storage operations, not general ownership or lifetime
@@ -92,13 +92,13 @@ checking.
 **Maturity and targets:** production-bounded exported CPU geometry, with existing
 iOS and Coaxial consumers. The recipe qualifies selected native C API results;
 it does not add a new renderer, GPU target or physical-device gate.
-**Verification:** `coax/bin/coax test verse/hud.coax --library`; the chapter 26
+**Verification:** `coax/bin/coax test metaverse/hud.coax --library`; the chapter 26
 `ch26_verse` unit checks the actual public API and refusal cases.
 
 The module exports `HudRect`, `HudPoint`, `verse_hud_slot`,
 `verse_hud_frame_point`, `verse_hud_frame_arm`, `verse_hud_tone`,
 `verse_hud_cut`, `verse_hud_outline` and `verse_hud_arm_down`. Use the
-[authored export list](../verse/hud.coax) as the boundary; `HUD_*` constants
+[authored export list](../metaverse/hud.coax) as the boundary; `HUD_*` constants
 remain private.
 
 Sizes and positions use the caller's consistent UI coordinate units;

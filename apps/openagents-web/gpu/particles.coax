@@ -3,7 +3,7 @@
 // particles.bindings beside it). It began as coax/web/wgsl-coax.coax's translation of the hand-written WGSL.
 #load "../../../metaverse-engine/gpu/wgsl.coax";
 #load "../../../metaverse-engine/render/particle-motion.coax";
-#load "../../../verse/haunt-light.coax";
+#load "../../../metaverse/haunt-light.coax";
 
 // A realm's particles: one instanced draw after the house, PER particles an
 // emitter (metaverse-engine/render/particles.coax), each a small quad facing the eye, added to

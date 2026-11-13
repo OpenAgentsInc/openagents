@@ -3,13 +3,13 @@
 // realm.bindings beside it). It began as coax/web/wgsl-coax.coax's translation of the hand-written WGSL.
 #load "../../../metaverse-engine/render/sampling.coax";
 #load "../../../metaverse-engine/gpu/wgsl.coax";
-#load "../../../verse/light.coax";
-#load "../../../verse/haunt-light.coax";
-#load "../../../verse/look.coax";
+#load "../../../metaverse/light.coax";
+#load "../../../metaverse/haunt-light.coax";
+#load "../../../metaverse/look.coax";
 
 // A realm's three passes: the sky, the house and the HUD. Every number they
 // draw from comes from Coax: the view, the eye, the lights and each
-// object's place and colour from verse/haunt.coax and player.coax
+// object's place and colour from metaverse/haunt.coax and player.coax
 // (through realm-face.c), the HUD's strokes and panels from realm.coax.
 //
 // The house is the iOS stage's (apps/openagents-ios/OpenAgents/Platform/
@@ -93,7 +93,7 @@ realm_bg_fs :: (pos:V4,u:[]f32)->RealmLit {
 // ---- the house: each draw a mesh's indices over the shared vertices, one
 // instance per object (Stages.metal haunt_vertex, haunt_fragment). A vertex
 // is 48 bytes: position, normal, uv, a colour whose alpha is its sheet, its
-// outline cut (verse/look.coax verse_outline_strength; 0 a full outline) and
+// outline cut (metaverse/look.coax verse_outline_strength; 0 a full outline) and
 // two reserved words.
 RealmInstance :: struct {r0:V4; r1:V4; r2:V4; material:V4; }
 RealmLight :: struct {position:V4; color:V4; }
@@ -259,7 +259,7 @@ realm_bloom_fs :: (pos:V4,bloom_src:Tex2D,bloom_lin:Sampler,bloom_step:[]f32)->V
   c=wg_add_f3f3(c,wg_mul_f3f(wg_add_f3f3(wg_sw_rgb_f4(gpu_sample_level(bloom_src,bloom_lin,wg_add_f2f2(uv,wg_mul_f2f(d,3.231f32)),0.0f32)),wg_sw_rgb_f4(gpu_sample_level(bloom_src,bloom_lin,wg_sub_f2f2(uv,wg_mul_f2f(d,3.231f32)),0.0f32))),0.070f32));
   return v4(c.x,c.y,c.z,1.0f32);
 }
-// Outlines (verse/look.coax): the depth's second difference, creases between neighbours' normals
+// Outlines (metaverse/look.coax): the depth's second difference, creases between neighbours' normals
 // and changes of material, inked as strongly as the nearer surface's material asks.
 realm_outlined :: (p:I2,light:V3,u:[]f32,post_aux:Tex2D,post_depth:TexDepth)->V3 {
   a:V4=wg_load_2d(post_aux,p,0);

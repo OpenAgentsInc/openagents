@@ -6,7 +6,7 @@
 // market, Guild Row out to the West Gate, the East Gate, and the North Gate.
 // They are Quaternius people (folk.coax) in the Ranger's leathers with its
 // pauldrons and bracers, dyed the watch's crimson, with the Fantasy Props
-// kit's bronze sword and wooden shield: SRD 5.2.1 Guards (verse/rules/
+// kit's bronze sword and wooden shield: SRD 5.2.1 Guards (metaverse/rules/
 // srd5-combat.coax).
 //
 // A crime (watch_crime): a spell that breaks or strikes a building piece,
@@ -42,7 +42,7 @@
 #load "plan.coax";
 #load "routines.coax";
 #load "../../scene/people-rig.coax";
-#load "../../../verse/rules/srd5-combat.coax";
+#load "../../../metaverse/rules/srd5-combat.coax";
 #load "../../../metaverse-engine/physics/stand.coax";
 #load "../../shared/everglade-handles.coax";
 
@@ -95,7 +95,7 @@ UP_SHOUT :: 101;          // the line a guard shouts up at you (WATCH_UP_SHOUT)
 WATCH_UP_SHOUT :: "COME DOWN AND FACE ME!";
 // A body a blast throws (Tumble): the whole body as one rigid thing about its pelvis, tumbling end over
 // end under gravity, bouncing on the ground (the walkable height: the bridge's deck too) and off walls,
-// sliding to rest and rolling onto its back, as verse/demolish.coax throws the debris. Then the clip's
+// sliding to rest and rolling onto its back, as metaverse/demolish.coax throws the debris. Then the clip's
 // lying pose (PEOPLE_KNOCK or PEOPLE_DIE end on their backs, the pelvis TUMBLE_LIE_BACK m behind the feet)
 // blends in over TUMBLE_SETTLE as the rigid turn blends out.
 TUMBLE_PELVIS :: 0.95;    // m the pelvis stands over the feet
@@ -118,7 +118,7 @@ Tumble :: struct {
 }
 Spear :: struct { live: bool; ax: f32; ay: f32; az: f32; bx: f32; by: f32; bz: f32; t: f32; flight: f32; hit: bool; damage: int; foe: int; }
 
-// ---- the heat: WANTED levels 1 to 5 (SRD 5.2.1 stat blocks, verse/rules/srd5-combat.coax). Each
+// ---- the heat: WANTED levels 1 to 5 (SRD 5.2.1 stat blocks, metaverse/rules/srd5-combat.coax). Each
 // level has its roster of responders (LADDER), who come in from the two gates nearest you on top of
 // the town's own watch (#12794):
 //   1  2 Guards: the nearby watch engages
@@ -1137,7 +1137,7 @@ watch_ground_y :: (heights: [] f32, x: f32, z: f32) -> f32 {
 
 // A spell's blast of `radius` m at `at`: everyone in it takes its damage (rolled once, a Dexterity save
 // for half); one who lives is knocked down, one at 0 HP dies; and each is thrown, out from it and up at
-// up to `power` m/s (WATCH_THROW), the nearer the harder (as verse/demolish.coax demo_kick throws the
+// up to `power` m/s (WATCH_THROW), the nearer the harder (as metaverse/demolish.coax demo_kick throws the
 // debris), to land and lie where they come down. How many it hit.
 watch_blast :: (w: [] Watch, at: Point, radius: f32, dmg: SrdDamage, you: Point, power: f32, heights: [] f32) -> int {
   if !w[0].on { return 0; }

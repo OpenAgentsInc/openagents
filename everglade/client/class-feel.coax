@@ -49,7 +49,7 @@ xf_feel :: (klass: int, a: FbAb) -> DeedFeel {
 xf_struck_feel :: () -> DeedFeel { return DeedFeel.{anim = XF_ANIM_BLOW, fx = FXR_HIT, sound = "hit", move = DeedMove.still}; }
 
 // The monster actions Everglade fields: Everglade II's wolves, goblins and path guard
-// (everglade/client/creatures.coax, everglade/client/guard.coax) and Experimental's dungeon (verse/experimental-hostiles.coax).
+// (everglade/client/creatures.coax, everglade/client/guard.coax) and Experimental's dungeon (metaverse/experimental-hostiles.coax).
 XF_MON_WOLF_BITE :: 0; XF_MON_GOBLIN_BLADE :: 1; XF_MON_GOBLIN_SHOT :: 2; XF_MON_GUARD_BLOW :: 3;
 XF_MON_IMP :: 4; XF_MON_GREMLIN :: 5; XF_MON_BRUTE :: 6; XF_MON_FIEND :: 7; XF_MON_BOSS :: 8;
 XF_MON_GUARD_SHOT :: 9;   // the path guard's Longbow, out of his reach (everglade/server/guard.coax)

@@ -4,7 +4,7 @@
 //
 // The shader functions below keep their verse_style_ names, as metaverse-engine/render/material.coax's do:
 // coax wgsl emits each as `coax_p_<name>`, so every realm's WGSL is byte for byte what it was when
-// they lived in verse/style.coax, which loads this file. The CPU pieces (the key light by clock,
+// they lived in metaverse/style.coax, which loads this file. The CPU pieces (the key light by clock,
 // the light's space and its snapped middle, local lights) are what a realm's frame and its checks
 // compute before the GPU does.
 //   coax/bin/coax test metaverse-engine/render/light.coax
@@ -31,7 +31,7 @@ verse_style_shadow_snap :: (x:f32,reach:f32,size:f32)->f32 #export_c #effects(al
 verse_style_shadow_across :: (x:f32,reach:f32)->f32 #export_c #effects(all) {return x/st_max(reach,0.001f32);}
 verse_style_shadow_depth :: (along:f32,reach:f32)->f32 #export_c #effects(all) {return 0.5f32-along/(4.0f32*st_max(reach,0.001f32));}
 // How many Poisson taps the filter takes (where they are and how far out they reach,
-// verse_style_shadow_tap and verse_style_shadow_radius, stay in verse/style.coax).
+// verse_style_shadow_tap and verse_style_shadow_radius, stay in metaverse/style.coax).
 verse_style_shadow_taps :: (on_phone:f32)->f32 #export_c #effects(all) {if on_phone>0.5f32 {return 4.0f32;} return 9.0f32;}
 // The cast shadow (1 lit, 0 shadowed) with a mover's blob under it: the blob darkens to
 // 1 - strength (0.35) at its middle and never lightens a cast shadow.
@@ -170,7 +170,7 @@ LocalLight :: struct { x: f32; y: f32; z: f32; radius: f32; r: f32; g: f32; b: f
 LocalLights :: struct { lights: [LIGHT_LOCAL_MAX] LocalLight; count: int; refused: int; }
 
 // A local light's share at distance d of its radius r: (1 - d/r)^2, none at r and past it
-// (verse/haunt-light.coax verse_haunt_attenuate, the Haunted House's).
+// (metaverse/haunt-light.coax verse_haunt_attenuate, the Haunted House's).
 light_falloff :: (d: f32, r: f32) -> f32 {
   q := st_max(0, 1 - d / st_max(r, 0.01));
   return q * q;

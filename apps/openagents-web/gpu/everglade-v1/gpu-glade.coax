@@ -3,13 +3,13 @@
 // passes and lit by Everglade's sun, sky and haze at its clock, so walking up the road out of it
 // the light never changes hands. Its colours are the glade's own (the meadow's autumn gold, the
 // trail's olive earth, the crimson and orange crowns, the mossy grey stone); eg_paint lights them.
-// Loaded by gpu.coax after verse/style.coax.
+// Loaded by gpu.coax after metaverse/style.coax.
 //
-// The pack's glade vertex (verse/tools/assets/character_glade_pack.coax gp_vertex), 8 words: the
+// The pack's glade vertex (metaverse/tools/assets/character_glade_pack.coax gp_vertex), 8 words: the
 // position (3 f32, the glade's own frame), the normal (snorm8) with the kind in its top byte (0 sky,
 // 1 leaves, 2 grass, 3 flowers, 4 rock, 5 ground, 6 bark, 7 mushroom), the uv (unorm16; bark repeats
 // over -32..32), the tint (rgba8), the texture layer, and the ambient share (a grass seed: its turn).
-#load "../../../../verse/character-glade.coax";
+#load "../../../../metaverse/character-glade.coax";
 
 EG_LOOK_GLADE :: cast(u32)27;
 // Everglade's ground's south edge (glade-zone.coax EZ_SEAM): past it the ground is the glade's alone, and

@@ -6,7 +6,7 @@
 // in a conversation: the host must leave the heard turn to the page, and
 // speak the page's answer (a client Speech) as NAME, not the house agent's.
 //   [FACE=NAME] bun coax/web/voice/smoke.ts WASM [ws://127.0.0.1:8787 | wss://...] [FIXTURE.wav] [ROUTE]
-const [wasmPath, host = "ws://127.0.0.1:8787", wav = "verse/voice-host/fixtures/hello-foreman.wav", route = "haunted-house"] = process.argv.slice(2)
+const [wasmPath, host = "ws://127.0.0.1:8787", wav = "metaverse/voice-host/fixtures/hello-foreman.wav", route = "haunted-house"] = process.argv.slice(2)
 const wasi = new Proxy({}, { get: (_, n) => (n === "proc_exit" ? () => { throw new Error("exit") } : () => 52) })
 const { instance } = await WebAssembly.instantiate(await Bun.file(wasmPath).arrayBuffer(), { wasi_snapshot_preview1: wasi })
 const x: any = instance.exports, mem = x.memory as WebAssembly.Memory

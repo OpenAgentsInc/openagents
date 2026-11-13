@@ -16,7 +16,7 @@
 // The camera's optics are CameraLens (metaverse-engine/cam/shot.coax), with Blender's physical camera names and
 // units, so Blender and Unreal cameras map one to one.
 //   coax/bin/coax test metaverse-engine/render/film.coax --library
-//   coax c metaverse-engine/render/film.coax --library --header film.h    (the C host, verse/gpu/vk-realm.c)
+//   coax c metaverse-engine/render/film.coax --library --header film.h    (the C host, metaverse/gpu/vk-realm.c)
 
 #module "aethyr.film";
 #load "../core/rand.coax";
@@ -340,7 +340,7 @@ film_resolve :: (acc: [] f32, samples: int, out: [] f32) -> bool {
   return true;
 }
 
-// ---- C entry points for the native hosts (verse/gpu/vk-realm.c, the Metal host)
+// ---- C entry points for the native hosts (metaverse/gpu/vk-realm.c, the Metal host)
 
 film_c_profile :: (samples: s32, shutter: f32, position: s32, seed: s64, jitter: bool) -> FilmProfile {
   p: FilmProfile;

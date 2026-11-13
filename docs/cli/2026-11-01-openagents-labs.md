@@ -86,7 +86,7 @@ A function belongs when all of these hold:
 | Stills and strips from a video | **In** (`labs frames`) | Video Lab's `frame`. One ffmpeg call per time; what an agent uses to "look closely" |
 | Captions from speech | **In**, as a flag (`labs cut --captions`) | `openagents transcribe --srt` exists. Labs calls it; it doesn't own it |
 | Side-by-side compare of two outputs | **In** (`labs compare`) | Video Lab's compare and Game Lab's stats diff, generalised to any two outputs with labels |
-| Game tuning checked by the bot | **In** (`labs playtest`) | Ice Cream Man's rules, tuning bounds and bot are Coax (`verse/icecream/rules.coax`, `tuning.coax`). Seeded runs are pure |
+| Game tuning checked by the bot | **In** (`labs playtest`) | Ice Cream Man's rules, tuning bounds and bot are Coax (`metaverse/icecream/rules.coax`, `tuning.coax`). Seeded runs are pure |
 | A board of every page | **In**, for web pages only (`labs board`) | A list of URLs taken at two sizes and two themes is `shot` in a loop. The iOS, Android and desktop tours needed Xcode, emulators and app code; they stay with the apps |
 | Agent suites scored offline | **In**, later (`labs suite`) | Agent Lab's replay scoring started no process and touched no network. A suite file plus saved replies is pure and repeatable |
 | Agent trials on a suite | **Later**, with limits the user sets | `coax/lib/agent/claude` and `codex` can run a turn, but each case spends the user's model credit. It ships after `suite score`, with a cost cap flag the user sets |
@@ -403,7 +403,7 @@ openagents labs playtest GAME --tunables
 - `GAME` is `icecream` first. Each game that has rules and a bot in Coax
   registers here.
 - `--tunables` lists every tunable with its default and bounds
-  (`verse/icecream/tuning.coax`, `TUNABLE_BOUNDS`).
+  (`metaverse/icecream/tuning.coax`, `TUNABLE_BOUNDS`).
 - `--set` changes tunables for this run. A value outside its bounds is
   refused with the bounds, exit 2.
 - Runs the bot on `--seeds` seeded houses (default 24, as Game Lab did),
@@ -412,9 +412,9 @@ openagents labs playtest GAME --tunables
   `won K of N`, median time, deaths, keys found. `--json` gives every run.
 - `--against FILE.json` compares with a previous run's JSON and prints what
   changed (`won 21 → 17`).
-- Uses: `verse/icecream/rules.coax` (`icecream_bot`, the rules step) and
+- Uses: `metaverse/icecream/rules.coax` (`icecream_bot`, the rules step) and
   `tuning.coax`. **New**: a headless run loop that steps the rules and the
-  bot to the end, and a seed list. `verse/icecream/replay.c` already steps
+  bot to the end, and a seed list. `metaverse/icecream/replay.c` already steps
   the rules natively; the loop is that, without a trace.
 
 ### `labs compare`
@@ -471,7 +471,7 @@ compare, commit the lab file.
 | The `.cut` and `.board` formats and their checks | `labs-cut.coax`, `labs-board.coax` (**new**) | `cut`, `board` |
 | Titles drawn in Filament as PNG overlays | `font.coax` to PNG (**new**) | `cut` |
 | A horizontal PNG join | `coax/lib/image/png.coax` | `frames --strip`, `compare` |
-| A headless run loop and seed list for Ice Cream Man | `verse/icecream/run.coax` (**new**) | `playtest` |
+| A headless run loop and seed list for Ice Cream Man | `metaverse/icecream/run.coax` (**new**) | `playtest` |
 | The `.suite` format and the replay scorer in Coax | `labs-suite.coax` (**new**) | `suite` |
 
 ## Plan
@@ -489,8 +489,8 @@ Each phase ships on its own and leaves `coax/web/tool.sh` working.
    has a test with its sentence.
 3. **Play and score.** `labs playtest icecream` with `--tunables`, `--set`
    and `--against`, and `labs board`. Check: a run on a traced setup matches
-   the traces in `verse/icecream/fixtures/*.trace.gz` step for step, as
-   `verse/icecream/replay.c` already checks, and the same seeds give the same
+   the traces in `metaverse/icecream/fixtures/*.trace.gz` step for step, as
+   `metaverse/icecream/replay.c` already checks, and the same seeds give the same
    summary twice.
 4. **Agents.** `labs suite list|task|score`, then `run` with `--max-usd`.
    Check: the 2026-10-17 replay suite, ported from
@@ -536,7 +536,7 @@ Where the build differs from the text above:
 - To stay inside the compiler's 128-unit budget for one program, the
   commands are one file (`labs.coax`), shot, clip and deck are one library
   (`media.coax`), and Ice Cream Man's headless run is in `labs-rules.coax`
-  rather than `verse/icecream/run.coax`.
+  rather than `metaverse/icecream/run.coax`.
 
 Left: `labs suite` (phase 4), the MCP rows and `openagents skill labs`
 (phase 5), `--as-me`, and drawing the cut.v1 keys above.

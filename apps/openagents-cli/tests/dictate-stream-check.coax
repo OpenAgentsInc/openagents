@@ -85,7 +85,7 @@ tool_main :: ()->int #export_c #effects(all) {
  if out=="" {return 2;}made:=fs_mkdir(out);
  // Digital silence as a real input WAV, never as a transcript stand-in.
  pcm:[24000]int;bytes:[48100]u8;n:=wav_write(pcm[..],1,16000,bytes[..]);sb:[2048]u8;silence:=fs_join(out,"silence.wav",sb[..]);if n<0 || !fs_write(silence,cast(string)bytes[0..<n]) {return 2;}
- r:[1]DstRun;r[0].deadline=proc_now_ms()+840000;score:[1]DstScore;wav:="verse/voice-host/fixtures/wait-stop.wav";
+ r:[1]DstRun;r[0].deadline=proc_now_ms()+840000;score:[1]DstScore;wav:="metaverse/voice-host/fixtures/wait-stop.wav";
  if only=="" || dst_has("usage",only) {
   options:=[5]string.["--json","--device|cpu","--format|code","--terms|missing.tsv","--language|en"];
   good:=true;for option:options {ok:=dst_run(cli,"/no-streaming-model",wav,option,"",0,false,r[..]);good=good && ok && r[0].status==2 && !dst_has(cast(string)r[0].out[0..<r[0].n],"loading_model");}

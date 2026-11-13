@@ -66,8 +66,8 @@ targets:
       - path: Vendor/secp256k1/src/precomputed_ecmult.c
         compilerFlags: "-DECMULT_WINDOW_SIZE=8"
       - path: Vendor/secp256k1/src/precomputed_ecmult_gen.c
-      - path: ../../verse/platform/host.c
-      - path: ../../verse/platform/voice.c
+      - path: ../../metaverse/platform/host.c
+      - path: ../../metaverse/platform/voice.c
       - path: Generated/HomeShaders.txt
         buildPhase: resources
     dependencies:
@@ -91,7 +91,7 @@ targets:
         INFOPLIST_KEY_NSMicrophoneUsageDescription: "OpenAgents listens while voice is on, so you can talk to agents hands-free."
         INFOPLIST_KEY_UISupportedInterfaceOrientations: "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
         SWIFT_OBJC_BRIDGING_HEADER: OpenAgents/Platform/Bridge.h
-        HEADER_SEARCH_PATHS: ["$(SRCROOT)/Generated", "$(SRCROOT)/../../verse/platform"]
+        HEADER_SEARCH_PATHS: ["$(SRCROOT)/Generated", "$(SRCROOT)/../../metaverse/platform"]
         GCC_OPTIMIZATION_LEVEL: "2"
       configs:
         # Voice test recordings (OpenAgents/Voice/Fixtures) ship in Debug only.
@@ -165,8 +165,8 @@ targets:
       base:
         GENERATE_INFOPLIST_FILE: YES
         PRODUCT_BUNDLE_IDENTIFIER: com.openagents.app.tests
-        # @testable import reads the app's bridging header (Generated/, verse/platform).
-        HEADER_SEARCH_PATHS: ["$(SRCROOT)/Generated", "$(SRCROOT)/../../verse/platform"]
+        # @testable import reads the app's bridging header (Generated/, metaverse/platform).
+        HEADER_SEARCH_PATHS: ["$(SRCROOT)/Generated", "$(SRCROOT)/../../metaverse/platform"]
         TEST_HOST: "$(BUILT_PRODUCTS_DIR)/OpenAgents.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/OpenAgents"
         BUNDLE_LOADER: "$(TEST_HOST)"
 schemes:

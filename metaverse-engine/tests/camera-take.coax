@@ -1,6 +1,6 @@
 // A bounded camera take: the realm's actual arrival, a skip, and a vase close-up.
 // This is a teaching fixture, not an alternate realm simulation or pixel renderer.
-#load "../../verse/planetary-villa/arrival.coax";
+#load "../../metaverse/planetary-villa/arrival.coax";
 #load "../shot/closeup.coax";
 #load "../core/replay.coax";
 

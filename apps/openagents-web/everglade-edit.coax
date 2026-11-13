@@ -41,7 +41,7 @@ eg_builder :: (s: [] Everglade) -> bool { return s[0].ev.admin || eg_visitor_bui
 // it (place names, HP, the chat line, EDITING) stands aside, since text draws over every plate.
 eg_pane_open :: (s: [] Everglade) -> bool { return s[0].ev.editing && s[0].ev.ed[0].pane != REDIT_SHUT; }
 
-// ---- the shared edit layer (verse/edit/edit.coax), each frame from everglade_voice_actions
+// ---- the shared edit layer (metaverse/edit/edit.coax), each frame from everglade_voice_actions
 
 edit_layer :: (s: [] Everglade) {
   e := s[0].ev.ed[..];

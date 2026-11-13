@@ -18,7 +18,7 @@ hpa_wait :: (before:int)->bool {deadline:=proc_now_ms()+5000;while hpr_info(23)<
 tool_main :: ()->int #export_c #effects(all) {
  a:[1]Args;if !args_load(a[..])||args_count(a[..])!=2 {tool_errln("usage: check-linux-audio-product NEW_OUT ROOT");return 2;}
  out:=args_at(a[..],0);root:=args_at(a[..],1);paths:[4][4096]u8;if !fs_mkdir(out) {return 1;}
- inputs:[1]RtqInputs;for file:[8]string.["verse/native/realm-host.c","verse/native/realm-host.h","verse/native/audio-host.c","verse/native/audio-pipewire.c","metaverse-engine/host/tests/audio-fixture-face.c","metaverse-engine/host/tests/linux-audio-product-effects.c","metaverse-engine/host/audio-session.coax","metaverse-engine/host/audio-product-conformance.coax"] {if !rtq_input_add(inputs[..],fs_join(root,file,paths[0][..])) {return 1;}}
+ inputs:[1]RtqInputs;for file:[8]string.["metaverse/native/realm-host.c","metaverse/native/realm-host.h","metaverse/native/audio-host.c","metaverse/native/audio-pipewire.c","metaverse-engine/host/tests/audio-fixture-face.c","metaverse-engine/host/tests/linux-audio-product-effects.c","metaverse-engine/host/audio-session.coax","metaverse-engine/host/audio-product-conformance.coax"] {if !rtq_input_add(inputs[..],fs_join(root,file,paths[0][..])) {return 1;}}
  self:[4096]u8;sn:=cxproc_self_path(self[..]);if sn<1||!rtq_input_add(inputs[..],cast(string)self[0..<sn]) {return 1;}
  q:HostAudioProductObserved;passed:=true;if hpr_open(0)!=0 {return 1;}defer {closed:=hpr_close();}
  q.assets=hpr_info(5);q.words=hpr_info(4);hpa_send("!bus 0.5");q.control=hpr_info(41);hpa_send("pulse 0.25 0");q.pre_cue=hpr_info(41);proc_sleep(100);q.pre_frames=hpr_info(0);q.pre_callbacks=hpr_info(23);

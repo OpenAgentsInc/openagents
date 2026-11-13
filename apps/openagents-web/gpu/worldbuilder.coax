@@ -112,7 +112,7 @@ worldbuilder_bg_fs :: (pos:V4,u:[]f32)->V4 {
   c:V3=wg_mul_f3f(wg_mix_f3f3f(sky,ground,edge),u[3]);
   return wg_make_f4_f3f(worldbuilder_out(c),1.0f32);
 }
-// ---- the pack's meshes (verse/tools/assets/worldbuilder_pack.coax): 16 bytes a vertex, its
+// ---- the pack's meshes (metaverse/tools/assets/worldbuilder_pack.coax): 16 bytes a vertex, its
 // position as unorm16 in its mesh's box (the instance's rows fold the box in), an octahedral
 // normal, a uv in half floats and its sRGB colour with its texture layer (255: none)
 WorldbuilderObject :: struct {r0:V4; r1:V4; r2:V4; material:V4; }

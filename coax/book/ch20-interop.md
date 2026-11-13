@@ -780,7 +780,7 @@ bad2.coax:2:11: error[E0404]: compile-time execution cannot call the host proced
 1 error
 ```
 
-The iOS home is built on exactly this pattern. `verse/home.coax` begins
+The iOS home is built on exactly this pattern. `metaverse/home.coax` begins
 with a list of host procedures:
 
 ```jai
@@ -792,7 +792,7 @@ host_dot :: (h: int, x: f64, y: f64, size: f64, light: f64, soft: f64, crisp: f6
 host_line :: (h: int, ax: f64, ay: f64, bx: f64, by: f64, light_a: f64, light_b: f64, width: f64) #foreign;
 ```
 
-`verse/platform/host.c` implements them over bounded, generation-checked
+`metaverse/platform/host.c` implements them over bounded, generation-checked
 storage: `h` is a handle, and a stale or unknown handle makes the call do
 nothing instead of touching freed memory.
 
@@ -878,7 +878,7 @@ duplicate symbol '_tick' in:
 ld: 1 duplicate symbols
 ```
 
-That's why every exported procedure in `verse/` carries its file's
+That's why every exported procedure in `metaverse/` carries its file's
 name: `verse_camera_dolly`, `verse_player_feet`,
 `verse_wallet_sat_to_msat`. It reads long, but C has one namespace, and
 the prefix is how you share it.
@@ -900,7 +900,7 @@ for name in home player grid cast camera wallet haunt hud; do
   # Home, Player, Grid, Cast, Camera, Wallet: one C library and header each. Wallet
   # is #authority, so its checks run in this compile and a failure stops it.
   base="$(printf '%s' "${name:0:1}" | tr a-z A-Z)${name:1}"
-  "$compiler" c "verse/$name.coax" --library --header "$out/$base.h" > "$out/$base.c.tmp"
+  "$compiler" c "metaverse/$name.coax" --library --header "$out/$base.h" > "$out/$base.c.tmp"
   mv "$out/$base.c.tmp" "$out/$base.c"
 done
 ```
@@ -927,7 +927,7 @@ tells Clang where the generated headers are:
 
 ```yaml
 SWIFT_OBJC_BRIDGING_HEADER: OpenAgents/Platform/Bridge.h
-HEADER_SEARCH_PATHS: ["$(SRCROOT)/Generated", "$(SRCROOT)/../../verse/platform"]
+HEADER_SEARCH_PATHS: ["$(SRCROOT)/Generated", "$(SRCROOT)/../../metaverse/platform"]
 ```
 
 and `Bridge.h` includes the host's header and the generated Coax headers.
@@ -1095,9 +1095,9 @@ ease.coax:16:3: error[E0377]: a loop is outside the Metal scalar profile
 1 error
 ```
 
-The app uses this for `verse/light.coax`, its sky, dots, glass bar,
+The app uses this for `metaverse/light.coax`, its sky, dots, glass bar,
 bloom and tone mapping. `generate.sh` writes `coax metal
-verse/light.coax` and appends the hand-written stage functions from
+metaverse/light.coax` and appends the hand-written stage functions from
 `Stages.metal`, which bind textures and pack vectors and call the Coax
 functions. The tests run the C build of the same file, so one source is
 checked on the CPU and drawn on the GPU. Chapter 17 covers GPU programs in

@@ -4,12 +4,12 @@
 // it through an explicit joint map onto the 65-joint skeleton of the Metaverse's
 // Cast.bin (psionic/fixtures/verse-cast-skeleton.coax); the result becomes
 // Cast.bin pose rows (a skinning rotation and translation a joint a frame)
-// that verse/cast.coax plays in the dance slot, fading in and out of the
+// that metaverse/cast.coax plays in the dance slot, fading in and out of the
 // other clips. Profile cpu-f64-motion-verse-v1: binary64 until the rows are
 // written as Cast.bin's F32, at most 32 frames and 65 joints.
 
 #load "motionbricks.coax";
-#load "../../verse/cast.coax";
+#load "../../metaverse/cast.coax";
 #load "../fixtures/verse-cast-skeleton.coax";
 
 MvStatus :: enum u8 {ok;shape;pose;unmapped;range;twice;parent;length;deadline;admission;slide;below;}
@@ -32,7 +32,7 @@ mv_verse_rig :: ()->MvRig {
     return r;
 }
 // Cast.bin's clips: Y up, +Z forward, right-handed, quaternions x, y, z, w,
-// metres, absolute roots, 30 frames a second (verse/cast.coax's FPS).
+// metres, absolute roots, 30 frames a second (metaverse/cast.coax's FPS).
 mv_verse :: ()->PoseConvention {
     return PoseConvention.{up=PoseAxis.pos_y,forward=PoseAxis.pos_z,hand=PoseHand.right,order=PoseOrder.xyzw,unit=PoseUnit.metre,root=PoseRoot.absolute,rate=30};
 }

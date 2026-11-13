@@ -1,10 +1,10 @@
 # The Spark wallet in the iOS app, with Coax
 
 `apps/openagents-ios` is a Swift and UIKit shell around Coax. Its home
-(`verse/home.coax`) compiles to C11 and a header in an Xcode build
+(`metaverse/home.coax`) compiles to C11 and a header in an Xcode build
 phase. Swift calls the `#export_c` procedures, and Coax calls back through
 scalar `#foreign` hooks (`host_load`, `host_dot`, `host_output_byte`, …)
-that are implemented in `verse/platform/host.c` and the Swift platform
+that are implemented in `metaverse/platform/host.c` and the Swift platform
 layer. The wallet uses the same split.
 
 ## Who does what
@@ -145,7 +145,7 @@ Rules this table makes checkable:
 module yet. When it lands:
 
 - Add a selected `payment` profile and import it with `#import_proto` into
-  a **separate** file, `verse/wallet_records.coax`. Today `#authority`
+  a **separate** file, `metaverse/wallet_records.coax`. Today `#authority`
   covers every generated API and host-address operation in a file (see
   `coax/README.md`, "Limits of the verification gates"), so the codecs
   can't share the authority file yet.

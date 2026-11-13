@@ -92,7 +92,7 @@ Log in or Install button (the command is printed instead).
 
 The host is `apps/shared/host/linux/` (shared: the window and pipeline in
 `ui-host.c`, the desktop's file chooser in `portal.c`, over the
-realms' Vulkan and Wayland helpers in `verse/gpu/`). The audit in
+realms' Vulkan and Wayland helpers in `metaverse/gpu/`). The audit in
 [docs/research/exact/04-apps-audit-2026-11-10.md](../research/exact/04-apps-audit-2026-11-10.md)
 recommends its `--do` steps become `coax drive` operations.
 
@@ -102,7 +102,7 @@ and `Sources/main.swift` supplied (both replaced by the shared Mac host on 2026-
 
 | The host's job | On the Mac | On Linux |
 | --- | --- | --- |
-| Window, keys, pointer | AppKit | Wayland, from `verse/gpu/vk-window.c` (the Metaverse Engine's Linux build uses it) |
+| Window, keys, pointer | AppKit | Wayland, from `metaverse/gpu/vk-window.c` (the Metaverse Engine's Linux build uses it) |
 | Drawing | `Zeron.metal` | Vulkan, with the shaders from `apps/openagents-web/gpu/chat.coax` (the Coax port `/chat` already uses) emitted as SPIR-V by `coax spirv` |
 | Glyph and icon atlas | CoreText and AppKit SVG | To decide: see the open question below |
 | Clipboard, IME, file picker | AppKit | Wayland data device and text input; `xdg-desktop-portal` for files |
@@ -353,7 +353,7 @@ Status (2026-11-11, GitHub #13156, on the owner's Mac):
   iOS host on `ui-host.h` (AppKit or a UIKit view, Metal, the input
   method through NSTextInputClient, pictures through ImageIO);
   `apps/shared/host/android/ui-host.c` is the Android one (Vulkan through
-  `verse/gpu/`; its window since 2026-11-11). The component gallery's own
+  `metaverse/gpu/`; its window since 2026-11-11). The component gallery's own
   `main.c` and Coax build on all four (`components/gallery/{linux,apple,android}/build.sh`).
   Its picture at 780 by 1688, 2x, is the same to the pixel in the iPhone
   simulator and an Android 35 emulator.
@@ -382,7 +382,7 @@ Status (2026-11-11, GitHub #13156, on the owner's Mac):
 - **Not built:** The Metaverse Engine still runs its own `main.swift` host. The Android
   window is built (2026-11-11): an app built as a NativeActivity hands the
   host its `android_app` (`apps/shared/host/android/ui-host-android.h`), and
-  the host draws to the activity's `ANativeWindow` through `verse/gpu/vkp`
+  the host draws to the activity's `ANativeWindow` through `metaverse/gpu/vkp`
   and takes the first finger as the pointer.
   `components/gallery/android/build.sh --install` puts the gallery on an
   emulator as `Components.apk`; on `everglade_api35`, run headless, its

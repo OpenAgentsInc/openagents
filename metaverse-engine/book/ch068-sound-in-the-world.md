@@ -169,7 +169,7 @@ music replays with the session.
   line with the game time of the frame that sent it and renders the clip's
   stretch of them afterwards in an `OfflineAudioContext` through the same
   voices, so the sound track is in step with the frames.
-- `verse/voice.coax` resamples, levels, and gates microphone audio for voice
+- `metaverse/voice.coax` resamples, levels, and gates microphone audio for voice
   chat. It is a separate path from game sound.
 - The Metaverse Engine's synthesizer renders whole scores offline only
   ([chapter 67](ch067-scores-mixing-and-a-soundtrack.md)).

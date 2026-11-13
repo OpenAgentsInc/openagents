@@ -3,7 +3,7 @@
 //   coax/web/tool.sh metaverse-engine/tools/pack-check.coax PACK...
 // Prints each pack's entries, its sources and its SHA-256 (the hex sha256sum prints), and whether
 // the bytes written again are the file's, byte for byte. The committed packs were written by
-// verse/tools/pack_realm.py, so this holds the Coax writer to the Python one. Exit 1 when any pack
+// metaverse/tools/pack_realm.py, so this holds the Coax writer to the Python one. Exit 1 when any pack
 // is refused, written differently or not admitted.
 #import "Basic";
 #load "../editor/pack.coax";

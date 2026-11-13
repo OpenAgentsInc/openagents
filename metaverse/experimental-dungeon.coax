@@ -1,0 +1,396 @@
+// Everglade Experimental's dungeon: one source for its layout, its pieces, its colliders, its
+// torches and its monsters. The scene packer (metaverse/tools/assets/character_glade_pack.coax gp_dungeon)
+// places the Quaternius Modular Dungeon pieces from these functions, the walker and the camera
+// (experimental-village.coax) and the monsters (experimental-hostiles.coax) collide with the same
+// boxes, and Character Create (everglade/scene/charactercreator.coax) lights it from the same
+// torches and draws only the parts near you.
+//
+// The dungeon is a walled, roofed block on a 5 m grid, 11 cells west to east by 22 north to south,
+// its entrance on the north side facing the village. DG_MAP names each cell's room ('#' is solid
+// rock); two cells of one room are open to each other, and two rooms meet only at a DG_DOORS doorway
+// (an arch). Its rooms, entrance first: A the entrance hall (the old dungeon's footprint), B the east
+// passage, C the guard room, D the passage down to the great hall, E the west passage, F the
+// barracks, G the barracks door to the hall, H the great hall, I the crypt passage, J the crypt
+// (a dead end), M the passage south, O the storeroom (a dead end), K the hall's south passage, Q the
+// treasure nook (a dead end), L the antechamber and N the boss's hall at the far end.
+#module "verse.experimentaldungeon";
+#load "../metaverse-engine/physics/visibility.coax" as vis;   // lines of sight through the walls (#13073)
+#load "../metaverse-engine/physics/query.coax" as dq;
+#load "../metaverse-engine/core/space.coax" as dsp;
+
+DG_X0 :: -48.0;       // the block's west edge
+DG_Z0 :: -44.0;       // its north edge (the entrance side); rows run south, to lower z
+DG_CELL :: 5.0;
+DG_COLS :: 11;
+DG_ROWS :: 22;
+DG_HEIGHT :: 5.0;     // the walls' height and the ceiling's underside over the floor
+DG_HALF :: 0.55;      // half a wall's thickness: Wall_Modular's 0.22 at 2.5 times
+DG_ENTRY :: 3;        // the entrance's column in the north wall
+DG_MAP :: "AAAA####CCCAAAA####CCCAAAABBBBCCCAAAA####CCC#E#######D##E#######D##E#####HHHH#E#####HHHHFFFFF##HHHHFFFFFGGHHHHFFFFF##HHHHFFFFF##HHHHI##M#OOHHHHI##M#OOHHHHI##M#OO#KQQI##M####KQQJJ#LLLLLLL#JJ#LLLLLLL##NNNNNNNNN##NNNNNNNNN##NNNNNNNNN##NNNNNNNNN#";
+// The doorways between rooms, as the two cells either side (column, row, column, row).
+DG_DOORS :: [17][4]int.[
+ [4]int.[3,2,4,2],[4]int.[7,2,8,2],[4]int.[9,3,9,4],[4]int.[9,5,9,6],[4]int.[1,3,1,4],[4]int.[1,7,1,8],
+ [4]int.[4,9,5,9],[4]int.[6,9,7,9],[4]int.[0,11,0,12],[4]int.[0,15,0,16],[4]int.[3,11,3,12],[4]int.[3,15,3,16],
+ [4]int.[6,12,7,12],[4]int.[8,13,8,14],[4]int.[8,14,9,14],[4]int.[8,15,8,16],[4]int.[6,17,6,18]];
+DG_CHUNKS :: 8;      // the inside's parts, each one draw (dg_room_chunk); charactercreator.coax draws the ones you can see (dg_seen)
+
+dg_x :: (c:int)->f32 {return f32(DG_X0)+f32(c)*f32(DG_CELL);}           // a column's west edge
+dg_z :: (r:int)->f32 {return f32(DG_Z0)-f32(r)*f32(DG_CELL);}           // a row's north edge
+dg_east :: ()->f32 {return dg_x(DG_COLS);}
+dg_south :: ()->f32 {return dg_z(DG_ROWS);}
+dg_col :: (x:f32)->int {return cast(int)floor((x-f32(DG_X0))/f32(DG_CELL));}
+dg_row :: (z:f32)->int {return cast(int)floor((f32(DG_Z0)-z)/f32(DG_CELL));}
+// The room cell (c, r) is in, or '#' for rock and anywhere outside the block.
+dg_at :: (c:int,r:int)->u8 {if c<0 || r<0 || c>=DG_COLS || r>=DG_ROWS {return '#';}return DG_MAP[r*DG_COLS+c];}
+dg_floor :: (c:int,r:int)->bool {return dg_at(c,r)!='#';}
+dg_inside :: (x:f32,z:f32,pad:f32)->bool {return x>f32(DG_X0)-pad && x<dg_east()+pad && z<f32(DG_Z0)+pad && z>dg_south()-pad;}
+dg_door :: (c0:int,r0:int,c1:int,r1:int)->bool {
+ for i:0..<DG_DOORS.count {a:=DG_DOORS[i][0];b:=DG_DOORS[i][1];c:=DG_DOORS[i][2];d:=DG_DOORS[i][3];
+  if (a==c0 && b==r0 && c==c1 && d==r1) || (a==c1 && b==r1 && c==c0 && d==r0) {return true;}}return false;
+}
+// Whether you can step from cell (c0, r0) to its neighbour (c1, r1).
+dg_open :: (c0:int,r0:int,c1:int,r1:int)->bool {
+ if !dg_floor(c0,r0) || !dg_floor(c1,r1) {return false;}return dg_at(c0,r0)==dg_at(c1,r1) || dg_door(c0,r0,c1,r1);
+}
+// A wall along the north edge of cell (c, r), r 0 to DG_ROWS (DG_ROWS is the south face).
+dg_wall_h :: (c:int,r:int)->bool {
+ if c<0 || c>=DG_COLS || r<0 || r>DG_ROWS {return false;}
+ if r==0 {return c!=DG_ENTRY;}if r==DG_ROWS {return true;}
+ return (dg_floor(c,r-1) || dg_floor(c,r)) && !dg_open(c,r-1,c,r);
+}
+// A wall along the west edge of cell (c, r), c 0 to DG_COLS (DG_COLS is the east face).
+dg_wall_v :: (c:int,r:int)->bool {
+ if r<0 || r>=DG_ROWS || c<0 || c>DG_COLS {return false;}
+ if c==0 || c==DG_COLS {return true;}
+ return (dg_floor(c-1,r) || dg_floor(c,r)) && !dg_open(c-1,r,c,r);
+}
+// A north-edge wall's west and east ends. A wall that does not run on reaches over the corner
+// (or into a doorway's jamb) by half its thickness, so walls meet without a notch.
+dg_span_h :: (c:int,r:int)->[2]f32 {
+ a:=dg_x(c);b:=a+f32(DG_CELL);if !dg_wall_h(c-1,r) {a-=f32(DG_HALF);}if !dg_wall_h(c+1,r) {b+=f32(DG_HALF);}return [2]f32.[a,b];
+}
+// A west-edge wall's south and north ends: it stops just inside a crossing north-edge wall, or
+// reaches half its thickness past a free end.
+dg_span_v :: (c:int,r:int)->[2]f32 {
+ hi:=dg_z(r);lo:=hi-f32(DG_CELL);
+ if !dg_wall_v(c,r-1) {hi+=ifx dg_wall_h(c-1,r) || dg_wall_h(c,r) then 0.01-f32(DG_HALF) else f32(DG_HALF);}
+ if !dg_wall_v(c,r+1) {lo-=ifx dg_wall_h(c-1,r+1) || dg_wall_h(c,r+1) then 0.01-f32(DG_HALF) else f32(DG_HALF);}
+ return [2]f32.[lo,hi];
+}
+// The outer walls, the walls between two rooms, the roof and the entrance arch are the shell,
+// drawn with the village. The rest is inside, in DG_CHUNKS parts by room, each drawn only while
+// you can see into one of its rooms.
+DG_ROOMS :: "ABECDFGIMHOKQJLN";
+DG_ROOM_CHUNKS :: [16]int.[0,0,0,1,1,2,2,2,2,3,4,4,4,5,6,7];
+dg_room_chunk :: (room:u8)->int {for i:0..<DG_ROOMS.count {if DG_ROOMS[i]==room {return DG_ROOM_CHUNKS[i];}}return -1;}
+dg_cell_chunk :: (c:int,r:int)->int {return dg_room_chunk(dg_at(c,r));}
+// The part a north-edge wall is drawn in, or -1 for the shell; the same for a west-edge wall.
+dg_part_h :: (c:int,r:int)->int {
+ if r==0 || r==DG_ROWS {return -1;}a:=dg_floor(c,r-1);b:=dg_floor(c,r);if a && b {return -1;}return ifx a then dg_cell_chunk(c,r-1) else dg_cell_chunk(c,r);
+}
+dg_part_v :: (c:int,r:int)->int {
+ if c==0 || c==DG_COLS {return -1;}a:=dg_floor(c-1,r);b:=dg_floor(c,r);if a && b {return -1;}return ifx a then dg_cell_chunk(c-1,r) else dg_cell_chunk(c,r);
+}
+// What you see from room `room`: the parts of its own room, of the rooms its doorways open on and
+// of the rooms theirs open on (the test below checks every line of sight between cells), as bits.
+dg_room_seen :: (room:u8)->int {
+ mask:=1<<dg_room_chunk(room);near:[16]u8;nn:=0;
+ for d:DG_DOORS {a:=dg_at(d[0],d[1]);b:=dg_at(d[2],d[3]);if a==room && nn<16 {near[nn]=b;nn+=1;}else if b==room && nn<16 {near[nn]=a;nn+=1;}}
+ for i:0..<nn {mask=mask|(1<<dg_room_chunk(near[i]));
+  for d:DG_DOORS {a:=dg_at(d[0],d[1]);b:=dg_at(d[2],d[3]);if a==near[i] {mask=mask|(1<<dg_room_chunk(b));}if b==near[i] {mask=mask|(1<<dg_room_chunk(a));}}}
+ // and the parts a straight run of doors shows past that reach (DG_SEES)
+ own:=dg_room_chunk(room);for v:DG_SEES {if own==v[0] {mask=mask|(1<<v[1]);}if own==v[1] {mask=mask|(1<<v[0]);}}
+ return mask;
+}
+// Parts that see each other down the east doors: the guard room through the hall to the nook and
+// the antechamber.
+DG_SEES :: [2][2]int.[[2]int.[1,4],[2]int.[1,6]];
+// The parts seen from (x, z): inside, its room's (or, in a wall's thickness, its neighbours');
+// outside, the entrance hall's when you are near enough to look in.
+dg_seen :: (x:f32,z:f32)->int {
+ if !dg_inside(x,z,0) {dx:=x-(dg_x(DG_ENTRY)+f32(DG_CELL)*0.5);dz:=z-f32(DG_Z0);return ifx dx*dx+dz*dz<60*60 then 1<<dg_cell_chunk(DG_ENTRY,0) else 0;}
+ c:=dg_col(x);r:=dg_row(z);if dg_floor(c,r) {return dg_room_seen(dg_at(c,r));}
+ mask:=0;for d:0..<4 {nc:=c+(ifx d==1 then 1 else ifx d==3 then -1 else 0);nr:=r+(ifx d==2 then 1 else ifx d==0 then -1 else 0);if dg_floor(nc,nr) {mask=mask|dg_room_seen(dg_at(nc,nr));}}
+ return mask;
+}
+
+// ---- the pieces
+DG_PIECES :: 17;
+DG_P_FLOOR :: 0; DG_P_WALL :: 1; DG_P_ARCH :: 2; DG_P_TORCH :: 3; DG_P_COLUMN :: 4; DG_P_BARREL :: 5; DG_P_CRATE :: 6;
+DG_P_TABLE :: 7; DG_P_TABLE_SMALL :: 8; DG_P_CHAIR :: 9; DG_P_CHEST :: 10; DG_P_CHEST_GOLD :: 11; DG_P_PEDESTAL :: 12;
+DG_P_STATUE :: 13; DG_P_FIRE :: 14; DG_P_SKULL :: 15; DG_P_COBWEB :: 16;
+DG_NAMES :: [17]string.["Floor_Modular","Wall_Modular","Arch","Torch","Column","Barrel","Crate","Table_Big","Table_Small","Chair","Chest","Chest_Gold","Pedestal","Statue_Horse","Woodfire","Skull","Cobweb"];
+DG_HASHES :: [17]string.[
+ "4cadcb92f4538d9bebe6c2ad1d6b54a94370e5bb7e86c4958a39f33f4f655577","40680100e4999642549ebbb677066194ddb044c2190b53242d091e525ac3efb0",
+ "10a211e5847be978c8bbcfa633e93f7edbdee203531f373660e27525f059453f","a3e1794a7b4ff6024f50396c37f79f7e460d125658dec7fde44a0cfca48e4e34",
+ "90600e8ea169657ca958c4c776c2c201d5c6ddd6b7a9b14693a561ec5a4b5cf1","56b58d46960f9fd5bfd422a76521d0f9522ebffa88424fa6095f5b412610cf87",
+ "86b2e97676daf06242c0ec17764d58acd21fadfb73e658893ac8e73232dd9802","e301683922b6c3f0aaa1e68317bd7284b3435b03789294d8d6b7eec537ee3db9",
+ "d04d14797fdd92bca8b489723b84257c36af501f06c6ae9000156aa57e45eb91","9f08c0a49f0f7a01af555f1e0524abbd9f0ccb9b16c44c26448de821e4895925",
+ "82cd0a7814783ec8c08ba4fe272c3fdf0ce73dc0963f393aa5256b0b1329d79f","eeab5d3d85cf200c42f4c1a9a5af1aed9add1884954d1901f8675c2ccff9950d",
+ "49ef4060350deb7607b3e066911f3406a47cdd7b0e7903efd9958ddaf3574fba","81db3a73ffbf3188d2e35516a896834ad5793047744364fcef4ba92abfbcea6b",
+ "989464d4f0061d493ad7bc884554543bfaa2941e8fec21127b55c671a639f795","b51223745e4dafdf6b40f9987eaf49c70f932510fc8dab46cdc40e749a71b575",
+ "dc675621a1c656b2aa7a2412ee1349cbefa5ceafc3e191d50f07d1ddd82e7794"];
+// A furnishing's footprint and height at its source size (its glTF bounds, west-east by north-south),
+// 0 for one you walk through or over.
+DG_SIZES :: [17][3]f32.[[3]f32.[0,0,0],[3]f32.[0,0,0],[3]f32.[0,0,0],[3]f32.[0,0,0],[3]f32.[1.3,1.3,3.74],[3]f32.[1.04,1.03,1.34],
+ [3]f32.[1.38,1.31,1.31],[3]f32.[1.55,3.3,0.83],[3]f32.[1.25,1.98,0.83],[3]f32.[0.62,0.7,1.08],[3]f32.[1.14,0.78,0.54],[3]f32.[1.14,0.78,0.54],
+ [3]f32.[1.94,1.96,2.19],[3]f32.[1.03,3.38,3.61],[3]f32.[0.76,0.8,0.41],[3]f32.[0,0,0],[3]f32.[0,0,0]];
+DG_ARCH_SCALE :: 1.2;   // a doorway's Arch: 4.9 m wide and 4.8 m tall, its opening 2.7 m
+DG_TORCH_SCALE :: 1.3;
+DG_TORCH_LIFT :: 2.1;   // a torch's foot over the floor
+
+// A furnishing: its piece, where, its quarter turns, how high it sits and its scale.
+DgProp :: struct {piece:int;x:f32;z:f32;turn:int;lift:f32;scale:f32;}
+dp :: (piece:int,x:f32,z:f32,turn:int,lift:f32,scale:f32)->DgProp {return DgProp.{piece=piece,x=x,z=z,turn=turn,lift=lift,scale=scale};}
+DG_PROPS :: 50;
+dg_prop :: (i:int)->DgProp {
+ // A, the entrance hall
+ if i==0 {return dp(DG_P_BARREL,-46.6,-62.6,0,0,1);}if i==1 {return dp(DG_P_BARREL,-45.4,-62.7,0,0,1);}if i==2 {return dp(DG_P_CRATE,-46.4,-60.9,1,0,1);}
+ if i==3 {return dp(DG_P_TABLE_SMALL,-45.5,-56,0,0,1);}if i==4 {return dp(DG_P_CHAIR,-44.2,-56.4,3,0,1);}if i==5 {return dp(DG_P_CHEST,-45.6,-45.4,0,0,1);}
+ if i==6 {return dp(DG_P_COBWEB,-47.2,-44.9,0,3.9,1.4);}
+ // C, the guard room
+ if i==7 {return dp(DG_P_TABLE,0,-53.5,0,0,1);}if i==8 {return dp(DG_P_CHAIR,-1.3,-52.5,1,0,1);}if i==9 {return dp(DG_P_CHAIR,1.3,-54.5,3,0,1);}
+ if i==10 {return dp(DG_P_BARREL,5.7,-45.4,0,0,1);}if i==11 {return dp(DG_P_BARREL,4.5,-45.4,0,0,1);}if i==12 {return dp(DG_P_CRATE,5.5,-62.7,0,0,1);}
+ // F, the barracks
+ if i==13 {return dp(DG_P_TABLE,-38,-92,1,0,1);}if i==14 {return dp(DG_P_CHAIR,-39.5,-90.6,2,0,1);}if i==15 {return dp(DG_P_CHAIR,-36.5,-93.4,0,0,1);}
+ if i==16 {return dp(DG_P_BARREL,-46.6,-85.6,0,0,1);}if i==17 {return dp(DG_P_CRATE,-24.6,-102.6,0,0,1);}if i==18 {return dp(DG_P_CRATE,-24.6,-100.9,1,0,1);}
+ if i==19 {return dp(DG_P_FIRE,-30,-96,0,0,1.6);}
+ // H, the great hall: six columns, a statue and braziers
+ if i>=20 && i<26 {j:=i-20;return dp(DG_P_COLUMN,ifx j%2==0 then -9.0f32 else 3.0f32,-82-f32(j/2)*12,0,0,1.335);}
+ if i==26 {return dp(DG_P_STATUE,-6,-76.4,0,0,1);}if i==27 {return dp(DG_P_FIRE,-3,-94,0,0,1.8);}if i==28 {return dp(DG_P_FIRE,-3,-106,0,0,1.8);}
+ // O, the storeroom
+ if i==29 {return dp(DG_P_CRATE,-21.6,-105.6,0,0,1);}if i==30 {return dp(DG_P_CRATE,-21.6,-117.4,1,0,1);}if i==31 {return dp(DG_P_BARREL,-16.5,-105.2,0,0,1);}
+ if i==32 {return dp(DG_P_BARREL,-14.2,-117.6,0,0,1);}if i==33 {return dp(DG_P_CHEST,-18,-117.9,0,0,1);}
+ // J, the crypt
+ if i==34 {return dp(DG_P_PEDESTAL,-39.6,-125.7,0,0,1);}if i==35 {return dp(DG_P_SKULL,-39.6,-125.7,0,2.19,1);}if i==36 {return dp(DG_P_COBWEB,-47.2,-124.9,0,3.9,1.4);}
+ if i==37 {return dp(DG_P_PEDESTAL,-46.2,-132.4,0,0,1);}if i==38 {return dp(DG_P_SKULL,-46.2,-132.4,0,2.19,1);}
+ // Q, the treasure nook
+ if i==39 {return dp(DG_P_CHEST_GOLD,2,-122.9,0,0,1);}if i==40 {return dp(DG_P_PEDESTAL,5.4,-115.6,0,0,1);}
+ // L, the antechamber
+ if i==41 {return dp(DG_P_FIRE,-20,-129,0,0,1.8);}if i==42 {return dp(DG_P_STATUE,-30.2,-129,1,0,1);}if i==43 {return dp(DG_P_STATUE,-0.8,-129,3,0,1);}
+ // N, the boss's hall
+ if i>=44 && i<48 {j:=i-44;return dp(DG_P_COLUMN,ifx j%2==0 then -36.0f32 else -5.0f32,-140-f32(j/2)*8,0,0,1.335);}
+ if i==48 {return dp(DG_P_FIRE,-28,-150,0,0,2.0);}
+ return dp(DG_P_FIRE,-13,-150,0,0,2.0);
+}
+dg_prop_part :: (p:DgProp)->int {return dg_cell_chunk(dg_col(p.x),dg_row(p.z));}
+// A furnishing's collider (x0, y0, z0, x1, y1, z1 over the floor), or none when it has no size.
+dg_prop_box :: (p:DgProp,out:[]f32)->bool {
+ s:=DG_SIZES[p.piece];if s[2]<=0 {return false;}hx:=s[0]*0.5*p.scale;hz:=s[1]*0.5*p.scale;if p.turn%2==1 {t:=hx;hx=hz;hz=t;}
+ out[0]=p.x-hx;out[1]=p.lift;out[2]=p.z-hz;out[3]=p.x+hx;out[4]=p.lift+s[2]*p.scale;out[5]=p.z+hz;return true;
+}
+
+// ---- doorways: every door's arch and the entrance's
+DG_ARCHES :: 18;
+// An arch's centre and whether it spans along x (a north-edge doorway) or along z.
+dg_arch :: (i:int)->[3]f32 {
+ if i==DG_ARCHES-1 {return [3]f32.[dg_x(DG_ENTRY)+f32(DG_CELL)*0.5,f32(DG_Z0),0];}
+ c0:=DG_DOORS[i][0];r0:=DG_DOORS[i][1];c1:=DG_DOORS[i][2];r1:=DG_DOORS[i][3];
+ if c0==c1 {r:=ifx r0>r1 then r0 else r1;return [3]f32.[dg_x(c0)+f32(DG_CELL)*0.5,dg_z(r),0];}
+ c:=ifx c0>c1 then c0 else c1;return [3]f32.[dg_x(c),dg_z(r0)-f32(DG_CELL)*0.5,1];
+}
+// the part an arch is drawn in: the entrance's is the shell's, a doorway's its first room's part
+dg_arch_part :: (i:int)->int {if i==DG_ARCHES-1 {return -1;}d:=DG_DOORS[i];a:=dg_cell_chunk(d[0],d[1]);b:=dg_cell_chunk(d[2],d[3]);return ifx a<b then a else b;}
+// An arch's posts and lintel, in its own frame: along its span u, across it v, and height.
+DG_ARCH_PARTS :: [3][6]f32.[[6]f32.[-2.46,0,-0.62,-1.34,4.81,0.62],[6]f32.[1.34,0,-0.62,2.46,4.81,0.62],[6]f32.[-2.46,3.7,-0.4,2.46,4.81,0.4]];
+dg_arch_box :: (i:int,part:int,out:[]f32) {
+ a:=dg_arch(i);p:=DG_ARCH_PARTS[part];
+ if a[2]<0.5 {out[0]=a[0]+p[0];out[2]=a[1]+p[2];out[3]=a[0]+p[3];out[5]=a[1]+p[5];}
+ else {out[0]=a[0]+p[2];out[2]=a[1]+p[0];out[3]=a[0]+p[5];out[5]=a[1]+p[3];}
+ out[1]=p[1];out[4]=p[4];
+}
+
+// ---- torches: one on every other wall face that looks into a room
+DgTorch :: struct {x:f32;z:f32;turn:int;col:int;row:int;}   // its foot against the wall, and its quarter turns
+// The torch on cell (c, r)'s side `side` (0 north, 1 east, 2 south, 3 west), when it has one.
+dg_torch_at :: (c:int,r:int,side:int,out:[]DgTorch)->bool {
+ if !dg_floor(c,r) {return false;}
+ wall:=ifx side==0 then dg_wall_h(c,r) else ifx side==1 then dg_wall_v(c+1,r) else ifx side==2 then dg_wall_h(c,r+1) else dg_wall_v(c,r);
+ if !wall || (c*3+r*5+side)%4>=2 {return false;}
+ x:=dg_x(c)+f32(DG_CELL)*0.5;z:=dg_z(r)-f32(DG_CELL)*0.5;inset:=f32(DG_HALF)+0.215*f32(DG_TORCH_SCALE);
+ if side==0 {out[0]=DgTorch.{x=x,z=dg_z(r)-inset,turn=2,col=c,row=r};}
+ else if side==1 {out[0]=DgTorch.{x=dg_x(c+1)-inset,z=z,turn=3,col=c,row=r};}
+ else if side==2 {out[0]=DgTorch.{x=x,z=dg_z(r+1)+inset,turn=0,col=c,row=r};}
+ else {out[0]=DgTorch.{x=dg_x(c)+inset,z=z,turn=1,col=c,row=r};}
+ return true;
+}
+DG_TORCHES_MAX :: 160;
+dg_torches :: (out:[]DgTorch)->int {
+ n:=0;for r:0..<DG_ROWS {for c:0..<DG_COLS {for side:0..<4 {t:[1]DgTorch;if n<out.count && dg_torch_at(c,r,side,t[..]) {out[n]=t[0];n+=1;}}}}return n;
+}
+// Where a torch's flame is: a little out from the wall, over its cup.
+dg_flame :: (t:DgTorch)->[3]f32 {
+ out:=0.35f32;dx:=ifx t.turn==1 then out else ifx t.turn==3 then -out else 0.0f32;dz:=ifx t.turn==0 then out else ifx t.turn==2 then -out else 0.0f32;
+ return [3]f32.[t.x+dx,f32(DG_TORCH_LIFT)+1.1*f32(DG_TORCH_SCALE),t.z+dz];
+}
+
+// ---- colliders
+// Every box near (x, z) within `reach`: walls, arches, furnishings and the roof, as x0, y0, z0,
+// x1, y1, z1 with heights over the dungeon floor, appended at out[n*6..]; the new count. `tall`
+// keeps only what stands higher than you, for sight (dg_sight).
+dg_boxes :: (x:f32,z:f32,reach:f32,out:[]f32,n0:int,tall:bool)->int {
+ n:=n0;if !dg_inside(x,z,reach+1) {return n;}
+ c0:=dg_col(x-reach)-1;c1:=dg_col(x+reach)+1;r0:=dg_row(z+reach)-1;r1:=dg_row(z-reach)+1;
+ if c0<0 {c0=0;}if c1>DG_COLS {c1=DG_COLS;}if r0<0 {r0=0;}if r1>DG_ROWS {r1=DG_ROWS;}
+ for r:r0..<r1+1 {for c:c0..<c1+1 {
+  if c<DG_COLS && dg_wall_h(c,r) {s:=dg_span_h(c,r);zl:=dg_z(r);n=dg_put(out,n,x,z,reach,[6]f32.[s[0],0,zl-f32(DG_HALF),s[1],f32(DG_HEIGHT),zl+f32(DG_HALF)]);}
+  if r<DG_ROWS && dg_wall_v(c,r) {s:=dg_span_v(c,r);xl:=dg_x(c);n=dg_put(out,n,x,z,reach,[6]f32.[xl-f32(DG_HALF),0,s[0],xl+f32(DG_HALF),f32(DG_HEIGHT),s[1]]);}
+ }}
+ for i:0..<DG_ARCHES {for part:0..<3 {b:[6]f32;dg_arch_box(i,part,b[..]);n=dg_put(out,n,x,z,reach,b);}}
+ if !tall {for i:0..<DG_PROPS {b:[6]f32;if dg_prop_box(dg_prop(i),b[..]) {n=dg_put(out,n,x,z,reach,b);}}
+  // the roof, over the whole block, for the camera
+  n=dg_put(out,n,x,z,reach,[6]f32.[f32(DG_X0)-f32(DG_HALF),f32(DG_HEIGHT),dg_south()-f32(DG_HALF),dg_east()+f32(DG_HALF),f32(DG_HEIGHT)+0.26,f32(DG_Z0)+f32(DG_HALF)]);}
+ return n;
+}
+dg_put :: (out:[]f32,n:int,x:f32,z:f32,reach:f32,b:[6]f32)->int {
+ if x<b[0]-reach || x>b[3]+reach || z<b[2]-reach || z>b[5]+reach || n*6+6>out.count {return n;}
+ for k:0..<6 {out[n*6+k]=b[k];}return n+1;
+}
+// Whether a body of radius `pad` standing at (x, z) would overlap a wall, an arch or a furnishing.
+dg_blocked :: (x:f32,z:f32,pad:f32)->bool {
+ b:[600]f32;n:=dg_boxes(x,z,pad+0.1,b[..],0,false);
+ for i:0..<n {o:=i*6;if b[o+1]>1.5 || b[o+4]<0.2 {continue;}if x>b[o]-pad && x<b[o+3]+pad && z>b[o+2]-pad && z<b[o+5]+pad {return true;}}return false;
+}
+// Whether one standing at (x0, z0) sees (x1, z1): no wall or arch between, inside the dungeon or
+// across its outer wall. Furnishings do not hide you. The line runs DG_SIGHT_EYE over the floor
+// through the Metaverse Engine's visibility service (metaverse-engine/physics/visibility.coax, #13073), against the walls' and
+// arches' boxes (dg_boxes, tall), gathered DG_SIGHT_CHUNK metres of the line at a time.
+DG_SIGHT_EYE :: 1.5;
+DG_SIGHT_CHUNK :: 10.0;
+DG_SIGHT_BOXES :: 200;   // boxes one chunk may gather: about three times the most a 10 m chunk meets
+dg_sight :: (x0:f32,z0:f32,x1:f32,z1:f32)->bool {
+ if !dg_inside(x0,z0,1) && !dg_inside(x1,z1,1) {return true;}
+ dx:=x1-x0;dz:=z1-z0;d:=sqrt(dx*dx+dz*dz);parts:=cast(int)(d/f32(DG_SIGHT_CHUNK))+1;
+ land:vis.VisTerrain;
+ for k:0..<parts {
+  a:=f32(k)/f32(parts);b:=f32(k+1)/f32(parts);
+  boxes:[DG_SIGHT_BOXES*6]f32;n:=dg_boxes(x0+dx*(a+b)*0.5,z0+dz*(a+b)*0.5,d*(b-a)*0.5+1,boxes[..],0,true);
+  if n>=DG_SIGHT_BOXES {return false;}   // full: some box may be missing, so don't claim a clear line
+  q:=vis.VisQuery.{eye=dsp.world_point(x0+dx*a,f32(DG_SIGHT_EYE),z0+dz*a),target=vis.VisTarget.{at=dsp.world_point(x0+dx*b,f32(DG_SIGHT_EYE),z0+dz*b),slack=0}};
+  v:=vis.vis_line(dq.Colliders.{ground_enabled=false,boxes=boxes[0..<n*6]},land,q);
+  if v.status!=vis.VisStatus.visible {return false;}
+ }
+ return true;
+}
+// The walk dg_sight used before the visibility service: points 0.4 m apart against dg_solid. The
+// checks hold the service to it.
+dg_sight_sampled :: (x0:f32,z0:f32,x1:f32,z1:f32)->bool {
+ if !dg_inside(x0,z0,1) && !dg_inside(x1,z1,1) {return true;}
+ dx:=x1-x0;dz:=z1-z0;d:=sqrt(dx*dx+dz*dz);steps:=cast(int)(d/0.4)+1;
+ for k:1..<steps {t:=f32(k)/f32(steps);if dg_solid(x0+dx*t,z0+dz*t) {return false;}}
+ return true;
+}
+#test "the service's line of sight sees nothing the sampled walk did not, and agrees almost everywhere" #steps 3000000000 {
+ same:=0;all:=0;
+ for i:0..<48 {for j:0..<12 {
+  a:=DG_SPAWN[i%DG_SPAWNS];c0:=(i*7+j*3)%DG_COLS;r0:=(i*5+j*11)%DG_ROWS;if !dg_floor(c0,r0) {continue;}
+  x1:=dg_x(c0)+1.3+f32(j%3);z1:=dg_z(r0)-1.1-f32(j%4)*0.8;
+  s:=dg_sight(a[0],a[1],x1,z1);o:=dg_sight_sampled(a[0],a[1],x1,z1);
+  if s {#assert o;}
+  all+=1;if s==o {same+=1;}
+ }}
+ #assert all>200 && same*100>=all*97;
+}
+// Whether (x, z) is inside a wall or an arch's post: the walls round its cell and the arches near it.
+dg_solid :: (x:f32,z:f32)->bool {
+ if !dg_inside(x,z,1) {return false;}
+ c0:=dg_col(x);r0:=dg_row(z);
+ for r:r0-1..<r0+2 {for c:c0-1..<c0+2 {if c<0 || r<0 || c>DG_COLS || r>DG_ROWS {continue;}
+  if c<DG_COLS && dg_wall_h(c,r) {zl:=dg_z(r);if z>zl-f32(DG_HALF) && z<zl+f32(DG_HALF) {sp:=dg_span_h(c,r);if x>sp[0] && x<sp[1] {return true;}}}
+  if r<DG_ROWS && dg_wall_v(c,r) {xl:=dg_x(c);if x>xl-f32(DG_HALF) && x<xl+f32(DG_HALF) {sp:=dg_span_v(c,r);if z>sp[0] && z<sp[1] {return true;}}}
+ }}
+ for i:0..<DG_ARCHES {a:=dg_arch(i);if abs(x-a[0])>2.6 || abs(z-a[1])>2.6 {continue;}
+  for part:0..<2 {b:[6]f32;dg_arch_box(i,part,b[..]);if x>b[0] && x<b[3] && z>b[2] && z<b[5] {return true;}}}
+ return false;
+}
+
+// ---- monsters
+// Its kinds: 0 an imp, 1 a gremlin (the Bestiary's Puglin), 2 a brute (a big Puglin), 3 a fiend (a
+// big imp) and 4 the boss, the Puglin Warlord. dg_kind_mesh is the baked model each wears (0 imp,
+// 1 gremlin) and dg_kind_scale its size over that model's.
+DG_KIND_IMP :: 0; DG_KIND_GREMLIN :: 1; DG_KIND_BRUTE :: 2; DG_KIND_FIEND :: 3; DG_KIND_BOSS :: 4;
+dg_kind_mesh :: (k:int)->int {return ifx k==DG_KIND_IMP || k==DG_KIND_FIEND then 0 else 1;}
+dg_kind_scale :: (k:int)->f32 {return ifx k==DG_KIND_BRUTE then 1.45f32 else ifx k==DG_KIND_FIEND then 1.35f32 else ifx k==DG_KIND_BOSS then 2.4f32 else 1.0f32;}
+// how near you wake it, in metres (it must see you, dg_sight)
+dg_kind_wake :: (k:int)->f32 {return ifx k==DG_KIND_BOSS then 13.0f32 else 8.0f32;}
+// The dungeon's monsters past the two the old dungeon had (experimental-hostiles.coax enemies 2
+// and 5, in the entrance hall): x, z and kind, in groups by room, tougher further in.
+DG_SPAWNS :: 39;
+DG_SPAWN :: [39][3]f32.[
+ [3]f32.[-45,-47,0],[3]f32.[-31,-58,0],                                        // A
+ [3]f32.[-18,-56.5,0],                                                         // B
+ [3]f32.[-3,-49,1],[3]f32.[3,-50,1],[3]f32.[0,-58,1],[3]f32.[4,-61,0],          // C
+ [3]f32.[-40.5,-74,1],                                                         // E
+ [3]f32.[-44,-88,1],[3]f32.[-30,-89.5,1],[3]f32.[-38,-99,1],[3]f32.[-27,-101,0],[3]f32.[-45,-100,0],[3]f32.[-35,-95,2],   // F
+ [3]f32.[-9,-77.5,0],[3]f32.[3,-78.5,0],[3]f32.[-7.5,-109,0],[3]f32.[4,-110,0],[3]f32.[-3,-86,1],[3]f32.[1,-99,1],
+ [3]f32.[-9,-100,1],[3]f32.[2,-90,3],[3]f32.[-6,-103,3],[3]f32.[-1,-112,2],                                             // H
+ [3]f32.[-20,-108,0],[3]f32.[-16,-114,0],[3]f32.[-18.5,-111,3],                // O
+ [3]f32.[-44,-127,3],[3]f32.[-41,-130.5,3],[3]f32.[-44.5,-130,2],               // J
+ [3]f32.[0,-117.5,1],[3]f32.[4.5,-120.5,1],                                    // Q
+ [3]f32.[-25,-129,2],[3]f32.[-6,-129,2],[3]f32.[-27,-131.5,3],[3]f32.[-12,-127,3],   // L
+ [3]f32.[-20.5,-146,4],[3]f32.[-30,-142,2],[3]f32.[-11,-142,2]];               // N
+
+#test "the dungeon is ten times the old one's 400 square metres, entrance to boss" {
+ cells:=0;for r:0..<DG_ROWS {for c:0..<DG_COLS {if dg_floor(c,r) {cells+=1;}}}
+ #assert DG_MAP.count==DG_COLS*DG_ROWS && cells==166 && f32(cells)*f32(DG_CELL)*f32(DG_CELL)>=4000;
+ // the entrance hall keeps the old dungeon's footprint, the boss's hall is the furthest room
+ #assert dg_at(0,0)=='A' && dg_at(3,3)=='A' && dg_x(0)== -48 && dg_x(4)== -28 && dg_z(4)== -64;
+ #assert dg_at(5,DG_ROWS-1)=='N' && !dg_wall_h(DG_ENTRY,0) && dg_wall_h(DG_ENTRY-1,0);
+}
+#test "every room is reached from the entrance, through doorways only" {
+ seen:[242]bool;q:[242]int;head:=0;tail:=1;q[0]=DG_ENTRY;seen[DG_ENTRY]=true;
+ while head<tail {k:=q[head];head+=1;c:=k%DG_COLS;r:=k/DG_COLS;
+  for d:0..<4 {nc:=c+(ifx d==1 then 1 else ifx d==3 then -1 else 0);nr:=r+(ifx d==2 then 1 else ifx d==0 then -1 else 0);
+   if nc<0 || nr<0 || nc>=DG_COLS || nr>=DG_ROWS || !dg_open(c,r,nc,nr) {continue;}
+   // what you can step through is what no wall stands in
+   if nc!=c {#assert !dg_wall_v(ifx nc>c then nc else c,r);}else {#assert !dg_wall_h(c,ifx nr>r then nr else r);}
+   j:=nr*DG_COLS+nc;if !seen[j] {seen[j]=true;q[tail]=j;tail+=1;}}}
+ #assert tail==166;
+ // two rooms meet only at a doorway, and each doorway joins two rooms
+ for d:DG_DOORS {#assert dg_floor(d[0],d[1]) && dg_floor(d[2],d[3]) && dg_at(d[0],d[1])!=dg_at(d[2],d[3]);}
+}
+#test "dead ends and branches: the crypt, storeroom and nook have one door, two routes reach the hall" {
+ doors:[128]int;for d:DG_DOORS {doors[cast(int)dg_at(d[0],d[1])]+=1;doors[cast(int)dg_at(d[2],d[3])]+=1;}
+ #assert doors[cast(int)'J']==1 && doors[cast(int)'O']==1 && doors[cast(int)'Q']==1 && doors[cast(int)'H']>=4 && doors[cast(int)'N']==1 && doors[cast(int)'A']==2;
+}
+#test "walls meet without gaps or overlapping faces" {
+ // a corner: the north wall reaches over it, the west wall stops just inside it
+ h:=dg_span_h(0,0);v:=dg_span_v(0,0);#assert h[0]== -48.55 && abs(v[1]-(-44.54))<0.001;
+ // a doorway's jambs leave 3.9 m, the arch's posts 2.68 m
+ a:=dg_span_h(DG_ENTRY-1,0);b:=dg_span_h(DG_ENTRY+1,0);#assert abs(b[0]-a[1]-3.9)<0.001;
+ box:[6]f32;dg_arch_box(DG_ARCHES-1,0,box[..]);other:[6]f32;dg_arch_box(DG_ARCHES-1,1,other[..]);#assert abs(other[0]-box[3]-2.68)<0.001;
+}
+#test "torches light every room and furnishings stand clear of the monsters" {
+ t:[DG_TORCHES_MAX]DgTorch;n:=dg_torches(t[..]);#assert n>=40 && n<DG_TORCHES_MAX;
+ lit:[128]bool;for i:0..<n {lit[cast(int)dg_at(dg_col(t[i].x),dg_row(t[i].z))]=true;}
+ for room:"ABCDEFGHIJKLMNOQ" {#assert lit[cast(int)room];}
+ for i:0..<DG_PROPS {p:=dg_prop(i);#assert dg_floor(dg_col(p.x),dg_row(p.z));b:[6]f32;if !dg_prop_box(p,b[..]) {continue;}
+  for s:DG_SPAWN {k:=cast(int)s[2];r:=0.4*dg_kind_scale(k)+0.3;#assert s[0]<b[0]-r || s[0]>b[3]+r || s[1]<b[2]-r || s[1]>b[5]+r;}}
+ for s:DG_SPAWN {#assert dg_floor(dg_col(s[0]),dg_row(s[1])) && !dg_blocked(s[0],s[1],0.4*dg_kind_scale(cast(int)s[2]));}
+ #assert DG_SPAWN[DG_SPAWNS-3][2]==4 && dg_at(dg_col(DG_SPAWN[DG_SPAWNS-3][0]),dg_row(DG_SPAWN[DG_SPAWNS-3][1]))=='N';
+}
+#test "walls hide what is behind them" {
+ // across the entrance hall, yes; from the hall into rock-bound F, no
+ #assert dg_sight(-45,-47,-31,-58) && !dg_sight(-46,-60,-46,-88) && dg_sight(-40.5,-62,-40.5,-80);
+ #assert dg_blocked(-48,-50,0.3) && !dg_blocked(-40,-54,0.3) && dg_blocked(-30.5-2.0,-44,0.3) && !dg_blocked(-30.5,-44,0.3);
+}
+// Whether every line of sight from rows r0 to r1 (each cell's centre and four insets, to every
+// other cell's centre) lands in a part drawn from there.
+dg_seen_holds :: (ra:int,rb:int)->bool {
+ for r0:ra..<rb {for c0:0..<DG_COLS {if !dg_floor(c0,r0) {continue;}seen:=dg_room_seen(dg_at(c0,r0));
+  for r1:0..<DG_ROWS {for c1:0..<DG_COLS {if !dg_floor(c1,r1) || (seen&(1<<dg_cell_chunk(c1,r1)))!=0 {continue;}
+   x1:=dg_x(c1)+2.5;z1:=dg_z(r1)-2.5;
+   for k:0..<5 {ox:=ifx k==1 || k==2 then -1.6f32 else ifx k>2 then 1.6f32 else 0.0f32;oz:=ifx k==1 || k==3 then -1.6f32 else ifx k==2 || k==4 then 1.6f32 else 0.0f32;
+    if dg_sight(dg_x(c0)+2.5+ox,dg_z(r0)-2.5+oz,x1,z1) {return false;}}}}}}
+ return true;
+}
+#test "what you see from the north rooms is drawn" #steps 3000000000 {#assert dg_seen_holds(0,6);}
+#test "what you see from the barracks and hall's north end is drawn" #steps 3000000000 {#assert dg_seen_holds(6,9);}
+#test "what you see from the barracks and hall's middle is drawn" #steps 3000000000 {#assert dg_seen_holds(9,11);}
+#test "what you see from the middle rooms is drawn" #steps 3000000000 {#assert dg_seen_holds(11,16);}
+#test "what you see from the antechamber is drawn" #steps 3000000000 {#assert dg_seen_holds(16,19);}
+#test "what you see from the boss hall's north half is drawn" #steps 3000000000 {#assert dg_seen_holds(19,21);}
+#test "what you see from the boss hall's back wall is drawn" #steps 3000000000 {#assert dg_seen_holds(21,22);}
+#test "the entrance hall's part is drawn while you look in from outside" {
+ #assert dg_seen(-30.5,-30)==1 && dg_seen(-30.5,-120)!=0 && dg_seen(60,60)==0;
+}

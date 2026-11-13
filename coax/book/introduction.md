@@ -25,7 +25,7 @@ silently overflow, arrays that aren't read past their end, simulations
 that replay the same way every time.
 
 This isn't hypothetical. The OpenAgents iPhone app already runs Coax.
-The files are in [`verse/`](https://github.com/OpenAgentsInc/openagents/tree/main/verse/) at the root of the
+The files are in [`metaverse/`](https://github.com/OpenAgentsInc/openagents/tree/main/metaverse/) at the root of the
 repository:
 
 - `home.coax` owns home configuration and HUD admission through generated

@@ -1,0 +1,268 @@
+// Everglade v2's pack (docs/verse/everglade2.md): the Character Create people pack, the glade's own
+// composition on Everglade v2's land, the ground of the path and the clearing, and the Stylized
+// Nature kit pieces the page plants in the woods (everglade/world/plant.coax), each at the origin.
+// With MONSTERS (metaverse/tools/assets/animal_bake.py and bestiary_bake.py e2's frames) and the Bestiary
+// Dungeon source it also holds Everglade II's monsters (everglade/server/creatures.coax): the wolf's
+// and the goblin's frames at the origin, the goblin camp's props where everglade/world/camp.coax stands
+// them, and the Sword the path's guard holds.
+// Run: coax/web/tool.sh metaverse/tools/assets/everglade2_pack.coax SOURCE_ROOT BASE.pack OUTPUT.pack [MONSTERS BESTIARY]
+// tool.sh: release
+// tool.sh: stack-gib 8
+#import "Basic";
+#load "../../../coax/lib/sys/tool.coax";
+#load "../humans/ph_pack.coax";
+#load "../humans/ph_face.coax";
+#load "../humans/ph_outfits.coax";
+#load "familiar_pack.coax";
+
+#load "../../../everglade/world/ground.coax";   // the admitted tiles (it loads plant.coax)
+#load "../../../everglade/world/camp.coax";     // the goblin camp's props
+
+E2_PACK_BUDGET :: 67108864;
+#test "everglade2 static vertices retain positions beyond the people quantization box" {
+ b:[32]u8;gp_vertex(b[..],0,[3]f32.[-18,6,-24],[3]f32.[0,1,0],[2]f32.[0,1],[3]f32.[1,0.5,0.1],3,4);
+ #assert gl_u32(b[..],0)==int(f32_bits(-18)) && gl_u32(b[..],8)==int(f32_bits(-24));
+ #assert gl_u32(b[..],24)==3 && (gl_u32(b[..],12)>>24)==4;
+}
+#test "everglade2 bark preserves negative repeating source UV coordinates" {
+ b:[32]u8;gp_vertex(b[..],0,[3]f32.[0,0,0],[3]f32.[0,1,0],[2]f32.[0.5,-24.3],[3]f32.[1,1,1],0,6);
+ uv:=gl_u32(b[..],16);u:=f32(uv&65535)/65535*64-32;v:=f32((uv>>16)&65535)/65535*64-32;
+ #assert abs(u-0.5)<0.001 && abs(v+24.3)<0.001;
+}
+GP_VERTS :: 900000;
+Gp :: struct {v:[GP_VERTS*32]u8;i:[GP_VERTS*12]u8;nv:int;ni:int;envni:int;grassfirst:[3]int;grasscount:[3]int;seedfirst:[3]int;seedn:[3]int;layers:int;nt:int;tex:[80]string;encoded:[80]string;txt:[1]Txt;old:[33554432]u8;oldn:int;out:[100663296]u8;kfirst:[E2_KITS*E2_LODS]int;kcount:[E2_KITS*E2_LODS]int;mfirst:[GP_E2_FRAMES]int;mcount:[GP_E2_FRAMES]int;}
+gp_word :: (b:[]u8,at:int,v:u32) {for k:0..<4 {b[at+k]=cast,trunc(u8)(v>>cast(u32)(k*8));}}
+gp_clamp :: (x:f32,a:f32,b:f32)->f32 {return ifx x<a then a else ifx x>b then b else x;}
+gp_byte :: (v:f32)->u32 {return cast(u32)int(gp_clamp(v*255+0.5,0,255));}
+gp_vertex :: (b:[]u8,at:int,p:[3]f32,n:[3]f32,uv:[2]f32,c:[3]f32,layer:int,kind:int) {
+ for k:0..<3 {gp_word(b,at+k*4,f32_bits(p[k]));}
+ normal:u32=cast(u32)kind<<24;for k:0..<3 {q:=int(gp_clamp(n[k]*127,-127,127));normal=normal|((cast,trunc(u32)q&255)<<cast(u32)(k*8));}gp_word(b,at+12,normal);
+ u:=ifx kind==6 then (uv[0]+32)/64 else uv[0];v:=ifx kind==6 then (uv[1]+32)/64 else uv[1];
+ gp_word(b,at+16,cast(u32)int(gp_clamp(u*65535,0,65535))|(cast(u32)int(gp_clamp(v*65535,0,65535))<<16));
+ gp_word(b,at+20,gp_byte(c[0])|(gp_byte(c[1])<<8)|(gp_byte(c[2])<<16)|0xff000000);
+ gp_word(b,at+24,cast(u32)layer);gp_word(b,at+28,0);
+}
+gp_v :: (w:[]Gp,p:[3]f32,n:[3]f32,uv:[2]f32,c:[3]f32,layer:int,kind:int)->int {
+ if w[0].nv>=GP_VERTS {ph_die("glade vertices exceed bounded store");}id:=w[0].nv;gp_vertex(w[0].v[..],id*32,p,n,uv,c,layer,kind);w[0].nv+=1;return id;
+}
+gp_tri :: (w:[]Gp,a:int,b:int,c:int) {if (w[0].ni+3)*4>w[0].i.count {ph_die("glade indices overflow");}for q:[3]int.[a,b,c] {put_u32(w[0].i[..],w[0].ni*4,q);w[0].ni+=1;}}
+gp_texture :: (w:[]Gp,path:string,iw:[]ImgWork)->int {
+ for i:0..<w[0].nt {if w[0].tex[i]==path {return w[0].layers+i;}}
+ i:=w[0].nt;if i>=80 {ph_die("glade texture limit");}w[0].tex[i]=txt_keep(w[0].txt[..],path);side:=ifx ends(path,"character-glade-sky.png") || ends(path,"/Leaves.png") then 1024 else 512;bytes:=layer_bytes(path,side,false,iw);w[0].encoded[i]=txt_keep(w[0].txt[..],cast(string)bytes);w[0].nt+=1;return w[0].layers+i;
+}
+gp_mesh :: (w:[]Gp,g:[]Gltf,iw:[]ImgWork,root:string,name:string,x:f32,z:f32,scale:f32,yaw:f32,tint:[3]f32) {gp_mesh_lift(w,g,iw,root,name,x,z,scale,yaw,tint,0);}
+gp_mesh_lift :: (w:[]Gp,g:[]Gltf,iw:[]ImgWork,root:string,name:string,x:f32,z:f32,scale:f32,yaw:f32,tint:[3]f32,lift:f32) {gp_mesh_scaled(w,g,iw,root,name,x,z,scale,scale,yaw,tint,lift);}
+gp_mesh_scaled :: (w:[]Gp,g:[]Gltf,iw:[]ImgWork,root:string,name:string,x:f32,z:f32,scale:f32,vertical:f32,yaw:f32,tint:[3]f32,lift:f32) {
+ path:=txt_cat3(w[0].txt[..],root,"/glTF/",txt_cat(w[0].txt[..],name,".gltf"));gl_load(g,path);
+ cs:=cos(yaw);sn:=sin(yaw);y:=e2_height(x,z)+lift;
+ for mi:0..<g[0].nx[GA_MESH] {mesh:=gl_at(g,GA_MESH,mi);prims:=gl_get(g,mesh,"primitives");for pi:0..<jv_len(g[0].d[0],prims) {
+  pr:=jv_at(g[0].d[0],prims,pi);attr:=gl_get(g,pr,"attributes");pos:[196608]f64;nor:[196608]f64;uv:[131072]f64;idx:[262144]f64;
+  nv:=gl_acc(g,gl_int(g,attr,"POSITION",0),pos[..]).count;r:=gl_acc(g,gl_int(g,attr,"NORMAL",0),nor[..]);r=gl_acc(g,gl_int(g,attr,"TEXCOORD_0",0),uv[..]);ni:=gl_acc(g,gl_int(g,pr,"indices",0),idx[..]).count;
+  mat:=gl_at(g,GA_MAT,gl_int(g,pr,"material",0));mn:=gl_str(g,mat,"name");kind:=ifx starts(mn,"Bark") then 6 else ifx has(mn,"Leaves") then 1 else ifx has(mn,"Flower") then 3 else ifx mn=="Grass" then 2 else ifx has(mn,"Rocks") then 4 else ifx has(mn,"Mushroom") then 7 else 0;
+  tex:=gl_get(g,gl_get(g,mat,"pbrMetallicRoughness"),"baseColorTexture");im:=gl_at(g,GA_IMG,gl_int(g,gl_at(g,GA_TEX,gl_int(g,tex,"index",0)),"source",0));image:=txt_cat3(w[0].txt[..],root,"/glTF/",gl_str(g,im,"uri"));layer:=gp_texture(w,image,iw);
+  // Canopy normals follow its volume instead of each small polygon.
+  lo:=[3]f32.[10000,10000,10000];hi:=[3]f32.[-10000,-10000,-10000];
+  if kind==1 {for v:0..<nv {for k:0..<3 {q:=f32(pos[v*3+k]);if q<lo[k] {lo[k]=q;}if q>hi[k] {hi[k]=q;}}}}
+  lobes:[8][3]f32;tree:=kind==1 && (starts(name,"Birch_") || starts(name,"CommonTree_"));if tree {if nv%4!=0 {ph_die("tree leaf source is not complete four-corner cards");}lobes=cg_crown_centres(pos[..],nv);}
+  first:=w[0].nv;
+  for v:0..<nv {a:=f32(pos[v*3])*scale;b:=f32(pos[v*3+1])*vertical;c:=f32(pos[v*3+2])*scale;nx:=f32(nor[v*3]);ny:=f32(nor[v*3+1]);nz:=f32(nor[v*3+2]);
+   if name=="Rock_Medium_4" && x< -10 {
+    source_y:=f32(pos[v*3+1]);b=cg_cliff_cap_y(source_y)*vertical;factor:=ifx source_y<=1.2 then 1.5f32 else 0.05f32;remixed:=cg_canopy_normal(nx,ny/factor,nz);nx=remixed[0];ny=remixed[1];nz=remixed[2];
+   }
+   ambient:f32=1;
+   if kind==1 {
+    cx:=(lo[0]+hi[0])*0.5;cy:=(lo[1]+hi[1])*0.5;cz:=(lo[2]+hi[2])*0.5;
+    rx:=(f32(pos[v*3])-cx)/gp_clamp((hi[0]-lo[0])*0.5,0.1,100);
+    ry:=(f32(pos[v*3+1])-cy)/gp_clamp((hi[1]-lo[1])*0.5,0.1,100);
+    rz:=(f32(pos[v*3+2])-cz)/gp_clamp((hi[2]-lo[2])*0.5,0.1,100);
+    radius:=sqrt(rx*rx+ry*ry+rz*rz);ambient=gp_clamp(0.70+radius*0.25,0.7,1);
+    rounded:=cg_canopy_normal(rx,ry,rz);
+    if tree {anchor:[3]f32;base:=(v/4)*4;for q:0..<4 {for k:0..<3 {anchor[k]+=f32(pos[(base+q)*3+k])*0.25;}}which:=cg_crown_near(anchor[0],anchor[1],anchor[2],lobes);rounded=cg_canopy_normal(f32(pos[v*3])-lobes[which][0],f32(pos[v*3+1])-lobes[which][1],f32(pos[v*3+2])-lobes[which][2]);}blended:=cg_canopy_normal(rounded[0]*0.90+nx*0.10,rounded[1]*0.90+ny*0.10,rounded[2]*0.90+nz*0.10);nx=blended[0];ny=blended[1];nz=blended[2];
+   }
+   if vertical!=scale {adjusted:=cg_canopy_normal(nx,ny*scale/vertical,nz);nx=adjusted[0];ny=adjusted[1];nz=adjusted[2];}
+   colour:=ifx kind==1 then (ifx starts(name,"Fern") then [3]f32.[0.23,0.53,0.035] else tint) else ifx kind==4 then tint else ifx kind==3 then (ifx starts(name,"Bush") then [3]f32.[1,0.55,0.55] else [3]f32.[1,1,1]) else ifx kind==7 then [3]f32.[1,1,1] else [3]f32.[1,1,1];
+   id:=gp_v(w,[3]f32.[x+a*cs+c*sn,y+b,z-a*sn+c*cs],[3]f32.[nx*cs+nz*sn,ny,-nx*sn+nz*cs],[2]f32.[f32(uv[v*2]),f32(uv[v*2+1])],colour,layer,kind);gp_word(w[0].v[..],id*32+28,f32_bits(ambient));
+  }
+  for t:0..<ni/3 {gp_tri(w,first+int(idx[t*3]),first+int(idx[t*3+1]),first+int(idx[t*3+2]));}
+ }}
+}
+// ---- Everglade II's monsters (everglade/server/creatures.coax), the guard's Sword and the camp
+// The page's monster frames: the wolf's 32 (Idle, Gallop, Attack, Death, eight each) as glade/monster0..31,
+// the goblin's 40 (Idle, Jog, Sword, Shoot, Death) as glade/gremlin0..39, then the Sword as glade/weapon1
+// (charactercreator.coax: the frames drawn as flag-18 records, the Sword on the guard's right hand as flag 19).
+// Each frame stands at the origin, its first frame's middle over it and its feet on it, at its size in the
+// world. Kind 9 is a model shaded by its vertex colour alone, 10 by its texture times it (everglade/client/gpu/everglade2.coax).
+GP_E2_WOLVES :: 32; GP_E2_GOBLINS :: 40; GP_E2_FRAMES :: 73;
+GP_E2_WOLF_SCALE :: 0.33;     // the Ultimate Animals wolf, 5.3 m long as made: 1.75 m nose to tail, 0.88 m high
+GP_E2_GOBLIN_SCALE :: 1.25;   // the Bestiary Puglin, 0.85 m as made: a Small goblin of 1.06 m
+GP_E2_MODEL :: 9; GP_E2_SKIN :: 10;
+gp_e2_path :: (w:[]Gp,dir:string,name:string,frame:int)->string {
+ pb:[4096]u8;s:[1]Sb;s[0]=sb(pb[..]);sb_put(s[..],dir);sb_byte(s[..],'/');sb_put(s[..],name);sb_put(s[..],"-e2");if frame>=0 {sb_byte(s[..],'-');sb_int(s[..],frame);}sb_put(s[..],".bin");return txt_keep(w[0].txt[..],sb_text(s[..]));
+}
+// A baked soup frame (the animal bake's record: triangle corners of position, normal and colour): its
+// corners, the same ones once, turned by yaw, scaled and set at (x, y, z) less the anchor.
+gp_e2_soup :: (w:[]Gp,path:string,anchor:[]f32,x:f32,y:f32,z:f32,yaw:f32,scale:f32) {
+ b:[262144]u8;n:=fs_read(path,b[..]);if n<8 {ph_die("missing Everglade II monster model");}count:=gl_u32(b[..],0);if count<=0 || count%3!=0 || n!=8+count*28 {ph_die("invalid Everglade II monster model");}
+ if anchor[3]==0 {lo:=[3]f32.[100000,100000,100000];hi:=[3]f32.[-100000,-100000,-100000];for v:0..<count {for k:0..<3 {q:=f32_from_bits(cast(u32)gl_u32(b[..],8+v*28+k*4));if q<lo[k] {lo[k]=q;}if q>hi[k] {hi[k]=q;}}}anchor[0]=(lo[0]+hi[0])*0.5;anchor[1]=lo[1];anchor[2]=(lo[2]+hi[2])*0.5;anchor[3]=1;}
+ cs:=cos(yaw);sn:=sin(yaw);seen:[32768]int;mapped:[16384]int;if count>mapped.count {ph_die("Everglade II model has too many corners");}
+ for v:0..<count {at:=8+v*28;hash:=0;for k:0..<28 {hash=(hash*33+int(b[at+k]))%32768;}
+  while seen[hash]!=0 {other:=8+(seen[hash]-1)*28;same:=true;for k:0..<28 {if b[at+k]!=b[other+k] {same=false;break;}}if same {break;}hash=(hash+1)%32768;}
+  if seen[hash]!=0 {mapped[v]=mapped[seen[hash]-1];}
+  else {seen[hash]=v+1;p:[3]f32;nn:[3]f32;c:[3]f32;for k:0..<3 {p[k]=(f32_from_bits(cast(u32)gl_u32(b[..],at+k*4))-anchor[k])*scale;nn[k]=f32_from_bits(cast(u32)gl_u32(b[..],at+12+k*4));c[k]=f32(b[at+24+k])/255;}
+   mapped[v]=gp_v(w,[3]f32.[x+p[0]*cs+p[2]*sn,y+p[1],z-p[0]*sn+p[2]*cs],[3]f32.[nn[0]*cs+nn[2]*sn,nn[1],-nn[0]*sn+nn[2]*cs],[2]f32.[0.5,0.5],c,0,GP_E2_MODEL);gp_word(w[0].v[..],mapped[v]*32+28,f32_bits(1));}
+  if v%3==2 {gp_tri(w,mapped[v-2],mapped[v-1],mapped[v]);}}
+}
+// A baked bestiary frame (vertices of position, normal and uv, then triangles), on the goblin's texture.
+gp_e2_skin :: (w:[]Gp,path:string,anchor:[]f32,layer:int) {
+ b:[262144]u8;n:=fs_read(path,b[..]);if n<8 {ph_die("missing Everglade II goblin frame");}nv:=gl_u32(b[..],0);ni:=gl_u32(b[..],4);if nv<=0 || ni<=0 || ni%3!=0 || n!=8+nv*32+ni*4 {ph_die("invalid Everglade II goblin frame");}
+ if anchor[3]==0 {lo:=[3]f32.[100000,100000,100000];hi:=[3]f32.[-100000,-100000,-100000];for v:0..<nv {for k:0..<3 {q:=f32_from_bits(cast(u32)gl_u32(b[..],8+v*32+k*4));if q<lo[k] {lo[k]=q;}if q>hi[k] {hi[k]=q;}}}anchor[0]=(lo[0]+hi[0])*0.5;anchor[1]=lo[1];anchor[2]=(lo[2]+hi[2])*0.5;anchor[3]=1;}
+ first:=w[0].nv;sc:=f32(GP_E2_GOBLIN_SCALE);
+ for v:0..<nv {at:=8+v*32;p:[3]f32;nn:[3]f32;for k:0..<3 {p[k]=(f32_from_bits(cast(u32)gl_u32(b[..],at+k*4))-anchor[k])*sc;nn[k]=f32_from_bits(cast(u32)gl_u32(b[..],at+12+k*4));}
+  id:=gp_v(w,p,nn,[2]f32.[f32_from_bits(cast(u32)gl_u32(b[..],at+24)),f32_from_bits(cast(u32)gl_u32(b[..],at+28))],[3]f32.[1,1,1],layer,GP_E2_SKIN);gp_word(w[0].v[..],id*32+28,f32_bits(1));}
+ for k:0..<ni/3 {a:=gl_u32(b[..],8+nv*32+k*12);c:=gl_u32(b[..],8+nv*32+k*12+4);d:=gl_u32(b[..],8+nv*32+k*12+8);if a>=nv || c>=nv || d>=nv {ph_die("invalid goblin triangle");}gp_tri(w,first+a,first+c,first+d);}
+}
+// The camp's props where camp.coax stands them, on the land: part of the glade's environment draw.
+gp_e2_camp :: (w:[]Gp,dir:string) {
+ for i:0..<E2_CAMP_PROPS {p:=E2_CAMP[i];x:=e2_camp_px(p);z:=e2_camp_pz(p);anchor:=[4]f32.[0,0,0,1];
+  gp_e2_soup(w,gp_e2_path(w,dir,E2_CAMP_KIT[p.kit],-1),anchor[..],x,e2_height(x,z),z,p.yaw,p.scale);}
+}
+gp_e2_monsters :: (w:[]Gp,iw:[]ImgWork,dir:string,bestiary:string) {
+ anchor:=[4]f32.[0,0,0,0];
+ for f:0..<GP_E2_WOLVES {w[0].mfirst[f]=w[0].ni;gp_e2_soup(w,gp_e2_path(w,dir,"Wolf",f),anchor[..],0,0,0,0,f32(GP_E2_WOLF_SCALE));w[0].mcount[f]=w[0].ni-w[0].mfirst[f];}
+ layer:=gp_texture(w,txt_cat(w[0].txt[..],bestiary,"/Textures/T_Puglin_BaseColor_1.png"),iw);goblin:=[4]f32.[0,0,0,0];
+ for f:0..<GP_E2_GOBLINS {k:=GP_E2_WOLVES+f;w[0].mfirst[k]=w[0].ni;gp_e2_skin(w,gp_e2_path(w,dir,"Puglin",f),goblin[..],layer);w[0].mcount[k]=w[0].ni-w[0].mfirst[k];}
+ // the Sword in its own space, blade up +Y, its grip at the origin (charactercreator.coax weapon_matrix)
+ k:=GP_E2_FRAMES-1;w[0].mfirst[k]=w[0].ni;none:=[4]f32.[0,0,0,1];gp_e2_soup(w,gp_e2_path(w,dir,"Sword",-1),none[..],0,0,0,0,1);w[0].mcount[k]=w[0].ni-w[0].mfirst[k];
+}
+gp_e2_catalog :: (c:[]Sb,w:[]Gp,index_base:int,vertex_word:int) {
+ sb_put(c,"L 253 Quaternius Ultimate Animated Animals, Ultimate RPG and Modular Dungeon|CC0 1.0 Universal|https://quaternius.com/\n");
+ sb_put(c,"L 254 Quaternius Bestiary Dungeon Monsters|Quaternius Asset License v1.0|https://quaternius.com/license.html\n");
+ for k:0..<GP_E2_FRAMES {
+  sb_put(c,ifx k<GP_E2_WOLVES then "C glade/monster" else ifx k<GP_E2_WOLVES+GP_E2_GOBLINS then "C glade/gremlin" else "C glade/weapon");
+  sb_int(c,ifx k<GP_E2_WOLVES then k else ifx k<GP_E2_WOLVES+GP_E2_GOBLINS then k-GP_E2_WOLVES else 1);sb_byte(c,' ');
+  sb_int(c,index_base+w[0].mfirst[k]);sb_byte(c,' ');sb_int(c,w[0].mcount[k]);sb_put(c,ifx k<GP_E2_WOLVES || k==GP_E2_FRAMES-1 then " 253 " else " 254 ");sb_int(c,vertex_word);sb_put(c," 0 0\n");
+ }
+}
+// The ground (#13059): the admitted tiles' own samples (everglade/world/ground.coax), each drawn
+// E2G_DRAW_DROP below the admitted surface, every solid cell split on its south-west / north-east
+// diagonal as the tiles are; then coarse 4 m ground out to the valley's edges under them, a little
+// lower. The ground's colour is the material table's, per pixel (everglade/client/gpu/everglade2.coax
+// e2_ground_albedo): its vertices carry no colour of their own.
+GP_NO_COLOUR :: [3]f32.[0,0,0];
+gp_ground_v :: (w:[]Gp,x:f32,z:f32,y:f32,step:f32)->int {
+ e:=step*0.5;dx:=(e2_height(x+e,z)-e2_height(x-e,z))/(2*e);dz:=(e2_height(x,z+e)-e2_height(x,z-e))/(2*e);l:=sqrt(dx*dx+1+dz*dz);
+ return gp_v(w,[3]f32.[x,y,z],[3]f32.[-dx/l,1/l,-dz/l],[2]f32.[0.5,0.5],GP_NO_COLOUR,0,5);
+}
+// Tile t's solid cells: their corners once each, then two triangles a cell (NW, NE, SW), (NE, SE, SW).
+gp_tile :: (w:[]Gp,g:[]E2Ground,t:int) {
+ s:=e2g_live_set(g);n:=e2g_n(s,t);side:=n+1;hs:=e2g_h(s,t);hl:=e2g_hl(s,t);st:=e2g_step(s[0].k[t]);
+ at:[E2G_POINTS]int;for q:0..<side*side {at[q]= -1;}
+ for j:0..<n {for i:0..<n {if hl[j*n+i]!=0 {continue;}for c:[4]int.[j*side+i,j*side+i+1,(j+1)*side+i,(j+1)*side+i+1] {
+  if at[c]>=0 {continue;}ci:=c%side;cj:=c/side;
+  x:=e2g_at(f32(E2G_WEST),e2g_x0(s[0].m[t])+ci*st);z:=e2g_at(f32(E2G_SOUTH),e2g_z0(s[0].k[t])+cj*st);at[c]=gp_ground_v(w,x,z,hs[c]-f32(E2G_DRAW_DROP),0.2);}}}
+ for j:0..<n {for i:0..<n {if hl[j*n+i]!=0 {continue;}sw:=at[j*side+i];se:=at[j*side+i+1];nw:=at[(j+1)*side+i];ne:=at[(j+1)*side+i+1];gp_tri(w,nw,ne,sw);gp_tri(w,ne,se,sw);}}
+}
+gp_ground :: (w:[]Gp,g:[]E2Ground) {
+ s:=e2g_live_set(g);for t:0..<s[0].n {gp_tile(w,g,t);}
+ // the coarse ground: only the cells the tiles don't cover with a metre to spare, and only their corners
+ gx:=106;gz:=181;at:[106*181]int;for q:0..<gx*gz {at[q]= -1;}
+ for iz:0..<gz-1 {for ix:0..<gx-1 {x0:=f32(E2_WEST)+f32(ix)*4;z0:=f32(E2_BACK)-f32(iz)*4;
+  if gp_covered(g,x0,z0) && gp_covered(g,x0+4,z0) && gp_covered(g,x0,z0-4) && gp_covered(g,x0+4,z0-4) {continue;}
+  for c:[4]int.[iz*gx+ix,iz*gx+ix+1,(iz+1)*gx+ix,(iz+1)*gx+ix+1] {if at[c]<0 {x:=f32(E2_WEST)+f32(c%gx)*4;z:=f32(E2_BACK)-f32(c/gx)*4;at[c]=gp_ground_v(w,x,z,e2_height(x,z)-0.14,2);}}
+  a:=at[iz*gx+ix];b:=at[iz*gx+ix+1];c:=at[(iz+1)*gx+ix];d:=at[(iz+1)*gx+ix+1];gp_tri(w,a,b,c);gp_tri(w,b,d,c);}}
+}
+// Whether the tiles cover (x, z) with a metre to spare.
+gp_covered :: (g:[]E2Ground,x:f32,z:f32)->bool {
+ for q:[5][2]f32.[[2]f32.[0,0],[2]f32.[1,1],[2]f32.[-1,1],[2]f32.[1,-1],[2]f32.[-1,-1]] {if !e2g_ground_at(g,x+q[0],z+q[1]) {return false;}}
+ return true;
+}
+gp_grass_seeds :: (w:[]Gp,white:int,group:int,proposals:int,source_height:f32) {
+ w[0].seedfirst[group]=w[0].nv;hero:=cg_item(7);
+ for i:0..<proposals {fi:=f32(i+group*100000);x:=(cg_hash(fi,2)-0.5)*(ifx i<proposals*4/5 then 26.0f32 else 54.0f32);z:=3-cg_hash(fi,5)*(ifx i<proposals*4/5 then 30.0f32 else 55.0f32);
+  if e2_path(x,z)>0.40 || (x*x+z*z)<0.6 {continue;}
+  patch:=0.65+0.35*sin(x*1.1)*sin(z*1.3);height:=(0.17+cg_hash(fi,8)*0.22)*patch;near:=sqrt((x-hero.x)*(x-hero.x)+(z-hero.z)*(z-hero.z));height*=0.2+0.8*gp_clamp((near-0.5)/0.7,0,1);
+  autumn:=e2_autumn(x,z);base:=[3]f32.[0.30+0.26*autumn,0.48,0.055];
+  id:=gp_v(w,[3]f32.[x,e2_height(x,z),z],[3]f32.[0,1,0],[2]f32.[height/source_height,0.18+cg_hash(fi,7)*0.10],base,white,0);
+  gp_word(w[0].v[..],id*32+28,f32_bits(cg_hash(fi,9)*6.283));w[0].seedn[group]+=1;
+ }
+}
+// One kit piece at the origin; a tree's thinner crowns re-use its vertices (level 1 two cards in
+// three, level 2 one in three).
+gp_vy :: (w:[]Gp,v:int)->f32 {return f32_from_bits(cast(u32)gl_u32(w[0].v[..],v*32+4));}
+gp_kit :: (w:[]Gp,g:[]Gltf,iw:[]ImgWork,root:string,k:int) {
+ v0:=w[0].nv;t0:=w[0].ni;gp_mesh_scaled(w,g,iw,root,E2_KIT_NAME[k],0,0,1,1,0,[3]f32.[1,1,1],0);t1:=w[0].ni;
+ w[0].kfirst[k*E2_LODS]=t0;w[0].kcount[k*E2_LODS]=t1-t0;if k>=E2_TREES {return;}
+ top:f32=0;for v:v0..<w[0].nv {y:=gp_vy(w,v);if y>top {top=y;}}
+ for lod:1..<E2_LODS {w[0].kfirst[k*E2_LODS+lod]=w[0].ni;
+  for t:t0/3..<t1/3 {a:=gl_u32(w[0].i[..],t*12);b:=gl_u32(w[0].i[..],t*12+4);c:=gl_u32(w[0].i[..],t*12+8);
+   leaf:=(gl_u32(w[0].v[..],a*32+12)>>24)==1;card:=((ifx a<b then a else b)-v0)/4;
+   // further off, the branches inside the crown go: only the trunk and the lower boughs keep bark
+   cut:=ifx lod==1 then top*0.5 else top*0.3;low:=gp_vy(w,a)<cut || gp_vy(w,b)<cut || gp_vy(w,c)<cut;
+   keep:=ifx leaf then (ifx lod==1 then card%3!=2 else card%3==0) else low;if keep {gp_tri(w,a,b,c);}}
+  w[0].kcount[k*E2_LODS+lod]=w[0].ni-w[0].kfirst[k*E2_LODS+lod];}
+}
+gp_entry :: (out:[]u8,row:int,kind:int,license:int,name:string,offset:int,size:int) {
+ out[row]=cast(u8)kind;out[row+1]=cast(u8)license;put_u32(out,row+4,offset);put_u32(out,row+8,size);for i:0..<name.count {if i<31 {out[row+16+i]=name[i];}}
+}
+tool_main :: ()->int #export_c #effects(all) {
+ args:[1]Args;if !args_load(args[..]) || (args_count(args[..])!=3 && args_count(args[..])!=5) {tool_errln("everglade2 pack: SOURCE_ROOT BASE.pack OUTPUT.pack [MONSTERS BESTIARY]");return 2;}
+ monsters:=args_count(args[..])==5;
+ w:[1]Gp;g:[1]Gltf;iw:[1]ImgWork;eg:[1]E2Ground;egt:[2]E2Tiles;rec:[E2G_RECORD_MAX]u8;root:=args_at(args[..],0);w[0].oldn=fs_read(args_at(args[..],1),w[0].old[..]);if w[0].oldn<32 {return 1;}
+ old:=w[0].old[..];ne:=gl_u32(old,4);table:=gl_u32(old,16);vo:=0;vn:=0;io:=0;in:=0;cat:="";
+ for i:0..<ne {r:=table+i*48;kind:=int(old[r]);off:=gl_u32(old,r+4);size:=gl_u32(old,r+8);if kind==1 {cat=cast(string)old[off..<off+size];}if kind==2 {vo=off;vn=size;}if kind==3 {io=off;in=size;}if kind==4 {w[0].layers+=1;}}
+ // the land into its tiles, once: the pack draws them and carries them as one record (E2T1)
+ e2g_store(eg[..],egt[..]);if !e2g_build(eg[..]) {ph_die("everglade2 ground tiles refused");}rn:=e2g_record_write(eg[..],e2g_live_set(eg[..]),rec[..]);if rn<0 {ph_die("everglade2 ground record overflows");}
+ gp_ground(w[..],eg[..]);
+ sky:=gp_texture(w[..],"assets/registry/scenes/character-glade-sky.png",iw[..]);
+ sky_a:=gp_v(w[..],[3]f32.[-1,-1,0],[3]f32.[0,0,1],[2]f32.[0,1],[3]f32.[1,1,1],sky,0);
+ sky_b:=gp_v(w[..],[3]f32.[1,-1,0],[3]f32.[0,0,1],[2]f32.[1,1],[3]f32.[1,1,1],sky,0);
+ sky_c:=gp_v(w[..],[3]f32.[-1,1,0],[3]f32.[0,0,1],[2]f32.[0,0],[3]f32.[1,1,1],sky,0);
+ sky_d:=gp_v(w[..],[3]f32.[1,1,0],[3]f32.[0,0,1],[2]f32.[1,0],[3]f32.[1,1,1],sky,0);gp_tri(w[..],sky_a,sky_b,sky_c);gp_tri(w[..],sky_b,sky_d,sky_c);
+ for i:0..<CG_ITEMS {item:=cg_item(i);if !e2_glade_kept(item) {continue;}stem:=ifx item.kind==0 then "CommonTree_" else ifx item.kind==1 then "Birch_" else ifx item.kind==3 then "Rock_Medium_" else "Rock_Big_";nb:[64]u8;s:[1]Sb;s[0]=sb(nb[..]);sb_put(s[..],stem);sb_int(s[..],ifx item.kind==2 then item.variant+1 else item.variant+1);gp_mesh_scaled(w[..],g[..],iw[..],root,sb_text(s[..]),item.x,item.z,item.scale,item.scale*item.vertical,item.yaw,item.tint,item.lift);}
+ for i:0..<32 {fi:=f32(i);x:=(cg_hash(fi,24)-0.5)*24;z:=-1-cg_hash(fi,25)*24;if cg_path(x,z)>0.55 {continue;}stem:=ifx i%4==0 then "Bush_Common_Flowers" else ifx i%4==1 then "Fern_1" else ifx i%4==2 then "Mushroom_Common" else "Flower_3_Group";gp_mesh(w[..],g[..],iw[..],root,stem,x,z,(0.25+cg_hash(fi,30)*0.35)*(ifx i%4==3 then 0.55f32 else 1.0f32),fi,[3]f32.[0.35,0.78,0.055]);}
+ for i:0..<8 {pos:=[8][2]f32.[[2]f32.[-2.6,-3],[2]f32.[-2.0,-3.5],[2]f32.[1.05,-0.6],[2]f32.[-0.65,0.4],[2]f32.[1.3,-0.8],[2]f32.[0.5,-1.8],[2]f32.[-1.1,1],[2]f32.[-1.7,0.5]];stem:=ifx i==0 then "Fern_1" else ifx i==1 then "Bush_Common_Flowers" else ifx i<5 then "Mushroom_Common" else ifx i==5 then "Pebble_Round_1" else "Flower_3_Group";size:f32=ifx i==0 then 0.22 else ifx i==1 then 0.60 else ifx i==2 then 0.80 else ifx i==3 then 0.65 else ifx i==4 then 0.40 else ifx i==5 then 0.25 else 0.20;gp_mesh_scaled(w[..],g[..],iw[..],root,stem,pos[i][0],pos[i][1],size,size*(ifx i>=2 && i<=4 then 0.75f32 else 1.0f32),f32(i),[3]f32.[0.36,0.80,0.08],0);}
+ gp_mesh(w[..],g[..],iw[..],root,"Flower_3_Group",-0.55,1.6,0.14,0.5,[3]f32.[1,1,1]);
+ gp_mesh_lift(w[..],g[..],iw[..],root,"Rock_Medium_3",-14,-24,2.0,0.3,[3]f32.[0.7,0.7,0.5],0.0);
+ gp_mesh(w[..],g[..],iw[..],root,"Fern_1",-5,-5.5,1.1,1.1,[3]f32.[0.32,0.65,0.045]);
+ gp_mesh_scaled(w[..],g[..],iw[..],root,"Rock_Medium_4",-0.18,-2.4,0.16,0.05,1.1,[3]f32.[0.55,0.60,0.40],0);
+ gp_mesh(w[..],g[..],iw[..],root,"Plant_3",1.05,1.0,0.35,0.8,[3]f32.[1,0.56,0.06]);
+ // The reference's right foreground (November 7 pass): orange and red-orange leafy plants at the
+ // bottom right and small stones on the near path, off the walk line. Plant_1 costs about 5 KB an
+ // instance, Plant_3 about 29 KB and a bush 135 KB, so this fits the pack's 32 MiB.
+ for i:0..<7 {fi:=f32(i);pos:=[7][2]f32.[[2]f32.[1.45,1.55],[2]f32.[0.85,1.9],[2]f32.[1.7,0.35],[2]f32.[2.2,1.2],[2]f32.[1.25,-0.6],[2]f32.[2.4,-1.6],[2]f32.[3.0,-2.8]];
+  gp_mesh(w[..],g[..],iw[..],root,ifx i==0 then "Plant_3" else "Plant_1",pos[i][0],pos[i][1],(ifx i<2 then 0.24f32 else 0.40f32)+cg_hash(fi,71)*0.12,fi*1.3,ifx i%3==0 then [3]f32.[1,0.30,0.03] else ifx i%3==1 then [3]f32.[1,0.17,0.02] else [3]f32.[1,0.44,0.05]);}
+ for i:0..<6 {fi:=f32(i);z:= -1.5-fi*1.0;x:=cg_path_x(z)+(cg_hash(fi,73)-0.5)*1.8;if abs(x-cg_walk_x(z))<0.45 {x=x+ifx x>cg_walk_x(z) then 0.5f32 else -0.5f32;}
+  gp_mesh(w[..],g[..],iw[..],root,ifx i%3==0 then "Pebble_Square_2" else "Pebble_Round_2",x,z,0.34+cg_hash(fi,74)*0.2,fi*0.9,[3]f32.[0.62,0.62,0.55]);}
+ // The reference's loose stones and lower left woodland break up the path edges.
+ for i:0..<12 {fi:=f32(i);z:=-2-fi*1.7;x:=cg_road_x(z)+(ifx i%2==0 then -1.0f32 else 1.2f32);gp_mesh(w[..],g[..],iw[..],root,"Pebble_Round_1",x,z,0.3+cg_hash(fi,42)*0.2,fi,[3]f32.[0.7,0.7,0.5]);}
+ for i:0..<12 {x:=-5.2+f32(i%4)*0.45;z:=-9.0-f32(i/4)*0.5;gp_mesh(w[..],g[..],iw[..],root,"Flower_2_Group",x,z,0.16+cg_hash(f32(i),61)*0.05,f32(i),[3]f32.[0.4,0.75,0.05]);}
+ for i:0..<12 {fi:=f32(i);x:=-3.0+cg_hash(fi,62)*6.0;z:=-9.0-cg_hash(fi,63)*8.0;gp_mesh(w[..],g[..],iw[..],root,"Flower_3_Group",x,z,0.10+cg_hash(fi,64)*0.08,fi,[3]f32.[0.4,0.75,0.05]);}
+ if monsters {gp_e2_camp(w[..],args_at(args[..],3));}
+ w[0].envni=w[0].ni;
+ famfirst:[FAM_FORMS]int; famcount:[FAM_FORMS]int;
+ gp_familiar_meshes(w[..],famfirst[..],famcount[..]);
+ for group:0..<3 {
+  w[0].grassfirst[group]=w[0].ni;name:=ifx group==0 then "Grass_Common_Short" else ifx group==1 then "Grass_Wide_Short" else "Grass_Wispy_Short";
+  gp_mesh(w[..],g[..],iw[..],root,name,0,0,1,0,[3]f32.[1,1,1]);w[0].grasscount[group]=w[0].ni-w[0].grassfirst[group];
+  gp_grass_seeds(w[..],0,group,ifx group==0 then 5000 else ifx group==1 then 1500 else 24000,ifx group==0 then 1.31172f32 else ifx group==1 then 1.20004f32 else 0.98610f32);
+ }
+ for k:0..<E2_KITS {gp_kit(w[..],g[..],iw[..],root,k);}
+ if monsters {gp_e2_monsters(w[..],iw[..],args_at(args[..],3),args_at(args[..],4));}
+ cb:[4194304]u8;c:[1]Sb;c[0]=sb(cb[..]);lines_at:=0;while lines_at<cat.count {e:=lines_at;while e<cat.count && cat[e]!='\n' {e+=1;}line:=cat[lines_at..<e];lines_at=e+1;if starts(line,"bytes ") {sb_put(c[..],"bytes 0000000000\n");}else {sb_put(c[..],line);sb_byte(c[..],'\n');}}sb_put(c[..],"\nL 250 Quaternius Stylized Nature MegaKit Source|CC0 1.0 Universal|https://quaternius.com/\nC glade/environment ");sb_int(c[..],in/4);sb_byte(c[..],' ');sb_int(c[..],w[0].envni);sb_put(c[..]," 250 ");sb_int(c[..],vn/4);sb_byte(c[..],' ');sb_int(c[..],w[0].nv);sb_put(c[..]," 0\n");
+ for group:0..<3 {sb_put(c[..],"C glade/grass");sb_int(c[..],group);sb_byte(c[..],' ');sb_int(c[..],in/4+w[0].grassfirst[group]);sb_byte(c[..],' ');sb_int(c[..],w[0].grasscount[group]);sb_put(c[..]," 250 ");sb_int(c[..],vn/4+w[0].seedfirst[group]*8);sb_byte(c[..],' ');sb_int(c[..],w[0].seedn[group]);sb_put(c[..]," 0\n");}
+ for k:0..<E2_KITS*E2_LODS {if w[0].kcount[k]==0 {continue;}sb_put(c[..],"C e2/k");sb_int(c[..],k/E2_LODS);sb_byte(c[..],'/');sb_int(c[..],k%E2_LODS);sb_byte(c[..],' ');sb_int(c[..],in/4+w[0].kfirst[k]);sb_byte(c[..],' ');sb_int(c[..],w[0].kcount[k]);sb_put(c[..]," 250 ");sb_int(c[..],vn/4);sb_byte(c[..],' ');sb_int(c[..],w[0].nv);sb_put(c[..]," 0\n");}
+ gp_familiar_catalog(c[..],famfirst[..],famcount[..],in/4,vn/4);
+ if monsters {gp_e2_catalog(c[..],w[..],in/4,vn/4);}
+ for i:0..<w[0].nt {sb_put(c[..],"T ");sb_int(c[..],w[0].layers+i);sb_put(c[..]," glade/");sb_int(c[..],i);sb_put(c[..]," 250\n");}
+ lb:[1500000]u8;ln:=e2g_record_lines(rec[0..<rn],lb[..]);if ln<0 {ph_die("everglade2 ground record lines overflow");}sb_put(c[..],cast(string)lb[0..<ln]);
+ count:=ne+w[0].nt;at:=32+count*48;gp_word(w[0].out[..],0,0x314b5056);put_u32(w[0].out[..],4,count);put_u32(w[0].out[..],12,E2_PACK_BUDGET);put_u32(w[0].out[..],16,32);put_u32(w[0].out[..],20,at);
+ for i:0..<ne {r:=table+i*48;kind:=int(old[r]);off:=gl_u32(old,r+4);size:=gl_u32(old,r+8);start:=at;
+  if kind==1 {body:=sb_text(c[..]);for ch:body {w[0].out[at]=ch;at+=1;}}
+  else {for k:0..<size {w[0].out[at]=old[off+k];at+=1;}if kind==2 {for k:0..<w[0].nv*32 {w[0].out[at]=w[0].v[k];at+=1;}}if kind==3 {for k:0..<w[0].ni*4 {w[0].out[at]=w[0].i[k];at+=1;}}}
+  for k:0..<48 {w[0].out[32+i*48+k]=old[r+k];}put_u32(w[0].out[..],32+i*48+4,start);put_u32(w[0].out[..],32+i*48+8,at-start);at=((at+3)/4)*4;
+ }
+ for i:0..<w[0].nt {start:=at;for ch:w[0].encoded[i] {w[0].out[at]=ch;at+=1;}nameb:[64]u8;s:[1]Sb;s[0]=sb(nameb[..]);sb_put(s[..],"layer");sb_int(s[..],w[0].layers+i);gp_entry(w[0].out[..],32+(ne+i)*48,4,250,sb_text(s[..]),start,at-start);at=((at+3)/4)*4;}
+ // Patch the fixed-width catalog size without changing any payload offsets.
+ cat_start:=gl_u32(w[0].out[..],36);cat_size:=gl_u32(w[0].out[..],40);for k:cat_start..<cat_start+cat_size-16 {if cast(string)w[0].out[k..<k+6]=="bytes " {value:=at;for j:0..<10 {w[0].out[k+15-j]=cast(u8)(48+value%10);value/=10;}break;}}
+ put_u32(w[0].out[..],8,at);if at>E2_PACK_BUDGET {print("Everglade2 requires % bytes (% vertices, % triangles)\n",at,w[0].nv,w[0].ni/3);ph_die("everglade2 pack exceeds 64 MiB");}if !fs_write(args_at(args[..],2),cast(string)w[0].out[0..<at]) {return 1;}print("Everglade2: % vertices, % triangles, % textures, % bytes; ground: % tiles, % live samples, a % byte record\n",w[0].nv,w[0].ni/3,w[0].nt,at,e2g_live_set(eg[..])[0].n,e2g_live_set(eg[..])[0].live,rn);return 0;
+}

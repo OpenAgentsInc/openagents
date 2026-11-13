@@ -1,7 +1,7 @@
 // Original world geometry/placements and source maps; Echo uses the shared source shader.
 #load "valleycanyon.coax";
-#load "../../../verse/valley/world-materials.coax";
-#load "../../../verse/valley/detail-codec.coax";
+#load "../../../metaverse/valley/world-materials.coax";
+#load "../../../metaverse/valley/detail-codec.coax";
 #test "World sky has a bright horizon and a finite sun disc" {u:[128]f32;u[0]=1280;u[1]=800;u[15]=1;u[19]=1;u[17]=1;u[22]=1;u[25]=1;a:=vw_bg_fs(v4(640,400,0,1),u[..]);#assert a.x>0 && a.w==1;}
 vw_at :: (b:[]u32,at:int)->V3 {return v3(cv_word(b,at),cv_word(b,at+1),cv_word(b,at+2));}
 vw_matrix :: (b:[]u32,at:int,p:V3,w:f32)->V3 {return v3(wg_dot3(vw_at(b,at),p)+cv_word(b,at+3)*w,wg_dot3(vw_at(b,at+4),p)+cv_word(b,at+7)*w,wg_dot3(vw_at(b,at+8),p)+cv_word(b,at+11)*w);}

@@ -23,7 +23,7 @@ feels; it's a vibes call.
 - **Sit well beside Coax and Psionic.** "Written in Coax, runs on ___"
   should read naturally.
 - **Be short and easy to say.** It will be used in docs, code
-  (`verse/<name>/`), commit messages and conversation.
+  (`metaverse/<name>/`), commit messages and conversation.
 - **Leave room for a family.** Engine, editor and realm builder may want
   related names.
 
@@ -134,7 +134,7 @@ Applied 2026-10-31:
 - the [Aethyr book](../../metaverse-engine/book/README.md) (`metaverse-engine/book/`), which
   builds the engine from scratch and took the Psionic book's physics-engine
   and spacecraft parts;
-- AGENTS.md's `metaverse-engine/` and `verse/` rows and the Coax and Psionic book
+- AGENTS.md's `metaverse-engine/` and `metaverse/` rows and the Coax and Psionic book
   chapters that describe the engine;
 - the changelog and about copy.
 

@@ -9,7 +9,7 @@
 // --fragment chat_fx_fs`), over the glyph and icon atlas the app builds in
 // Coax (components/raster/atlas.coax).
 //
-// It is built on what the realms' host already uses: verse/gpu/vkc (the
+// It is built on what the realms' host already uses: metaverse/gpu/vkc (the
 // device), vks (pipelines from Coax SPIR-V), vkp (the swapchain) and vkw (the
 // window and its seat). An app gives it callbacks and nothing else.
 #ifndef UI_HOST_H

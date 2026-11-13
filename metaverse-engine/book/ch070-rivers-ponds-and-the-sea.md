@@ -1,9 +1,9 @@
 # 70. Rivers, ponds and the sea
 
 > **Status: unimplemented — design draft.** Today water is a complete
-> private system in `verse/`: phases W1–W11 of
+> private system in `metaverse/`: phases W1–W11 of
 > [docs/verse/water.md](../../docs/verse/water.md) are done in
-> [`verse/water.coax`](../../verse/water.coax) and its sibling modules, and
+> [`metaverse/water.coax`](../../metaverse/water.coax) and its sibling modules, and
 > Everglade and the water lab (`/realms/waterlab`) use them. No other realm
 > can load water through the OpenAgents Metaverse Engine. This chapter plans water as a Metaverse Engine
 > module with the same formulas and checks. The Metaverse Engine now has the bounded
@@ -53,22 +53,22 @@ module that any realm declares, instead of code that belongs to Everglade.
    depth factor, finite-depth dispersion, and directional spreading. Mode
    amplitudes come from the spectrum integrated over each cell, and a
    radix-2 inverse FFT makes height, choppy displacement, slopes and the
-   Jacobian per tile ([`verse/water-spectrum.coax`](../../verse/water-spectrum.coax)).
+   Jacobian per tile ([`metaverse/water-spectrum.coax`](../../metaverse/water-spectrum.coax)).
 7. **The ocean at scale.** A clipmap of nested grids whose levels snap to
    twice their spacing, with no cracks at level seams, a skirt to 40 km,
    and streamed 8 m cells in a pool of 48 slots
-   ([`verse/water-ocean.coax`](../../verse/water-ocean.coax)). Streaming
+   ([`metaverse/water-ocean.coax`](../../metaverse/water-ocean.coax)). Streaming
    changes cost, never what is drawn.
 8. **The look and under the water.** Seven presets (Jerlov absorption,
    in-scatter, foam, roughness, shore band, crest scattering), phone and
    desktop tiers (6 against 16 detail waves), the waterline across the near
    plane, and Beer–Lambert fog per channel
-   ([`verse/water-look.coax`](../../verse/water-look.coax),
-   [`verse/water-under.coax`](../../verse/water-under.coax)).
+   ([`metaverse/water-look.coax`](../../metaverse/water-look.coax),
+   [`metaverse/water-under.coax`](../../metaverse/water-under.coax)).
 9. **People in the water.** Wading, swimming, diving and rowing as media
    the character controller of [chapter 9](ch009-a-character-moves.md)
    switches between (`MEDIUM_BOAT` and the wade rules in
-   [`verse/water-wade.coax`](../../verse/water-wade.coax)); ripples, wakes
+   [`metaverse/water-wade.coax`](../../metaverse/water-wade.coax)); ripples, wakes
    and spray as effects from [chapter 72](ch072-effects-made-of-particles.md).
 
 ## What exists today
@@ -85,13 +85,13 @@ module that any realm declares, instead of code that belongs to Everglade.
 
 - [docs/verse/water.md](../../docs/verse/water.md): phases W1–W11, each with
   its port notes and differences from the previous Rust engine.
-- [verse/water.coax](../../verse/water.coax) and
+- [metaverse/water.coax](../../metaverse/water.coax) and
   [metaverse-engine/physics/rigid.coax](../physics/rigid.coax): the W1 physics, with all
   fifteen of the old tests as `#test` checks.
 - [everglade/legacy/v1/river.coax](../../everglade/legacy/v1/river.coax): Everglade's
   4 m river, its current round the bridge piles, and its rowboats.
 - [metaverse-engine/world/water-weather.coax](../world/water-weather.coax) and
-  [verse/water-spells.coax](../../verse/water-spells.coax): rising water in
+  [metaverse/water-spells.coax](../../metaverse/water-spells.coax): rising water in
   rain, and spells that act on water.
 
 ## What it builds
@@ -108,7 +108,7 @@ module that any realm declares, instead of code that belongs to Everglade.
 
 The chapter is done when:
 
-- Every `#test` in today's `verse/water*.coax` modules passes against the
+- Every `#test` in today's `metaverse/water*.coax` modules passes against the
   Metaverse Engine modules with the same tolerances.
 - The gameplay surface is the same bit for bit on a phone client and a
   desktop client at every tick, and a late joiner folds to the same tick.

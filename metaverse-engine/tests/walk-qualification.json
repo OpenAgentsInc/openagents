@@ -4,7 +4,7 @@
   "compiler_sha256": "d7bb42979103435a0adfd543368fc2e915dad697fe0b877a0296d62fe08a1905",
   "sources": {
     "metaverse-engine/walk.coax": "a85f3e5de807a9e81f0b743080799cee9a8ee9d43d65b8eb0ed056ed10808608",
-    "verse/stand.coax": "a6c5d351b77cf14313a7cb97232894ad10525f148aa499ab87c01fc908e4f35b",
+    "metaverse/stand.coax": "a6c5d351b77cf14313a7cb97232894ad10525f148aa499ab87c01fc908e4f35b",
     "metaverse-engine/loop.coax": "6dbb01f91a5cbee7338b71e18ce3577a9b56d7320432697eba034df94c16eb7b",
     "metaverse-engine/input.coax": "385291bb7460cc68813294756ca534d9a76bd85adc6829edbc6bd8b1bd68f974",
     "metaverse-engine/query.coax": "e040eb7558a706da6251edaf691fae1eee344c3d20a8ebbab4a0e580fa2a2efa",
@@ -60,7 +60,7 @@
     "waivers": 0
   },
   "facade": {
-    "path": "verse/player.coax",
+    "path": "metaverse/player.coax",
     "sha256": "14706eb476d9dfa6ae7a16cf7998800e2148eb70700b6c9d0499359c99e1d4a9",
     "scope": "Thin old-name C wrappers delegate to the authoritative core. No core C exports; legacy C ABI is qualified separately by the pinned native fixture."
   },

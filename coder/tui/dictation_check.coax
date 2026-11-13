@@ -3,7 +3,7 @@
 // pseudo-terminal (100x30, headless), types keys into it as a person would,
 // and reads the screen through the VT emulator. The gesture starts the real
 // `openagents dictate --events` (apps/openagents-cli/build/openagents) with
-// the recorded-audio capture backend (verse/voice-host/fixtures/wait-stop.wav,
+// the recorded-audio capture backend (metaverse/voice-host/fixtures/wait-stop.wav,
 // paced in real time), so Coder's own Enter stops it and its own Esc cancels
 // it. No microphone is opened, no sound is played and no window is shown.
 // Every case also reads CODER_DICTATION_TRACE: the no-submit counters
@@ -171,7 +171,7 @@ tool_main :: () -> int #export_c #effects(all) {
   ip: [8000] u8; inherited := proc_getenv("PATH", ip[..]);
   d[0].npath = cat(d[0].path[..], 0, "PATH="); d[0].npath = cat(d[0].path[..], d[0].npath, norec);
   d[0].npath = cat(d[0].path[..], d[0].npath, ":"); d[0].npath = cat(d[0].path[..], d[0].npath, inherited);
-  wb: [1200] u8; wav := fs_join(d[0].repo, "verse/voice-host/fixtures/wait-stop.wav", wb[..]);
+  wb: [1200] u8; wav := fs_join(d[0].repo, "metaverse/voice-host/fixtures/wait-stop.wav", wb[..]);
   // 4 s of digital silence, as a recorded input
   qb: [1200] u8; quiet := fs_join(d[0].tmp, "silence.wav", qb[..]);
   pcm: [64000] int; bytes: [128100] u8; w := wav_write(pcm[..], 1, 16000, bytes[..]);

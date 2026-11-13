@@ -14,11 +14,11 @@ The water system's test scene at https://openagents.com/worlds/waterlab: a sea t
 
 ## How it is made
 
-- `verse/water-spectrum.coax` is the sea: the spectrum, the transform, the foam and the surf, with its checks.
-- `verse/water-ocean.coax` is the rings and the 8 m squares, with the checks that every visitor's sea agrees.
+- `metaverse/water-spectrum.coax` is the sea: the spectrum, the transform, the foam and the surf, with its checks.
+- `metaverse/water-ocean.coax` is the rings and the 8 m squares, with the checks that every visitor's sea agrees.
 - `apps/openagents-web/waterlab.coax` is the world, `waterlab-face.c` binds it for the browser, `waterlab.wgsl` draws it.
 - `docs/verse/water.md` in the OpenAgents repository says what of the water system is done and what is next.
 
 ## Make your own world
 
-An agent can build one from a shallow clone of the repository and open a pull request: [verse/SKILL.md](https://github.com/OpenAgentsInc/openagents/blob/main/verse/SKILL.md).
+An agent can build one from a shallow clone of the repository and open a pull request: [metaverse/SKILL.md](https://github.com/OpenAgentsInc/openagents/blob/main/metaverse/SKILL.md).

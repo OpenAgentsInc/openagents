@@ -66,7 +66,7 @@ fairy 695000
 # The owned two-handed weapon clips (everglade/scene/two-hand-rig.coax) and two-handed grip: 2,360,897 bytes measured; about 3% headroom.
 # main reached 2,440,994 bytes (ability sounds and more); the two-handed clips keyed at 60 frames a
 # second for the clearance check bring it to 2,447,639; about 2% headroom.
-# Experimental's ten-times dungeon (verse/experimental-dungeon.coax), its 45-monster roster and torch
+# Experimental's ten-times dungeon (metaverse/experimental-dungeon.coax), its 45-monster roster and torch
 # lights add about 37 KB; about 2% headroom.
 # The hotbar's target, option and slot-level choices on the engine's chosen-target path (#13038):
 # 2,576,249 bytes measured 2026-11-08; about 0.3% headroom.
@@ -112,7 +112,7 @@ archery-range 2850000
 # Bitcoin Lab's walk (bitcoin-lab-walk.coax): an Everglade zone as the range's, bare and level, with the
 # lesson (the book's SHA-256, hex and base64), the pixel face and the stations' quads. Measured below.
 bitcoin-lab-walk 2950000
-# Nostr Lab's walk (nostr-lab-walk.coax): the same lab walk (verse/lab-walk.coax) with the Nostr
+# Nostr Lab's walk (nostr-lab-walk.coax): the same lab walk (metaverse/lab-walk.coax) with the Nostr
 # lesson, which signs its event at run time (event_sign.coax, secp256k1's tables): 2,941,282 bytes.
 # Its 38 NIP stations (nostr-lab-cards.coax, #13366) each run that NIP's library code in the page:
 # the relay's admission and store, NIP-44, gift wrap, zaps, Wallet Connect, seed words (the BIP-39

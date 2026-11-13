@@ -25,7 +25,7 @@
   "web_sha256": "44ab4da39da719ee266e0a502243f42dd9b35ad35e4e7c3d91de5ff14f3eb0cb",
   "web_bytes": 14945880,
   "normalization": {
-    "tool": "verse/tools/humans/character_font.coax",
+    "tool": "metaverse/tools/humans/character_font.coax",
     "vhea_version_before": "0x00010001",
     "vhea_version_after": "0x00010000",
     "all_other_tables_byte_identical_except_head_checksum": true,

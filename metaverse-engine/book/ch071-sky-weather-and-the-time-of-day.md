@@ -5,10 +5,10 @@
 > design draft. Today each realm keeps its own
 > clock of the day and its own sky: Everglade's 48-minute day and weather
 > schedule, Fairy Forest's day and night in
-> [`verse/fairy-forest/night.coax`](../../verse/fairy-forest/night.coax),
+> [`metaverse/fairy-forest/night.coax`](../../metaverse/fairy-forest/night.coax),
 > Hecate's Cemetery's moon in
 > [`apps/openagents-web/villa.coax`](../../apps/openagents-web/villa.coax),
-> and the space realms' starfield in [`verse/stars.coax`](../../verse/stars.coax).
+> and the space realms' starfield in [`metaverse/stars.coax`](../../metaverse/stars.coax).
 > This chapter plans one realm environment clock that drives the sky, the
 > weather and [chapter 13](ch013-light-and-shadow.md)'s lighting record.
 > Shared sky and cloud rendering lives in `metaverse-engine/render/sky.coax`;
@@ -39,7 +39,7 @@ messages.
    it never owns time.
 2. **Sun and moon.** The sun's elevation runs from `sun_low` at midnight to
    `sun_high` at noon as `0.5 (low + high) − 0.5 (high − low) cos(2π clock)`
-   (`verse_style_sun_elevation` in [`verse/style-preset.coax`](../../verse/style-preset.coax)).
+   (`verse_style_sun_elevation` in [`metaverse/style-preset.coax`](../../metaverse/style-preset.coax)).
    The moon's phase is the age since the mean new moon of 6 January 2000
    18:14 UTC over the mean synodic month, 29.530588853 days
    (`villa_moon_phase`); the lit share of the disc is `(1 − cos 2π phase) / 2`.
@@ -47,7 +47,7 @@ messages.
 3. **Palette through the day.** Style keys at four clock keys (midnight,
    dawn, noon, dusk) mix by the clock. Dusk warms a palette and night takes
    it to a blue dusk (`verse_style_flat_time` in
-   [`verse/style.coax`](../../verse/style.coax)).
+   [`metaverse/style.coax`](../../metaverse/style.coax)).
 4. **The sky.** A painted sky and haze per style; for space, star layers in
    screen cells picked by a hash, with twinkle, and a Sun of disc, corona
    and halo (`verse_star_layer`, `verse_sun_disc`, `verse_sun_corona`).
@@ -72,16 +72,16 @@ messages.
 
 ## What exists today
 
-- [verse/style-preset.coax](../../verse/style-preset.coax) and
-  [verse/style.coax](../../verse/style.coax): style keys per clock key, sun
+- [metaverse/style-preset.coax](../../metaverse/style-preset.coax) and
+  [metaverse/style.coax](../../metaverse/style.coax): style keys per clock key, sun
   elevation, haze and light shafts.
 - [metaverse-engine/world/water-weather.coax](../world/water-weather.coax): the weather
   schedule, SRD effects, overlays, ground wetness and rising water.
-- [verse/fairy-forest/night.coax](../../verse/fairy-forest/night.coax): the
+- [metaverse/fairy-forest/night.coax](../../metaverse/fairy-forest/night.coax): the
   three clock modes and resting to night or morning.
 - [apps/openagents-web/villa.coax](../../apps/openagents-web/villa.coax):
   the moon's phase and its fixed direction, about 33 degrees up.
-- [verse/stars.coax](../../verse/stars.coax): the starfield and the Sun for
+- [metaverse/stars.coax](../../metaverse/stars.coax): the starfield and the Sun for
   space backgrounds.
 
 ## What it builds

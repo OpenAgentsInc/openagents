@@ -42,10 +42,10 @@ so they never disturb a session someone is using.
 
 | Phase | What | Exit check |
 | --- | --- | --- |
-| **G0** | A SPIR-V writer in Coax (`verse/gpu/spirv.coax`), and a headless Vulkan compute host in C (`verse/gpu/vk.c`) that runs a Coax-built module on the GPU | The GPU's output matches the same Coax function run on the CPU, pixel for pixel within one step of rounding; the module passes the Vulkan validation layers |
-| **G1** | `coax spirv FILE`: the checked scalar f32/bool subset that `coax metal` accepts, lowered to SPIR-V functions. The lowering is Coax (`coax/lib/compiler/`); the C++ driver only hands over the tree and writes words | `verse/light.coax` on the GPU agrees with its C build over a grid of inputs |
+| **G0** | A SPIR-V writer in Coax (`metaverse/gpu/spirv.coax`), and a headless Vulkan compute host in C (`metaverse/gpu/vk.c`) that runs a Coax-built module on the GPU | The GPU's output matches the same Coax function run on the CPU, pixel for pixel within one step of rounding; the module passes the Vulkan validation layers |
+| **G1** | `coax spirv FILE`: the checked scalar f32/bool subset that `coax metal` accepts, lowered to SPIR-V functions. The lowering is Coax (`coax/lib/compiler/`); the C++ driver only hands over the tree and writes words | `metaverse/light.coax` on the GPU agrees with its C build over a grid of inputs |
 | **G2** | Graphics: vertex and fragment entry points; the host draws offscreen, then to a window (a Wayland surface: the desktop app) and to the screen directly (`VK_KHR_display`: a boot session) | A frame read back from the GPU matches a golden image; the window runs at the display's rate |
-| **G3** | The realm contract on Vulkan: the WebGPU half of `host.js` in C (vertex and uniform buffers, textures, asset packs, frame pacing, input, audio) | Star Catcher runs native with its light (`verse/kms/starcatch-light.coax`) on the GPU |
+| **G3** | The realm contract on Vulkan: the WebGPU half of `host.js` in C (vertex and uniform buffers, textures, asset packs, frame pacing, input, audio) | Star Catcher runs native with its light (`metaverse/kms/starcatch-light.coax`) on the GPU |
 | **G4** | What shaders need from the language: vector types or a checked vector library, texture sampling, and declared GPU resources (spec section 15 already plans "shared GPU resource declarations") | Spec and checker updated; each new form has `#test` checks and a refusal for what it doesn't accept |
 | **G5** | Everglade: `everglade.wgsl` and `everglade-fx.wgsl` rewritten as Coax procedures, pass by pass | Each pass matches headless-Chrome golden frames of the web build within a stated tolerance; Everglade runs native at 60 fps on the 4080 |
 | **G6** | One shader source: Coax also emits WGSL (retiring `coax/web/wgsl.py`), so the web build draws from the same Coax; then the other realms move | No hand-written WGSL left in `apps/openagents-web/` |
@@ -113,19 +113,19 @@ the checker) and grows the lowering:
   bloom and post, fx and particles. Each pass is a Coax file beside
   everglade.coax with `#test` checks. It is compared with a headless-Chrome
   frame of the web build: the same pack, page facts, clock and golden mode,
-  and the same frame through `verse/native` (realm-host), so both draw the
+  and the same frame through `metaverse/native` (realm-host), so both draw the
   same scene. `coax/web/wgsl-coax.coax` translates the WGSL to Coax
   (`apps/openagents-web/gpu/everglade-v1/gpu.coax`, `gpu-fx.coax`; `metaverse-engine/gpu/wgsl.coax` is
   WGSL's vocabulary). Since G6 both are the source, and the web build's
-  `everglade.wgsl` and `everglade-fx.wgsl` are written from them. `verse/gpu/everglade-pass.coax
+  `everglade.wgsl` and `everglade-fx.wgsl` are written from them. `metaverse/gpu/everglade-pass.coax
   HOST PASS` checks a pass. The live shaders hash with
   `fract(sin(x) * 43758.5)`, and sin of so large an argument is each GPU's
   own (WGSL bounds its error only on [-pi, pi]). So the check gives both
-  sides one integer hash (`verse/gpu/int-hash.coax`, copies only) and
+  sides one integer hash (`metaverse/gpu/int-hash.coax`, copies only) and
   allows a stated number of values past an f16's rounding: edge pixels
   whose test lands within float rounding. `--live` reports the live hashes
   too.
-- **The scene host** (`verse/gpu`) does host.js's loadShaders, bindScene,
+- **The scene host** (`metaverse/gpu`) does host.js's loadShaders, bindScene,
   postTargets and draw over Vulkan: the shadow map, the light and aux
   targets, the water copies, the bloom chain and post, then the HUD. The
   pack's texture layers are 27 JPEGs and 9 PNGs, so the decoders come too,
@@ -134,7 +134,7 @@ the checker) and grows the lowering:
 ## Rules for this work
 
 - Shaders are Coax. A realm's light is a Coax procedure with `#test`
-  checks, like `verse/light.coax`, and the GPU form is generated.
+  checks, like `metaverse/light.coax`, and the GPU form is generated.
 - The SPIR-V writer and the lowering are Coax. The C++ compiler driver
   only observes the checked tree and writes the words, as it does for
   `coax cuda`.
@@ -162,8 +162,8 @@ play-through on the 4080's screen (NEEDS_OWNER.md), after which the
 Chromium kiosk can be retired. The Mac app over Metal and the later GPU
 tasks (native-gpu.json) come after the port.
 
-- 2026-10-30: plan written. G0 started: `verse/gpu/`.
-- 2026-10-30: G0 compute passes on `coderos-4080`, headless. `verse/gpu/build.sh`
+- 2026-10-30: plan written. G0 started: `metaverse/gpu/`.
+- 2026-10-30: G0 compute passes on `coderos-4080`, headless. `metaverse/gpu/build.sh`
   then `vk-check 1920x1080` runs the 393-word Coax module on the RTX 4080:
   2,060,582 pixels exact, 13,018 one rounding step off (f32 to u8), 0 wrong,
   and 0 errors and 0 warnings under `VK_LAYER_KHRONOS_validation`.
@@ -171,29 +171,29 @@ tasks (native-gpu.json) come after the port.
   the checked tree to `coax/lib/compiler/spirv.coax` (tree code v1), which
   writes the SPIR-V and passes the zero-survivor mutation gate. Kernels keep
   IEEE NaN and infinity (`SPV_KHR_float_controls`), and `pow` keeps C's
-  meaning for a negative or zero base. `verse/gpu/light-check.sh coderos-4080`
-  runs all 18 procedures of `verse/light.coax` on the RTX 4080 against the C
+  meaning for a negative or zero base. `metaverse/gpu/light-check.sh coderos-4080`
+  runs all 18 procedures of `metaverse/light.coax` on the RTX 4080 against the C
   build over 65,536 rows each, under the validation layers.
 - 2026-10-31: G2 offscreen: `coax spirv --fill` (a full-screen pass) and
   `--stroke` (triangles from the realm's vertices, blended one plus one),
   drawn by `vkc_render` into an RGBA f32 image. Star Catcher's sky
-  (`verse/kms/starcatch-light.coax`) is now three scalar channel procedures
+  (`metaverse/kms/starcatch-light.coax`) is now three scalar channel procedures
   that the CPU and the GPU both call. Its star hash was `fract(sin(..)*43758)`,
   which scales sin's last-bit error by about 43,758 and put stars in different
   cells on the GPU (13,748 pixels off by up to 232/255). It is now the mod-289
   permutation over whole numbers, exact in f32 on any hardware. The sky has
-  a different star field, equally random. `verse/gpu/frame-check.sh
+  a different star field, equally random. `metaverse/gpu/frame-check.sh
   coderos-4080` steps the realm 120 frames at 1920x1080, as
   `verse-kms --headless` does, and draws it on the RTX 4080: 2,071,258 pixels
   exact, 2,342 within 1/255, 0 further, and 0 errors and 0 warnings under the
   validation layers. The window and the boot session are the next tasks
   (gpu-window, gpu-display-session).
-- 2026-10-31: G2 window: `verse/gpu/vk-window.c`, run by `verse/gpu/window.sh
+- 2026-10-31: G2 window: `metaverse/gpu/vk-window.c`, run by `metaverse/gpu/window.sh
   HOST [--fullscreen] [--seconds N]`. An xdg-shell window (server-side
   decorations, resize, full screen) with a FIFO swapchain. Each frame it draws
   the offscreen pipeline (`vkc_target`, the passes frame-check uses) and blits
   it to the swapchain image. Keys come from the seat (evdev codes through
-  `verse/kms/keys.h`, which kms.c now shares), and the pointer is hidden over
+  `metaverse/kms/keys.h`, which kms.c now shares), and the pointer is hidden over
   the window. On `coderos-4080`'s desktop (coder-compositor, DP-1 at 59.951 Hz),
   Star Catcher ran windowed at 1271x1428 for 60 s: 3,599 frames (59.97 a
   second), 0 dropped where presented, 0 of 3,598 compositor frame callbacks
@@ -206,21 +206,21 @@ tasks (native-gpu.json) come after the port.
   not confirmed. A high-priority queue (`VK_KHR_global_priority`) is not
   permitted for this user. The full-screen check is the boot session's job
   (gpu-display-session), where nothing else shares the display.
-- 2026-10-31: G2 display session: `verse/gpu/vk-display.c`, run by
-  `verse/gpu/display.sh HOST [--seconds N] [--demo] [--shot-at S]`. It switches
+- 2026-10-31: G2 display session: `metaverse/gpu/vk-display.c`, run by
+  `metaverse/gpu/display.sh HOST [--seconds N] [--demo] [--shot-at S]`. It switches
   to a free VT so the desktop pauses, takes DRM master, and hands the connector
   to Vulkan (`VK_EXT_acquire_drm_display`). It then presents with
   `VK_KHR_display` in FIFO at the mode's rate, through the same offscreen
   pipeline as the window. The window and the display share the swapchain
   presenter (`vkp.h`) and the realm-on-GPU code (`vkr.h`). Keys come from evdev,
-  grabbed (`verse/kms/evdev.h`, moved out of kms.c). Escape, `--seconds`,
+  grabbed (`metaverse/kms/evdev.h`, moved out of kms.c). Escape, `--seconds`,
   SIGINT and SIGTERM end it. A root watchdog kills it and switches back if it
   outlives the limit by 20 s. On `coderos-4080` (RTX 4080, DP-1 2560x1440 at
   59.951 Hz, nobody using the screen), a 20 s demo ran 1,196 frames with
   0 dropped (longest 20.3 ms) and validation 0/0. `--shot` copies the image
   presented at 6 s out of the swapchain, and it shows the realm: the sky,
   moon, stars, basket and score. With a virtual keyboard
-  (`verse/gpu/vk-escape.c`, uinput) pressing Escape at 8 s, a 30 s run ended
+  (`metaverse/gpu/vk-escape.c`, uinput) pressing Escape at 8 s, a 30 s run ended
   "because Escape was pressed" after 420 frames. Both runs returned to VT 1,
   and coder-compositor resumed (it reopened the inputs and set the mode
   again). A grim capture from it afterwards showed the desktop as it was (no
@@ -230,7 +230,7 @@ tasks (native-gpu.json) come after the port.
   captured presented image, plus present timing locked to the display's
   vblank. Booting a machine straight into this (a session entry in the host's
   NixOS config) is not wired: that is a change to the host's config.
-- 2026-10-31: G3 begins with Everglade's game natively: `verse/native/`.
+- 2026-10-31: G3 begins with Everglade's game natively: `metaverse/native/`.
   `build.sh everglade OUT` compiles the same Coax and the same browser face
   (`everglade-face.c`) with gcc instead of to wasm32. `realm-host.c` does
   what host.js does without the GPU: an arena, the asset pack read from a
@@ -253,9 +253,9 @@ tasks (native-gpu.json) come after the port.
   structs and arrays, conversions, loops, calls with per-binding copies, and
   each GPU procedure. `metaverse-engine/gpu/shader.coax` is the vector, matrix and
   texture library, with CPU bodies and `#test` checks.
-  `verse/gpu/shaders/quad.coax` uses every operator, conversion, GPU procedure
-  and binding kind. `verse/gpu/vks.c` draws it: pipelines, textures,
-  samplers, targets and depth. `verse/gpu/shader-check.sh coderos-4080` draws
+  `metaverse/gpu/shaders/quad.coax` uses every operator, conversion, GPU procedure
+  and binding kind. `metaverse/gpu/vks.c` draws it: pipelines, textures,
+  samplers, targets and depth. `metaverse/gpu/shader-check.sh coderos-4080` draws
   it on the RTX 4080 against the same procedures run on the CPU: 40,960
   pixels exact, 24,576 within 1e-6, 0 wrong (largest difference 2.98e-8),
   and validation 0/0.
@@ -265,7 +265,7 @@ tasks (native-gpu.json) come after the port.
   texture sizes, and a vector or struct `ifx` as a branch and an `OpPhi`
   (OpSelect takes no scalar condition for those before SPIR-V 1.4). Its
   gates pass: 31 `#test` checks and zero mutation survivors.
-  `verse/gpu/everglade-pass.coax coderos-4080 bg --live` uses frame 90's
+  `metaverse/gpu/everglade-pass.coax coderos-4080 bg --live` uses frame 90's
   2,300 uniforms from the wasm. Headless Chrome draws the WGSL, and the RTX
   4080 draws the Coax under validation, 0 errors and 0 warnings, at 320x180
   with two rgba16float targets. With one hash on both sides, 15 of 460,800
@@ -275,7 +275,7 @@ tasks (native-gpu.json) come after the port.
   platforms' sin, not the port.
 - 2026-10-31: G5, the scene pass. A private variable only an entry writes
   (`paint_leaf_far`) is translated as the entry's own local, handed down by
-  value. `verse/gpu/vk-passes.c` draws a spec of passes: buffers, the index
+  value. `metaverse/gpu/vk-passes.c` draws a spec of passes: buffers, the index
   buffer and the wasm's draw list, a mipmapped layer array, samplers, and a
   depth map one pass draws and the next samples. vks gained mip levels, draw
   lists, depth bias and a `less` comparison sampler. `golden/pass.js` draws
@@ -326,7 +326,7 @@ tasks (native-gpu.json) come after the port.
   data: 34 good and 65 refused files checked, 1,347 mutants, 0 survived), and
   `image.coax` (either format, 2x2 mips, the browser's upscale of a half-size
   layer and its premultiplied round trip; 0 survivors). All 27 pack JPEGs
-  decode to PIL's bytes. `verse/gpu/layers.coax LIST OUT SIDE` writes the
+  decode to PIL's bytes. `metaverse/gpu/layers.coax LIST OUT SIDE` writes the
   layers file in about 2.5 s; `everglade-pass --native-layers` draws the
   scene pass with them: 343 of 460,800 values past the tolerance (313 with
   the browser's decode, 400 allowed).
@@ -342,7 +342,7 @@ tasks (native-gpu.json) come after the port.
   the realm's C (realm-host) each frame, writes its uniforms, stores (on a
   version change), particles and draw list into the spec's buffers in place,
   and presents the post target on the screen (`vkd.c`, the display
-  takeover now shared with vk-display; `vkp_present`). `verse/gpu/realm.sh
+  takeover now shared with vk-display; `vkp_present`). `metaverse/gpu/realm.sh
   HOST check` draws 90 golden frames offscreen: the 90th is vk-passes'
   frame to the bit, validation 0/0. On the RTX 4080 the realm's step is
   about 2 ms and the GPU's frame 4.1 ms at 2560x1440 (6.9 ms at 3840x2160).
@@ -355,7 +355,7 @@ tasks (native-gpu.json) come after the port.
   option `vertices=NAME:FLOATS`, a vec4f attribute per four floats, and
   blend `max`, which vks and the browser runner both take); wasm-run dumps
   them as hud.bin. post with the HUD against the browser: 15 passes, 639 of
-  230,400 values past the tolerance, validation 0/0. `verse/kms/mice.h`
+  230,400 values past the tolerance, validation 0/0. `metaverse/kms/mice.h`
   reads the mice (grabbed, relative motion kept inside the screen) as
   host.js's pointer and wheel, and vk-realm draws the pointer as a dot after
   the HUD. On the RTX 4080 at 2560x1440: 1,434 frames in 23.9 s (59.94 a
@@ -425,7 +425,7 @@ tasks (native-gpu.json) come after the port.
     metaverse-engine/gpu/wgsl.coax), and writes a store to a vector's element by a
     dynamic index as the vector with it set.
   - realm (the haunted house) and waterlab follow, 0 blocks changed. realm
-    loads verse/light.coax, whose bare lo, hi and smooth are procedures, and
+    loads metaverse/light.coax, whose bare lo, hi and smooth are procedures, and
     Coax refuses a local of a procedure's name, so metaverse-engine/gpu/shader.coax and
     metaverse-engine/gpu/wgsl.coax name theirs low, high and blend.
   - Every other page's module follows: admin, changelog, characters, chat,
@@ -439,9 +439,9 @@ tasks (native-gpu.json) come after the port.
     hand modules: seven 0 blocks changed; characters and project animate
     (their hand module differs from itself by more than the Coax one does).
     No page's WGSL is written by hand any more, and none is to be: the realm
-    template (verse/realm-template/gpu/starcatch.coax, A/B'd as a mounted
+    template (metaverse/realm-template/gpu/starcatch.coax, A/B'd as a mounted
     realm in one stage: 0 blocks changed against its hand WGSL, now deleted)
-    gives a new realm its shaders in Coax, verse/SKILL.md says so, and
+    gives a new realm its shaders in Coax, metaverse/SKILL.md says so, and
     build.sh writes every gpu/*.module.
   - And natively: every entry of every gpu/*.coax module lowers with
     `coax spirv` (each fragment with its vertex), the fixture's and the
@@ -449,11 +449,11 @@ tasks (native-gpu.json) come after the port.
     accepts both). What is left for every realm native is the host: each
     realm's game linked natively as Everglade's is, and a navigation to
     another realm followed.
-  - Hold the Stair runs natively (`REALM=stair verse/gpu/realm.sh HOST
+  - Hold the Stair runs natively (`REALM=stair metaverse/gpu/realm.sh HOST
     check|screen`): no pack, the face built with the compiler's struct
     defaults (`coax_default_T`) as wasm.sh builds it (Everglade's now too), the host's optional
-    exports and sockets as host.js has them. verse/native/check.sh HOST stair
-    matches the wasm frame for frame while it plays; verse/gpu/flat-pass.coax
+    exports and sockets as host.js has them. metaverse/native/check.sh HOST stair
+    matches the wasm frame for frame while it plays; metaverse/gpu/flat-pass.coax
     (bg, then the strokes blended max, as host.js draws a realm with no scene)
     matches the browser on the 4080 (0 of 230400 values past tolerance, the
     sin hashes one integer hash: int-hash --page), and vk-realm's 90th frame
@@ -461,7 +461,7 @@ tasks (native-gpu.json) come after the port.
   - Belt 2200 runs natively the same way (`REALM=belt`): check.sh HOST belt
     matches the wasm frame for frame (its lockstep actions included), and
     flat-pass matches the browser (0 of 230400 past tolerance) once int-hash
-    --page also swaps verse/stars.coax's starfield hash (an integer-hash copy
+    --page also swaps metaverse/stars.coax's starfield hash (an integer-hash copy
     loaded instead); vk-realm's 90th frame is vk-passes' to the bit, 0.84 ms
     of GPU a frame at 3840x2160.
   - The water lab runs natively (`REALM=waterlab`): its game matches the
@@ -481,19 +481,19 @@ tasks (native-gpu.json) come after the port.
   - The galaxy runs natively (`verse`, the verse app's page 1: vk-realm and
     realm-run take --page, the host's coaxial_page optional): its game
     matches the wasm, and its text is drawn from the sans atlas host.js makes
-    with the browser's own font, baked once by verse/tools/sans-atlas.coax
+    with the browser's own font, baked once by metaverse/tools/sans-atlas.coax
     (headless Chrome draws it as sansAtlas does; one screenshot of the levels
     as grey, checked against the script's checksum) into
-    verse/native/sans-atlas.bin, which the spec's `atlas` directive makes the
+    metaverse/native/sans-atlas.bin, which the spec's `atlas` directive makes the
     same premultiplied white texture in vk-spec and in pass.js. flat-pass
     matches the browser (0 of 230400 past tolerance); vk-realm's 90th frame
     is vk-passes' to the bit.
   - Travel: a realm's navigation (action 1) is remembered by the host and
-    mapped to the realm it opens (rh_realm_of: /realms the galaxy (/verse/galaxy until it was retired on
+    mapped to the realm it opens (rh_realm_of: /realms the galaxy (/metaverse/galaxy until it was retired on
     2026-10-31), / and /new-land the Grid, /realms/SLUG that realm; a tip page,
     the builder or another site is the web's; realm-run --test-travel checks 22 paths).
     vk-realm --go FILE writes the slug and leaves with status 3, and
-    verse/gpu/realm.sh, given several realms (REALM="verse orbitleague ..."),
+    metaverse/gpu/realm.sh, given several realms (REALM="verse orbitleague ..."),
     builds each in its own directory and, on the screen, starts the realm the
     slug names when it is native, else keeps the player where they were.
     `REALM="verse orbitleague belt" REALM_PICK=6 realm.sh HOST check` picks
@@ -519,7 +519,7 @@ tasks (native-gpu.json) come after the port.
     --libraries REALM` reads them from apps/openagents-web/build.sh), and
     check.sh steps them (Enter, a click, space, the arrows, W held). A
     native realm now links musl's transcendental math
-    (verse/native/musl-math.sh) ahead of glibc's: wasi-libc's libm is
+    (metaverse/native/musl-math.sh) ahead of glibc's: wasi-libc's libm is
     musl's, and glibc's sinf differs in the last bit, which the villa's
     walkers compounded to 0.17 apart in ten seconds; with musl's they are
     within rounding (1.2e-7) and its heights the same words. Every realm
@@ -527,13 +527,13 @@ tasks (native-gpu.json) come after the port.
     draws no scene natively yet (its data assets); fairy and belt wait on
     the compiler at main (another agent's parser mutant fails its build).
   - Dead Gears, Ice Cream Man and Hecate's Cemetery (villa) draw natively.
-    verse/gpu/scene-pass.coax checks a scene realm's frame against the
+    metaverse/gpu/scene-pass.coax checks a scene realm's frame against the
     browser as host.js draws it: bg, the draw list through scene_vs and
     scene_fs (group 1 the WGSL's storage names over the frame's stores),
     the particles asset's sparks, then bloom and post where the WGSL has
     post_fs, then the HUD; its index and particles assets come from
     realms.json. --upto ENTRY compares the frame after that entry's pass.
-    int-hash --page now also swaps verse/style.coax's hash (the villa's
+    int-hash --page now also swaps metaverse/style.coax's hash (the villa's
     leaves jitter by it) and reduces sin's argument in a copy of
     metaverse-engine/render/particle-motion.coax (sin of a particle's index times a few is
     each GPU's own). Dead Gears matches with 0 values past the tolerance,
@@ -565,7 +565,7 @@ tasks (native-gpu.json) come after the port.
     0.97, the Stair 1.2, Belt 0.85, water lab 2.5, Orbit League 10.0,
     Dead Gears 1.5, Ice Cream 0.90, villa 1.9, fairy 1.6.
   - Every realm in realms.json is native: the haunted house, the sandbox,
-    the fixture, drop and built join. verse/tools/pack-files.coax makes one
+    the fixture, drop and built join. metaverse/tools/pack-files.coax makes one
     VPK1 pack of a realm's separate data, storage, index and layers assets
     (the haunted house's and the sandbox's), which the native host and
     wasm-run read with --pack; fixture, drop and built run the tracked
@@ -582,7 +582,7 @@ tasks (native-gpu.json) come after the port.
     sandbox 750 (allowed 800: its lights' brightest pixels 0.006 apart in
     the scene, each GPU's exp and pow, spread by the bloom, all within
     0.010). scene-pass --facts FILE gives the page its facts: the fixture
-    opened with ?style=painterly (verse/native/painterly.facts) draws 8
+    opened with ?style=painterly (metaverse/native/painterly.facts) draws 8
     casters and 5184 blades, 0 values past the tolerance against the
     browser, and runs live as realm.sh's `painterly`, its 90th frame
     vk-passes' to the bit, 1.9 ms at 3840x2160. check.sh runs each realm's game against its
@@ -623,7 +623,7 @@ tasks (native-gpu.json) come after the port.
   it), a `var<private>`'s initializer is the entry's (its hull planes were
   zero without it, and the car vanished), the library has `wg_asin` and
   `wg_acos`, and a constructor takes up to 256 arguments. Its module calls
-  none of verse/style.coax's functions, though the hand WGSL carried their
+  none of metaverse/style.coax's functions, though the hand WGSL carried their
   block, so realms.ts takes a module whose Coax source loads the presets.
   stair (Hold the Stair) follows, 0 blocks changed: a `ptr<function, T>`
   parameter is a view of one T and a local whose address is taken is one
@@ -637,7 +637,7 @@ tasks (native-gpu.json) come after the port.
   already from Coax was re-shot with it and matches. The translator also
   reads a uniform's u32 and i32 as their words' bits and knows refract,
   unpack2x16float, sinh and cosh, for waterlab.
-- 2026-10-31: everglade-native-play, online. `verse/native/net.coax` makes
+- 2026-10-31: everglade-native-play, online. `metaverse/native/net.coax` makes
   one HTTPS request the way `coax/web/http-requests.js` asks fetch for one
   (this site's paths only; the player key, an Authorization line, the
   automation mark; Content-Length, chunked or to the close; the answer cut

@@ -2,7 +2,7 @@
 #import "Basic";
 #load "../lib/gptoss/device-host.coax";
 #load "villain-data.coax";
-#load "../../verse/characters/veyr-v2.coax";
+#load "../../metaverse/characters/veyr-v2.coax";
 #load "../../coax/lib/sys/tool.coax";
 #load "../../coax/lib/sys/proc.coax";
 oe_open :: (root:[]u8,model:int,capacity:int,budget:int,source:[]u8)->int #foreign #effects(all);

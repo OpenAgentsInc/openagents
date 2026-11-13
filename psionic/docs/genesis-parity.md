@@ -21,7 +21,7 @@ The work splits along the existing boundary between the two projects.
 - **OpenAgents Metaverse Engine**, the engine realms run on, owns the physics engine: solvers,
   coupling, batching, sensors, rendering hooks, assets, replay and validation,
   as Part IV of the [Metaverse Engine book](../../metaverse-engine/book/README.md) (chapters
-  17–37). The game-layer rigid bodies and contacts already in `verse/` serve
+  17–37). The game-layer rigid bodies and contacts already in `metaverse/` serve
   as independent references for those solvers and later consume them.
 - **Psionic** supplies the tensor programs, compute subset, transforms and
   kernels the solvers are written on, and the learning that uses the engine:

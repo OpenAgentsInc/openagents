@@ -2,7 +2,7 @@
 // private C effects bridge runs the same immutable event through the shared
 // Coax verifier before delivering admitted beacon bytes or activity here.
 #load "splash.coax";
-#load "../../verse/hud.coax";
+#load "../../metaverse/hud.coax";
 #load "../../coax/lib/nostr/json.coax";
 #load "../../coax/web/socket.coax";
 #load "pylon-policy.coax";

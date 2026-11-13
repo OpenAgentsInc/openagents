@@ -1,7 +1,7 @@
 import CryptoKit
 import Foundation
 
-/// Sign in to openagents.com with the phone: verse/phone-signin.coax decides
+/// Sign in to openagents.com with the phone: metaverse/phone-signin.coax decides
 /// whether a scanned, pasted or opened text is one of our codes and writes
 /// the NIP-98 request; this file hashes, signs with the phone's key
 /// (NostrKey) and sends it. The code's secret is never logged.
@@ -71,7 +71,7 @@ struct PhoneSignIn {
     }
 
     /// The NIP-98 Authorization value ("Nostr " + base64 event) for a POST of body to url, signed with
-    /// the phone's key. Coax writes the id's serialization and the event (verse/phone-signin.coax).
+    /// the phone's key. Coax writes the id's serialization and the event (metaverse/phone-signin.coax).
     static func nip98(url: String, body: String, now: Date = Date()) throws -> String {
         let payload = PhoneSignIn.hex(Data(SHA256.hash(data: Data(body.utf8))))
         let pubkey = PhoneSignIn.hex(try NostrKey.publicKey())

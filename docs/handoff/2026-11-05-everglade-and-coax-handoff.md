@@ -61,7 +61,7 @@ git fetch -q && git checkout -q --detach origin/main
 G=/private/tmp/claude-501/-Users-christopherdavid-work-openagents/7212f8f4-e1c3-408c-b1be-66dbf716b6be/scratchpad/build-gate.sh
 $G coax/web/tool.sh coax/web/room/worker.coax apps/openagents-web/build/everglade-room.wasm   # run from the repo root
 $G coax/web/room/build.sh
-cd apps/openagents-web && m=../../verse && $G ../../coax/web/wasm.sh everglade5e.coax everglade5e-face.c build/everglade5e.wasm everglade-step.coax $m/grid.coax $m/everglade/river.coax $m/everglade/guard-guide-policy.coax everglade5e-rules.coax
+cd apps/openagents-web && m=../../metaverse && $G ../../coax/web/wasm.sh everglade5e.coax everglade5e-face.c build/everglade5e.wasm everglade-step.coax $m/grid.coax $m/everglade/river.coax $m/everglade/guard-guide-policy.coax everglade5e-rules.coax
 ```
 
 Then stop the room and page processes by their exact PIDs and start them

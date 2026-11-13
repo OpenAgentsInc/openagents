@@ -1,6 +1,6 @@
 // Everglade II's goblin camp (everglade/server/creatures.coax): where it stands at the clearing's
 // near edge, beside the path's last stretch, and its props. The pack tool
-// (verse/tools/assets/everglade2_pack.coax) places each prop's mesh from this list, and the movement
+// (metaverse/tools/assets/everglade2_pack.coax) places each prop's mesh from this list, and the movement
 // world (everglade/shared/move.coax e2m_world, which the page and the room both step by)
 // gives each one a collider shaped as its mesh's own bounds, so no prop is walked through and nothing
 // stops you where no prop is drawn. Plain numbers only: no drawing.
@@ -19,7 +19,7 @@ E2CampProp :: struct { kit: int; dx: f32; dz: f32; yaw: f32; scale: f32; }
 // metal crates, a barrel and a bench. Each mesh's bounds from its middle at its foot (metres, the
 // kit's own):
 // half across (x), half deep (z), and its height. A round one (the fire, the barrel) is upright. The bounds
-// are the meshes the bake writes (verse/tools/assets/animal_bake.py e2: the kits' OBJ exports, Crate_Wooden
+// are the meshes the bake writes (metaverse/tools/assets/animal_bake.py e2: the kits' OBJ exports, Crate_Wooden
 // at its file's 0.78 scale).
 E2_CAMP_KITS :: 6;
 E2_CAMP_KIT :: [6] string.["Woodfire", "Stall_Empty", "Crate_Wooden", "Crate_Metal", "Barrel", "Bench"];

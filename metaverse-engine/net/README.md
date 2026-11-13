@@ -132,7 +132,7 @@ Orbit League's v2 page is the second realm on both modules (#13277,
 | The others | The ball and the other cars are `NetState` rings read with `net_ring_at`, the jitter buffer's delay behind; a body's turn rides the realm's three scalars and is blended with `net_ring_span` |
 
 The room steps a seat's controls one a tick in the order sent
-(`orbit/server/room.coax`, `ORB_QUEUE`), so the page and the room step the
+(`metaverse/orbit-league/server/room.coax`, `ORB_QUEUE`), so the page and the room step the
 same ones. Your car collides with the ball where it is drawn; car against
 car is the room's alone, and shows as a correction.
 
@@ -197,7 +197,7 @@ does not cover WebTransport, where a lost datagram holds nothing:
   Party health does not create a visible body in `everglade-net.coax`.
   Widening permissions invalidates a baseline and sends an absolute row.
   Narrowing permissions cannot expose a previously private field.
-- Orbit League's room module (`orbit/server/room.coax`, behind the room's one
+- Orbit League's room module (`metaverse/orbit-league/server/room.coax`, behind the room's one
   game registration, `room-games.coax`) calls the same session, accepted-result,
   receipt and field contracts. It runs `orbitleague-game.coax`'s vehicle/ball physics with an
   explicit active-car mask. Unadmitted cars do not collide, take fuel pads

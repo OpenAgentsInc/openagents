@@ -2,7 +2,7 @@
 
 Linux and Metal compile the same portable
 `apps/aethyrforge-desktop/MetalSockets.c` worker implementation.
-`verse/native/host-sockets.c` projects the realm's current Coax transport
+`metaverse/native/host-sockets.c` projects the realm's current Coax transport
 owner into that SDK. It supplies no WebSocket parser, queue-size policy or
 reconnect policy. Protocol, retained-payload leases, command admission and
 main-thread drain budgets remain the shared Coax modules.

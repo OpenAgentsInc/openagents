@@ -61,8 +61,8 @@ check("the prompt names every piece and its bounds",
       and "- lanterns: a ring of glowing lanterns. count 4 to 16 (usually 8). colour: orange, gold, red, green, blue, violet, white. size: small, medium or large" in system
       and "- pond: a pond ringed with stones and bushes. size: small, medium or large" in system and 'answer piece "none"' in system, system)
 
-# The page's catalogue (verse/setpiece.coax) and the server's are the same.
-coax = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "../../../verse/setpiece.coax")).read()
+# The page's catalogue (metaverse/setpiece.coax) and the server's are the same.
+coax = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "../../../metaverse/setpiece.coax")).read()
 def coax_list(name):
     return re.findall(r'"([^"]*)"', re.search(name + r' :: \[[A-Z_]+\] string\.\[([^\]]*)\]', coax).group(1))
 def coax_ints(name):
@@ -77,7 +77,7 @@ for i, n in enumerate(names):
     same = same and cat[n].get("count", [0, 0, 0]) == [lo[i], hi[i], usual[i]]
     same = same and ("colour" in cat[n]) == (n == "lanterns") and cat[n].get("colour", coax_list("COLOUR_NAMES")) == coax_list("COLOUR_NAMES")
     same = same and ("size" in cat[n]) == (n != "flock")
-check("the server's catalogue is the page's (verse/setpiece.coax)", same, cat)
+check("the server's catalogue is the page's (metaverse/setpiece.coax)", same, cat)
 
 status, a = make("forty blue bats", {"piece": "flock", "count": 40, "kind": "bat", "colour": "blue", "size": "large"})
 check("a count is held to the piece's range, and fields it doesn't have are left out", status == 200 and a == {"piece": "flock", "count": 12, "kind": "bat", "model": "gemini-3.8-flash"}, a)

@@ -12,7 +12,7 @@
 // a reload never gets you out of either.
 #load "place-orbit.coax";
 
-EG_PLACE_DEEP :: 1.0;   // m of water over the ground: deeper and you would swim (verse/water-wade.coax SWIM_DEPTH 1.25)
+EG_PLACE_DEEP :: 1.0;   // m of water over the ground: deeper and you would swim (metaverse/water-wade.coax SWIM_DEPTH 1.25)
 
 // The walk-in building (eg-buildings) whose floor (x, z) is on, or -1 outdoors.
 everglade_room_at :: (s: [] Everglade, x: f32, z: f32) -> int #export_c #effects(all) {

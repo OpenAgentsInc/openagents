@@ -65,8 +65,8 @@ CC_TO_MOVE :: [22] CcMove.[
   CcMove.{path = "coax/web/changelog-page.coax", does = CC_MARKDOWN},
   CcMove.{path = "coder/tui/router.coax", does = CC_MARKDOWN | CC_WRAP},
   CcMove.{path = "psionic/lib/book-search/corpus.coax", does = CC_MARKDOWN},
-  CcMove.{path = "verse/edit/edit.coax", does = CC_WRAP},
-  CcMove.{path = "verse/tools/hotbar.coax", does = CC_WRAP}
+  CcMove.{path = "metaverse/edit/edit.coax", does = CC_WRAP},
+  CcMove.{path = "metaverse/tools/hotbar.coax", does = CC_WRAP}
 ];
 
 cc_starts :: (s: string, with: string) -> bool { return s.count >= with.count && cast(string) s[0..<with.count] == with; }

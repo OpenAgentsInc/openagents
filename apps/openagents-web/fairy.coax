@@ -1,17 +1,17 @@
 // Fairy Forest, openagents.com/worlds/fairy-forest: the first crack of the
-// realm verse/fairy-forest/README.md proposes, in the painterly style
+// realm metaverse/fairy-forest/README.md proposes, in the painterly style
 // (docs/verse/art-styles.md). You are a newly woken fairy in a valley that
 // has faded to grey. Press E (BLOOM on a phone) at a faded patch of flowers
 // and colour spreads out from it again. Three of the forest's creatures
 // each have one trouble, that their glade has faded; bloom a glade's
 // patches and its creature is happy (the glyph over its head says how it
 // feels), and one of the heart tree's five roots wakes and glows.
-// The creatures talk (ff-talk, verse/fairy-forest/talk.coax): E by one, or
+// The creatures talk (ff-talk, metaverse/fairy-forest/talk.coax): E by one, or
 // a click or tap on it, opens a talk pane; you type, and its answer comes
 // from the character chat, which knows its trouble and remembers you.
 //
-// The layout, the fade and the troubles are verse/fairy-forest/forest.coax;
-// the stream and the pond are verse/fairy-forest/stream.coax (verse/water.coax
+// The layout, the fade and the troubles are metaverse/fairy-forest/forest.coax;
+// the stream and the pond are metaverse/fairy-forest/stream.coax (metaverse/water.coax
 // physics, drawn in the painted water preset). You walk and run on the
 // engine's controller (metaverse-engine/move/player.coax) and see the valley through the free
 // orbit (metaverse-engine/cam/camera.coax); every Space press is one wing beat up, with no
@@ -32,21 +32,21 @@
 #load "../../coax/web/analytics.coax";
 #load "../../metaverse-engine/cam/camera.coax";
 #load "../../metaverse-engine/world/terrain.coax";
-#load "../../verse/fairy-forest/forest.coax";
-#load "../../verse/fairy-forest/park.coax";   // the park: Central Park at a quarter of its size
-#load "../../verse/fairy-forest/talk.coax";
+#load "../../metaverse/fairy-forest/forest.coax";
+#load "../../metaverse/fairy-forest/park.coax";   // the park: Central Park at a quarter of its size
+#load "../../metaverse/fairy-forest/talk.coax";
 #load "place-orbit.coax";
-#load "../../verse/edit/edit.coax";   // EDIT for its owner and admins (docs/verse/realm-edit.md)
+#load "../../metaverse/edit/edit.coax";   // EDIT for its owner and admins (docs/verse/realm-edit.md)
 #load "fairyroom.coax";
 #load "fairyquest.coax";   // lore and quests from edit mode's panes
-#load "../../verse/fairy-forest/life.coax";
+#load "../../metaverse/fairy-forest/life.coax";
 #load "fairymaker.coax";   // make your fairy, and the mirror pool
 #load "fairyhome.coax";    // your home, room by room
 #load "fairygarden.coax";  // your garden, by real days
 #load "fairyvillage.coax"; // creatures moving in
 #load "fairycourse.coax";  // vine hoop courses, shared by link
 #load "fairyskills.coax";  // what you learn, each from a moment
-#load "../../verse/fairy-forest/night.coax";
+#load "../../metaverse/fairy-forest/night.coax";
 #load "fairynight.coax";   // day and night, Lanternwood by night
 #load "fairypond.coax";    // the pond filled, the waterfall
 #load "fairywoodcutter.coax";   // Rowan, who gives you his axe
@@ -107,7 +107,7 @@ WHEEL_ZOOM :: 0.006;
 NEWS_TIME :: 4.5;
 HEART_NEWS_TIME :: 9.0;
 GOLDEN_TIME :: 2.0;
-// Talking to a creature (verse/fairy-forest/talk.coax).
+// Talking to a creature (metaverse/fairy-forest/talk.coax).
 TALK_LINES :: 8;           // the talk kept for the next question
 LINE_BYTES :: 300;
 TYPED :: 200;
@@ -182,7 +182,7 @@ Fairy :: struct {
   room: [1] RoomState;
   social: [1] Social;
   quest: [1] FfQuest;   // the quest you are on (fairyquest.coax)
-  life: [1] Life;       // what you made your own (verse/fairy-forest/life.coax)
+  life: [1] Life;       // what you made your own (metaverse/fairy-forest/life.coax)
   maker: [1] Maker;     // making your fairy (fairymaker.coax)
   build: [1] Build;     // building in your home (fairyhome.coax)
   race: [1] Race;       // a course of hoops, made or opened by link (fairycourse.coax)
@@ -193,7 +193,7 @@ Fairy :: struct {
   now_min: f64;         // the wall clock, minutes since 1970 (the face's; 0 not yet)
   fig_on: bool; fig_at: Point; fig_up: f32; fig_across: f32;   // her body's size, while she is laid out
   pond_at: f64; mend_at: [3] f64;                                                 // when you filled the pond this visit (0: before it, or it was full)
-  clock: [1] FfClock; tod: f32; night: f32; dusk: f32;          // the time of day (verse/fairy-forest/night.coax), how dark, dusk's warmth
+  clock: [1] FfClock; tod: f32; night: f32; dusk: f32;          // the time of day (metaverse/fairy-forest/night.coax), how dark, dusk's warmth
 }
 
 // ---- small things
@@ -526,7 +526,7 @@ fairy_spawn_face :: () -> f32 #export_c #effects(all) { return f32(FF_SPAWN_FACE
 fairy_heights :: (s: [] Fairy) -> int #export_c #effects(all) { if !s[0].started { fairy_start(s); } return FF_GROUND_POINTS; }
 
 // ---- what you restored, kept so a reload brings it back (the face saves it, save.coax)
-// What you restored, then what you made your own (verse/fairy-forest/life.coax's tail).
+// What you restored, then what you made your own (metaverse/fairy-forest/life.coax's tail).
 fairy_progress :: (s: [] Fairy, out: [] u8) -> int #export_c #effects(all) {
   n := ff_progress(s[0].forest[..], out);
   if n <= 0 { return n; }
@@ -737,7 +737,7 @@ fairy_phone :: (s: [] Fairy) -> bool #export_c #effects(all) { return phone(s); 
 fairy_may_fly :: (s: [] Fairy) -> bool #export_c #effects(all) { return redit_tool(s[0].ed[..], "fly"); }
 fairy_edit_action :: (s: [] Fairy) -> int #export_c #effects(all) { a := redit_take_action(s[0].ed[..], s[0].ed_out[..]); s[0].ed_out_n = a.n; return a.kind; }
 
-// ---- talking (ff-talk, verse/fairy-forest/talk.coax)
+// ---- talking (ff-talk, metaverse/fairy-forest/talk.coax)
 
 // The creature drawn under (x, y), near enough to talk to, or -1.
 creature_at :: (s: [] Fairy, x: f32, y: f32) -> int {
@@ -1510,7 +1510,7 @@ fairy_figure :: (s: [] Fairy, u: [] f32, feet: Point, face: f32, stride: f32, ac
   base := add(feet, v3(0, bob, 0));
   ahead := v3(sin(face), 0, cos(face));
   right := v3(-cos(face), 0, sin(face));
-  // her palette, as you made her (the maker, verse/fairy-forest/life.coax): bright, a little shimmer in the cloth (LOOK_CLOTH)
+  // her palette, as you made her (the maker, metaverse/fairy-forest/life.coax): bright, a little shimmer in the cloth (LOOK_CLOTH)
   l := s[0].life[..];
   skin_t := FFL_SKIN_RGB; hair_t := FFL_HAIR_RGB; eyes_t := FFL_EYES_RGB; outfit_t := FFL_OUTFIT_RGB;
   outfit := ffl_part_worn(l, wl, FFL_OUTFIT);
@@ -2084,7 +2084,7 @@ hud :: (s: [] Fairy, out: [] f32, u: [] f32, move_on: bool, ox: f32, oy: f32, pa
       above = b.y0; foot_x0 = lo(foot_x0, b.x0);
     }
   }
-  // EDIT, top right, for its owner and admins (verse/edit/edit.coax)
+  // EDIT, top right, for its owner and admins (metaverse/edit/edit.coax)
   ew := text_width("EDIT", 9 * k) + 32 * k;
   n = redit_hud(s[0].ed[..], out, n, RBox.{x0 = w - gutter - ew, y0 = gutter, x1 = w - gutter, y1 = gutter + 38 * k});
   for i: 0..<s[0].ed[0].plate_n {

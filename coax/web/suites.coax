@@ -12,7 +12,7 @@
 //   coax test coax/web/suites.coax --library   # its own checks
 //
 // The convention. A suite is a .coax file under apps/openagents-web/,
-// verse/, metaverse-engine/, everglade/, rules/, coax/web/ or coax/lib/ with a #test or #forall in it (or a --native-link line) that no other file #loads, or one
+// metaverse/, metaverse-engine/, everglade/, rules/, coax/web/ or coax/lib/ with a #test or #forall in it (or a --native-link line) that no other file #loads, or one
 // whose header (its first 80 lines) names itself in a `coax test` line. That
 // line is how it runs: `coax test apps/openagents-web/everglade.coax --steps
 // 2000000000` gives each of its tests 2,000,000,000 steps, and --library,
@@ -231,11 +231,11 @@ su_loads :: (text: string, path: string, a: [] SuArena, loads: [] string, from: 
   return n;
 }
 
-// Under apps/openagents-web/, verse/, metaverse-engine/ (the engine core), everglade/ (the game), rules/ (the SRD rules: its
+// Under apps/openagents-web/, metaverse/, metaverse-engine/ (the engine core), everglade/ (the game), rules/ (the SRD rules: its
 // check files ran as suites under metaverse-engine/rules/srd/ and stopped when the folder moved, #13270), coax/web/ or coax/lib/,
 // and not in a hidden folder (.dev scratch).
 su_in :: (path: string) -> bool {
-  roots := [7] string.["apps/openagents-web/", "verse/", "metaverse-engine/", "everglade/", "rules/", "coax/web/", "coax/lib/"];
+  roots := [7] string.["apps/openagents-web/", "metaverse/", "metaverse-engine/", "everglade/", "rules/", "coax/web/", "coax/lib/"];
   for r: roots { if su_starts(path, 0, r) { return !su_contains(path, "/."); } }
   return false;
 }
@@ -257,14 +257,14 @@ su_input :: (path: string) -> bool {
 su_web_input :: (path: string, faces: bool) -> bool {
   if su_input(path) { return true; }
   if faces && path.count > 2 && (su_starts(path, path.count - 2, ".c") || su_starts(path, path.count - 2, ".h")) { return false; }
-  roots := [11] string.["coax/platform/", "coax/lib/", "coax/web/", "apps/openagents-web/", "verse/", "metaverse-engine/", "everglade/", "rules/", "psionic/", "proto/", "protocol/"];
+  roots := [11] string.["coax/platform/", "coax/lib/", "coax/web/", "apps/openagents-web/", "metaverse/", "metaverse-engine/", "everglade/", "rules/", "psionic/", "proto/", "protocol/"];
   for r: roots { if su_starts(path, 0, r) { return true; } }
   return false;
 }
 
 #test "a changed file that isn't Coax changes a suite only through the compiler, a descriptor or a native suite's C" {
   #assert su_input("coax/src/check.cpp") && su_input("coax/bootstrap/checker.c") && su_input("coax/build.sh") && su_input("coax/web/native-check.c");
-  #assert su_input("verse/voice.pb") && su_input("os/wire/desk.pb");
+  #assert su_input("metaverse/voice.pb") && su_input("os/wire/desk.pb");
   #assert !su_input("metaverse-engine/host/frame.c") && !su_input("apps/openagents-web/wasm-budgets.txt") && !su_input("coax/web/tool.sh");
   #assert !su_input("apps/everglade-desktop/Sources/Workshop.swift") && !su_input("coax/remote/after.sh") && !su_input("pb") && !su_input(".gitignore");
 }
@@ -275,11 +275,11 @@ su_web_input :: (path: string, faces: bool) -> bool {
 }
 #test "paths: a #load from a file's folder, dots resolved, never out of the repo" {
   b: [256] u8;
-  #assert su_norm("apps/openagents-web", "../../verse/space.coax", b[..]) == "verse/space.coax";
-  #assert su_norm("verse/everglade", "../terrain.coax", b[..]) == "verse/terrain.coax";
-  #assert su_norm("verse", "./edit/edit.coax", b[..]) == "verse/edit/edit.coax";
+  #assert su_norm("apps/openagents-web", "../../metaverse/space.coax", b[..]) == "metaverse/space.coax";
+  #assert su_norm("metaverse/everglade", "../terrain.coax", b[..]) == "metaverse/terrain.coax";
+  #assert su_norm("metaverse", "./edit/edit.coax", b[..]) == "metaverse/edit/edit.coax";
   #assert su_norm("apps/openagents-web", "font.coax", b[..]) == "apps/openagents-web/font.coax";
-  #assert su_norm("verse", "../../x.coax", b[..]) == "";
+  #assert su_norm("metaverse", "../../x.coax", b[..]) == "";
   #assert su_base("everglade/legacy/v1/plan.coax") == "plan.coax" && su_dir("everglade/legacy/v1/plan.coax") == "everglade/legacy/v1";
 }
 #test "a suite has a #test or #forall at a line's start; a word that only begins so does not count" {
@@ -291,9 +291,9 @@ su_web_input :: (path: string, faces: bool) -> bool {
   h := su_head(t, "everglade.coax");
   #assert h.found && h.steps == "2000000000" && !h.library;
   #assert !su_head(t, "fairy.coax").found;
-  l := su_head("//   coax/bin/coax test --library verse/water.coax --steps 500000000\n", "water.coax");
+  l := su_head("//   coax/bin/coax test --library metaverse/water.coax --steps 500000000\n", "water.coax");
   #assert l.found && l.library && l.steps == "500000000";
-  d := su_head("// coax test verse/space.coax\n", "space.coax");
+  d := su_head("// coax test metaverse/space.coax\n", "space.coax");
   #assert d.found && d.steps == "" && d.native == "";
   n := su_head("//   coax test apps/openagents-web/project-frames.coax --native-link project-capacity.coax\n", "project-frames.coax");
   #assert n.found && n.native == "project-capacity.coax" && n.steps == "";
@@ -308,8 +308,8 @@ su_web_input :: (path: string, faces: bool) -> bool {
 }
 #test "loads: each #load's repo path, comments and strings that only mention it left out" {
   keep: [4096] u8; a: [1] SuArena; a[0].bytes = keep[..]; loads: [8] string;
-  n := su_loads("#load \"font.coax\";\n  #load \"../../verse/camera.coax\";\n// see #loading\n", "apps/openagents-web/x.coax", a[..], loads[..], 0);
-  #assert n == 2 && loads[0] == "apps/openagents-web/font.coax" && loads[1] == "verse/camera.coax";
+  n := su_loads("#load \"font.coax\";\n  #load \"../../metaverse/camera.coax\";\n// see #loading\n", "apps/openagents-web/x.coax", a[..], loads[..], 0);
+  #assert n == 2 && loads[0] == "apps/openagents-web/font.coax" && loads[1] == "metaverse/camera.coax";
 }
 
 su_say :: (s: string) { print("%", s); }

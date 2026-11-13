@@ -1,5 +1,5 @@
 // The Metaverse Engine's asset packs (book chapter 53): a realm's kit art as one VPK1 file, read whole or
-// refused, written byte for byte as verse/tools/pack_realm.py writes it, and admitted into a
+// refused, written byte for byte as metaverse/tools/pack_realm.py writes it, and admitted into a
 // realm's assets (chapter 16, metaverse-engine/core/assets.coax) by content.
 //
 // The format is pack_realm.py's (its header; docs/verse/realm-host.md, "Asset packs"), little endian:
@@ -32,7 +32,7 @@
 
 // book:begin format
 PACK_READ_MAX :: 128; // VPK2; VPK1 retains its published 48-entry ceiling.
-PACK_MAX :: 48;        // entries a pack has at most (verse/tools/pack-files.coax's limit too)
+PACK_MAX :: 48;        // entries a pack has at most (metaverse/tools/pack-files.coax's limit too)
 PACK_NAME :: 32;       // a name's field; a name is 1 to 31 bytes
 PACK_SOURCES :: 32;    // licensed sources (L lines) a catalog declares at most
 PACK_MANY :: 255;      // the licence of the catalog, vertices and indices: every source's

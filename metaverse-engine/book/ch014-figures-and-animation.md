@@ -4,7 +4,7 @@
 > [metaverse-engine/anim/pose.coax](../anim/pose.coax): the rotations, a cross-fade
 > blended joint by joint, the skeleton chained from the root and the
 > skinning palette. [metaverse-engine/anim/skin.coax](../anim/skin.coax) plays its clips through
-> it, bit for bit as before. The Grid's cast (`verse/cast.coax`) and the
+> it, bit for bit as before. The Grid's cast (`metaverse/cast.coax`) and the
 > rounded-bone figures (`metaverse-engine/anim/figure.coax`) still pose their joints in
 > their own files (see [Still to do](#still-to-do)).
 
@@ -241,7 +241,7 @@ change.
 
 ## Still to do
 
-- **The Grid's cast.** `verse/cast.coax` reads the Grid's character and
+- **The Grid's cast.** `metaverse/cast.coax` reads the Grid's character and
   robots from `Cast.bin` and blends its seven clips over 0.18 s with its own
   `nlerp` and quaternion type. Moving it onto `pose.coax` must keep the
   Grid's recorded CPU, WebGPU and Vulkan frame identical.

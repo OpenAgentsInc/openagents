@@ -3,7 +3,7 @@
 // fairy.bindings beside it). It began as coax/web/wgsl-coax.coax's translation of the hand-written WGSL.
 #load "../../../metaverse-engine/render/noise.coax";
 #load "../../../metaverse-engine/gpu/wgsl.coax";
-#load "../../../verse/style.coax";
+#load "../../../metaverse/style.coax";
 
 // Fairy Forest's passes in the flat style, faceted (docs/verse/art-styles.md, Flat and Flat: facets):
 // a plain sky over a soft horizon band, the scene flat-shaded low poly (every face one tone from its
@@ -11,10 +11,10 @@
 // flat bands, then a post pass that draws a crisp light line along each shape's outline and blooms
 // only what glows, and the HUD. No specular, no tone curve. Every number of the scene comes from
 // fairy.coax; the shading curves and the palette (FLAT_FAIRY: muted pastels, sage, butter,
-// rose-lavender, a dusty-blue sky, white edges) are verse/style.coax's, generated below. Light is
+// rose-lavender, a dusty-blue sky, white edges) are metaverse/style.coax's, generated below. Light is
 // linear until the post pass encodes it.
 //
-// The fade (verse/fairy-forest/forest.coax): colour is drained most of the
+// The fade (metaverse/fairy-forest/forest.coax): colour is drained most of the
 // way (four tenths) to a pale grey-green of the same lightness everywhere but inside the
 // bloom circles, which spread out from what you restore; a circle's young
 // front glows a moment.
@@ -55,7 +55,7 @@
 // the fade's circles (x, z, radius, edge; forest.coax FF_FADE): the paths are in the ground's planes now
 // 0, a footpath's half width, the ground's rows south to north, its points (a plane's length)
 // how dark (0 day, 1 night), dawn or dusk's warmth, the light she carries, its height
-// The palette's slots (verse/style.coax FLAT_*), linear.
+// The palette's slots (metaverse/style.coax FLAT_*), linear.
 FAIRY_PALETTE :: 2.0f32; // FLAT_FAIRY
 FAIRY_P_SKY :: 0.0f32;
 FAIRY_P_HORIZON :: 1.0f32;
@@ -80,7 +80,7 @@ FAIRY_P_SAGE :: 19.0f32;
 fairy_pal :: (slot:f32)->V3 {
   return v3(verse_style_flat_colour(FAIRY_PALETTE,slot,0.0f32),verse_style_flat_colour(FAIRY_PALETTE,slot,1.0f32),verse_style_flat_colour(FAIRY_PALETTE,slot,2.0f32));
 }
-// Through the day (fairy.coax U_NIGHT, verse/fairy-forest/night.coax): the palette at noon, warmer at
+// Through the day (fairy.coax U_NIGHT, metaverse/fairy-forest/night.coax): the palette at noon, warmer at
 // dawn and dusk, a blue dusk by night (verse_style_flat_time).
 fairy_by_time :: (u:[]f32)->V3 {
   return v3(verse_style_flat_time(FAIRY_PALETTE,0.0f32,u[793],u[792]),verse_style_flat_time(FAIRY_PALETTE,1.0f32,u[793],u[792]),verse_style_flat_time(FAIRY_PALETTE,2.0f32,u[793],u[792]));
@@ -88,7 +88,7 @@ fairy_by_time :: (u:[]f32)->V3 {
 fairy_tp :: (slot:f32,u:[]f32)->V3 {
   return wg_mul_f3f3(fairy_pal(slot),fairy_by_time(u));
 }
-// The flat preset's numbers (verse/style-preset.coax verse_style_flat): the far fade, the hem, a tall
+// The flat preset's numbers (metaverse/style-preset.coax verse_style_flat): the far fade, the hem, a tall
 // shape's dithered darkening toward its foot and its steps.
 // Fairy Forest keeps the near and middle park crisp: only the far terrain fades (from 140 m, over 260 m, at most 0.35).
 FAIRY_FADE_FROM :: 140.0f32;
@@ -952,7 +952,7 @@ fairy_water_fresnel :: (c:f32)->f32 {
 // ---- the flat water: two flat bands of the palette's water by depth (verse_style_flat's
 // shallow, mid and deep), a flat cream shore line and rings, no reflection and no sparkle.
 // The mesh, the waves and the ripples are the W2 shader's (everglade.wgsl), from
-// verse/fairy-forest/stream.coax's nodes (store 2).
+// metaverse/fairy-forest/stream.coax's nodes (store 2).
 FairyWaterShade :: struct {emit:V3; transmit:V3; }
 fairy_water_fragment :: (i:FairyWaterOut,u:[]f32)->FairyWaterShade {
   o:FairyWaterShade;

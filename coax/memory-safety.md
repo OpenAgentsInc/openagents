@@ -155,7 +155,7 @@ after the CPU may safely touch it. Our hosts already show this:
   it into caller storage and requeues it before returning. The mapping
   outlives the requeue; the frame's contents don't. A view without copying
   would have to end before the requeue. Today's copy is already safe.
-- [The Vulkan helper](../verse/gpu/vkc.c) keeps buffers mapped for their
+- [The Vulkan helper](../metaverse/gpu/vkc.c) keeps buffers mapped for their
   whole life, but reads them only after a host-read barrier and a fence
   wait. The CPU may read between the fence and the next submission, not
   for as long as the buffer is mapped.
@@ -232,7 +232,7 @@ S3 is split into three issues (see the roadmap in
 
 - **S3a: scoped `#lease` blocks in the compiler.** Views can't escape;
   release and conflicting submission inside the block are refused.
-- **S3b: the Vulkan readback adapter** in `verse/gpu`, the first real
+- **S3b: the Vulkan readback adapter** in `metaverse/gpu`, the first real
   consumer. It already has the fence.
 - **S3c: camera and dmabuf leases without copying.** Only after a
   measurement shows the copy costs too much.

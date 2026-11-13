@@ -50,7 +50,7 @@
 #include <time.h>
 #include <unistd.h>
 
-#include "../../verse/voice-host/ws.h"
+#include "../../metaverse/voice-host/ws.h"
 #include "http-range.h"
 #include "site-routes.h"
 

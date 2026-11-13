@@ -12,7 +12,7 @@ run only on the existing local development path. The twenty stands occupy
 centers X=18,24.5,31,37.5,44 at Z=8 and Z=16, clear of the original showcases.
 The local camera hook closes the class panel to keep the exhibit visible.
 
-`verse/experimental-comparison.coax` owns station positions and titles;
+`metaverse/experimental-comparison.coax` owns station positions and titles;
 `fivelab.coax` draws projected labels through the existing Coax HUD.
 `charactercreator.coax` enables labels only after reading a positive-count
 `glade/nwn-comparison` catalog marker. The public pack lacks this marker.

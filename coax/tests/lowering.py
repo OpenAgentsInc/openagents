@@ -190,7 +190,7 @@ class OrderedLowering(unittest.TestCase):
         self.assertNotIn("operations", l)
 
     def test_the_hud_slot_lowering_names_its_checked_declaration(self):
-        hud = ROOT.parent / "verse/hud.coax"
+        hud = ROOT.parent / "metaverse/hud.coax"
         (slot,) = self.lowering(hud, "--proc", "verse_hud_slot")["procedures"]
         decls = subprocess.run([str(COAX), "deps", str(hud), "--declarations"], capture_output=True, text=True, check=True)
         (row,) = [d for d in json.loads(decls.stdout)["declarations"] if d["name"] == "verse_hud_slot"]

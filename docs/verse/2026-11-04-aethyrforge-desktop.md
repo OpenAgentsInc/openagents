@@ -133,7 +133,7 @@ page server, the voice Wasm and a local Parakeet voice host. This is the same
   were stopped without recording/sending audio. It also passed repeated-ticket,
   model-failure recovery and canceled-preparation checks. The permission policy
   killed all four mutants; 137 desktop checks passed.
-- V/TALK now selects explicit held turns in `verse/voice.coax`, including quiet
+- V/TALK now selects explicit held turns in `metaverse/voice.coax`, including quiet
   onset and pauses. The conversation detector's 700 ms silence ending no longer
   finalizes a fragment while the gesture stays held. Release stops microphone
   tracks immediately, drains already-posted audio and sends one TURN_END;

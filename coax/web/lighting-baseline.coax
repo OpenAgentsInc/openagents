@@ -39,7 +39,7 @@
 #load "../lib/image/jpeg.coax";
 #load "../lib/image/jpeg_enc.coax";
 #load "../../metaverse-engine/render/environment-frame.coax" as envf;   // the glade's noon, as a page writes it (#13066)
-#load "../../verse/style-preset.coax";   // painterly's compatibility night, for e2-night (#13067)
+#load "../../metaverse/style-preset.coax";   // painterly's compatibility night, for e2-night (#13067)
 #load "../../everglade/world/points.coax";   // where down Everglade II's path each capture stands, by name (#13078)
 #load "map-points.coax";
 
@@ -498,7 +498,7 @@ lb_env :: (c: [] Cdp, s: [] Lb, name: string) -> bool {
 }
 
 // The made realm's style block against the glade's resolved noon, word by word (G, into env.tsv): the
-// words the made realm's shader reads as light (verse/style-preset.coax SU_*: the key's colour, its
+// words the made realm's shader reads as light (metaverse/style-preset.coax SU_*: the key's colour, its
 // direction, the sky and ground ambient, the haze's air and sun tint, the zenith, the horizon and the
 // saturation), read back from the page (myrealm.coax realm_probe 6000 + i, millionths) and computed
 // here from env_glade_profile independently of the page's own verse_style_glade_env.
@@ -680,7 +680,7 @@ LB_BUILDS :: [11] string.[
   "coax/web/tool.sh|ROOT/metaverse-engine/tools/page-pack.coax|ROOT/apps/openagents-web/realms/everglade2/assets/everglade2.pack|ROOT/apps/openagents-web/realms/everglade2/assets/everglade2.vpk3",
   "coax/web/wasm.sh|ROOT/everglade/client/client.coax|ROOT/apps/openagents-web/everglade2-face.c|ROOT/apps/openagents-web/build/everglade2.wasm|ROOT/everglade/client/everglade-step.coax|ROOT/metaverse-engine/core/sticks.coax",
   "coax/web/wasm.sh|ROOT/apps/openagents-web/fivelab.coax|ROOT/apps/openagents-web/fivelab-face.c|ROOT/apps/openagents-web/build/fivelab.wasm|ROOT/everglade/shared/everglade-step.coax|ROOT/metaverse-engine/core/sticks.coax",
-  "/usr/bin/env|COAXIAL_RUN_STEPS=250000000|ROOT/coax/web/wasm.sh|ROOT/apps/openagents-web/myrealm.coax|ROOT/apps/openagents-web/myrealm-face.c|ROOT/apps/openagents-web/build/myrealm.wasm|ROOT/verse/edit/computer-wire.coax|ROOT/coax/lib/crypto/entropy.coax"];
+  "/usr/bin/env|COAXIAL_RUN_STEPS=250000000|ROOT/coax/web/wasm.sh|ROOT/apps/openagents-web/myrealm.coax|ROOT/apps/openagents-web/myrealm-face.c|ROOT/apps/openagents-web/build/myrealm.wasm|ROOT/metaverse/edit/computer-wire.coax|ROOT/coax/lib/crypto/entropy.coax"];
 LB_BUILD_MS :: 900000;
 // a build line's field i with ROOT replaced by root
 lb_build_arg :: (line: string, i: int, root: string, o: [] LbBuf) -> string {

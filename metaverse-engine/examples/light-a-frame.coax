@@ -1,6 +1,6 @@
 // Book chapter 13: the key light through a day, against the uniform block the realms upload; a
 // shadow map that follows the eye in whole texels; local lights with a full list; haze.
-#load "../../verse/style-preset.coax";
+#load "../../metaverse/style-preset.coax";
 #import "Basic";
 
 // Printed to four places: sin, cos and exp come from each platform's libm, which rounds its

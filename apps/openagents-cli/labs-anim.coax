@@ -1,6 +1,6 @@
 #load "anim-args.coax";
 #load "../../metaverse-engine/tools/anim-scene-play.coax";
-#load "../../verse/animlab/check.coax";
+#load "../../metaverse/animlab/check.coax";
 #load "../../metaverse-engine/tools/anim-import-io.coax";
 #load "../../metaverse-engine/tools/anim-retarget-io.coax";
 #load "labs-anim-direct.coax";

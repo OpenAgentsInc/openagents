@@ -27,7 +27,7 @@ undo was hand-rolled and had no redo, while the OpenAgents Metaverse Engine's ed
 | ARWES frames, easings, the animator, text effects, backgrounds | The ARWES ports | `components/core/arwes/` |
 | A chat on the GPU (the desktop app): composer, transcript, Markdown, tool chips | The earlier chat set | `components/zeron/`, `components/core/markdown.coax` |
 | Measuring and wrapping text, fonts | Layout | `components/layout/` |
-| A game HUD: bars, hotbar, windows, numbers | The HUD sets | `components/kit/hud.coax`, `everglade/hud/`, `verse/hud.coax` |
+| A game HUD: bars, hotbar, windows, numbers | The HUD sets | `components/kit/hud.coax`, `everglade/hud/`, `metaverse/hud.coax` |
 | Drawing UI on the GPU or in a terminal | Backends | `components/backend/` |
 | Editing a world: typed edits, undo and redo, revision-checked saves | The Metaverse Engine's edit log | `metaverse-engine/editor/edit.coax`, `metaverse-engine/editor/doc.coax` |
 | Publishing or packing a realm | Metaverse Engine | `metaverse-engine/editor/publish.coax`, `metaverse-engine/editor/pack.coax` |
@@ -41,7 +41,7 @@ undo was hand-rolled and had no redo, while the OpenAgents Metaverse Engine's ed
 | Multiplayer: transport, replication, prediction, rewind | The Metaverse Engine's netcode | `metaverse-engine/net/` |
 | Steering and pathfinding | The Metaverse Engine: the steering service, and the navigation cells built from colliders ([how](verse/navigation.md)) | `metaverse-engine/ai/`, `metaverse-engine/world/nav/`, `everglade/shared/nav.coax` |
 | A world in cells: which cells load, simulate and draw round the players | The Metaverse Engine's cell controller, and Everglade's manifest ([how](verse/one-world.md)) | `metaverse-engine/world/cells.coax`, `everglade/world/zone.coax` |
-| The Grid | The Grid and its session | `verse/grid.coax`, `verse/gridwalk.coax` |
+| The Grid | The Grid and its session | `metaverse/grid.coax`, `metaverse/gridwalk.coax` |
 | 3D models | The asset registry | `assets/registry/` (read its README) |
 | Hashes, signatures, encryption | Coax crypto | `coax/lib/crypto/` |
 | Nostr events, NIPs, NIP-98, zaps | Coax Nostr | `coax/lib/nostr/` |

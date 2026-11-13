@@ -10,7 +10,7 @@
 > ([metaverse-engine/tests/nav-oracle.coax](../../metaverse-engine/tests/nav-oracle.coax)), and
 > [metaverse-engine/tests/nav-deadgears.coax](../../metaverse-engine/tests/nav-deadgears.coax)
 > shows that on Dead Gears' deck it gives the same costs, bit for bit, and
-> the same next cells as `verse/deadgears/arena.coax`. Actor Lab adopts
+> the same next cells as `metaverse/deadgears/arena.coax`. Actor Lab adopts
 > the shared solver with fenced requests and bounded retries (below).
 > Everglade's townsfolk keep their
 > road graph and Hecate's Cemetery its garden paths
@@ -382,7 +382,7 @@ the costs a search lowers.
   outcomes and complete body/brain digests at 30 cuts across four frame schedules.
   Full cell-by-cell browser oracles for arbitrary grid profiles remain separate.
 - **Other domains.** Swimming at half pace in water, as townsfolk do through
-  `verse/water-wade.coax`, and flying routes over roofs, as made-realm owls
+  `metaverse/water-wade.coax`, and flying routes over roofs, as made-realm owls
   do. Space navigation stays in [chapter 42](ch042-reach-a-moving-target.md).
 
 ## What exists today
@@ -394,7 +394,7 @@ the costs a search lowers.
 - [metaverse-engine/world/terrain.coax](../world/terrain.coax): the path graph,
   `verse_route_next`, `verse_route_points`, `Follower`,
   `verse_follower_step` and `verse_follower_step_among`.
-- [verse/deadgears/arena.coax](../../verse/deadgears/arena.coax): Dead
+- [metaverse/deadgears/arena.coax](../../metaverse/deadgears/arena.coax): Dead
   Gears' own walking grid (`NAV_CELL` 0.5 m, 64 × 76 cells, `NAV_CLEAR`
   0.38 m) and its three flow fields: to you, to where the support engineer
   heads, and to the reactor.

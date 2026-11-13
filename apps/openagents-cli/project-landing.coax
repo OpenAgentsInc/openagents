@@ -243,11 +243,11 @@ LdGit :: struct {
 // Which project a changed file belongs to, by the folders each owns (most specific first); -1 for none.
 // Commits are never matched by their message.
 ld_owner :: (file: string) -> int {
-  if starts(file, "verse/planetary-villa/") || starts(file, "apps/openagents-web/villa") { return 5; }
+  if starts(file, "metaverse/planetary-villa/") || starts(file, "apps/openagents-web/villa") { return 5; }
   if starts(file, "coax/web/goldens/hecate") || starts(file, "coax/web/goldens/villa") { return 5; }
   // the realms' goldens and docs are the worlds', though they sit in coax/web and docs/
   worlds := [5] string.["everglade", "fairy-forest", "icecream", "deadgears", "haunt"];
-  for w: worlds { wb: [64] u8; k := copy("verse/", wb[..]); k += copy(w, wb[k..<64]); k += copy("/", wb[k..<64]); if starts(file, cast(string) wb[0..<k]) { return 4; } }
+  for w: worlds { wb: [64] u8; k := copy("metaverse/", wb[..]); k += copy(w, wb[k..<64]); k += copy("/", wb[k..<64]); if starts(file, cast(string) wb[0..<k]) { return 4; } }
   pages := [20] string.["realm", "realms/", "everglade", "fairy", "icecream", "deadgears", "garden", "thegrid", "waterlab", "characters",
     "fixture", "droprealm", "myrealm", "builder", "verse", "room", "world", "place", "save", "socket"];
   web := "apps/openagents-web/";
@@ -257,7 +257,7 @@ ld_owner :: (file: string) -> int {
     if starts(rest, "textkeys") { return 4; }
   }
   if starts(file, "coax/web/goldens/") || starts(file, "docs/verse/") { return 4; }
-  if starts(file, "coax/") || starts(file, "verse/") { return 0; }   // the language and the Verse engine
+  if starts(file, "coax/") || starts(file, "metaverse/") { return 0; }   // the language and the Verse engine
   if starts(file, "psionic/") || starts(file, "crates/psionic/") || starts(file, "docs/psionic/") { return 1; }
   if starts(file, "apps/openagents-desktop/") { return 2; }
   if starts(file, "docs/coder/") { return 3; }

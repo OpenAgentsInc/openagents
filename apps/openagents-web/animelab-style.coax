@@ -5,7 +5,7 @@
 // and the presets' checks share short names in one unit; the face hands the
 // block to animelab.coax, which copies it into the uniforms.
 //   coax/bin/coax test apps/openagents-web/animelab-style.coax --library
-#load "../../verse/style-preset.coax";
+#load "../../metaverse/style-preset.coax";
 
 // The variant a name says (pastoral, action, dusk, neon), -1 for none of them.
 animelab_style_variant :: (name: string) -> int #export_c #effects(all) { return verse_style_anime_variant(name); }

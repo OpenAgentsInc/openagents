@@ -2,7 +2,7 @@
 // MegaKit with a workbench against its back wall. The workbench becomes the place you command
 // golems from (Golemancy, everglade/docs/golemancy-profession-spec.md);
 // crafting is not built yet. Any Everglade zone places the same home at a building frame of its
-// own: Everglade Experimental at verse/experimental-terrain.coax exp_home, and Everglade II can
+// own: Everglade Experimental at metaverse/experimental-terrain.coax exp_home, and Everglade II can
 // do the same. The house is the engine's 4 m room (metaverse-engine/world/building.coax), so its walls,
 // doorway and the way monsters come in are the engine's; this file says what it is built of and
 // how it is furnished. Both kits are CC0 (assets/registry/packages/village.json, fantasy-props.json).

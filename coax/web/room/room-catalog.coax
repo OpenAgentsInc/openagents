@@ -1,5 +1,5 @@
 // Writes room-catalog.c: Everglade's pack catalog (apps/openagents-web/realms/everglade/assets/everglade.pack,
-// its kind-1 entry; verse/tools/pack_realm.py) as C bytes, for the room server's world (room-world.c), whose
+// its kind-1 entry; metaverse/tools/pack_realm.py) as C bytes, for the room server's world (room-world.c), whose
 // town breaks with the same pieces' bounds the page's does.
 //   coax/web/tool.sh coax/web/room/room-catalog.coax PACK OUT.c
 #import "Basic";

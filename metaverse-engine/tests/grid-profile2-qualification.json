@@ -9,7 +9,7 @@
     "sha256": "d7bb42979103435a0adfd543368fc2e915dad697fe0b877a0296d62fe08a1905"
   },
   "source_sha256": {
-    "verse/gridwalk.coax": "8429467cf3f3c1bac77fa7ec98192dd3a0519575270b123e2159ce830e4d8645"
+    "metaverse/gridwalk.coax": "8429467cf3f3c1bac77fa7ec98192dd3a0519575270b123e2159ce830e4d8645"
   },
   "source_closure_sha256": {
     "metaverse-engine/collide.coax": "b19bc1b5161eda4ce9393958ac4c396c0a495c6f849ba479ca1aaf979b716688",
@@ -36,11 +36,11 @@
     "metaverse-engine/tests/query-oracle.coax": "e088ba9b7be06e2a19d263e5b45859fddeae1f22523c3fdb45948abd895e3cb8",
     "metaverse-engine/tests/replay-oracle.coax": "718c9bbfb571c5cd41a130f567d3e5a89afda2d985674ce9ead7b57dba645f38",
     "coax/lib/quantity.coax": "325e9e7152de442b2da210cc0075ca4bb231d5a4c862898a6ee88ab161eeb583",
-    "verse/gridwalk.coax": "8429467cf3f3c1bac77fa7ec98192dd3a0519575270b123e2159ce830e4d8645",
-    "verse/player.coax": "4bf3005da0dc4fc4d445cfe55ac8ff3e39d542cdf2b0b2889af1dfa573b56528",
-    "verse/stand.coax": "a6c5d351b77cf14313a7cb97232894ad10525f148aa499ab87c01fc908e4f35b",
-    "verse/sticks.coax": "c2a45fcccc415e7b551366c76ad99683dd19c2e9e110843dbc0465800d858acb",
-    "verse/tests/gridwalk-checks.coax": "16dfb2a0f2e7e3666783f3c5f5e66fbab969949db3fa69e22a21c2884220765b"
+    "metaverse/gridwalk.coax": "8429467cf3f3c1bac77fa7ec98192dd3a0519575270b123e2159ce830e4d8645",
+    "metaverse/player.coax": "4bf3005da0dc4fc4d445cfe55ac8ff3e39d542cdf2b0b2889af1dfa573b56528",
+    "metaverse/stand.coax": "a6c5d351b77cf14313a7cb97232894ad10525f148aa499ab87c01fc908e4f35b",
+    "metaverse/sticks.coax": "c2a45fcccc415e7b551366c76ad99683dd19c2e9e110843dbc0465800d858acb",
+    "metaverse/tests/gridwalk-checks.coax": "16dfb2a0f2e7e3666783f3c5f5e66fbab969949db3fa69e22a21c2884220765b"
   },
   "independent_initial_pin_trace": {
     "method": "independent Python f32 word construction and FNV-1a replay_mix recurrence; no Coax digest function invoked",
@@ -244,13 +244,13 @@
     "argv": [
       "coax/bin/coax",
       "test",
-      "verse/gridwalk.coax",
+      "metaverse/gridwalk.coax",
       "--library",
       "--only",
       "each collision and terrain diagnostic"
     ],
     "exit_status": 1,
-    "stdout": "FAIL #forall each collision and terrain diagnostic enters the Grid digest independently (0 ms)\nverse/gridwalk.coax:530:3: error[E0406]: assertion failed\n    #assert gw_digest(gw_player, gw_input) != gw_original;\n    ^\n  note: in #forall each collision and terrain diagnostic enters the Grid digest independently\n  counterexample: gw_diagnostic = 0\n1 of 304 checks (--only 'each collision and terrain diagnostic'), 0 passed, 1 failed\nauthority execution coverage not checked: it needs every check (run coax test without --only)\n",
+    "stdout": "FAIL #forall each collision and terrain diagnostic enters the Grid digest independently (0 ms)\nmetaverse/gridwalk.coax:530:3: error[E0406]: assertion failed\n    #assert gw_digest(gw_player, gw_input) != gw_original;\n    ^\n  note: in #forall each collision and terrain diagnostic enters the Grid digest independently\n  counterexample: gw_diagnostic = 0\n1 of 304 checks (--only 'each collision and terrain diagnostic'), 0 passed, 1 failed\nauthority execution coverage not checked: it needs every check (run coax test without --only)\n",
     "reason": "before implementation the independent diagnostic case 0 failed because collision_status did not affect gw_digest"
   },
   "commands": [
@@ -258,7 +258,7 @@
       "argv": [
         "coax/bin/coax",
         "test",
-        "verse/gridwalk.coax",
+        "metaverse/gridwalk.coax",
         "--library"
       ],
       "exit_status": 0,
@@ -271,7 +271,7 @@
       "argv": [
         "coax/bin/coax",
         "mutate",
-        "verse/gridwalk.coax",
+        "metaverse/gridwalk.coax",
         "--library",
         "--root-only",
         "--jobs",

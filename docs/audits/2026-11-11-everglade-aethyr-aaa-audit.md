@@ -77,7 +77,7 @@ works, but the design won't scale. **D** missing or structurally wrong.
 | Combat profile shipped | D | One target per cast, unlimited presses, no player harm |
 | Server AI | C | Two hand-written state machines; engine AI unused |
 | Content pipeline | D | Content is compiled-in Coax under the web app |
-| Engine layering | D | 88 loads from `metaverse-engine/` up into `verse/` and `apps/` (checked) |
+| Engine layering | D | 88 loads from `metaverse-engine/` up into `metaverse/` and `apps/` (checked) |
 | Scene and entity model | C | A good entity store nobody in Everglade uses |
 | Renderer | C | Three hand-written hosts restate the pass order; the frame graph runs nowhere |
 | World model | C | Zones are separate pages; the streaming world is unadopted |
@@ -379,12 +379,12 @@ hit test, with a bound.
 **Evidence.**
 
 - 88 `#load` lines in `metaverse-engine/`, outside tests, tools and examples, point up
-  into `verse/`, `apps/` or `coax/web/` (checked by grep: 40 in `render/`, 30
+  into `metaverse/`, `apps/` or `coax/web/` (checked by grep: 40 in `render/`, 30
   in `host/`). Examples: `metaverse-engine/net/latency.coax:5` loads the web app's
   Everglade wire; `metaverse-engine/ui/draw.coax:6-7` loads a Verse HUD frame and the
   web app's font; `metaverse-engine/character-appearance.coax:3` loads Character
   Create's parts.
-- The shader library lives above the engine, in `verse/gpu/`.
+- The shader library lives above the engine, in `metaverse/gpu/`.
 - `metaverse-engine/walk.coax` loads the camera (`follow.coax`, line 23, checked), and
   `Player` carries camera fields. The server's player state includes orbit
   angles. It also loads three test files in production (lines 26, 31, 34).
@@ -412,14 +412,14 @@ index. Everything in the game lives in it, on client and server.
    | Target | Holds |
    | --- | --- |
    | `metaverse-engine/core/` | loop, ids, entity, math, rand, input, budget, replay, checkpoint, assets |
-   | `metaverse-engine/gpu/` | the shader library from `verse/gpu/` |
+   | `metaverse-engine/gpu/` | the shader library from `metaverse/gpu/` |
    | `metaverse-engine/physics/` | query, ground, collide, `sim/` |
    | `metaverse-engine/move/` | one walker, one tuning record, one C face |
    | `metaverse-engine/world/` | cells, terrain tiles, streaming, navigation |
    | `metaverse-engine/net/` | transport, replication, prediction, rewind |
    | `metaverse-engine/render/`, `anim/`, `cam/`, `audio/`, `ui/`, `host/` | as now, with no upward loads |
    | `rules/srd/` at the root, or `everglade/rules/` | the SRD engine, out of `metaverse-engine/` |
-   | `verse/tools/` | realm-specific tools |
+   | `metaverse/tools/` | realm-specific tools |
 
 3. Split `Player` into a body the server owns and a camera the client owns.
 4. Define one `World` in `metaverse-engine/core/`: the entity store, fixed
@@ -616,7 +616,7 @@ mostly moves and deletions. Start there the day P0 lands.
 | What | Lines | When |
 | --- | --- | --- |
 | `coax/web/room/room-oldwire.coax`, the v4 profile | 243 | Now (E1) |
-| `verse/rules/srd5*.coax` | 423 | P1 |
+| `metaverse/rules/srd5*.coax` | 423 | P1 |
 | v1 client and its room half (`everglade.coax`, `everglade-*.coax`, `everglade5e*`) | about 48,000 | P1, out of the build; deleted after P2 |
 | Experimental, 5E Lab, `fivemmo*`, the labs | about 30,000 | P1, out of the default build |
 | `verse/everglade/previous/` | 8 MB | P1 |

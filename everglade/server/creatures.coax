@@ -49,7 +49,7 @@ E2M_CIRCLE :: 3.2;          // m/s a pack hunter circles its quarry while its bi
 E2M_RING :: 2.6;            // m out it circles
 E2M_REACH :: 1.9;           // m middle to middle: a blow's 5 feet (EGB_REACH, a little slack)
 E2M_TELL_SHOT :: 0.6;       // s an archer draws
-E2M_ARROW :: 30.0;          // m/s an arrow flies (verse/experimental-hostiles.coax hostile_shot_speed)
+E2M_ARROW :: 30.0;          // m/s an arrow flies (metaverse/experimental-hostiles.coax hostile_shot_speed)
 E2M_BOW :: 24.38;           // m: the Shortbow's 80 feet
 E2M_BOW_MIN :: 4.0;         // m: nearer than this an archer steps back (Nimble Escape) rather than shoot
 E2M_ESCAPE_S :: 1.4;        // s it steps back

@@ -32,17 +32,17 @@
       "matches": true
     },
     {
-      "path": "verse/grid-render.coax",
+      "path": "metaverse/grid-render.coax",
       "sha256": "aee57aa6365ec60e756bc2f61c1b4aa656cf09a3966bd1dbbdd6721cd4ce5ae6",
       "matches": true
     },
     {
-      "path": "verse/grid.coax",
+      "path": "metaverse/grid.coax",
       "sha256": "d59ca6a8db7aa21f55abd6b68d07be7f0fa7549da5451bda21c7878b8961c3c9",
       "matches": true
     },
     {
-      "path": "verse/sticks.coax",
+      "path": "metaverse/sticks.coax",
       "sha256": "c2a45fcccc415e7b551366c76ad99683dd19c2e9e110843dbc0465800d858acb",
       "matches": true
     },
@@ -94,19 +94,19 @@
     },
     {
       "mode": "release",
-      "path": "verse/grid-render.coax",
+      "path": "metaverse/grid-render.coax",
       "sha256": "aee57aa6365ec60e756bc2f61c1b4aa656cf09a3966bd1dbbdd6721cd4ce5ae6",
       "matches": true
     },
     {
       "mode": "release",
-      "path": "verse/grid.coax",
+      "path": "metaverse/grid.coax",
       "sha256": "d59ca6a8db7aa21f55abd6b68d07be7f0fa7549da5451bda21c7878b8961c3c9",
       "matches": true
     },
     {
       "mode": "release",
-      "path": "verse/sticks.coax",
+      "path": "metaverse/sticks.coax",
       "sha256": "c2a45fcccc415e7b551366c76ad99683dd19c2e9e110843dbc0465800d858acb",
       "matches": true
     },
@@ -148,19 +148,19 @@
     },
     {
       "mode": "sanitized",
-      "path": "verse/grid-render.coax",
+      "path": "metaverse/grid-render.coax",
       "sha256": "aee57aa6365ec60e756bc2f61c1b4aa656cf09a3966bd1dbbdd6721cd4ce5ae6",
       "matches": true
     },
     {
       "mode": "sanitized",
-      "path": "verse/grid.coax",
+      "path": "metaverse/grid.coax",
       "sha256": "d59ca6a8db7aa21f55abd6b68d07be7f0fa7549da5451bda21c7878b8961c3c9",
       "matches": true
     },
     {
       "mode": "sanitized",
-      "path": "verse/sticks.coax",
+      "path": "metaverse/sticks.coax",
       "sha256": "c2a45fcccc415e7b551366c76ad99683dd19c2e9e110843dbc0465800d858acb",
       "matches": true
     }

@@ -888,7 +888,7 @@ intent but does not mutate a stage or schedule a take. Checks:
 the two authorities' mutation gates, and the finite render-profile checks.
 Contract: `docs/verse/2026-11-02-anime-director-api.md`.
 
-Recorded `anime.v1` takes enter through `verse/anime/take.coax`
+Recorded `anime.v1` takes enter through `metaverse/anime/take.coax`
 (`#authority`): bounded JSON, catalogue fields, exact thousandth confidence,
 ordered line intervals and a bounded timeline are checked before replacement.
 The accepted state owns its source/word bytes and numeric offsets; no view into
@@ -897,7 +897,7 @@ base64url in `take64` or raw message 701. A refused initial request displays a
 refusal with no demo fallback; a refused replacement preserves the accepted
 take and clock. An absent take keeps the built-in session.
 
-The API and take holder share `verse/anime/render-profile.coax`
+The API and take holder share `metaverse/anime/render-profile.coax`
 (`#authority`). Slot 6 has no stock body in `draw_cast`, so directions relying
 on that body remain heard, as do unsupported effects/poses and every arbitrary
 `make`. Recorded words and heard-only answers remain caption data. They cannot
@@ -906,7 +906,7 @@ executable answers enter the unchanged `anime_timeline` grammar. The format
 caps documents at 32 KiB, lines/answers at 16 and duration at 600 seconds. The
 declared frame budget is unchanged; transport buffers carry the full document
 and cache keys include the full URL.
-Checks: `verse/anime/take-checks.coax`, the two authorities' mutation gates,
+Checks: `metaverse/anime/take-checks.coax`, the two authorities' mutation gates,
 `apps/openagents-web/animelab-take-checks.coax`, and the headless
 `coax/web/anime-take-probe.coax`. Format: `docs/verse/anime-takes-v1.md`.
 
@@ -961,7 +961,7 @@ signature 401, 40 s fresh, gone at once).
 `POST /api/playtest/seats` opens a seat only for a verified NIP-98 caller
 (`coax/web/api/seats.c`; caller-policy.coax) or, unsigned, this site's own
 logged-in page (its session, `__Host-oa_session`, a POST only with this site's Origin: the
-YOUR AGENT pane, `verse/edit/agent.coax`), never for the player key, and only where
+YOUR AGENT pane, `metaverse/edit/agent.coax`), never for the player key, and only where
 `coax/web/api/seat-policy.coax` (`#authority`) admits it: a made realm the
 caller may see, fewer than 8 other seats open on the site, and for a hosted
 seat a configured runner. Opening one closes the account's open seat. The
@@ -1610,7 +1610,7 @@ eases (Hecate's Cemetery's free orbit, Ice Cream Man's follow) eases once per
 fixed step; Hecate's is drawn between the last two. Checks: `metaverse-engine/move/walk.coax` ("a flight of beats,
 climbs, glides and a dive has the same states at 30, 60, 120 and 144 FPS and
 on uneven frames"), `apps/openagents-web/villa.coax` ("Hecate's camera eases
-on the fixed step ..."), `verse/icecream/play.coax` ("the camera steps with the
+on the fixed step ..."), `metaverse/icecream/play.coax` ("the camera steps with the
 rules: the same input at 30, 60, 120 and 144 FPS and at uneven rates gives
 the same camera every step").
 
@@ -1630,7 +1630,7 @@ than once (Everglade's player, debris and river).
 Checks: `metaverse-engine/core/loop.coax` ("a frame counts for its time, refused, clamped
 and dropped as the steps are"), `metaverse-engine/move/walk.coax` ("a face's frame time is
 what the player's clock counts, and runs at most 8 steps"),
-`verse/deadgears/ecs.coax`, `verse/demolish.coax` ("the steps are the Metaverse Engine's
+`metaverse/deadgears/ecs.coax`, `metaverse/demolish.coax` ("the steps are the Metaverse Engine's
 clock's ..."), Hold the Stair ("frames run at most its budget's steps,
 fast-forward included"), and Orbit League's and Dead Gears' budget checks,
 which take each frame's steps.
@@ -1972,7 +1972,7 @@ and zoom (`follow_look`, `follow_zoom`), one step of the spring and the room
 `follow_eye`). No other code eases that camera. `follow_room` reads a realm's
 `Colliders` and never changes them, the camera pulls in at once and backs out
 by a closed form in the step's time, and its direction uses strict math.
-Checks: `metaverse-engine/cam/follow.coax` (mutation 0 survivors) and `verse/gridwalk.coax`
+Checks: `metaverse-engine/cam/follow.coax` (mutation 0 survivors) and `metaverse/gridwalk.coax`
 ("the Grid's camera follows a walk, a run and a jump at 60 FPS without a
 jump").
 
@@ -2057,7 +2057,7 @@ A realm opting into browser pack digest gate v1 admits the complete received
 VPK1 digest and byte count in Coax before unpack/upload. The browser computes
 SHA-256 as a platform effect and bounds the 32-byte destination; the realm's
 authority module pins the expected identity. Failed admission exposes no
-part of that pack to the GPU. Checks: `verse/valley/canyon-pack-policy.coax`
+part of that pack to the GPU. Checks: `metaverse/valley/canyon-pack-policy.coax`
 (mutation zero survivors) and `coax/web/valley-canyon-check.coax`'s same-length
 vertex edit. The versioned optional ABI is `coax/web/PACK-GATE.md`.
 
@@ -2129,7 +2129,7 @@ mobile hardware and larger-memory rescue are unqualified. See
 `docs/verification/aethyr-streaming-12990/walk-persistent-rescue.md`.
 
 The bounded native stream draw carrier uses an additive owned Vulkan
-submission (`verse/gpu/vks-submit.{h,c}`). Pending or unknown fence errors
+submission (`metaverse/gpu/vks-submit.{h,c}`). Pending or unknown fence errors
 retain the command pool, fence and drawn-resource borrows. A timeout stops
 paid frames; cleanup waits for the actual completion observation before
 retiring those owners. Reported device loss uses the same checked recovery
@@ -2178,7 +2178,7 @@ See `docs/verification/aethyr-streaming-12990/walk-callback-retirement.md`.
 
 ## The Grid steps only on its session's record
 
-The web Grid's simulation (`verse/gridwalk.coax`) is one `GridWalk`: you,
+The web Grid's simulation (`metaverse/gridwalk.coax`) is one `GridWalk`: you,
 the phone's thumbs, the input buffer and the session's record
 (`metaverse-engine/core/replay.coax`). The page's C face hands it the devices' input and
 the frame's time once a frame and draws what it reads back; the face does
@@ -2190,7 +2190,7 @@ state the session has then, with the frames still waiting for a step in its
 start's input buffer, so no press or turn is lost. A blur releases what is
 held outside any frame, so it also starts a new record from the state it
 leaves. Checks:
-`verse/gridwalk.coax` ("a recorded session replays to the same digest at
+`metaverse/gridwalk.coax` ("a recorded session replays to the same digest at
 every step", "a record full of frames starts a new one", "a blur starts a
 new record from the state it leaves, and that one replays", "the keyboard and
 the touch stick drive the same session to the same digests"; mutation 0
@@ -4056,7 +4056,7 @@ Check: `coax/tests/debugging.py` uses actual Mac LLDB, native diagnostics and
 sanitizer stacks, including multi-statement lowering and loaded units.
 The live Simulator cast breakpoint reaches Coax through the Swift renderer.
 
-The R0 workload and statistical policy live in `verse/benchmarks.coax`,
+The R0 workload and statistical policy live in `metaverse/benchmarks.coax`,
 with authority checks and a zero-survivor mutation gate. The external harness
 pins historical native source, its explicit reader adaptation and the real
 app corpus before comparison; timing policy is separate from output and
@@ -4064,7 +4064,7 @@ allocation assertions. A successful correctness run must not be reported as
 meeting a failed proposed timing budget. Measured allocation hooks have a
 documented scope; Simulator clocks are not physical-phone performance.
 
-Check: `verse/benchmarks/run.py` compares every player palette element,
+Check: `metaverse/benchmarks/run.py` compares every player palette element,
 independently recomputes ranks/medians, observes kernel allocation calls and
 runs under ASan/UBSan. `R0UITests` drives the normal Grid/Metal path; inspect
 retained frame counts and command errors too. Reference-adapter review,
@@ -4344,8 +4344,8 @@ behind you; `metaverse-engine/cam/camera.coax` owns the overview orbit and the d
 reduced motion; a tap hurries it). Controls, the hotbar and the balance appear
 only once it lands. The balance sits top right as whole sats with no grouping
 (`₿1234`, or `₿–` with the reason spoken while there is none) and opens the wallet.
-`verse/grid.coax` owns its projection and line art,
-`metaverse-engine/core/sticks.coax` the move/look/jump touch policy; `metaverse-engine/move/walk.coax` owns walking and camera state behind the `metaverse-engine/move/player.coax` C facade; `verse/cast.coax` admits the bundled `Cast.bin`, blends your
+`metaverse/grid.coax` owns its projection and line art,
+`metaverse-engine/core/sticks.coax` the move/look/jump touch policy; `metaverse-engine/move/walk.coax` owns walking and camera state behind the `metaverse-engine/move/player.coax` C facade; `metaverse/cast.coax` admits the bundled `Cast.bin`, blends your
 character's clips and poses you and the robots. The native adapter only routes
 the Start invocation there, passes numbers between the libraries each frame
 and binds the buffers Coax admitted. A cast whose offsets, indices, joints or
@@ -4362,11 +4362,11 @@ jumping, and keeps the camera out of it. The hotbar is aethyr's HUD slot:
 Dance_Loop while you stand); walking or jumping ends it. The Grid has no
 buildings, peers or network use yet.
 
-Check: `coax/build.sh test`, `coax test verse/grid.coax`, `metaverse-engine/cam/camera.coax`,
-`metaverse-engine/move/player.coax` and `verse/cast.coax`, `verse/test_cast.sh` (the
+Check: `coax/build.sh test`, `coax test metaverse/grid.coax`, `metaverse-engine/cam/camera.coax`,
+`metaverse-engine/move/player.coax` and `metaverse/cast.coax`, `metaverse/test_cast.sh` (the
 real Cast.bin under ASan/UBSan, with corrupted copies refused, and you
 walking into the Foreman's leg and stopping),
-`PROTOC=... python3 verse/test_home.py`, the sanitizer harness and the iOS
+`PROTOC=... python3 metaverse/test_home.py`, the sanitizer harness and the iOS
 UI tests (Start opens the Grid, you stand idle, the stick walks you forward,
 a jump plays its clips, the Foreman stands by the start and its leg stops
 you, the hotbar's slot makes you dance and a step ends it, the terminal's
@@ -4791,7 +4791,7 @@ or walking through it. Each world owns the window's full Metal surface; it
 is not a modal web view. Grid returns to the same app, with the home, cast
 and wallet intact. The scene's decisions, geometry packets, motion, trigger
 schedule, footsteps/spatial sound, dialogue, teaching/character behaviours,
-quest, editing and protobuf documents are in `verse/haunt.coax`.
+quest, editing and protobuf documents are in `metaverse/haunt.coax`.
 `hud.coax` supplies reusable hotbar layout; `haunt-light.coax` emits the
 material math as Metal. Native code binds lifecycle, fixed-capacity memory,
 GPU buffers, UIKit/accessibility forms, audio clips and local file/share I/O.
@@ -4815,7 +4815,7 @@ changes the live scene. The platform retains bytes for every borrowed view;
 undo rebuilds the base, then applies a complete override snapshot. Background
 stops audio/input and saves; returning discards the world's native allocations.
 
-Check: `verse/test_haunt.sh` (Coax checks, 109/109 buffer-gate mutants killed,
+Check: `metaverse/test_haunt.sh` (Coax checks, 109/109 buffer-gate mutants killed,
 ASan/UBSan and real assets; with `PROTOC`/`PROTO_PYTHON`, source content parity
 and official protobuf writer interoperability in both directions), Grid/player
 checks, `HauntUITests` (real Metal portal, conversation, placement, save/reenter,
@@ -4825,9 +4825,9 @@ cameras/map/rotation/reset) and the existing `HomeUITests`.
 
 The schema is `proto/openagents/voice/v1alpha1/voice.proto`; one `Frame` is one
 WebSocket binary message, encoded and decoded only by the generated Coax codec
-(`verse/voice-wire.coax`), with no second hand-written codec.
+(`metaverse/voice-wire.coax`), with no second hand-written codec.
 
-- **Turns are Coax decisions.** `verse/voice.coax` decides when a turn starts
+- **Turns are Coax decisions.** `metaverse/voice.coax` decides when a turn starts
   and ends, barge-in and the media epoch. The phone sends uplink audio only for
   frames the engine marks as part of a turn (`OA_EV_FORWARD`) plus the turn's
   pre-roll. Silence between turns never leaves the phone.
@@ -4836,7 +4836,7 @@ WebSocket binary message, encoded and decoded only by the generated Coax codec
   epoch and before its deadline, and every numeric field is clamped. A slow or
   missing decider can fail to steer audio, but can't stall it.
 - **Who may be heard and what speech may cost are `#authority`.**
-  `verse/voice-floor.coax` (consent, input floor, routes by explicit binding
+  `metaverse/voice-floor.coax` (consent, input floor, routes by explicit binding
   only, never by reading the words) and `pay/voice-meter.coax` (free tier
   and price; no provider call for a turn the meter refuses) run with zero
   surviving mutants.
@@ -4902,7 +4902,7 @@ readiness/consent, 450 ms pre-roll, 300 ms minimum hold, 200 ms tail, a 60-secon
 capture cap, silence and current-ticket final publication. `dictation.coax`
 reuses the Metaverse's resampling/VAD and plans complete nonoverlapping Parakeet slices:
 at most three, each cut in a pause before its limit (the quietest-boundary
-rule `verse/asr-cut.coax` shares with the voice host), with 300 ms of silence
+rule `metaverse/asr-cut.coax` shares with the voice host), with 300 ms of silence
 the host adds before a later slice and after an earlier one inside the model's
 20.47 s; the silence is never part of the clip (#12694). The Mac C bridge
 forwards those Coax counts and the Swift worker adds exactly that padding;
@@ -4939,10 +4939,10 @@ Model-boundary exception: Debug builds accept `-OAVoiceFixture` (a bundled
 recording through the same uplink path as the microphone) and
 `-OAVoiceObserve`; Release builds compile both out.
 
-Check: `verse/test_voice.sh` (ASan/UBSan; every frame kind round-trips and
+Check: `metaverse/test_voice.sh` (ASan/UBSan; every frame kind round-trips and
 decodes with protoc; turns, barge-in, decisions, jitter buffer, fixtures);
-`coax test verse/voice*.coax`; `coax mutate` on floor and meter (0
-survivors); `verse/voice-host/test.sh` (offline, and live Google);
+`coax test metaverse/voice*.coax`; `coax mutate` on floor and meter (0
+survivors); `metaverse/voice-host/test.sh` (offline, and live Google);
 `apps/openagents-ios/tools/voice-sim-test.sh` (the simulator UI test, offline
 and live).
 
@@ -5419,7 +5419,7 @@ Indexing a local view reads it in place rather than copying it, with the
 same step and checks. Host bookkeeping (the live-storage list, pooled local
 frames, executed-procedure marks) is not compile-time storage. Check: before
 and after, `coax test` printed identical per-check steps, verdicts and
-diagnostics on `verse/demolish.coax` (91 checks), `coax/tests/pass`, `fail`,
+diagnostics on `metaverse/demolish.coax` (91 checks), `coax/tests/pass`, `fail`,
 `steps`, the results and System One policy files, the parallel-checks and
 authority-cache fixtures; `coax/tests/ct_storage.cpp` under the sanitizers.
 
@@ -5653,7 +5653,7 @@ not supplied by these queries.
 Check: parser/checker authority and zero-survivor mutation gates,
 `coax/tests/reflection.py` (independent native size/alignment/offset oracle,
 ASan/UBSan, invalid categories/indices, cross-unit layout and expansion limits),
-and `verse/test_haunt.sh`. The actual app's buffer admission consumes the
+and `metaverse/test_haunt.sh`. The actual app's buffer admission consumes the
 reflected Haunted House stride, layer offset and compile-time scalar table.
 Metal packing and source binary compatibility remain explicit native checks.
 
@@ -6140,7 +6140,7 @@ texture and sampler namespaces remain separate and bounded. Compile MSL 2.3+
 without fast math. Refused interfaces/layouts fail before an output file is
 written. Scalar Metal and Metal compute keep their existing profiles.
 
-The offscreen verification planner is Coax (`verse/gpu/metal-pass.coax` and
+The offscreen verification planner is Coax (`metaverse/gpu/metal-pass.coax` and
 its `metal-plan.coax` authority policy); Swift executes SDK effects and reads
 back pixels. Realm shader arithmetic stays in Coax. The seven G5 cases and
 eleven entry pairs are qualified in
@@ -6150,7 +6150,7 @@ switching the desktop default before #12868/#12869 pass their own checks.
 
 ## A shared-renderer GPU object exists only with a live ledger handle
 
-`coax/web/render.js`, and the native Vulkan host (`verse/native/render-host.c`,
+`coax/web/render.js`, and the native Vulkan host (`metaverse/native/render-host.c`,
 `render-realm.c`, `render-textures.c`), create a buffer or texture only after the Coax ledger
 (`metaverse-engine/render/registry.coax`, `#authority`) admits its kind and size within
 512 slots and a 1 GiB word budget, and releases the handle when it destroys
@@ -6160,7 +6160,7 @@ handle and keeps the generations, so no handle from before the loss is live
 again. Checks: the ledger's own checks and its mutation gate;
 `metaverse-engine/tests/render-ledger.coax` on the served Grid (exact count, a released
 handle refused at use, recovery after a lost device); natively,
-`verse/gpu/realm.sh local check` prints the ledger at the last frame and
+`metaverse/gpu/realm.sh local check` prints the ledger at the last frame and
 none live after close.
 
 ## The Metaverse Engine pauses the world view after its first rendered frame
@@ -6372,7 +6372,7 @@ uses actual collision-resolved travel, not an extra animated world displacement
 or unresolved velocity. The source 30-fps assumption remains explicit; original
 controller physics and its transition graph have not been fully recovered.
 The child gameplay jump/backflip height, gravity-scale and backflip-speed values
-are pinned in `verse/ocarina/controller.coax`. Their ballistic launch mapping and
+are pinned in `metaverse/ocarina/controller.coax`. Their ballistic launch mapping and
 absolute gravity remain explicit Metaverse Engine adaptations. Backflip captures facing,
 uses normal source collision, refuses airborne restarts and recovers after landing
 and the selected clip. Analog input retains magnitude above the Metaverse Engine's dead zone.
@@ -6567,7 +6567,7 @@ preserves all eight 16-bit joint indices, source scales and SSC. The extra draw
 replaces only the local standing avatar; water remains the final blended draw.
 Shift+L restores the ordinary avatar and cancels the action. Spell controls and
 remote characters retain their existing paths. The raid and Ocarina Lab share
-`verse/ocarina/locomotion.coax` and the character FMAT evaluator. Versioned J1
+`metaverse/ocarina/locomotion.coax` and the character FMAT evaluator. Versioned J1
 inputs retain profile/action/heading through client prediction and room replay;
 ordinary I input retains its published meaning. Room collision and combat rules
 still apply. This is Lab-port parity, not a claim of fully recovered native
@@ -7673,7 +7673,7 @@ environment (`environment = ENV_GLADE_ID`); lowpoly, flat, anime and photoreal
 name none. Character Create's glade stays identical to the P1.1 baseline within
 its declared bounds (GitHub #13060). Checks: `coax test metaverse-engine/render/painterly.coax`
 ("the default's evaluation reads the glade profile's resolved values"),
-`coax test verse/style-preset.coax` ("the painterly preset's default environment
+`coax test metaverse/style-preset.coax` ("the painterly preset's default environment
 resolves to the glade profile"), the delegate checks in
 `everglade/scene/gpu/character-glade-light.coax` and `character-glade.coax`,
 and `docs/verification/aethyr-lighting-p1-0-2026-11-08/`.
@@ -7691,11 +7691,11 @@ record's key. A refused resolution writes the last record held, or the glade's n
 partial one. Everglade II's set is `everglade/world/environment.coax` `e2_environment_set`, its
 day the room's (`day_from_room`); a page with no room is the glade's fixed noon. A painterly made
 realm (`myrealm`) that authors no time of day and no mist writes its style block under the glade
-(`verse/style-preset.coax` `verse_style_glade_env`). Character Create stays inside the P1.1
+(`metaverse/style-preset.coax` `verse_style_glade_env`). Character Create stays inside the P1.1
 baseline's bounds (GitHub #13066). Checks: `coax test metaverse-engine/render/environment-frame.coax`
 (`#authority`, zero mutants), `coax test metaverse-engine/render/painterly.coax` ("the glade record draws
 exactly the constants"), the `every frame writes the camera's environment` checks in
-`everglade/client/client.coax` and `fivelab.coax`, `coax test verse/style-preset.coax`
+`everglade/client/client.coax` and `fivelab.coax`, `coax test metaverse/style-preset.coax`
 ("a made painterly realm with nothing authored is the glade's resolved light"), and
 `docs/verification/aethyr-lighting-p1-6-2026-11-08/`.
 

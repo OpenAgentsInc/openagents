@@ -646,7 +646,7 @@ record transfer in both directions.
 
 ## Adoption and record exchange
 
-- [Grid walking](../../verse/gridwalk.coax) records sampled input, including
+- [Grid walking](../../metaverse/gridwalk.coax) records sampled input, including
   look and zoom. The shared [version 2 walker adapter](../move/walk.coax)
   supplies the same step-buffering semantics to frame-driven walker faces.
   The original `Player` C layout and legacy single-sample entry stay compatible.

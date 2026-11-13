@@ -5,5 +5,5 @@
   licensed under Creative Commons Attribution 4.0 (https://creativecommons.org/licenses/by/4.0/).
   Changed: its body mesh thinned from 512,000 triangles to about 27,700 (`--cells 90`), coloured from its
   texture, scaled and placed in the game's car frame, and sorted for tracing
-  (`verse/tools/mesh-bvh.coax`); its wheels are the game's own.
+  (`metaverse/tools/mesh-bvh.coax`); its wheels are the game's own.
 - Everything else in the world is our own.

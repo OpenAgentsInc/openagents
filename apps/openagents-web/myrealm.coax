@@ -14,7 +14,7 @@
 // Lanterns are lights in cages on dark posts, with a pool of light round each after dark; the flock circles low ahead of whoever walks, dark against the sky; you and the
 // characters are figures built from the pack's barrel and crate (from above, a figure on a bright ring).
 //
-// The owner and admins (the server decides) get EDIT, the shared edit layer (verse/edit/edit.coax):
+// The owner and admins (the server decides) get EDIT, the shared edit layer (metaverse/edit/edit.coax):
 // the board of what is here, a checkbox a row, revised by typing; SETTINGS, the tools visitors get;
 // and the cards for what visitors propose, each with ACCEPT and DECLINE. With BUILD on, a visitor's
 // placed thing is a proposal; the owner's goes in at once.
@@ -36,8 +36,8 @@
 #load "ui.coax";
 #load "../../coax/web/analytics.coax";
 #load "access.coax";   // who may make a realm: BUILD YOUR OWN REALM hides on make 0
-#load "../../verse/edit/edit.coax";   // the board, settings and cards every realm shares
-#load "../../verse/style-preset.coax";
+#load "../../metaverse/edit/edit.coax";   // the board, settings and cards every realm shares
+#load "../../metaverse/style-preset.coax";
 #load "../../metaverse-engine/anim/figure.coax" as fig;   // the figures: you, the villagers, the characters
 #load "myrealm-shapes.coax";   // the round things: figures and owls
 #load "../../metaverse-engine/editor/record.coax";   // a publish's reply (record.proto)
@@ -2173,7 +2173,7 @@ realm_probe :: (s: [] MyRealm, f: int) -> int #export_c #effects(all) {
   if f == 17 { return cast(int) (s[0].yaw * 18000.0f32 / pc.PI + (ifx s[0].yaw < 0 then -0.5f32 else 0.5f32)); }
   if f == 18 { return s[0].camera; }
   if f == 19 { return cast(int) (s[0].pitch * 18000.0f32 / pc.PI + (ifx s[0].pitch < 0 then -0.5f32 else 0.5f32)); }
-  if f >= 2400 && f < 2500 { return redit_probe(s[0].ed[..], f - 2400); }   // the edit layer (verse/edit/edit.coax)
+  if f >= 2400 && f < 2500 { return redit_probe(s[0].ed[..], f - 2400); }   // the edit layer (metaverse/edit/edit.coax)
   if f == 64 { return ifx s[0].laid then s[0].ent_n else 0; }
   // the light a browser check reads back (#13067): PROBE_GLADE is 1 when the last frame wrote the
   // glade's style block (a painterly realm that authors no light), PROBE_STYLE + i the block's word i in millionths
@@ -2382,7 +2382,7 @@ draw_hud :: (s: [] MyRealm, out: [] f32, at: int) -> int {
   n = write(d, out, n, sub, tb.x0 + 14 * k, tb.y0 + 39 * k, fit_cap(sub, 7.5 * k, tb.x1 - tb.x0 - 28 * k), GAP, SPACE, bronze(k, 0.9), false, false);
   if ln > 0 { n = write(d, out, n, live, tb.x0 + 14 * k, tb.y0 + 54 * k, fit_cap(live, 7 * k, tb.x1 - tb.x0 - 28 * k), GAP, SPACE, white(k, 0.8), false, false); }
   n = pill(s, out, n, BTN_BACK, Box.{x0 = w - g - bw, y0 = g, x1 = w - g, y1 = g + 36 * k}, "WORLDS", false);
-  // the owner's and admins', under REALMS: EDIT, and its pane (verse/edit/edit.coax)
+  // the owner's and admins', under REALMS: EDIT, and its pane (metaverse/edit/edit.coax)
   right := g + 46 * k;
   n = redit_hud(s[0].ed[..], out, n, RBox.{x0 = w - g - bw, y0 = right, x1 = w - g, y1 = right + 36 * k});
   for i: 0..<s[0].ed[0].plate_n {

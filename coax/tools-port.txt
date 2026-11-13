@@ -9,6 +9,7 @@
 # (tools-check), so a tool written since is Coax or says its Firm reason:.
 # A folder that has moved since says so in a line "# moved: OLD/ -> NEW/", and a
 # listed path under NEW/ must have been tracked there under OLD/.
+# moved: verse/ -> metaverse/
 # moved: aethyr/forge/ -> metaverse-engine/editor/
 # moved: aethyr/ -> metaverse-engine/
 # base: 0c2f9f4cdaff0e9f392a334a288537c452921185
@@ -734,34 +735,34 @@ tools/coax-nostr/vectors/test_runner.py
 tools/coax-nostr/zeroize/test_zeroize.py
 tools/coax-nostr/zeroize/wasm.cjs
 tools/coax-unicode/tables.py
-verse/benchmarks/run.py
-verse/deadgears/bench.sh
-verse/deadgears/page-bench.sh
-verse/deadgears/test.sh
-verse/icecream/test-browser.sh
-verse/icecream/test-mesh.sh
-verse/icecream/test.sh
-verse/icecream/tools/browser-trace.ts
-verse/icecream/tools/prefixes.py
-verse/test_cast.sh
-verse/test_guard_ai.sh
-verse/test_haunt.sh
-verse/test_home.py
-verse/test_sanitized.sh
-verse/test_voice.sh
-verse/tools/check_haunt_doors.py
-verse/tools/haunt_panes.py
-verse/tools/pack_cast.py
-verse/tools/pack_grid.py
-verse/tools/pack_haunt.py
-verse/tools/pack_realm.py
-verse/tools/pack_sandbox.py
-verse/tools/people.py
-verse/tools/test_pack_style.py
-verse/voice-host/build.sh
-verse/voice-host/deploy.sh
-verse/voice-host/run.sh
-verse/voice-host/test.sh
+metaverse/benchmarks/run.py
+metaverse/deadgears/bench.sh
+metaverse/deadgears/page-bench.sh
+metaverse/deadgears/test.sh
+metaverse/icecream/test-browser.sh
+metaverse/icecream/test-mesh.sh
+metaverse/icecream/test.sh
+metaverse/icecream/tools/browser-trace.ts
+metaverse/icecream/tools/prefixes.py
+metaverse/test_cast.sh
+metaverse/test_guard_ai.sh
+metaverse/test_haunt.sh
+metaverse/test_home.py
+metaverse/test_sanitized.sh
+metaverse/test_voice.sh
+metaverse/tools/check_haunt_doors.py
+metaverse/tools/haunt_panes.py
+metaverse/tools/pack_cast.py
+metaverse/tools/pack_grid.py
+metaverse/tools/pack_haunt.py
+metaverse/tools/pack_realm.py
+metaverse/tools/pack_sandbox.py
+metaverse/tools/people.py
+metaverse/tools/test_pack_style.py
+metaverse/voice-host/build.sh
+metaverse/voice-host/deploy.sh
+metaverse/voice-host/run.sh
+metaverse/voice-host/test.sh
 
 # 2026-11-02: found by tools-check's first enforced run (release.sh) with neither a
 # Firm reason: line nor a place on this list; written after the 2026-10-30 rule or
@@ -1236,19 +1237,19 @@ scripts/book_routes.py
 scripts/check-books.sh
 scripts/test_publish_coax_book.py
 scripts/tests/test_book_routes.py
-verse/benchmarks/loop.py
-verse/benchmarks/tails.py
-verse/benchmarks/test_tails.py
-verse/gpu/build.sh
-verse/gpu/display.sh
-verse/gpu/frame-check.sh
-verse/gpu/light-check.sh
-verse/gpu/realm.sh
-verse/gpu/shader-check.sh
-verse/gpu/window.sh
-verse/kms/build.sh
-verse/kms/run.sh
-verse/native/build.sh
-verse/native/check.sh
-verse/native/musl-math.sh
+metaverse/benchmarks/loop.py
+metaverse/benchmarks/tails.py
+metaverse/benchmarks/test_tails.py
+metaverse/gpu/build.sh
+metaverse/gpu/display.sh
+metaverse/gpu/frame-check.sh
+metaverse/gpu/light-check.sh
+metaverse/gpu/realm.sh
+metaverse/gpu/shader-check.sh
+metaverse/gpu/window.sh
+metaverse/kms/build.sh
+metaverse/kms/run.sh
+metaverse/native/build.sh
+metaverse/native/check.sh
+metaverse/native/musl-math.sh
 psionic/tests/check_draft_length.sh

@@ -1,5 +1,5 @@
 // Dead Gears, openagents.com/worlds/dead-gears: the ship survival game, ported
-// from aethyr-demo's src/dead_gears.cpp. The rules are verse/deadgears/
+// from aethyr-demo's src/dead_gears.cpp. The rules are metaverse/deadgears/
 // (ecs.coax, arena.coax, rules.coax: every system and check of the demo);
 // this file is the page over them: the ship's hull as the demo built it, the
 // cover, the reactor, the cargo, the bolts and the cutter's beams, the
@@ -19,8 +19,8 @@
 
 #load "../../metaverse-engine/ui/font.coax";
 #load "../../coax/web/analytics.coax";
-#load "../../verse/deadgears/rules.coax";
-#load "../../verse/edit/edit.coax";   // EDIT for its owner and admins (docs/verse/realm-edit.md)
+#load "../../metaverse/deadgears/rules.coax";
+#load "../../metaverse/edit/edit.coax";   // EDIT for its owner and admins (docs/verse/realm-edit.md)
 #load "../../metaverse-engine/core/budget.coax";
 #load "../../metaverse-engine/move/walk.coax" as pc;   // the controller every walkable realm shares (#6d99)
 #load "../../metaverse-engine/physics/collision-profiles.coax" as walk_profiles;
@@ -1898,7 +1898,7 @@ hud :: (s: [] DeadGears, u: [] f32, out: [] f32) -> int {
   rh := (ifx small then 96.0f32 else 150.0f32) * k;
   rw := rh * 32 / 38;
   if redit_row_on(s[0].ed[..], "radar") { n = radar(s, u, out, n, Rect.{x0 = w - gut - rw, y0 = pb.y1 + 8 * k, x1 = w - gut, y1 = pb.y1 + 8 * k + rh}); }
-  // EDIT, left of PAUSE, for its owner and admins (verse/edit/edit.coax); open, the fight waits
+  // EDIT, left of PAUSE, for its owner and admins (metaverse/edit/edit.coax); open, the fight waits
   ew := text_width("EDIT", 9 * k) + 32 * k;
   n = redit_hud(s[0].ed[..], out, n, RBox.{x0 = pb.x0 - 8 * k - ew, y0 = gut, x1 = pb.x0 - 8 * k, y1 = gut + 32 * k});
   for i: 0..<s[0].ed[0].plate_n {
@@ -2070,7 +2070,7 @@ step_fight :: (s: [] DeadGears, t: f32) {
 // over or held for a golden), the events play, then the world, the light
 // and the HUD are written. The fight's step is at most 0.05 s a frame: a
 // stalled frame slows the fight rather than skipping it.
-// A frame counts for at most 0.05 s (verse/deadgears/ecs.coax ecs_counts, on Aethyr's clock), so
+// A frame counts for at most 0.05 s (metaverse/deadgears/ecs.coax ecs_counts, on Aethyr's clock), so
 // the rules run at most three steps of 1/60 s.
 DG_FRAME_DT :: 0.05;
 

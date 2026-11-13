@@ -44,7 +44,7 @@ About 70,000 lines of non-Coax code in tools and tests.
 | `tools/coax-nostr/*` (audits, fuzz, timing, guards) | 6,400 | Mostly port; oracle pieces stay (2). |
 | API tests (`coax/web/api/*.py`, 35 files) and deploy checks | 5,500 | Port: tests of our own C API, not oracles. |
 | Project CLI (`coax/web/project/*.ts`: publish, baked, tasks) | 3,500 | Port. |
-| Metaverse tools (`verse/tools/pack_*.py`, oracles, benches) | 3,400 | Packers port; `haunt_oracle.py` stays (2). |
+| Metaverse tools (`metaverse/tools/pack_*.py`, oracles, benches) | 3,400 | Packers port; `haunt_oracle.py` stays (2). |
 | Browser host (`coax/web/*.js`) | 3,000 | Stays (1), kept thin. |
 | Shell (`coax/web/*.sh`, `release.sh`, API deploy scripts) | 3,600 | Thin wrappers stay (5). `release.sh`, `deploy.sh`, `golden-check.sh` hold real logic: port. |
 | `scripts/` (nips, book publishing, Pylon model fetch) | 1,300 | Port. |
@@ -78,7 +78,7 @@ exists today: sockets and TLS (`coax/platform/socket-native.c`,
    most copied. `clip` first: the Coax version must make the same clip
    (same frames, byte for byte) before `clip.ts` is deleted.
 3. **Build tools:** `strip`, `realms` (the realm page generator), `wgsl.py` (done: `coax wgsl`),
-   `og-card.py`, `nip-pages.py`, the `verse/tools` packers.
+   `og-card.py`, `nip-pages.py`, the `metaverse/tools` packers.
 4. **The project CLI** (`coax/web/project`).
 5. **API tests** into Coax test programs that call the API over `http`.
 6. **`release.sh`, `deploy.sh`, `golden-check.sh`** into one Coax release
@@ -103,7 +103,7 @@ the same inputs, then deletes it in the same commit that switches callers.
   the room checks (`coax/web/room/relay-check.coax`, `load.coax`, over
   `net/relay_conn.coax`, so `wss://` too), the replay and struct-default
   checks (`coax/web/replay-hosts.coax`, `state-defaults.coax`) and the OpenAgents Metaverse's
-  `verse/native/wasm-run.coax`. The three that run a page's wasm do it in
+  `metaverse/native/wasm-run.coax`. The three that run a page's wasm do it in
   headless Chrome through `coax/web/wasm-chrome.coax`; the page's side is
   `coax/web/wasm-host.js` (reason 1), which keeps files, instantiates, calls
   exports and moves memory bytes. Every step, hash, parse and comparison is
@@ -161,7 +161,7 @@ the same inputs, then deletes it in the same commit that switches callers.
   duplicate receipt marked applied, the pack bytes cacheable) both failed
   the same checks. The room view's empty check now allows the admission
   section #12796 added, which the old check refused.
-  `verse/tools/humans/upload_packs.coax` replaces `upload_packs.sh`: against
+  `metaverse/tools/humans/upload_packs.coax` replaces `upload_packs.sh`: against
   a stand-in gcloud and a fixed `openssl rand`, both made the same gcloud
   calls, the same manifest and the same stored objects, byte for byte, on
   new, existing, already-stored and masterless manifests. The new one checks
@@ -169,8 +169,8 @@ the same inputs, then deletes it in the same commit that switches callers.
   gcloud at all.
 
 - 2026-11-05 (#12859): the hotbar pictures are drawn in Coax.
-  `verse/tools/fivemmo_hotbar.coax` and `everglade_hotbar.coax` replace
-  the two Python tools, drawing through `verse/tools/hotbar.coax` on two new
+  `metaverse/tools/fivemmo_hotbar.coax` and `everglade_hotbar.coax` replace
+  the two Python tools, drawing through `metaverse/tools/hotbar.coax` on two new
   libraries: `coax/lib/image/jpeg_enc.coax` (baseline JPEG as libjpeg-turbo
   writes it: the same bytes as Pillow for the same pixels, at quality 90 and
   92, 4:4:4 and 4:2:0, standard and optimized tables) and

@@ -3,7 +3,7 @@
 `tests/stream-walk-native-gpu.coax` runs the engine-owned corridor through
 the existing walker, resource owners, canonical codecs and draw list.
 `tests/stream-walk-vulkan.c` executes headless Vulkan effects with the
-existing `verse/gpu/vkc` and `vks` SDK. It creates no window, input capture
+existing `metaverse/gpu/vkc` and `vks` SDK. It creates no window, input capture
 or audio output. This is a bounded native observation carrier, separate
 from the ordinary realm host and the published host-v1 ABI.
 
@@ -30,7 +30,7 @@ retirement, `sw_host_finish` releases it and the fixed grant releases afterward.
 The ordinary malloc/free and browser carrier retain their prior path.
 
 Streamed buffer/image creation uses the additive checked
-`verse/gpu/vks-resource` factories. They return SDK errors, unwind partial
+`metaverse/gpu/vks-resource` factories. They return SDK errors, unwind partial
 creation and preserve the destination until success. Staging and retained
 resource factories are adopted; surface/pipeline/readback factories remain
 separate adapters. The
@@ -140,7 +140,7 @@ canonical histories and explicit display-storage ownership.
 
 ## Owned submissions and reported draw loss
 
-The native carrier now uses the additive `verse/gpu/vks-submit.{h,c}` API
+The native carrier now uses the additive `metaverse/gpu/vks-submit.{h,c}` API
 for its draw submission. A successful begin means work was accepted, not
 that it finished. The command pool and fence survive pending or unknown
 errors. Retirement refuses while pending and rejects a different device.

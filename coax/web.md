@@ -74,7 +74,7 @@ The initial three-realm baseline and independent HTTP/GPU-frame receipts are in
 | The browser host | `coax/web/host.js`: WebGPU, the frame clock, state in one `WebAssembly.Memory`, code and shader swaps, the dev error note, the `?probe` frame readback | Works for apps with one uniform block and one vertex stream |
 | Coax → Wasm | `coax/web/wasm.sh`: `coax c` → clang wasm32-wasip1 → wasm-ld; dev (`-O1`, parallel) and release (`-O2`) | The splash is 24 KB (release) |
 | Dev server | `coax/web/serve.c` + `serve.sh` (`coax serve`): static files, a watcher, rebuilds, `/coaxial/live` | Measured: an engine rebuild in 118–135 ms, shader and page messages, compiler errors with the `.coax` location |
-| Realm host | `apps/openagents-web/realms.json` (every galaxy world and realm page), `coax/web/realms.ts` (writes `realms.coax` and `realms/<slug>/index.html`), host.js `data-realm`/`data-slot` (a save slot per realm), `fixture.coax` (the smallest realm), `pack:URL` assets (a realm's asset pack, `verse/tools/pack_realm.py`) | The contract a realm follows: [docs/verse/realm-host.md](../docs/verse/realm-host.md) |
+| Realm host | `apps/openagents-web/realms.json` (every galaxy world and realm page), `coax/web/realms.ts` (writes `realms.coax` and `realms/<slug>/index.html`), host.js `data-realm`/`data-slot` (a save slot per realm), `fixture.coax` (the smallest realm), `pack:URL` assets (a realm's asset pack, `metaverse/tools/pack_realm.py`) | The contract a realm follows: [docs/verse/realm-host.md](../docs/verse/realm-host.md) |
 | Staging deploy | `coax/web/deploy.sh APP SERVICE` (`coax deploy`, for now): release build, content-named wasm/shader/host files, a direct parallel upload of only what changed to the app's bucket (`upload.py`). `cdn.sh` (one time) puts Cloud CDN and a load balancer in front of the bucket; `deploy.sh --server` builds the static server image once for the Cloud Run fallback, which mounts the same bucket | A deploy takes about 1.2 s (0.4 s build, 0.8 s upload); staging.openagents.com |
 
 Not built: `coax wgsl` (shaders are hand-written WGSL for now), the
@@ -90,7 +90,7 @@ compiler itself (today it's `coax/web/serve.sh`).
    connection and in under three on a typical phone, with the character and
    heavier assets streaming in after.
 2. **One engine.** The browser runs the same Coax code the iOS app runs
-   (`verse/*.coax`): scene, Grid, player, camera, cast, HUD, voice. The
+   (`metaverse/*.coax`): scene, Grid, player, camera, cast, HUD, voice. The
    browser host does platform effects only, like Swift does on the phone.
 3. **Fast iteration.** Saving a `.coax`, shader or data file updates the
    running page without losing your place in the world. Targets below.
@@ -118,7 +118,7 @@ Facts this proposal starts from, checked 2026-10-28:
 - **Coax** emits C11 (`coax c`, `coax lib`) and a restricted f32/bool Metal
   library (`coax metal`). It has no wasm32 target, no WGSL emitter, no
   globals and no heap. State lives in caller-allocated storage passed as
-  views, the pattern `verse/platform/voice.h` uses (`oa_voice_size()`,
+  views, the pattern `metaverse/platform/voice.h` uses (`oa_voice_size()`,
   caller allocates, zeroed).
 - **Compile speed today, this Mac:** `coax c` on `grid.coax` (895 lines),
   `player.coax` and `cast.coax` takes about 10 ms each; `home.coax` takes
@@ -151,14 +151,14 @@ Facts this proposal starts from, checked 2026-10-28:
  │ audio worklet, IME text field, accessibility mirror                 │
  │   │ owns one WebAssembly.Memory (the state arena) + GPU resources   │
  │   ▼                                                                 │
- │ engine.wasm  = verse/*.coax → C11 → clang wasm32                 │
+ │ engine.wasm  = metaverse/*.coax → C11 → clang wasm32                 │
  │   grid, player, camera, cast, hud, voice … (stateless code)         │
  │ shaders.wgsl = Coax shader subset → WGSL (coax wgsl, not yet built) │
  └─────────────────────────────────────────────────────────────────────┘
                    │ WebSocket, protobuf frames (proto/)
                    ▼
    site server (C host + Coax logic): pages as text, API, Grid presence,
-   voice relay (verse/voice-host pattern)
+   voice relay (metaverse/voice-host pattern)
 ```
 
 ### Client
@@ -190,7 +190,7 @@ Facts this proposal starts from, checked 2026-10-28:
 
 ### Server
 
-- **One binary**, the `verse/voice-host` pattern: a C host for sockets,
+- **One binary**, the `metaverse/voice-host` pattern: a C host for sockets,
   TLS-terminating proxy in front, and Coax for every decision (routing,
   admission, rate limits, protocol handling). It serves:
   - the app shell (`/`): a tiny HTML page, `host.js`, `engine.wasm`, WGSL and

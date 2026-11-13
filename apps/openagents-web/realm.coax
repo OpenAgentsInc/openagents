@@ -1,6 +1,6 @@
 // A Verse realm on the web, drawn by Coax: openagents.com/worlds/haunted-house
 // first. The world is the Verse engine's own code, unchanged from the iOS app:
-// verse/haunt.coax plays the Haunted House, player.coax walks you through
+// metaverse/haunt.coax plays the Haunted House, player.coax walks you through
 // it and grid.coax reads a phone's thumbs, and realm-face.c binds them for
 // the browser as HauntViewController.swift does on the phone. This file is
 // everything on the screen over the world and what you do with it: the HUD
@@ -26,7 +26,7 @@
 #load "place.coax";
 #load "world.coax";
 #load "room.coax";
-#load "../../verse/edit/edit.coax";   // EDIT for its owner and admins (docs/verse/realm-edit.md)
+#load "../../metaverse/edit/edit.coax";   // EDIT for its owner and admins (docs/verse/realm-edit.md)
 #load "access.coax";                 // who may make a realm: BUILD YOUR OWN REALM hides on make 0
 #load "../../metaverse-engine/core/budget.coax";
 #load "../../metaverse-engine/talk/wire.coax";   // the NPC ask's one codec (E4, #13247)
@@ -102,7 +102,7 @@ TYPED_MAX :: 480;  // what's typed (the survey's answer, a question, a lesson), 
 // What the typed box is for: the survey's answer, a question for whoever
 // you're talking to, or something to teach them.
 TYPE_SURVEY :: 0; TYPE_ASK :: 1; TYPE_TEACH :: 2; TYPE_CHAT :: 3;
-TYPE_PIECE :: 4;   // a sentence for the Sandbox's set pieces (verse/setpiece.coax)
+TYPE_PIECE :: 4;   // a sentence for the Sandbox's set pieces (metaverse/setpiece.coax)
 MEMORY_LINES :: 10;   // the conversation a character is reminded of (the server's last ten lines)
 MEMORY_LINE :: 400;   // bytes of a line kept
 HAUNT_NAME :: "Haunted House";   // the world, as a character names it
@@ -282,7 +282,7 @@ realm_voice :: (r: [] Realm, text: string) #export_c #effects(all) {
 }
 realm_heard :: (r: [] Realm) -> string #export_c #effects(all) { return cast(string) r[0].heard[0..<r[0].heard_n]; }
 // What VOICE heard said to the realm itself (no one faced): its owner's and admins' words go to the
-// edit layer's selector (verse/edit/edit.coax redit_hear), whose reply is shown and spoken.
+// edit layer's selector (metaverse/edit/edit.coax redit_hear), whose reply is shown and spoken.
 realm_hear :: (r: [] Realm) -> bool #export_c #effects(all) { return redit_hear(r[0].ed[..], realm_heard(r)); }
 
 // Who is logged in (host.js message 606, /api/auth/me's lines): the npub of
@@ -771,7 +771,7 @@ title_box :: (r: [] Realm) -> Box {
   w := lo(230 * k, minimap_box(r).x0 - m - 16 * k - edit_room(r));
   return Box.{x0 = m + 4 * k, y0 = m + 4 * k, x1 = m + 4 * k + w, y1 = m + 4 * k + 30 * k};
 }
-// EDIT, left of the minimap, for its owner and admins (verse/edit/edit.coax).
+// EDIT, left of the minimap, for its owner and admins (metaverse/edit/edit.coax).
 edit_box :: (r: [] Realm) -> RBox {
   k := r[0].dpr; b := minimap_box(r);
   w := measure("EDIT", GAP, SPACE, false) * 9 * k + 32 * k;

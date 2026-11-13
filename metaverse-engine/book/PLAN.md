@@ -20,7 +20,7 @@ reading order and the [introduction](README.md) the result of each chapter.
 | VI. Making worlds | 51–55 | The OpenAgents Metaverse Engine: a realm as a typed document, edited in place, with imported assets, published as a frozen record and forked. |
 | VII. Realms | 56–64 | The Grid, made realms, Everglade, Dead Gears, Ice Cream Man, Hecate's Cemetery, Fairy Forest and the space games, each rebuilt only from earlier chapters; then every realm on the Metaverse Engine with no private copies left. |
 | VIII. Hearing it | 65–69 | Integer synthesis, a beat-grid sequencer, mixing with a reverb send, a master that never clips, WAV output and a rendered soundtrack; then real-time playback, sound placed in the world, and music that follows the game's state; then players' and agents' voices placed in the realm. |
-| IX. A living world | 70–78 | Water, sky and weather, particle effects, breakable kit pieces, wheeled vehicles, creatures that follow and watch, paths and crowds, characters who talk, and authored camera flights, each moved from `verse/` into one Metaverse Engine module. |
+| IX. A living world | 70–78 | Water, sky and weather, particle effects, breakable kit pieces, wheeled vehicles, creatures that follow and watch, paths and crowds, characters who talk, and authored camera flights, each moved from `metaverse/` into one Metaverse Engine module. |
 | X. Generating worlds | 79–80 | A set piece chosen from a typed catalogue by a semantic selector, and terrain and scatter laid out from a seed. |
 | XI. Shipping realms | 81–85 | Saves that survive schema changes, code changed while a realm runs, inspection and profiling of a running realm, one realm on every host, and accessibility and languages. |
 | XII. Many players | 86–101 | One headless server that owns the scene; shared step, rules and world; signed seats; intents and acknowledgements; prediction; one replication model with a budget and one interpolation buffer; effects as state; offline as a local server; combat rules under latency; interest without leaks; versions, deploys and reconnect; measurement; the drift proof; the Everglade room. |
@@ -48,7 +48,7 @@ Chapter 8 now owns the admitted ground sampler, mesh contacts and bounded
 capsule publication in `metaverse-engine/ground*.coax` and `metaverse-engine/physics/collide.coax`.
 Chapter 9 consolidates the walking controller and its declared tuning;
 chapter 64 still owns the complete migration of realm adapters. Part III
-consolidates the existing Coax shader and host paths in `verse/gpu/`.
+consolidates the existing Coax shader and host paths in `metaverse/gpu/`.
 
 ## Completion milestones
 
@@ -141,7 +141,7 @@ its first example. Read the integration checks before claiming the full goal.
 | Rendering | 2, Coax's direct WGSL emission ([Coax chapter 17](../../coax/book/ch17-gpu.md)) | Renderer 11 → materials 12 → light 13 → figures 14 → UI 15; budgets 16 apply to all of them. |
 | Physics engine | Psionic chapters 4, 37–38 and 107; 109 and 111 for gradients; Coax R12–R20, then R21–R24 | Scene 17 → rigid bodies, joints and contact 18–22 → batches 31, assets 35, replay 36 (with Psionic chapter 167's control); particle and mesh solvers 23–28 → coupling 29–30 → gradients 32; sensors and observations 33–34; measurement 37. |
 | Streaming | 6, 7, 16 and the rigid chapters 18–22 | Cells, rings and a floating origin 38. |
-| Spacecraft and the solar system | Psionic chapters 107, 109, 234 and 242; the `verse/` space modules as the starting game layer; Coax R12–R20 forms as they ship | Ephemerides and frames 39 → propagation with stated error 40 → burns 41 → rendezvous 42; heat 43, ship interiors 44 and delayed sensors 45 in any order → event-stopped time warp 46 → impacts 47 → three fidelities, batched rollouts, surrogates and an admitted environment 48. |
+| Spacecraft and the solar system | Psionic chapters 107, 109, 234 and 242; the `metaverse/` space modules as the starting game layer; Coax R12–R20 forms as they ship | Ephemerides and frames 39 → propagation with stated error 40 → burns 41 → rendezvous 42; heat 43, ship interiors 44 and delayed sensors 45 in any order → event-stopped time warp 46 → impacts 47 → three fidelities, batched rollouts, surrogates and an admitted environment 48. |
 | Networking | 5 and 6 | Presence 49 → lockstep 50 for small games. |
 | Many players | 1, 3–7, 9, 10, 51 and 72 | Server 86 → shared step and world 87 → seats 88 → intents 89 → prediction 90 → the record 91 → budget 92 → interpolation 93 → effects 94 → offline host 95 → combat rules 96, interest 97, live operations 98 and measurement 99 in any order → proof 100 → the Everglade room 101. |
 | Metaverse Engine | 3, 5, 6 and 16; renderer/UI for the editor; 37's measurement method for publication gates | Realm document 51 → editing 52 → assets 53 → publishing 54 → forks 55. Physics-scene mapping is an extension. |
@@ -166,7 +166,7 @@ once they settle.
 These parts cover the systems in the
 [game-engine systems inventory](../../docs/research/game-engine-systems.md)
 that the realms already use but that no earlier chapter owns. Each one has a
-private copy in `verse/`, `coax/web/` or `apps/openagents-web/` today; each
+private copy in `metaverse/`, `coax/web/` or `apps/openagents-web/` today; each
 chapter plans one Metaverse Engine module that replaces it.
 
 - Part IX moves world systems into the Metaverse Engine: water, sky and weather, particle
@@ -202,7 +202,7 @@ solvers. Coupling 29–30 needs the forward solvers;
 gradients 32 need 18–27. Rigid sensors 33 need 17–22; observation rendering
 34 adds batching and imported assets. Extend each profile's matrix only after
 its integration checks pass; 37 runs throughout. The
-engine keeps the game-layer modules in `verse/` (rigid bodies, contacts) as
+engine keeps the game-layer modules in `metaverse/` (rigid bodies, contacts) as
 independent references, not as code to copy, and its Coax prerequisites are
 R12–R20 plus the simulation-compute phases R21–R24.
 
@@ -223,7 +223,7 @@ NASA's [rocket equation](https://www1.grc.nasa.gov/beginners-guide-to-aeronautic
 [artificial gravity](https://ntrs.nasa.gov/citations/19740010644) and
 [hypervelocity shielding](https://hvit.jsc.nasa.gov/shield-development/).
 
-The starting point already runs in `verse/` ([space primitives](../../docs/verse/space.md)):
+The starting point already runs in `metaverse/` ([space primitives](../../docs/verse/space.md)):
 f64 rigid bodies, swept contacts, gravity fields including a spinning drum,
 thrusters with tanks, two-body Kepler orbits, a J2000 mean-element ephemeris,
 spheres of influence and patched conics, Lambert and Hohmann transfers, RK4

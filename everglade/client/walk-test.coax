@@ -32,7 +32,7 @@ e2t_segment_distance :: (px: f32, pz: f32, ax: f32, az: f32, bx: f32, bz: f32) -
   qx := ax + dx * t - px; qz := az + dz * t - pz; return sqrt(qx * qx + qz * qz);
 }
 
-// The glade's mossy rock by the path, right of the spawn (verse/character-glade.coax cg_item 20: a
+// The glade's mossy rock by the path, right of the spawn (metaverse/character-glade.coax cg_item 20: a
 // Rock_Big_1 about a metre high), as the page and the room step you among it.
 e2t_rock :: (out: [] f32, rock: E2Rock) -> int { return e2_rock_hull(out, 0, rock, rock.x, rock.z); }
 // How far you are from a hull's side at your step height, middle and head: the nearest of the three.

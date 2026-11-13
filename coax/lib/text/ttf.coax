@@ -1,5 +1,5 @@
 // TrueType outlines (the `glyf` flavour of OpenType) read and rasterized to 8-bit coverage, for
-// tools that draw text into pictures (verse/tools/hotbar.coax). It reads head, hhea, hmtx, cmap
+// tools that draw text into pictures (metaverse/tools/hotbar.coax). It reads head, hhea, hmtx, cmap
 // (formats 4 and 12), loca and glyf, simple and composite glyphs. Points are scaled as FreeType
 // scales them (FT_DivFix, FT_MulFix: 26.6 pixels), quadratic arcs are split as FreeType's smooth
 // rasterizer splits them (a quarter pixel's deviation), and coverage is each pixel's exact area

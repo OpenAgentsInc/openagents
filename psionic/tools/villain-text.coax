@@ -2,7 +2,7 @@
 // No tools, MCP, hooks, browser, persistent sessions or game-state effects.
 #import "Basic";
 #load "villain-data.coax";
-#load "../../verse/characters/veyr-v2.coax";
+#load "../../metaverse/characters/veyr-v2.coax";
 #load "../../coax/lib/sys/tool.coax";
 #load "../../coax/lib/sys/proc.coax";
 vt_prompt :: (c:VwCase,question:string,out:[]u8)->string {

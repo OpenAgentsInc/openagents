@@ -1,10 +1,10 @@
-// The pond and its waterfall (ff-pond, verse/fairy-forest/README.md "Your
+// The pond and its waterfall (ff-pond, metaverse/fairy-forest/README.md "Your
 // skills": WATER). The pond starts low, its water drawn back into the
 // middle of its bed and sand round it; the waterfall at its head, where the stream comes in, is a
 // trickle down dry rocks until the sticks dammed across the stream above it
 // are cleared (E: CLEAR, which teaches WATER), and then it runs. With WATER,
 // E by the low pond (FILL THE POND) fills it over a few seconds; full, it is
-// kept in the save. The water itself is verse/fairy-forest/stream.coax's:
+// kept in the save. The water itself is metaverse/fairy-forest/stream.coax's:
 // the face lowers the pond's reach by fairy_pond_drop each frame.
 //   coax/bin/coax test apps/openagents-web/fairy.coax --steps 400000000
 

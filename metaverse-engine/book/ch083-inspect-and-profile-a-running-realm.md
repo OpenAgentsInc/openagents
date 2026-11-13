@@ -276,7 +276,7 @@ same walk without:
 <!-- source: metaverse-engine/examples/profile-a-frame.coax example -->
 ```jai
 #load "../core/frame-report.coax";
-#load "../../verse/gridwalk.coax";
+#load "../../metaverse/gridwalk.coax";
 #import "Basic";
 
 FRAMES :: 252;   // what a 4.2 s walk gives at 60 FPS (realm-perf's one round)

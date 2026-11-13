@@ -1,11 +1,11 @@
 # 12. Materials
 
 > **Status: partly implemented.** The surface shading functions moved from
-> `verse/style.coax` into [metaverse-engine/render/material.coax](../render/material.coax),
+> `metaverse/style.coax` into [metaverse-engine/render/material.coax](../render/material.coax),
 > with a typed `Material` record, its admission and the CPU form of the
 > painterly banded surface. Every realm's WGSL is byte-identical after the
 > move. No realm draws from a material table yet; the style presets, the
-> outline pass and the texture layers stay in `verse/` (see
+> outline pass and the texture layers stay in `metaverse/` (see
 > [Still to do](#still-to-do)).
 
 A material says how a surface answers light: its albedo, the texture layer
@@ -53,7 +53,7 @@ These are plain `f32` functions that work on one colour channel at a time,
 because the Metal scalar profile has no vectors. A realm's shader is Coax
 too (for example, `apps/openagents-web/gpu/fixture.coax`), and `coax wgsl`
 emits each function it calls as `coax_p_<name>`. The functions keep their
-`verse_style_` names, and `verse/style.coax` loads
+`verse_style_` names, and `metaverse/style.coax` loads
 `metaverse-engine/render/material.coax`, so every realm's call sites are unchanged.
 The check that every committed WGSL module still matches its Coax source
 reports no change:
@@ -80,7 +80,7 @@ the rim light and `verse_style_luma`.
 
 <!-- source: metaverse-engine/render/material.coax record -->
 ```jai
-// The styles a material is drawn in: the values of verse/style-preset.coax's STYLE_*.
+// The styles a material is drawn in: the values of metaverse/style-preset.coax's STYLE_*.
 MATERIAL_LOWPOLY :: 0;
 MATERIAL_PAINTERLY :: 1;
 MATERIAL_PHOTOREAL :: 2;
@@ -303,11 +303,11 @@ last bit.
 ```shell
 coax/bin/coax test metaverse-engine/render/material.coax
 coax/bin/coax mutate metaverse-engine/render/material.coax
-coax/bin/coax test verse/style.coax
+coax/bin/coax test metaverse/style.coax
 ```
 
 `metaverse-engine/render/material.coax` has 18 checks. The nine shading checks moved
-with their functions from `verse/style.coax`: the band edges, bands that
+with their functions from `metaverse/style.coax`: the band edges, bands that
 never step back as the light grows, the wrap, the characters' two bands, the
 shadow band under the tinted ambient, the cool shadow that keeps its value,
 the dab, and the rim's angles and its width on a figure. The new checks
@@ -334,11 +334,11 @@ adapter) checks the pages the move can reach against their goldens.
   but realms still pass albedo and style through their own vertex words. A
   realm declaring its table, with a material ID per instance read by the
   scene pass, is the next step.
-- **Presets and outlines.** The style presets (`verse/style-preset.coax`),
-  the outline pass (`verse/look.coax`), the flat and anime functions stay in `verse/style.coax`. Shared sky,
+- **Presets and outlines.** The style presets (`metaverse/style-preset.coax`),
+  the outline pass (`metaverse/look.coax`), the flat and anime functions stay in `metaverse/style.coax`. Shared sky,
   clouds, grass, canopies and wind now live in `metaverse-engine/render/sky.coax`
   and `metaverse-engine/render/vegetation.coax`, loaded through that compatibility layer.
-- **Texture layers.** [verse/gpu/layers.coax](../../verse/gpu/layers.coax)
+- **Texture layers.** [metaverse/gpu/layers.coax](../../metaverse/gpu/layers.coax)
   decodes and mipmaps texture layers into the layout both GPU hosts upload.
   Admission checks a layer index against the realm's count; moving the
   decoder and the asset packs' texture rules into the Metaverse Engine remains.

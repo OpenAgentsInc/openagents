@@ -31,7 +31,7 @@ legacy pack rows clear their old-device buffers/textures before shader
 binding can inspect them.
 
 First consumer: Valley Lab's isolated Canyon Pair. Its authority module
-`verse/valley/canyon-pack-policy.coax` pins the complete private source pack's
+`metaverse/valley/canyon-pack-policy.coax` pins the complete private source pack's
 SHA-256 and byte count. Tests corrupt every digest lane and both exact length
 boundaries. The real browser journey edits a byte inside the vertex payload,
 preserving the complete pack length, and observes Coax refusal before upload.

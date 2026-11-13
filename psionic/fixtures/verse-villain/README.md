@@ -12,7 +12,7 @@ independent human playtest, calibrated quality score or fine-tuned model.
 The stronger provider also receives a different prompt rendering, so this
 is not a controlled estimate of model size alone.
 
-Use [the character instructions](../../../verse/characters/README.md) for a
+Use [the character instructions](../../../metaverse/characters/README.md) for a
 fresh dialogue command and the exported NPC brief. The
 [offline example](../../examples/veyr-dialogue.coax) prints saved real held
 replies without calling a model. The

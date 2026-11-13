@@ -36,7 +36,7 @@ connection.
 
 `ws.coax` and `sha1.coax` are `#authority`: they decide what the client
 admits. Each procedure writes into a buffer the caller owns and returns a
-length, a status or -1. [verse/voice-host/ws.c](../../verse/voice-host/ws.c)
+length, a status or -1. [metaverse/voice-host/ws.c](../../metaverse/voice-host/ws.c)
 is a separate C implementation that the voice host and the room server still
 use; the Nostr connection uses `ws.coax`.
 

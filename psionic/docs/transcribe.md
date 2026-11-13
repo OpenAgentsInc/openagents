@@ -109,7 +109,7 @@ file ──decode──▶ 16 kHz mono f32 ──log-mel──▶ 80 × 3000 per
    Nyquist). That is within 2.6e-5 RMS of ffmpeg's default resampler.
    Other containers go through ffmpeg as one program call. Its firm reason
    is 6 (no Coax decoder for compressed containers yet). The engine already has 16 kHz
-   audio, because `verse/voice.coax` resamples the microphone.
+   audio, because `metaverse/voice.coax` resamples the microphone.
 2. **Log-mel** (`front.coax`). 30 s of zeros are appended to the audio. Each
    frame is a periodic Hann window of 400 samples with hop 160, centred with
    reflection; the 201-bin power spectrum is multiplied by 80 (128 for
@@ -229,9 +229,9 @@ openagents transcribe fetch MODEL
 
 ## Engine API for in-game voice
 
-The engine already turns microphone audio into turns. `verse/voice.coax`
+The engine already turns microphone audio into turns. `metaverse/voice.coax`
 resamples it to 16 kHz, detects speech and ends a turn. The voice host
-(`verse/voice-host/speech.c`) then sends the turn's audio to
+(`metaverse/voice-host/speech.c`) then sends the turn's audio to
 `speech_recognize`. With `voice-host --provider psionic` that runs
 Psionic's Whisper in the same process (#12622):
 
@@ -252,7 +252,7 @@ int psionic_stt_text(psionic_stt *s, const float *samples, int64_t n, const char
   184 to 240 ms, and the final adds 0 ms after the end of the turn. On 8
   CPU threads one recognition takes about 600 ms.
 - Replies use the offline tone: Psionic does speech to text only.
-- `verse/voice-host/test.sh --offline` runs three psionic cases headless
+- `metaverse/voice-host/test.sh --offline` runs three psionic cases headless
   when the model is cached: a committed fixture, a `say` clip naming
   Psionic and the OpenAgents Metaverse, and talking over the reply.
 
@@ -531,7 +531,7 @@ psionic/platform/whisper-build.sh            # psionic/build/whisper/psionic-whi
 psionic/build/whisper/psionic-whisper filters ~/.cache/openagents/models/whisper/ggml-base.en.bin
 psionic/build/whisper/psionic-whisper transcribe ~/.cache/openagents/models/whisper/ggml-base.en.bin \
   /opt/homebrew/share/whisper-cpp/jfk.wav --srt
-verse/voice-host/test.sh --offline           # includes the psionic provider
+metaverse/voice-host/test.sh --offline           # includes the psionic provider
 ```
 
 ## Issues

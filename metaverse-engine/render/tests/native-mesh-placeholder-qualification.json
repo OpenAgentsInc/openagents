@@ -37,7 +37,7 @@
     }
   },
   "source_sha256": {
-    "verse/native/render-realm.c": "a1248fc1e4e2486898c172d112b8e7359cd9d2304a3cdf1b6570488511c0d127",
+    "metaverse/native/render-realm.c": "a1248fc1e4e2486898c172d112b8e7359cd9d2304a3cdf1b6570488511c0d127",
     "metaverse-engine/render/native-host.coax": "63ea840411544aa4bf690538265f1ed9547a87a50fb991ef74d2e2b4753c1fde"
   },
   "evidence": "docs/verification/data/aethyr-ch11-2026-11-01/native-mesh-placeholder",

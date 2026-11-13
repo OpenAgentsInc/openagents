@@ -1,3 +1,0 @@
---vertices animelab_bg_vs,shadow_vs,scene_vs,animelab_fx_vs
---fragments animelab_bg_fs,animelab_shadow_fs,animelab_scene_fs,animelab_bloom_fs,post_fs,fx_fs
---bindings verse/splice/gpu/splice.bindings --strip animelab_

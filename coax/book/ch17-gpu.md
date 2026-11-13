@@ -18,7 +18,7 @@ and called from C, so a fragment shader and a unit test run the same
 source. In this chapter we'll write a small light library, test it,
 emit it as Metal, wire it to a hand-written vertex and fragment stage,
 and then look at how the real app does the same thing with
-`verse/light.coax`. We'll end with the broader GPU layout and
+`metaverse/light.coax`. We'll end with the broader GPU layout and
 shader-declaration designs that remain separate work.
 
 > Note: `coax metal` and its scalar profile work in the current `coax0`, and
@@ -349,7 +349,7 @@ compiled as Metal` at the import.
 
 ## In the real world: `light.coax`
 
-The iOS app does all of this at a larger scale. `verse/light.coax`
+The iOS app does all of this at a larger scale. `metaverse/light.coax`
 holds 18 exported light functions and their helpers: the sky gradient,
 the home screen's dots and lines, the HUD bar with its sweeping glint,
 bloom, the tone curve, sRGB decoding and encoding, the Grid's sun-and-sky
@@ -370,7 +370,7 @@ pixel, and that the dance icon has a head, a stem and a flag where you'd
 expect them. From the repository root:
 
 ```shell
-$ coax test verse/light.coax
+$ coax test metaverse/light.coax
 ok   #test display values round trip through linear light (1 case, 1070 steps)
 ok   #test unlit light tones back to its display value (1 case, 826 steps)
 ok   #test the sun and sky light a surface as aethyr's Grid (1 case, 470 steps)
@@ -394,7 +394,7 @@ The app's build script, `apps/openagents-ios/generate.sh`, joins the two
 exactly as we did:
 
 ```shell
-"$compiler" metal verse/light.coax > "$out/HomeShaders.txt.tmp"
+"$compiler" metal metaverse/light.coax > "$out/HomeShaders.txt.tmp"
 cat apps/openagents-ios/OpenAgents/Platform/Stages.metal >> "$out/HomeShaders.txt.tmp"
 mv "$out/HomeShaders.txt.tmp" "$out/HomeShaders.txt"
 ```
@@ -422,7 +422,7 @@ counts as part of the loop you actually wait on.
 `coax metal` shares functions, not data. Look at how one dot gets from
 the CPU to the GPU in the real app. The Coax home calls the host's
 `host_dot` with six numbers. The C host packs them into this struct,
-from `verse/platform/host.h`:
+from `metaverse/platform/host.h`:
 
 ```c
 typedef struct { float x,y,size,light,soft,crisp,pad0,pad1; } MRDot;
@@ -544,7 +544,7 @@ protocol messages OpenAgents sends and receives.
 
 ## A CPU layout consumer in the Metaverse
 
-The actual app's Haunted House buffer gate loads `verse/haunt-layout.coax`.
+The actual app's Haunted House buffer gate loads `metaverse/haunt-layout.coax`.
 It describes the existing packed vertex as fixed arrays of f32, u8 and u32,
 then derives its stride, texture-layer byte and scalar offsets with
 `type_info`/`field_info`. A `#run` table supplies admission offsets; independent
@@ -553,5 +553,5 @@ This removes duplicated numeric layout decisions from the admission loop.
 
 This is CPU reflection over an existing binary format. It does not infer Metal
 vector alignment or rewrite a shader. The packed Metal declaration remains a
-platform contract; `verse/test_haunt.sh` checks the native layout and real
+platform contract; `metaverse/test_haunt.sh` checks the native layout and real
 bundled geometry, while the simulator test exercises the actual GPU path.

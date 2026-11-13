@@ -1,4 +1,4 @@
-// Page integration checks. The strict document/parser checks live with verse/anime/take.coax.
+// Page integration checks. The strict document/parser checks live with metaverse/anime/take.coax.
 AL_TEST_TAKE :: "{\"schema\":\"anime.v1\",\"auto\":false,\"length\":6,\"stage\":\"courtyard\",\"lines\":[{\"said\":0,\"done\":1,\"words\":\"A spark at the gate.\",\"answers\":[{\"kind\":\"cast\",\"who\":\"heroine\",\"spell\":\"fireball\",\"place\":\"gate\",\"p\":0.9,\"timing\":\"now\"}]},{\"said\":2,\"done\":2.5,\"words\":\"A close view.\",\"answers\":[{\"kind\":\"shot\",\"who\":\"heroine\",\"framing\":\"close-up\",\"p\":0.95}]},{\"said\":3,\"done\":3.2,\"words\":\"An ink dragon.\",\"answers\":[{\"kind\":\"make\",\"what\":\"ink dragon\",\"like\":\"creature\",\"p\":0.99,\"stock\":false,\"render_supported\":false,\"decision\":\"heard\"}]}]}";
 
 #test "custom take page owns message bytes and uses loaded caption lines" {

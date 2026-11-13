@@ -26,8 +26,8 @@ The current implementation already supplies reusable parts:
 
 | Source | Existing responsibility | Consequence for this library |
 | --- | --- | --- |
-| [verse/hud.coax](../../verse/hud.coax) | Logical module `verse.hud`, exported packet types and HUD procedures; safe-area-aware hotbar slots | Preserve existing consumers and their geometry. A new instrument library does not need to replace the hotbar. |
-| [verse/hud/frame.coax](../../verse/hud/frame.coax) | Six-edge outline, 45-degree cuts at top right/bottom left, bright arms at the other corners, shared greys and cyan | Load the original geometry and palette instead of approximating a second frame. |
+| [metaverse/hud.coax](../../metaverse/hud.coax) | Logical module `verse.hud`, exported packet types and HUD procedures; safe-area-aware hotbar slots | Preserve existing consumers and their geometry. A new instrument library does not need to replace the hotbar. |
+| [metaverse/hud/frame.coax](../../metaverse/hud/frame.coax) | Six-edge outline, 45-degree cuts at top right/bottom left, bright arms at the other corners, shared greys and cyan | Load the original geometry and palette instead of approximating a second frame. |
 | [newland.coax](../../apps/openagents-web/newland.coax) | The current interactive Grid homepage, project labels, lists, frame drawing, stroke output and live observation presentation | Keep the world primary; use its twelve-float vertex convention and preserve its verified-data boundary. |
 | [font.coax](../../apps/openagents-web/font.coax) and [font specification](../../coax/font.md) | Filament stroke text, advance widths, small-text treatment and the system sans atlas path | Reuse text layout and rendering. Do not add a second font system or rasterize labels in the application host. |
 

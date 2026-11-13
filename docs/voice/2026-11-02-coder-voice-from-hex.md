@@ -121,8 +121,8 @@ Two measured facts from Hex matter most for us:
 | Psionic Whisper (`tiny`…`large-v3-turbo`), beam search, word bias (`--words`), CPU and Metal; WER at or below whisper.cpp | Shipped historical profile; explicit `--backend psionic` compatibility | `psionic/lib/whisper/`, [transcribe.md](../../psionic/docs/transcribe.md), #12614 |
 | `psionic-stt.h`: open a model once, transcribe 16 kHz samples in process | Shipped, used by the voice host (#12622) | `psionic/platform/psionic-stt.h` |
 | Speed in the voice host: 184–240 ms per recognition of up to 4.3 s on `base.en` with the GPU encoder; re-recognizing every second makes the final ready when the turn ends | Measured | transcribe.md, "Engine API for in-game voice" |
-| Voice engine: resample to 16 kHz, levels, noise floor, VAD, end of turn, barge-in | Shipped | `verse/voice.coax`, `verse/platform/voice.h` |
-| Voice host on Cloud Run with Google and Psionic providers | Shipped | `verse/voice-host/`, [dev.md](dev.md) |
+| Voice engine: resample to 16 kHz, levels, noise floor, VAD, end of turn, barge-in | Shipped | `metaverse/voice.coax`, `metaverse/platform/voice.h` |
+| Voice host on Cloud Run with Google and Psionic providers | Shipped | `metaverse/voice-host/`, [dev.md](dev.md) |
 | Web voice in realms, iOS voice toggle | Web shipped; iOS simulator only | `coax/web/voice.js`, `apps/openagents-ios/OpenAgents/Voice/` |
 | Psionic Parakeet TDT 0.6B v3 in Coax | Resident native API and explicit CLI backend; Metal encoder, CPU decoder; all 29 frozen recordings match actual NeMo tokens/text and intermediate tensors meet tolerance, with 25-language smoke scores | [Engine guide](../../psionic/docs/parakeet.md), [chapter 153](../../psionic/book/ch153-transcribe-with-parakeet.md) |
 | Psionic text to speech | Rule-based teaching version only | `psionic/lib/speak.coax`, ch. 155 |
@@ -166,7 +166,7 @@ a transcript is text, never a command.
  microphone ─► host capture (Swift in the app, C in the CLI)
                  │ 48 kHz s16 frames, with timestamps
                  ▼
- verse/voice.coax  resample to 16 kHz, levels, noise floor, speech likelihood
+ metaverse/voice.coax  resample to 16 kHz, levels, noise floor, speech likelihood
                  │
                  ▼
  dictation.coax  timeline: 450 ms pre-roll, 300 ms minimum hold, 200 ms tail,
@@ -187,7 +187,7 @@ a transcript is text, never a command.
 | --- | --- | --- |
 | Microphone, permission, device choice | Host: Swift (`AVAudioEngine`) in the Mac app; C (`AudioQueue` on macOS, ALSA/PipeWire later) for `openagents dictate` and the TUI | Platform effects, per the Coax-first rule. Skip Bluetooth headset microphones by default, as Hex does |
 | Key down and key up, with timestamps | Host | The app has the real key events. The TUI uses toggle |
-| Resampling, levels, VAD | `verse/voice.coax` | Already built and tested; no second copy |
+| Resampling, levels, VAD | `metaverse/voice.coax` | Already built and tested; no second copy |
 | Timeline, gates, caps | New `apps/shared/dictation.coax` | Pure rules with `#test`, checked on recorded fixtures |
 | Recognition | `libpsionic-whisper.a` via `psionic-stt.h` | Linked in process; `base.en` by default, `small.en` as an option |
 | Text rules and vocabulary | `apps/shared/dictation.coax` | Pure, deterministic, `#test` per rule |
@@ -311,7 +311,7 @@ Each phase ends with its checks passing and a measurement committed.
   `--words` yet, and Linux capture through PipeWire/PulseAudio/ALSA recorders.
   On Linux it recognizes on CUDA by default (#12672).
   The original plan: C capture on macOS through `AudioQueue`,
-  `verse/voice.coax` for resampling and levels, `apps/shared/dictation.coax`
+  `metaverse/voice.coax` for resampling and levels, `apps/shared/dictation.coax`
   for the timeline and gates, `psionic-stt.h` for recognition. Flags:
   `--model`, `--words`, `--seconds`, `--stream` (JSON lines: `partial`,
   `final`, `no_speech`), `--json`. Exit 0 with text, 4 with no speech.

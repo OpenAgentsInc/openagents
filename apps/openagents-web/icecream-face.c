@@ -1,5 +1,5 @@
 // Ice Cream Man's realm's C face for the browser (coax/web/host.js): scalar
-// Wasm exports over icecream.coax (the HUD) and verse/icecream/scene.coax
+// Wasm exports over icecream.coax (the HUD) and metaverse/icecream/scene.coax
 // (the run and the house, its own library). The host keeps one Realm, the
 // two side by side. Input goes to the HUD first (its buttons, the stick's
 // ring), then to the run; each frame the run's facts go to the HUD. Store 0
@@ -19,7 +19,7 @@
 #define MSG_KEPT 4
 
 // The scene's vertex store (store 0) and the round's trace live in the state beside the scene, which
-// holds them as slices (verse/icecream/scene.coax icecream_attach): the host sizes and zeroes the state.
+// holds them as slices (metaverse/icecream/scene.coax icecream_attach): the host sizes and zeroes the state.
 #define SCENE_STORE_WORDS (600000 * 6)   // scene.coax MAX_SCENE * SCENE_WORDS
 #define TRACE_BYTES 3000000              // play.coax TRACE_CAP
 typedef struct { coax_t_IceRealm hud; coax_t_IceScene scene; uint32_t scene_store[SCENE_STORE_WORDS]; uint8_t trace_store[TRACE_BYTES]; } Realm;
@@ -34,7 +34,7 @@ static coax_v_t_IceScene scene_at(uint32_t state) {
 }
 static coax_v_t_RealmEdit ed(uint32_t state) { return (coax_v_t_RealmEdit){state_at(state)->hud.ed.e, 1}; }
 // The board's rows are the run's options: minions and weapons change the house being played at
-// once, backrooms the next house (verse/icecream/play.coax board_now).
+// once, backrooms the next house (metaverse/icecream/play.coax board_now).
 static void edit_options(uint32_t state) {
   coax_t_Options *o = &state_at(state)->scene.plays.e[0].options;
   o->no_minions = !ice_row_on(at(state), (coax_string){"minions", 7});

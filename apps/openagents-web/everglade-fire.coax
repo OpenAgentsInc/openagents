@@ -12,7 +12,7 @@
 //
 // A burning piece flames and smokes, and takes 1d6 fire each second (SRD Breaking Objects: its hit
 // points) after its first 3 s, and goes black as it burns, until it breaks into charred chunks through the town's own
-// break (verse/demolish.coax demo_damage): what it held up falls, the chunks burn on a while. Every
+// break (metaverse/demolish.coax demo_damage): what it held up falls, the chunks burn on a while. Every
 // 1.2 s or so it may catch a flammable piece touching it, and the grass at its foot; rain slows that
 // and may put it out. Whoever stands in or against it burns, 1d10 fire a round. Water and cold put it
 // out: the Water Orb, Create Water, Ice Storm and Sleet Storm, Elementalism's mist, Storm of

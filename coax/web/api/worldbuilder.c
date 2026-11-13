@@ -20,7 +20,7 @@
 //
 // The model is Google's: Gemini 3.8 Flash on Vertex (OA_WORLDBUILDER_MODEL), structured output under
 // the schema below, its thinking low. The catalogue it chooses from (worldbuilder-assets.h) is
-// written with the page's asset pack by verse/tools/assets/worldbuilder_pack.coax. A call takes
+// written with the page's asset pack by metaverse/tools/assets/worldbuilder_pack.coax. A call takes
 // seconds and this service answers one request at a time, so a child process makes it, settles the
 // spend on its own database connection and answers the page.
 //   OA_WORLDBUILDER_URL    the generateContent URL (tests point it at a fake)

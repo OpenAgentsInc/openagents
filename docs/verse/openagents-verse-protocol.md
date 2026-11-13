@@ -1571,7 +1571,7 @@ message Item { optional string id = 1; optional string kind = 2; optional string
 message Inventory { repeated Item items = 1; optional uint32 capacity = 2; }
 message Progress { optional uint32 level = 1; optional uint64 xp = 2; repeated string unlocked = 3; }
 
-message PlayerSettings {                        // verse/settings
+message PlayerSettings {                        // metaverse/settings
   map<string, optional float> bus_volume = 1;            // allowed: not hashed
   optional bool mute = 2; optional string quality = 3; optional float look_sensitivity = 4; CameraPrefs camera = 5;
   optional bool motion_look = 6; repeated string hotbar = 7; }                  // ≤ 9 slots
@@ -2330,7 +2330,7 @@ we keep a reader for old records for as long as such records exist.
 | Player key / `players.json` / `X-Verse-Player` | `character.v1.PlayerView` (key never on wire beyond the header) |
 | `LookSpec` (12 ints), `set-look`, verse seed/look in MV content | `character.v1.LookSpec`, `Appearance`, `presence.v1.EntityState.appearance` |
 | Realm accounts, characters, inventory, gear, progress | `character.v1` + `realm.v1.ReadReply` |
-| `verse/settings` | `character.v1.PlayerSettings` |
+| `metaverse/settings` | `character.v1.PlayerSettings` |
 | `openagents.verse-npc.v1`, `-town.v1`, `-town-proposal.v1`, `-rumor.v1` | `npc.v1` |
 | Brains JSON | `npc.v1.Brain` |
 | `/api/npc/ask`, host v8 `talk`, `legacy/npcs-v1` | `npc.v1.AskRequest/AskReply`, `DialogueLine` |

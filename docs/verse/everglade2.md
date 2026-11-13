@@ -149,7 +149,7 @@ in the clearing, and that trees crowd the path.
 
 ## The pack
 
-`verse/tools/assets/everglade2_pack.coax` writes `realms/everglade2/assets/everglade2.pack`
+`metaverse/tools/assets/everglade2_pack.coax` writes `realms/everglade2/assets/everglade2.pack`
 (57 MB). The pack holds:
 
 - Character Create's people pack (the wardrobe and the rig).
@@ -164,13 +164,13 @@ in the clearing, and that trees crowd the path.
 Build it from the repository root:
 
 ```sh
-A="$HOME/.openagents/assets"; src() { coax/web/tool.sh verse/tools/assets/registry.coax source "$1" "$A"; }
+A="$HOME/.openagents/assets"; src() { coax/web/tool.sh metaverse/tools/assets/registry.coax source "$1" "$A"; }
 M="$A/cache/everglade2-monsters"; B=/Applications/Blender.app/Contents/MacOS/Blender
-$B --background --factory-startup --disable-autoexec --python-exit-code 1 --python verse/tools/assets/animal_bake.py -- \
+$B --background --factory-startup --disable-autoexec --python-exit-code 1 --python metaverse/tools/assets/animal_bake.py -- \
   "$(src ultimate-animals)" "$M" e2 "$(src dungeon)" "$(src fantasy-props)" "$(src ultimate-rpg)"
-$B --background --factory-startup --disable-autoexec --python-exit-code 1 --python verse/tools/assets/bestiary_bake.py -- \
+$B --background --factory-startup --disable-autoexec --python-exit-code 1 --python metaverse/tools/assets/bestiary_bake.py -- \
   "$(src bestiary-dungeon)" "$M" "$(src ual)/Unreal-Godot/UAL1_Standard.glb" e2
-coax/web/tool.sh verse/tools/assets/everglade2_pack.coax "$(src nature)" \
+coax/web/tool.sh metaverse/tools/assets/everglade2_pack.coax "$(src nature)" \
   apps/openagents-web/realms/character-creator/assets/fantasy.pack \
   apps/openagents-web/realms/everglade2/assets/everglade2.pack "$M" "$(src bestiary-dungeon)"
 ```
@@ -190,11 +190,11 @@ see and hear each of his attacks, 0.7 s apart. The room check
 
 Then add the Ranger's kit: Experimental's Longbow, its string and its Arrow (`glade/weapon4..6`),
 copied out of its `glade.pack` onto the Sword's vertex base and shaded by vertex colour alone
-(`verse/tools/assets/weapon_pack.coax`). Without them a Ranger here carries nothing:
+(`metaverse/tools/assets/weapon_pack.coax`). Without them a Ranger here carries nothing:
 
 ```sh
 gzip -dc apps/openagents-web/realms/everglade-experimental/assets/glade.pack.gz > /tmp/glade.pack
-coax/web/tool.sh verse/tools/assets/character_glade_pack.coax --append-weapons \
+coax/web/tool.sh metaverse/tools/assets/character_glade_pack.coax --append-weapons \
   BASE.pack apps/openagents-web/realms/everglade2/assets/everglade2.pack /tmp/glade.pack
 ```
 
@@ -204,8 +204,8 @@ data layers at 512 px, between the colour layers and the sounds. That brings the
 `build.sh` then writes the range-loaded `everglade2.vpk3` from it:
 
 ```sh
-coax/web/tool.sh verse/tools/humans/pack_material_layers.coax \
-  "$(coax/web/tool.sh verse/tools/assets/registry.coax source fantasy "$HOME/.openagents/assets")" \
+coax/web/tool.sh metaverse/tools/humans/pack_material_layers.coax \
+  "$(coax/web/tool.sh metaverse/tools/assets/registry.coax source fantasy "$HOME/.openagents/assets")" \
   apps/openagents-web/realms/everglade2/assets/everglade2.pack /tmp/everglade2-data.pack
 mv /tmp/everglade2-data.pack apps/openagents-web/realms/everglade2/assets/everglade2.pack
 ```
@@ -231,8 +231,8 @@ append them to the pack with the tool, then rebuild the `.vpk3`:
 
 ```sh
 Blender --background --factory-startup --disable-autoexec --python-exit-code 1 \
-  --python verse/tools/assets/cat_bake.py -- ~/.openagents/assets/cache/cat-e2
-coax/web/tool.sh verse/tools/assets/character_glade_pack.coax --append-cat \
+  --python metaverse/tools/assets/cat_bake.py -- ~/.openagents/assets/cache/cat-e2
+coax/web/tool.sh metaverse/tools/assets/character_glade_pack.coax --append-cat \
   BASE.pack apps/openagents-web/realms/everglade2/assets/everglade2.pack ~/.openagents/assets/cache/cat-e2
 coax/web/tool.sh clip "http://127.0.0.1:8871/worlds/everglade2?stage=cat" cat.mp4 --size 1920x1080 --seconds 10
 ```
@@ -249,7 +249,7 @@ coax/web/tool.sh clip "http://127.0.0.1:8871/worlds/everglade2?stage=cat" cat.mp
   stand on, its sides stop you where you see them. You step onto a rock lower than 0.55 m, jump
   onto a taller one and stand on its top, walk up a gentle face and slide off a steep one. The
   hulls are baked from the Stylized Nature meshes by
-  `verse/tools/assets/everglade2_rock_hulls.coax` into `everglade/world/rock-hulls.coax`, whose
+  `metaverse/tools/assets/everglade2_rock_hulls.coax` into `everglade/world/rock-hulls.coax`, whose
   check compares each hull to its mesh's bounds. Both are scaled and turned with the placed
   piece, the glade's own trees and rocks included; the page and the room step you on the same
   hulls. Pebbles, a few centimetres high, don't stop you. `everglade/client/walk-test.coax` walks into

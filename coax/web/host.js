@@ -134,7 +134,7 @@
 //   sound:NAME=URL a sound the app plays by name;  loop:URL  one that loops from the first touch or key
 //   sounds:/DIR/  a directory of sounds the app plays by name, DIR/NAME.ogg each, fetched when first
 //                 named (metaverse-engine/audio/mix.coax's lines; NAME lowercase letters, digits and dashes)
-//   pack:URL      a realm's asset pack (verse/tools/pack_realm.py, docs/verse/realm-host.md): one file,
+//   pack:URL      a realm's asset pack (metaverse/tools/pack_realm.py, docs/verse/realm-host.md): one file,
 //                 streamed, that stands for four assets in its place, its catalog (data), vertices
 //                 (storage), indices (index) and texture layers (layers), and adds its sounds by name.
 //                 While it streams the app hears message 605, "LOADED TOTAL" bytes. One pack a page.
@@ -151,7 +151,7 @@
 //   local:URL     data that only a local address loads: a lab's big licensed capture, kept in a cache
 //                 outside the repo (coax/web/serve.c's /private/, Splat Lab's skull). Anywhere else,
 //                 or absent, it arrives empty (bytes 0) and the page loads on without it.
-//   mesh:URL      a traced page's mesh (Orbit League's roadster, verse/tools/mesh-bvh.coax): its bytes as
+//   mesh:URL      a traced page's mesh (Orbit League's roadster, metaverse/tools/mesh-bvh.coax): its bytes as
 //                 a read-only storage buffer at group 0 binding 1, for a WGSL that declares
 //                 `var<storage, read> mesh` there; until it arrives the shader reads 16 zero bytes
 //   (a WGSL that declares `var<storage, read> frame` at group 0 binding 1 gets the frame store there
@@ -372,7 +372,7 @@ const loadMarks = [];
 function loadMark(name) { if (loadMarks.length < 256) loadMarks.push([name, Math.round(performance.now() * 10) / 10]); }
 const PACK_PARTS = ["data", "storage", "index", "layers"], PACK_KIND = 605;
 const PACK_CATALOG = 1, PACK_VERTICES = 2, PACK_INDICES = 3, PACK_LAYER = 4, PACK_SOUND = 5;
-// A pack's data layers (normal and ORM maps, verse/tools/humans/pack_material_layers.coax): their
+// A pack's data layers (normal and ORM maps, metaverse/tools/humans/pack_material_layers.coax): their
 // own rgba8unorm array, never sRGB-decoded, bound after the colour layers' sampler for a realm that
 // asks for them (coaxial_data_layers_v1). The realm's catalog names them ("D i NAME lic").
 const PACK_DATA_LAYER = 6;
@@ -1288,7 +1288,7 @@ async function loadPageFont() {
   const title = new FontFace(titleFamily, await titleResponse.arrayBuffer(), { weight: "100 900" });
   await title.load();document.fonts.add(title);
   // data-ui-title-font-scale (0.4 to 1): a wide title face is drawn that much smaller so its widest
-  // glyphs fit their cells; the realm's layout scales its quads back up (verse/splice/splice-game.coax).
+  // glyphs fit their cells; the realm's layout scales its quads back up (metaverse/splice/splice-game.coax).
   const titleScale = Math.min(1, Math.max(0.4, Number(script?.dataset.uiTitleFontScale) || 1));
   pageTitleFont = { family: JSON.stringify(titleFamily), weight: script?.dataset.uiTitleFontWeight || "400", scale: titleScale };
 }
@@ -1753,7 +1753,7 @@ function parseAssets(text) {
   }
   return list;
 }
-// ---- a realm's asset pack (verse/tools/pack_realm.py has the format)
+// ---- a realm's asset pack (metaverse/tools/pack_realm.py has the format)
 // A public pack's bytes on their way (pack-fetch.js): fetched, unzipped or inflated in a worker,
 // on this thread when there is none. main() starts each as soon as the engine is in, by its URL;
 // loadPack takes it up once the GPU is ready for it.

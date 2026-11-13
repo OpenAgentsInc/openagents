@@ -378,11 +378,11 @@ admission, `pack_read` (order, catalog and licences), and the writer:
 | Browser (`coax/web/host.js`, `character-host.js`, `pack-fetch.js`) | `openPackTable()` in `coax/web/pack-host.js`: the pack reactor's `pack_table_*` exports (`coax/web/pack-face.c`) |
 | iOS and the Mac (`apple/PageHost.m`, `apps/everglade-desktop/Sources/Engine.swift`) | [`pack-table.h`](pack-table.h) over the unit the app's build compiles from `pack-table-face.coax` |
 | Android (`apps/everglade-mobile/android/host.c`) | `pack-table.h`, the same way |
-| Coax tools (`coax/web/room/room-catalog.coax`, `verse/native/wasm-run.coax`) | `#load` of `pack-table.coax` |
-| Linux (`verse/native/realm-host.c`) | `verse/native/pack-table-gen.h`, the face's emitted C (below) |
+| Coax tools (`coax/web/room/room-catalog.coax`, `metaverse/native/wasm-run.coax`) | `#load` of `pack-table.coax` |
+| Linux (`metaverse/native/realm-host.c`) | `metaverse/native/pack-table-gen.h`, the face's emitted C (below) |
 
-The Linux realm host (`verse/native/realm-host.c`) includes
-`verse/native/pack-table-gen.h`: the C the compiler writes for
+The Linux realm host (`metaverse/native/realm-host.c`) includes
+`metaverse/native/pack-table-gen.h`: the C the compiler writes for
 `pack-table-face.coax`, committed because nine builds compile that file and
 most take no Coax step. `coax/remote/check.sh reports` (its `pack-reader-c`
 step) fails when the committed file isn't what the compiler writes. After a
@@ -390,7 +390,7 @@ change to `pack-table.coax`, its face or the compiler's C, write it again from
 the repository root:
 
 ```sh
-coax/bin/coax c metaverse-engine/host/pack-table-face.coax --library > verse/native/pack-table-gen.h
+coax/bin/coax c metaverse-engine/host/pack-table-face.coax --library > metaverse/native/pack-table-gen.h
 ```
 
 ### The frame plan

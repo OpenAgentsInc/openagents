@@ -21,7 +21,7 @@ work="$app/build/linux"
 mkdir -p "$work/c" "$work/wl"
 "$coax" c "$app/zeron/linux.coax" --library --header "$work/c/zeron.h" > "$work/c/zeron.c"
 "$coax" c "$app/lab-sign.coax" --run-steps 250000000 --library --header "$work/c/lab-sign.h" > "$work/c/lab-sign.c"
-# The seat's keys and text (metaverse-engine/host/): what verse/gpu/vkw.h's XKB and text-input glue calls.
+# The seat's keys and text (metaverse-engine/host/): what metaverse/gpu/vkw.h's XKB and text-input glue calls.
 "$coax" c "$repo/metaverse-engine/host/wayland-input.coax" --library --header "$work/c/wayland-input.h" > "$work/c/wayland-input.c"
 "$coax" c "$repo/metaverse-engine/host/wayland-text.coax" --library --header "$work/c/wayland-text.h" > "$work/c/wayland-text.c"
 # Dictation: the shared controller with the Linux host's rules (zeron/dictation-linux.coax), a unit of its
@@ -35,7 +35,7 @@ for spec in stable/xdg-shell/xdg-shell unstable/xdg-decoration/xdg-decoration-un
   wayland-scanner client-header "$protocols/$spec.xml" "$work/wl/$name-client-protocol.h"
   wayland-scanner private-code "$protocols/$spec.xml" "$work/wl/$name-protocol.c"
 done
-cflags=(-std=gnu11 -O2 -ffp-contract=off -fno-fast-math -w -I"$work/c" -I"$work/wl" -I"$app" -I"$repo/apps/shared/host/linux" -I"$repo/verse/gpu" -I"$repo/verse/kms" -I"$repo/coax/platform" -I"$repo/psionic/platform")
+cflags=(-std=gnu11 -O2 -ffp-contract=off -fno-fast-math -w -I"$work/c" -I"$work/wl" -I"$app" -I"$repo/apps/shared/host/linux" -I"$repo/metaverse/gpu" -I"$repo/metaverse/kms" -I"$repo/coax/platform" -I"$repo/psionic/platform")
 # the lab's signer is a unit of its own (lab-sign.coax)
 cc "${cflags[@]}" -DS_hash=oa_lab_S_hash -DS_hex=oa_lab_S_hex -c "$work/c/lab-sign.c" -o "$work/c/lab-sign.o"
 # and it carries its own copy of the hashes the app's unit also exports: only its one entry point stays visible
@@ -45,7 +45,7 @@ cc "${cflags[@]}" -DS_hash=oa_zeron_S_hash -DS_hex=oa_zeron_S_hex -c "$work/c/ze
 # shellcheck disable=SC2046
 cc "${cflags[@]}" -DAETHYR_WAYLAND_INPUT_V1 -DAETHYR_WAYLAND_TEXT_V1 \
   "$here/main.c" "$here/chat.c" "$here/stubs.c" "$here/dictation-host.c" "$app/dictation-face.c" "$repo/apps/openagents-cli/dictate-native.c" "$work/c/dictation.c" "$app/zeron-face.c" "$repo/apps/shared/host/linux/ui-host.c" "$repo/apps/shared/host/linux/portal.c" "$work/c/zeron.o" "$work/c/lab-sign.o" "$work/c/wayland-input.c" "$work/c/wayland-text.c" \
-  "$repo/verse/gpu/vkc.c" "$repo/verse/gpu/vks.c" "$repo/verse/gpu/vkp.c" "$repo/coax/platform/process-native.c" "$repo/coax/platform/store-file-native.c" \
+  "$repo/metaverse/gpu/vkc.c" "$repo/metaverse/gpu/vks.c" "$repo/metaverse/gpu/vkp.c" "$repo/coax/platform/process-native.c" "$repo/coax/platform/store-file-native.c" \
   "$work/wl/xdg-shell-protocol.c" "$work/wl/xdg-decoration-unstable-v1-protocol.c" "$work/wl/text-input-unstable-v3-protocol.c" \
   "$repo/psionic/build/parakeet/libpsionic-parakeet.a" \
   $(pkg-config --cflags --libs wayland-client wayland-cursor xkbcommon libsystemd) -lvulkan -ldl -lpthread -lm -o "$work/OpenAgents.new"

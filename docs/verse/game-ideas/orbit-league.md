@@ -28,7 +28,7 @@ carmaker ever wanted to license its car in, that is a separate deal; the
 game must not depend on it.
 
 2026-10-31, owner's call: the cars' bodies are now the CC BY "Tesla Roadster 2.0"
-model by Michael (Sketchfab), traced from a mesh (`verse/tools/mesh-bvh.coax`,
+model by Michael (Sketchfab), traced from a mesh (`metaverse/tools/mesh-bvh.coax`,
 credited in `apps/openagents-web/realms/orbit-league/licences.md`), painted in the
 game's team colours; the game's own hull roadster draws until the mesh arrives.
 The game still names no carmaker in its own words.
@@ -81,8 +81,8 @@ each pixel, so none of them alias or turn to moire at any distance.
 | A ball that flies, bounces and rolls | Thrown balls on terrain, knocking scenery | `metaverse-engine/physics/throw.coax` |
 | Cameras that blend shots | Overview, dolly and free orbit as blended shots | `metaverse-engine/cam/camera.coax` |
 | Boost trails, sparks, goal explosions | Particle emitters drawn in one instanced pass | `metaverse-engine/render/particles.coax`, `metaverse-engine/render/particle-motion.coax` |
-| Phone thumbs and buttons | Sticks, hotbar slots, long-press tooltips | `verse/grid.coax` (sticks), `verse/hud.coax`, Everglade's hotbar |
-| Deterministic replays | Ice Cream Man's seeded rules replay traces against a reference | `verse/icecream/replay.c`, `verse/icecream/trace.coax` |
+| Phone thumbs and buttons | Sticks, hotbar slots, long-press tooltips | `metaverse/grid.coax` (sticks), `metaverse/hud.coax`, Everglade's hotbar |
+| Deterministic replays | Ice Cream Man's seeded rules replay traces against a reference | `metaverse/icecream/replay.c`, `metaverse/icecream/trace.coax` |
 | Rooms and names over players | The Grid's multiplayer (positions five times a second) | `apps/openagents-web/thegrid-people.coax`, `apps/openagents-web/room.coax` |
 | Analytics per realm | Counted actions, sent every 30 s | `coax/web/analytics.coax` |
 
@@ -92,7 +92,7 @@ each pixel, so none of them alias or turn to moire at any distance.
    box-against-box (the car as an oriented box), sphere-against-mesh (the
    arena), with friction and restitution. Swept tests for the ball at
    speed, so it never passes through the goal frame. Dead Gears already
-   sweeps spheres against boxes (`verse/deadgears/arena.coax`
+   sweeps spheres against boxes (`metaverse/deadgears/arena.coax`
    `arena_sweep`); generalise it.
 2. **A vehicle controller**: a new `metaverse-engine/physics/vehicle.coax` with four wheel
    rays, suspension springs, tyre grip, a handbrake, and "sticky" driving

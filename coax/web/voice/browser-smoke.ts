@@ -19,7 +19,7 @@ import { tmpdir } from "node:os"
 import { join, resolve } from "node:path"
 import { launch as launchChrome } from "../chrome"
 
-const [url, wav = "verse/voice-host/fixtures/hello-foreman.wav"] = process.argv.slice(2)
+const [url, wav = "metaverse/voice-host/fixtures/hello-foreman.wav"] = process.argv.slice(2)
 const PHONE = !!process.env.PHONE
 const W = PHONE ? 390 : 1440, H = PHONE ? 844 : 900
 const profile = mkdtempSync(join(tmpdir(), "coax-voice-"))

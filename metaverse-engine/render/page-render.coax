@@ -22,7 +22,7 @@ render_page_memory :: (slug:string,app:string)->int {return render_memory_pages(
  #assert render_page_shader("character-creators","fivelab")=="";
 }
 // The Archery Range and Bitcoin Lab's walk are modules of their own on the same scene (apps/openagents-web/archery-range.coax,
-// bitcoin-lab-walk.coax and nostr-lab-walk.coax on verse/lab-walk.coax, everglade/zone.coax).
+// bitcoin-lab-walk.coax and nostr-lab-walk.coax on metaverse/lab-walk.coax, everglade/zone.coax).
 render_page_shader :: (slug:string,app:string)->string {return ifx ((slug=="character-creator" || slug=="everglade-experimental" || slug=="druid") && app=="fivelab") || (slug=="archery-range" && app=="archery-range") || (slug=="bitcoin-lab" && app=="bitcoin-lab-walk") || (slug=="nostr-lab" && app=="nostr-lab-walk") then "/charactercreator.wgsl" else "";}
 tool_main :: () -> int #export_c #effects(all) {
   args: [1] Args;

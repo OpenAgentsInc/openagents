@@ -3,8 +3,8 @@
 // tool.sh: stack-gib 2
 #import "Basic";
 #load "anim-retarget-io.coax";
-#load "../../verse/animlab/layer-demo.coax";
-#load "../../verse/animlab/project.coax";
+#load "../../metaverse/animlab/layer-demo.coax";
+#load "../../metaverse/animlab/project.coax";
 #load "../../metaverse-engine/anim/write.coax";
 tool_main :: ()->int #export_c #effects(all) {
  a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=2 {return 2;}root:=args_at(a[..],0);dest:=args_at(a[..],1);path:[4096]u8;text:[262144]u8;pack:[67108864]u8;n:=fs_read(fs_join(root,"rig.json",path[..]),text[..]);#assert n>0;ids:[1]AssetId;bn:=ar_read_pack(fs_join(root,"rig.json",path[..]),cast(string)text[0..<n],pack[..],ids[..]);#assert bn>0;packs:=[1]AnimPack.[AnimPack.{id=ids[0],bytes=pack[0..<bn]}];r:[1]AnimRig;#assert anim_rig_load(cast(string)text[0..<n],packs[..],r[..])==0;n=fs_read(fs_join(root,"clip-0.json",path[..]),text[..]);source:[1]AnimClip;#assert n>0 && anim_clip_load(cast(string)text[0..<n],packs[..],r[..],source[..])==0;

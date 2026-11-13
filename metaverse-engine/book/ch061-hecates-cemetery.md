@@ -52,14 +52,14 @@ memorial, with its photos, its story and notes from those who knew it.
   [metaverse-engine/cam/camera.coax](../cam/camera.coax)'s free orbit (pulled in where
   a tombstone, hedge or tree is in the way), and stands on
   [metaverse-engine/world/terrain.coax](../world/terrain.coax)'s ground and paths.
-- Its look: [verse/look.coax](../../verse/look.coax) for the outline,
+- Its look: [metaverse/look.coax](../../metaverse/look.coax) for the outline,
   [metaverse-engine/render/particles.coax](../render/particles.coax) for the trail; flat
   style since October 30.
 - Pets: uploads through [coax/web/uploads.js](../../coax/web/uploads.js)
   (action 30, messages 52 and 53) to `/api/villa/pets/<id>/files`; each
   memorial's own page in
   [memorial.coax](../../apps/openagents-web/memorial.coax).
-- The design: [verse/planetary-villa/README.md](../../verse/planetary-villa/README.md).
+- The design: [metaverse/planetary-villa/README.md](../../metaverse/planetary-villa/README.md).
 - Checks: `coax test apps/openagents-web/villa.coax --steps 200000000`.
 
 ## What it builds

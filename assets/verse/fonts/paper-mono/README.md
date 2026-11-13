@@ -5,5 +5,5 @@ its text in (`git show 0b401561a0^:crates/paper-mono`), from
 <https://github.com/paper-design/paper-mono>. Licensed under the SIL Open Font
 License 1.1 (`OFL.txt`); the file is unmodified.
 
-`verse/tools/everglade_hotbar.coax` draws Everglade's spell bar keys and cards
+`metaverse/tools/everglade_hotbar.coax` draws Everglade's spell bar keys and cards
 with it at build time; no page loads the font.

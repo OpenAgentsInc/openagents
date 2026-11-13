@@ -13,9 +13,9 @@ The world host's test world at https://openagents.com/worlds/fixture. Every Meta
 ## How it is made
 
 - `apps/openagents-web/fixture.coax` is the world, `fixture-face.c` binds it for the browser, `fixture.wgsl` draws it.
-- `verse/tools/pack_realm.py` compiles the pack from `verse/packs/fixture.json` and writes `licences.md`.
+- `metaverse/tools/pack_realm.py` compiles the pack from `metaverse/packs/fixture.json` and writes `licences.md`.
 - The page is written from `realms.json` by `coax/web/realms.ts`. The contract every world follows is `docs/verse/realm-host.md` in the OpenAgents repository.
 
 ## Make your own world
 
-An agent can build one from a shallow clone of the repository and open a pull request: [verse/SKILL.md](https://github.com/OpenAgentsInc/openagents/blob/main/verse/SKILL.md).
+An agent can build one from a shallow clone of the repository and open a pull request: [metaverse/SKILL.md](https://github.com/OpenAgentsInc/openagents/blob/main/metaverse/SKILL.md).

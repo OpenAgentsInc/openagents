@@ -552,7 +552,7 @@ for unit in "${selected_coax[@]+"${selected_coax[@]}"}"; do
     # pose loads chapter 167's quaternion math, gated with the robotics units.
     # motion-token loads chapter 147's pose unit, gated as pose.
     # motionbricks loads chapter 148's motion-token, which gates itself, its pinned manifest and codebook in psionic/fixtures and its checks' references in psionic/tests.
-    # motion-verse loads chapter 149's motionbricks, which gates itself, verse/cast.coax, gated by its own checks and verse/test_cast.sh, and its Cast skeleton fixture in psionic/fixtures.
+    # motion-verse loads chapter 149's motionbricks, which gates itself, metaverse/cast.coax, gated by its own checks and metaverse/test_cast.sh, and its Cast skeleton fixture in psionic/fixtures.
     # data/split loads chapter 122's packing, record and resume, gated by check_resume.sh.
     # pixels loads chapter 4's product and chapter 5's operators, gated as ops and tensor-ops-backward.
     # pixels-ir loads chapter 142's pixels and chapter 38's tensor IR host, which gate themselves.

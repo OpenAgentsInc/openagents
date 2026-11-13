@@ -3,7 +3,7 @@
 // faces) and a scale, in the colours it is handed, so one machine takes many looks and a scene
 // places, turns and sizes it. Nothing here draws or decides; it only writes triangles.
 // Object numbers: each machine takes the `obj` it is given and the next few, so ink separates its
-// parts. Splice (verse/splice/splice.coax) stages them.
+// parts. Splice (metaverse/splice/splice.coax) stages them.
 //   coax/bin/coax test --library metaverse-engine/kit/machines.coax
 #load "../render/cel-mesh.coax";
 

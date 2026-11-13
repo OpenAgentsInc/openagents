@@ -13,9 +13,9 @@ tool_main :: ()->int #export_c #effects(all) {
   if !icb_emit(compiler,fs_join(root,spec[0],paths[4+i*4][..]),header,code,profile,out,ifx i==0 then "driver-emission.log" else "entropy-emission.log"){return 1;}
  }
  argv:[64]string;n:=0;sanitize:=args_has(a[..],"--sanitize");for flag:[10]string.["cc","-std=c11",ifx sanitize then "-O1" else "-O2","-ffp-contract=off","-fno-fast-math","-Wno-unused-function","-Wno-unused-variable","-D_DEFAULT_SOURCE","-D_DARWIN_C_SOURCE","-DCOAX_TOOL_STACK=((size_t)1<<30)"]{argv[n]=flag;n+=1;}
- for dir,i:[4]string.[emission,out,fs_join(root,"verse/native",paths[9][..]),fs_join(root,"coax/platform",paths[10][..])]{argv[n]="-I";argv[n+1]=dir;n+=2;}
+ for dir,i:[4]string.[emission,out,fs_join(root,"metaverse/native",paths[9][..]),fs_join(root,"coax/platform",paths[10][..])]{argv[n]="-I";argv[n+1]=dir;n+=2;}
  argv[n]=fs_join(emission,"RenderTexture.c",paths[11][..]);n+=1;for file,i:[2]string.["ImageCacheCheck.c","entropy-policy.c"]{argv[n]=fs_join(out,file,paths[12+i][..]);n+=1;}
- for file,i:[9]string.["verse/native/render-images.c","metaverse-engine/render/tests/image-cache-effects.c","coax/platform/tool-native.c","coax/platform/process-native.c","coax/platform/store-file-native.c","coax/platform/read-file-native.c","coax/platform/socket-native.c","coax/platform/entropy-native.c","coax/platform/entropy-foreign.c"]{argv[n]=fs_join(root,file,paths[14+i][..]);n+=1;}
+ for file,i:[9]string.["metaverse/native/render-images.c","metaverse-engine/render/tests/image-cache-effects.c","coax/platform/tool-native.c","coax/platform/process-native.c","coax/platform/store-file-native.c","coax/platform/read-file-native.c","coax/platform/socket-native.c","coax/platform/entropy-native.c","coax/platform/entropy-foreign.c"]{argv[n]=fs_join(root,file,paths[14+i][..]);n+=1;}
  if sanitize{for flag:[4]string.["-fsanitize=address,undefined","-fno-sanitize-recover=all","-fno-omit-frame-pointer","-g"]{argv[n]=flag;n+=1;}}
  if cxtool_os()==1{argv[n]="-framework";argv[n+1]="Security";n+=2;}else{argv[n]="-lpthread";n+=1;}argv[n]="-lm";argv[n+1]="-o";argv[n+2]=fs_join(out,"check-image-cache",paths[24][..]);n+=3;
  env:[]string;stdout:[1048576]u8;stderr:[1048576]u8;r:=rtq_command(argv[0..<n],env,proc_now_ms()+120000,out,"link",stdout[..],stderr[..]);return ifx rtq_ok(r) then 0 else 1;

@@ -12,7 +12,7 @@
 #include "MetalRender.h"
 #include "RenderTexture.h"
 extern bool hap_span(uint64_t,uint64_t,uint64_t,uint64_t,bool);
-#include "../../verse/native/render-images.c"
+#include "../../metaverse/native/render-images.c"
 #include "../../metaverse-engine/render/tests/frame-input.h"
 
 typedef struct {int64_t slot,generation;} MFHandle;

@@ -2,7 +2,7 @@
 // supplies local files; only fully admitted immutable bytes reach playback.
 #load "../../coax/lib/sys/fs.coax";
 #load "../../coax/lib/sys/proc.coax";
-#load "../../verse/animlab/project.coax";
+#load "../../metaverse/animlab/project.coax";
 #load "../../coax/lib/text/ph_num.coax";
 #load "../../metaverse-engine/anim/write.coax";
 ap_file :: (file:string,out:[]u8)->int {

@@ -86,7 +86,7 @@ small model or sign and verify a Nostr event), see
   - The [selected library contracts](coax/LIBRARIES.md) and
     [offline recipes](coax/book/ch26-library-recipes.md) show how to reuse
     bounded Coax, the Metaverse and Psionic APIs.
-- **Metaverse** ([`verse/`](verse/)) holds the first engine and realm code. The home scene, its
+- **Metaverse** ([`metaverse/`](metaverse/)) holds the first engine and realm code. The home scene, its
   graph, its HUD and its resource admission are Coax (`home.coax`), and so is
   its shader math (`light.coax`). Start opens the Grid (`grid.coax`), where
   you walk (`player.coax`) as an animated character among patrolling robots
@@ -141,7 +141,7 @@ small model or sign and verify a Nostr event), see
     ([makers](docs/verse/makers.md)).
   - To build a realm with Claude Code, clone the repo one level deep
     (`git clone --depth 1`), point your agent at
-    [`verse/SKILL.md`](verse/SKILL.md), and open a pull request.
+    [`metaverse/SKILL.md`](metaverse/SKILL.md), and open a pull request.
   - [`/projects`](https://openagents.com/projects) lists projects.
     [`/projects/coax`](https://openagents.com/projects/coax) shows the Coax
     roadmap and Nostr work as signed Nostr events: the queue, who is on what,

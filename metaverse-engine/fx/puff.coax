@@ -84,7 +84,7 @@ FXR_BLIGHT :: 45;       // Blight: the life drawn out of `to`, ash falling off i
 FXR_SOULFIRE :: 46;     // Finger of Death: a black-green ray from → to, soul-fire burning up off it
 FXR_RISE :: 47;         // a Zombie rising at `to`: soul-fire out of the corpse
 FXR_PORTAL :: 48;       // Dimension Door: a tear closing at `from`, a puff at `to`
-// A monster's missiles (verse/experimental-hostiles.coax shots, #13066): `reach` is the flight's
+// A monster's missiles (metaverse/experimental-hostiles.coax shots, #13066): `reach` is the flight's
 // seconds, so the puffs arrive exactly when the attack resolves.
 FXR_SHAFT :: 49;        // an arrow flying from → to: its shaft, its head's glint and a faint trail; it fades out on arrival
 FXR_STONE :: 50;        // a thrown rock arcing from → to, tumbling, dust trailing; it fades out on arrival

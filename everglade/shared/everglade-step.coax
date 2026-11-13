@@ -19,7 +19,7 @@
 #load "../../metaverse-engine/action/sprint.coax" as sprint;   // the engine's sprint, for the Dash checks
 #load "../../metaverse-engine/core/math.coax" as link_math;
 #load "../../metaverse-engine/physics/collision-profiles.coax" as link_collision;
-#load "../../verse/ocarina/locomotion.coax" as link_motion;
+#load "../../metaverse/ocarina/locomotion.coax" as link_motion;
 
 eg_step_body :: (p: walk.Body) -> EgBody #export_c #effects(reads, writes, traps) {
   return EgBody.{x = p.pos.x, y = p.pos.y, z = p.pos.z, px = p.prev_pos.x, py = p.prev_pos.y, pz = p.prev_pos.z,

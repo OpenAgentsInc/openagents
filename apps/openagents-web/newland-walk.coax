@@ -5,7 +5,7 @@
 // agents and people from the same tables and the same live relay fold, in the same inks and
 // shaders. Only the camera differs: behind you as you walk among them, with the engine's
 // controller (metaverse-engine/move/player.coax, its own library, which the face steps) and the phone's thumbs
-// (verse/grid.coax). The HUD is the Grid's: THE GRID with the project you are nearest, HOME and
+// (metaverse/grid.coax). The HUD is the Grid's: THE GRID with the project you are nearest, HOME and
 // REALMS, the controls' hint, the live status and the thumb's ring. A click (not a drag) on a
 // project, a person, an agent or a Pylon opens the homepage's card for it.
 //
@@ -500,7 +500,7 @@ wk_hud :: (out: [] f32, at: int, s: [] LandState, u: [] f32, f: LandFrame, width
   glass(u, 1, hb, 7 * d, 0.95 * hud, 1);
   v = button(out, v, gb, "WORLDS", true, hover && inside(gb, s[0].px, s[0].py) || w[0].press == WK_PRESS_GALAXY, false, p, hud);
   glass(u, 2, gb, 7 * d, 0.95 * hud, 1);
-  // EDIT for the Grid's owner and admins (verse/edit/edit.coax): left of HOME, or under REALMS on a
+  // EDIT for the Grid's owner and admins (metaverse/edit/edit.coax): left of HOME, or under REALMS on a
   // phone where the title fills the row; its plates are the glass after the page's own
   e := s[0].ed[..];
   ew := redit_width("EDIT", 9 * d) + 32 * d;

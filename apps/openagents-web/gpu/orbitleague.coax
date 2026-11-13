@@ -3,7 +3,7 @@
 // orbitleague.bindings beside it). It began as coax/web/wgsl-coax.coax's translation of the hand-written WGSL.
 #load "../../../metaverse-engine/render/noise.coax";
 #load "../../../metaverse-engine/gpu/wgsl.coax";
-#load "../../../verse/style.coax";
+#load "../../../metaverse/style.coax";
 
 // Orbit League's two passes (orbitleague.coax): bg_fs traces the whole
 // world per pixel (the arena's floor and glass, the goal frames and nets,
@@ -394,7 +394,7 @@ orbitleague_wheel_hit :: (o:V3,d:V3,c:V3,r:f32,w:f32,spin:f32)->OrbitleagueHit {
   }
   return best;
 }
-// The roadster's mesh (verse/tools/mesh-bvh.coax writes it; host.js binds it, mesh:URL): its
+// The roadster's mesh (metaverse/tools/mesh-bvh.coax writes it; host.js binds it, mesh:URL): its
 // triangles in a bounding volume hierarchy, in the car's frame. The nearest triangle the ray
 // (o, d, in that frame) meets: t, and its corners' normals and colours blended to the point it
 // meets (so curves shade smooth and a colour's edge runs smooth across the triangles), the
@@ -639,7 +639,7 @@ orbitleague_car_hit :: (ro:V3,rd:V3,c:OrbitleagueCar,HULL:[45]V4,mesh:[]f32,seen
   {
     i:s32=0;
     while i<4 {
-      // the mesh's wheels sit in its arches, smaller (verse/tools/mesh-bvh.coax's frame); the same ground
+      // the mesh's wheels sit in its arches, smaller (metaverse/tools/mesh-bvh.coax's frame); the same ground
       wx:f32=ifx meshed then 0.777f32 else 0.86f32;
       x:f32=ifx (i&1)==1 then wx else -wx;
       wz:f32=ifx meshed then 1.371f32 else 1.4f32;
@@ -852,12 +852,12 @@ orbitleague_shade_hit :: (h:OrbitleagueHit,rd:V3,u:[]f32)->V3 {
   return wg_mix_f3f3f(c,v3(0.01f32,0.015f32,0.03f32),clampf(h.ink,0.0f32,1.0f32)*0.85f32);
 }
 // ---- the arena
-// ?arena=drum: the inside of a drum along z on the floor (verse/drum.coax),
+// ?arena=drum: the inside of a drum along z on the floor (metaverse/drum.coax),
 // its radius u.goal.z. The floor is its curve all the way round.
 orbitleague_in_drum :: (u:[]f32)->bool {
   return u[86]>0.0f32;
 }
-// ?arena=sphere: the inside of a sphere on the floor (verse/sphere.coax),
+// ?arena=sphere: the inside of a sphere on the floor (metaverse/sphere.coax),
 // radius -u.goal.z, spun about z, with a goal cap u.goal.w round at each pole.
 orbitleague_in_sphere :: (u:[]f32)->bool {
   return u[86]<0.0f32;
@@ -891,7 +891,7 @@ orbitleague_sph_uv :: (p:V3,u:[]f32)->V2 {
   d:V3=wg_normalize3(wg_sub_f3f3(p,orbitleague_sph_c(u)));
   return v2(orbitleague_sr(u)*wg_atan2(d.x,-d.y),orbitleague_sr(u)*wg_asin(clampf(d.z,-1.0f32,1.0f32)));
 }
-// The surface's point at floor coordinates x, z (verse/sphere.coax sphere_at).
+// The surface's point at floor coordinates x, z (metaverse/sphere.coax sphere_at).
 orbitleague_sph_at :: (x:f32,z:f32,u:[]f32)->V3 {
   a:f32=x/orbitleague_sr(u);
   f:f32=z/orbitleague_sr(u);

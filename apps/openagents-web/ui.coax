@@ -3,7 +3,7 @@
 // terminal that takes a typed code, the presentation a code opens (a key
 // prompt the first time on a device, then the slides), and the not-found
 // page's HOME. Every panel, field and button is the Verse HUD bar
-// (verse/light.coax verse_bar, the iOS Start bar's light, drawn by
+// (metaverse/light.coax verse_bar, the iOS Start bar's light, drawn by
 // splash.wgsl), and all text is Filament (font.coax). The host
 // (coax/web/host.js) passes keys, the pointer and typed or pasted text in
 // and carries actions out; coax/web/unlock does the crypto and answers with

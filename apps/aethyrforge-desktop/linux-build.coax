@@ -66,8 +66,8 @@ fgl_build :: (a:[]Args)->int {
   pcl:=[5]string.["pkg-config","--cflags","--libs","libdrm","wayland-client"];n=af_run(pcl[..],out[..],deadline);if n<0 {return 1;}
   flagsbuf:[8192]u8;for i:0..<n {flagsbuf[i]=out[i];}sdkflags:=cast(string)flagsbuf[0..<n];
   h:=proc_new();for arg:[14]string.["cc","-std=gnu11","-O2","-no-pie","-ffp-contract=off","-fno-fast-math","-ffunction-sections","-fdata-sections","-Wl,--gc-sections","-w","-I",work,"-I",wl] {ok:=proc_arg(h,arg);}
-  for inc:[3]string.["verse/native","verse/gpu","verse/kms"] {ok:=proc_arg(h,"-I") && proc_arg(h,af_path(p[..],root,inc));}
-  for src:[14]string.["apps/aethyrforge-desktop/linux-native-face.c","verse/native/realm-host.c","verse/gpu/vk-realm.c","verse/gpu/vk-spec.c","verse/gpu/vks.c","verse/gpu/vkc.c","verse/gpu/vkp.c","verse/gpu/vkd.c","coax/platform/process-native.c","coax/platform/store-file-native.c","coax/platform/agent-signer-none.c","os/verse-panel.coax","os/verse-hands.coax","linux-native.c"] {
+  for inc:[3]string.["metaverse/native","metaverse/gpu","metaverse/kms"] {ok:=proc_arg(h,"-I") && proc_arg(h,af_path(p[..],root,inc));}
+  for src:[14]string.["apps/aethyrforge-desktop/linux-native-face.c","metaverse/native/realm-host.c","metaverse/gpu/vk-realm.c","metaverse/gpu/vk-spec.c","metaverse/gpu/vks.c","metaverse/gpu/vkc.c","metaverse/gpu/vkp.c","metaverse/gpu/vkd.c","coax/platform/process-native.c","coax/platform/store-file-native.c","coax/platform/agent-signer-none.c","os/verse-panel.coax","os/verse-hands.coax","linux-native.c"] {
     if src=="" {continue;}path:=af_path(p[..],root,src);
     if src=="linux-native.c" {path=af_path(p[..],work,src);}
     if src=="os/verse-panel.coax" || src=="os/verse-hands.coax" {

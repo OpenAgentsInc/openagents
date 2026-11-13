@@ -150,7 +150,7 @@ develops it. Three threads already exist and don't know about each other:
 
 - Psionic chapters 54–57 build search and answers over the Coax book.
 - Coder builds the agent that would use those answers.
-- `verse/SKILL.md` tells an outside agent how to build a realm.
+- `metaverse/SKILL.md` tells an outside agent how to build a realm.
 
 Join them. The claim "these books are how our agents learn the stack" is
 strong and testable: give Coder a planned chapter from another book and

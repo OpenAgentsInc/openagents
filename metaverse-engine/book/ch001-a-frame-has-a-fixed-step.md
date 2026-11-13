@@ -465,20 +465,20 @@ Before this module, each realm kept its own accumulator:
 - `metaverse-engine/move/player.coax`: f32 seconds, 1/64 s, eight steps, 0.25 s.
 - Orbit League: f64, 1/120 s, at most eight steps of carried time.
 - Dead Gears' ECS clock in
-  [verse/deadgears/ecs.coax](../../verse/deadgears/ecs.coax): f64, 1/60 s, a
+  [metaverse/deadgears/ecs.coax](../../metaverse/deadgears/ecs.coax): f64, 1/60 s, a
   0.1 s limit, eight steps, and `1e-7` of slack so that 0.05 s counts as
   three steps.
-- `verse/demolish.coax`, Everglade's debris: f64, 1/60 s, 0.25 s, six steps.
+- `metaverse/demolish.coax`, Everglade's debris: f64, 1/60 s, 0.25 s, six steps.
 - Hold the Stair: f32, 1/60 s, 0.1 s of play times the speed, and a guard of
   64 steps a frame.
 - The page faces of the haunted house, Fairy Forest, the Garden, Everglade
   and the villa: a 0.1 s clamp in C before the player stepped.
 - The realm template, Star Catcher
-  ([verse/realm-template/starcatch.coax](../../verse/realm-template/starcatch.coax)),
+  ([metaverse/realm-template/starcatch.coax](../../metaverse/realm-template/starcatch.coax)),
   which every new realm copies, and Watchtower: f32, 1/60 s, 0.1 s, and a
   guard of 16 steps a frame.
 - Ice Cream Man's rules
-  ([verse/icecream/play.coax](../../verse/icecream/play.coax)): f32, 1/30 s,
+  ([metaverse/icecream/play.coax](../../metaverse/icecream/play.coax)): f32, 1/30 s,
   0.1 s, at most four steps, and the whole backlog thrown away at the cap.
 - The OpenAgents Metaverse landing's orbs
   ([apps/openagents-web/verse.coax](../../apps/openagents-web/verse.coax)):
@@ -486,7 +486,7 @@ Before this module, each realm kept its own accumulator:
 - The floats on Everglade's river
   ([everglade/legacy/v1/river.coax](../../everglade/legacy/v1/river.coax)) and Fairy
   Forest's lily pads
-  ([verse/fairy-forest/stream.coax](../../verse/fairy-forest/stream.coax)):
+  ([metaverse/fairy-forest/stream.coax](../../metaverse/fairy-forest/stream.coax)):
   f64, 1/120 s, 0.25 s, eight steps, and the whole backlog thrown away at
   the cap.
 - Belt 2200's tactical battle: 0.1 s battle steps, run until the frame's

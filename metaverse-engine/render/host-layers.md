@@ -26,7 +26,7 @@ malformed compressed contents may fail during decode and must not be
 uploaded. No view is retained and no memory is allocated by Coax.
 
 Output is straight RGBA8, level-major for one layer, with each level tightly
-packed and square `max(1, side >> level)`. Native `verse/gpu/layers.coax`
+packed and square `max(1, side >> level)`. Native `metaverse/gpu/layers.coax`
 interleaves these per-layer chains level first then array slice. Browser
 effects must upload these bytes directly with `writeTexture`; an image SDK
 copy would apply an extra premultiplication conversion.

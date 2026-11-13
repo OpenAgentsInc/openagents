@@ -27,7 +27,7 @@ Unreal is at most an offline export tool.
   `verse-assets` are still live, and the exports are still on the owner's
   Mac under `~/work/film-out/draconia/metahuman/`.
 - The Metaverse Engine already has most of the body runtime. `metaverse-engine/anim/skin.coax` plays
-  skinned clips with cross-fades. `verse/tools/people.py` rebinds parts onto
+  skinned clips with cross-fades. `metaverse/tools/people.py` rebinds parts onto
   a shared skeleton. Everglade's shader (`apps/openagents-web/gpu/everglade-v1/gpu.coax`) skins
   vertices pulled from a storage buffer with four joints each. The
   Quaternius skeleton it uses has the same Unreal mannequin joint names as
@@ -126,7 +126,7 @@ pack reaches a browser, what that protects against, and what it costs.
 
 ### The path
 
-1. **Upload (owner-run).** `coax/web/tool.sh verse/tools/humans/upload_packs.coax [--dry-run] [NAME...]`
+1. **Upload (owner-run).** `coax/web/tool.sh metaverse/tools/humans/upload_packs.coax [--dry-run] [NAME...]`
    reads `~/.openagents/verse/private-build/web/NAME.pack`. It takes the
    pack's SHA-256, gzips it (`-9 -n`) and encrypts it under a fresh random
    key and iv (AES-256-CTR). It stores the result as
@@ -336,14 +336,14 @@ All paths below are at `853417f290`, the Nuke's parent. Restore them with
 | Piece | Where | Reuse |
 | --- | --- | --- |
 | Skinned clip playback | `metaverse-engine/anim/skin.coax`: 96 joints, rest pose and inverse binds, translation lerp and rotation slerp, a 0.22 s smoothstep cross-fade, gaits that advance with distance, and palettes written as three rows of four | The body animation core. Its joint limit has to rise, and it needs layers. |
-| Part rebinding and clips | `verse/tools/people.py`, `everglade/scene/people-rig.coax`: Quaternius CC0 parts rebound onto 65-joint male and female skeletons, with 12 clips (idle, walk, talk, nod, fold, lantern, spell, slash, run, die, knock, cower) | This is the retarget method. The joint names match the MetaHuman body's main skeleton, so the clips retarget by name. |
+| Part rebinding and clips | `metaverse/tools/people.py`, `everglade/scene/people-rig.coax`: Quaternius CC0 parts rebound onto 65-joint male and female skeletons, with 12 clips (idle, walk, talk, nod, fold, lantern, spell, slash, run, die, knock, cower) | This is the retarget method. The joint names match the MetaHuman body's main skeleton, so the clips retarget by name. |
 | GPU skinning | `apps/openagents-web/gpu/everglade-v1/gpu.coax`: a 24-byte vertex pulled from a storage buffer, four joints and weights, per-person pose blocks with tint rows after the joints | The vertex path for crowds |
-| Pack format | `verse/tools/pack_realm.py` (VPK1): `C` lines for skinned characters, licence per entry, budget, style checks | Extend it for a human pack, or write a sibling compiler |
+| Pack format | `metaverse/tools/pack_realm.py` (VPK1): `C` lines for skinned characters, licence per entry, budget, style checks | Extend it for a human pack, or write a sibling compiler |
 | Asset identity | `metaverse-engine/core/assets.coax`: content-addressed packs admitted whole or refused | A private pack is admitted by digest |
 | Frame budgets | `metaverse-engine/core/budget.coax` | Every LOD and crowd decision is checked against it |
 | Figures | `metaverse-engine/anim/figure.coax`: rounded-bone figures and gaits for soft-shape realms | The fallback, and the shape of the skeleton plan |
 | Rigid bodies | `metaverse-engine/physics/rigid.coax` | Skeletons collapsing on death |
-| Painterly style | `verse/style.coax`, [art-styles.md](art-styles.md) §10, §11, §14 | The character shading rules for 5E Lab |
+| Painterly style | `metaverse/style.coax`, [art-styles.md](art-styles.md) §10, §11, §14 | The character shading rules for 5E Lab |
 | Asset protocol | `openagents.verse.asset.v1` `PrivateAsset`, `PrivatePack` (with `rig`, `clips` and `forms`), `PrivatePlacements` and `PrivateUrlRequest` ([§10.17](openagents-verse-protocol.md)) | The schema is already specified |
 | Live infrastructure | Bucket `gs://openagentsgemini-verse-private-assets` and Cloud Run `verse-assets` (both checked as present on 2026-11-02) | Reuse them, with a Coax client in place of the Rust one |
 | Private exports | `~/work/film-out/draconia/metahuman/`: 29 preset heads, 9 grooms (such as `Hair_S_UpdoBuns`, `Eyebrows_M_Full`), DNA, DCC bundle, `NO-TRAINING.txt` | Off-repo test data for the owner's machine |
@@ -361,10 +361,10 @@ Only the MetaHuman pack is private.
 ```text
 offline, owner's Mac only                      repo (code)                 runtime (browser / native)
 ---------------------------------------------  --------------------------  -------------------------------
-UE 5.8 headless: create, rig, export   ──►     verse/tools/humans/*        metaverse-engine/core/assets.coax admits pack
+UE 5.8 headless: create, rig, export   ──►     metaverse/tools/humans/*        metaverse-engine/core/assets.coax admits pack
   head.dna, body.dna, DCC maps, cards           (export scripts,            metaverse-engine/anim/skin.coax + anim-graph
 dna tool (OpenRigLogic, MIT)           ──►      dna reader, pack compiler)  metaverse-engine/face-rig.coax (near only)
-pack compiler: LODs, rig, paint pass   ──►     manifests schema only       verse/gpu/human.coax (WGSL)
+pack compiler: LODs, rig, paint pass   ──►     manifests schema only       metaverse/gpu/human.coax (WGSL)
 upload pack to private bucket          ──►     (no asset names)            verse-assets broker ⇢ signed URL
 ```
 
@@ -375,10 +375,10 @@ upload pack to private bucket          ──►     (no asset names)           
   deltas. Its Definition layer holds the joint hierarchy and bind pose.
   This is one format with an MIT reader, and it needs no Blender step for
   geometry.
-- **Tool.** Write `verse/tools/humans/dna.coax`, a DNA binary reader
+- **Tool.** Write `metaverse/tools/humans/dna.coax`, a DNA binary reader
   ported from OpenRigLogic's `dna` library, with the MIT notice. Until then,
   restore `dna_dump.cpp` as a stopgap that the pack compiler shells out to.
-- **Pack compiler.** Write `verse/tools/humans/pack_human.coax`. It does
+- **Pack compiler.** Write `metaverse/tools/humans/pack_human.coax`. It does
   the following:
   - keeps the main body skeleton and folds helper joints into their kept
     ancestors, as `metahuman_rig.rs` did;
@@ -431,11 +431,11 @@ upload pack to private bucket          ──►     (no asset names)           
 
 The lab runs the face rig live. The pieces:
 
-- `verse/tools/humans/dna_behavior.cpp` (the owner's machine, against
+- `metaverse/tools/humans/dna_behavior.cpp` (the owner's machine, against
   OpenRigLogic) dumps the head DNA's Behavior layer as text and, with a
   third argument, its LOD0 blend-shape targets as binary. Both stay in
   `~/.openagents/verse/private-build/metahuman-dump/head/`.
-- `verse/tools/humans/ph_face.coax` compiles them into a flat block: the
+- `metaverse/tools/humans/ph_face.coax` compiles them into a flat block: the
   raw controls' correctives (PSDs), the LOD0 joint groups, the face joints'
   neutral pose, each face point's rest position, normal and six joint
   weights, the blend-shape deltas (0.01 cm and up, in 0.001 cm steps) and
@@ -612,19 +612,19 @@ levels coarser.
 
 | Piece | Path (new unless noted) | Public or private |
 | --- | --- | --- |
-| Unreal export scripts (author, rebuild, presets, grooms, textures) | `verse/tools/humans/unreal/`, restored from `853417f290:scripts/unreal/` | Code is public. It names no asset and takes folders as arguments. |
-| DNA reader | `verse/tools/humans/dna.coax` (MIT notice) | Public |
-| Pack compiler | `verse/tools/humans/pack_human.coax` | Public. Its output is private. |
-| Private CLI (add, place, grant, revoke) | `verse/tools/humans/private.coax`, a port of `crates/verse-private` | Public |
+| Unreal export scripts (author, rebuild, presets, grooms, textures) | `metaverse/tools/humans/unreal/`, restored from `853417f290:scripts/unreal/` | Code is public. It names no asset and takes folders as arguments. |
+| DNA reader | `metaverse/tools/humans/dna.coax` (MIT notice) | Public |
+| Pack compiler | `metaverse/tools/humans/pack_human.coax` | Public. Its output is private. |
+| Private CLI (add, place, grant, revoke) | `metaverse/tools/humans/private.coax`, a port of `crates/verse-private` | Public |
 | Retarget | `metaverse-engine/retarget.coax`, the method of `people.py` | Public |
 | Clip playback and layers | `metaverse-engine/anim/skin.coax` (extended) | Public |
 | Animation state machine | `metaverse-engine/anim-graph.coax` | Public |
 | Face rig | `metaverse-engine/face-rig.coax` (MIT notice) | Public |
 | LOD and crowd planner | `metaverse-engine/crowd.coax`, using `budget.coax` | Public |
-| Shaders | `verse/gpu/human.coax` (skinned vertex, painterly and photoreal profiles, hair cards, impostors) | Public |
+| Shaders | `metaverse/gpu/human.coax` (skinned vertex, painterly and photoreal profiles, hair cards, impostors) | Public |
 | Broker | `coax/web/api/verse_packs.c` and migration `0117_verse_pack_sessions.sql` in `oa-api` (built) | Public. Its keys are in Secret Manager. |
 | Browser loader | `coax/web/host.js` `privatePack` (built): a session, its bytes, WebCrypto AES-CTR, gunzip, a SHA-256 check, then the pack's parts | Public |
-| Upload | `verse/tools/humans/upload_packs.coax` (built, owner-run) | Public. It names no asset. |
+| Upload | `metaverse/tools/humans/upload_packs.coax` (built, owner-run) | Public. It names no asset. |
 | Packs, DNA, maps, grooms, impostor atlases | `~/.openagents/verse/private-build/`, `gs://openagentsgemini-verse-private-assets/packs/` | **Private** |
 | Placements and reader grants | `~/.openagents/verse/private-assets.json`, the manifest's `readers` | **Private** |
 | Rules | Restore `docs/verse/private-assets.md` from `853417f290` with its MetaHuman section | Public |
@@ -641,7 +641,7 @@ No phase commits an asset.
    traces. **Gate:** the owner has given written answers to the four
    questions.
 1. **The runtime on public characters.** Build the retarget, layers, state
-   machine, LOD planner and `verse/gpu/human.coax` against the CC0
+   machine, LOD planner and `metaverse/gpu/human.coax` against the CC0
    Quaternius people. 5E Lab gets skinned people in public, with no
    licence question. **Gate:** 44 animated figures fit the budget on the
    phone tier.
@@ -709,7 +709,7 @@ It holds no MetaHuman asset and draws with none.
   the rig's rest and places it by its parent's turn of its own bind-pose bone,
   so a pack keeps its proportions. Bound at the rig's rest it equals
   `skin_palette` (a check runs every clip).
-- **The pack.** `verse/tools/humans/pack_human.coax` (run with `coax/web/tool.sh`) writes one VPK1 file:
+- **The pack.** `metaverse/tools/humans/pack_human.coax` (run with `coax/web/tool.sh`) writes one VPK1 file:
   the catalog (body, 65 bind positions, materials, pieces), 32-byte vertices
   (position, octahedral normal and tangent, uv, four joints and weights, the
   layers its material reads), u32 indices and the texture layers. Weights
@@ -795,7 +795,7 @@ It holds no MetaHuman asset and draws with none.
   cloth without a simulation follows a stride, so a thigh would poke
   through its front. The shins below the knee are drawn as dark stockings
   (the under layer below), so a boot stepping out behind the hem has its
-  leg. The portrait still gives the brows and hair. `verse/tools/humans/ph_outfits.coax` fits each garment in the
+  leg. The portrait still gives the brows and hair. `metaverse/tools/humans/ph_outfits.coax` fits each garment in the
   T pose: each joint's frame from the outfits' skeleton (the superhero
   female, which the clothes sit 4 mm off) to the body's, stretched along the
   bone by the bones' length ratio, the garment following its own skin;
@@ -991,7 +991,7 @@ grow, or the token list to move to a storage buffer.
   depth, then the trace runs only where depth is empty, or the trace
   writes `frag_depth` and the two compose.
 - Shadows and picking keep using capsules. Each bone gets a capsule posed
-  from the same palette, much as `verse/cast.coax` does for the Grid's
+  from the same palette, much as `metaverse/cast.coax` does for the Grid's
   robots. The traced sun shadow and clicks stay analytic and cheap, and
   they match what is drawn.
 - The flat view does not change.

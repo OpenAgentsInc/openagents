@@ -2,7 +2,7 @@
 
 > **Status: partly implemented.** The model is a script,
 > [`scripts/blender/dragon.py`](../../scripts/blender/dragon.py), baked by
-> [`verse/tools/assets/dragon_bake.py`](../../verse/tools/assets/dragon_bake.py)
+> [`metaverse/tools/assets/dragon_bake.py`](../../metaverse/tools/assets/dragon_bake.py)
 > into the glade's pack. Its clips are
 > [`everglade/dragon-clips.coax`](../../everglade/dragon-clips.coax). Flight is
 > [`metaverse-engine/action/flight.coax`](../../metaverse-engine/action/flight.coax). The rules are
@@ -27,7 +27,7 @@ Each piece of that lives in one place, and every Everglade zone reuses it:
 | Piece | Layer | Where |
 | --- | --- | --- |
 | The dragon's mesh, bones and clips | Asset script | `scripts/blender/dragon.py` |
-| Its baked frames in the pack | Asset pipeline | `verse/tools/assets/dragon_bake.py`, `dragon_pack.coax` |
+| Its baked frames in the pack | Asset pipeline | `metaverse/tools/assets/dragon_bake.py`, `dragon_pack.coax` |
 | Walking, takeoff, flight, banking and landing | Engine | `metaverse-engine/action/flight.coax` |
 | Shapechange and the dragon's actions | Engine (SRD rules) | `shapechange.coax`, `dragon-actions.coax` |
 | The change on screen, the breath's aim, the clip to play | Everglade | `everglade/shapeshift.coax` |

@@ -492,7 +492,7 @@
         "keys": "2:13:1,3:13:0",
         "dump": "/tmp/aethyr-ch11-producer-captures/everglade",
         "pack": "apps/openagents-web/realms/everglade/assets/everglade.pack",
-        "facts": "verse/native/everglade.facts",
+        "facts": "metaverse/native/everglade.facts",
         "extra": "21595"
       },
       "wasm": {
@@ -511,7 +511,7 @@
           "sha256": "5595e2a3839bb38bd2cd839c688bb9a13a64ed23958fda84907e03c0dc90f8d8"
         },
         "facts": {
-          "path": "verse/native/everglade.facts",
+          "path": "metaverse/native/everglade.facts",
           "bytes": 385,
           "sha256": "c2bffa8d218ec135fc82af4b73ac958adf97aecfe56c92fa87470656c5cdc0c0"
         }
@@ -860,7 +860,7 @@
         "keys": "2:13:1,3:13:0",
         "dump": "/tmp/aethyr-ch11-producer-captures/fixture",
         "pack": "apps/openagents-web/realms/fixture/assets/fixture.pack",
-        "facts": "verse/native/painterly.facts"
+        "facts": "metaverse/native/painterly.facts"
       },
       "wasm": {
         "path": "/tmp/aethyr-ch11-producer-captures/fixture.wasm",
@@ -878,7 +878,7 @@
           "sha256": "df9c027378c87383f5be40d61c764b9fb615148524388d4b310229e9b0e39ad9"
         },
         "facts": {
-          "path": "verse/native/painterly.facts",
+          "path": "metaverse/native/painterly.facts",
           "bytes": 395,
           "sha256": "ac36e428ef821a69b313fb67844595788ff0c8d80d368b56243b73ab8cedad1b"
         }

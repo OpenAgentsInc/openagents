@@ -1,6 +1,6 @@
 /* The compositor's faces to the machine (os/compositor.coax): every monitor on every card through DRM/KMS dumb buffers,
    and keyboards and mice through evdev, grabbed so keys reach the compositor and not the console
-   under it. Effects only: what to draw and what a key means are Coax. Modelled on verse/kms.
+   under it. Effects only: what to draw and what a key means are Coax. Modelled on metaverse/kms.
    Linux only, and the screen needs a free VT (no other program may hold the display). Input can also
    come from a file of struct input_event records, for checks without devices. See screen-native.h. */
 #ifndef _GNU_SOURCE

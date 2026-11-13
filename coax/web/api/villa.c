@@ -1,4 +1,4 @@
-// Planetary Villa's pets (Hecate's Cemetery; verse/planetary-villa/README.md).
+// Planetary Villa's pets (Hecate's Cemetery; metaverse/planetary-villa/README.md).
 // The rules live in SQL (migrations/0028_villa_pets.sql, villa.api); this file
 // reads who is asking (the playtest player key, X-Verse-Player) and does the
 // bucket's part (drops.c's, the same private bucket under <env>/villa/) and the

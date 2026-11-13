@@ -1,6 +1,6 @@
 // Fairy Forest's C face for the browser (coax/web/host.js): fairy.coax is
-// the page, metaverse-engine/move/player.coax walks you (its own library), verse/grid.coax
-// reads a phone's thumbs and verse/fairy-forest/stream.coax is the stream
+// the page, metaverse-engine/move/player.coax walks you (its own library), metaverse/grid.coax
+// reads a phone's thumbs and metaverse/fairy-forest/stream.coax is the stream
 // and the pond (Stream.h). Once a frame it passes values between them in
 // order: the page's controls, the player's step among the forest's walls
 // with a fairy's flight (every Space press, or a tap on a phone's right
@@ -19,7 +19,7 @@
 // key); on the next visit the newer of the two is added back. Where you are
 // is kept the same way by place-face.h.
 //
-// Talking to a creature (ff-talk, verse/fairy-forest/talk.coax): a question
+// Talking to a creature (ff-talk, metaverse/fairy-forest/talk.coax): a question
 // the page writes goes to the character chat (/api/playtest/npc/ask) with
 // the browser's player key, so the creature remembers that player; a
 // browser with no key yet is given one first (POST /api/playtest/player),
@@ -283,7 +283,7 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   player.body.pace = swim.pace;
   verse_player_v2_heading(control(), player, fairy_player_theta(at(state)));
 
-  if (sticks.zoom != 0) fairy_wheel(at(state), sticks.zoom);   /* a pinch zooms as the wheel does (verse/grid.coax) */
+  if (sticks.zoom != 0) fairy_wheel(at(state), sticks.zoom);   /* a pinch zooms as the wheel does (metaverse/grid.coax) */
   sticks = verse_sticks_used(sticks);
   int64_t walls = fairy_walls(at(state));
   player = verse_player_v2_advance(control(), player, frame, (coax_v_f32){0, 0}, (coax_v_f32){g->walls.e, walls * 6},

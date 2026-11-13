@@ -4,7 +4,7 @@
 // else: no town, gate, people or HUD.
 //
 // The land is everglade/world/forest.coax, the planting everglade/world/plant.coax, the pack
-// verse/tools/assets/everglade2_pack.coax, and the passes everglade/client/gpu/everglade2.coax. everglade2-face.c steps
+// metaverse/tools/assets/everglade2_pack.coax, and the passes everglade/client/gpu/everglade2.coax. everglade2-face.c steps
 // the controller (everglade-step.coax) as fivelab-face.c does; this unit says what is round you,
 // where you may stand, and what is drawn.
 #load "../scene/charactercreator.coax" as cc;
@@ -1451,7 +1451,7 @@ e2_field :: (s: [] E2, d: [] u32, n0: int) -> int {
 // `casting` lists the pieces for the shadow tile drawn this frame instead (e2_cast_reach).
 // Every piece keeps its one place, turn and size at every distance: distance only picks its level
 // and fades it. A tree is whole near you, two of its crown's cards in three past E2_LOD1 and one in
-// three past E2_LOD2 (the same cards in the same places, verse/tools/assets/everglade2_pack.coax),
+// three past E2_LOD2 (the same cards in the same places, metaverse/tools/assets/everglade2_pack.coax),
 // each pair of levels cross-fading in a screen dither over E2_LOD_BAND, and every piece dithers out
 // past E2_FAR_START of its kit's reach, each at its own rank (e2_piece_shown).
 e2_pieces :: (s: [] E2, d: [] u32, n0: int, casting: bool) -> int {

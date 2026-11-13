@@ -1,0 +1,693 @@
+// A realm natively (realm-host.h).
+#define _GNU_SOURCE
+#include "realm-host.h"
+#include "face.h"
+#include "audio-host.h"
+#include <fcntl.h>
+#include <stddef.h>
+#include <malloc.h>
+#include <signal.h>
+#include <spawn.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <sys/wait.h>
+#include <time.h>
+#include <unistd.h>
+// The one pack reader (metaverse-engine/host/pack-table.coax pack_table, GitHub #13304), as the C the
+// compiler writes for its face (metaverse-engine/host/pack-table-face.coax). It is committed beside this
+// file because nine builds compile realm-host.c and most take no Coax step;
+// `coax/remote/check.sh reports` fails when it isn't what
+//   coax/bin/coax c metaverse-engine/host/pack-table-face.coax --library > metaverse/native/pack-table-gen.h
+// writes. Its three exports are renamed here, so a binary that also links the face's own unit links.
+#define aethyr_pack_stated rh_aethyr_pack_stated
+#define aethyr_pack_table rh_aethyr_pack_table
+#define aethyr_pack_head_max rh_aethyr_pack_head_max
+#include "pack-table-gen.h"
+
+extern char **environ;
+static int golden_mode;
+extern uint32_t coaxial_host_contract_version(void) __attribute__((weak));
+extern void coaxial_focus(cx_face_addr) __attribute__((weak));
+extern uint32_t coaxial_host_lifecycle_version(void) __attribute__((weak));
+extern void coaxial_host_lifecycle_reset(void) __attribute__((weak));
+extern int64_t coaxial_host_lifecycle_event(int32_t,int64_t,int64_t) __attribute__((weak));
+extern uint32_t coaxial_host_frame_offer(int64_t,int64_t) __attribute__((weak));
+extern double coaxial_host_frame_dt(void) __attribute__((weak));
+extern int64_t coaxial_host_lifecycle_info(int32_t) __attribute__((weak));
+extern uint32_t coaxial_host_copy_span(uint64_t, uint64_t, uint64_t, uint64_t) __attribute__((weak));
+extern int32_t rhn_socket_open(const char *,uint32_t) __attribute__((weak));
+extern void rhn_socket_send(int32_t,const void *,uint32_t) __attribute__((weak));
+extern void rhn_socket_close(int32_t) __attribute__((weak));
+extern void rhn_socket_poll(RealmHost *) __attribute__((weak));
+extern void rhn_socket_shutdown(void) __attribute__((weak));
+extern int rhn_http_path(const char *,size_t) __attribute__((weak));
+extern int rhn_utf8(const char *,size_t) __attribute__((weak));
+extern int rhn_action_span(uint64_t,uint64_t,uint64_t,uint64_t,int) __attribute__((weak));
+extern uint32_t coaxial_outbox_capacity(cx_face_addr) __attribute__((weak));
+extern int64_t rhn_http_image_body(int32_t,const char *,size_t,const uint8_t *,size_t,uint8_t *,size_t) __attribute__((weak));
+extern int32_t coaxial_host_http_reserve(int32_t,int32_t,int64_t,int64_t,int64_t) __attribute__((weak));
+extern int64_t coaxial_host_owner(int32_t) __attribute__((weak));
+extern uint32_t coaxial_host_http_chunk(int32_t,int64_t,int64_t,int64_t) __attribute__((weak));
+extern uint32_t coaxial_host_http_finish(int32_t,int64_t,int64_t,int64_t,int32_t,int32_t) __attribute__((weak));
+extern uint32_t coaxial_host_http_cancel(int32_t) __attribute__((weak));
+extern int64_t coaxial_host_delivery(int32_t) __attribute__((weak));
+// The realm dispatcher also serves non-audio fixtures and older faces.
+extern cx_face_addr coaxial_sound_bank(cx_face_addr) __attribute__((weak));
+extern uint32_t coaxial_sound_bank_len(cx_face_addr) __attribute__((weak));
+extern uint32_t coaxial_sound_bank_capacity(cx_face_addr) __attribute__((weak));
+extern cx_face_addr coaxial_sound_bank_storage(cx_face_addr) __attribute__((weak));
+extern uint32_t coaxial_sound_bank_storage_bytes(cx_face_addr) __attribute__((weak));
+extern cx_face_addr coaxial_sounds(cx_face_addr) __attribute__((weak));
+extern uint32_t coaxial_sounds_len(cx_face_addr) __attribute__((weak));
+extern uint32_t coaxial_sounds_capacity(cx_face_addr) __attribute__((weak));
+#pragma weak rha_open
+#pragma weak rha_bank
+#pragma weak rha_bank_lazy
+#pragma weak rhao_resources
+#pragma weak rha_session_event
+#pragma weak rha_command_current
+#pragma weak rha_info
+#pragma weak rha_close
+#pragma weak rha_render
+#pragma weak rhap_open
+#pragma weak rhap_start
+#pragma weak rhap_pause
+#pragma weak rhap_info
+#pragma weak rhap_close
+extern bool rhao_resources(RhAudio *,const char *) __attribute__((weak));
+
+// The face's offsets are 32 bits. Built without PIE, its static data is
+// below 2 GB; malloc stays on the brk heap (no mmap), which follows it; and
+// the arena is mapped there too. rh_ptr refuses anything else.
+void *rh_ptr(cx_face_addr offset) { return (void *)(uintptr_t)offset; }
+cx_face_addr rh_off(const void *p) {
+  uintptr_t a = (uintptr_t)p;
+#if !defined(COAXIAL_NATIVE_ADDRESS)
+  if (a >> 32) { fprintf(stderr, "realm-host: %p is above 4 GB, where the face cannot point\n", p); exit(1); }
+#endif
+  return (cx_face_addr)a;
+}
+uint64_t rh_address_limit(void) {
+#if defined(COAXIAL_NATIVE_ADDRESS)
+  return UINTPTR_MAX;
+#else
+  return UINT64_C(1)<<32;
+#endif
+}
+
+static uint32_t align16(uint32_t n) { return (n + 15u) & ~15u; }
+
+void rh_open(RealmHost *h, int golden) {
+  memset(h, 0, sizeof *h);
+  golden_mode = golden;
+#if !defined(COAXIAL_NATIVE_ADDRESS)
+  mallopt(M_MMAP_MAX, 0);
+#endif
+  h->floats = (int)coaxial_vertex_floats();
+  h->max_vertices = (int)coaxial_max_vertices();
+  h->uniform_floats = (int)coaxial_uniform_floats();
+  uint32_t state = align16(coaxial_state_size() > 1024 ? coaxial_state_size() : 1024);
+  h->arena_size = (size_t)state + (size_t)h->max_vertices * h->floats * 4 + (size_t)h->uniform_floats * 4 + 64;
+  int map_flags=MAP_PRIVATE|MAP_ANONYMOUS;
+#if !defined(COAXIAL_NATIVE_ADDRESS)
+  map_flags|=MAP_32BIT;
+#endif
+  h->arena = mmap(NULL, h->arena_size, PROT_READ | PROT_WRITE, map_flags, -1, 0);
+  if (h->arena == MAP_FAILED) { perror("realm-host: arena"); exit(1); }
+  h->state = rh_off(h->arena);
+  h->vertices = h->state + state;
+  h->uniforms = h->vertices + (uint32_t)(h->max_vertices * h->floats * 4);
+  coaxial_state_init(h->state);   // its struct defaults, as host.js has them applied
+  if(coaxial_host_contract_version&&coaxial_host_contract_version()==1&&coaxial_host_lifecycle_reset)coaxial_host_lifecycle_reset();
+  if (golden) coaxial_golden(1);
+}
+
+static uint32_t le32(const uint8_t *p) { return p[0] | p[1] << 8 | p[2] << 16 | (uint32_t)p[3] << 24; }
+
+int rh_pack(RealmHost *h, const char *path) {
+  if (!strcmp(path, "-")) return 0;   // a realm with no pack (its page names none)
+  FILE *f = fopen(path, "rb");
+  if (!f) { fprintf(stderr, "realm-host: cannot read %s\n", path); return 1; }
+  fseek(f, 0, SEEK_END);
+  long n = ftell(f);
+  fseek(f, 0, SEEK_SET);
+  h->pack = malloc(n > 0 ? (size_t)n : 1);
+  if (!h->pack || fread(h->pack, 1, (size_t)n, f) != (size_t)n) { fclose(f); fprintf(stderr, "realm-host: cannot read %s\n", path); return 1; }
+  fclose(f);
+  h->pack_size = (size_t)n;
+  // The pack's entries, from the one pack reader: every extent is checked against the length
+  // before a byte of an entry is read.
+  const uint8_t *b = h->pack;
+  static coax_t_PackTable table;
+  if (!aethyr_pack_table((coax_string){(const char *)b, (int64_t)h->pack_size}, (int64_t)h->pack_size, (coax_v_t_PackTable){&table, 1})) {
+    fprintf(stderr, "realm-host: %s: %.*s\n", path, (int)table.why.count, table.why.data); return 1;
+  }
+  uint32_t count = (uint32_t)table.count;
+  h->entries = calloc(count ? count : 1, sizeof *h->entries);
+  for (uint32_t k = 0; k < count; k++) {
+    coax_t_PackEntry row = table.entries.e[k];
+    RhEntry *e = &h->entries[k];
+    e->kind = (uint8_t)row.kind;
+    memcpy(e->name, row.name.data, (size_t)row.name.count);
+    e->bytes = b + row.at;
+    e->length = (uint32_t)row.n;
+    if (e->kind == RH_LAYER) h->layers++;
+  }
+  h->entry_count = (int)count;
+  return 0;
+}
+
+const RhEntry *rh_entry(const RealmHost *h, int kind) {
+  for (int i = 0; i < h->entry_count; i++) if (h->entries[i].kind == kind) return &h->entries[i];
+  return NULL;
+}
+
+void rh_deliver(RealmHost *h, int extra, const uint32_t *extra_sizes) {
+  if (!h->pack) {
+    // no pack: the page's assets are the only ones, from 0 (host.js lists them so)
+    for (int i = 0; i < extra; i++) coaxial_asset_ready(h->state, i, extra_sizes[i]);
+    return;
+  }
+  char loaded[64];
+  int n = snprintf(loaded, sizeof loaded, "%zu %zu", h->pack_size, h->pack_size);
+  rh_send(h, RH_PACK_KIND, loaded, (size_t)n);
+  const RhEntry *catalog = rh_entry(h, RH_CATALOG), *vertices = rh_entry(h, RH_VERTICES), *indices = rh_entry(h, RH_INDICES);
+  uint32_t sizes[4] = {catalog ? catalog->length : 0, vertices ? vertices->length : 0, indices ? indices->length : 0, (uint32_t)h->layers};
+  if (catalog) {
+    cx_face_addr at = coaxial_asset(h->state, 0, catalog->length);
+    int contract = coaxial_host_contract_version && coaxial_host_contract_version() == 1;
+    if (contract && (!coaxial_host_copy_span || !coaxial_host_copy_span(at, coaxial_asset_capacity(h->state,0),catalog->length,rh_address_limit()))) sizes[0] = 0;
+    else if (at) memcpy(rh_ptr(at), catalog->bytes, catalog->length);
+  }
+  for (int i = 0; i < 4; i++) coaxial_asset_ready(h->state, i, sizes[i]);
+  for (int i = 0; i < extra; i++) coaxial_asset_ready(h->state, 4 + i, extra_sizes[i]);
+}
+
+void rh_send(RealmHost *h, int kind, const char *text, size_t length) {
+  uint32_t cap = coaxial_inbox_cap();
+  if (length > cap) length = cap;
+  if(length)memcpy(rh_ptr(coaxial_inbox(h->state)), text, length);
+  coaxial_message(h->state, kind, (uint32_t)length);
+  rh_after(h, 0);
+}
+
+void rh_refuse(RealmHost *h){h->action_refused=1;}
+int rh_text(RealmHost *h,const char *text,size_t length){
+  rh_audio_gesture(h);
+  uint32_t cap=coaxial_inbox_cap();cx_face_addr at=coaxial_inbox(h->state);
+  if(length&&(!text||!at||length>cap||(rh_host_version()==1&&(!coaxial_host_copy_span||!coaxial_host_copy_span(at,cap,length,rh_address_limit()))))){rh_refuse(h);return 0;}
+  if(length)memcpy(rh_ptr(at),text,length);coaxial_message(h->state,1,(uint32_t)length);rh_after(h,0);return 1;
+}
+
+uint32_t rh_frame(RealmHost *h, float w, float ht, float scale, float dt) {
+  return rh_frame_input(h,w,ht,scale,dt,0);
+}
+uint32_t rh_frame_input(RealmHost *h, float w, float ht, float scale, float dt, int still) {
+  uint32_t n = coaxial_frame(h->state, h->vertices, h->uniforms, w, ht, scale, dt, still!=0);
+  return n > (uint32_t)h->max_vertices ? (uint32_t)h->max_vertices : n;
+}
+int rh_frame_at(RealmHost *h,float w,float ht,float scale,int64_t us,int64_t pending,int still,uint32_t *vertices){
+  if(!coaxial_host_contract_version||coaxial_host_contract_version()!=1||!coaxial_host_lifecycle_version||coaxial_host_lifecycle_version()!=1||!coaxial_host_frame_offer||!coaxial_host_frame_dt)return -1;
+  if(!coaxial_host_frame_offer(us,pending))return 0;
+  // Preserve the requested count for the checked shared-renderer boundary.
+  *vertices=coaxial_frame(h->state,h->vertices,h->uniforms,w,ht,scale,(float)coaxial_host_frame_dt(),still!=0);return 1;
+}
+int rh_host_version(void){return coaxial_host_contract_version?(int)coaxial_host_contract_version():0;}
+int rh_audio_enable(RealmHost *h,int muted){
+  if(h->audio||h->audio_device)return -1;
+  h->audio_status=-1;h->audio_command=-1;
+  if(rh_host_version()!=1||!coaxial_host_copy_span||!coaxial_sound_bank_len||!coaxial_sound_bank||!coaxial_sound_bank_capacity||!coaxial_sound_bank_storage||!coaxial_sound_bank_storage_bytes||!coaxial_sounds||!coaxial_sounds_len||!coaxial_sounds_capacity||!rha_open||!rha_bank_lazy||!rha_session_event||!rha_command_current||!rha_info||!rha_close||!rhap_open||!rhap_start||!rhap_pause||!rhap_info||!rhap_close)return -1;
+  // Length generates the borrowed metadata. Admit its complete measured
+  // allocation before forming either metadata or source-memory views.
+  uint32_t n=coaxial_sound_bank_len(h->state),cap=coaxial_sound_bank_capacity(h->state);
+  cx_face_addr at=coaxial_sound_bank(h->state),base=coaxial_sound_bank_storage(h->state);uint32_t bytes=coaxial_sound_bank_storage_bytes(h->state);
+  if(!coaxial_host_copy_span(at,cap,n,rh_address_limit())||!coaxial_host_copy_span(base,bytes,bytes,rh_address_limit()))return -1;
+  h->audio=rha_open();if(!h->audio)return -1;
+  h->audio_status=rha_bank_lazy(h->audio,rh_ptr(at),n,rh_ptr(base),bytes);
+  if(rhao_resources&&!rhao_resources(h->audio,"render-assets")){rh_audio_close(h);return -1;}
+  h->audio_device=rhap_open(h->audio,muted!=0);
+  if(!h->audio_device){rh_audio_close(h);return -1;}
+  return h->audio_status<0?-1:0;
+}
+int rh_audio_offline(RealmHost *h){
+  if(h->audio||h->audio_device)return -1;
+  h->audio_status=-1;h->audio_command=-1;
+  if(rh_host_version()!=1||!coaxial_host_copy_span||!coaxial_sound_bank_len||!coaxial_sound_bank||!coaxial_sound_bank_capacity||!coaxial_sound_bank_storage||!coaxial_sound_bank_storage_bytes||!coaxial_sounds||!coaxial_sounds_len||!coaxial_sounds_capacity||!rha_open||!rha_bank_lazy||!rha_session_event||!rha_command_current||!rha_info||!rha_close||!rha_render)return -1;
+  uint32_t n=coaxial_sound_bank_len(h->state),cap=coaxial_sound_bank_capacity(h->state);
+  cx_face_addr at=coaxial_sound_bank(h->state),base=coaxial_sound_bank_storage(h->state);uint32_t bytes=coaxial_sound_bank_storage_bytes(h->state);
+  if(!coaxial_host_copy_span(at,cap,n,rh_address_limit())||!coaxial_host_copy_span(base,bytes,bytes,rh_address_limit()))return -1;
+  h->audio=rha_open();if(!h->audio)return -1;
+  h->audio_status=rha_bank_lazy(h->audio,rh_ptr(at),n,rh_ptr(base),bytes);
+  if(rhao_resources&&!rhao_resources(h->audio,"render-assets")){rh_audio_close(h);return -1;}
+  if(h->audio_status<0||!rha_session_event(h->audio,1)){rh_audio_close(h);return -1;}
+  return 0;
+}
+int rh_audio_take(RealmHost *h,float *out,size_t frames){return h->audio&&!h->audio_device&&rha_render(h->audio,out,frames,false)?0:-1;}
+void rh_audio_gesture(RealmHost *h){if(h->audio_device)(void)rhap_start(h->audio_device);}
+void rh_audio_pause(RealmHost *h,int paused){if(h->audio_device)(void)rhap_pause(h->audio_device,paused!=0);}
+void rh_audio_retire(RealmHost *h){if(h->audio){(void)rha_session_event(h->audio,4);if(h->audio_device){rhap_close(h->audio_device);h->audio_device=NULL;}}}
+void rh_audio_close(RealmHost *h){rh_audio_retire(h);if(h->audio){rha_close(h->audio);h->audio=NULL;}}
+int64_t rh_audio_info(RealmHost *h,int field){if(field>=0&&field<=11)return h->audio?rha_info(h->audio,field):0;if(field>=20&&field<=30)return h->audio_device?rhap_info(h->audio_device,field-20):0;switch(field){case 40:return h->audio_status;case 41:return h->audio_command;case 42:return h->audio_device==NULL;case 43:return h->audio==NULL;}return -1;}
+static void audio_after(RealmHost *h){
+  if(!h->audio)return;
+  uint32_t n=coaxial_sounds_len(h->state);if(!n)return;
+  cx_face_addr at=coaxial_sounds(h->state);uint32_t cap=coaxial_sounds_capacity(h->state);
+  if(!coaxial_host_copy_span(at,cap,n,rh_address_limit())){h->audio_command=-1;return;}
+  const uint8_t *text=rh_ptr(at);size_t start=0;
+  for(size_t i=0;i<=n;i++)if(i==n||text[i]=='\n'){if(i>start)h->audio_command=rha_command_current(h->audio,text+start,i-start);start=i+1;}
+}
+int64_t rh_lifecycle_event(RealmHost *h,int kind,int64_t us,int64_t arg){
+  if(!coaxial_host_contract_version||coaxial_host_contract_version()!=1||!coaxial_host_lifecycle_event)return 0;
+  int64_t actions=coaxial_host_lifecycle_event(kind,us,arg);if(us>=0&&kind==4)rh_audio_pause(h,1);if(us>=0&&kind==5)rh_audio_pause(h,0);if(actions&1)rh_blur(h);if(kind==2&&coaxial_focus)coaxial_focus(h->state);return actions;
+}
+int64_t rh_lifecycle_info(int field){return coaxial_host_lifecycle_info?coaxial_host_lifecycle_info(field):-1;}
+int rh_asset_data(RealmHost *h, int index, const void *bytes, size_t length) {
+  uint32_t n=length<=UINT32_MAX?(uint32_t)length:0;
+  cx_face_addr at=n?coaxial_asset(h->state,index,n):0;
+  int contract=coaxial_host_contract_version && coaxial_host_contract_version()==1;
+  if (length>UINT32_MAX || !at || (contract && (!coaxial_host_copy_span || !coaxial_host_copy_span(at,coaxial_asset_capacity(h->state,index),length,rh_address_limit())))) n=0;
+  if(n)memcpy(rh_ptr(at),bytes,n);
+  coaxial_asset_ready(h->state,index,n);
+  return n==length;
+}
+uint32_t rh_key(RealmHost *h,int key,int mods,int down) {
+  uint32_t consumed=0;if(down){rh_audio_gesture(h);consumed=coaxial_key(h->state,key,mods);}else coaxial_key_up(h->state,key,mods);rh_after(h,0);return consumed;
+}
+void rh_pointer(RealmHost *h,float x,float y,int phase,int kind,int id) {if(phase==0)rh_audio_gesture(h);coaxial_pointer(h->state,x,y,phase,kind,id);rh_after(h,0);}
+void rh_blur(RealmHost *h) {coaxial_blur(h->state);rh_after(h,0);}
+void rh_wheel(RealmHost *h,float dy) {rh_audio_gesture(h);coaxial_wheel(h->state,dy);rh_after(h,0);}
+
+static void keep(int action, const char *text, uint32_t len);
+static char went[1100];
+static size_t went_len;
+static int went_set;
+int rh_after(RealmHost *h, int say) {
+  audio_after(h);
+  int action = coaxial_action(h->state);
+  if (!action) return 0;
+  uint32_t len=coaxial_outbox_len(h->state);cx_face_addr at=len?coaxial_outbox(h->state):0;
+  int valid=rh_host_version()!=1||(rhn_action_span&&rhn_action_span(at,len&&coaxial_outbox_capacity?coaxial_outbox_capacity(h->state):0,len,rh_address_limit(),coaxial_outbox_capacity!=NULL));
+  char *text=valid?malloc(len?len:1):NULL;
+  if(text&&len)memcpy(text,rh_ptr(at),len);
+  // No borrowed producer byte survives acknowledgement, even when the next
+  // input/message replaces its packet. Refused bytes are never viewed.
+  coaxial_action_done(h->state);
+  if(!text){h->action_refused=1;return action;}
+  if(say)printf("realm-host: action %d: %.*s\n",action,(int)(len>200?200:len),text);
+  if(action==1&&len<sizeof went){memcpy(went,text,len);went_len=len;went_set=1;}
+  if(action==2&&(!h->clipboard||!h->clipboard(h->clipboard_user,text,len)))h->action_refused=1;
+  keep(action,text,len);if(action==3){free(h->location_hash);h->location_hash=text;h->location_hash_bytes=len;}else free(text);return action;
+}
+const char *rh_hash(RealmHost *h,size_t *bytes){*bytes=h->location_hash_bytes;return h->location_hash;}
+void rh_set_clipboard(RealmHost *h,int (*copy)(void *,const char *,size_t),void *user){h->clipboard=copy;h->clipboard_user=user;}
+
+
+void rh_page(RealmHost *h, int page) { coaxial_page(h->state, page); }
+
+static int starts(const char *p, size_t n, const char *with) { size_t k = strlen(with); return n >= k && !memcmp(p, with, k); }
+static int put_slug(const char *s, size_t n, char *slug, size_t cap) {
+  if (!n || n >= cap) return 0;
+  memcpy(slug, s, n); slug[n] = 0;
+  return 1;
+}
+int rh_realm_of(const char *p, size_t n, char *slug, size_t cap) {
+  if (starts(p, n, "https://openagents.com/")) { p += 22; n -= 22; }
+  size_t end = 0;   // the path, without its query or hash
+  while (end < n && p[end] != '?' && p[end] != '#') end++;
+  if (end == 1 && p[0] == '/') return put_slug("the-grid", 8, slug, cap);
+  if ((end == 9 || end == 10) && starts(p, end, "/new-land") && (end == 9 || p[9] == '/')) return put_slug("the-grid", 8, slug, cap);
+  // /worlds is the web's name for /realms since 2026-11-02 (the same length); both open the same
+  int worlds = starts(p, end, "/worlds");
+  if ((end == 7 || end == 8) && (worlds || starts(p, end, "/realms")) && (end == 7 || p[7] == '/')) return put_slug("galaxy", 6, slug, cap);
+  if (!starts(p, end, "/realms/") && !starts(p, end, "/worlds/")) return 0;
+  size_t a = 8, b = a;
+  while (b < end && p[b] != '/') {
+    char c = p[b];
+    if (!((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-')) return 0;
+    b++;
+  }
+  if (b < end && b + 1 != end) return 0;   // a page under the realm (its tip): the web's
+  return put_slug(p + a, b - a, slug, cap);
+}
+int rh_went(char *slug, size_t cap) {
+  if (!went_set) return 0;
+  went_set = 0;
+  return rh_realm_of(went, went_len, slug, cap);
+}
+
+void rh_close(RealmHost *h) {
+  rh_audio_close(h);
+  munmap(h->arena, h->arena_size);
+  free(h->entries);
+  free(h->pack);free(h->location_hash);h->location_hash=NULL;h->location_hash_bytes=0;
+}
+
+// ---- the network and what the realm keeps (rh_net_open)
+// Each request is one metaverse/native/net process (net.coax: the approved TLS, its one owner
+// thread), so the frame never waits on it; its answer is a file, read when the process has
+// ended. The slots, the same-site rule and the answers are coax/web/http-requests.js's.
+enum { RH_SLOTS = 8, RH_BEACONS = 16, RH_PLAYER = 5, RH_PLACE = 11, RH_BAR = 12, RH_ANSWER = 512,
+       RH_UNBOUNDED_MS = 35000 };
+typedef struct { pid_t pid; int64_t deadline,generation,engine,timeout; int contract,pending,failed,flags; char out[1100], body[1100],path[4097]; } RhRequest;
+static struct { int on, port, log; char helper[1024], host[256], dir[1024], name[64]; } net;
+static RhRequest slots[RH_SLOTS], beacons[RH_BEACONS];
+static unsigned serial;
+
+static int64_t mono_ms(void) {
+  struct timespec t;
+  clock_gettime(CLOCK_MONOTONIC, &t);
+  return (int64_t)t.tv_sec * 1000 + t.tv_nsec / 1000000;
+}
+static char *read_all(const char *path, size_t *n) {
+  FILE *f = fopen(path, "rb");
+  if (!f) return NULL;
+  size_t cap = 4096, len = 0;
+  char *b = malloc(cap);
+  size_t k;
+  while (b && (k = fread(b + len, 1, cap - len, f)) > 0) {
+    len += k;
+    if (len == cap) { char *m = realloc(b, cap *= 2); if (!m) { free(b); b = NULL; } else b = m; }
+  }
+  fclose(f);
+  if (!b) return NULL;
+  *n = len;
+  return b;
+}
+// Written whole or not at all (a new file, then renamed over the old).
+static int write_all(const char *path, const char *bytes, size_t n) {
+  char tmp[1200];
+  snprintf(tmp, sizeof tmp, "%s.new", path);
+  int fd = open(tmp, O_WRONLY | O_CREAT | O_TRUNC, 0600);
+  if (fd < 0) return -1;
+  size_t done = 0;
+  while (done < n) { ssize_t w = write(fd, bytes + done, n - done); if (w <= 0) { close(fd); unlink(tmp); return -1; } done += (size_t)w; }
+  if (close(fd) || rename(tmp, path)) { unlink(tmp); return -1; }
+  return 0;
+}
+static void kept_path(char *out, size_t cap, const char *what) {
+  if (!strcmp(what, "player")) snprintf(out, cap, "%s/player", net.dir);   // the browser's verse.player: every realm's
+  else snprintf(out, cap, "%s/%s.%s", net.dir, net.name, what);
+}
+// A path on this site: "/" first, not "//", no backslash, space, control or DEL (the browser
+// would resolve those against another origin or escape them; this host refuses them).
+static int same_site(const char *u, uint32_t n) {
+  if (n < 1 || n > 4000 || u[0] != '/' || (n > 1 && u[1] == '/')) return 0;
+  for (uint32_t i = 0; i < n; i++) if ((unsigned char)u[i] <= ' ' || u[i] == 127 || u[i] == '\\') return 0;
+  return 1;
+}
+// The kept player's key: the "key" string of the JSON action 5 kept, or "" (no escapes in a key).
+static void player_key(char *out, size_t cap) {
+  out[0] = 0;
+  char path[1100];
+  kept_path(path, sizeof path, "player");
+  size_t n;
+  char *j = read_all(path, &n);
+  if (!j) return;
+  char *t = memmem(j, n, "\"key\"", 5);
+  if (t) {
+    char *e = j + n, *p = t + 5;
+    while (p < e && (*p == ' ' || *p == ':')) p++;
+    if (p < e && *p == '"') {
+      p++;
+      size_t k = 0;
+      while (p < e && *p != '"' && *p != '\\' && (unsigned char)*p >= ' ' && k + 1 < cap) out[k++] = *p++;
+      out[(p < e && *p == '"') ? k : 0] = 0;
+    }
+  }
+  free(j);
+}
+static void keep(int action, const char *text, uint32_t len) {
+  if (!net.on) return;
+  char path[1100];
+  // host.js keeps the player when it is JSON with a string key; the place and bar unless golden
+  if (action == RH_PLAYER) {
+    if (len < 2 || text[0] != '{' || !memmem(text, len, "\"key\"", 5)) return;
+    kept_path(path, sizeof path, "player");
+  } else if ((action == RH_PLACE || action == RH_BAR) && !golden_mode) kept_path(path, sizeof path, action == RH_PLACE ? "place" : "bar");
+  else return;
+  if (write_all(path, text, len)) fprintf(stderr, "realm-host: cannot keep %s\n", path);
+}
+static void forget(RhRequest *r) {
+  if (r->out[0]) unlink(r->out);
+  if (r->body[0]) unlink(r->body);
+  memset(r, 0, sizeof *r);
+}
+static int spawn_request(RhRequest *r){
+  char port[16],flags[16],cap[16],timeout[24],key[256];
+  snprintf(port,sizeof port,"%d",net.port);snprintf(flags,sizeof flags,"%d",r->flags);snprintf(cap,sizeof cap,"%u",coaxial_inbox_cap());
+  int64_t left=r->timeout>=0?r->deadline-mono_ms():0;if(r->timeout>=0&&left<1)return 0;snprintf(timeout,sizeof timeout,"%lld",(long long)left);
+  if(r->flags&8)player_key(key,sizeof key);else key[0]=0;
+  char *argv[]={net.helper,r->out,net.host,port,flags,r->path,r->body[0]?r->body:"-",key[0]?key:"-",cap,timeout,r->contract?"--host-v1":NULL,NULL};
+  posix_spawn_file_actions_t fa;posix_spawn_file_actions_init(&fa);posix_spawn_file_actions_addopen(&fa,0,"/dev/null",O_RDONLY,0);posix_spawn_file_actions_addopen(&fa,1,"/dev/null",O_WRONLY,0);
+  pid_t pid;int e=posix_spawn(&pid,net.helper,&fa,NULL,argv,environ);posix_spawn_file_actions_destroy(&fa);if(e)return 0;r->pid=pid;r->pending=0;
+  if(net.log)fprintf(stderr,"realm-host: request: %s %s (flags %d)\n",r->flags&1?"POST":"GET",r->path,r->flags);return 1;
+}
+static int64_t request(cx_face_addr url, uint32_t url_len, cx_face_addr body, uint32_t body_len, int32_t flags, int64_t timeout) {
+  if (!net.on) return -1;
+  int contract=coaxial_host_contract_version&&coaxial_host_contract_version()==1;
+  const char *u = rh_ptr(url);
+  if(contract){if(!rhn_http_path||!rhn_utf8||!coaxial_host_http_reserve||!coaxial_host_owner||!coaxial_host_http_chunk||!coaxial_host_http_finish||!coaxial_host_http_cancel||!coaxial_host_delivery||!rhn_http_path(u,url_len))return -1;}
+  else if (!same_site(u, url_len)) return -1;
+  int wanted = (flags & 4) != 0, beacon = (flags & 2) != 0;
+  if (timeout >= 0 && (!wanted || beacon || timeout < 1 || timeout > 2147483647)) return -1;
+  RhRequest *r = NULL;
+  int id = 0;int64_t reserved_at=mono_ms();
+  if (wanted) {
+    if(contract){id=coaxial_host_http_reserve(flags,timeout>=0,timeout,reserved_at,coaxial_inbox_cap());if(id<0)return -1;}
+    else {for (id = 0; id < RH_SLOTS && (slots[id].pid||slots[id].pending); id++) {}if (id == RH_SLOTS) return -1;}
+    r = &slots[id];
+    if(contract){r->contract=1;r->generation=coaxial_host_owner(1);r->engine=coaxial_host_owner(2);}
+  } else {
+    rh_net_poll(NULL);   // reap the beacons that ended
+    for (int i = 0; i < RH_BEACONS && !r; i++) if (!beacons[i].pid&&!beacons[i].pending) r = &beacons[i];
+    if (!r) return -1;
+  }
+  unsigned k = serial++;
+  r->contract=contract;r->flags=flags;r->timeout=timeout;r->deadline=reserved_at+(timeout>=0?timeout:RH_UNBOUNDED_MS);
+  memcpy(r->path,u,url_len);r->path[url_len]=0;
+  snprintf(r->out, sizeof r->out, "%s/.net-%d-%u.answer", net.dir, (int)getpid(), k);
+  unlink(r->out);
+  if (body_len) {
+    snprintf(r->body, sizeof r->body, "%s/.net-%d-%u.body", net.dir, (int)getpid(), k);
+    if (write_all(r->body, rh_ptr(body), body_len)) { if(r->contract)coaxial_host_http_cancel(id);forget(r); return -1; }
+  }
+  if(contract&&(flags&32)&&(flags&1)&&body_len){r->pending=1;return wanted?id:0;}
+  if(!spawn_request(r)){if(r->contract&&wanted)coaxial_host_http_cancel(id);forget(r);return -1;}
+  return wanted ? id : 0;
+}
+int rh_http_image_due(void){for(int i=0;i<RH_SLOTS;i++)if(slots[i].pending)return 1;for(int i=0;i<RH_BEACONS;i++)if(beacons[i].pending)return 1;return 0;}
+void rh_http_image_ready(const uint8_t *image,size_t bytes){
+  // These are actual fixed helper input/output allocations. Coax admits the
+  // completed JSON composition inside their measured capacities.
+  const size_t capacity=1114112;uint8_t *input=NULL,*output=NULL;
+  if(bytes){input=malloc(capacity);output=malloc(capacity);}
+  for(int i=0;i<RH_SLOTS+RH_BEACONS;i++){
+    RhRequest *r=i<RH_SLOTS?&slots[i]:&beacons[i-RH_SLOTS];if(!r->pending)continue;
+    if(i<RH_SLOTS&&!coaxial_host_http_chunk(i,r->generation,r->engine,0)){forget(r);continue;}
+    int ok=mono_ms()<r->deadline;
+    if(ok&&bytes){
+      FILE *f=fopen(r->body,"rb");struct stat st;size_t n=0;ok=f&&input&&output&&rhn_http_image_body&&!fstat(fileno(f),&st)&&S_ISREG(st.st_mode)&&st.st_size>=0&&(uint64_t)st.st_size<=capacity;
+      if(ok){n=(size_t)st.st_size;ok=fread(input,1,n,f)==n&&fgetc(f)==EOF&&!ferror(f);}if(f)fclose(f);
+      int64_t written=ok?rhn_http_image_body(r->flags,(const char*)input,n,image,bytes,output,capacity):-1;
+      ok=written>=0&&write_all(r->body,(const char*)output,(size_t)written)==0;
+    }
+    r->pending=0;if(!ok||!spawn_request(r)){if(i<RH_SLOTS)r->failed=1;else forget(r);}
+  }
+  free(input);free(output);
+}
+int rh_net_open(RealmHost *h, const char *helper, const char *host, int port, const char *dir, const char *name) {
+  (void)h;
+  if (access(helper, X_OK)) { fprintf(stderr, "realm-host: no network helper %s\n", helper); return -1; }
+  mkdir(dir, 0700);
+  struct stat st;
+  if (stat(dir, &st) || !S_ISDIR(st.st_mode)) { fprintf(stderr, "realm-host: no directory %s\n", dir); return -1; }
+  snprintf(net.helper, sizeof net.helper, "%s", helper);
+  snprintf(net.host, sizeof net.host, "%s", host);
+  snprintf(net.dir, sizeof net.dir, "%s", dir);
+  snprintf(net.name, sizeof net.name, "%s", name);
+  net.port = port;
+  net.on = 1;
+  net.log = getenv("VERSE_NATIVE_NET_LOG") != NULL;   // each request and its answer's status, on stderr
+  signal(SIGPIPE, SIG_IGN);
+  return 0;
+}
+void rh_net_poll(RealmHost *h) {
+  if(h&&h->action_refused){h->action_refused=0;rh_send(h,604,"",0);}
+  if(rhn_socket_poll)rhn_socket_poll(h);
+  if (!net.on) return;
+  for (int i = 0; i < RH_BEACONS; i++) {
+    int st;
+    if (beacons[i].pid && waitpid(beacons[i].pid, &st, WNOHANG) != 0) forget(&beacons[i]);
+  }
+  if (!h) return;
+  int64_t now = mono_ms();
+  for (int i = 0; i < RH_SLOTS; i++) {
+    RhRequest *r = &slots[i];
+    if(r->pending&&now<r->deadline)continue;
+    if(!r->pid&&!r->pending&&!r->failed)continue;
+    int st = 0;
+    pid_t w=r->pid?waitpid(r->pid,&st,WNOHANG):-1;
+    if (w == 0 && now < r->deadline) continue;
+    if (w == 0) { kill(r->pid, SIGKILL); waitpid(r->pid, &st, 0); }
+    size_t n = 0;
+    char *text = w > 0 && WIFEXITED(st) && WEXITSTATUS(st) == 0 ? read_all(r->out, &n) : NULL;
+    int contract=r->contract;int64_t generation=r->generation,engine=r->engine;
+    // Free physical state before the answer. Shared Coax finish also frees
+    // ownership before reentrant realm code can reserve the slot again.
+    forget(r);
+    if (net.log) {
+      const char *nl = text && n ? memchr(text, '\n', n) : NULL;
+      int status_n = text && n ? (int)(nl ? nl - text : (ptrdiff_t)n) : 1;
+      fprintf(stderr, "realm-host: answer %d: %.*s, %zu bytes%s\n", i, status_n, text && n ? text : "0", n, w == 0 ? " (past its deadline)" : "");
+    }
+    if(contract){
+      int ok=text&&n;coaxial_host_http_chunk(i,generation,engine,(int64_t)n);
+      if(coaxial_host_http_finish(i,generation,engine,mono_ms(),ok,ok&&rhn_utf8(text,n))){
+        int failure=(int)coaxial_host_delivery(2);rh_send(h,(int)coaxial_host_delivery(0),failure?"0\n":text,(size_t)coaxial_host_delivery(1));
+      }
+    }else if (text && n) rh_send(h, RH_ANSWER + i, text, n);
+    else rh_send(h, RH_ANSWER + i, "0\n", 2);
+    free(text);
+  }
+}
+static int32_t cancel(int32_t id) {
+  if (id < 0 || id >= RH_SLOTS || (!slots[id].pid&&!slots[id].pending&&!slots[id].failed)) return 0;
+  int admitted=slots[id].contract?coaxial_host_http_cancel(id):1;
+  if(slots[id].pid){kill(slots[id].pid,SIGKILL);waitpid(slots[id].pid,NULL,0);}
+  forget(&slots[id]);
+  return admitted;
+}
+void rh_restore(RealmHost *h) {
+  if (!net.on || golden_mode) return;
+  static const int kinds[2] = {RH_PLACE, RH_BAR};
+  static const char *whats[2] = {"place", "bar"};
+  for (int i = 0; i < 2; i++) {
+    char path[1100];
+    kept_path(path, sizeof path, whats[i]);
+    size_t n;
+    char *t = read_all(path, &n);
+    if (t && n) rh_send(h, kinds[i], t, n);
+    free(t);
+  }
+}
+void rh_net_close(void) {
+  if(rhn_socket_shutdown)rhn_socket_shutdown();
+  for(int i=0;i<RH_SLOTS;i++)if(slots[i].pid||slots[i].pending||slots[i].failed)cancel(i);
+  for(int i=0;i<RH_BEACONS;i++){if(beacons[i].pid)waitpid(beacons[i].pid,NULL,0);if(beacons[i].pid||beacons[i].pending)forget(&beacons[i]);}
+  net.on=0;
+}
+
+// The host's imports (coax/web/host.js imports.env), natively. Requests go out once
+// rh_net_open has been called; before it they are refused, as a page offline has them.
+static int64_t clock_ms(void) {
+  const char *fake = getenv("VERSE_NATIVE_CLOCK_MS");
+  if (fake) return atoll(fake);
+  struct timespec t;
+  clock_gettime(CLOCK_MONOTONIC, &t);
+  return (int64_t)t.tv_sec * 1000 + t.tv_nsec / 1000000;
+}
+int64_t guard_now_ms(void) { return clock_ms(); }
+double coaxial_measure_ms(void) {struct timespec t;clock_gettime(CLOCK_MONOTONIC,&t);return (double)t.tv_sec*1000+(double)t.tv_nsec/1000000;}
+// Unix wall seconds. The explicit deterministic-test override drives both
+// imported clocks, as wasm-run's clock/clock_s fixtures do.
+int64_t coaxial_now_seconds(void) {const char *fake=getenv("VERSE_NATIVE_CLOCK_MS");return fake?atoll(fake)/1000:(int64_t)time(NULL);}
+// byte storage (env.coaxial_storage_*: the browser's IndexedDB): none natively, refused as host.js
+// refuses it where the browser has none (UNAVAILABLE), so the app keeps going without it
+int32_t coaxial_storage_put(int32_t a, int32_t b, uint32_t c, int32_t d, int32_t e, uint32_t f, int32_t g, uint32_t h, int32_t i) {
+  (void)a; (void)b; (void)c; (void)d; (void)e; (void)f; (void)g; (void)h; (void)i; return 2;
+}
+int32_t coaxial_storage_get(int32_t a, int32_t b, uint32_t c, int32_t d, int32_t e, uint32_t f, int32_t g) {
+  (void)a; (void)b; (void)c; (void)d; (void)e; (void)f; (void)g; return 2;
+}
+// coaxial_http_bounded and coaxial_http_cancel, as the face names them
+int32_t guard_http(cx_face_addr a, uint32_t b, cx_face_addr c, uint32_t d, uint32_t e, int64_t f) {
+  return (int32_t)request(a, b, c, d, (int32_t)e, f < 0 ? 0 : f);
+}
+int32_t guard_cancel(int32_t id) { return cancel(id); }
+static int32_t replay_http(cx_face_addr url,uint32_t len);
+int32_t coaxial_http(cx_face_addr url, uint32_t url_len, cx_face_addr body, uint32_t body_len, int32_t flags) {
+  int32_t fixture=replay_http(url,url_len);if(fixture!=-2)return fixture;
+  return (int32_t)request(url, url_len, body, body_len, flags, -1);
+}
+// WebSockets (host.js coaxial_socket_*): refused natively, as host.js refuses a URL it cannot
+// open, so a realm that plays with others (Hold the Stair's co-op) plays alone.
+static FILE *replay_file;
+static uint32_t replay_left,replay_at,replay_size;
+static unsigned char replay_bytes[16384];
+static double replay_clock;
+static int replay_opened,replay_pending;
+static struct {char path[257],wire[16385];uint32_t path_n,wire_n;} replay_api[16];
+static struct {const char *bytes;uint32_t length;int pending;} replay_reply[32];
+static uint32_t replay_api_count;
+static int replay_viewer_sent;
+static int32_t replay_http(cx_face_addr url,uint32_t len) {
+  if(!replay_api_count)return -2;
+  const char *bytes="404\n";uint32_t n=4;const char *path=rh_ptr(url);
+  for(uint32_t i=0;i<replay_api_count;i++)if(len==replay_api[i].path_n&&!memcmp(path,replay_api[i].path,len)){bytes=replay_api[i].wire;n=replay_api[i].wire_n;break;}
+  for(int i=0;i<32;i++)if(!replay_reply[i].pending){replay_reply[i].bytes=bytes;replay_reply[i].length=n;replay_reply[i].pending=1;return i;}
+  return -1;
+}
+static int replay_read(void) {
+  if(!replay_left)return 0;unsigned char h[8];
+  if(fread(h,1,8,replay_file)!=8)return -1;
+  uint32_t at=le32(h),n=le32(h+4);
+  if(at<replay_at||n==0||n>sizeof replay_bytes||fread(replay_bytes,1,n,replay_file)!=n)return -1;
+  replay_at=at;replay_size=n;replay_left--;replay_pending=1;return 1;
+}
+int rh_replay_open(const char *path) {
+  unsigned char h[16];replay_file=fopen(path,"rb");
+  if(!replay_file||fread(h,1,16,replay_file)!=16||memcmp(h,"OA-RPLY1",8)||le32(h+8)>5400)return 1;
+  replay_left=le32(h+8);
+  char api_path[4096];const char *slash=strrchr(path,'/');size_t prefix=slash?(size_t)(slash-path+1):0;
+  if(prefix+9>=sizeof api_path)return 1;memcpy(api_path,path,prefix);memcpy(api_path+prefix,"raid.api",9);
+  FILE *api=fopen(api_path,"rb");unsigned char ah[12];if(!api||fread(ah,1,12,api)!=12||memcmp(ah,"OA-API01",8))return 1;
+  replay_api_count=le32(ah+8);if(!replay_api_count||replay_api_count>16)return 1;
+  for(uint32_t i=0;i<replay_api_count;i++){
+    if(fread(ah,1,8,api)!=8)return 1;uint32_t u=le32(ah),b=le32(ah+4);
+    if(u>256||b>16384||fread(replay_api[i].path,1,u,api)!=u||fread(replay_api[i].wire,1,b,api)!=b)return 1;
+    replay_api[i].path_n=u;replay_api[i].wire_n=b;
+  }
+  fclose(api);return replay_read()!=1;
+}
+double rh_replay_seconds(void) {return replay_clock? (coaxial_measure_ms()-replay_clock)/1000:0;}
+void rh_replay_poll(RealmHost *h) {
+  if(replay_api_count&&!replay_viewer_sent){
+    replay_viewer_sent=1;
+    for(uint32_t i=0;i<replay_api_count;i++)if(!strcmp(replay_api[i].path,"/api/auth/viewer")&&replay_api[i].wire_n>=4&&!memcmp(replay_api[i].wire,"200\n",4))
+      rh_send(h,RH_VIEWER_KIND,replay_api[i].wire+4,replay_api[i].wire_n-4);
+  }
+  for(int i=0;i<32;i++)if(replay_reply[i].pending){replay_reply[i].pending=0;rh_send(h,512+i,replay_reply[i].bytes,replay_reply[i].length);}
+  if(replay_opened&&!replay_clock)replay_clock=coaxial_measure_ms();
+  if(!replay_clock)return;
+  if(replay_opened==1){rh_send(h,256,"",0);replay_opened=2;}
+  while(replay_pending && replay_at<=coaxial_measure_ms()-replay_clock) {
+    if(replay_size>coaxial_inbox_cap()){fprintf(stderr,"realm-host: replay exceeds inbox\n");exit(1);}
+    rh_send(h,257,(const char*)replay_bytes,replay_size);replay_pending=0;
+    if(replay_read()<0){fprintf(stderr,"realm-host: truncated/refused replay\n");exit(1);}
+  }
+}
+int32_t coaxial_socket_open(cx_face_addr url, uint32_t len) {
+  if(coaxial_host_contract_version && coaxial_host_contract_version()==1 && rhn_socket_open)return rhn_socket_open(rh_ptr(url),len);
+  (void)url;(void)len;if(!replay_file||replay_opened)return -1;
+  replay_opened=1;return 0;
+}
+void coaxial_socket_send(int32_t id, cx_face_addr ptr, uint32_t len) {if(coaxial_host_contract_version && coaxial_host_contract_version()==1 && rhn_socket_send)rhn_socket_send(id,rh_ptr(ptr),len);}
+void coaxial_socket_close(int32_t id) {if(coaxial_host_contract_version && coaxial_host_contract_version()==1 && rhn_socket_close)rhn_socket_close(id);}
+// The exports host.js calls only when a realm's face has them (x.coaxial_draws?.(...) and
+// the like): a face without them gets these, which say it has none.
+#if !defined(COAXIAL_DYNAMIC_FACE)
+#include "face-defaults.h"
+#endif
+// The phone's thumbs (metaverse/grid.coax) draw through these; a desktop has none.
+void host_line(int64_t h, double ax, double ay, double bx, double by, double la, double lb, double w) {
+  (void)h; (void)ax; (void)ay; (void)bx; (void)by; (void)la; (void)lb; (void)w;
+}
+void host_dot(int64_t h, double x, double y, double size, double light, double soft, double crisp) {
+  (void)h; (void)x; (void)y; (void)size; (void)light; (void)soft; (void)crisp;
+}
+void host_slot(int64_t h, double x, double y, double w, double ht, double press, double flash, double selected, double icon) {
+  (void)h; (void)x; (void)y; (void)w; (void)ht; (void)press; (void)flash; (void)selected; (void)icon;
+}

@@ -7,7 +7,7 @@
 
 The roadmap's second physical-world consumer is one spacecraft scenario: a
 freighter loads cargo, transfers to a moving destination, rides out a fault
-and docks. It runs on the `verse/` space modules, which Orbit League and
+and docks. It runs on the `metaverse/` space modules, which Orbit League and
 Belt 2200 use today
 ([space primitives](https://github.com/OpenAgentsInc/openagents/blob/main/docs/verse/space.md)),
 and it is the scenario behind

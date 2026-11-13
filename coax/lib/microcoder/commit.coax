@@ -179,8 +179,8 @@ mc_check_line :: (lc: [] McLastCheck, out: [] u8) -> string {
   #assert mc_cmd_kind("coax/remote/remote.sh run -- coax/bin/coax test a.coax") == MC_CMD_CHECK;
   #assert mc_cmd_kind("OA_X=1 timeout 60 cargo test -p foo") == MC_CMD_CHECK && mc_cmd_kind("go test ./...") == MC_CMD_CHECK;
   #assert mc_cmd_kind("make -j4 check") == MC_CMD_CHECK && mc_cmd_kind("pytest -q tests") == MC_CMD_CHECK;
-  #assert mc_cmd_kind("coax/web/api/test.sh --part 1/2") == MC_CMD_CHECK && mc_cmd_kind("verse/test_voice.sh") == MC_CMD_CHECK && mc_cmd_kind("psionic/check.sh --only x") == MC_CMD_CHECK;
-  #assert mc_cmd_kind("python3 verse/test_home.py") == MC_CMD_CHECK && mc_cmd_kind("python3 -m pytest x") == MC_CMD_CHECK && mc_cmd_kind("python3 a/b_test.py") == MC_CMD_CHECK;
+  #assert mc_cmd_kind("coax/web/api/test.sh --part 1/2") == MC_CMD_CHECK && mc_cmd_kind("metaverse/test_voice.sh") == MC_CMD_CHECK && mc_cmd_kind("psionic/check.sh --only x") == MC_CMD_CHECK;
+  #assert mc_cmd_kind("python3 metaverse/test_home.py") == MC_CMD_CHECK && mc_cmd_kind("python3 -m pytest x") == MC_CMD_CHECK && mc_cmd_kind("python3 a/b_test.py") == MC_CMD_CHECK;
 }
 
 #test "reading, building and editing are not checks; a quoted message or a grep for test is not one" {

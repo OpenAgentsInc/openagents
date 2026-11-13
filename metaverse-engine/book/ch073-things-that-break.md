@@ -1,7 +1,7 @@
 # 73. Things that break
 
 > **Status: unimplemented — design draft.** Today
-> [`verse/demolish.coax`](../../verse/demolish.coax) breaks Everglade's town:
+> [`metaverse/demolish.coax`](../../metaverse/demolish.coax) breaks Everglade's town:
 > kit pieces with hit points fracture, topple, fall on each other, sleep as
 > rubble and grow back. It ports the previous Rust engine's demolition
 > (`verse/everglade/previous/destructible-buildings.md`, out of the tree since #13269)
@@ -28,7 +28,7 @@ they have to agree on identity, timing, authority and lifetime.
 
 1. **Pieces and damage.** A realm registers each placed kit piece with its
    rest rows and mesh bounds, and gives it an armor class and hit points
-   from its ruleset ([`verse/rules/srd5.coax`](../../verse/rules/srd5.coax)).
+   from its ruleset ([`metaverse/rules/srd5.coax`](../../metaverse/rules/srd5.coax)).
    Up to 4,000 pieces (`DEMO_PIECES`) and 96 meshes.
 2. **Fracture.** A piece at 0 hit points breaks into 2 to 24 chunks
    (`DEMO_CUTS`): Voronoi cells round seeds scattered from the dice,
@@ -69,7 +69,7 @@ they have to agree on identity, timing, authority and lifetime.
 
 ## What exists today
 
-- [verse/demolish.coax](../../verse/demolish.coax): fracture, throw,
+- [metaverse/demolish.coax](../../metaverse/demolish.coax): fracture, throw,
   structure, physics, budgets, regrowth and water, with 18 `#test` checks.
 - `verse/everglade/previous/destructible-buildings.md` (removed in #13269;
   read it with `git show 124b6985e0:verse/everglade/previous/destructible-buildings.md`):
@@ -92,7 +92,7 @@ The chapter is done when:
 
 - The same blows from the same seed give the same rubble, bit for bit, on
   one build profile.
-- Every `#test` in today's `verse/demolish.coax` passes against the Metaverse Engine
+- Every `#test` in today's `metaverse/demolish.coax` passes against the Metaverse Engine
   modules.
 - The destructible-wall test passes: one wall breaks, and collision, the
   standing surfaces, effects, sound, replicated state and the saved realm

@@ -67,7 +67,7 @@ af_newest :: (dir: string) -> int {
 af_stack_stamp :: (root: string, deadline: int) -> int {
   path: [4096] u8; script := fs_join(root, "coax/web/tool.sh", path[..]);
   argv := [11] string.[script, "wasm-size", "sources", "coax/web/room/room.coax", "apps/openagents-web/everglade5e.coax",
-    "everglade/shared/everglade-step.coax", "verse/grid.coax", "everglade/legacy/v1/river.coax",
+    "everglade/shared/everglade-step.coax", "metaverse/grid.coax", "everglade/legacy/v1/river.coax",
     "everglade/npc/guard-guide-policy.coax", "apps/openagents-web/everglade5e-rules.coax", "apps/openagents-web/carriers/everglade.coax"];
   h := proc_new(); if h < 0 { return -1; }
   ok := proc_cwd(h, root); for a: argv { ok = ok && proc_arg(h, a); }
@@ -88,7 +88,7 @@ af_stack_stamp :: (root: string, deadline: int) -> int {
   for dir: [3] string.["apps/openagents-web", "coax/web/room", "coax/platform"] {
     b: [4096] u8; stamp := af_newest(fs_join(root, dir, b[..])); if stamp > latest { latest = stamp; }
   }
-  for name: [2] string.["verse/voice-host/ws.c", "verse/voice-host/ws.h"] {
+  for name: [2] string.["metaverse/voice-host/ws.c", "metaverse/voice-host/ws.h"] {
     b: [4096] u8; stamp := fs_mtime_ns(fs_join(root, name, b[..])); if stamp > latest { latest = stamp; }
   }
   b: [4096] u8; compiler := fs_mtime_ns(fs_join(root, "coax/bin/coax", b[..]));
@@ -104,7 +104,7 @@ af_native_stamp :: (root:string,source:string,deadline:int)->int {
 af_native :: (root:string,here:string,work:string,coax:string,out:[]u8,deadline:int)->bool {
  paths:[8][4096]u8;metal:=fs_join(work,"metal",paths[0][..]);if !fs_mkdir(metal) {return false;}
  names:=[11]string.["everglade5e","Everglade-step","Grid","River","Guard-guide-policy","Everglade5e-rules","MetalRender","RenderTexture","AppKitInput","HostNetwork","entropy-policy"];
- sources:=[11]string.["apps/aethyrforge-desktop/metal-world.coax","everglade/shared/everglade-step.coax","verse/grid.coax","everglade/legacy/v1/river.coax","everglade/npc/guard-guide-policy.coax","apps/openagents-web/everglade5e-rules.coax","apps/aethyrforge-desktop/metal-render.coax","metaverse-engine/render/native-images.coax","metaverse-engine/host/appkit-input.coax","metaverse-engine/host/native-socket.coax","coax/lib/crypto/entropy.coax"];
+ sources:=[11]string.["apps/aethyrforge-desktop/metal-world.coax","everglade/shared/everglade-step.coax","metaverse/grid.coax","everglade/legacy/v1/river.coax","everglade/npc/guard-guide-policy.coax","apps/openagents-web/everglade5e-rules.coax","apps/aethyrforge-desktop/metal-render.coax","metaverse-engine/render/native-images.coax","metaverse-engine/host/appkit-input.coax","metaverse-engine/host/native-socket.coax","coax/lib/crypto/entropy.coax"];
  compiler_stamp:=fs_mtime_ns(coax);producer_stamp:=0;
  for name,i:names {stamp:=af_native_stamp(root,sources[i],deadline);if stamp<0 {return false;}if compiler_stamp>stamp {stamp=compiler_stamp;}
   text:[128]u8;j:[1]Jo;jo_start(j[..],text[..]);jo_put(j[..],name);jo_put(j[..],".o");object:=fs_join(metal,jo_text(j[..]),paths[1][..]);
@@ -114,11 +114,11 @@ af_native :: (root:string,here:string,work:string,coax:string,out:[]u8,deadline:
  for name:[5]string.["apps/openagents-web/everglade5e-face.c","apps/openagents-web/face-address.h","apps/openagents-web/edit-face.h","apps/openagents-web/place-face.h","apps/openagents-web/analytics-face.h"] {stamp:=fs_mtime_ns(fs_join(root,name,paths[1][..]));if stamp>producer_stamp {producer_stamp=stamp;}}
  if fs_mtime_ns(fs_join(metal,"libeverglade.dylib",paths[1][..]))<producer_stamp {cmd:=[4]string.[fs_join(root,"coax/web/tool.sh",paths[2][..]),fs_join(here,"metal-build.coax",paths[3][..]),root,"producer"];if af_run(cmd[..],out,deadline)<0 {return false;}}
  sdk_stamp:=fs_mtime_ns(fs_join(here,"MetalRealm.m",paths[1][..]));for name:[7]string.["metal-host.h","metal-producer.h","metal-sockets.h","build/metal/MetalRender.h","build/metal/RenderTexture.h","../../metaverse-engine/host/apple/audio-host.h","../../metaverse-engine/host/apple/audio-host.c"] {stamp:=fs_mtime_ns(fs_join(here,name,paths[1][..]));if stamp>sdk_stamp {sdk_stamp=stamp;}}
- for name:[2]string.["verse/native/render-images.c","verse/native/render-images.h"] {stamp:=fs_mtime_ns(fs_join(root,name,paths[1][..]));if stamp>sdk_stamp {sdk_stamp=stamp;}}
+ for name:[2]string.["metaverse/native/render-images.c","metaverse/native/render-images.h"] {stamp:=fs_mtime_ns(fs_join(root,name,paths[1][..]));if stamp>sdk_stamp {sdk_stamp=stamp;}}
  if fs_mtime_ns(fs_join(metal,"MetalRealm.o",paths[1][..]))<sdk_stamp {cmd:=[4]string.[fs_join(root,"coax/web/tool.sh",paths[2][..]),fs_join(here,"metal-build.coax",paths[3][..]),root,"sdk"];if af_run(cmd[..],out,deadline)<0 {return false;}}
  network_stamp:=af_newest(fs_join(root,"coax/platform",paths[1][..]));for name:[5]string.["MetalSockets.c","metal-sockets.h","metal-build.coax","build/metal/HostNetwork.o","build/metal/entropy-policy.o"] {stamp:=fs_mtime_ns(fs_join(here,name,paths[1][..]));if stamp>network_stamp {network_stamp=stamp;}}
  if fs_mtime_ns(fs_join(metal,"libnetwork.dylib",paths[1][..]))<network_stamp {cmd:=[4]string.[fs_join(root,"coax/web/tool.sh",paths[2][..]),fs_join(here,"metal-build.coax",paths[3][..]),root,"socket-library"];if af_run(cmd[..],out,deadline)<0 {return false;}}
- shader_stamp:=af_newest(fs_join(root,"verse/gpu",paths[1][..]));for dir:[2]string.["metaverse-engine/render","apps/openagents-web"] {stamp:=af_newest(fs_join(root,dir,paths[1][..]));if stamp>shader_stamp {shader_stamp=stamp;}}
+ shader_stamp:=af_newest(fs_join(root,"metaverse/gpu",paths[1][..]));for dir:[2]string.["metaverse-engine/render","apps/openagents-web"] {stamp:=af_newest(fs_join(root,dir,paths[1][..]));if stamp>shader_stamp {shader_stamp=stamp;}}
  if fs_mtime_ns(fs_join(metal,"render/metal.json",paths[1][..]))<shader_stamp {env:[4096]u8;graphics:=proc_getenv("COAX_GRAPHICS",env[..]);if graphics=="" {tool_errln("Metal shader products need a graphics-qualified compiler: set COAX_GRAPHICS to its executable, then resume build.sh. The cached tool compiler is never replaced.");return false;}cmd:=[6]string.[fs_join(root,"coax/web/tool.sh",paths[2][..]),fs_join(here,"metal-build.coax",paths[3][..]),root,"shaders","--coax",graphics];if af_run(cmd[..],out,deadline)<0 {return false;}}
  pack:=fs_join(root,"apps/openagents-web/realms/everglade/assets/everglade.pack",paths[1][..]);asset_stamp:=af_native_stamp(root,"apps/aethyrforge-desktop/metal-assets.coax",deadline);if fs_mtime_ns(pack)>asset_stamp {asset_stamp=fs_mtime_ns(pack);}
  if fs_mtime_ns(fs_join(metal,"assets/textures.config",paths[2][..]))<asset_stamp {cmd:=[5]string.[fs_join(root,"coax/web/tool.sh",paths[3][..]),fs_join(here,"metal-assets.coax",paths[4][..]),root,pack,fs_join(metal,"assets",paths[5][..])];if af_run(cmd[..],out,deadline)<0 {return false;}}
@@ -152,7 +152,7 @@ tool_main :: () -> int #export_c #effects(all) {
     print("Building Everglade's existing WebGPU engine…\n");
     cmd := [10] string.["bash", af_path(p[..], root, "coax/web/wasm.sh"), af_path(p[..], root, "apps/openagents-web/everglade5e.coax"),
       af_path(p[..], root, "apps/openagents-web/everglade5e-face.c"), wasm,
-      af_path(p[..], root, "everglade/shared/everglade-step.coax"), af_path(p[..], root, "verse/grid.coax"),
+      af_path(p[..], root, "everglade/shared/everglade-step.coax"), af_path(p[..], root, "metaverse/grid.coax"),
       af_path(p[..], root, "everglade/legacy/v1/river.coax"), af_path(p[..], root, "everglade/npc/guard-guide-policy.coax"),
       af_path(p[..], root, "apps/openagents-web/everglade5e-rules.coax")];
     page_job = af_start(cmd[..]); if page_job < 0 { if room_job >= 0 { released := proc_release(room_job); } return 1; }
@@ -204,7 +204,7 @@ tool_main :: () -> int #export_c #effects(all) {
   rn := af_run(rg[..], out[..], deadline);
   if rn < 0 || !fs_write(range_c, cast(string) out[0..<rn]) { return 1; }
   sc := [15] string.["/usr/bin/clang", "-std=c11", "-O2", "-D_DARWIN_C_SOURCE", "-Wall", "-Wextra", "-I", work, "-o", serve,
-    af_path(p[..], root, "coax/web/serve.c"), range_c, af_path(p[..], root, "verse/voice-host/ws.c"), "-lm", "-Wno-unused-function"];
+    af_path(p[..], root, "coax/web/serve.c"), range_c, af_path(p[..], root, "metaverse/voice-host/ws.c"), "-lm", "-Wno-unused-function"];
   if af_run(sc[..], out[..], deadline) < 0 { return 1; }
   header := af_path(p[..], work, "session.h"); code := af_path(p[..], work, "session.c"); object := af_path(p[..], work, "session.o");
   gen := [6] string.[coax, "c", af_path(p[..], here, "session.coax"), "--library", "--header", header];
@@ -318,7 +318,7 @@ tool_main :: () -> int #export_c #effects(all) {
     if af_run(cp[..], out[..], deadline) < 0 { return 1; }
   }
   for name:[2]string.["hello-foreman.wav","add-two-giant-crates.wav"] {
-    fixture := [3] string.["ditto", af_path(p[..],af_path(p[..],root,"verse/voice-host/fixtures"),name), af_path(p[..],res,name)];
+    fixture := [3] string.["ditto", af_path(p[..],af_path(p[..],root,"metaverse/voice-host/fixtures"),name), af_path(p[..],res,name)];
     if af_run(fixture[..], out[..], deadline) < 0 { return 1; }
   }
   plist := [3] string.["ditto", af_path(p[..], here, "Info.plist"), af_path(p[..], app, "Contents/Info.plist")];

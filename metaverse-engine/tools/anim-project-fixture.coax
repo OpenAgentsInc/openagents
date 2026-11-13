@@ -7,7 +7,7 @@
 #load "../anim/bundle-checks.coax";   // this program runs the fixture as code
 #load "../anim/project-checks.coax";   // this program runs the fixture as code
 #load "../../coax/lib/sys/fs.coax";
-#load "../../verse/animlab/project.coax";
+#load "../../metaverse/animlab/project.coax";
 tool_main :: ()->int #export_c #effects(all) {
  a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=1 {return 2;}bytes:[32768]u8;n:=project_test_bytes(bytes[..]);p:[1]SceneProject;#assert project_load(bytes[0..<n],p[..]) && fs_write(args_at(a[..],0),cast(string)bytes[0..<n]);print("original project bytes=%\n",n);return 0;
 }

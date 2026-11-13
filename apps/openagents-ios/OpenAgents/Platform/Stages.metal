@@ -53,7 +53,7 @@ fragment float4 bar_fragment(BarOut in [[stage_in]],constant View& v [[buffer(0)
   c+=verse_label(label.sample(s,uv).r,b.state.y);
   return float4(float3(c),clamp(c,0.,1.));
 }
-// The Grid's cast (verse/cast.coax): bind-pose vertices skinned by the
+// The Grid's cast (metaverse/cast.coax): bind-pose vertices skinned by the
 // joint palette Coax writes, through the view matrix verse_grid_view
 // writes. Cast.bin's vertex: position, normal, uv, four weights, four
 // joints, a display tint and a texture slot (255: unlit).
@@ -86,7 +86,7 @@ fragment float4 cast_fragment(CastOut in [[stage_in]],texture2d_array<float> she
 }
 // A robot's line art: each pair of indices a screen-space quad, depth tested
 // against the faces, so lines behind the robot are hidden; its width and
-// light by distance come from verse/light.coax.
+// light by distance come from metaverse/light.coax.
 vertex LineOut cast_line_vertex(uint id [[vertex_id]],uint inst [[instance_id]],const device CastVertex* vertices [[buffer(0)]],const device Joint* palette [[buffer(1)]],constant CastView& v [[buffer(2)]],const device uint* pairs [[buffer(3)]]) {
   CastVertex va=vertices[pairs[inst*2]],vb=vertices[pairs[inst*2+1]];
   float4 a=viewed(skinned(va,palette).p,v),b=viewed(skinned(vb,palette).p,v);
@@ -100,7 +100,7 @@ vertex LineOut cast_line_vertex(uint id [[vertex_id]],uint inst [[instance_id]],
   float tint=va.tint.r/255.;
   return {float4(p/(v.size*.5),z,1),uv.y,t,verse_cast_line_light(tint,a.w),verse_cast_line_light(tint,b.w)};
 }
-// A hotbar slot (aethyr's HUD slot, verse/light.coax): glass, icon and
+// A hotbar slot (aethyr's HUD slot, metaverse/light.coax): glass, icon and
 // rim over the scene, premultiplied, with its glow added outside the box.
 struct Slot { float4 rect; float4 state; };
 struct SlotOut {float4 position [[position]];float2 p;};

@@ -14,7 +14,7 @@
 //    other than its row's codec, its tests, or SQL the row lists because a test holds it to the
 //    codec's fixtures. #test blocks, comments and test files don't count.
 // 3. A coax/web/api/*.c file with a *_route function, or a coax/web/room/room-*.coax or
-//    everglade/server/*.coax or orbit/server/*.coax file (the room's), is in no row (codec, schema or files), and for a room file not in the registry's no_frames list
+//    everglade/server/*.coax or metaverse/orbit-league/server/*.coax file (the room's), is in no row (codec, schema or files), and for a room file not in the registry's no_frames list
 //    (the room files that build and read no wire bytes of their own).
 // 4. A file under proto/coder/, proto/verse/, proto/aethyrforge/ or proto/aethyr/ is in no row
 //    that has a check.
@@ -228,7 +228,7 @@ wc_path_kind :: (path: string, has_route: bool) -> int {
   if wc_directly(path, "coax/web/api/") && wc_ends(path, ".c") { return ifx has_route && !wc_ends(path, ".generated.c") then WC_ROUTE else 0; }
   if wc_directly(path, "coax/web/room/room-") && wc_ends(path, ".coax") { return WC_ROOM; }
   if wc_directly(path, "everglade/server/") && wc_ends(path, ".coax") { return WC_ROOM; }   // Everglade's room (#13267)
-  if wc_directly(path, "orbit/server/") && wc_ends(path, ".coax") { return WC_ROOM; }   // Orbit League's room (#13347)
+  if wc_directly(path, "metaverse/orbit-league/server/") && wc_ends(path, ".coax") { return WC_ROOM; }   // Orbit League's room (#13347)
   if wc_starts(path, "proto/coder/") || wc_starts(path, "proto/verse/") || wc_starts(path, "proto/aethyrforge/") || wc_starts(path, "proto/aethyr/") { return WC_PROFILE; }
   if wc_starts(path, "proto/openagents/") && wc_ends(path, ".proto") { return WC_PROTO; }
   return 0;
@@ -481,7 +481,7 @@ wc_owner_has :: (owner: string, codec: string) -> bool {
   if owner == "nostr" { return wc_under(codec, "nostr/") || (wc_under(codec, "coax/lib/nostr/") && codec != "coax/lib/nostr/vault-wallet.coax"); }
   if owner == "psionic" { return wc_under(codec, "psionic/") || wc_under(codec, "coax/lib/systemone/") || wc_under(codec, "coax/web/api/inference.c"); }
   if owner == "engine" { return wc_under(codec, "metaverse-engine/") && !wc_under(codec, "metaverse-engine/session/") && !wc_under(codec, "metaverse-engine/net/") && !wc_under(codec, "metaverse-engine/editor/"); }
-  if owner == "realm-tools" { return wc_under(codec, "verse/tools/"); }
+  if owner == "realm-tools" { return wc_under(codec, "metaverse/tools/"); }
   if owner == "protocol" { return wc_under(codec, "proto/"); }
   if owner == "toolchain" {
     return wc_under(codec, "coax/") && !wc_under(codec, "coax/lib/agent/") && !wc_under(codec, "coax/lib/microcoder/")
@@ -892,7 +892,7 @@ WC_T_QUIET :: WcRun.{quiet = true};
   #assert wc_path_kind("coax/web/api/chat.c", true) == WC_ROUTE && wc_path_kind("coax/web/api/sign.c", false) == 0 && wc_path_kind("coax/web/api/tests/x.c", true) == 0 && wc_path_kind("coax/web/api/mesh-policy.generated.c", true) == 0;
   #assert wc_path_kind("coax/web/room/room-relay.coax", false) == WC_ROOM && wc_path_kind("coax/web/room/load.coax", false) == 0 && wc_path_kind("coax/web/room/room-tick.c", false) == 0;
   #assert wc_path_kind("everglade/server/guard.coax", false) == WC_ROOM && wc_path_kind("everglade/server/legacy/x.coax", false) == 0 && wc_path_kind("everglade/zone.coax", false) == 0;
-  #assert wc_path_kind("orbit/server/room.coax", false) == WC_ROOM && wc_path_kind("orbit/server/x/y.coax", false) == 0 && wc_path_kind("orbit/room.coax", false) == 0;
+  #assert wc_path_kind("metaverse/orbit-league/server/room.coax", false) == WC_ROOM && wc_path_kind("metaverse/orbit-league/server/x/y.coax", false) == 0 && wc_path_kind("metaverse/orbit-league/room.coax", false) == 0;
   #assert wc_path_kind("proto/verse/a.json", false) == WC_PROFILE && wc_path_kind("proto/coder/x/b.schema.json", false) == WC_PROFILE && wc_path_kind("proto/aethyr/a.json", false) == WC_PROFILE && wc_path_kind("proto/aethyrforge/a.json", false) == WC_PROFILE;
   #assert wc_path_kind("proto/openagents/a/v1/a.proto", false) == WC_PROTO && wc_path_kind("proto/openagents/a/v1/a.options", false) == 0 && wc_path_kind("proto/nostr/a.proto", false) == 0 && wc_path_kind("proto/README.md", false) == 0;
   #assert wc_under("a/b.c", "a/b.c") && wc_under("a/b.c", "a/") && !wc_under("a/b.c", "a") && !wc_under("ab/c", "a/") && !wc_under("a", "");
@@ -928,7 +928,7 @@ WC_T_QUIET :: WcRun.{quiet = true};
   #assert wc_owner_has("room-session", "metaverse-engine/session/relay.coax") && !wc_owner_has("room-session", "metaverse-engine/session/ledger.coax") && wc_owner_has("items", "metaverse-engine/session/ledger.coax");
   #assert wc_owner_has("toolchain", "coax/web/wire-check.coax") && !wc_owner_has("toolchain", "coax/lib/nostr/") && !wc_owner_has("toolchain", "coax/web/api/auth.c");
   #assert wc_owner_has("engine", "metaverse-engine/render/x.coax") && !wc_owner_has("engine", "rules/srd/x.coax") && !wc_owner_has("engine", "metaverse-engine/editor/x.coax");
-  #assert wc_known_owner("realm-tools") && wc_owner_has("realm-tools", "verse/tools/") && wc_owner_has("realm-tools", "verse/tools/valley-profile.coax") && !wc_owner_has("realm-tools", "metaverse-engine/tools/x.coax") && !wc_owner_has("engine", "verse/tools/x.coax") && !wc_owner_has("realm-tools", "verse/valley/x.coax");
+  #assert wc_known_owner("realm-tools") && wc_owner_has("realm-tools", "metaverse/tools/") && wc_owner_has("realm-tools", "metaverse/tools/valley-profile.coax") && !wc_owner_has("realm-tools", "metaverse-engine/tools/x.coax") && !wc_owner_has("engine", "metaverse/tools/x.coax") && !wc_owner_has("realm-tools", "metaverse/valley/x.coax");
   // wc_judge_owners fails on missing owner and on codec outside owner's folders unless allowlisted
   reg_nodes: [64] JvNode; reg_jv: [1] Jv; reg_used: [4] bool;
   bad_owner := "{\"shapes\":[{\"id\":\"x.v1\",\"kind\":\"local\",\"codec\":\"coax/web/wire-check.coax\",\"step\":\"S1\"}]}";

@@ -3,7 +3,7 @@
 // boxes are hit-tested and focused. The keyboard opens the settings, changes them, closes them
 // and lands back on the settings button; a tap and the key give the same action; a tree with an
 // unlabelled button is refused.
-#load "../../verse/hud.coax";
+#load "../../metaverse/hud.coax";
 #load "../ui/tree.coax";
 #import "Basic";
 

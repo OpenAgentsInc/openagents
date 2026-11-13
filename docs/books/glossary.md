@@ -14,7 +14,7 @@ that already touches the file (#13267 to #13269, #13280).
 
 | Term | One meaning | Context | Conflicts |
 | --- | --- | --- | --- |
-| OpenAgents Metaverse Engine | The engine | Engine | Named Aethyr until 2026-11-12 ([the rename](../naming/2026-11-12-metaverse-rename.md)); `verse/` holds older engine files |
+| OpenAgents Metaverse Engine | The engine | Engine | Named Aethyr until 2026-11-12 ([the rename](../naming/2026-11-12-metaverse-rename.md)); `metaverse/` holds older engine files |
 | Metaverse | The set of realms on the open web that the Metaverse Engine runs | Realms | See Metaverse Engine |
 | Realm | One world: a document and a link | Authoring | |
 | Zone | A named area of one realm's world, loaded as cells | Everglade | Also a Wasm page (`everglade/features.coax:66-81`, rename to pages in #13268/#13280), the AAA audit's server unit, and a GCP zone |
@@ -66,7 +66,7 @@ that already touches the file (#13267 to #13269, #13280).
 | Coaxial | The Coax web framework that draws openagents.com and realm pages. | [coax/web.md](../../coax/web.md) |
 | Metaverse Engine | The engine: the frame loop, the world, rendering, physics, rooms and the realm format. Named on 2026-10-31. | Metaverse Engine |
 | Metaverse Engine | The realm builder and world-creation tools on the Metaverse Engine. | Metaverse Engine Parts VI and X |
-| The Metaverse | The world that the Metaverse Engine runs: a set of realms on the open web. The `verse/` directory holds engine and realm code from before the engine had its own name. | Metaverse Engine Part VII |
+| The Metaverse | The world that the Metaverse Engine runs: a set of realms on the open web. The `metaverse/` directory holds engine and realm code from before the engine had its own name. | Metaverse Engine Part VII |
 | Psionic | The machine-learning library: tensors, model execution, serving and training. | Psionic |
 | Coder | The coding agent. It speaks as "I". | Coder |
 | OpenAgents | The general agent and the company. It speaks as "we". | Coder plan |

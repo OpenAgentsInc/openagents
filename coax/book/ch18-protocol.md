@@ -524,7 +524,7 @@ start. Permissions come from somewhere else.
 
 ## In the real world: the home screen
 
-`verse/home.coax` uses the same generated codecs for both directions.
+`metaverse/home.coax` uses the same generated codecs for both directions.
 At startup, the host hands it the configuration bytes, and Coax copies
 them into a bounded scratch buffer and applies the screen's admission
 policy:
@@ -550,7 +550,7 @@ policy:
   if label.value.count<1 || label.value.count>32 {return false;}
 ```
 
-*Listing 18-5: The home screen's admission, from `verse/home.coax`*
+*Listing 18-5: The home screen's admission, from `metaverse/home.coax`*
 
 That's our Listing 18-4 with a stricter policy: a nonzero seed, at most
 eight satellites, exactly the `home.start` button, enabled, shown, never

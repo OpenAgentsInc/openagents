@@ -3,7 +3,7 @@
 #import "Basic";
 #load "../../coax/lib/sys/tool.coax";
 #load "../../coax/lib/sys/fs.coax";
-#load "../../verse/animlab/mannequin.coax";
+#load "../../metaverse/animlab/mannequin.coax";
 #load "../anim/retarget.coax";
 #load "../anim/write.coax";
 RtStats :: struct {degrees:[512]f32;mapped:f32;other:f32;contacts:[2]int;sum_height:[2]f32;max_height:[2]f32;}

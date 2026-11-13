@@ -36,7 +36,7 @@ E5R_READY :: 0; E5R_NO_SLOT :: 1; E5R_SPENT :: 2; E5R_CANT :: 3;
 // what a slot spends (e5r_bar's fourth)
 E5R_COST_NONE :: 0; E5R_COST_ACTION :: 1; E5R_COST_BONUS :: 2; E5R_COST_REACTION :: 3;
 
-// Everglade's stat blocks (verse/rules/srd5-combat.coax) and their SRD 5.2.1 ability scores
+// Everglade's stat blocks (metaverse/rules/srd5-combat.coax) and their SRD 5.2.1 ability scores
 E5R_BLOCKS :: 9;
 E5R_COMMONER :: 0; E5R_GUARD :: 1; E5R_VETERAN :: 2; E5R_MAGE :: 3; E5R_KNIGHT :: 4; E5R_PRIEST :: 5; E5R_ARCHMAGE :: 6; E5R_GLADIATOR :: 7; E5R_SCOUT :: 8;
 E5R_BLOCK_NAME :: [9] string.["Commoner", "Guard", "Warrior Veteran", "Mage", "Knight", "Priest", "Archmage", "Gladiator", "Scout"];

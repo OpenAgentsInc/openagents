@@ -24,7 +24,7 @@
 // the same stderr (the line says whether the resident's came from that
 // body's check alone):
 //   coax/web/tool.sh coax/tests/serve.coax "$PWD/bin/coax" "$PWD/.." \
-//     apps/openagents-web/fivelab.coax:verse/experimental-dungeon.coax
+//     apps/openagents-web/fivelab.coax:metaverse/experimental-dungeon.coax
 // EDITED is put back when the unit's step ends.
 #import "Basic";
 #load "../lib/sys/tool.coax";

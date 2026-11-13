@@ -460,7 +460,7 @@ dv_whole :: (t: string) -> int { n := 0; for c: t { if c < '0' || c > '9' || n >
   #assert v[0].dev.named_count == DEV_NAMED;
 }
 
-// ---- the realm's edit layer (verse/edit/edit.coax), as the API's verse.edit_spec, edit_switch and edit_settings
+// ---- the realm's edit layer (metaverse/edit/edit.coax), as the API's verse.edit_spec, edit_switch and edit_settings
 dv_realm :: (v: [] RmServer, req: string) -> int {
   base := "/api/playtest/realms/everglade";
   at := (ifx req[0] == 'G' then 4 else 5) + base.count;

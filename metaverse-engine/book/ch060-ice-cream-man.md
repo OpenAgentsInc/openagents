@@ -2,7 +2,7 @@
 
 > **Status: unimplemented — design draft.** Ice Cream Man runs today on its
 > own private code at `/realms/ice-cream-man`: the rules, run, camera and
-> house in [verse/icecream/](../../verse/icecream/play.coax) and the HUD in
+> house in [metaverse/icecream/](../../metaverse/icecream/play.coax) and the HUD in
 > [icecream.coax](../../apps/openagents-web/icecream.coax). This chapter plans
 > rebuilding it only from the OpenAgents Metaverse Engine's earlier chapters. Nothing here runs yet.
 
@@ -57,16 +57,16 @@ icecream_tick :: (g: *IceCream, a: Actions, step: u64) {
 
 ## What exists today
 
-- [verse/icecream/rules.coax](../../verse/icecream/rules.coax),
-  [play.coax](../../verse/icecream/play.coax) (the play loop, 30 steps a
-  second, trace lines), [trace.coax](../../verse/icecream/trace.coax),
-  [trace-text.coax](../../verse/icecream/trace-text.coax),
-  [replay.c](../../verse/icecream/replay.c),
-  [mesh.coax](../../verse/icecream/mesh.coax) (the seeded house),
-  [scene.coax](../../verse/icecream/scene.coax) (stores 0 and 1),
-  [camera.coax](../../verse/icecream/camera.coax) (from the demo's
+- [metaverse/icecream/rules.coax](../../metaverse/icecream/rules.coax),
+  [play.coax](../../metaverse/icecream/play.coax) (the play loop, 30 steps a
+  second, trace lines), [trace.coax](../../metaverse/icecream/trace.coax),
+  [trace-text.coax](../../metaverse/icecream/trace-text.coax),
+  [replay.c](../../metaverse/icecream/replay.c),
+  [mesh.coax](../../metaverse/icecream/mesh.coax) (the seeded house),
+  [scene.coax](../../metaverse/icecream/scene.coax) (stores 0 and 1),
+  [camera.coax](../../metaverse/icecream/camera.coax) (from the demo's
   `camera.cpp`).
-- [verse/icecream/test.sh](../../verse/icecream/test.sh): the Coax checks,
+- [metaverse/icecream/test.sh](../../metaverse/icecream/test.sh): the Coax checks,
   then every recorded Rust trace replayed natively under sanitizers (the
   checked-in `fixtures/*.trace.gz` always; all thirteen when the demo's
   fixtures are present).
@@ -84,7 +84,7 @@ Its loop, input mapping and camera are its own and match no other realm's.
 ## Acceptance checks and oracles
 
 - Every recorded Rust trace still replays step for step, fingerprint for
-  fingerprint, after the move (`verse/icecream/test.sh`).
+  fingerprint, after the move (`metaverse/icecream/test.sh`).
 - A round played in the browser replays natively to the same fingerprints.
 - The boom never puts the eye inside a wall, a lintel, the floor or the
   ceiling over a recorded round (a swept-sphere check per frame).

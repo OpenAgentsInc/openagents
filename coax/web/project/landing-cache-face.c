@@ -72,7 +72,7 @@ int64_t home_cache_get(int64_t chunk,int64_t token) {
   return coaxial_storage_get(0,(int32_t)token,(uint32_t)(uintptr_t)NS,sizeof NS-1,1,(uint32_t)(uintptr_t)k,kn);
 }
 /* The build's seed part i (`openagents project landing`), named by its capture.
-   The buffers handed to the host are static, not on the stack: natively (verse/native/realm-host.c)
+   The buffers handed to the host are static, not on the stack: natively (metaverse/native/realm-host.c)
    a pointer is a 32-bit offset, and the stack lies above 4 GB, where it would be cut off. */
 int64_t home_cache_seed(int64_t captured,int64_t part) {
   static char url[96];int n=0;const char *p="/build/home-seed/";while(*p)url[n++]=*p++;

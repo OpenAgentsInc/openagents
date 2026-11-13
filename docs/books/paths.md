@@ -149,7 +149,7 @@ frames containing zero, two and one simulation steps.
 Read Coax chapters 11 and 16, then Metaverse Engine chapters 1–5. Continue through
 the Metaverse Engine 6–10 for entities, queries, ground/collision, walking and camera
 composition. Existing consumers such as
-[Grid walking](../../verse/gridwalk.coax) adopt particular shared components;
+[Grid walking](../../metaverse/gridwalk.coax) adopt particular shared components;
 these terminal examples do not migrate a whole realm.
 
 This route does not start the browser or qualify a rendered/playable Grid,

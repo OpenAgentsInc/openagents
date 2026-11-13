@@ -5,7 +5,7 @@
     "slug": "hecates-cemetery",
     "title": "Hecate's Cemetery: the first Planetary Villa expansion",
     "body": "Planetary Villa is a world on the Metaverse with game expansions. Hecate's Cemetery is the first: a moonlit, low-poly memorial garden seen from a Breath of the Wild camera, where you bring your pet back as a glowing companion, give it a tombstone and a memorial page, play fetch, pick glowing flowers and meet other visitors. Owner: Kiki.",
-    "spec": "verse/planetary-villa/README.md",
+    "spec": "metaverse/planetary-villa/README.md",
     "labels": [
       "planetary-villa",
       "verse"
@@ -69,7 +69,7 @@
     {
       "slug": "hc-painterly",
       "title": "Hecate's Cemetery in painterly",
-      "body": "Superseded: Kiki chose a flat low-poly style for Hecate's Cemetery instead of painterly. It shipped in 5a78605fc4 (the \"flat\" preset in verse/style-preset.coax, docs/verse/art-styles.md \"Flat\"); her sign-off is hc-flat-review. Was: The garden moves to the Metaverse's painterly style at night (docs/verse/art-styles.md): soft moonlit bands, violet shadows, blue night haze, blob trees and moonlit grass, painted water, with Kiki's sign-off. The engine work is the Metaverse project's Art styles initiative.",
+      "body": "Superseded: Kiki chose a flat low-poly style for Hecate's Cemetery instead of painterly. It shipped in 5a78605fc4 (the \"flat\" preset in metaverse/style-preset.coax, docs/verse/art-styles.md \"Flat\"); her sign-off is hc-flat-review. Was: The garden moves to the Metaverse's painterly style at night (docs/verse/art-styles.md): soft moonlit bands, violet shadows, blue night haze, blob trees and moonlit grass, painted water, with Kiki's sign-off. The engine work is the Metaverse project's Art styles initiative.",
       "parent": "hecates-cemetery",
       "status": "closed"
     }
@@ -83,12 +83,12 @@
       "labels": [
         "docs"
       ],
-      "body": "Turn Kiki's description into the design document `verse/planetary-villa/README.md`: the world, the expansion, the art direction, every mechanic and the flower mini game, with open questions for Kiki. Kiki owns the design; the document is hers to correct.",
+      "body": "Turn Kiki's description into the design document `metaverse/planetary-villa/README.md`: the world, the expansion, the art direction, every mechanic and the flower mini game, with open questions for Kiki. Kiki owns the design; the document is hers to correct.",
       "files": [
-        "verse/planetary-villa/README.md"
+        "metaverse/planetary-villa/README.md"
       ],
       "acceptance": [
-        "verse/planetary-villa/README.md covers every mechanic in the project's tasks",
+        "metaverse/planetary-villa/README.md covers every mechanic in the project's tasks",
         "Kiki has read it and her corrections are in"
       ],
       "blocked_by": [],
@@ -845,7 +845,7 @@
         "flat",
         "owner"
       ],
-      "body": "An owner step: Kiki walks Hecate's Cemetery in the flat style (5a78605fc4: the \"flat\" preset in verse/style-preset.coax, docs/verse/art-styles.md \"Flat\") at desktop and phone, the gate, the plaza and the field, and signs it off. Her sign-off feeds hc-launch-review.",
+      "body": "An owner step: Kiki walks Hecate's Cemetery in the flat style (5a78605fc4: the \"flat\" preset in metaverse/style-preset.coax, docs/verse/art-styles.md \"Flat\") at desktop and phone, the gate, the plaza and the field, and signs it off. Her sign-off feeds hc-launch-review.",
       "files": [],
       "acceptance": [
         "Kiki's sign-off recorded in a note"
@@ -889,10 +889,10 @@
         "painterly",
         "needs-verse"
       ],
-      "body": "Superseded by the flat style (5a78605fc4: the \"flat\" preset in verse/style-preset.coax, docs/verse/art-styles.md \"Flat\"); Kiki chose it over painterly. Was: Tag the realm `style: painterly` with `clock: fixed:0.0` (always night; the moon keeps its real phase and fixed place). Write the style into verse/planetary-villa/README.md's Look section as Kiki confirms it: painterly at night, the moon the key light, outlines as pale edges only.\n\nSpecification: `docs/verse/art-styles.md` (Painterly, and \"Audit: Hecate's Cemetery\").\n\nBlocked by Metaverse Engine work, tracked in the Metaverse project (https://openagents.com/projects/verse): as-style-field, as-presets. This task can't land until those are done.",
+      "body": "Superseded by the flat style (5a78605fc4: the \"flat\" preset in metaverse/style-preset.coax, docs/verse/art-styles.md \"Flat\"); Kiki chose it over painterly. Was: Tag the realm `style: painterly` with `clock: fixed:0.0` (always night; the moon keeps its real phase and fixed place). Write the style into metaverse/planetary-villa/README.md's Look section as Kiki confirms it: painterly at night, the moon the key light, outlines as pale edges only.\n\nSpecification: `docs/verse/art-styles.md` (Painterly, and \"Audit: Hecate's Cemetery\").\n\nBlocked by Metaverse Engine work, tracked in the Metaverse project (https://openagents.com/projects/verse): as-style-field, as-presets. This task can't land until those are done.",
       "files": [
         "apps/openagents-web/realms.json",
-        "verse/planetary-villa/README.md"
+        "metaverse/planetary-villa/README.md"
       ],
       "acceptance": [
         "`realms.ts --check` passes",
@@ -917,12 +917,12 @@
         "painterly",
         "needs-verse"
       ],
-      "body": "Superseded by the flat style (5a78605fc4: the \"flat\" preset in verse/style-preset.coax, docs/verse/art-styles.md \"Flat\"); Kiki chose it over painterly. Was: Replace the faceted single-term moonlight with the night preset: smooth normals and three bands (no low-poly facets from `dpdx`/`dpdy`), a moon-silver rim on everything, the moon's shadow map (tombstones, hedges, cypresses and the wall cast soft violet-blue shadows), the night ambient and tone so the garden reads (its golden's `lit` rises from 0.015), night haze (0.10, 0.14, 0.27) from 12 m in place of the near-black fog, and the outlines in their light form at most 0.35, fading with haze. Kiki judges how dim the night is.\n\nSpecification: `docs/verse/art-styles.md` (Painterly, and \"Audit: Hecate's Cemetery\").\n\nBlocked by Metaverse Engine work, tracked in the Metaverse project (https://openagents.com/projects/verse): as-toon-bands, as-rim, as-soft-shadows, as-tone-post, as-haze, as-day-night, as-outline-light. This task can't land until those are done.",
+      "body": "Superseded by the flat style (5a78605fc4: the \"flat\" preset in metaverse/style-preset.coax, docs/verse/art-styles.md \"Flat\"); Kiki chose it over painterly. Was: Replace the faceted single-term moonlight with the night preset: smooth normals and three bands (no low-poly facets from `dpdx`/`dpdy`), a moon-silver rim on everything, the moon's shadow map (tombstones, hedges, cypresses and the wall cast soft violet-blue shadows), the night ambient and tone so the garden reads (its golden's `lit` rises from 0.015), night haze (0.10, 0.14, 0.27) from 12 m in place of the near-black fog, and the outlines in their light form at most 0.35, fading with haze. Kiki judges how dim the night is.\n\nSpecification: `docs/verse/art-styles.md` (Painterly, and \"Audit: Hecate's Cemetery\").\n\nBlocked by Metaverse Engine work, tracked in the Metaverse project (https://openagents.com/projects/verse): as-toon-bands, as-rim, as-soft-shadows, as-tone-post, as-haze, as-day-night, as-outline-light. This task can't land until those are done.",
       "files": [
         "apps/openagents-web/villa.coax",
         "apps/openagents-web/villa-face.c",
         "apps/openagents-web/villa.wgsl",
-        "verse/look.coax"
+        "metaverse/look.coax"
       ],
       "acceptance": [
         "The style check's night measures pass (near black ≤ 2% outside the shadow visitor)",
@@ -955,7 +955,7 @@
         "painterly",
         "needs-verse"
       ],
-      "body": "Superseded by the flat style (5a78605fc4: the \"flat\" preset in verse/style-preset.coax, docs/verse/art-styles.md \"Flat\"); Kiki chose it over painterly. Was: Keep the moon in its real phase and the stars; the horizon meets the haze colour so the hills step back in blue layers; clouds per Kiki's answer to the open question (cover 0 until then); faint moon shafts through the cypresses at the night strength.\n\nSpecification: `docs/verse/art-styles.md` (Painterly, and \"Audit: Hecate's Cemetery\").\n\nBlocked by Metaverse Engine work, tracked in the Metaverse project (https://openagents.com/projects/verse): as-painted-sky, as-light-shafts. This task can't land until those are done.",
+      "body": "Superseded by the flat style (5a78605fc4: the \"flat\" preset in metaverse/style-preset.coax, docs/verse/art-styles.md \"Flat\"); Kiki chose it over painterly. Was: Keep the moon in its real phase and the stars; the horizon meets the haze colour so the hills step back in blue layers; clouds per Kiki's answer to the open question (cover 0 until then); faint moon shafts through the cypresses at the night strength.\n\nSpecification: `docs/verse/art-styles.md` (Painterly, and \"Audit: Hecate's Cemetery\").\n\nBlocked by Metaverse Engine work, tracked in the Metaverse project (https://openagents.com/projects/verse): as-painted-sky, as-light-shafts. This task can't land until those are done.",
       "files": [
         "apps/openagents-web/villa.coax",
         "apps/openagents-web/villa-face.c",
@@ -986,7 +986,7 @@
         "painterly",
         "needs-verse"
       ],
-      "body": "Superseded by the flat style (5a78605fc4: the \"flat\" preset in verse/style-preset.coax, docs/verse/art-styles.md \"Flat\"); Kiki chose it over painterly. Was: The cypresses (cones) and round trees (spheres) shade as soft ellipsoid and sphere blobs that sway; the hedges become soft rounded masses instead of boxes; moonlit wind-swept grass fills the field and the garden beds, with none on the paths, the plaza or the plots. The glowing flowers stand in the grass and stay findable.\n\nSpecification: `docs/verse/art-styles.md` (Painterly, and \"Audit: Hecate's Cemetery\").\n\nBlocked by Metaverse Engine work, tracked in the Metaverse project (https://openagents.com/projects/verse): as-blob-foliage, as-wind-grass. This task can't land until those are done.",
+      "body": "Superseded by the flat style (5a78605fc4: the \"flat\" preset in metaverse/style-preset.coax, docs/verse/art-styles.md \"Flat\"); Kiki chose it over painterly. Was: The cypresses (cones) and round trees (spheres) shade as soft ellipsoid and sphere blobs that sway; the hedges become soft rounded masses instead of boxes; moonlit wind-swept grass fills the field and the garden beds, with none on the paths, the plaza or the plots. The glowing flowers stand in the grass and stay findable.\n\nSpecification: `docs/verse/art-styles.md` (Painterly, and \"Audit: Hecate's Cemetery\").\n\nBlocked by Metaverse Engine work, tracked in the Metaverse project (https://openagents.com/projects/verse): as-blob-foliage, as-wind-grass. This task can't land until those are done.",
       "files": [
         "apps/openagents-web/villa.coax",
         "apps/openagents-web/villa-face.c",
@@ -1018,7 +1018,7 @@
         "painterly",
         "needs-verse"
       ],
-      "body": "Superseded by the flat style (5a78605fc4: the \"flat\" preset in verse/style-preset.coax, docs/verse/art-styles.md \"Flat\"); Kiki chose it over painterly. Was: The ground and paths lose their fine grit (2.3, 4 and 11 cycles a metre today) for broad painted colour, the path a clean band with its pale edge; the fountain's water takes the painted water preset (night bands, moon sparkles, a clean foam ring).\n\nSpecification: `docs/verse/art-styles.md` (Painterly, and \"Audit: Hecate's Cemetery\").\n\nBlocked by Metaverse Engine work, tracked in the Metaverse project (https://openagents.com/projects/verse): as-painted-water. This task can't land until those are done.",
+      "body": "Superseded by the flat style (5a78605fc4: the \"flat\" preset in metaverse/style-preset.coax, docs/verse/art-styles.md \"Flat\"); Kiki chose it over painterly. Was: The ground and paths lose their fine grit (2.3, 4 and 11 cycles a metre today) for broad painted colour, the path a clean band with its pale edge; the fountain's water takes the painted water preset (night bands, moon sparkles, a clean foam ring).\n\nSpecification: `docs/verse/art-styles.md` (Painterly, and \"Audit: Hecate's Cemetery\").\n\nBlocked by Metaverse Engine work, tracked in the Metaverse project (https://openagents.com/projects/verse): as-painted-water. This task can't land until those are done.",
       "files": [
         "apps/openagents-web/villa.coax",
         "apps/openagents-web/villa-face.c",
@@ -1047,7 +1047,7 @@
         "painterly",
         "needs-verse"
       ],
-      "body": "Superseded by the flat style (5a78605fc4: the \"flat\" preset in verse/style-preset.coax, docs/verse/art-styles.md \"Flat\"); Kiki chose it over painterly. Was: Your shadow stays all-black with fuzzy edges and the dogs stay glowing white (Kiki's designs, exempt from the bands), but the shadow's body reads as one soft silhouette rather than visible balls and limbs; other visitors match. The character rim applies where it doesn't fight the design.\n\nSpecification: `docs/verse/art-styles.md` (Painterly, and \"Audit: Hecate's Cemetery\").\n\nBlocked by Metaverse Engine work, tracked in the Metaverse project (https://openagents.com/projects/verse): as-character-shading. This task can't land until those are done.",
+      "body": "Superseded by the flat style (5a78605fc4: the \"flat\" preset in metaverse/style-preset.coax, docs/verse/art-styles.md \"Flat\"); Kiki chose it over painterly. Was: Your shadow stays all-black with fuzzy edges and the dogs stay glowing white (Kiki's designs, exempt from the bands), but the shadow's body reads as one soft silhouette rather than visible balls and limbs; other visitors match. The character rim applies where it doesn't fight the design.\n\nSpecification: `docs/verse/art-styles.md` (Painterly, and \"Audit: Hecate's Cemetery\").\n\nBlocked by Metaverse Engine work, tracked in the Metaverse project (https://openagents.com/projects/verse): as-character-shading. This task can't land until those are done.",
       "files": [
         "apps/openagents-web/villa.coax",
         "apps/openagents-web/villa-face.c",
@@ -1079,7 +1079,7 @@
         "painterly",
         "needs-verse"
       ],
-      "body": "Superseded by the flat style (5a78605fc4: the \"flat\" preset in verse/style-preset.coax, docs/verse/art-styles.md \"Flat\"); Kiki chose it over painterly. Was: The realm passes the style check in the release walk at desktop and phone, and Kiki approves the side-by-side sheet; the golden moves only with her approval. Her sign-off feeds hc-launch-review.\n\nSpecification: `docs/verse/art-styles.md` (Painterly, and \"Audit: Hecate's Cemetery\").\n\nBlocked by Metaverse Engine work, tracked in the Metaverse project (https://openagents.com/projects/verse): as-style-check, as-phone-tier. This task can't land until those are done.",
+      "body": "Superseded by the flat style (5a78605fc4: the \"flat\" preset in metaverse/style-preset.coax, docs/verse/art-styles.md \"Flat\"); Kiki chose it over painterly. Was: The realm passes the style check in the release walk at desktop and phone, and Kiki approves the side-by-side sheet; the golden moves only with her approval. Her sign-off feeds hc-launch-review.\n\nSpecification: `docs/verse/art-styles.md` (Painterly, and \"Audit: Hecate's Cemetery\").\n\nBlocked by Metaverse Engine work, tracked in the Metaverse project (https://openagents.com/projects/verse): as-style-check, as-phone-tier. This task can't land until those are done.",
       "files": [
         "apps/openagents-web/realms.json"
       ],

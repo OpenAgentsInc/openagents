@@ -1,4 +1,4 @@
-// Talking with other players in Fairy Forest (verse/fairy-forest/README.md,
+// Talking with other players in Fairy Forest (metaverse/fairy-forest/README.md,
 // "Talking with other players"; tasks ff-chat-room and ff-inbox).
 //
 // The chat room: the realm's room (room.coax; coax/web/api/room.c), named

@@ -1,5 +1,5 @@
 // Fairy Forest's lore and quests (ff-panes): what its owner and admins write in edit mode's panes
-// (verse/edit/edit.coax; coax/web/api/migrations/0055_realm_panes.sql), played. Each creature is
+// (metaverse/edit/edit.coax; coax/web/api/migrations/0055_realm_panes.sql), played. Each creature is
 // a character to the panes by its key; with EDIT open, coming to one brings up its lore. Its lore
 // goes into what it knows when you talk to it (the server reads the panes by its key: #13261). A creature with a quest
 // gives it when you come near: the quest shows at the top left, what is asked and its steps; tap a

@@ -108,9 +108,9 @@ runs the ordinary checker over it, while the compile itself goes on parsing.
 
 ```console
 $ coax c apps/openagents-web/fivelab.coax --library > fivelab.c     # passes: the resident keeps its skeleton
-$ $EDITOR verse/experimental-dungeon.coax                           # a mistake inside one procedure
+$ $EDITOR metaverse/experimental-dungeon.coax                           # a mistake inside one procedure
 $ coax c apps/openagents-web/fivelab.coax --library > fivelab.c
-verse/experimental-dungeon.coax:398:63: error[E0325]: 'x' is bool but is initialized with int
+metaverse/experimental-dungeon.coax:398:63: error[E0325]: 'x' is bool but is initialized with int
 1 error
 $ coax serve status
 coax serve: ... 1 checked programs remembered, 1 errors from changed bodies alone ...

@@ -68,7 +68,7 @@ may also name its `variant` ([Anime](#anime)).
 
 ## Presets
 
-Each style is an engine preset: one Coax record in `verse/style-preset.coax`
+Each style is an engine preset: one Coax record in `metaverse/style-preset.coax`
 (`StylePreset`) holding every number this document gives, keyed by time of
 day where it changes (built October 29, as-presets; the block's layout is the
 `SU_*` constants there). A realm reads its preset with
@@ -76,10 +76,10 @@ day where it changes (built October 29, as-presets; the block's layout is the
 `verse_style_at(preset, clock)` each frame and copies the result into its
 uniforms as one block (`STYLE_FLOATS`, 32 vec4f). The shading functions
 (bands, rim, shadow tint, haze, sky, grass wind, foliage normal, tone) are
-Coax in `verse/style.coax` (a file of their own, because `coax wgsl` writes
+Coax in `metaverse/style.coax` (a file of their own, because `coax wgsl` writes
 only scalar functions, which have no records), written in the subset `coax wgsl` writes, and
 emitted into each realm's WGSL between
-`// ---- generated: verse/style.coax` markers, the way `verse/look.coax`'s
+`// ---- generated: metaverse/style.coax` markers, the way `metaverse/look.coax`'s
 outline functions are today. One source, every realm, with checks:
 `#test`s pin the band edges, the haze curve, the clock interpolation and
 the phone tier's numbers.
@@ -88,7 +88,7 @@ What a realm still decides: its geometry, its albedo colours (inside the
 palette rules), where its key light points (sun or moon), what glows, and
 its clock. Nothing else: no realm-local fog constants, ambient colours or
 tone curves. A realm that needs a different look asks for a preset change
-in `verse/style.coax`, where every realm in that style gets it.
+in `metaverse/style.coax`, where every realm in that style gets it.
 
 ## Flat
 
@@ -115,12 +115,12 @@ and light that reads as two or three flat tones per form.
 | Post | No tone curve, no saturation or black lift: the palette shows as it is. A little bloom (0.12) on what glows only |
 | Phones | The same look; fewer tufts. Flat is cheaper than painterly: no shadow map, no shafts, no clouds, no noise |
 
-The preset is `verse_style_flat(palette, tier)` in `verse/style-preset.coax`
+The preset is `verse_style_flat(palette, tier)` in `metaverse/style-preset.coax`
 (`STYLE_FLAT`; `verse_style_preset(STYLE_FLAT, tier)` is the garden's). Its
 spare block slots carry flat's own numbers: `SU_RIM2.w` the hem width,
 `SU_GROUND_AMB.w` the gradient's darkening, `SU_BLOOM.w` its steps. The
 shading functions are `verse_style_flat_*` and `verse_style_bayer` in
-`verse/style.coax`, generated into each flat realm's WGSL with the rest of
+`metaverse/style.coax`, generated into each flat realm's WGSL with the rest of
 the style block. The checks: `#test "flat: ..."` in both files pin the three
 hard tones (and that the generated band function is the preset's own edges),
 no specular, rim, outline, shafts or tone curve at any hour, the dither and
@@ -129,7 +129,7 @@ the hem, and each realm's palette.
 ### Palettes
 
 Each flat realm has its own palette, 20 roles (`FLAT_*` in
-`verse/style.coax`: sky, horizon, ground and a second ground, path, the lit,
+`metaverse/style.coax`: sky, horizon, ground and a second ground, path, the lit,
 shade and shadow light, accent, dark, light, two foliage colours, water,
 wood, warm, mint, rock, lavender, sage), written once in sRGB in
 `verse_style_flat_srgb` and read by the preset and by the shaders alike. A
@@ -193,7 +193,7 @@ stage (0.8; half for what glows and for her skin and clothes).
 
 Flat-shaded low poly with clean faceted silhouettes, after the owner's
 reference boards (Fairy Forest, October 31; the art itself is never copied
-in). Shared in `verse/style.coax` for any flat realm that asks for it
+in). Shared in `metaverse/style.coax` for any flat realm that asks for it
 (`facet_fns` in `apps/openagents-web/build.sh`):
 
 | | Facets |
@@ -253,7 +253,7 @@ One preset each, the same functions; a realm or a zone picks one.
 | Grass a m2 (phone) | 16 (6) | 8 (3) | 8 (3) | 0 |
 
 Every number at each clock key (midnight, dawn, noon, dusk) is in
-`anime_key` in `verse/style-preset.coax`; pastoral and action have their
+`anime_key` in `metaverse/style-preset.coax`; pastoral and action have their
 own day, dusk and night, and dusk and neon hold one look at every key.
 
 ### Choosing one
@@ -282,7 +282,7 @@ zone may name its own variant; one without takes the realm's, else pastoral:
 
 ### The API
 
-`verse/style-preset.coax`: `STYLE_ANIME` (4); `ANIME_PASTORAL` (0),
+`metaverse/style-preset.coax`: `STYLE_ANIME` (4); `ANIME_PASTORAL` (0),
 `ANIME_ACTION` (1), `ANIME_DUSK` (2), `ANIME_NEON` (3), `ANIME_VARIANTS` (4)
 and `ANIME_VARIANT_NAME`; `verse_style_anime(variant, tier) -> StylePreset`
 (not ok, variant -1, for an unknown variant); `verse_style_preset(STYLE_ANIME,
@@ -306,7 +306,7 @@ in the slots flat uses for its own (each `SU_*` comment names them):
 | `SU_CLOUD_TOP` | the clouds' lit top, `.w` how far their shadow tone goes to the zenith's colour |
 | `SU_STYLE.x` | the ink's opacity (1) |
 
-`verse/style.coax`: the functions above (`verse_style_anime_*`, scalar f32
+`metaverse/style.coax`: the functions above (`verse_style_anime_*`, scalar f32
 in the subset `coax wgsl` writes; their parameters are `an_`-prefixed as
 flat's are `fl_`) and the anime palette, `ANIME_*` slots (grass, grass2,
 foliage, stone, roof, wood, path, water, skin, hair, coat, banner, gold,
@@ -314,7 +314,7 @@ spell, spell2, fire, neon cyan, neon magenta, asphalt, guardian) in
 `verse_style_anime_srgb(slot, ch)` and, linear, `verse_style_anime_colour`:
 clean saturated albedos shared by every variant, whose light makes the day,
 the dusk and the night. A realm emits them into its WGSL by loading
-`verse/style.coax` in its Coax (`apps/openagents-web/gpu/<module>.coax`).
+`metaverse/style.coax` in its Coax (`apps/openagents-web/gpu/<module>.coax`).
 
 ### Checks
 
@@ -393,7 +393,7 @@ colour += rim * rim_colour
   whole grazing meadow (at night a silver sheen between the grass blades).
 - It is a light term, so it fogs with the surface and never draws over the sky.
 - A realm may draw with no outlines at all: `verse_style_no_outlines`
-  (`verse/style-preset.coax`) sets the rim strengths and `outline_max` to 0
+  (`metaverse/style-preset.coax`) sets the rim strengths and `outline_max` to 0
   on every key and both tiers. Everglade draws so since October 29 (the
   owner: "remove the toon outlines from everglade"): the bright line the
   rim drew round every person, prop, roof and crown read as a toon outline.
@@ -432,7 +432,7 @@ colour += rim * rim_colour
   A multiply, not a mix: mixing a warm colour toward blue passes through
   grey, while this turns olive ground teal and brown ground slate, still
   ground, never grey or black. `cool` is the preset's (`SU_SHADOW.w`, 1.5 for
-  painterly, 0 for lowpoly), in `verse/style.coax` `verse_style_cool` and
+  painterly, 0 for lowpoly), in `metaverse/style.coax` `verse_style_cool` and
   `verse_style_keep_value`.
 - **Ambient** is a hemisphere, sky colour above and a warm bounce below:
   by day sky (0.55, 0.66, 0.84) and ground (0.45, 0.40, 0.30), at 0.55 of the
@@ -468,7 +468,7 @@ The haze is coloured, never grey or white: where it is thin (the middle
 distance) its hue leans teal, and it turns to `haze_colour`'s blue as it
 thickens toward its cap, so the near world stays crisp and saturated, the
 middle distance goes teal and the far ridges blue, as Breath of the Wild's
-valleys do (`verse/style.coax` `verse_style_haze_hue`, added October 29).
+valleys do (`metaverse/style.coax` `verse_style_haze_hue`, added October 29).
 
 At 40 m by day the haze is 0.36, at 100 m 0.74 (comparison round 3: from 0.58, as the
 references step their middle distance back), and it caps at 0.88 from about 160 m so
@@ -564,7 +564,7 @@ the sky without a seam.
 - **Leafy gaps**: a crown is open in small holes (the preset's 0.36 of its
   leaf noise, fewer through its thick middle than at its edge), so the sky
   shows through and the light shafts stream through as streaks.
-- **Built** (October 29, as-blob-foliage): `verse/style.coax` holds
+- **Built** (October 29, as-blob-foliage): `metaverse/style.coax` holds
   `verse_style_canopy_axis` (an ellipsoid's gradient, a sphere's when the half
   sizes match), `_canopy_normal` (the 0.85 mix), `_canopy_sway` (0.05 m at
   the top, by the grass's wind) and `_canopy_open` (the gaps); the preset's
@@ -604,7 +604,7 @@ the sky without a seam.
 - **Budget**: grass costs at most 2.5 ms of a desktop frame and 3 ms of a
   phone's. If the realm's frame budget is missed, the phone tier halves the
   density before the radius.
-- **Built** (October 29, as-wind-grass): `verse/style.coax` holds the wind
+- **Built** (October 29, as-wind-grass): `metaverse/style.coax` holds the wind
   (`verse_style_wind`, `_gust`, `_bend`, shared with the foliage's sway), the
   blade numbers (`_blade_height`, `_grass_fade`, `_grass_blades`), the mask
   (`_grass_clear`: none on a masked shape, all 0.25 m clear of it;
@@ -633,7 +633,7 @@ the sky without a seam.
   until October 29, which milked every frame grey).
   Every painterly realm gets a post pass (`post_fs`) for this.
 - **Outlines**: none in ink. Painterly separates shapes by value and colour.
-  The outline pass (`verse/look.coax`) is allowed only in its light form, a
+  The outline pass (`metaverse/look.coax`) is allowed only in its light form, a
   pale edge brighter than the surface it borders, at no more than 0.35
   strength, fading with haze. Hecate's moonlit edges are this form (below).
   A dark outline fails the style check.
@@ -641,7 +641,7 @@ the sky without a seam.
 
 ### 10. Textures and packs
 
-- **Pack style**: `verse/packs/<realm>.json` gets `"style"`. `pack_realm.py`
+- **Pack style**: `metaverse/packs/<realm>.json` gets `"style"`. `pack_realm.py`
   writes `style NAME` into the catalog and checks the layers against it.
 - **Painterly layers**:
   - at most 512 texels a side; 256 is the default for props and characters.
@@ -689,7 +689,7 @@ the sky without a seam.
 
 ### 12. Water: stylized preset
 
-A `painted` preset in `verse/water-look.coax` beside the seven physical
+A `painted` preset in `metaverse/water-look.coax` beside the seven physical
 ones. The physics (W1), the mesh and the swimmer don't change, only the look:
 
 - **Colour bands by depth** in place of Beer-Lambert: shallow (0.30, 0.72,
@@ -767,7 +767,7 @@ Bands, rim, tint, palette and tone are the same on both: a phone looks like
 the same painting, with less in it.
 
 **Built** (October 29, #056b): the tier's numbers are pinned by `#test "the
-phone tier"` in `verse/style-preset.coax`. The release walk compares the
+phone tier"` in `metaverse/style-preset.coax`. The release walk compares the
 fixture at 390×844 css px (`fixture-painterly-phone-<clock>`, goldens.ts
 takes a page's own `size`) at each clock key. GPU frame time,
 headless on this Mac's Metal (frametime.ts, 390×844 at 3×): Everglade,
@@ -876,7 +876,7 @@ Historical (October 29): Hecate's Cemetery moved to flat instead on October 30
 `/realms/hecates-cemetery`: `apps/openagents-web/villa.coax` (with
 `villafig`, `villapet`, `villaplay`, `villaroom`, `villatips`),
 `villa-face.c`, `villa.wgsl`. Kiki's design is
-`verse/planetary-villa/README.md`. Everything is drawn from five primitive
+`metaverse/planetary-villa/README.md`. Everything is drawn from five primitive
 shapes (box, sphere, cylinder, cone, ball) with a colour each; there is no
 pack and no texture, only `Villa.indices` and the particle shader. Shots
 from production, October 29: desktop 1440×900 and phone 390×844.
@@ -911,9 +911,9 @@ two places it bends are brightness (painterly never goes muddy) and outlines
 `/realms/everglade`: `apps/openagents-web/everglade.coax` (with
 `everglade-edit`, `everglade-voice`), `everglade-face.c`, `everglade.wgsl`,
 `everglade/legacy/v1/*` (plan, people, quests, ranger, river), the pack
-`verse/packs/everglade.json` (Quaternius Stylized Nature, Medieval Village
+`metaverse/packs/everglade.json` (Quaternius Stylized Nature, Medieval Village
 and Fantasy Props kits; `texture_size` 512; 6.0 MB of a 6.75 MB budget), and
-the river on `verse/water.coax` and `verse/water-look.coax` (W2). Shots
+the river on `metaverse/water.coax` and `metaverse/water-look.coax` (W2). Shots
 from production, October 29: the road in, the river crossing and the deep
 wood at 1440×900, and the road in and the commons at 390×844.
 

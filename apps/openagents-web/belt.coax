@@ -3,7 +3,7 @@
 // rules and its drawing only; the space is the engine's: metaverse-engine/physics/orbit.coax
 // (Kepler orbits, the ephemeris, Lambert transfers, the rocket equation),
 // metaverse-engine/cam/spacecam.coax (the floating origin and twelve decades of zoom) and
-// verse/stars.coax (the sky, in belt.wgsl). docs/verse/space.md lists them.
+// metaverse/stars.coax (the sky, in belt.wgsl). docs/verse/space.md lists them.
 //
 // You run the Free Belt's Hearth Station at Ceres and three ships. Select a
 // ship (tap, click, or drag a box on a desktop), pick where it goes (tap a

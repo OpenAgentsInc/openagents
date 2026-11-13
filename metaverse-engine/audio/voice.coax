@@ -11,7 +11,7 @@
 // the log still holds exactly those bytes, so a replay reproduces every heard request without a
 // recognizer, a host or a network.
 //
-// The voice host (verse/voice-host, any recognizer: Parakeet locally) sends a TURN_EVENT FINAL
+// The voice host (metaverse/voice-host, any recognizer: Parakeet locally) sends a TURN_EVENT FINAL
 // with the transcript; an empty one means nobody spoke (VOICE_NO_SPEECH).
 //   coax/bin/coax test metaverse-engine/audio/voice.coax
 //   coax/bin/coax mutate metaverse-engine/audio/voice.coax --root-only     (replay.coax has its own gate)

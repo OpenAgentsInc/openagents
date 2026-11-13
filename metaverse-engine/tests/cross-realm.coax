@@ -10,7 +10,7 @@
 //     steps' heights, and on the ground they are the ground's height;
 //   - replay: the session's recorded frames, played into a fresh walker, give the same walker,
 //     bit for bit, every frame;
-//   - the floor grid: metaverse-engine/tests/cross-realm-floor.coax (verse/grid.coax declares names the
+//   - the floor grid: metaverse-engine/tests/cross-realm-floor.coax (metaverse/grid.coax declares names the
 //     walker's modules also use, so it is checked in a file of its own).
 //
 // The drawn-feet probes through each realm's real render path are native:

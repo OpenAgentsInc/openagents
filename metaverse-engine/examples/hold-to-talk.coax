@@ -4,7 +4,7 @@
 
 // The Metaverse Engine's HOLD TO TALK through its event gate (metaverse-engine/audio/voice.coax). Each hold is a
 // question the realm asks; the voice host's final transcript (Parakeet, run locally:
-// verse/voice-host --recognizer parakeet) is its answer. The transcripts below are the ones the
+// metaverse/voice-host --recognizer parakeet) is its answer. The transcripts below are the ones the
 // host returned for the committed fixtures (docs/verification/verse-parakeet-2026-11-02).
 // A duplicate, an answer after a cancel and a silent hold are shown, then the record replays.
 show :: (r: [] VoiceRealm, what: string, verdict: int) {

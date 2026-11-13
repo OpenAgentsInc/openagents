@@ -106,7 +106,7 @@
     "sha256": "e9bbf4408c8bc8fc39ed43988cbf2a369a4cccc5a827141d55d37f24613fe13d"
   },
   "composition": {
-    "path": "verse/character-glade.coax",
+    "path": "metaverse/character-glade.coax",
     "sha256": "28024ef22bcf4cec4c5e390c399c8cac718d4bfae72b5a80cdc3db44c7cf6b52",
     "placements": 27
   },
@@ -115,7 +115,7 @@
     "sha256": "cbb35810f8e254d646f9ad8fdbd226cf3bd8f228c967eaeb4ed4e059e495bdb7"
   },
   "packer": {
-    "path": "verse/tools/assets/character_glade_pack.coax",
+    "path": "metaverse/tools/assets/character_glade_pack.coax",
     "sha256": "29351bcfb87e8b54d7ab27354a955d316cc1c5c5cf10b000d0654e8e99b06108"
   },
   "runtime": {
@@ -486,14 +486,14 @@
       "parent": "quaternius/nature/rock-medium-4",
       "parent_revision": "182dd8cb65e21e09915845496a64b359f4fb5c63586f4294eb7846da45c79895",
       "transform": "cg_cliff_cap_y: y<=1.2 ? y*1.5 : 1.8+(y-1.2)*0.05; inverse Jacobian normals; hero placement only",
-      "source": "verse/character-glade.coax"
+      "source": "metaverse/character-glade.coax"
     },
     {
       "name": "path-stone",
       "parent": "quaternius/nature/rock-medium-4",
       "parent_revision": "182dd8cb65e21e09915845496a64b359f4fb5c63586f4294eb7846da45c79895",
       "transform": "nonuniform scale (0.16,0.05,0.16), yaw 1.1; source shape flattened for path landmark",
-      "source": "verse/tools/assets/character_glade_pack.coax"
+      "source": "metaverse/tools/assets/character_glade_pack.coax"
     }
   ],
   "texture_quality": {

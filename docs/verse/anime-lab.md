@@ -86,7 +86,7 @@ mic ─► voice host ─► words ─► director (decision model) ─► direc
 The words never reach the engine. A decision model reads them and answers
 typed questions over a fixed catalogue with bounded fields, the way
 Everglade's voice edits and the Sandbox's set pieces already do
-(`coax/web/api/npc.c`, `verse/setpiece.coax`), and the page checks the
+(`coax/web/api/npc.c`, `metaverse/setpiece.coax`), and the page checks the
 answer again against the same catalogue before anything plays.
 
 - **The state it sees:** the cast on stage (names, archetypes, where each
@@ -178,7 +178,7 @@ version:
   cut lands inside an action's anticipation, a close-up holds at least
   0.6 s, a flash cut is three white frames.
 - **The engine plays it** with the pieces that exist: camera flights
-  (`metaverse-engine/cam/cinematic.coax`), the cast and its clips (`verse/cast.coax`),
+  (`metaverse-engine/cam/cinematic.coax`), the cast and its clips (`metaverse/cast.coax`),
   particles (`metaverse-engine/render/particles.coax`) and the anime style's lines, flats,
   speed lines and impact frames.
 - **The same document renders offline** at any size: `openagents labs anime
@@ -232,7 +232,7 @@ three hooded figures and a dark lord.
 
 Built (A2), November 2:
 
-- **The director** is `verse/anime/director.coax`: the catalogue (the
+- **The director** is `metaverse/anime/director.coax`: the catalogue (the
   table above, plus `hesitant` among the feelings), `anime_read` holding
   each of the decision model's answers (one flat JSON object a direction,
   catalogue words and a confidence `p`, as the typed selector returns them)
@@ -244,7 +244,7 @@ Built (A2), November 2:
   0.5 nothing plays, 0.5 to 0.85 plays with a "did you mean" chip. When a
   direction's subject is off the shot the engine adds its own framing
   (marked ENGINE in the caption). Its checks cover all of that.
-- **The stage** is `verse/anime/stage.coax`: the timeline at a moment t
+- **The stage** is `metaverse/anime/stage.coax`: the timeline at a moment t
   (poses blended, the cast's wind-up and release, feelings, who has
   entered, spells in flight and their bursts, smoke, rubble, the breach,
   the draw-in's phases, the frame's flash, impact frame, speed lines and

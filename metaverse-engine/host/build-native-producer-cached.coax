@@ -11,13 +11,13 @@ tool_main :: ()->int #export_c #effects(all) {
  for name:[10]string.["everglade5e.c","everglade5e.h","Grid.c","Grid.h","River.c","River.h","Everglade5e-rules.c","Everglade5e-rules.h","Everglade-step.h","Guard-guide-policy.h"] {if !rtq_input_add(inputs[..],fs_join(cache,name,paths[0][..])) {return 1;}}
  if !rtq_input_add(inputs[..],fs_join(face,"everglade5e-face.c",paths[0][..])) {return 1;}
  files:=fs_list(face,listing[..]);if files<0 {return 1;}for i:0..<files {name:=fs_entry(listing[..],i);n:=name.count;if n>2&&name[n-2]=='.'&&name[n-1]=='h'&&!rtq_input_add(inputs[..],fs_join(face,name,paths[0][..])) {return 1;}}
- for name:[2]string.["verse/native/face.h","verse/native/face-defaults.h"] {if !rtq_input_add(inputs[..],fs_join(root,name,paths[0][..])) {return 1;}}
+ for name:[2]string.["metaverse/native/face.h","metaverse/native/face-defaults.h"] {if !rtq_input_add(inputs[..],fs_join(root,name,paths[0][..])) {return 1;}}
  objects:[6]string;argv:[24]string;stdout:[1048576]u8;stderr:[1048576]u8;env:[]string;prior:=args_value(a[..],"--objects","");
  for name,i:[6]string.["everglade5e","Grid","River","Everglade5e-rules","producer-face","face-defaults"] {
   text:[64]u8;o:[1]Jo;jo_start(o[..],text[..]);jo_put(o[..],name);jo_put(o[..],".o");objects[i]=fs_join(out,jo_text(o[..]),paths[1+i][..]);
   if i<4&&prior!="" {objects[i]=fs_join(prior,jo_text(o[..]),paths[1+i][..]);if !rtq_input_add(inputs[..],objects[i]) {return 1;}continue;}
   source:[128]u8;w:[1]Jo;jo_start(w[..],source[..]);jo_put(w[..],name);jo_put(w[..],".c");
-  path:=ifx i<4 then fs_join(cache,jo_text(w[..]),paths[7][..]) else ifx i==4 then fs_join(face,"everglade5e-face.c",paths[7][..]) else fs_join(root,"verse/native/face-defaults.h",paths[7][..]);
+  path:=ifx i<4 then fs_join(cache,jo_text(w[..]),paths[7][..]) else ifx i==4 then fs_join(face,"everglade5e-face.c",paths[7][..]) else fs_join(root,"metaverse/native/face-defaults.h",paths[7][..]);
   n:=0;for flag:[10]string.["nice","-n15","gcc","-x","c","-std=gnu11",ifx sanitize then "-O1" else "-O2","-fPIC","-ffp-contract=off","-fno-fast-math"] {argv[n]=flag;n+=1;}
   argv[n]=ifx i<4 then "-fvisibility=hidden" else "-DCOAXIAL_NATIVE_ADDRESS";n+=1;argv[n]="-Wno-attributes";n+=1;argv[n]="-I";argv[n+1]=cache;n+=2;
   if sanitize {for flag:[3]string.["-fsanitize=address,undefined","-fno-omit-frame-pointer","-g"] {argv[n]=flag;n+=1;}}

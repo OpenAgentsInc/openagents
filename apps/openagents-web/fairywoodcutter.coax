@@ -1,7 +1,7 @@
-// Rowan the woodcutter (ff-woodcutter, verse/fairy-forest/README.md "What
+// Rowan the woodcutter (ff-woodcutter, metaverse/fairy-forest/README.md "What
 // you learn": CRAFT, "being given an axe by a woodcutter"). An old woodcutter
 // of the small folk stands by his chopping stump east of your home. Talk to
-// him like the creatures (E: TALK TO ROWAN; verse/fairy-forest/talk.coax,
+// him like the creatures (E: TALK TO ROWAN; metaverse/fairy-forest/talk.coax,
 // talker FF_WOODCUTTER) and the first time he gives you his old axe, which
 // teaches CRAFT. Before, it rests on his shoulder; after, he splits a log.
 //   coax/bin/coax test apps/openagents-web/fairy.coax --steps 400000000

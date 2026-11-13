@@ -1,5 +1,5 @@
 // book:begin example
-#load "../../verse/gridwalk.coax";
+#load "../../metaverse/gridwalk.coax";
 #import "Basic";
 
 cm :: (m: f32) -> int { return cast(int) (m * 100 + ifx m < 0 then -0.5f32 else 0.5f32); }

@@ -2284,11 +2284,11 @@
     "revision": "0e05d58ed4beda3f9bae85f924ff3d578cb724fd82d427a59bc72a9570760b0a"
   },
   "composition": {
-    "path": "verse/character-glade.coax",
+    "path": "metaverse/character-glade.coax",
     "sha256": "4f18ecd0e5f7d5393cffb98f468a3afa30591ca5cde87521f99b43b3b5069afb"
   },
   "packer": {
-    "path": "verse/tools/assets/character_glade_pack.coax",
+    "path": "metaverse/tools/assets/character_glade_pack.coax",
     "sha256": "aab7787dfa081824d2d09b60437682ec32e727669683efd4154becd09bd2f74f",
     "profile": "--experimental"
   },
@@ -2320,7 +2320,7 @@
     "spacing_metres": 1.2,
     "rock_vertices": 0,
     "source": {
-      "path": "verse/experimental-terrain.coax",
+      "path": "metaverse/experimental-terrain.coax",
       "sha256": "b9584edbb5f2b0135a55b7b9d08b5966270fd32258661eee9e1d34f5662d25f6"
     }
   },
@@ -2340,7 +2340,7 @@
       "sha256": "b1a312f2023a60b8332b0006015f31a8a89de1a9bece04e3e0c94b51163fedf8"
     },
     "extractor": {
-      "path": "verse/tools/assets/village_layout.coax",
+      "path": "metaverse/tools/assets/village_layout.coax",
       "sha256": "751c2aa8ac70f2d7d730aad5568f0ee9d2d9fd7de5f10c7803d9b7f468335ac6"
     },
     "groups": [
@@ -2521,15 +2521,15 @@
     "collision": {
       "source": "glTF (Godot) collision-only mesh nodes in the pinned village package",
       "generator": {
-        "path": "verse/tools/assets/village_collision.coax",
+        "path": "metaverse/tools/assets/village_collision.coax",
         "sha256": "52af5430fb361e4acf15c871002316a7126cf00e559f469353345dc8b68f212c"
       },
       "data": {
-        "path": "verse/experimental-village-data.coax",
+        "path": "metaverse/experimental-village-data.coax",
         "sha256": "eaaed5d3f3412602f11e1a6b9585d303883ec4bd4937c145a6e6ccb9e435be5f"
       },
       "runtime": {
-        "path": "verse/experimental-village.coax",
+        "path": "metaverse/experimental-village.coax",
         "sha256": "0df68cd84e7e5522bb63b4a502de606468f234c0a7d66ce97feab05d52567cdb"
       },
       "source_boxes": 1567,
@@ -2546,7 +2546,7 @@
     "package": "fantasy-props",
     "revision": "ee6b5dc58c5161780d96d6db390d9951ef0d78c1414e83e596a69180fc2b8d15",
     "placement_source": {
-      "path": "verse/experimental-props.coax",
+      "path": "metaverse/experimental-props.coax",
       "sha256": "d60039b1107e3e4ff69152d6cb86d667f3f5e165dee97f1224753a34dd5fbd07"
     },
     "placements": 112,
@@ -2563,7 +2563,7 @@
       0,
       3
     ],
-    "source": "verse/experimental-props.coax",
+    "source": "metaverse/experimental-props.coax",
     "facade": "Handmade static clock on the front gable; clock hands are decorative",
     "stairs": "Aethyr walkable ramp derived from the village sample collision"
   },
@@ -2580,7 +2580,7 @@
       "revision": "8dbd5d8c483ea0b6528bfde8c1bbbbf30980b0fcdabf3bd7d1692db3e7e52a16"
     },
     "animal_baker": {
-      "path": "verse/tools/assets/animal_bake.py",
+      "path": "metaverse/tools/assets/animal_bake.py",
       "sha256": "12828a934597739f5cb6ddd1e81b23d709364377695290c8ab21708155ea1b2f"
     },
     "selection": "Fantasy-appropriate food; modern packaged and fast foods omitted, with reserved layout positions.",
@@ -2599,7 +2599,7 @@
       "revision": "994381f0e9945cb038fe4b99ad459b24f1a44cd565bcfa26b11465a57f3f1190",
       "license": "LicenseRef-Quaternius-QAL-1.0",
       "baker": {
-        "path": "verse/tools/assets/bestiary_bake.py",
+        "path": "metaverse/tools/assets/bestiary_bake.py",
         "sha256": "16fffd2741cac8d51525e9b55be465b3f13049b52fea306fabc56aedde746f6e"
       },
       "models": [
@@ -2615,7 +2615,7 @@
   },
   "new_neighborhood": {
     "buildings": 9,
-    "source": "verse/tools/assets/character_glade_pack.coax",
+    "source": "metaverse/tools/assets/character_glade_pack.coax",
     "collision": "walkable doorway and solid walls for each building"
   },
   "hostiles": {
@@ -2623,7 +2623,7 @@
     "gremlins": 3,
     "behavior": "Pursue the player and make timed SRD melee attacks",
     "source": {
-      "path": "verse/experimental-hostiles.coax",
+      "path": "metaverse/experimental-hostiles.coax",
       "sha256": "ffcbfab23ae0029aa320cfe285a20638857b04106257fb9095150c5079e5363e"
     }
   },
@@ -2642,10 +2642,10 @@
       "Gremlin"
     ],
     "collision": "Solid perimeter and interior walls with open arched passages and solid columns",
-    "source": "verse/tools/assets/character_glade_pack.coax"
+    "source": "metaverse/tools/assets/character_glade_pack.coax"
   },
   "scene_asset_collision": {
-    "path": "verse/experimental-scene-colliders.coax",
+    "path": "metaverse/experimental-scene-colliders.coax",
     "sha256": "32ed7c8d5b231e4e2c2e246bfe2eb61a09297044d28c2dafcfad892604b51f59",
     "placed_assets": 570,
     "source": "Generated from transformed scene vertices; narrow item gaps use bounded grouped footprints, bushes slow movement, enemies yield to the player, and trapped players recover to a clear position.",
@@ -2698,7 +2698,7 @@
     "wall_segments": 133,
     "wall_height_metres": 6,
     "source": {
-      "path": "verse/experimental-castle.coax",
+      "path": "metaverse/experimental-castle.coax",
       "sha256": "2f187044cf925c8ac22fae3dce66e24d88ad70886c2c186ac57e5dfc78ca5d86"
     },
     "keep": [

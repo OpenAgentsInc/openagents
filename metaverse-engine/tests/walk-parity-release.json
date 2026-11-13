@@ -27,8 +27,8 @@
     "metaverse-engine/tests/query-oracle.coax": "e088ba9b7be06e2a19d263e5b45859fddeae1f22523c3fdb45948abd895e3cb8",
     "metaverse-engine/tests/walk-native-fixtures.coax": "f5e9cfc10d07f7da4930cff2c72f52f7c11f8b97e4a2d0ecbdadd817746145d4",
     "coax/lib/quantity.coax": "325e9e7152de442b2da210cc0075ca4bb231d5a4c862898a6ee88ab161eeb583",
-    "verse/player.coax": "4bf3005da0dc4fc4d445cfe55ac8ff3e39d542cdf2b0b2889af1dfa573b56528",
-    "verse/stand.coax": "a6c5d351b77cf14313a7cb97232894ad10525f148aa499ab87c01fc908e4f35b"
+    "metaverse/player.coax": "4bf3005da0dc4fc4d445cfe55ac8ff3e39d542cdf2b0b2889af1dfa573b56528",
+    "metaverse/stand.coax": "a6c5d351b77cf14313a7cb97232894ad10525f148aa499ab87c01fc908e4f35b"
   },
   "source_sha256": {
     "metaverse-engine/collide.coax": "b19bc1b5161eda4ce9393958ac4c396c0a495c6f849ba479ca1aaf979b716688",
@@ -57,8 +57,8 @@
     "metaverse-engine/walk-frame.coax": "19694947b923308e4deaf80662670a1935a7ec08d05ef8d45e2f615991d78028",
     "metaverse-engine/walk.coax": "a85f3e5de807a9e81f0b743080799cee9a8ee9d43d65b8eb0ed056ed10808608",
     "coax/lib/quantity.coax": "325e9e7152de442b2da210cc0075ca4bb231d5a4c862898a6ee88ab161eeb583",
-    "verse/player.coax": "14706eb476d9dfa6ae7a16cf7998800e2148eb70700b6c9d0499359c99e1d4a9",
-    "verse/stand.coax": "a6c5d351b77cf14313a7cb97232894ad10525f148aa499ab87c01fc908e4f35b"
+    "metaverse/player.coax": "14706eb476d9dfa6ae7a16cf7998800e2148eb70700b6c9d0499359c99e1d4a9",
+    "metaverse/stand.coax": "a6c5d351b77cf14313a7cb97232894ad10525f148aa499ab87c01fc908e4f35b"
   },
   "tuned_source_sha256": {
     "metaverse-engine/collide.coax": "b19bc1b5161eda4ce9393958ac4c396c0a495c6f849ba479ca1aaf979b716688",
@@ -87,8 +87,8 @@
     "metaverse-engine/walk-frame.coax": "19694947b923308e4deaf80662670a1935a7ec08d05ef8d45e2f615991d78028",
     "metaverse-engine/walk.coax": "a85f3e5de807a9e81f0b743080799cee9a8ee9d43d65b8eb0ed056ed10808608",
     "coax/lib/quantity.coax": "325e9e7152de442b2da210cc0075ca4bb231d5a4c862898a6ee88ab161eeb583",
-    "verse/player.coax": "14706eb476d9dfa6ae7a16cf7998800e2148eb70700b6c9d0499359c99e1d4a9",
-    "verse/stand.coax": "a6c5d351b77cf14313a7cb97232894ad10525f148aa499ab87c01fc908e4f35b"
+    "metaverse/player.coax": "14706eb476d9dfa6ae7a16cf7998800e2148eb70700b6c9d0499359c99e1d4a9",
+    "metaverse/stand.coax": "a6c5d351b77cf14313a7cb97232894ad10525f148aa499ab87c01fc908e4f35b"
   },
   "support_sha256": {
     "metaverse-engine/tests/walk-native.c": "f47f8ef6ad461b10e1c2fe70c5ebe8a2a9e200cfa9a4804056c28424bc78b608",
@@ -544,8 +544,8 @@
             "metaverse-engine/tests/query-oracle.coax": "e088ba9b7be06e2a19d263e5b45859fddeae1f22523c3fdb45948abd895e3cb8",
             "metaverse-engine/tests/walk-native-fixtures.coax": "f5e9cfc10d07f7da4930cff2c72f52f7c11f8b97e4a2d0ecbdadd817746145d4",
             "coax/lib/quantity.coax": "325e9e7152de442b2da210cc0075ca4bb231d5a4c862898a6ee88ab161eeb583",
-            "verse/player.coax": "4bf3005da0dc4fc4d445cfe55ac8ff3e39d542cdf2b0b2889af1dfa573b56528",
-            "verse/stand.coax": "a6c5d351b77cf14313a7cb97232894ad10525f148aa499ab87c01fc908e4f35b"
+            "metaverse/player.coax": "4bf3005da0dc4fc4d445cfe55ac8ff3e39d542cdf2b0b2889af1dfa573b56528",
+            "metaverse/stand.coax": "a6c5d351b77cf14313a7cb97232894ad10525f148aa499ab87c01fc908e4f35b"
           },
           "coax_flags": [
             "--release"
@@ -589,8 +589,8 @@
             "metaverse-engine/walk-frame.coax": "19694947b923308e4deaf80662670a1935a7ec08d05ef8d45e2f615991d78028",
             "metaverse-engine/walk.coax": "a85f3e5de807a9e81f0b743080799cee9a8ee9d43d65b8eb0ed056ed10808608",
             "coax/lib/quantity.coax": "325e9e7152de442b2da210cc0075ca4bb231d5a4c862898a6ee88ab161eeb583",
-            "verse/player.coax": "14706eb476d9dfa6ae7a16cf7998800e2148eb70700b6c9d0499359c99e1d4a9",
-            "verse/stand.coax": "a6c5d351b77cf14313a7cb97232894ad10525f148aa499ab87c01fc908e4f35b"
+            "metaverse/player.coax": "14706eb476d9dfa6ae7a16cf7998800e2148eb70700b6c9d0499359c99e1d4a9",
+            "metaverse/stand.coax": "a6c5d351b77cf14313a7cb97232894ad10525f148aa499ab87c01fc908e4f35b"
           },
           "coax_flags": [
             "--release"
@@ -634,8 +634,8 @@
             "metaverse-engine/walk-frame.coax": "19694947b923308e4deaf80662670a1935a7ec08d05ef8d45e2f615991d78028",
             "metaverse-engine/walk.coax": "a85f3e5de807a9e81f0b743080799cee9a8ee9d43d65b8eb0ed056ed10808608",
             "coax/lib/quantity.coax": "325e9e7152de442b2da210cc0075ca4bb231d5a4c862898a6ee88ab161eeb583",
-            "verse/player.coax": "14706eb476d9dfa6ae7a16cf7998800e2148eb70700b6c9d0499359c99e1d4a9",
-            "verse/stand.coax": "a6c5d351b77cf14313a7cb97232894ad10525f148aa499ab87c01fc908e4f35b"
+            "metaverse/player.coax": "14706eb476d9dfa6ae7a16cf7998800e2148eb70700b6c9d0499359c99e1d4a9",
+            "metaverse/stand.coax": "a6c5d351b77cf14313a7cb97232894ad10525f148aa499ab87c01fc908e4f35b"
           },
           "coax_flags": [
             "--release"

@@ -32,7 +32,7 @@
       "evidence": [
         {
           "path": "coax/tests/generics.py",
-          "sha256": "502e56bb953e5ac5bcf8b65547db0dcb368c1adfbcd7380e289196f82abc9bcd"
+          "sha256": "5fab66a685bf4a51fdfde101e6556ef96a367d7b195039eb40e9b627177a8f6d"
         }
       ]
     },
@@ -100,7 +100,7 @@
       "evidence": [
         {
           "path": "coax/tests/modules.py",
-          "sha256": "8c96c63b101a7f6c290d0f77ccd322da7c1da6ca724677b0424fde8eda211b67"
+          "sha256": "0475eb13023638cedfd0b06962b89d66bc9a14275aa39edf2bbd519029d37288"
         }
       ]
     },
@@ -353,11 +353,11 @@
         },
         {
           "path": "docs/verse/native-gpu.md",
-          "sha256": "2c773a3d802d9f69668c7a0aaf09300998a3d998b1dc35760f97c7de012c9e39"
+          "sha256": "4b965efcbdae2f3476b86b3cbe2f0f21f8b5fd7f34097d8763dc9544ed7e00ec"
         },
         {
           "path": "coax/QUANTITIES.md",
-          "sha256": "d0e75b1c9762022d13c3a5d3b24cd7db106d263aed4bfd094d6d1e372abbfb40"
+          "sha256": "9d25c02d333ba2c2861bcb5288cf4d2c8f130f0d371bf0d8843dbb76d3682dfb"
         },
         {
           "path": "coax/lib/quantity.coax",
@@ -401,7 +401,7 @@
         },
         {
           "path": "coax/tests/spatial/spacecam-qualification.json",
-          "sha256": "7a78d3f6496ef8768c44c240cc6895961358f0465decc719125a0336c7f5061e"
+          "sha256": "433ffa1fa0aeae355ce981ff39404991da01d34f9bdad329e48410dbde873141"
         },
         {
           "path": "coax/tests/spatial/interop-qualification.json",
@@ -461,7 +461,7 @@
         },
         {
           "path": "docs/verse/native-gpu.md",
-          "sha256": "2c773a3d802d9f69668c7a0aaf09300998a3d998b1dc35760f97c7de012c9e39"
+          "sha256": "4b965efcbdae2f3476b86b3cbe2f0f21f8b5fd7f34097d8763dc9544ed7e00ec"
         },
         {
           "path": "apps/openagents-web/gpu/everglade-v1/gpu.module",

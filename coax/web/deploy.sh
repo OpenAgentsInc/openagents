@@ -231,10 +231,10 @@ t=$(now); "$here/symbols.sh" pages "$stage/site" || echo "deploy: this release's
 if $server; then
   t=$(now)
   mkdir -p "$stage/image/server"
-  cp "$here/serve.c" "$here/../../verse/voice-host/ws.c" "$here/../../verse/voice-host/ws.h" "$stage/image/server/"
+  cp "$here/serve.c" "$here/../../metaverse/voice-host/ws.c" "$here/../../metaverse/voice-host/ws.h" "$stage/image/server/"
   "$here/../bin/coax" c "$here/http-range.coax" --library --header "$stage/image/server/http-range.h" > "$stage/image/server/http-range.c"
   "$here/../bin/coax" c "$here/site-routes.coax" --library --header "$stage/image/server/site-routes.h" > "$stage/image/server/site-routes.c"
-  sed -i.bak 's#"../../verse/voice-host/ws.h"#"ws.h"#' "$stage/image/server/serve.c" && rm -f "$stage/image/server/serve.c.bak"
+  sed -i.bak 's#"../../metaverse/voice-host/ws.h"#"ws.h"#' "$stage/image/server/serve.c" && rm -f "$stage/image/server/serve.c.bak"
   cp "$here/Dockerfile" "$stage/image/"
   image="$region-docker.pkg.dev/$project/cloud-run-source-deploy/coaxial-serve:$(date +%Y%m%d-%H%M%S)"
   gcloud builds submit "$stage/image" --project "$project" --region "$region" --tag "$image" --quiet \

@@ -27,7 +27,7 @@
 // triangles, so the feet and the drawn ground agree at every sample and along every triangle
 // (e2g_y). Past the tiles the land is e2_height, counted.
 //
-// The asset route. The pack tool (verse/tools/assets/everglade2_pack.coax) converts the land here
+// The asset route. The pack tool (metaverse/tools/assets/everglade2_pack.coax) converts the land here
 // once, writes the whole set into the pack's catalog as one content-addressed record (E2T1: its
 // header, each tile's header and revision, the holes and every live sample; e2g_record_write) in
 // `G` lines, and draws the tiles' own samples. The page reads that record (e2g_record_read): every
@@ -792,7 +792,7 @@ e2g_ao :: (g: [] E2Ground, x: f32, z: f32, above: f32) -> f32 {
   g[0].key.tile[0] += 1; #assert e2g_build(g[..]) && g[0].baked == -1 && e2g_ao(g[..], 0, -10, 0) == 1;
 }
 
-// The pack's old ground colour (verse/tools/assets/everglade2_pack.coax gp_colour before #13059), sRGB:
+// The pack's old ground colour (metaverse/tools/assets/everglade2_pack.coax gp_colour before #13059), sRGB:
 // the look the table keeps.
 e2g_pack_colour :: (x: f32, z: f32) -> [3] f32 {
   path := e2_path(x, z); noise := cg_hash(x, z); autumn := e2_gold(x, z); c := [3] f32.[0.32 + autumn * 0.24, 0.53 - autumn * 0.03, 0.055];

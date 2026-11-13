@@ -78,10 +78,10 @@ On the Grid, the microphone button at the top left turns voice on: tap it
 once and talk hands-free, tap it again to stop. The first time, the app says
 that your speech goes to our voice server, which uses Google to recognize it
 and to speak replies. Five bars beside the button follow every 20 ms frame's
-level and light up while `verse/voice.coax` hears you speaking; the
+level and light up while `metaverse/voice.coax` hears you speaking; the
 caption under it shows the partial transcript, then the final one, then the
 reply word by word as it plays. Talking over a reply stops it within a frame.
-The phone talks only to a voice host (`verse/voice-host/`) over a
+The phone talks only to a voice host (`metaverse/voice-host/`) over a
 WebSocket, never to Google. In the simulator the host defaults to
 `ws://127.0.0.1:8787`; set another with the launch argument
 `-OAVoiceHost ws://…` or by holding the button. A phone has no default host
@@ -96,7 +96,7 @@ pastes a code. The key is made on first use and kept in the Keychain
 not synced), so it stays across reinstalls like the wallet seed; it is a
 software key signed with in app memory by libsecp256k1
 (`Vendor/secp256k1/`, `OpenAgents/Platform/NostrSign.c`), not the Secure
-Enclave. `verse/phone-signin.coax` (`#authority`) decides which codes the
+Enclave. `metaverse/phone-signin.coax` (`#authority`) decides which codes the
 phone signs for: `https://openagents.com/login#c=…` (log that browser in)
 and `/projects/<slug>#invite=…` (a member invite), on openagents.com or
 staging.openagents.com, opened as `openagents://HOST/…`, a universal link,
@@ -191,7 +191,7 @@ An explicit `-OABenchmark` Debug launch records the normal Grid frame path
 under Coax-owned scripted input. `R0UITests` enters the world and waits for
 the capture; `Documents/R0-frame.json` contains raw CPU/GPU samples, counts
 and command errors. Release builds compile the capture adapter out. See
-[the benchmark README](../../verse/benchmarks/README.md) for commands and
+[the benchmark README](../../metaverse/benchmarks/README.md) for commands and
 the scope of each timer. Simulator timing is not physical-phone performance;
 the updated pinned headless comparison passes the proposed median budget;
 device and frame-tail evidence remain open.
@@ -200,20 +200,20 @@ device and frame-tail evidence remain open.
 
 | Source | Responsibility |
 | --- | --- |
-| `../../verse/home.coax` | Graph generation, dust, pulses, animation, touch ownership, HUD layout, closed resource admission and generated proto codec calls |
-| `../../verse/grid.coax` | The Grid: projecting and fading its ground ring, the view matrix, the move/look/jump touch policy |
+| `../../metaverse/home.coax` | Graph generation, dust, pulses, animation, touch ownership, HUD layout, closed resource admission and generated proto codec calls |
+| `../../metaverse/grid.coax` | The Grid: projecting and fading its ground ring, the view matrix, the move/look/jump touch policy |
 | `../../metaverse-engine/cam/camera.coax` | The home's overview orbit and Start's dolly down to you |
 | `../../metaverse-engine/move/player.coax` | Walking, running, jumping, bumping into the robots and the terminal, and the third-person camera, ported from aethyr-cpp |
-| `../../verse/cast.coax` | Your character (skinned, idle/walk/run/jump/dance clips cross-faded) and the six robots, including the Foreman by the start, with a body capsule per robot bone that you collide with; reads and checks `Cast.bin` |
-| `OpenAgents/Resources/Cast.bin`, `cast-layer*.jpg` | Packed by `../../verse/tools/pack_cast.py` from aethyr-cpp assets (Quaternius models, CC0) |
-| `../../verse/light.coax` | Scalar shader functions: sky, dots, threads, glass bar, bloom, tone mapping |
-| `../../verse/platform/host.c` | Bounded resident storage, generation-checked handles, packed draw packets |
+| `../../metaverse/cast.coax` | Your character (skinned, idle/walk/run/jump/dance clips cross-faded) and the six robots, including the Foreman by the start, with a body capsule per robot bone that you collide with; reads and checks `Cast.bin` |
+| `OpenAgents/Resources/Cast.bin`, `cast-layer*.jpg` | Packed by `../../metaverse/tools/pack_cast.py` from aethyr-cpp assets (Quaternius models, CC0) |
+| `../../metaverse/light.coax` | Scalar shader functions: sky, dots, threads, glass bar, bloom, tone mapping |
+| `../../metaverse/platform/host.c` | Bounded resident storage, generation-checked handles, packed draw packets |
 | `OpenAgents/App.swift`, `HomeViewController.swift` | UIKit lifecycle, safe areas, orientation, reduced motion, accessibility, native touch forwarding; routes Start to the Grid and passes numbers between `grid.coax` and `player.coax` each frame |
-| `OpenAgents/Voice/` | Voice's Swift host: the audio session (Bluetooth, AirPlay, car, interruptions, route changes), capture with Apple's voice processing into a preallocated ring, 20 ms frames through `oa_voice_uplink`, the WebSocket to the voice host, reply audio through the jitter buffer and `oa_voice_downlink` into the player, barge-in, playback reports, reconnects, and the toggle/level/caption UI. Bundled `Fixtures/*.wav` are copies of `../../verse/voice-host/fixtures/` for tests |
-| `../../verse/platform/voice.h`, `voice.c`, `../../verse/voice*.coax` | The voice engine both the phone and the voice host link: turns, levels, barge-in, jitter buffer, gain, FrameFeatures, frame decisions and the wire codecs (`openagents.voice.v1alpha1`) |
+| `OpenAgents/Voice/` | Voice's Swift host: the audio session (Bluetooth, AirPlay, car, interruptions, route changes), capture with Apple's voice processing into a preallocated ring, 20 ms frames through `oa_voice_uplink`, the WebSocket to the voice host, reply audio through the jitter buffer and `oa_voice_downlink` into the player, barge-in, playback reports, reconnects, and the toggle/level/caption UI. Bundled `Fixtures/*.wav` are copies of `../../metaverse/voice-host/fixtures/` for tests |
+| `../../metaverse/platform/voice.h`, `voice.c`, `../../metaverse/voice*.coax` | The voice engine both the phone and the voice host link: turns, levels, barge-in, jitter buffer, gain, FrameFeatures, frame decisions and the wire codecs (`openagents.voice.v1alpha1`) |
 | `OpenAgents/Platform/` | CAMetalLayer/Metal resources, triple-buffer transfers, CoreText glyph raster, texture/stage bindings |
 | `../../proto/openagents/metareal/home/v1alpha1/` | HomeConfiguration in the root protocol tree; imports the existing engine HudAction |
-| `../../verse/home.textproto` | Human-readable resource; `scripts/proto.sh generate` produces `Home.pb` |
+| `../../metaverse/home.textproto` | Human-readable resource; `scripts/proto.sh generate` produces `Home.pb` |
 
 This is a port of the native engine home from source commit
 `69848ca` (the engine repository is identified in the existing Metaverse
@@ -243,8 +243,8 @@ Start uses the same Coax HUD activation policy for touch and VoiceOver.
 coax/build.sh test
 export PROTOC=/path/to/protoc-29.3/bin/protoc
 PROTO_PYTHON=/path/to/python-with-protobuf-5.29.3 scripts/proto.sh check
-python3 verse/test_home.py
-verse/test_sanitized.sh
+python3 metaverse/test_home.py
+metaverse/test_sanitized.sh
 xcodebuild -project apps/openagents-ios/OpenAgents.xcodeproj -scheme OpenAgents \
   -destination 'platform=iOS Simulator,name=OpenAgents iPhone' \
   -derivedDataPath apps/openagents-ios/build CODE_SIGNING_ALLOWED=NO \
@@ -280,7 +280,7 @@ Release builds. `-OAVoiceHost` and the long press work in every build.
 Haunted House regression checks:
 
 ```sh
-verse/test_haunt.sh
+metaverse/test_haunt.sh
 # Set PROTOC/PROTO_PYTHON to the pinned proto toolchain for the independent oracle.
 # Native UI: -only-testing:OpenAgentsUITests/HauntUITests
 ```

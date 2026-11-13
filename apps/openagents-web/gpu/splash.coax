@@ -2,7 +2,7 @@
 // build.sh writes that module from this with coax/web/wgsl-module.coax (splash.module,
 // splash.bindings beside it). It began as coax/web/wgsl-coax.coax's translation of the hand-written WGSL.
 #load "../../../metaverse-engine/gpu/wgsl.coax";
-#load "../../../verse/light.coax";
+#load "../../../metaverse/light.coax";
 
 // The splash's two passes. Every number they draw from comes from
 // splash.coax and ui.coax: the canvas size, the nebula's clock, the fade,
@@ -10,7 +10,7 @@
 // stroke's place, width, light and glow.
 //
 // Temporary: hand-written WGSL until whole modules come from Coax (docs/verse/native-gpu.md, G6), except
-// the HUD bar, which is verse/light.coax's verse_bar (the iOS Start
+// the HUD bar, which is metaverse/light.coax's verse_bar (the iOS Start
 // bar's light, Stages.metal bar_fragment) written as WGSL by coax wgsl at
 // build time into the block below. The nebula is the previous
 // openagents.com splash's, unchanged.

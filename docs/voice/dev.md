@@ -8,39 +8,39 @@ the wire is `proto/openagents/voice/v1alpha1/voice.proto`.
 
 | Path | What it is |
 | --- | --- |
-| `verse/voice*.coax` | The voice engine: VAD, end of turn, barge-in, frame features and decisions, the wire codec, floor and meter authorities |
-| `verse/platform/voice.h`, `voice.c` | The plain-C face of the engine, shared by the voice host and the iOS app |
-| `verse/voice-host/host.c` | The voice host: WebSocket server, sessions, provider calls |
-| `verse/voice-host/speech.c` | Speech providers (`google`, `local`), agents (`gemini`, `echo`) and the per-route agent instructions |
-| `verse/voice-host/voice-reply.coax` | `#authority`: when a partial may stand as the final transcript, when to recognize early, where a streamed reply is cut into sentences |
-| `verse/voice-host/ws.c`, `wav.c` | RFC 6455 WebSocket framing and handshake; WAV reading and writing |
-| `verse/voice-host/client.c` | `voice-client`, the dev test client |
-| `verse/voice-host/fixtures/` | Three 16 kHz mono speech fixtures, made once with Google TTS |
-| `verse/voice-host/build.sh`, `run.sh`, `test.sh` | Build, run, test |
+| `metaverse/voice*.coax` | The voice engine: VAD, end of turn, barge-in, frame features and decisions, the wire codec, floor and meter authorities |
+| `metaverse/platform/voice.h`, `voice.c` | The plain-C face of the engine, shared by the voice host and the iOS app |
+| `metaverse/voice-host/host.c` | The voice host: WebSocket server, sessions, provider calls |
+| `metaverse/voice-host/speech.c` | Speech providers (`google`, `local`), agents (`gemini`, `echo`) and the per-route agent instructions |
+| `metaverse/voice-host/voice-reply.coax` | `#authority`: when a partial may stand as the final transcript, when to recognize early, where a streamed reply is cut into sentences |
+| `metaverse/voice-host/ws.c`, `wav.c` | RFC 6455 WebSocket framing and handshake; WAV reading and writing |
+| `metaverse/voice-host/client.c` | `voice-client`, the dev test client |
+| `metaverse/voice-host/fixtures/` | Three 16 kHz mono speech fixtures, made once with Google TTS |
+| `metaverse/voice-host/build.sh`, `run.sh`, `test.sh` | Build, run, test |
 
 ## Build, run, test
 
 ```sh
-verse/voice-host/build.sh                 # -> verse/voice-host/build/voice-host, voice-client
-verse/voice-host/run.sh                   # Google speech + Gemini on 127.0.0.1:8787
-verse/voice-host/run.sh --offline         # local speech + echo agent, no network
-verse/voice-host/test.sh                  # offline cases, then the live Google cases
-verse/voice-host/test.sh --offline        # offline cases only
+metaverse/voice-host/build.sh                 # -> metaverse/voice-host/build/voice-host, voice-client
+metaverse/voice-host/run.sh                   # Google speech + Gemini on 127.0.0.1:8787
+metaverse/voice-host/run.sh --offline         # local speech + echo agent, no network
+metaverse/voice-host/test.sh                  # offline cases, then the live Google cases
+metaverse/voice-host/test.sh --offline        # offline cases only
 ```
 
 Talk to a running host with a fixture:
 
 ```sh
-verse/voice-host/build/voice-client --out /tmp/reply.wav verse/voice-host/fixtures/hello-foreman.wav
+metaverse/voice-host/build/voice-client --out /tmp/reply.wav metaverse/voice-host/fixtures/hello-foreman.wav
 afplay /tmp/reply.wav
 ```
 
 `build.sh` uses only what's on the Mac: it builds `coax/bin/coax` if it is
 missing or stale (the same way `apps/openagents-ios/generate.sh` does),
-compiles each `verse/voice*.coax` and `verse/voice-host/*.coax` to a C library with
+compiles each `metaverse/voice*.coax` and `metaverse/voice-host/*.coax` to a C library with
 `coax c FILE --library --header` (`voice.coax` becomes `VoiceEngine.c/.h`,
 because `Voice.h` would match `voice.h` on a case-insensitive disk; the others
-are `VoiceWire`, `VoiceFloor`, `VoiceMeter`, `VoiceReply`, `VoiceAsr`), compiles `verse/platform/voice.c` over
+are `VoiceWire`, `VoiceFloor`, `VoiceMeter`, `VoiceReply`, `VoiceAsr`), compiles `metaverse/platform/voice.c` over
 them, and links the host against libcurl from the macOS SDK, Psionic's
 Whisper and Psionic's Parakeet. On Linux it uses an existing `coax/bin/coax`,
 takes libcurl and OpenSSL from the system or from Nix, and builds without
@@ -48,7 +48,7 @@ Whisper (which does not build there yet); Parakeet runs on CUDA (an NVIDIA
 GPU) or, when named, the CPU. The client
 also links the OpenAgents Metaverse Engine's spoken-request gate (`metaverse-engine/audio/voice.coax`). `#authority`
 files run their checks inside `coax c`, so a failing check stops the build.
-Outputs go to `verse/voice-host/build/` (ignored by git).
+Outputs go to `metaverse/voice-host/build/` (ignored by git).
 
 ## Credentials
 
@@ -80,7 +80,7 @@ A real iPhone has no default voice host yet (none is deployed). On the same
 Wi-Fi, run the host on every interface and point the phone at the Mac:
 
 ```sh
-verse/voice-host/run.sh --listen 0.0.0.0:8787
+metaverse/voice-host/run.sh --listen 0.0.0.0:8787
 ```
 
 On the phone, enter the Grid, long-press the microphone at the top left and enter
@@ -264,9 +264,9 @@ during that gap went unnoticed by the client.
 ### Parakeet: local recognition
 
 ```sh
-verse/voice-host/build/voice-host --recognizer parakeet --synthesizer local --agent echo \
+metaverse/voice-host/build/voice-host --recognizer parakeet --synthesizer local --agent echo \
   [--parakeet-model DIR] [--parakeet-device gpu|cpu]
-coax/web/tool.sh verse/voice-host/parakeet-check.coax [MODEL_DIR [CASE]]   # recorded audio only
+coax/web/tool.sh metaverse/voice-host/parakeet-check.coax [MODEL_DIR [CASE]]   # recorded audio only
 ```
 
 One model is opened at start and stays resident: the pinned
@@ -278,7 +278,7 @@ unless `--parakeet-device cpu`: Metal on macOS, CUDA on Linux. An
 unavailable device is a refusal, never a fallback. Audio never leaves the
 machine, and the free tier is metered as for any recognizer.
 
-[`verse/voice-asr.coax`](../../verse/voice-asr.coax) (`#authority`, zero
+[`metaverse/voice-asr.coax`](../../metaverse/voice-asr.coax) (`#authority`, zero
 surviving mutants) makes every decision; `host.c` and `speech.c` only move
 bytes, run threads and call the engine:
 

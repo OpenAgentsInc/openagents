@@ -87,7 +87,7 @@ The apps name realms and GPU passes by path, so moving a client's Coax can
 stop them building. Two checks catch that:
 
 ```sh
-coax/web/tool.sh verse/native/app-realms.coax "$PWD" coax/web/build/app-realms
+coax/web/tool.sh metaverse/native/app-realms.coax "$PWD" coax/web/build/app-realms
 apps/shared/host/apple/check.sh ~/.openagents/apple-check
 ```
 

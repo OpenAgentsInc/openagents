@@ -4,7 +4,7 @@
 // hotbar.rs` DEV_ORDER and `demolition/meteor.rs`), on today's realm.
 //
 // The realm plays by the SRD 5e ruleset (realms.json "ruleset": "srd5", the
-// page facts' ruleset= line; verse/rules/srd5.coax). Without it there is no
+// page facts' ruleset= line; metaverse/rules/srd5.coax). Without it there is no
 // bar and nothing breaks. With it, the old engine's tray of game-icons.net
 // art along the bottom (on a phone, above the thumbs' sticks), each slot's
 // key at its top right and its card over it (sp_bar):
@@ -27,14 +27,14 @@
 // What a blast reaches takes its damage as an unattended object (full
 // damage, falling off to none at the blast's edge, the old engine's tuning):
 // every kit piece of the town has its SRD armor class and hit points by
-// material and size (sp_object), and verse/demolish.coax breaks it into
+// material and size (sp_object), and metaverse/demolish.coax breaks it into
 // chunks at 0, drops what it held up and steps the debris. Nothing a player
 // breaks is shared: it is this page's, and a broken building grows back
 // whole after 60 s of rest with you 30 m away (the old engine's rule), or at
 // once with R. The people and the cats aren't hurt; things an admin placed
 // don't break.
 //
-// On water (W8, verse/water-spells.coax): a spell aimed over the river or a
+// On water (W8, metaverse/water-spells.coax): a spell aimed over the river or a
 // pond strikes its surface, not the bed. There a meteor raises a crown
 // splash, rings and steam, and leaves no scorch; a bolt flashes into steam
 // and runs through the water: if you wade, swim or dive in the same water
@@ -42,12 +42,12 @@
 // its lightning on a failure; a rowboat keeps you out of it. The orb bursts
 // into spray and rings. Floats near it are thrown back. What breaks over
 // the water falls in: wood floats and drifts on the current, stone sinks
-// (verse/demolish.coax demo_step_wet).
+// (metaverse/demolish.coax demo_step_wet).
 
-#load "../../verse/rules/srd5.coax";
-#load "../../verse/demolish.coax";
+#load "../../metaverse/rules/srd5.coax";
+#load "../../metaverse/demolish.coax";
 #load "../../metaverse-engine/action/deed.coax";   // ask, act, present: a cast plays only once the room takes it (docs/verse/action-pipeline.md, #13072)
-#load "../../verse/water-spells.coax";
+#load "../../metaverse/water-spells.coax";
 #load "everglade-hotbar.coax";
 #load "everglade-arrange.coax";
 #load "everglade-abilities.coax";
@@ -120,7 +120,7 @@ SP_DROPS :: 12;
 SP_CELLS :: 22;           // 16 m cells a side over the ground (352 m)
 SP_GROUPS :: EG_BUILDINGS + EG_DHOUSES + SP_CELLS * SP_CELLS;   // a building each, a district house each, then 16 m cells for the rest
 SP_NEWS :: 5.0;           // s a cast's line shows
-// The debris is drawn as the pieces' own meshes, cut (verse/demolish.coax's fracture): each chunk an
+// The debris is drawn as the pieces' own meshes, cut (metaverse/demolish.coax's fracture): each chunk an
 // instance of the mesh it broke from, posed as its body is, in its run of SHARD_AT (a run per mesh,
 // everglade.coax SHARD_DRAW), and its cell's planes in two objects at CELL_AT (everglade.wgsl LOOK_SHARD
 // cuts the mesh to them and paints the broken interior where it is cut).
@@ -911,7 +911,7 @@ sp_blast :: (s: [] Everglade, at: Point, slot: int) {
   // or fells is the server's, and comes back as its entities and hits.
   if s[0].sp.remote { sp_blast_look(s, at, slot, radius); return; }
   watch_spell(s, at, slot);   // who it hurts, and whether the watch calls it a crime (everglade-watch.coax)
-  // what it breaks is thrown out from it (verse/demolish.coax demo_blast_begin): along the ground, or
+  // what it breaks is thrown out from it (metaverse/demolish.coax demo_blast_begin): along the ground, or
   // out of the wall it struck when it burst high on one
   if slot != SP_ORB {
     high := at.y - sp_surface(s, at.x, at.z, at.y + 0.5) > 2.5;
@@ -1413,7 +1413,7 @@ spells_frame :: (s: [] Everglade, u: [] f32, shot: Shot, dt: f32) {
   sp_strikes(s, dt);
   // the abilities' fields over the debris, the people they have up, you (everglade-abilities.coax)
   if s[0].sp.on { ab_frame(s, dt); eg_ra_frames(s, dt); } else { w[0].field_n = 0; }   // (and every seat's copy in a room)
-  // the debris (verse/demolish.coax), its dust, and what grows back
+  // the debris (metaverse/demolish.coax), its dust, and what grows back
   demo_step_wet(w, everglade_ground(), s[0].heights[..], s[0].water_grid[..], dt);
   if s[0].sp.on { ab_after_step(s); }
   sp_dome(s, dt);
@@ -2128,7 +2128,7 @@ spells_hud :: (s: [] Everglade, out: [] f32, u: [] f32, at: int, bottom: f32) ->
 // everglade/hotbar.rs` draw_of and tooltip.rs): a beveled tray of game-icons.net art, a slot 36
 // units square and 42 apart, padded 8, the tray's bottom 8 above the screen's, a unit the screen's
 // CSS height over 768 (never under a pixel); each slot's icon over a dark slot with its key at the
-// top right (pictures from verse/tools/everglade_hotbar.coax, drawn by the host), framed in bronze,
+// top right (pictures from metaverse/tools/everglade_hotbar.coax, drawn by the host), framed in bronze,
 // or in gold and twice as thick while its spell is picked or casting. The mouse resting on a slot
 // for 0.35 s, or a finger holding it for 0.45 s, shows its card over it. On a phone the tray stands
 // above the thumbs' sticks, as the old phone app's (24 points and two 56-point stick radii up).

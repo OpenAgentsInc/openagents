@@ -1,9 +1,9 @@
-// The village (ff-village, verse/fairy-forest/README.md "The community"): a
+// The village (ff-village, metaverse/fairy-forest/README.md "The community"): a
 // creature whose glade you restored can be invited home (E by it: INVITE);
 // it takes a plot round your home's clearing and builds its own small house
 // there, in its own colours, over a couple of minutes, then comes by to
 // visit, sitting at its door while you are home. The data and its save are
-// verse/fairy-forest/life.coax's.
+// metaverse/fairy-forest/life.coax's.
 //   coax/bin/coax test apps/openagents-web/fairy.coax --steps 400000000
 
 // Each creature's house: its walls and its roof.

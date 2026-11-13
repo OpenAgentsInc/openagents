@@ -2,7 +2,7 @@
 // with coax/web/wgsl-module.coax (fivelab.module and fivelab.bindings beside it).
 #load "../../../metaverse-engine/gpu/wgsl.coax";
 #load "../../../metaverse-engine/gpu/wg-make.coax";
-#load "../../../verse/style.coax";
+#load "../../../metaverse/style.coax";
 #load "../../../metaverse-engine/render/sampling.coax";
 
 // bg_fs draws one of two views of the battle, as the page picks (V):
@@ -11,10 +11,10 @@
 //    a grass clearing ringed with trees under a hazy sky, the grid painted faintly on the grass,
 //    the spells' areas on the ground. It traces each pixel against the glade's few shapes (the
 //    ground and the trees' spheres and capsules, analytically), lights it with the style's soft
-//    toon bands, cool shadows and haze (verse/style.coax), and writes its depth, so the figures
+//    toon bands, cool shadows and haze (metaverse/style.coax), and writes its depth, so the figures
 //    stand in it.
 // The figures are scene_vs/scene_fs: the Quaternius people Everglade's NPCs wear (the realm's pack,
-// verse/tools/people.py's parts), skinned on the GPU from the clips everglade/scene/bodies.coax bakes once
+// metaverse/tools/people.py's parts), skinned on the GPU from the clips everglade/scene/bodies.coax bakes once
 // into the bake store (three rows of four a joint, 65 joints a frame), an instance a part a figure
 // (FivelabObj, the objects store), lit in the glade's bands.
 // Either way the log panel's dark glass goes over it. fx_vs/fx_fs draw the strokes
@@ -226,7 +226,7 @@ fivelab_mark :: (marks:f32,k:f32)->bool {
   return wg_fmod(floor(marks/wg_exp2(k)),2.0f32)>0.5f32;
 }
 
-// ---- the glade's light (the style's: verse/style.coax)
+// ---- the glade's light (the style's: metaverse/style.coax)
 
 fivelab_sky :: (rd:V3,sun:V3,t:f32)->V3 {
   up:f32=fmax(rd.y,0.0f32);
@@ -441,7 +441,7 @@ fivelab_bg_fs :: (pos:V4,u:[]f32,frame:[]f32)->FivelabBg {
 }
 #load "character-glade.coax";
 
-// ---- the figures: the pack's people parts (verse/tools/people.py's 24-byte vertex: x, y and z in
+// ---- the figures: the pack's people parts (metaverse/tools/people.py's 24-byte vertex: x, y and z in
 // 16 bits over a 2.5 m box, the layer and the vertex's kind, the normal in three signed bytes, uv in
 // 16 bits, four joints and four weights in bytes), skinned on the GPU by up to four joints of a baked
 // frame of the bake store, a second frame mixed in while a clip fades into the next.

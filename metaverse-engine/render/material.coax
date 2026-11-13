@@ -4,10 +4,10 @@
 //
 // The surface functions below are the ones every painterly and photoreal realm's WGSL calls.
 // coax wgsl emits each as `coax_p_<name>`, so they keep their verse_style_ names: a realm's
-// shader is byte for byte what it was when they lived in verse/style.coax, which loads this
+// shader is byte for byte what it was when they lived in metaverse/style.coax, which loads this
 // file. They are plain f32, one colour channel at a time (the Metal scalar profile has no
 // vectors). The numbers they take come from the realm's style preset at its clock
-// (verse/style-preset.coax, verse_style_at), so a realm never hand-tunes them.
+// (metaverse/style-preset.coax, verse_style_at), so a realm never hand-tunes them.
 //   coax/bin/coax test metaverse-engine/render/material.coax
 //   coax/bin/coax mutate metaverse-engine/render/material.coax
 
@@ -69,7 +69,7 @@ verse_style_rim :: (ndv:f32,ndl:f32,start:f32,full:f32,strength:f32)->f32 #expor
 verse_style_luma :: (r:f32,g:f32,b:f32)->f32 #export_c #effects(all) {return 0.2126f32*r+0.7152f32*g+0.0722f32*b;}
 
 // book:begin record
-// The styles a material is drawn in: the values of verse/style-preset.coax's STYLE_*.
+// The styles a material is drawn in: the values of metaverse/style-preset.coax's STYLE_*.
 MATERIAL_LOWPOLY :: 0;
 MATERIAL_PAINTERLY :: 1;
 MATERIAL_PHOTOREAL :: 2;

@@ -1,10 +1,10 @@
 // Everglade Nights Experimental: independent, owner-local NWN scene and actors.
 // All scene media arrive in the private pack. Product state and controls are Coax.
-#load "../../verse/nights/ui.coax" as nui;
+#load "../../metaverse/nights/ui.coax" as nui;
 #load "../../metaverse-engine/move/walk.coax" as pc;
 #load "../../metaverse-engine/core/sticks.coax";
 #load "../../metaverse-engine/render/environment-frame.coax" as envf;
-#load "../../verse/nights/light.coax" as spring;
+#load "../../metaverse/nights/light.coax" as spring;
 VERTEX_FLOATS ::16;
 NIGHT_HEROES ::32;
 NIGHT_ENV ::208;

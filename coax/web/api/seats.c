@@ -4,7 +4,7 @@
 // out, and for a hosted seat talks to the runner that holds its page.
 //
 // Every route takes the account by a NIP-98 signature, or from this site's own page by its logged-in
-// session (the YOUR AGENT pane, verse/edit/agent.coax; a POST must carry this site's Origin). Never
+// session (the YOUR AGENT pane, metaverse/edit/agent.coax; a POST must carry this site's Origin). Never
 // by the player key.
 //   POST /api/playtest/seats              {slug, hosted?}  signed (NIP-98) -> {id, slug, hosted, player: {id, key}, until}
 //                                         the seat's own player key: its page plays with it as the account

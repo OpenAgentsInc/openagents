@@ -40,7 +40,7 @@ What the glade is today, and what becomes the painterly default:
 | Cyan daylight sky, drifting cloud shadows (sun x0.45 in shade) | `everglade/scene/gpu/character-glade.coax` (`cg_sky`, `cg_cloud`) | Default sky and cloud-shadow layer |
 | Film response at exposure 1.18, saturation lift 1.16 | `cg_film`, `cg_output` over `metaverse-engine/render/filmic.coax` | Default painterly presentation (Phase 9's identity grade) |
 | Octahedral normals with room for an indirect-light weight; normal/depth contact shading | `cg_normal_pack`, the glade's contact pass | Default contact/AO path (Phase 5) |
-| Painterly bands, rim, dab, cool shadow band | `verse/style-preset.coax` (`painterly_key`, `shadow_cool` 1.5) | Kept as the painterly material response; the glade defaults sit under it |
+| Painterly bands, rim, dab, cool shadow band | `metaverse/style-preset.coax` (`painterly_key`, `shadow_cool` 1.5) | Kept as the painterly material response; the glade defaults sit under it |
 
 Since #13060 these functions and numbers live in the Metaverse Engine: the numbers once, as
 `metaverse-engine/world/environment.coax`'s `ENV_GLADE_*` (`env_glade_profile` is built from them), their
@@ -87,7 +87,7 @@ The existing system supplies useful parts that should be composed and migrated:
 | Existing owner | Current capability | Boundary to close |
 | --- | --- | --- |
 | `metaverse-engine/render/light.coax` | Key direction, two-color hemisphere ambient, snapped shadow space, haze and a bounded 16-light CPU list | Realms still construct lighting and shadow space; the CPU list is not the live realm light path |
-| `verse/style-preset.coax` | Four time keys, sun/moon choice, style uniforms and clock modes | No general spatial environment profile resolver or irregular time tracks |
+| `metaverse/style-preset.coax` | Four time keys, sun/moon choice, style uniforms and clock modes | No general spatial environment profile resolver or irregular time tracks |
 | `metaverse-engine/render/sky.coax`, `vegetation.coax`, `shadow-filter.coax`, `post.coax` | Shared sky/cloud, vegetation, PCF offsets, tone, bloom and shaft arithmetic | Pass ownership and several material/color contracts remain consumer-specific |
 | `apps/openagents-web/gpu/everglade-v1/gpu.coax` | Real geometry shadows, baked sky visibility, lamp/spell lighting, room warmth, weather, water and post | One key shadow map; at most 16 lamp entries evaluated directly; lighting remains embedded in the realm shader |
 | `metaverse-engine/render/scene-lights.coax`, `character.coax` | Detailed characters use world lighting, shadows and post; up to eight selected point lights | Character and world light admission/evaluation are different paths |
@@ -167,7 +167,7 @@ Character Create looks the same. This is the first delivery.
    `character-glade.coax`'s lighting numbers and functions into shared Metaverse Engine
    owners: the profile in `metaverse-engine/world/environment.coax`, the evaluation in
    `metaverse-engine/render/environment.coax`, and the presentation in `post.coax` or
-   `filmic.coax`. Then make `verse/style-preset.coax`'s painterly preset point at
+   `filmic.coax`. Then make `metaverse/style-preset.coax`'s painterly preset point at
    that profile as its default. The `cg_*` names may stay as thin delegates while
    consumers move. Character Create's pinned captures must match before and
    after.
@@ -227,10 +227,10 @@ resolved record yet, and Phase 1 does not change them):
 | --- | --- | --- |
 | Everglade v1 (`/worlds/everglade`, `apps/openagents-web/everglade.coax`, `apps/openagents-web/gpu/everglade-v1/gpu.coax`, `gpu-glade.coax`, `glade-zone.coax`) | its own frozen key, ambient, weather and lamp path (`everglade.wgsl`, 633 vec4s) | an adapter in a later phase; v1 stays frozen |
 | Everglade 5E (`everglade5e.coax`) | Everglade v1's shader (`everglade5e.wgsl`) | with v1's adapter |
-| The fixture (`fixture.coax`, `gpu/fixture.coax`) | `verse/style.coax` presets at its own clock (`fixture.wgsl`, 71 vec4s) | the style-preset compatibility profile, once its shader reads the record |
+| The fixture (`fixture.coax`, `gpu/fixture.coax`) | `metaverse/style.coax` presets at its own clock (`fixture.wgsl`, 71 vec4s) | the style-preset compatibility profile, once its shader reads the record |
 | One-shot's Table Display glade (`oneshot.coax`, `oneshot-table.coax`) | its own shader constants (`oneshot.wgsl`, 442 vec4s) | the painterly default, as 5E Lab |
 | Made realms that pick low poly or flat, or author a time of day or mist (`myrealm.coax`) | `verse_style_at` at the spec's time | a made realm's authored profile (painterly with nothing authored already gets the glade, #13066) |
-| The Metaverse Engine examples (`metaverse-engine/examples/light-a-frame.coax`, `shade-a-material.coax`) and `verse/experimental-terrain.coax` | their own constants or the style presets | book chapters: they read the record when the light chapter does |
+| The Metaverse Engine examples (`metaverse-engine/examples/light-a-frame.coax`, `shade-a-material.coax`) and `metaverse/experimental-terrain.coax` | their own constants or the style presets | book chapters: they read the record when the light chapter does |
 
 ## Phase 2 — Shared surface inputs and a consistent linear pipeline
 

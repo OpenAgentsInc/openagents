@@ -29,7 +29,7 @@ def tasks():
     return result
 def cards():
     def fields(path):return dict(re.findall(r'\b(name|role|knowledge|greet|voice)="([^"]*)"',(ROOT/path).read_text()))
-    base=fields('verse/characters/veyr.coax');release=base|fields('verse/characters/veyr-v2.coax')
+    base=fields('metaverse/characters/veyr.coax');release=base|fields('metaverse/characters/veyr-v2.coax')
     return base,release
 def direction():
     d=[0.]*2880
@@ -154,7 +154,7 @@ def external(complete):
         assert [out[20,c][0]['result'] for c in range(14,18)]==['391','Paris','TORCH','north stairs forest']
         saved=(F/'dialogue.coax').read_text();strings=re.findall(r'^"(.*)"[,]?$',saved,re.M)
         assert [json.loads('"'+s+'"') for s in strings]==[out[20,c][0]['result'] for c in range(6,14)]
-        preset=json.loads((ROOT/'verse/characters/veyr-v2.json').read_text());assert set(preset)=={'name','role','knowledge','greet'}
+        preset=json.loads((ROOT/'metaverse/characters/veyr-v2.json').read_text());assert set(preset)=={'name','role','knowledge','greet'}
         assert preset['name']=='Veyr, the Ash Regent' and 'Mira' not in preset['knowledge']
         assert all(len(preset[k].encode())<=cap for k,cap in [('name',60),('role',120),('knowledge',4000),('greet',300)])
         assert 'Style examples' in preset['knowledge'] and preset['knowledge'].count('Player:')==4
@@ -201,7 +201,7 @@ def provenance():
     # Bind source preimages wherever retained, and the still-current native build.
     files=[p for p in (F/'builds').iterdir() if p.is_file() and p.suffix!='.sha256']
     available={hashlib.sha256(raw(p)).hexdigest() for p in files}
-    available.update(hashlib.sha256(raw(ROOT/p)).hexdigest() for p in ['psionic/tools/villain-run.coax','psionic/tools/villain-data.coax','psionic/tools/villain-text.coax','psionic/lib/villain-dialogue.coax','verse/characters/veyr.coax','verse/characters/veyr-v2.coax','psionic/fixtures/verse-villain/protocol.md'])
+    available.update(hashlib.sha256(raw(ROOT/p)).hexdigest() for p in ['psionic/tools/villain-run.coax','psionic/tools/villain-data.coax','psionic/tools/villain-text.coax','psionic/lib/villain-dialogue.coax','metaverse/characters/veyr.coax','metaverse/characters/veyr-v2.coax','psionic/fixtures/verse-villain/protocol.md'])
     for path in (F/'builds').glob('*.sha256'):
         for line in path.read_text().splitlines():
             digest,name=line.split('  ',1)

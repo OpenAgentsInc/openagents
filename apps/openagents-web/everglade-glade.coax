@@ -1,6 +1,6 @@
 // The glade south of the South Gate (#13018, everglade/legacy/v1/glade-zone.coax): Character Create's
 // Nature glade drawn by Everglade's own renderer, in Everglade's light. The realm's pack carries it
-// (verse/tools/assets/character_glade_pack.coax, zone mode): one static mesh, its trees, rocks,
+// (metaverse/tools/assets/character_glade_pack.coax, zone mode): one static mesh, its trees, rocks,
 // flowers and ground, in the glade's own frame, and three kinds of grass blade, each drawn once for
 // every seed the pack planted (its place, size and turn). The glade's objects are the shapes' first
 // slots (everglade.coax SLOTS[0]): the static mesh's, then a grass kind's each. Each holds the

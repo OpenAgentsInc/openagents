@@ -9,7 +9,7 @@
 //
 // Three cost profiles: pre-fractured small debris (a few pieces, no collision, faded), authored kinematic
 // breakup with a durable end state (pieces on a path, then the broken variant), and procedural structural
-// fracture through verse/demolish.coax's support model (budgeted pieces that may collide).
+// fracture through metaverse/demolish.coax's support model (budgeted pieces that may collide).
 //
 // An attachment (a rider on a mount, a sword in a hand) has one movement authority while attached:
 // the parent. Children update after their parents (attach_order), from the parent's accepted pose. A

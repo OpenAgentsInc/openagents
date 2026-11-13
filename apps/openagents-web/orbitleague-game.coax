@@ -3,7 +3,7 @@
 // goal throws, and the room's wire on the frozen profile (a car's report, the room's state, and
 // how a page takes that state). orbitleague.coax, the page, loads it and adds the controls, the
 // camera, the HUD, the clips, the paint picker and the frame; the room server's Orbit League
-// module (orbit/server/room.coax) loads it alone, so the room builds no page, UI or font (#13347).
+// module (metaverse/orbit-league/server/room.coax) loads it alone, so the room builds no page, UI or font (#13347).
 // The v2 profile's wire is orbit-session.coax and orbit-snapshot.coax.
 
 #load "ui-core.coax";      // Box (the match's state keeps the page's button boxes), put_int
@@ -12,8 +12,8 @@
 #load "../../metaverse-engine/physics/vehicle.coax";
 #load "../../metaverse-engine/physics/gravity.coax";
 #load "../../metaverse-engine/physics/thrust.coax";
-#load "../../verse/drum.coax";
-#load "../../verse/sphere.coax";
+#load "../../metaverse/drum.coax";
+#load "../../metaverse/sphere.coax";
 #load "../../metaverse-engine/core/loop.coax";   // Aethyr's one clock: fixed 120 Hz steps
 #load "orbit-snapshot.coax";
 #load "../../metaverse-engine/net/predict.coax";   // your car's controls by number, for the re-run (#13277)
@@ -236,7 +236,7 @@ OrbitLeague :: struct {
 }
 
 // A v2 control's whole numbers as the drive the step takes: the room's and the page's one reading
-// (orbit/server/room.coax olr_auth_tick, orbitleague.coax's prediction).
+// (metaverse/orbit-league/server/room.coax olr_auth_tick, orbitleague.coax's prediction).
 orb_drive :: (throttle: int, steer: int, flags: int) -> Drive {
   return Drive.{input = VehicleInput.{throttle = f64(throttle) / 1000, steer = f64(steer) / 1000, handbrake = (flags & 1) != 0, jump = (flags & 2) != 0}, boost = (flags & 4) != 0};
 }

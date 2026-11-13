@@ -1,10 +1,10 @@
-// Your garden (ff-garden, verse/fairy-forest/README.md "Caring for something
+// Your garden (ff-garden, metaverse/fairy-forest/README.md "Caring for something
 // until it changes"): six beds in your home's garden room. E at a bed plants
 // a seed (one for each patch you bloom and one a day you come), then waters
 // it and sings to it; it grows by real days, and the most cared for turns
 // rare: the sapling a glowing tree, the flower a moon flower a lantern moth
 // comes to, the mushroom a glowcap. The data and its save are
-// verse/fairy-forest/life.coax's; the clock is the face's (fairy_clock).
+// metaverse/fairy-forest/life.coax's; the clock is the face's (fairy_clock).
 //   coax/bin/coax test apps/openagents-web/fairy.coax --steps 400000000
 
 FFG_PLANT :: 1; FFG_WATER :: 2; FFG_SING :: 3;

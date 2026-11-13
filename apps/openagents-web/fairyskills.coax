@@ -1,4 +1,4 @@
-// What you learn (ff-skills, verse/fairy-forest/README.md "What you learn:
+// What you learn (ff-skills, metaverse/fairy-forest/README.md "What you learn:
 // skills"): seven skills, each learned once, from a moment.
 //   BLOOM   your first bloom
 //   SPEAK   a creature answering you for the first time
@@ -14,7 +14,7 @@
 //   WATER   the sticks dammed across the stream above the pond (E: CLEAR);
 //           then WATER at one bed waters every bed in your garden
 // Each one learned puts a gem on her wings. The data and its save are
-// verse/fairy-forest/life.coax's.
+// metaverse/fairy-forest/life.coax's.
 //   coax/bin/coax test apps/openagents-web/fairy.coax --steps 400000000
 
 FFK_V_MEND :: 1; FFK_V_AXE :: 2; FFK_V_CUT :: 3; FFK_V_LANTERN :: 4; FFK_V_DAM :: 5; FFK_V_GATHER :: 6;

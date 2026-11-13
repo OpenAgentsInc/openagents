@@ -44,7 +44,7 @@ final class HomeUITests: XCTestCase {
         XCTAssertTrue(balance.exists)
         XCTAssertGreaterThan(balance.frame.minX, app.frame.width / 2, "the balance sits top right")
         XCTAssertLessThan(balance.frame.minY, 120)
-        // Your character stands idle, animated by verse/cast.coax.
+        // Your character stands idle, animated by metaverse/cast.coax.
         let you = app.otherElements["grid.you"]
         XCTAssertTrue(you.waitForExistence(timeout: 5))
         XCTAssertEqual(you.value as? String, "idle")

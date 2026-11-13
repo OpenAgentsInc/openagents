@@ -97,7 +97,7 @@ already have a Coax base:
 | Area | Today | Where |
 | --- | --- | --- |
 | The language and tools | Coax, compiling to C and Wasm, with a book | `coax/`, `coax/book/` |
-| Engine and world | Aethyr, the Verse, Everglade, Experimental, with a book | `metaverse-engine/`, `verse/`, `everglade/` |
+| Engine and world | Aethyr, the Verse, Everglade, Experimental, with a book | `metaverse-engine/`, `metaverse/`, `everglade/` |
 | Protocol | Nostr core and about 80 NIPs, every OpenAgents NIP (now 37, adding AGENT, DEPLOY, KEYS and SKILL), a relay, and a book | `coax/lib/nostr/`, `nostr/nips/openagents/`, `nostr/book/` |
 | Bitcoin and Lightning | Lightning primitives (BOLT 1, channels, onion, offers, pay, invoices), an explorer lab, and a book | `coax/lib/lightning/`, `bitcoin/` |
 | x402 | settle and verify | `coax/lib/x402/` |

@@ -1,11 +1,11 @@
-// Your home (ff-home, verse/fairy-forest/README.md "Your home and the
+// Your home (ff-home, metaverse/fairy-forest/README.md "Your home and the
 // community"): a hollow under a great root in Mossbank's west, with the
 // mirror pool, and a room more for each root of the heart tree you wake (the
 // garden, the table room, the shelves, the green). BUILD, in your home, puts
 // a bar along the bottom: the pieces (bed, table, stool, shelf, lamp, rug,
 // flowers, toadstool) and PLACE, MOVE, TURN, SIZE and UNDO, the same verbs
 // as the realm edit tools, for the piece in front of you. What you build is
-// kept in the save's tail (verse/fairy-forest/life.coax), yours alone.
+// kept in the save's tail (metaverse/fairy-forest/life.coax), yours alone.
 //   coax/bin/coax test apps/openagents-web/fairy.coax --steps 400000000
 
 FFB_ACTS :: 6;

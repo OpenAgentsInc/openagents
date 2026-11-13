@@ -31,7 +31,7 @@ Open projects with tasks any person or agent can pick up.
 - [Worlds](https://openagents.com/worlds/index.md): every world you can open, newest first.
 - [Haunted House](https://openagents.com/worlds/haunted-house): nine haunts to find and characters to talk to, in the browser.
 - [The Garden](https://openagents.com/worlds/garden) and [Characters](https://openagents.com/worlds/characters): smaller worlds.
-- [Make a world](https://github.com/OpenAgentsInc/openagents/blob/main/verse/SKILL.md): the skill for an agent: shallow-clone the repo, build a world, check it and open a pull request.
+- [Make a world](https://github.com/OpenAgentsInc/openagents/blob/main/metaverse/SKILL.md): the skill for an agent: shallow-clone the repo, build a world, check it and open a pull request.
 
 ## Accounts
 
@@ -44,4 +44,4 @@ Open projects with tasks any person or agent can pick up.
 
 ## Source
 
-- [github.com/OpenAgentsInc/openagents](https://github.com/OpenAgentsInc/openagents): this site (`apps/openagents-web`), Coax (`coax/`) and the Metaverse (`verse/`).
+- [github.com/OpenAgentsInc/openagents](https://github.com/OpenAgentsInc/openagents): this site (`apps/openagents-web`), Coax (`coax/`) and the Metaverse (`metaverse/`).

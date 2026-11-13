@@ -3,7 +3,7 @@
 // standing on the ground under it. Made in Coax from the engine's build-site meshes
 // (metaverse-engine/world/build-site-mesh.coax), in its materials (timber; straw and paint in their own colours),
 // to layout.coax's numbers; the scene packer adds the whole range to a pack as one mesh
-// (verse/tools/assets/character_glade_pack.coax --append-range, "C glade/range").
+// (metaverse/tools/assets/character_glade_pack.coax --append-range, "C glade/range").
 //
 //   the pieces (rg_piece): what stands where, in the range's frame;
 //   the mesh (rg_build): every piece, on the ground heights it is given;

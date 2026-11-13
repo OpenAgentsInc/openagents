@@ -9,8 +9,8 @@ private final class Surface: UIView {
 }
 
 /// Native lifecycle/input adapter. Coax owns the screen and all touch policy.
-/// Start opens the Grid: verse/grid.coax draws it and reads the fingers,
-/// metaverse-engine/move/player.coax walks it, verse/cast.coax animates you and the
+/// Start opens the Grid: metaverse/grid.coax draws it and reads the fingers,
+/// metaverse-engine/move/player.coax walks it, metaverse/cast.coax animates you and the
 /// robots, and this file passes numbers between them.
 final class HomeViewController: UIViewController {
     private var surface: Surface { view as! Surface }

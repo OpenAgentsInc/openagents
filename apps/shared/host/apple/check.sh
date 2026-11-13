@@ -4,7 +4,7 @@
 # builds only, nothing installed, nothing signed for release, no Keychain. Run it after a change to
 # a client's Coax, a realm's face, the page host (metaverse-engine/host/apple/) or a struct the Swift reads.
 # The part any build host can do (every realm and pass the apps name resolves, emits and compiles)
-# runs first, and alone in the pipeline's reports check: verse/native/app-realms.coax.
+# runs first, and alone in the pipeline's reports check: metaverse/native/app-realms.coax.
 #   apps/shared/host/apple/check.sh SCRATCH     SCRATCH holds Xcode's DerivedData and the logs; delete it after
 # Each line it prints is one step that passed. A step that fails prints its log's last lines.
 set -euo pipefail
@@ -18,7 +18,7 @@ step() {   # NAME CMD...
   "$@" > "$scratch/$name.log" 2>&1 || { tail -40 "$scratch/$name.log" >&2; echo "check.sh: $name failed ($scratch/$name.log)" >&2; exit 1; }
   echo "ok $name"
 }
-step app-realms "$repo/coax/web/tool.sh" "$repo/verse/native/app-realms.coax" "$repo" "$scratch/app-realms"
+step app-realms "$repo/coax/web/tool.sh" "$repo/metaverse/native/app-realms.coax" "$repo" "$scratch/app-realms"
 step everglade-mac "$repo/apps/everglade-desktop/build.sh"
 step everglade-iphone-simulator "$repo/apps/everglade-mobile/build.sh"
 step openagents-mac "$repo/apps/openagents-desktop/build.sh"

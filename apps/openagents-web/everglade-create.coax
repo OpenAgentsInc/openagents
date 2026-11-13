@@ -207,7 +207,7 @@ cz_drive :: (s: [] Everglade, dt: f32) -> bool {
   }
   return true;
 }
-// Where the road runs at world z: the glade's walk out of the clearing (verse/character-glade.coax
+// Where the road runs at world z: the glade's walk out of the clearing (metaverse/character-glade.coax
 // cg_walk_x, in the glade's frame turned half round), then the town's road at x 0.
 cz_road_x :: (z: f32) -> f32 {
   if z >= f32(EZ_SEAM) + 6 { return 0; }

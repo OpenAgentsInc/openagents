@@ -10,10 +10,10 @@ The first expansion of Planetary Villa, Kiki's world on the OpenAgents Metaverse
 
 On a computer: WASD moves you at a run, a drag or the arrow keys turn the camera, the wheel zooms, Shift walks. On a phone: the left thumb moves you (a full push runs, a light one walks) and the right thumb looks.
 
-The design is Kiki's: https://github.com/OpenAgentsInc/openagents/blob/main/verse/planetary-villa/README.md. Every model is drawn from the engine's own shapes in code; [the licences](/worlds/hecates-cemetery/licences.md).
+The design is Kiki's: https://github.com/OpenAgentsInc/openagents/blob/main/metaverse/planetary-villa/README.md. Every model is drawn from the engine's own shapes in code; [the licences](/worlds/hecates-cemetery/licences.md).
 
 Project: https://openagents.com/projects/planetary-villa
 
 ## Make your own world
 
-An agent can build one from a shallow clone of the repository and open a pull request: [verse/SKILL.md](https://github.com/OpenAgentsInc/openagents/blob/main/verse/SKILL.md).
+An agent can build one from a shallow clone of the repository and open a pull request: [metaverse/SKILL.md](https://github.com/OpenAgentsInc/openagents/blob/main/metaverse/SKILL.md).

@@ -1,6 +1,6 @@
 // The Garden's C face for the browser (coax/web/host.js): garden.coax is
 // the page, metaverse-engine/move/player.coax walks you (its own library, as the realm
-// links it) and verse/grid.coax reads a phone's thumbs. Once a frame it
+// links it) and metaverse/grid.coax reads a phone's thumbs. Once a frame it
 // passes values between them in order: the page's controls, the player's
 // step among the garden's walls, then the page's frame with where you
 // ended up. Where you are is kept so a reload puts you back (place-face.h).
@@ -81,7 +81,7 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   if (busy) sticks = verse_sticks_reset();
   verse_player_v2_input(control(), g->key_x, g->key_y, sticks.pad_x, sticks.pad_y, verse_runs(g->run, sticks.run, sticks.pad_x, sticks.pad_y), g->jump || sticks.jump, 0, 0);
   verse_player_v2_heading(control(), player, garden_player_theta(at(state)));
-  if (sticks.zoom != 0) garden_wheel(at(state), sticks.zoom);   /* a pinch zooms as the wheel does (verse/grid.coax) */
+  if (sticks.zoom != 0) garden_wheel(at(state), sticks.zoom);   /* a pinch zooms as the wheel does (metaverse/grid.coax) */
   sticks = verse_sticks_used(sticks);
   int64_t walls = garden_walls(at(state));
   coax_t_AdvanceTrace walked = verse_player_v2_advance(control(), player, frame, (coax_v_f32){0, 0}, (coax_v_f32){g->walls.e, walls * 6},

@@ -1,5 +1,5 @@
 // Everglade Experimental's combat (#13025): your class's level 1–6 kit on the hotbar, keys 1 to 9,
-// against the Bestiary monsters that hunt you (verse/experimental-hostiles.coax), and CLASSES, a
+// against the Bestiary monsters that hunt you (metaverse/experimental-hostiles.coax), and CLASSES, a
 // column under the ANIMATIONS browser that sets your class and reloads the bar.
 //
 // Every roll is the SRD 5e engine's (rules/srd/), through the hotbar layer Everglade 5E
@@ -54,8 +54,8 @@
 #load "client/class-menu.coax";  // the CLASSES column, shared with Everglade II's local admin mode
 #load "dash.coax";   // Everglade's Dash (game): the SRD Dash spent as the engine's sprint
 #load "../metaverse-engine/action/sprint.coax" as sprint;   // the sprint (engine): its pace and steering
-#load "../verse/experimental-terrain.coax" as xmeadow;
-#load "../verse/experimental-village.coax" as xvillage;   // its walls, for what a plate's sight crosses
+#load "../metaverse/experimental-terrain.coax" as xmeadow;
+#load "../metaverse/experimental-village.coax" as xvillage;   // its walls, for what a plate's sight crosses
 #load "../metaverse-engine/action/action.coax" as act;
 #load "../metaverse-engine/action/sensor.coax" as sense;
 #load "../metaverse-engine/physics/query.coax" as aq;
@@ -70,7 +70,7 @@
 #load "longbow.coax";   // Everglade's Longbow: where the arrow leaves, its sounds and dust (game)
 #load "../metaverse-engine/cam/reticle.coax" as reticle;   // the one centred reticle, shared with the mouselook camera       // the draw and the arrows, yours and the Goblins' (docs/verse/bow-combat.md)
 
-XC_FOES :: hostile.HS_N;      // the village's six and the dungeon's (verse/experimental-hostiles.coax)
+XC_FOES :: hostile.HS_N;      // the village's six and the dungeon's (metaverse/experimental-hostiles.coax)
 XC_SIDE :: 48; XC_MID :: 24;   // the engine's grid round you, squares (73 m a side)
 XC_AWAY :: -1000;
 XC_SQ :: 1.524;
@@ -160,7 +160,7 @@ XC_BLADE_R :: 0.12;        // m: a blade's sensor radius
 XC_BLADE_TIP :: [5]f32.[1.0,1.25,0.9,0.6,0.6];   // m from the weapon's origin to its tip (CC_KITS order; the bow never swings)
 XC_WINDOW :: 6;            // ticks the sensor is open either side of the swing's impact
 
-// Each body kind's block (verse/experimental-dungeon.coax DG_KIND_* order) and the world's name for it.
+// Each body kind's block (metaverse/experimental-dungeon.coax DG_KIND_* order) and the world's name for it.
 XC_FOE_BLOCK :: [5] int.[MON_IMP, MON_GOBLIN_WARRIOR, MON_OGRE, MON_QUASIT, MON_HILL_GIANT];
 XC_FOE_TITLE :: [5] string.["Imp", "Gremlin", "Puglin Brute", "Imp Fiend", "Puglin Warlord"];
 xc_foe :: (kind: int) -> RsCreature {

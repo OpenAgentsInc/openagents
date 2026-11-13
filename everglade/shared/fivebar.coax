@@ -370,7 +370,7 @@ fb_everglade_hero :: (name: string, team: int) -> RsCreature {
   }
   return c[0];
 }
-// A stat block for a world's own people, from its numbers (Everglade's watch: verse/rules/srd5.coax
+// A stat block for a world's own people, from its numbers (Everglade's watch: metaverse/rules/srd5.coax
 // SRD_COMMONER, SRD_GUARD and the ranks): Armor Class, Hit Points, the six scores, its proficiency
 // bonus on its saving throws (0: none).
 fb_folk :: (name: string, team: int, ac: int, hp: int, score: [6] int) -> RsCreature {

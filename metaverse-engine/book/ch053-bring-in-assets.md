@@ -6,7 +6,7 @@
 > checks the pack's budget, its layout and a licence on every asset, and
 > admits the pack into a realm's assets by content
 > ([chapter 16](ch016-budgets-that-refuse.md)). The pack is written again byte
-> for byte as `verse/tools/pack_realm.py` writes it. Both committed packs
+> for byte as `metaverse/tools/pack_realm.py` writes it. Both committed packs
 > (Everglade's and the fixture's) read, write again to the same bytes and are
 > admitted. The trace below is worked by hand and run in
 > [metaverse-engine/examples/bring-in-assets.coax](../examples/bring-in-assets.coax).
@@ -91,7 +91,7 @@ PackEntry :: struct { kind: int; licence: int; at: int; n: int; name: string; }
 <!-- source: metaverse-engine/editor/pack.coax format -->
 ```jai
 PACK_READ_MAX :: 128; // VPK2; VPK1 retains its published 48-entry ceiling.
-PACK_MAX :: 48;        // entries a pack has at most (verse/tools/pack-files.coax's limit too)
+PACK_MAX :: 48;        // entries a pack has at most (metaverse/tools/pack-files.coax's limit too)
 PACK_NAME :: 32;       // a name's field; a name is 1 to 31 bytes
 PACK_SOURCES :: 32;    // licensed sources (L lines) a catalog declares at most
 PACK_MANY :: 255;      // the licence of the catalog, vertices and indices: every source's
@@ -453,15 +453,15 @@ each pack's last lines are shown; the tool prints every entry.)
 ## What exists beside it
 
 - [docs/verse/realm-host.md](../../docs/verse/realm-host.md), "Asset packs":
-  manifests in [verse/packs/](../../verse/packs/everglade.json), the
-  compiler [verse/tools/pack_realm.py](../../verse/tools/pack_realm.py)
+  manifests in [metaverse/packs/](../../metaverse/packs/everglade.json), the
+  compiler [metaverse/tools/pack_realm.py](../../metaverse/tools/pack_realm.py)
   (format in its header), `realms/<slug>/licences.md`, message 605 progress
   while a pack streams and `coaxial_asset_ready` per asset.
-- [verse/tools/pack_cast.py](../../verse/tools/pack_cast.py): the Grid's cast
+- [metaverse/tools/pack_cast.py](../../metaverse/tools/pack_cast.py): the Grid's cast
   (`Cast.bin` and texture layers) from aethyr-cpp's assets;
-  [pack_grid.py](../../verse/tools/pack_grid.py),
-  [pack_haunt.py](../../verse/tools/pack_haunt.py) and
-  [pack_sandbox.py](../../verse/tools/pack_sandbox.py) for their realms.
+  [pack_grid.py](../../metaverse/tools/pack_grid.py),
+  [pack_haunt.py](../../metaverse/tools/pack_haunt.py) and
+  [pack_sandbox.py](../../metaverse/tools/pack_sandbox.py) for their realms.
 - [coax/web/uploads.js](../../coax/web/uploads.js): action 30 and messages
   52 and 53, used for Hecate's Cemetery's pets (`coax/web/api/villa.c`).
 - [apps/openagents-web/droprealm.coax](../../apps/openagents-web/droprealm.coax):
@@ -471,7 +471,7 @@ each pack's last lines are shown; the tool prints every entry.)
 ## Still to do
 
 - **Import from sources.** `import_pack` from a manifest
-  (`verse/packs/*.json`): the scene's meshes, the images (with the
+  (`metaverse/packs/*.json`): the scene's meshes, the images (with the
   painterly style's texture rules and paint pass), the sounds and the
   characters, giving packs byte-identical to `pack_realm.py`'s for
   `everglade.json` and `fixture.json`, and then the Python retired. Today

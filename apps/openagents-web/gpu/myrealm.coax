@@ -4,17 +4,17 @@
 #load "../../../metaverse-engine/render/sampling.coax";
 #load "../../../metaverse-engine/render/noise.coax";
 #load "../../../metaverse-engine/gpu/wgsl.coax";
-#load "../../../verse/style.coax";
+#load "../../../metaverse/style.coax";
 
 // A realm someone built: its three passes (myrealm.coax). The sky and the ground behind (the sky by
 // the realm's time of day, the ground by its kind, where each pixel's ray meets it, the water where
 // it has some, lit by the sun and, after dark, the lamp you carry; the plates over both), the pack's
 // meshes (scene_vs, scene_fs: lit by the same sun and lamp, fading into the haze) and the strokes
 // over all of it. Low poly keeps this file's own sky and light. A painterly or flat realm reads its
-// style block (verse/style-preset.coax, at its time of day; docs/verse/art-styles.md): painterly
+// style block (metaverse/style-preset.coax, at its time of day; docs/verse/art-styles.md): painterly
 // in soft toon bands with cool shadows, a rim, haze, a painted sky with clouds and a tone curve;
 // flat in three hard tones of a few flat colours, a flat sky and one soft fade (the style
-// functions are verse/style.coax's, generated below by build.sh). Forked from droprealm.wgsl;
+// functions are metaverse/style.coax's, generated below by build.sh). Forked from droprealm.wgsl;
 // every place, size and colour comes from myrealm.coax.
 // MyrealmU, a uniform block, is read from a []f32 at these offsets (floats):
 //   size 0
@@ -57,7 +57,7 @@
 // per plate (myrealm.coax PLATES): x0, y0, x1, y1 (device pixels), then scale, alpha, look, 0
 // the lanterns' lights (myrealm.coax POOL_AT): x, y, z (metres), on
 // their colour, then their strength (the time of day's share)
-// the style block (myrealm.coax STYLE_AT; verse/style-preset.coax SU_*): 0 for low poly
+// the style block (myrealm.coax STYLE_AT; metaverse/style-preset.coax SU_*): 0 for low poly
 // A plate (verse.wgsl's): a dark wood fill with one thin bronze line round
 // it and small rounded corners. Look 1 lights the line; 2 (under the mouse
 // or pressed) adds a step lighter fill and the bright line.
@@ -154,7 +154,7 @@ myrealm_noise :: (p:V2)->f32 {
   w:V2=wg_mul_f2f2(wg_mul_f2f2(f,f),wg_sub_ff2(3.0f32,wg_mul_ff2(2.0f32,f)));
   return mix(mix(myrealm_hash(i),myrealm_hash(wg_add_f2f2(i,v2(1.0f32,0.0f32))),w.x),mix(myrealm_hash(wg_add_f2f2(i,v2(0.0f32,1.0f32))),myrealm_hash(wg_add_f2f2(i,v2(1.0f32,1.0f32))),w.x),w.y);
 }
-// ---- the style block: SU_* rows (verse/style-preset.coax); st(31).y the style: 1 painterly, 3 flat
+// ---- the style block: SU_* rows (metaverse/style-preset.coax); st(31).y the style: 1 painterly, 3 flat
 myrealm_st :: (i:u32,u:[]f32)->V4 {
   return wg_at4(u,(cast(int)i)*4+324);
 }

@@ -81,7 +81,7 @@ day_frac :: (d: f64) -> f64 #effects(all) { return d - floor(d); }
   #assert day_at(r, DayWorld.shared, 7 + 120 * 21600).day == 1;
   #assert day_at(r, DayWorld.shared, 8).day == 0.75 + 1.0 / (120.0 * 86400.0);
 }
-#test "the clocks read verse/style-preset's modes: the same time of day as verse_style_clock_at" {
+#test "the clocks read metaverse/style-preset's modes: the same time of day as verse_style_clock_at" {
   cases := [4] string.["fixed:0.25", "cycle", "real", "noon"];
   for k: 0..<4 {
     sc := verse_style_clock(cases[k], "1700000000000", "0.6");

@@ -1,0 +1,393 @@
+// Orbit League's rooms on the room server (ol-room, #13347): which room a WebSocket's path names, who
+// sits where, the 60 Hz tick and what each player hears. The room server's generic host and relay
+// (coax/web/room/) know Orbit League only through its registration (coax/web/room/room-games.coax),
+// which calls the olr_ procedures here; this file loads Orbit's game and wire files, never its page.
+//
+// Two profiles, each its own world for the same room name:
+//   /api/room/orbit-league/NAME      the frozen profile: each player reports its own car (c ...) and the
+//                                    room owns the ball, stepping it twice a tick at 120 Hz
+//                                    (orbitleague-game.coax room_step) against the arena and the
+//                                    reported cars, then writes each player the room's state (s ...)
+//   /api/room/orbit-league-v2/NAME   the authoritative profile (#12845): admitted controls (H, I) step
+//                                    every car with the game's physics, and each player hears a
+//                                    complete snapshot (S) or a refusal (R) (orbit-session.coax,
+//                                    orbit-snapshot.coax)
+// "quick-1v1" and "quick-2v2" are the matchmaking names (ol-quick-match). Up to OLR_ROOMS rooms of
+// ROOM_PLAYERS seats.
+#load "../../../apps/openagents-web/orbitleague-game.coax";   // the match, its physics and the frozen profile's wire
+#load "../../../apps/openagents-web/orbit-session.coax";       // the v2 profile's admission, controls and fields
+#load "../../../apps/openagents-web/orbit-snapshot.coax";      // and its snapshot
+#load "room-checks.coax";
+
+OLR_ROOMS :: 8;
+OLR_PATH :: "/api/room/orbit-league/";
+OLR_PATH_V2 :: "/api/room/orbit-league-v2/";
+QUICK_WAIT :: 10.0;      // a quick match waits this long for players, then bots take the empty seats
+
+// A seat's controls wait their turn (#13277): the room steps one a tick, in the order they were
+// sent, so a page that steps each control it sends (orbitleague.coax's prediction) and the room
+// step the same ones. ORB_QUEUE are held; more than ORB_QUEUE_KEEP waiting at a tick (a burst after
+// a stall) lose the oldest, so a seat's controls are never more than that many ticks late. With
+// none waiting the last one holds, until it is stale (ORB_INPUT_STALE_MS).
+ORB_QUEUE :: 4; ORB_QUEUE_KEEP :: 2;
+// The v2 profile's per-room state: each seat's generation, admission, controls and receipts.
+// Admission, command, field and receipt decisions are the checked contracts in orbit-session.coax
+// and metaverse-engine/net. Physics is the game's shared step.
+OrbAuthority :: struct {
+  enabled:bool;initialized:bool;
+  generation:[ROOM_PLAYERS]SeatGeneration;
+  admitted:[ROOM_PLAYERS]bool;refusal:[ROOM_PLAYERS]int;
+  input:[ROOM_PLAYERS]OrbInput;heard_ms:[ROOM_PLAYERS]int;   // the control each seat's car is stepped with
+  queue:[ROOM_PLAYERS*ORB_QUEUE]OrbInput;queued:[ROOM_PLAYERS]int;   // those that wait, oldest first
+  ack:[ROOM_PLAYERS]int;echo:[ROOM_PLAYERS]int;heard:[ROOM_PLAYERS]int;
+  refused:int #counter;accepted:int #counter;snapshots:int #counter;
+}
+OlrRoom :: struct {
+  auth:[1]OrbAuthority;
+  name: [ROOM_NAME] u8; name_n: int;
+  bot_kicks: int;      // the kickoff its bots were last set out for
+  paint: [ROOM_PLAYERS] int;   // each seat's paint, as its player last reported it (ol-paint)
+  echo: [ROOM_PLAYERS] int;    // the frozen profile: each seat's player's last reported clock, -1 none
+  live: bool; tick: int;
+  quick: int;          // a quick match's seats (2: 1v1, 4: 2v2; bots in the empty ones); 0 a named room
+  s: [1] OrbitLeague;
+  cars: [ROOM_PLAYERS] RigidBody;
+}
+// Orbit League's part of the server (RmServer.games, room-games.coax).
+OlrRooms :: struct {
+  generation:SeatGeneration;   // the v2 profile's last seat generation, across rooms
+  quick_n: int;      // quick matches made: each gets its own room name
+  rooms: [OLR_ROOMS] OlrRoom;
+}
+olr_init :: (v: [] RmServer) {
+  for r: 0..<OLR_ROOMS { v[0].games.orbit.rooms[r].live = false; v[0].games.orbit.rooms[r].s[0] = OrbitLeague.{}; }
+}
+
+// The room name in "GET /api/room/orbit-league/NAME HTTP/1.1": its bytes into
+// name, the count, or 0 when the path isn't a room's.
+olr_path_room :: (req: string, name: [] u8) -> int {
+  return olr_path_room_at(req,name,OLR_PATH);
+}
+olr_v2_path :: (req:string)->bool {
+  prefix:="GET /api/room/orbit-league-v2/";
+  return req.count>=prefix.count && req[0..<prefix.count]==prefix;
+}
+olr_path_room_at :: (req:string,name:[]u8,path:string)->int {
+  pre := "GET ";
+  if req.count < pre.count + path.count || req[0..<pre.count] != pre { return 0; }
+  at := pre.count;
+  if req[at..<at + path.count] != path { return 0; }
+  i := at + path.count; n := 0;
+  while i < req.count && n < name.count {
+    c := req[i];
+    if c >= 'A' && c <= 'Z' { c += 32; }
+    if !((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-') { break; }
+    name[n] = c; n += 1; i += 1;
+  }
+  if i >= req.count || (req[i] != ' ' && req[i] != '?') { return 0; }
+  return n;
+}
+// The room with this name, made if there is space: its index, or -1.
+olr_find :: (rooms: [] OlrRoom, name: string) -> int {
+  return olr_find_profile(rooms,name,false);
+}
+olr_find_profile :: (rooms:[]OlrRoom,name:string,authoritative:bool)->int {
+  free := -1;
+  for i: 0..<rooms.count {
+    if rooms[i].live && rooms[i].auth[0].enabled==authoritative && cast(string) rooms[i].name[0..<rooms[i].name_n] == name { return i; }
+    if !rooms[i].live && free < 0 { free = i; }
+  }
+  if free < 0 { return -1; }
+  for i: 0..<name.count { rooms[free].name[i] = name[i]; }
+  rooms[free].name_n = name.count; rooms[free].live = true; rooms[free].tick = 0; rooms[free].quick = 0;
+  rooms[free].auth[0]=OrbAuthority.{enabled=authoritative};
+  room_reset(rooms[free].s[..]);
+  if authoritative {
+    none:[CARS]bool;room_bots_kickoff(rooms[free].s[..],rooms[free].cars[..],none[..],CARS);
+    rooms[free].bot_kicks=rooms[free].s[0].kicks;
+  }
+  rooms[free].auth[0].initialized=true;
+  return free;
+}
+// QUICK MATCH (ol-quick-match): "quick-1v1" or "quick-2v2" joins the mode's
+// newest match that is still finding players and has a seat; else a new one,
+// which waits QUICK_WAIT for players before its bots take the empty seats.
+olr_quick_profile :: (v:[]RmServer,name:string,authoritative:bool)->int {
+  o := v[0].games.orbit.rooms[..];
+  seats := ifx name == "quick-2v2" then ROOM_PLAYERS else 2;
+  for r: 0..<OLR_ROOMS {
+    m := o[r];
+    if !m.live || m.auth[0].enabled!=authoritative || m.quick != seats || m.s[0].phase != PHASE_KICKOFF || m.s[0].phase_t >= 0.0 { continue; }
+    if olr_seat(v[0].conns[..], r).value >= 0 && olr_seat(v[0].conns[..], r).value < seats { return r; }
+  }
+  v[0].games.orbit.quick_n += 1;
+  buf: [ROOM_NAME] u8; k := 0;
+  for b: "q" { buf[k] = b; k += 1; }
+  buf[k] = cast(u8) ('0' + seats / 2); k += 1;
+  buf[k] = '-'; k += 1;
+  k = put_int(buf[..], k, v[0].games.orbit.quick_n);
+  r := olr_find_profile(o,cast(string)buf[0..<k],authoritative);
+  if r < 0 { return -1; }
+  o[r].quick = seats;
+  o[r].s[0].phase_t = -QUICK_WAIT;
+  return r;
+}
+// The seats a room plays: a quick match's, else every seat.
+olr_seats :: (m: OlrRoom) -> int { return ifx m.quick > 0 then m.quick else ROOM_PLAYERS; }
+// Which of a room's seats a player has.
+olr_humans :: (v: [] RmServer, r: int, human: [] bool) {
+  for i: 0..<ROOM_PLAYERS { human[i] = false; }
+  for i: 0..<CONNS { if v[0].conns[i].live && v[0].conns[i].room == r { human[v[0].conns[i].seat] = true; } }
+}
+// The lowest seat nobody in room r has, or -1 when it is full.
+olr_seat :: (conns: [] RmConn, r: int) -> SeatId {
+  for seat: 0..<ROOM_PLAYERS {
+    taken := false;
+    for i: 0..<conns.count { if conns[i].live && conns[i].room == r && conns[i].seat == seat { taken = true; } }
+    if !taken { return SeatId.{value = seat}; }
+  }
+  return SeatId.{value = -1};
+}
+
+// Whether the request is Orbit League's: either profile's path.
+olr_claims :: (request: string) -> bool {
+  name: [ROOM_NAME] u8;
+  return olr_v2_path(request) || olr_path_room_at(request, name[..], OLR_PATH) > 0;
+}
+// A WebSocket asks to open with this request (the host has checked the handshake): its seat, or -1 to
+// refuse (no room's path, or full).
+olr_join :: (v: [] RmServer, conn: int, request: string) -> int {
+  o := v[0].games.orbit.rooms[..];
+  name: [ROOM_NAME] u8;
+  authoritative:=olr_v2_path(request);
+  n := olr_path_room_at(request,name[..],ifx authoritative then OLR_PATH_V2 else OLR_PATH);
+  if n == 0 { return -1; }
+  named := cast(string) name[0..<n];
+  r := ifx named == "quick-1v1" || named == "quick-2v2" then olr_quick_profile(v,named,authoritative) else olr_find_profile(o,named,authoritative);
+  if r < 0 { return -1; }
+  seat := olr_seat(v[0].conns[..], r).value;
+  if seat < 0 || seat >= olr_seats(o[r]) { return -1; }
+  v[0].conns[conn] = RmConn.{live = true, room = r, seat = seat};
+  o[r].echo[seat] = -1;
+  // it waits at its end's spawn until it reports
+  b := vehicle_body(o[r].s[0].spec, CAR_MASS, d3(cast(f64) (seat / 2) * 6.0, 1.0, -SPAWN_Z), DQ.{});
+  o[r].cars[seat] = room_view(b, seat);
+  o[r].paint[seat] = 0;
+  if authoritative && !olr_auth_join(v,r,seat,conn) {v[0].conns[conn]=RmConn.{};return -1;}
+  // a full quick match stops waiting
+  if o[r].quick > 0 {
+    free := olr_seat(v[0].conns[..], r).value;
+    if free < 0 || free >= o[r].quick { o[r].s[0].phase_t = fmax(o[r].s[0].phase_t, 0.0); }
+  }
+  return seat;
+}
+// A text frame from a player: its car (the frozen profile), or its hello and controls (v2).
+olr_heard :: (v: [] RmServer, conn: int, text: string) {
+  c := v[0].conns[conn]; o := v[0].games.orbit.rooms[..];
+  if o[c.room].auth[0].enabled {olr_auth_heard(v,conn,text);return;}
+  o[c.room].cars[c.seat] = room_report(text, o[c.room].cars[c.seat]);
+  e := room_report_clock(text);
+  if e >= 0 { o[c.room].echo[c.seat] = e; }
+  o[c.room].paint[c.seat] = room_report_paint(text);
+}
+
+// The frozen profile: each player reports its own car and the room steps the ball. It accepts reported
+// car bodies, so server-owned ball physics does not make those cars authoritative; the v2 profile is
+// its replacement (orb_realm's input profile).
+olr_beat :: () -> NetProfile {
+  return NetProfile.{hz = cast(int) ROOM_HZ, substeps = cast(int) (1.0 / (ROOM_HZ * STEP) + 0.5), trust = NET_TRUST_PRESENCE};
+}
+olr_realm :: () -> NetRealm {
+  return NetRealm.{beat=olr_beat(),collision=NET_COLLIDE_REPORTED,fields=13,
+    public_fields=(1<<13)-1,owner_fields=(1<<13)-1};
+}
+// ABI observations of a v2 room (rm_net_observation's realm 2): -1 when it is unavailable.
+olr_observation :: (v:[]RmServer,room:int,metric:int)->int {
+  o := v[0].games.orbit.rooms[..];
+  if room<0 || room>=OLR_ROOMS || !o[room].live || !o[room].auth[0].enabled {return -1;}
+  active:[CARS]bool;human:[CARS]bool;seats:=olr_active(v,room,active[..],human[..]);
+  for q:0..<o[room].quick {if !human[q] {seats+=1;}}
+  a:=o[room].auth[..];
+  return net_observation_metric(net_observe(orb_realm(),a[0].initialized,o[room].live,
+    o[room].tick,seats,a[0].accepted,a[0].refused,a[0].snapshots),metric);
+}
+
+// One tick: every live room steps its profile's physics steps; a room nobody is in closes.
+olr_tick :: (v: [] RmServer) {
+  o := v[0].games.orbit.rooms[..];
+  for r: 0..<OLR_ROOMS {
+    if !o[r].live { continue; }
+    if o[r].auth[0].enabled {olr_auth_tick(v,r);continue;}
+    cars: [ROOM_PLAYERS] RigidBody; n := 0;
+    for i: 0..<CONNS { if v[0].conns[i].live && v[0].conns[i].relay < 0 && v[0].conns[i].room == r { cars[n] = o[r].cars[v[0].conns[i].seat]; n += 1; } }
+    if n == 0 { o[r].live = false; continue; }
+    if o[r].quick > 0 { olr_quick_tick(v, r); o[r].tick += 1; continue; }
+    for q: 0..<olr_beat().substeps { room_step(o[r].s[..], cars[..], n); }
+    o[r].tick += 1;
+  }
+}
+// A quick match's tick: its bots drive (set out again at each kickoff), and
+// the ball meets every car, the players' and the bots'.
+olr_quick_tick :: (v: [] RmServer, r: int) {
+  m := v[0].games.orbit.rooms[r..<r+1];
+  seats := m[0].quick;
+  human: [ROOM_PLAYERS] bool;
+  olr_humans(v, r, human[..]);
+  for k: 0..<olr_beat().substeps {
+    if m[0].s[0].kicks != m[0].bot_kicks {
+      m[0].bot_kicks = m[0].s[0].kicks;
+      room_bots_kickoff(m[0].s[..], m[0].cars[..], human[..], seats);
+    }
+    room_bots(m[0].s[..], m[0].cars[..], human[..], seats);
+    room_step(m[0].s[..], m[0].cars[..], seats);
+  }
+}
+// What conn hears this tick, written to v[0].out: its length (0: nothing).
+olr_state :: (v: [] RmServer, conn: int) -> int {
+  r := v[0].conns[conn].room; o := v[0].games.orbit.rooms[..];
+  if !o[r].live { return 0; }
+  if o[r].auth[0].enabled {return olr_auth_state(v,conn);}
+  cars: [ROOM_PLAYERS] RigidBody; seats: [ROOM_PLAYERS] int; n := 0;
+  for i: 0..<CONNS {
+    // its seat + 8 x its paint: a client reads the seat's side as before
+    if v[0].conns[i].live && v[0].conns[i].room == r { st := v[0].conns[i].seat; cars[n] = o[r].cars[st]; seats[n] = st + 8 * o[r].paint[st]; n += 1; }
+  }
+  // a quick match's bots, in the seats nobody has
+  if o[r].quick > 0 {
+    human: [ROOM_PLAYERS] bool;
+    olr_humans(v, r, human[..]);
+    for seat: 0..<o[r].quick { if !human[seat] { cars[n] = o[r].cars[seat]; seats[n] = seat; n += 1; } }
+  }
+  seat := v[0].conns[conn].seat;
+  return room_state_echo(o[r].s[..], o[r].tick, seat, cars[..], seats[..], n, o[r].echo[seat], v[0].out[..]);
+}
+
+// ---- the v2 profile (#12845)
+
+olr_auth_join :: (v:[]RmServer,r:int,seat:int,conn:int)->bool {
+  next:=orb_next_generation(v[0].games.orbit.generation);if next.value==0 {return false;}
+  v[0].games.orbit.generation=next;v[0].conns[conn].gen=next;
+  m:=v[0].games.orbit.rooms[r..<r+1];a:=m[0].auth[..];
+  a[0].generation[seat]=next;a[0].admitted[seat]=false;a[0].refusal[seat]=0;
+  a[0].input[seat]=OrbInput.{};a[0].ack[seat]=0;a[0].echo[seat]=-1;a[0].heard[seat]=0;a[0].queued[seat]=0;
+  m[0].s[0].bodies[seat+1]=m[0].cars[seat];
+  m[0].s[0].cars[seat]=VehicleState.{};
+  m[0].s[0].tanks[seat]=tank(BOOST_START,100,false);
+  return true;
+}
+olr_auth_heard :: (v:[]RmServer,conn:int,text:string) {
+  c:=v[0].conns[conn];m:=v[0].games.orbit.rooms[c.room..<c.room+1];a:=m[0].auth[..];
+  if !net_session_current(a[0].generation[c.seat],c.gen) {return;}
+  if text.count>0 && text[0]=='H' {
+    why:=orb_admit(text,a[0].initialized);a[0].refusal[c.seat]=why;
+    a[0].admitted[c.seat]=why==CP_OK;
+    if why!=CP_OK {a[0].refused=add_sat(a[0].refused,1);a[0].input[c.seat]=OrbInput.{};a[0].queued[c.seat]=0;}
+    return;
+  }
+  i:=orb_input(text);
+  if i.ok && a[0].admitted[c.seat] && net_replica_ack_allowed(i.heard,a[0].heard[c.seat],m[0].tick,32) {
+    a[0].heard[c.seat]=i.heard;
+  }
+  base:=c.seat*ORB_QUEUE;n:=a[0].queued[c.seat];
+  newest:=ifx n>0 then a[0].queue[base+n-1].seq else a[0].input[c.seat].seq;
+  if !orb_input_takes(a[0].admitted[c.seat],a[0].generation[c.seat],c.gen,i,a[0].ack[c.seat],newest) {
+    a[0].refused=add_sat(a[0].refused,1);return;
+  }
+  if n==ORB_QUEUE {olr_auth_drop(a,c.seat);n-=1;}
+  a[0].queue[base+n]=i;a[0].queued[c.seat]=n+1;a[0].heard_ms[c.seat]=v[0].mono_ms;
+  m[0].paint[c.seat]=i.paint;
+}
+// A seat's oldest waiting control goes unstepped.
+olr_auth_drop :: (a:[]OrbAuthority,seat:int) {
+  base:=seat*ORB_QUEUE;
+  for q:1..<a[0].queued[seat] {a[0].queue[base+q-1]=a[0].queue[base+q];}
+  a[0].queued[seat]-=1;
+}
+// This tick's control for a seat: the oldest that waits, or the last one again.
+olr_auth_next :: (a:[]OrbAuthority,seat:int) {
+  while a[0].queued[seat]>ORB_QUEUE_KEEP {olr_auth_drop(a,seat);}
+  if a[0].queued[seat]==0 {return;}
+  a[0].input[seat]=a[0].queue[seat*ORB_QUEUE];olr_auth_drop(a,seat);
+}
+olr_active :: (v:[]RmServer,r:int,active:[]bool,human:[]bool)->int {
+  for q:0..<ROOM_PLAYERS {active[q]=false;human[q]=false;}
+  m:=v[0].games.orbit.rooms[r..<r+1];
+  n:=0;
+  for c:0..<CONNS {
+    if !v[0].conns[c].live || v[0].conns[c].relay>=0 || v[0].conns[c].room!=r {continue;}
+    seat:=v[0].conns[c].seat;human[seat]=true;
+    if m[0].auth[0].admitted[seat] && net_session_current(m[0].auth[0].generation[seat],v[0].conns[c].gen) {
+      active[seat]=true;n+=1;
+    }
+  }
+  return n;
+}
+olr_auth_tick :: (v:[]RmServer,r:int) {
+  m:=v[0].games.orbit.rooms[r..<r+1];a:=m[0].auth[..];
+  active:[CARS]bool;human:[CARS]bool;players:=olr_active(v,r,active[..],human[..]);
+  connections:=0;for c:0..<CARS {if human[c] {connections+=1;}}
+  if connections==0 {m[0].live=false;return;}
+  if m[0].quick>0 {for c:0..<m[0].quick {if !human[c] {active[c]=true;}}}
+  if !net_world_steps(a[0].initialized,m[0].live,players==0) || !net_session_saved(orb_realm().beat.durable,false,0) {return;}
+  m[0].s[0].cars_n=CARS;
+  for c:0..<CARS {if active[c] && human[c] {olr_auth_next(a,c);}}
+  for step:0..<orb_realm().beat.substeps {
+    if m[0].s[0].kicks!=m[0].bot_kicks {
+      m[0].bot_kicks=m[0].s[0].kicks;none:[CARS]bool;
+      room_bots_kickoff(m[0].s[..],m[0].cars[..],none[..],CARS);
+    }
+    drives:[CARS]Drive;
+    for c:0..<CARS {
+      if !active[c] {continue;}
+      if !human[c] {drives[c]=bot_drive(m[0].s[..],c);continue;}
+      i:=a[0].input[c];
+      if orb_controls_active(i,a[0].heard_ms[c],v[0].mono_ms) {
+        drives[c]=orb_drive(i.throttle,i.steer,i.flags);
+      }
+    }
+    if room_step_begin(m[0].s[..],players) {physics_step_masked(m[0].s[..],drives,active);room_step_end(m[0].s[..]);}
+    for c:0..<CARS {if active[c] {m[0].cars[c]=m[0].s[0].bodies[c+1];}}
+  }
+  for c:0..<CARS {
+    if !active[c] || !human[c] {continue;}
+    accepted:=net_accepted_result(a[0].ack[c],a[0].input[c].seq);
+    if accepted.advanced {
+      a[0].ack[c]=accepted.seq;a[0].echo[c]=a[0].input[c].clock;a[0].accepted=add_sat(a[0].accepted,1);
+    }
+  }
+  m[0].tick+=1;
+}
+
+olr_auth_fields :: (v:[]RmServer,r:int,row:int)->OrbFields {
+  m:=v[0].games.orbit.rooms[r..<r+1];b:=m[0].s[0].bodies[row];
+  paint:=0;fuel:=0.0;life:=1;
+  if row>0 {
+    paint=m[0].paint[row-1];fuel=m[0].s[0].tanks[row-1].fuel;
+    if m[0].auth[0].generation[row-1].value>0 {life=m[0].auth[0].generation[row-1].value;}
+  }
+  raw:=[16]f64.[b.pos.x,b.pos.y,b.pos.z,b.orientation.x,b.orientation.y,b.orientation.z,b.orientation.w,
+    b.vel.x,b.vel.y,b.vel.z,b.omega.x,b.omega.y,b.omega.z,f64(paint),fuel,f64(life)];
+  return orb_fields(raw[..]);
+}
+olr_auth_state :: (v:[]RmServer,conn:int)->int {
+  c:=v[0].conns[conn];m:=v[0].games.orbit.rooms[c.room..<c.room+1];a:=m[0].auth[..];
+  if !net_session_current(a[0].generation[c.seat],c.gen) {return 0;}
+  if !a[0].admitted[c.seat] {
+    if a[0].refusal[c.seat]==0 {return 0;}
+    why:=[1]int.[a[0].refusal[c.seat]];return net_record_write('R',why[..],v[0].out[..]);
+  }
+  active:[CARS]bool;human:[CARS]bool;players:=olr_active(v,c.room,active[..],human[..]);
+  if m[0].quick>0 {for q:0..<m[0].quick {if !human[q] {active[q]=true;players+=1;}}}
+  header:=[12]int.[m[0].tick,c.seat,c.gen.value,a[0].ack[c.seat],a[0].echo[c.seat],m[0].s[0].phase,
+    cast(int)(m[0].s[0].phase_t*1000),cast(int)(m[0].s[0].clock*1000),m[0].s[0].score[0],m[0].s[0].score[1],m[0].s[0].kicks,players];
+  // A small room's complete snapshot is bounded by five rows. Nothing is published partially.
+  packet:[2048]u8;n:=net_record_write('S',header[..],packet[..]);if n==0 {return 0;}
+  for row:0..<ORB_ROWS {
+    if row>0 && !active[row-1] {continue;}
+    f:=olr_auth_fields(v,c.room,row);if !f.ok {return 0;}
+    packet[n]=';';n+=1;
+    wrote:=orb_row_write(row,f.v[..],c.seat,packet[n..<packet.count]);if wrote==0 {return 0;}n+=wrote;
+  }
+  for q:0..<n {v[0].out[q]=packet[q];}
+  a[0].snapshots=add_sat(a[0].snapshots,1);return n;
+}

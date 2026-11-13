@@ -232,7 +232,7 @@ Trusted direct helpers such as `move_across` retain their larger-move contract;
 new runtime movement uses the checked fixed-step entry.
 
 The resolver reads bodies but never pushes them back. `metaverse-engine/physics/contact.coax`
-owns explicit rigid-body impulse and force calls. `verse/demolish.coax`
+owns explicit rigid-body impulse and force calls. `metaverse/demolish.coax`
 resolves debris contacts and publishes floor views. `metaverse-engine/physics/throw.coax` owns
 throwing and fetching. None of these connections implies an automatic
 walker-to-rigid-body impulse.

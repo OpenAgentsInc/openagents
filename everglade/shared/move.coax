@@ -39,7 +39,7 @@ e2m_keep :: (x: f32, z: f32, fx: f32, fz: f32) -> E2Spot #export_c #effects(all)
 }
 
 // ---- the rocks round you, each its own mesh's convex hull (everglade/world/rock-hulls.coax, baked by
-// verse/tools/assets/everglade2_rock_hulls.coax): metaverse-engine/physics/query.coax's hulls, so you stand on a rock's
+// metaverse/tools/assets/everglade2_rock_hulls.coax): metaverse-engine/physics/query.coax's hulls, so you stand on a rock's
 // real top, step onto a low one, slide off a steep face and stop at its side where you see it. The
 // controller walks a level plane over the land (the land lifts you onto the ground), so a placed rock's
 // hull is put on that plane: scaled and turned with the rock, and lowered by the land's own slope under
@@ -97,8 +97,8 @@ e2_rock_hull_prep :: (out: [] f32, at: int, r: E2Rock, p: E2RockPrep, x: f32, z:
 }
 // The kit piece's hull model, or -1 when it isn't a rock that stops you.
 e2_kit_rock :: (kit: int) -> int { return ifx kit >= 20 && kit <= 22 then kit - 20 else ifx kit == 23 || kit == 24 then kit - 19 else -1; }
-// The glade's own rocks (its pack's composition, verse/character-glade.coax cg_item), as the pack draws
-// them (verse/tools/assets/everglade2_pack.coax gp_mesh_scaled): on the land's height plus the item's
+// The glade's own rocks (its pack's composition, metaverse/character-glade.coax cg_item), as the pack draws
+// them (metaverse/tools/assets/everglade2_pack.coax gp_mesh_scaled): on the land's height plus the item's
 // lift, scale across and scale times its vertical share up.
 e2_glade_rock :: (gt: CgItem) -> E2Rock {
   if gt.kind != 2 && gt.kind != 3 { return E2Rock.{model = -1}; }
@@ -248,7 +248,7 @@ e2m_world_still :: (still: [] E2Still, items: [] f32, kinds: [] u8, first: [] in
       else { t := e2_trunk(kit, px, pz, items[o + 3], sh); n = e2m_body(out, n, t[0], t[1], t[0], t[1], f32(E2_TRUNK_LOW), f32(E2_TRUNK_HIGH), t[2]); }
     }
   }}
-  // the glade's own trees and rocks (its pack's composition, verse/character-glade.coax cg_item)
+  // the glade's own trees and rocks (its pack's composition, metaverse/character-glade.coax cg_item)
   for i: 0..<CG_ITEMS {
     if kept {
       g := still[0].glade[i]; if !g.kept { continue; }

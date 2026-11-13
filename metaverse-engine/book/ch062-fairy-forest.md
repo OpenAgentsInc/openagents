@@ -3,7 +3,7 @@
 > **Status: unimplemented — design draft.** Fairy Forest runs today on its
 > own private code at `/realms/fairy-forest`:
 > [fairy.coax](../../apps/openagents-web/fairy.coax) over
-> [verse/fairy-forest/](../../verse/fairy-forest/README.md). This chapter
+> [metaverse/fairy-forest/](../../metaverse/fairy-forest/README.md). This chapter
 > plans rebuilding it only from the OpenAgents Metaverse Engine's earlier chapters. Nothing here runs
 > yet.
 
@@ -56,15 +56,15 @@ bloom_at :: (f: *Forest, p: Vec3W) {
 
 ## What exists today
 
-- [verse/fairy-forest/README.md](../../verse/fairy-forest/README.md): the
+- [metaverse/fairy-forest/README.md](../../metaverse/fairy-forest/README.md): the
   story, Thornfall and the Old Ring, the five roots, the panes rule.
-- [forest.coax](../../verse/fairy-forest/forest.coax) (layout, fade,
-  troubles), [stream.coax](../../verse/fairy-forest/stream.coax) (one
-  [verse/water.coax](../../verse/water.coax) river body),
-  [talk.coax](../../verse/fairy-forest/talk.coax),
-  [life.coax](../../verse/fairy-forest/life.coax),
-  [night.coax](../../verse/fairy-forest/night.coax),
-  [park.coax](../../verse/fairy-forest/park.coax).
+- [forest.coax](../../metaverse/fairy-forest/forest.coax) (layout, fade,
+  troubles), [stream.coax](../../metaverse/fairy-forest/stream.coax) (one
+  [metaverse/water.coax](../../metaverse/water.coax) river body),
+  [talk.coax](../../metaverse/fairy-forest/talk.coax),
+  [life.coax](../../metaverse/fairy-forest/life.coax),
+  [night.coax](../../metaverse/fairy-forest/night.coax),
+  [park.coax](../../metaverse/fairy-forest/park.coax).
 - [fairy.coax](../../apps/openagents-web/fairy.coax) and `fairy.wgsl`:
   the page, drawn from the engine's five shapes (a ground of cells in store
   0, objects in store 1, the stream's nodes in store 2); the face does the

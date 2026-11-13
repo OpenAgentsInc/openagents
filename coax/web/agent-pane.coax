@@ -10,12 +10,12 @@
 // first look comes back into the pane. A verb typed goes to the seat and its observation comes in
 // under it; CLOSE ends the seat, and the database says the seat was the session's account's, hosted,
 // and is closed; a phone-width page shows the pane. It reads the pane through
-// coaxial.guardProbe(2400 + f) (verse/edit/edit.coax redit_probe: 4 * b + 0..3 button b's box, 96
+// coaxial.guardProbe(2400 + f) (metaverse/edit/edit.coax redit_probe: 4 * b + 0..3 button b's box, 96
 // the pane, 88 the seat's state, 89 the lines in its log).
 //
 // Start, from the repository's root (ports are examples):
 //   COAXIAL_RUN_STEPS=250000000 coax/web/wasm.sh apps/openagents-web/myrealm.coax apps/openagents-web/myrealm-face.c \
-//     /tmp/myrealm.wasm verse/edit/computer-wire.coax coax/lib/crypto/entropy.coax
+//     /tmp/myrealm.wasm metaverse/edit/computer-wire.coax coax/lib/crypto/entropy.coax
 //   coax/web/tool.sh local-origin --listen 47921 --stand-in-runner
 //   OA_API_DATABASE=... OA_API_ORIGIN=http://127.0.0.1:47920 OA_AGENT_WAKE_URL=http://127.0.0.1:47921/wake \
 //     OA_AGENT_WAKE_TOKEN=x API_BINARY --listen 127.0.0.1:57190 --migrations coax/web/api/migrations
@@ -32,7 +32,7 @@
 AP_MS :: 30000;
 AP_PNG_MAX :: 25165824;
 
-// The pane (verse/edit/edit.coax, verse/edit/agent.coax) as the check reads it.
+// The pane (metaverse/edit/edit.coax, metaverse/edit/agent.coax) as the check reads it.
 AB_EDIT :: 0; AB_ATAB :: 18; AB_AMAIN :: 19; AB_ACLOSE :: 20; AB_AFIELD :: 21;
 AP_PANE :: 96; AP_STATE :: 88; AP_LINES :: 89; AP_AGENT_PANE :: 7;
 AS_NONE :: 0; AS_OPEN :: 2;

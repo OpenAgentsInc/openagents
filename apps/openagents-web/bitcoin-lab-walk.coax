@@ -12,10 +12,10 @@
 // Every number is worked out at run time by the book's own Coax (bitcoin-lab-lesson.coax).
 //
 // The walking, the camera, the HUD, WORLDS, the slabs, the skyline and the Grid are the lab walk's
-// (verse/lab-walk.coax), shared with Nostr Lab; this module names the stations and draws their
+// (metaverse/lab-walk.coax), shared with Nostr Lab; this module names the stations and draws their
 // lessons and the chain's cubes. Its C face is bitcoin-lab-walk-face.c over lab-walk-face.h.
 //   coax/remote/remote.sh run -- coax/bin/coax test --library apps/openagents-web/bitcoin-lab-walk.coax --only "bitcoin lab walk"
-#load "../../verse/lab-walk.coax";
+#load "../../metaverse/lab-walk.coax";
 #load "bitcoin-lab-lesson.coax";
 
 BW_PATHS :: [2] string.["/worlds/bitcoin-lab", "/worlds/bitcoin-lab/"];

@@ -81,7 +81,7 @@ pictures. It is the same Coax and the same shaders as the web, not a copy.
   scene, the particles, bloom, post and the HUD with Metal. It is engine
   code, not the app's: any realm that draws through the page's passes can
   open in it, on the Mac and on iOS.
-- **The realm.** `verse/native/build.sh everglade2 OUT` compiles the realm
+- **The realm.** `metaverse/native/build.sh everglade2 OUT` compiles the realm
   and its face to C, as it does any web realm. The app builds that into a
   library the host loads.
 - **The shaders.** `coax metal` emits each pair of `everglade/client/gpu/everglade2.coax` and
@@ -205,7 +205,7 @@ What the realms don't do yet:
    [the mobile README](../../apps/everglade-mobile/README.md#the-webs-realms-on-ios)).
    The web's realm needs a thumb stick on the range's and Experimental's
    pages before you can walk there by touch. Android needs a twin of the
-   host on Vulkan (`verse/native/realm-host.c` is the start).
+   host on Vulkan (`metaverse/native/realm-host.c` is the start).
 2. **A carrier and catalog profile** for both, when the web's Everglade II
    moves to the shared renderer. The page host then gives way to the realm
    host (`apps/aethyrforge-desktop/MetalRealm.m`).

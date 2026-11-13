@@ -1,0 +1,290 @@
+// Puts private human packs where openagents.com's broker serves them (coax/web/api/verse_packs.c,
+// docs/verse/metahuman-support.md, "Sending packs to browsers"). Owner-run, on the machine that builds
+// them; nothing here goes in git and nothing secret is printed.
+//
+//   coax/web/tool.sh metaverse/tools/humans/upload_packs.coax                  every pack in ~/.openagents/verse/private-build/web/
+//   coax/web/tool.sh metaverse/tools/humans/upload_packs.coax human human-robe  those packs only
+//   coax/web/tool.sh metaverse/tools/humans/upload_packs.coax --dry-run ...     says each gcloud command instead of running it
+//   VERSE_PACKS_DIR=DIR ...                                                 packs from DIR instead
+//
+// For each NAME.pack: its SHA-256, then gzip -9, then AES-256-CTR under a fresh random key and iv,
+// stored as gs://openagentsgemini-verse-private-assets/packs/<sha256> (Cache-Control no-store; the
+// bucket enforces public access prevention). The manifest, Secret Manager verse-private-packs, gets
+// the pack's line (name, digest, sizes, object, key, iv) in a new version, with the session master
+// made once and kept. The API reads the new version within a minute; no redeploy.
+// A pack already stored under its digest is not uploaded again (its key stays the manifest's). Every
+// name and pack is checked before gcloud is asked anything.
+//
+// gcloud, gzip and openssl do the moving, compressing and encrypting; GCLOUD and OPENSSL name other
+// programs (a stand-in bucket and secret store, for a check). --dry-run runs no gcloud command at all:
+// it prints each one, answers its reads as "not there" (so a new manifest with a new master), and still
+// compresses and encrypts each pack in a temporary directory that is removed.
+#import "Basic";
+#load "../../../coax/lib/sys/tool.coax";
+#load "../../../coax/lib/sys/proc.coax";
+#load "../../../coax/lib/sys/fs.coax";
+#load "../../../coax/lib/crypto/sha256-memory.coax";
+
+UP_MANIFEST :: 1048576;
+UP_CHUNK :: 4194304;
+UP_PROJECT :: "openagentsgemini";
+UP_SECRET :: "verse-private-packs";
+
+// Text joined into a buffer.
+Ub :: struct { b: [UP_MANIFEST] u8; n: int; bad: bool; }
+ub :: (s: [] Ub, t: string) {
+  if s[0].bad || s[0].n + t.count > UP_MANIFEST { s[0].bad = true; return; }
+  for i: 0..<t.count { s[0].b[s[0].n + i] = t[i]; }
+  s[0].n += t.count;
+}
+ub_int :: (s: [] Ub, v_in: int) {
+  v := v_in; d: [24] u8; k := 0;
+  while true { d[k] = cast,trunc(u8) (48 + v % 10); k += 1; v /= 10; if v == 0 { break; } }
+  while k > 0 { k -= 1; ub(s, cast(string) d[k..<k + 1]); }
+}
+ub_text :: (s: [] Ub) -> string { return cast(string) s[0].b[0..<s[0].n]; }
+
+#test "a pack's name, and the manifest's lines" {
+  #assert up_name("human") && up_name("human-robe-phone") && up_name("a1-2");
+  #assert !up_name("") && !up_name("Human") && !up_name("human.pack") && !up_name("a b") && !up_name("human_robe");
+  #assert up_word("pack human abc 1 2 packs/abc k i", 1) == "human" && up_word("pack human abc", 2) == "abc" && up_word("pack", 3) == "";
+  #assert up_word("pack  human", 1) == "human";
+}
+up_name :: (n: string) -> bool {
+  if n.count < 1 || n.count > 64 { return false; }
+  for c: n { if !((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-') { return false; } }
+  return true;
+}
+// awk's field i (from 0) of a line split on runs of spaces and tabs.
+up_word :: (line: string, i: int) -> string {
+  k := 0; at := 0;
+  while at < line.count {
+    while at < line.count && (line[at] == ' ' || line[at] == '\t') { at += 1; }
+    if at >= line.count { break; }
+    e := at; while e < line.count && line[e] != ' ' && line[e] != '\t' { e += 1; }
+    if k == i { return line[at..<e]; }
+    k += 1; at = e;
+  }
+  return "";
+}
+
+Up :: struct {
+  dry: bool; gcloud: string; openssl: string; config: string;
+  env: [8192] u8; env_n: int;
+}
+up_env :: (u: [] Up, name: string, fallback: string) -> string {
+  got := proc_getenv(name, u[0].env[u[0].env_n..<8192]);
+  u[0].env_n += got.count;
+  return ifx got == "" then fallback else got;
+}
+// Runs argv with env (an entry or ""), to its end; its status, its stdout lines in out (out_n). Its
+// stderr is kept, not shown (as the script's 2>/dev/null and >/dev/null).
+up_run_env :: (argv: [] string, env: string, out: [] u8, out_n: [] int) -> int {
+  out_n[0] = 0;
+  h := proc_new();
+  if h < 0 { return 127; }
+  ok := true;
+  for x: argv { ok = ok && proc_arg(h, x); }
+  if env != "" { ok = ok && proc_env(h, env); }
+  if !ok || proc_start(h) != 0 { r := proc_release(h); return 127; }
+  line: [65536] u8;
+  while true {
+    n := proc_line(h, -1, line[..]);
+    if n == PROC_TOO_LONG { continue; }
+    if n < 0 { break; }
+    if out_n[0] > 0 && out_n[0] < out.count { out[out_n[0]] = '\n'; out_n[0] += 1; }
+    for i: 0..<n { if out_n[0] < out.count { out[out_n[0]] = line[i]; out_n[0] += 1; } }
+  }
+  st := proc_wait(h, -1);
+  r := proc_release(h);
+  return st;
+}
+up_run :: (argv: [] string, out: [] u8, out_n: [] int) -> int { return up_run_env(argv, "", out, out_n); }
+// A gcloud command: run, or with --dry-run said and answered as failed (nothing there).
+up_gcloud :: (u: [] Up, args: [] string, out: [] u8, out_n: [] int) -> int {
+  argv: [24] string; argv[0] = u[0].gcloud;
+  for i: 0..<args.count { argv[i + 1] = args[i]; }
+  out_n[0] = 0;
+  if u[0].dry {
+    s: [1] Ub; ub(s[..], "upload_packs: would run: gcloud");
+    for a: args { ub(s[..], " "); ub(s[..], a); }
+    print("%\n", ub_text(s[..]));
+    return 1;
+  }
+  return up_run_env(argv[0..<args.count + 1], u[0].config, out, out_n);
+}
+// openssl rand -hex N, into out.
+up_rand :: (u: [] Up, bytes: string, out: [] u8) -> string {
+  a := [4] string.[u[0].openssl, "rand", "-hex", bytes];
+  n: [1] int; st := up_run(a[..], out, n[..]);
+  if st != 0 { return ""; }
+  return cast(string) out[0..<n[0]];
+}
+// The SHA-256 of a file, in hex; "" when it can't be read.
+up_sha :: (path: string, out: [] u8) -> string {
+  state: [112] u8; r := sha256_init(state[..]);
+  buf: [UP_CHUNK] u8; at := 0;
+  while true {
+    n := fs_read_at(path, at, buf[..]);
+    if n < 0 { return ""; }
+    if n == 0 { break; }
+    r = sha256_update(state[..], buf[0..<n]);
+    at += n;
+  }
+  d: [32] u8; r = sha256_final(state[..], d[..]);
+  hex := "0123456789abcdef";
+  for i: 0..<32 { out[2 * i] = hex[cast(int) d[i] >> 4]; out[2 * i + 1] = hex[cast(int) d[i] & 15]; }
+  return cast(string) out[0..<64];
+}
+// Copies a file in chunks (gzip writes its .gz beside its input, and the input stays the pack's).
+up_copy :: (from: string, to: string) -> bool {
+  buf: [UP_CHUNK] u8; at := 0;
+  if !fs_write(to, "") { return false; }
+  while true {
+    n := fs_read_at(from, at, buf[..]);
+    if n < 0 { return false; }
+    if n == 0 { return true; }
+    if !fs_append(to, cast(string) buf[0..<n]) { return false; }
+    at += n;
+  }
+  return true;
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) { tool_errln("upload_packs: an argument is too long"); return 2; }
+  u: [1] Up;
+  hb: [4096] u8; home := proc_getenv("HOME", hb[..]);
+  dd: [1] Ub; ub(dd[..], home); ub(dd[..], "/.openagents/verse/private-build/web");
+  dir := up_env(u[..], "VERSE_PACKS_DIR", ub_text(dd[..]));
+  bucket := up_env(u[..], "VERSE_PACKS_BUCKET", "openagentsgemini-verse-private-assets");
+  u[0].gcloud = up_env(u[..], "GCLOUD", "gcloud");
+  u[0].openssl = up_env(u[..], "OPENSSL", "openssl");
+  // gcloud runs as the automation account unless CLOUDSDK_CONFIG says otherwise (each gcloud child gets it)
+  cc: [4096] u8; cfg := proc_getenv("CLOUDSDK_CONFIG", cc[..]);
+  cd: [1] Ub; ub(cd[..], "CLOUDSDK_CONFIG="); ub(cd[..], cfg);
+  if cfg == "" { ub(cd[..], home); ub(cd[..], "/work/.secrets/gcloud-sa-config"); }
+  u[0].config = ub_text(cd[..]);
+
+  names: [256] string; nn := 0;
+  for i: 0..<args_count(a[..]) {
+    x := args_at(a[..], i);
+    if x == "--dry-run" { u[0].dry = true; continue; }
+    if nn < names.count { names[nn] = x; nn += 1; }
+  }
+  list: [1] FsList;
+  if nn == 0 {
+    count := fs_list(dir, list[..]);
+    for i: 0..<count {
+      e := fs_entry(list[..], i);
+      if e.count > 5 && e[e.count - 5..<e.count] == ".pack" && nn < names.count { names[nn] = e[0..<e.count - 5]; nn += 1; }
+    }
+  }
+  wb: [4096] u8; work := fs_temp("upload-packs", wb[..]);
+  if work == "" { tool_errln("upload_packs: no temporary directory"); return 1; }
+  rc := up_packs(u[..], dir, bucket, work, names[0..<nn]);
+  gone := fs_remove(work);
+  return rc;
+}
+
+up_packs :: (u: [] Up, dir: string, bucket: string, work: string, names: [] string) -> int {
+  // every name and pack checked before gcloud is asked anything
+  for name: names {
+    if !up_name(name) { tool_err("upload_packs: "); tool_err(name); tool_errln(": a pack's name is a-z, 0-9 and -"); return 1; }
+    sp: [1] Ub; ub(sp[..], dir); ub(sp[..], "/"); ub(sp[..], name); ub(sp[..], ".pack");
+    src := ub_text(sp[..]);
+    if fs_kind(src) != 1 { tool_err("upload_packs: no "); tool_errln(src); return 1; }
+    head: [4] u8; hn := fs_read_at(src, 0, head[..]);
+    if hn != 4 || cast(string) head[..] != "VPK1" { tool_err("upload_packs: "); tool_err(src); tool_errln(" is not a VPK1 pack"); return 1; }
+  }
+  out: [UP_MANIFEST] u8; on: [1] int;
+  m: [1] Ub;   // the manifest
+  // The manifest as it stands (or a new one with its master).
+  d := [5] string.["secrets", "describe", UP_SECRET, "--project", UP_PROJECT];
+  if up_gcloud(u, d[..], out[..], on[..]) == 0 {
+    r := [7] string.["secrets", "versions", "access", "latest", "--secret", UP_SECRET, "--project"];
+    rr: [8] string; for i: 0..<7 { rr[i] = r[i]; } rr[7] = UP_PROJECT;
+    if up_gcloud(u, rr[..], out[..], on[..]) != 0 { tool_errln("upload_packs: can't read the manifest"); return 1; }
+    if on[0] > 0 { ub(m[..], cast(string) out[0..<on[0]]); ub(m[..], "\n"); }
+  } else {
+    c := [9] string.["secrets", "create", UP_SECRET, "--project", UP_PROJECT, "--replication-policy", "automatic", "--labels", "purpose=verse-private-packs"];
+    if up_gcloud(u, c[..], out[..], on[..]) != 0 && !u[0].dry { tool_errln("upload_packs: can't create the manifest's secret"); return 1; }
+    // oa-api and oa-api-staging run as the project's compute account: they read the manifest.
+    b := [9] string.["secrets", "add-iam-policy-binding", UP_SECRET, "--project", UP_PROJECT, "--role", "roles/secretmanager.secretAccessor",
+                     "--member", "serviceAccount:157437760789-compute@developer.gserviceaccount.com"];
+    if up_gcloud(u, b[..], out[..], on[..]) != 0 && !u[0].dry { tool_errln("upload_packs: can't let the API read the manifest"); return 1; }
+  }
+  has_master := false; at := 0; text := ub_text(m[..]);
+  for i: 0..<text.count { if text[i] != '\n' { continue; } if i - at >= 7 && text[at..<at + 7] == "master " { has_master = true; } at = i + 1; }
+  if !has_master {
+    hx: [128] u8; master := up_rand(u, "32", hx[..]);
+    if master == "" { tool_errln("upload_packs: openssl rand failed"); return 1; }
+    m2: [1] Ub; ub(m2[..], "master "); ub(m2[..], master); ub(m2[..], "\n"); ub(m2[..], ub_text(m[..]));
+    m[0].n = 0; ub(m[..], ub_text(m2[..]));
+  }
+
+  pb: [4200] u8; gzb: [4200] u8; objb: [4200] u8;
+  for name: names {
+    sp: [1] Ub; ub(sp[..], dir); ub(sp[..], "/"); ub(sp[..], name); ub(sp[..], ".pack");
+    src := ub_text(sp[..]);
+    shb: [64] u8; sha := up_sha(src, shb[..]);
+    plain := fs_size(src);
+    if sha == "" || plain < 0 { tool_err("upload_packs: can't read "); tool_errln(src); return 1; }
+    // the manifest's line for this name and digest, and the object under the digest
+    old := false; at = 0; text = ub_text(m[..]);
+    for i: 0..<text.count {
+      if text[i] != '\n' { continue; }
+      line := text[at..<i]; at = i + 1;
+      if up_word(line, 0) == "pack" && up_word(line, 1) == name && up_word(line, 2) == sha { old = true; }
+    }
+    obj: [1] Ub; ub(obj[..], "gs://"); ub(obj[..], bucket); ub(obj[..], "/packs/"); ub(obj[..], sha);
+    if old {
+      g := [6] string.["storage", "objects", "describe", ub_text(obj[..]), "--format", "value(size)"];
+      if up_gcloud(u, g[..], out[..], on[..]) == 0 {
+        print("upload_packs: % is stored already (packs/%...)\n", name, sha[0..<12]);
+        continue;
+      }
+    }
+    kb: [128] u8; key := up_rand(u, "32", kb[..]);
+    ivb: [128] u8; iv8 := up_rand(u, "8", ivb[..]);
+    if key == "" || iv8 == "" { tool_errln("upload_packs: openssl rand failed"); return 1; }
+    ivs: [1] Ub; ub(ivs[..], iv8); ub(ivs[..], "0000000000000000");   // the low 8 bytes count blocks (WebCrypto's 64-bit counter)
+    iv := ub_text(ivs[..]);
+    gz := fs_join(work, "gz", gzb[..]);
+    object := fs_join(work, "object", objb[..]);
+    cb: [4200] u8; copy := fs_join(work, "pack", cb[..]);
+    if !up_copy(src, copy) { tool_errln("upload_packs: can't copy the pack"); return 1; }
+    z := [5] string.["gzip", "-9", "-n", "-f", copy];
+    if up_run(z[..], out[..], on[..]) != 0 { tool_errln("upload_packs: gzip failed"); return 1; }
+    zb: [4200] u8; zz: [1] Ub; ub(zz[..], copy); ub(zz[..], ".gz");
+    if !fs_rename(ub_text(zz[..]), gz) { tool_errln("upload_packs: no gzip output"); return 1; }
+    e := [12] string.[u[0].openssl, "enc", "-aes-256-ctr", "-K", key, "-iv", iv, "-in", gz, "-out", object, ""];
+    if up_run(e[0..<11], out[..], on[..]) != 0 { tool_errln("upload_packs: openssl enc failed"); return 1; }
+    stored := fs_size(object);
+    cp := [12] string.["storage", "cp", object, ub_text(obj[..]), "--cache-control", "no-store",
+                       "--content-type", "application/octet-stream", "--custom-metadata", "no-training=true,format=vpk1-gzip-aes256ctr", "--quiet", ""];
+    if up_gcloud(u, cp[0..<11], out[..], on[..]) != 0 && !u[0].dry { tool_err("upload_packs: "); tool_err(name); tool_errln(": the upload failed"); return 1; }
+    // the manifest without this name's line, then its new line
+    m2: [1] Ub; at = 0; text = ub_text(m[..]);
+    for i: 0..<text.count {
+      if text[i] != '\n' { continue; }
+      line := text[at..<i]; at = i + 1;
+      if up_word(line, 0) == "pack" && up_word(line, 1) == name { continue; }
+      ub(m2[..], line); ub(m2[..], "\n");
+    }
+    ub(m2[..], "pack "); ub(m2[..], name); ub(m2[..], " "); ub(m2[..], sha); ub(m2[..], " "); ub_int(m2[..], plain); ub(m2[..], " "); ub_int(m2[..], stored);
+    ub(m2[..], " packs/"); ub(m2[..], sha); ub(m2[..], " "); ub(m2[..], key); ub(m2[..], " "); ub(m2[..], iv); ub(m2[..], "\n");
+    m[0].n = 0; ub(m[..], ub_text(m2[..]));
+    print("upload_packs: %: % bytes, % stored (gzip, encrypted) as packs/%...\n", name, plain, stored, sha[0..<12]);
+    r1 := fs_remove(gz); r2 := fs_remove(object);
+  }
+  mb: [4200] u8; mpath := fs_join(work, "manifest", mb[..]);
+  if m[0].bad || !fs_write(mpath, ub_text(m[..])) { tool_errln("upload_packs: can't write the manifest"); return 1; }
+  v := [7] string.["secrets", "versions", "add", UP_SECRET, "--project", UP_PROJECT, "--data-file"];
+  vv: [8] string; for i: 0..<7 { vv[i] = v[i]; } vv[7] = mpath;
+  if up_gcloud(u, vv[..], out[..], on[..]) != 0 && !u[0].dry { tool_errln("upload_packs: can't add the manifest's version"); return 1; }
+  packs := 0; at = 0; text = ub_text(m[..]);
+  for i: 0..<text.count { if text[i] != '\n' { continue; } if i - at >= 5 && text[at..<at + 5] == "pack " { packs += 1; } at = i + 1; }
+  print("upload_packs: manifest updated (% packs); the API reads it within a minute\n", packs);
+  return 0;
+}

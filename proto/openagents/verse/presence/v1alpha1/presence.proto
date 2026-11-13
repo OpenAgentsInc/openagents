@@ -3,7 +3,7 @@ package openagents.verse.presence.v1alpha1;
 
 import "openagents/engine/v1/scene.proto";
 import "openagents/options/v1alpha1/options.proto";
-import "openagents/verse/common/v1alpha1/refs.proto";
+import "openagents/metaverse/common/v1alpha1/refs.proto";
 
 // An explicitly new transient projection. It does not change NIP-MV JSON,
 // REACH framing, the realm wire, or authenticated player admission.

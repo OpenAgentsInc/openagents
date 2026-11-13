@@ -1,7 +1,7 @@
 // Everglade's cat: ambient wildlife every Everglade zone can place. It wanders round its home, sits
 // a while, washes its time away standing, and when a player comes near it stops, sits and turns to
 // look at them. The game layer owns the cat's frames in a zone's pack (glade/cat0..63: Idle, Walk and
-// Sit in turn, EG_CAT_CLIP_N frames each; verse/tools/assets/cat_pack.coax from cat_bake.py) and what
+// Sit in turn, EG_CAT_CLIP_N frames each; metaverse/tools/assets/cat_pack.coax from cat_bake.py) and what
 // it does. The sitting cat's head is turned EG_CAT_LOOK to its left, so a cat that looks at someone
 // turns its body that much away and they see it in three-quarter view. A zone
 // places its cats (eg_cat_place), steps them with the nearest player (eg_cat_step) and draws the frame

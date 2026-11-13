@@ -2,9 +2,9 @@
 // one registration the host routes through (#13347). Each game's room module lives with its game and
 // owns its rooms, its seats' frames and what each seat hears; room.coax knows only these procedures.
 // A socket's game is RmConn.game (RM_GAME_NONE for a relay socket). Today one game registers:
-//   Orbit League   orbit/server/room.coax   /api/room/orbit-league/NAME, /api/room/orbit-league-v2/NAME
+//   Orbit League   metaverse/orbit-league/server/room.coax   /api/room/orbit-league/NAME, /api/room/orbit-league-v2/NAME
 // A new game adds its module's load, its part of RmGames, a game number and a line in each procedure.
-#load "../../../orbit/server/room.coax";
+#load "../../../metaverse/orbit-league/server/room.coax";
 
 RM_GAME_NONE :: -1; RM_GAME_ORBIT :: 0;
 // The realms rm_net_observation names (metaverse-engine/net/README.md): 1 is Everglade (room.coax), 2 the

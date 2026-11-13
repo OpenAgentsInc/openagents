@@ -45,7 +45,7 @@ Focused results, compiler identity, source hashes and artifact hashes are in
 - The visuals checker passes. Muted headless Chrome WebGPU renders were
   inspected for the original VERIFIED desktop screen, ID/content REFUSED desktop
   screens, and signature/profile REFUSED phone screens. The hotbar uses
-  `verse/hud.coax` geometry rather than a custom layout definition.
+  `metaverse/hud.coax` geometry rather than a custom layout definition.
 
 Python is explicit test tooling only; the normal page build remains the Coax
 compiler plus the C/Wasm toolchain. No physical iOS, Safari/Firefox, live relay

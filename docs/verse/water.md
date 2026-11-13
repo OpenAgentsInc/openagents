@@ -14,7 +14,7 @@ swimming) is done too.
 
 ## W1: the physics (done)
 
-[`verse/water.coax`](../../verse/water.coax) is a port of the previous
+[`metaverse/water.coax`](../../metaverse/water.coax) is a port of the previous
 engine's `physics::water` at its W1 commit (`git show
 b399fa2dbe:crates/physics/src/water/`), with the same formulas, constants
 and tests. It covers what the specification's "Coupling with
@@ -51,7 +51,7 @@ scenes, durations and tolerances (rigid.coax adds four of its own). Run
 them with:
 
 ```sh
-coax/bin/coax test --library verse/water.coax --steps 500000000
+coax/bin/coax test --library metaverse/water.coax --steps 500000000
 coax/bin/coax test --library metaverse-engine/physics/rigid.coax
 ```
 
@@ -81,7 +81,7 @@ The old W2 (`git show 03b7bbe2b0`: `assets/shaders/water.wgsl` v1 and
 `crates/verse-world/src/water/{terms,presets,frame,shore}.rs`) on the
 Coax WebGPU renderer (`coax/web/host.js`):
 
-- [`verse/water-look.coax`](../../verse/water-look.coax) is the CPU half:
+- [`metaverse/water-look.coax`](../../metaverse/water-look.coax) is the CPU half:
   the seven presets (Jerlov absorption, in-scatter, foam, roughness, shore
   band, crest scattering), each wave's term and the angle constant from
   W1's integer phase counters in f64 so the GPU's f32 never sees a large
@@ -115,7 +115,7 @@ covers it), the GLES path (the Coax renderer is WebGPU only), and
 screen-space refraction (the bed comes through by absorption only).
 
 ```sh
-coax/bin/coax test --library verse/water-look.coax --steps 500000000
+coax/bin/coax test --library metaverse/water-look.coax --steps 500000000
 ```
 
 ## W3: Everglade's river (done, adapted)
@@ -184,7 +184,7 @@ bridge, so W3 is that river (docs/verse/everglade.md, "The river"):
   `rowboat`). You board and row them (W6, below).
 
 Townsfolk (W3's rest): the people walking their day wade and swim by the
-same rules as you (`verse/water-wade.coax`, shared with `river.coax`): past
+same rules as you (`metaverse/water-wade.coax`, shared with `river.coax`): past
 0.4 m they wade, past 1.25 m they swim with only their head out, at half
 pace either way. Pip the stable hand swims the Lantern Pond after lunch.
 Not ported: underwater combat. You swim with the walk clip (there is no swim clip yet), and a
@@ -227,7 +227,7 @@ the bridge, facing its piles.
 ## The painted preset (art-styles.md 12, as-painted-water)
 
 `water_preset(WATER_PAINTED)` ("painted", the eighth preset in
-[`verse/water-look.coax`](../../verse/water-look.coax)) sets `W_ABSORB + 3`
+[`metaverse/water-look.coax`](../../metaverse/water-look.coax)) sets `W_ABSORB + 3`
 to 1, and the shader's `water_painted` (everglade.wgsl) draws it in place
 of the optics: depth bands (shallow (0.30, 0.72, 0.74) under 0.4 m, mid
 (0.10, 0.45, 0.55) to 1.5 m, deep (0.05, 0.22, 0.36) below, each edge soft
@@ -325,7 +325,7 @@ depth and faded right at the eye.
 the sill's lip down to the pool on a ballistic curve, streaked, white at its
 foot, across the wet width only.
 
-**Debris** (`verse/demolish.coax` `demo_step_wet`). What a spell breaks over
+**Debris** (`metaverse/demolish.coax` `demo_step_wet`). What a spell breaks over
 the water falls in with a splash (a ring and spray, no dust), and its
 chunks float or sink by their matter: wood and cloth at 600 kg/m3 ride the
 surface and the current carries them for up to 90 s before they lodge;
@@ -356,13 +356,13 @@ ms either way).
 
 ```sh
 coax/bin/coax test --library everglade/legacy/v1/river.coax --steps 2000000000
-coax/bin/coax test --library verse/demolish.coax --steps 2000000000
+coax/bin/coax test --library metaverse/demolish.coax --steps 2000000000
 ```
 
 ## W8: spells and water (done)
 
-[`verse/water-spells.coax`](../../verse/water-spells.coax) holds the rules,
-as pure functions over `verse/rules/srd5.coax`; Everglade's bar casts on
+[`metaverse/water-spells.coax`](../../metaverse/water-spells.coax) holds the rules,
+as pure functions over `metaverse/rules/srd5.coax`; Everglade's bar casts on
 them (`everglade-spells.coax`):
 
 - **A spell aimed over water strikes its surface**, not the bed; its ring
@@ -383,12 +383,12 @@ them (`everglade-spells.coax`):
   thrown back.
 
 ```sh
-coax/bin/coax test --library verse/water-spells.coax
+coax/bin/coax test --library metaverse/water-spells.coax
 ```
 
 ## W4: the spectral sea (done)
 
-[`verse/water-spectrum.coax`](../../verse/water-spectrum.coax) is a port of
+[`metaverse/water-spectrum.coax`](../../metaverse/water-spectrum.coax) is a port of
 the previous engine's `physics::water::{spectrum, fft}` and `verse-pbr`'s
 baked tile (`git show 0b401561a0^:crates/physics/src/water/spectrum.rs`,
 `fft.rs`, `spectrum_tests.rs`, `crates/verse-pbr/src/water/tile.rs`), with
@@ -427,12 +427,12 @@ budget they use 64-texel tiles (the old moderate sea used 128), 8 ticks
 over the loop is held to 6% (2%) and the whole surface to 4% (2%).
 
 ```sh
-coax/bin/coax test --library verse/water-spectrum.coax --steps 2000000000
+coax/bin/coax test --library metaverse/water-spectrum.coax --steps 2000000000
 ```
 
 Not ported: the old `Field` cache (a caller keeps its own tile), the
 `water_fft_cost` example (W11 measures the lab instead), and the
-WaveSet's spectral mode in `verse/water.coax`: Everglade's 4 m river has
+WaveSet's spectral mode in `metaverse/water.coax`: Everglade's 4 m river has
 no fetch for a spectral sea, so it keeps its Gerstner waves.
 
 ### The water lab (/realms/waterlab)
@@ -459,7 +459,7 @@ devices.
 
 ## W7: under the water (done)
 
-[`verse/water-under.coax`](../../verse/water-under.coax) ports the old
+[`metaverse/water-under.coax`](../../metaverse/water-under.coax) ports the old
 underwater module as numbers the shaders mirror, with its tests:
 
 - **The waterline across the view.** `water_under_line` finds where the
@@ -499,7 +499,7 @@ Measured headless (`frametime.ts`, GPU p50). Everglade diving: 3.09 ms at
 at device pixel ratio 2 (12.1 ms on the surface; the shafts cost 3 ms).
 
 ```sh
-coax/bin/coax test --library verse/water-under.coax --steps 2000000000
+coax/bin/coax test --library metaverse/water-under.coax --steps 2000000000
 ```
 
 ## W9: weather (done)
@@ -555,7 +555,7 @@ coax/bin/coax test --library metaverse-engine/world/water-weather.coax --steps 2
 
 ## W10: ocean and scale (done)
 
-[`verse/water-ocean.coax`](../../verse/water-ocean.coax) holds the CPU half
+[`metaverse/water-ocean.coax`](../../metaverse/water-ocean.coax) holds the CPU half
 of the old W10, with its checks:
 
 - **The clipmap** (Losasso and Hoppe 2004, the plan's M2). The sea is nested
@@ -622,7 +622,7 @@ its capture example's PNG set (the lab's golden covers it), and its bay
 scene, which is [the coast](coast.md)'s C1 to C6.
 
 ```sh
-coax/bin/coax test --library verse/water-ocean.coax --steps 2000000000
+coax/bin/coax test --library metaverse/water-ocean.coax --steps 2000000000
 ```
 
 

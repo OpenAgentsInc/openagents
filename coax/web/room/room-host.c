@@ -1,5 +1,5 @@
 /* The room server's host: TCP, the WebSocket
-   handshake and frames (verse/voice-host/ws.c), and the 60 Hz beat. Every
+   handshake and frames (metaverse/voice-host/ws.c), and the 60 Hz beat. Every
    room decision is room.coax's: the host hands it each new socket's request
    (rm_join), each text frame (rm_heard) and each close (rm_left), calls
    rm_tick 60 times a second and sends each player what rm_state writes.

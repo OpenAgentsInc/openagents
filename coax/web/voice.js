@@ -1,7 +1,7 @@
 // Firm reason: 1 (browser host: the glue between the page's DOM, WebGPU, audio or workers and Coax's wasm)
 // Voice on a web page (data-voice: the Haunted House's VOICE button): the
 // microphone, the socket to the voice host and the speaker. The voice engine
-// (verse/voice*.coax through coax/web/voice/voice-web.c, voice.wasm) decides
+// (metaverse/voice*.coax through coax/web/voice/voice-web.c, voice.wasm) decides
 // turns, barge-in and gain and writes and reads every frame, as on the phone
 // (apps/openagents-ios/OpenAgents/Voice/VoiceSession.swift); this file only
 // moves samples and bytes.
@@ -20,12 +20,12 @@
 // microphone at once and ends the turn; the socket stays only until the
 // heard words are answered and spoken (or LET_GO_WAIT), then voice is off.
 //
-// The host is the oa-voice Cloud Run service by default (verse/voice-host/deploy.sh);
-// ?voice=ws://127.0.0.1:8787 uses a host on this computer (verse/voice-host/run.sh).
+// The host is the oa-voice Cloud Run service by default (metaverse/voice-host/deploy.sh);
+// ?voice=ws://127.0.0.1:8787 uses a host on this computer (metaverse/voice-host/run.sh).
 export const VOICE_KIND = 50, ACT_VOICE = 7, ACT_VOICE_TO = 8, ACT_VOICE_SAY = 9;
 const ANSWER_WAIT = 20000;   // ms a heard question waits for the app's answer
 const LET_GO_WAIT = 20000;   // ms after push to talk is let go before voice is off whatever happens
-const DEFAULT_HOST = "wss://voice.openagents.com";   // Cloud Run oa-voice (verse/voice-host/deploy.sh)
+const DEFAULT_HOST = "wss://voice.openagents.com";   // Cloud Run oa-voice (metaverse/voice-host/deploy.sh)
 const OUT_RATE = 24000, AHEAD = 0.2;
 const EV = { TURN_START: 1, TURN_END: 2, BARGE_IN: 4, FORWARD: 8, TOO_LONG: 64, DROPPED: 128, UNDERRUN: 256 };
 const MSG = { WELCOME: 2, AUDIO: 3, CONTROL: 4, TURN_EVENT: 5, SPEECH: 6, ERROR: 9 };

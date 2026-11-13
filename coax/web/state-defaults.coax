@@ -700,7 +700,7 @@ tool_main :: () -> int #export_c #effects(all) {
   w[0].es[nl] = Engine.{name = "newland", coax = ar2(ar[..], web, "/newland.coax"), face = ar2(ar[..], web, "/newland-face.c"), wasm = ar2(ar[..], web, "/build/newland.wasm"), nlibs = 3};
   w[0].es[nl].libs[0] = ar2(ar[..], root, "/coax/web/project/landing-browser.coax");
   w[0].es[nl].libs[1] = ar2(ar[..], root, "/coax/web/project/landing-fold.coax");
-  w[0].es[nl].libs[2] = ar2(ar[..], root, "/verse/gridwalk.coax");
+  w[0].es[nl].libs[2] = ar2(ar[..], root, "/metaverse/gridwalk.coax");
   w[0].es[nl + 1] = Engine.{name = "landing-reader", coax = ar2(ar[..], root, "/coax/web/project/landing-browser.coax"),
     face = ar2(ar[..], root, "/coax/web/project/landing-reader-face.c"), wasm = ar2(ar[..], web, "/build/newland.wasm")};
   w[0].ne += 2;

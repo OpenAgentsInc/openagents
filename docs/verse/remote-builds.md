@@ -597,7 +597,7 @@ Measured on oa-build-3 (30 cores, load 11 to 19), fivelab's own unit:
 | Edit | Checks run | Coax to C |
 | --- | --- | --- |
 | None (a cold compile) | 1,259 of 1,259 | 132 to 185 s |
-| A comment appended to `verse/experimental-dungeon.coax` | 0 of 1,259 | 27 to 34 s (before: 104 s) |
+| A comment appended to `metaverse/experimental-dungeon.coax` | 0 of 1,259 | 27 to 34 s (before: 104 s) |
 | `DG_HEIGHT :: 5.0;` to `5.0 + 0.0;` in that file | 961 of 1,259 | 130 s |
 
 The one-line edit runs 961 checks because they all reach `DG_HEIGHT`. With
@@ -630,7 +630,7 @@ did the same work twice:
   value after blanked directives and after a unit with no final newline.
 
 Measured on fivelab's own unit: a comment appended to
-`verse/experimental-dungeon.coax`, 0 of 1,306 checks run, three edits each.
+`metaverse/experimental-dungeon.coax`, 0 of 1,306 checks run, three edits each.
 The first two rows are one job on oa-build-4 (30 cores, load 2 to 9), the
 new compiler built there from these sources. The third is the bootstrapped
 compiler on oa-build-3 while other jobs ran (load 12 to 20).
@@ -732,9 +732,9 @@ header:
 
 ```sh
 coax/remote/remote.sh run -- bash -c 'cd coax && web/tool.sh tests/serve.coax "$PWD/bin/coax" "$PWD/.." \
-  apps/openagents-web/fivelab.coax:verse/experimental-dungeon.coax \
+  apps/openagents-web/fivelab.coax:metaverse/experimental-dungeon.coax \
   everglade/client/client.coax:everglade/shared/move.coax \
-  everglade/scene/charactercreator.coax:verse/character-glade.coax'
+  everglade/scene/charactercreator.coax:metaverse/character-glade.coax'
 ```
 
 The same change makes a cold compile cheaper: a large store the parser and
@@ -747,8 +747,8 @@ Measured 2026-11-10 with `coax c UNIT --library --header`, wall time, each
 edit made two or three times. "First compile" is the first after the edit
 (each check is keyed and reused); "again" is the same sources once more (the
 whole pass is cached). The edited files are
-`verse/experimental-dungeon.coax` (fivelab), `everglade/shared/move.coax`
-(everglade2) and `verse/character-glade.coax` (Character Create).
+`metaverse/experimental-dungeon.coax` (fivelab), `everglade/shared/move.coax`
+(everglade2) and `metaverse/character-glade.coax` (Character Create).
 
 On a build host (oa-build-2 and oa-build-8, 30 cores, load 3 to 6). Before is
 main at `9d847d9398`, which has #13131:
@@ -841,7 +841,7 @@ time. Each edit was made four times. The compiler before this change
 toolchain, compiled each edit by turns, each in its own resident, so both
 saw the same machine load. Each emitted the same C:
 
-| Edit of `verse/experimental-dungeon.coax`, first compile | Before | Now |
+| Edit of `metaverse/experimental-dungeon.coax`, first compile | Before | Now |
 | --- | --- | --- |
 | a comment | 4.6 to 5.3 s | 2.5 to 2.6 s (one of four 3.5 s, while the load spiked and the other took 5.3 s) |
 | one line of a procedure's body | 4.6 s | 2.5 s |

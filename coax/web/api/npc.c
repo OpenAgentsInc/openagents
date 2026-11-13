@@ -275,7 +275,7 @@ bool npc_route(const request *q) {
 //   400 no sentence, 422 nothing fits, 429 one at a time, 502 not a piece, 503 no answer
 // Gemini picks one piece from the catalogue (migrations/0036_sandbox_pieces.sql
 // verse.piece_catalogue, a response schema of its words) and SQL holds the
-// answer to it; the page lays it out (verse/setpiece.coax). As a question
+// answer to it; the page lays it out (metaverse/setpiece.coax). As a question
 // is, the model call is made by a child.
 //   OA_PIECE_URL    the generateContent URL (tests point it at a fake)
 //   OA_PIECE_MODEL  the model (gemini-3.8-flash)

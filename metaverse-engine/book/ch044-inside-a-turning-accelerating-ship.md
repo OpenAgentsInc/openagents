@@ -4,7 +4,7 @@
 > a gravity field for a spinning drum with centrifugal down and Coriolis on
 > moving things (`gravity_drum`, `gravity_on`, `drum_spin_for` in
 > [`metaverse-engine/physics/gravity.coax`](../physics/gravity.coax);
-> [`verse/drum.coax`](../../verse/drum.coax), used by Orbit League). This
+> [`metaverse/drum.coax`](../../metaverse/drum.coax), used by Orbit League). This
 > chapter plans interior frames, compartments and a crew-load model. Nothing
 > here runs yet.
 
@@ -58,7 +58,7 @@ following the factors in [NASA's acceleration brief](https://www.nasa.gov/wp-con
 none, constant, point-mass and drum kinds; `gravity_at`, `gravity_coriolis`,
 `gravity_on`, `gravity_up` and `gravity_step`; `drum_spin_for` and
 `drum_rim_speed`. Its checks give a 100 m drum spun for 1 g 1 g at the rim
-and none on the axis. [`verse/drum.coax`](../../verse/drum.coax) has
+and none on the axis. [`metaverse/drum.coax`](../../metaverse/drum.coax) has
 `Drum`, `drum_up`, `drum_planes` and `drum_drive_step` for cars on the
 inside of a drum. The drum is a field applied in the station frame, with no
 Euler term, no frame choice and no thrust-driven floor. There are no

@@ -31,7 +31,7 @@
         ];
       };
       pkgs = nixpkgs.legacyPackages.${system};
-      # The realms from a tree `verse/gpu/realm.sh local ship DIR` wrote.
+      # The realms from a tree `metaverse/gpu/realm.sh local ship DIR` wrote.
       verseRealms = src: pkgs.callPackage ./pkgs/verse-realms.nix { inherit src; };
       # The image (V7): the session on tty1 from the realms package. Its realms are the tree in
       # ./ship when one was shipped there (git-ignored), else a stand-in that only evaluates.

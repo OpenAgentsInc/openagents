@@ -195,7 +195,7 @@ elapsed damage totals.
 
 ## Milestone 7 Migrate worlds and shared surfaces
 
-Move Hold the Stair from `verse/rules/srd5*.coax` to the shared records and engine.
+Move Hold the Stair from `metaverse/rules/srd5*.coax` to the shared records and engine.
 Remove duplicated rules/numbers from Everglade and other adapters. Preserve their
 play through explicit profiles and keep art, sound and physical presentation in
 the worlds. Generate cards, spellbook, accessible text and index content from

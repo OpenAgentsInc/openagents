@@ -115,7 +115,7 @@ realm, a feature being shown off, or a moment a player really had.
 ## Native film frames
 
 A realm that runs natively renders a clip without Chrome: `vk-realm`
-(`verse/gpu/vk-realm.c`) steps it headless, and writes every frame in a
+(`metaverse/gpu/vk-realm.c`) steps it headless, and writes every frame in a
 range as it was drawn, at a film rate (#13003, phase F0 of
 [film mode](../research/vork/2026-11-07-desktop-film-renderer.md)):
 

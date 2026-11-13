@@ -4,7 +4,7 @@
 // proto/verse/npc-ask-v1.json, checked through this file by wire-goldens.coax and posted to the
 // API by coax/web/api/test_npc.py. Every page that talks to a character writes its question and
 // reads the answer here: Everglade (everglade/legacy/v1/people.coax), Fairy Forest
-// (verse/fairy-forest/talk.coax), the Haunted House and made realms (apps/openagents-web/realm.coax,
+// (metaverse/fairy-forest/talk.coax), the Haunted House and made realms (apps/openagents-web/realm.coax,
 // myrealm.coax).
 //   coax/bin/coax test metaverse-engine/talk/wire.coax --library
 //   coax/web/tool.sh metaverse-engine/talk/wire-goldens.coax proto/verse/npc-ask-v1.json

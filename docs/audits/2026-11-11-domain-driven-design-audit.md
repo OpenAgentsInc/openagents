@@ -30,7 +30,7 @@ the missing half is mostly vocabulary and boundaries, not code.**
 - Missing: the character aggregate. Today a character is 17 positional
   integers in a capture plus a class bit (section 3.4).
 - Missing: context boundaries a tool can check. `layer-check` checks three
-  layers. Nothing checks that the payments rules stay out of `verse/`, or that
+  layers. Nothing checks that the payments rules stay out of `metaverse/`, or that
   the API's rules live in one place (SQL or Coax, not both).
 
 **Take** DDD's strategic half: a ubiquitous language, bounded contexts with a
@@ -142,7 +142,7 @@ Derived from the folders, the SQL schemas (17 `CREATE SCHEMA` statements in
 | **Room session and replication** | `coax/web/room/`, `metaverse-engine/net/`, `metaverse-engine/session/` (control, travel, party, region, compat) | Supporting | Hard, ours, and specific to how we host. Players don't come for it |
 | **Realm authoring** | `metaverse-engine/editor/`, `apps/aethyrforge-desktop/`, WorldBuilder (`apps/openagents-web/worldbuilder*.coax`, `coax/web/api/worldbuilder.c`), Realm Builder (`coax/web/api/realms.c`), SQL `verse.realm_*`, `worldbuilder.*` | Supporting | Three tools edit realms. WorldBuilder already goes through `metaverse-engine/editor/edit.coax` (#13226, verified at `worldbuilder-plan.coax:10`); Realm Builder keeps its rules in SQL (`realms.c:1-4`) |
 | **Identity and auth** | `coax/web/api/auth*.c`, `auth-*-policy.coax`, SQL `auth.*` (29 tables), `docs/auth/` | Generic, built in-house | Accounts, authenticators, sessions. Built here by owner choice (no phone, no identity provider, `0142_auth_accounts.sql:1-2`), but the problem is a solved one |
-| **Payments and wallet** | `verse/wallet.coax`, `coax/web/api/lnaddr*.c`, `makerpay-policy.coax`, SQL `pay.*`, `makers.*`, `coax/lib/bitcoin/`, `coax/lib/lightning/`, `coax/lib/lnaddr/` | Supporting | Bitcoin-only rails are an owner rule. Money rules must be `#authority` (`AGENTS.md`, Rules) |
+| **Payments and wallet** | `metaverse/wallet.coax`, `coax/web/api/lnaddr*.c`, `makerpay-policy.coax`, SQL `pay.*`, `makers.*`, `coax/lib/bitcoin/`, `coax/lib/lightning/`, `coax/lib/lnaddr/` | Supporting | Bitcoin-only rails are an owner rule. Money rules must be `#authority` (`AGENTS.md`, Rules) |
 | **Coder and agents** | `coder/`, `coax/lib/agent/`, `coax/lib/microcoder/`, `coax/lib/gateway/`, `apps/everglade-desktop/` (Golemancy) | Core | A product line with its own book and registry rows (C1 to C13) |
 | **Chat** | `apps/openagents-web/chat.coax`, `coax/web/api/chat.c`, SQL `chat.*`, `components/zeron/` | Supporting | Being rebuilt ([chat zero-base audit](2026-11-11-chat-zero-base-audit.md)) |
 | **Projects** | `coax/web/api/private.c`, `drops.c`, SQL `projects.*`, `drops.*` | Supporting | Private project pages and drops |
@@ -206,7 +206,7 @@ flowchart LR
 | Engine to game | 57 `aethyr-up` loads in `metaverse-engine/layer-allowlist.txt` (verified) | Shared kernel, strictly downward | #13264, #13270 |
 | Authoring to world | Realm document v-N read by `metaverse-engine/editor/doc.coax`; E6 (#13249) packages it | Published language | Already planned |
 | Coder to third-party agents | `external` rows for Claude Code, Codex, Cursor, ACP, MCP (`proto/registry.json`, verified) | ACL (keep) | These rows are ACLs in all but name |
-| Payments to the rest | Wallet rules in `verse/wallet.coax`; maker pay in `coax/web/api/makerpay-policy.coax`; SQL `pay.*`, `makers.*` | Its own context folder with an open host API | Money rules sit in the realms folder today |
+| Payments to the rest | Wallet rules in `metaverse/wallet.coax`; maker pay in `coax/web/api/makerpay-policy.coax`; SQL `pay.*`, `makers.*` | Its own context folder with an open host API | Money rules sit in the realms folder today |
 | Golemancy to Coder | `apps/everglade-desktop/golems.coax` reads agent transcripts and shows them as golems (`golems.coax:1-3`) | ACL, named as one | Game words over agent records is a translation. Say so in both glossaries |
 
 ## 3. Where the code follows DDD, and where it breaks it
@@ -242,11 +242,11 @@ it: SQL calls a room an instance, and `features.coax` calls a page a zone.
 
 | Leak | Evidence | Note |
 | --- | --- | --- |
-| Engine loads app and realm code | 57 `aethyr-up` lines, 23 of them into `apps/openagents-web` and 20 into `verse/gpu` (`metaverse-engine/layer-allowlist.txt`, verified) | #13264 stops new ones; #13270 removes them |
+| Engine loads app and realm code | 57 `aethyr-up` lines, 23 of them into `apps/openagents-web` and 20 into `metaverse/gpu` (`metaverse-engine/layer-allowlist.txt`, verified) | #13264 stops new ones; #13270 removes them |
 | Game rules inside the engine directory | `metaverse-engine/rules/srd/` | The AAA audit says move it to root `rules/srd/` or `everglade/rules/` (G6). The Everglade book says SRD rules "stay in Aethyr" (`everglade/book/README.md:291`). They disagree. DDD answer: the rules are their own context, used by several worlds, so root `rules/srd/`, not inside the engine and not inside one game |
 | Rules emit display text | `RsEvent` has `text: [RS_EV_TEXT] u8` (`engine.coax:943`) | A domain event carries words for a log. Presentation belongs downstream |
 | Room is game logic plus host plus transport | `room-everglade.coax` holds seat admission, class choice, HP rescale, ticket pins and kick (`:780-873`) | #13267 extracts `everglade/server/` |
-| Payments rules in the realms folder | `verse/wallet.coax` ("The wallet's payment rules", line 1) | Wrong folder for a money context |
+| Payments rules in the realms folder | `metaverse/wallet.coax` ("The wallet's payment rules", line 1) | Wrong folder for a money context |
 | One aggregate, two implementations | The item ledger in Coax (`metaverse-engine/session/ledger.coax`) and in plpgsql (`verse.item_apply`, `0130_item_ledger.sql:54`). The SQL header says it is "the Postgres form" of the Coax model (`:1-2`). Keep times differ: Coax counts ticks (`LEDGER_KEEP :: 1000`, `ledger.coax:40`), SQL a day in ms (`:24`). Character identity differs: `CharacterId` int in Coax, `coalesce(account, id)` text in SQL | I found no check that runs one against the other. The Coax one is mutation-tested; the SQL one is what production would call |
 | API rules in two homes | Nine route files say their rules are in SQL (`access.c`, `chat.c`, `drops.c`, `makers.c`, `player.c`, `private.c`, `realms.c`, `rooms.c`, `villa.c`); 17 `*-policy.coax` files hold rules as `#authority` Coax (verified). 396 plpgsql functions in migrations | Two patterns for one job. The newer one (auth, lnaddr, seats) is Coax policy plus a thin C adapter |
 | Production code loads test fixtures | `coax/web/api/checkpoint-policy.coax:6` and `room-checkpoint.coax:5` load `tests/checkpoint-fixture.coax` (verified) | `layer-check`'s `tests` rule covers `metaverse-engine/` and `everglade/` only |
@@ -344,7 +344,7 @@ A convention, not a framework. Each context folder holds:
 | **Adapters** | Wire codecs (the registry's one codec file), SQL, C host, HTTP | Registry `codec` rows; generated C units; `#foreign` |
 
 Today 0 of the procedures in `metaverse-engine/session/`, `metaverse-engine/rules/srd/`,
-`coax/web/api/*.coax` and `verse/wallet.coax` declare a bound narrower than
+`coax/web/api/*.coax` and `metaverse/wallet.coax` declare a bound narrower than
 `#effects(all)` (115, 529, 325 and 28 `all` declarations, verified). Only
 `apps/openagents-web` has narrow bounds (59). Narrowing the model files is the
 cheapest step in this plan: it turns "the domain has no I/O" into a compile
@@ -358,7 +358,7 @@ Proposed homes, reusing the AAA layout (#13270) where it exists:
 | Everglade game (characters, world, creatures, items, quests) | `everglade/` with `server/`, `client/` (#13267, #13268) and `model/` for character, quest, encounter records | `everglade/model/` is new; it is where #13290's record lives |
 | Room session | `metaverse-engine/net/` and `metaverse-engine/session/` | Already there |
 | Realm authoring | `metaverse-engine/editor/` | Already there |
-| Payments | `pay/` or `coax/lib/pay/` | Move `verse/wallet.coax` and the pay policies |
+| Payments | `pay/` or `coax/lib/pay/` | Move `metaverse/wallet.coax` and the pay policies |
 | Identity | `coax/web/api/auth*` for now | Leave until the API is split |
 | Coder | `coder/`, `coax/lib/agent/` | Already there |
 
@@ -560,7 +560,7 @@ two checks and acceptance rules for issues already filed.
 | D10 | Content IDs as `@id` types; `ItemKind`/`AbilityId`/`TemplateId`; ledger `kind` and `op` typed | Rides on | #13286 | No identity is a bar position or array index on the wire or in saves |
 | D11 | Domain events: `kind: "event"` in the registry; first events `everglade.character.levelled.v1`, `items.item.granted.v1` | Rides on | #13285, #13291 | Both registered, pinned, published through an outbox |
 | D12 | Ability and Aura records drop display text from rules events | Rides on | #13285 | `RsEvent` (or its successor) has no text field |
-| D13 | Payments context folder: `verse/wallet.coax` and the pay policies move together | New | — | `verse/` holds no money rules |
+| D13 | Payments context folder: `metaverse/wallet.coax` and the pay policies move together | New | — | `metaverse/` holds no money rules |
 | D14 | New API rules go in `*-policy.coax`; a SQL-rules route moves when next changed | Rule | — | The rule is in `coax/web/api/COAX.md` |
 | D15 | Rename in new code only: `verse.seats` to agent seats, `room_instances` to rooms, `features.coax` zones to pages | Rides on | #13267 to #13269, #13280 | Each rename lands with the move that already touches the file |
 
@@ -596,7 +596,7 @@ For the coordinator to file under #13257 or a new tracker. Titles only.
 6. DDD.6: layer-check: per-context allowed dependencies from contexts.txt; the allowlist only shrinks
 7. DDD.7: The item ledger has one rules owner: SQL stores, Coax decides, or a differential check proves them equal
 8. DDD.8: Domain events are registry rows (`kind: "event"`): naming, versioning and the outbox rule
-9. DDD.9: Payments context: move verse/wallet.coax and the pay policies into one folder
+9. DDD.9: Payments context: move metaverse/wallet.coax and the pay policies into one folder
 10. DDD.10: New API rules go in `*-policy.coax`; SQL-rules routes move when next changed
 
 Acceptance notes to add to existing issues, not new issues:

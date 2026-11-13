@@ -249,7 +249,7 @@ stand_grid_build :: (g: [] StandGrid, f: [] f32, n: int, x0: f32, z0: f32) -> bo
   return full;
 }
 // The highest of the grid's floors over (x, z) at or under `below` (none gone: a realm whose floors
-// go reads the cell itself, as verse/demolish.coax demo_stand does).
+// go reads the cell itself, as metaverse/demolish.coax demo_stand does).
 stand_grid_top :: (g: [] StandGrid, f: [] f32, x: f32, z: f32, below: f32, pad: f32) -> StandHit {
   best: StandHit;
   c := stand_cell(g, x, z);

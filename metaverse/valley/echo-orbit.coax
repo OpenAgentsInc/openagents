@@ -1,0 +1,39 @@
+// Echo's orbit: Everglade's staged camera for ?stage=echo (N), Echo standing at the player's right on
+// the commons (everglade-raid-preview.coax rp_echo_shot). The path is in Echo's own frame: `side` along her right,
+// `up` from her feet, `front` along the way she faces. It starts close on her face, pulls back, then
+// turns once round her (her back mid-turn), and settles wide on her and the player.
+//   coax/bin/coax test metaverse/valley/echo-orbit.coax --library
+
+ECHO_ORBIT_SECONDS :: 9.0;
+ECHO_ORBIT_NEAR :: 0.72;     // m from her face at the start
+ECHO_ORBIT_FAR :: 3.6;       // m out when the turn ends
+ECHO_ORBIT_HEAD :: 1.58;     // her eyes' height over her feet
+ECHO_ORBIT_CHEST :: 1.12;    // where the wide shot looks
+ECHO_ORBIT_RISE :: 0.35;     // m the camera climbs as it pulls back
+
+echo_orbit_ease :: (p: f32) -> f32 { q := ifx p < 0 then 0.0f32 else ifx p > 1 then 1.0f32 else p; return q * q * (3 - 2 * q); }
+// At t s: the eye's and the aim's side, up and front (six floats).
+echo_orbit_path :: (t: f32, out: [] f32) {
+  p := t / ECHO_ORBIT_SECONDS;
+  pull := echo_orbit_ease(p * 2.2);
+  turn := echo_orbit_ease((p - 0.18) / 0.72);
+  look := echo_orbit_ease(p * 1.8);
+  r := ECHO_ORBIT_NEAR + (ECHO_ORBIT_FAR - ECHO_ORBIT_NEAR) * pull;
+  a := 6.2831853 * turn;
+  out[0] = sin(a) * r;
+  out[1] = ECHO_ORBIT_HEAD + 0.02 + ECHO_ORBIT_RISE * pull;
+  out[2] = cos(a) * r;
+  out[3] = 0;
+  out[4] = ECHO_ORBIT_HEAD + (ECHO_ORBIT_CHEST - ECHO_ORBIT_HEAD) * look;
+  out[5] = 0;
+}
+
+#test "Echo's orbit starts on her face from the front, turns once and ends wide in front" {
+  o: [6] f32;
+  echo_orbit_path(0, o[..]);
+  #assert abs(o[0]) < 0.0001 && abs(o[2] - ECHO_ORBIT_NEAR) < 0.0001 && abs(o[4] - ECHO_ORBIT_HEAD) < 0.0001;
+  echo_orbit_path(ECHO_ORBIT_SECONDS * 0.54, o[..]);
+  #assert o[2] < -1;
+  echo_orbit_path(ECHO_ORBIT_SECONDS, o[..]);
+  #assert abs(o[0]) < 0.001 && abs(o[2] - ECHO_ORBIT_FAR) < 0.001 && abs(o[4] - ECHO_ORBIT_CHEST) < 0.0001;
+}

@@ -18,7 +18,7 @@
 > [chapter 172](ch172-benchmark-a-service-not-a-kernel.md)'s benchmark. The
 > last section lists them.
 
-The voice engine in `verse/voice.coax` makes its turn-taking decisions with
+The voice engine in `metaverse/voice.coax` makes its turn-taking decisions with
 fixed rules. A turn ends after 700 ms of silence. The reply stops when speech
 over it has lasted 240 ms, counted by a counter that rises on a loud,
 speech-like frame and falls on any other. Each rule is cheap and never late,
@@ -330,7 +330,7 @@ That is above 0.9259, so the model says stop at 8 ticks.
 ## The gate
 
 An answer reaches the engine some ticks after its question. The gate checks
-it in the order `decide` in `verse/voice.coax` uses: the action must fit the
+it in the order `decide` in `metaverse/voice.coax` uses: the action must fit the
 question, the probability must lie in [0, 1], the confidence must clear the
 floor, the epoch must still be current, and the deadline must not have
 passed. The confidence is the probability of what the action bets on: p for
@@ -957,7 +957,7 @@ are compared with the written expected costs computed directly. The file is
   generator's posterior. Its calibration on real conversations, as in
   [chapter 16](ch016-are-the-probabilities-any-good.md), is unmeasured.
 - **The voice engine itself.** The gate copies the order of `decide` in
-  `verse/voice.coax` but is not that function; the engine's frames, its
+  `metaverse/voice.coax` but is not that function; the engine's frames, its
   20 ms clock and its consent and floor rules are not driven here.
 - **Measured latency.** Answer delays are simulated ticks. Wall-clock
   decision latency, and the share of answers on time under load, need

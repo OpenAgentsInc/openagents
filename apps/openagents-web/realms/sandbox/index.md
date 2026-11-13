@@ -19,16 +19,16 @@ Open ground in the OpenAgents Metaverse that everyone builds on together, at htt
 
 ## How it is made
 
-- The Sandbox is a world document like the Haunted House's (`Sandbox.pb`, `proto/haunt.proto`), written by `verse/tools/pack_sandbox.py` after the demo's Sandbox. It uses the house's meshes, so it shares the house's geometry and texture sheets.
-- The Haunted House's engine and edit tools play it: `verse/haunt.coax`, `apps/openagents-web/realm.coax` and `realm-face.c`. The page opens the shared world `sandbox` from the server (`GET /api/playtest/world/sandbox`) over the document, and edits are published to it when you press DONE (`POST /api/playtest/world/sandbox`). The server keeps it open to everyone's publishing (`coax/web/api/migrations/0029_sandbox_open.sql`); every publish is in its log (`GET /api/playtest/log/sandbox`). A browser without a player key is given one.
+- The Sandbox is a world document like the Haunted House's (`Sandbox.pb`, `proto/haunt.proto`), written by `metaverse/tools/pack_sandbox.py` after the demo's Sandbox. It uses the house's meshes, so it shares the house's geometry and texture sheets.
+- The Haunted House's engine and edit tools play it: `metaverse/haunt.coax`, `apps/openagents-web/realm.coax` and `realm-face.c`. The page opens the shared world `sandbox` from the server (`GET /api/playtest/world/sandbox`) over the document, and edits are published to it when you press DONE (`POST /api/playtest/world/sandbox`). The server keeps it open to everyone's publishing (`coax/web/api/migrations/0029_sandbox_open.sql`); every publish is in its log (`GET /api/playtest/log/sandbox`). A browser without a player key is given one.
 
 ## Set pieces from one sentence
 
 - In edit mode, MAKE A SET PIECE (or P) takes one sentence, such as "a flock of birds follows me" or "a ring of blue lanterns", and the world gets that piece in front of you.
 - There are four pieces: a flock of birds (crows or bats) that flies round whoever is walking, a ring of lanterns in a colour, a grove of trees (round, pine, dead or mixed), and a pond ringed with stones. Each has a count, a kind, a colour or a size where it makes sense.
 - Z takes the whole piece back in one step. The piece is published to the shared Sandbox at once, so everyone sees it.
-- How it works: the sentence goes to our server (`POST /api/playtest/sandbox/piece`), where Google's Gemini picks one piece from this fixed list and its fields, under a schema of the list's own words. The server checks the answer against the list (`coax/web/api/migrations/0036_sandbox_pieces.sql`) and keeps the sentence with what was picked. The page checks the answer again and lays the piece out with a seeded generator (`verse/setpiece.coax`). The Sandbox's engine (`verse/haunt.coax`) draws it. A sentence the list can't make, like a castle, gets an answer saying what it can make.
+- How it works: the sentence goes to our server (`POST /api/playtest/sandbox/piece`), where Google's Gemini picks one piece from this fixed list and its fields, under a schema of the list's own words. The server checks the answer against the list (`coax/web/api/migrations/0036_sandbox_pieces.sql`) and keeps the sentence with what was picked. The page checks the answer again and lays the piece out with a seeded generator (`metaverse/setpiece.coax`). The Sandbox's engine (`metaverse/haunt.coax`) draws it. A sentence the list can't make, like a castle, gets an answer saying what it can make.
 
 ## Make your own world
 
-An agent can build one from a shallow clone of the repository and open a pull request: [verse/SKILL.md](https://github.com/OpenAgentsInc/openagents/blob/main/verse/SKILL.md).
+An agent can build one from a shallow clone of the repository and open a pull request: [metaverse/SKILL.md](https://github.com/OpenAgentsInc/openagents/blob/main/metaverse/SKILL.md).

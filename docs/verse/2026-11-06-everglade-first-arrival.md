@@ -54,7 +54,7 @@ unskippable camera flight or forced movement.
 | 75–120 s | The player can keep helping the watch. A brief acknowledgment follows their first confirmed contribution, then the player is free to continue or explore. | **“You helped defend Everglade.”** Explain the next immediate goal in plain words: **Help the watch push the cultists back.** If healing or repair is available and applicable, it may also count as help. |
 
 These are proposed words, not final recorded dialogue. The existing
-[mayor's raid promo cue](../../verse/cast/cues/raid-promo.cues) supplies an established
+[mayor's raid promo cue](../../metaverse/cast/cues/raid-promo.cues) supplies an established
 voice and premise. Introduce Darian Odiodei after the immediate request, for example
 when the player sees the camp: **“Their leader is behind those wards.”** Do not
 require a new player to memorize his name or understand the ward mechanics first.

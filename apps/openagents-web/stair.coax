@@ -2,7 +2,7 @@
 // defense on the SRD 5e rules (docs/verse/game-ideas/hold-the-stair.md).
 // Bubble-beasts climb a winding stair from the cellar door to the top of the
 // wizard's tower; you place a party beside it with gold. Each defender rolls
-// a real d20 against a beast's armor class on its turn (verse/rules/
+// a real d20 against a beast's armor class on its turn (metaverse/rules/
 // srd5-combat.coax), damage types meet immunities (an ember shrugs off fire),
 // and a popped beast lets out the layer inside. Ten waves; lives are the
 // tower's hit points.
@@ -14,7 +14,7 @@
 
 #load "../../metaverse-engine/ui/font.coax";
 #load "../../coax/web/analytics.coax";
-#load "../../verse/rules/srd5-combat.coax";
+#load "../../metaverse/rules/srd5-combat.coax";
 #load "stair-tables.coax";
 #load "stair-coop.coax";
 #load "lockroom.coax";

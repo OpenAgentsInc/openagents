@@ -12,7 +12,7 @@
 // output; then a walk down the whole path every 10 m (each region's weight and the key).
 #import "Basic";
 #load "../../metaverse-engine/render/painterly.coax";
-#load "../../verse/style-preset.coax";
+#load "../../metaverse/style-preset.coax";
 #load "environment.coax";
 
 ld_v :: (c: EnvRgb) -> V3 { return v3(c.r, c.g, c.b); }

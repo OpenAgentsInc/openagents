@@ -1,8 +1,8 @@
 // Block compression for texture layers, written in Coax (GitHub #13014, part of #12998): BC7
 // (mode 6), BC4 and BC5, and ASTC 4x4 and 6x6 (one partition, LDR). metaverse-engine/tools/texture-encode.coax
 // runs it offline over a realm's layers and checks every block file against the independent
-// decoders verse/tools/ocarina-texture-core.coax already uses: the pinned bcdec header
-// (verse/tools/ocarina-bc-reference.c) and ARM astcenc 5.7.1. Each encoder has its decoder here
+// decoders metaverse/tools/ocarina-texture-core.coax already uses: the pinned bcdec header
+// (metaverse/tools/ocarina-bc-reference.c) and ARM astcenc 5.7.1. Each encoder has its decoder here
 // too, for its own search and for these checks; the reference decoders decide the recorded quality.
 //
 // A block's texels are RGBA ints, row-major, 4 to a texel: 16 texels for BC and ASTC 4x4, 36 for

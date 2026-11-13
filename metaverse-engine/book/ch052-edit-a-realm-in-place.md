@@ -517,7 +517,7 @@ shortened to PUT HERE.
 The older edit layer is documented in
 [docs/verse/realm-edit.md](../../docs/verse/realm-edit.md): who may edit
 (`verse.edit_role`, `0050_realm_edit.sql`), its routes and how DELETE cleans
-up, with the shared layer in [verse/edit/edit.coax](../../verse/edit/edit.coax).
+up, with the shared layer in [metaverse/edit/edit.coax](../../metaverse/edit/edit.coax).
 
 ## Dependencies
 

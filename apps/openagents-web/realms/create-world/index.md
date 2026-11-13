@@ -22,4 +22,4 @@ Drag to turn the view. Scroll or pinch to zoom. UNDO takes back the last change 
 
 - `apps/openagents-web/worldbuilder.coax` is the page. `worldbuilder-plan.coax` carries out the edits. `worldbuilder-face.c` binds them for the browser, and `worldbuilder.wgsl` (from `gpu/worldbuilder.coax`) draws them, one instanced draw for each model.
 - `coax/web/api/worldbuilder.c` asks Gemini on Vertex for typed edits (place, move, rotate, scale, delete, duplicate, undo, clear) with a JSON schema. `worldbuilder-policy.coax` meters each call at Vertex prices and enforces the daily cap and the anti-flood limit. `migrations/0141_worldbuilder.sql` keeps the day's spend.
-- `verse/tools/assets/worldbuilder_pack.coax` packs the models into `assets/worldbuilder.pack.gz`. The models are by Quaternius (CC0, or the Quaternius Asset License).
+- `metaverse/tools/assets/worldbuilder_pack.coax` packs the models into `assets/worldbuilder.pack.gz`. The models are by Quaternius (CC0, or the Quaternius Asset License).

@@ -1,6 +1,6 @@
 // A WebAssembly module run in headless Chrome, driven from a Coax tool: the
 // checks that compare a page's wasm with its native build (replay-hosts,
-// state-defaults, verse/native/wasm-run) run the wasm in the browser's own
+// state-defaults, metaverse/native/wasm-run) run the wasm in the browser's own
 // engine and do everything else here. The page holds one small glue object,
 // W (coax/web/wasm-host.js): it keeps files sent to it, instantiates a module with an imported
 // memory and stub imports, calls exports, and reads and writes memory. What

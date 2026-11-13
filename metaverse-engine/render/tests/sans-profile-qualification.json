@@ -19,7 +19,7 @@
       "metaverse-engine/budget.coax": "4b188127c8fa9a250d3a3ec7a2065611e90ea309a941c387a24c4ba478275036"
     },
     "offline_tool": {
-      "verse/tools/sans-atlas.coax": "ba5ed650f09e5ff5861ff0c6e2a1b0d17bbd8d6589fff3d704db92dc0891b952",
+      "metaverse/tools/sans-atlas.coax": "ba5ed650f09e5ff5861ff0c6e2a1b0d17bbd8d6589fff3d704db92dc0891b952",
       "coax/lib/sys/tool.coax": "abde6db3310c3df1629bb3545baa1d30d6b4fb1c6815929508e3ef7274462e70",
       "coax/lib/sys/args.coax": "9432ec55610993fcd3dd772d23e9060096a1442996f471cd94fdae0509612ce3",
       "coax/lib/sys/fs.coax": "b5cc6abf4c76ecd416e00bada836c7321e4f342ac58a17546ad53faa20d18614",

@@ -2,7 +2,7 @@
 // them (before the Nuke, 0b401561a0^: crates/verse-engine/src/animation.rs
 // and Everglade's crates/verse-zone-everglade/src/zones/everglade/player.rs).
 // Everglade's player, the old engine's Ranger (everglade/legacy/v1/ranger.coax,
-// written by verse/tools/pack_realm.py), is the first to use it.
+// written by metaverse/tools/pack_realm.py), is the first to use it.
 //
 // A rig is a skeleton, parents first, each joint's rest translation and
 // rotation and its inverse bind, and clips of keys per joint. The clip
@@ -31,7 +31,7 @@ SKIN_RUN_FROM :: 5.0;     // and from this it runs rather than walks (Motion::RU
 SKIN_IDLE :: 0; SKIN_WALK :: 1; SKIN_RUN :: 2; SKIN_JUMP :: 3;
 SKIN_BACKPEDAL :: 4; SKIN_STRAFE_LEFT :: 5; SKIN_STRAFE_RIGHT :: 6; SKIN_SWING :: 7;
 
-// A rig's numbers, as verse/tools/pack_realm.py writes them: per joint its
+// A rig's numbers, as metaverse/tools/pack_realm.py writes them: per joint its
 // parent, rest (translation, then rotation x y z w: 7) and inverse bind
 // (three rows of four: 12); per clip its seconds and metres a loop; per
 // clip and joint its translation and rotation keys (first, count) into

@@ -2,8 +2,8 @@
   "schema": 1,
   "compiler_sha256": "d7bb42979103435a0adfd543368fc2e915dad697fe0b877a0296d62fe08a1905",
   "source_inputs_sha256": {
-    "verse/player.coax": "4bf3005da0dc4fc4d445cfe55ac8ff3e39d542cdf2b0b2889af1dfa573b56528",
-    "verse/stand.coax": "a6c5d351b77cf14313a7cb97232894ad10525f148aa499ab87c01fc908e4f35b",
+    "metaverse/player.coax": "4bf3005da0dc4fc4d445cfe55ac8ff3e39d542cdf2b0b2889af1dfa573b56528",
+    "metaverse/stand.coax": "a6c5d351b77cf14313a7cb97232894ad10525f148aa499ab87c01fc908e4f35b",
     "metaverse-engine/loop.coax": "6dbb01f91a5cbee7338b71e18ce3577a9b56d7320432697eba034df94c16eb7b",
     "metaverse-engine/input.coax": "385291bb7460cc68813294756ca534d9a76bd85adc6829edbc6bd8b1bd68f974",
     "metaverse-engine/query.coax": "e040eb7558a706da6251edaf691fae1eee344c3d20a8ebbab4a0e580fa2a2efa",
@@ -36,7 +36,7 @@
   "command": [
     "coax/bin/coax",
     "mutate",
-    "verse/player.coax",
+    "metaverse/player.coax",
     "--library",
     "--root-only",
     "--jobs",

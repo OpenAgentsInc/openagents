@@ -35,7 +35,7 @@ SPEC = importlib.util.spec_from_file_location("coax_native_checks_fmt", ROOT / "
 nc = importlib.util.module_from_spec(SPEC)
 sys.modules[SPEC.name] = nc
 SPEC.loader.exec_module(nc)
-FROZEN = ["verse/look.coax", "verse/stars.coax", "psionic/kernels/norm/agent/a1.coax"]
+FROZEN = ["metaverse/look.coax", "metaverse/stars.coax", "psionic/kernels/norm/agent/a1.coax"]
 
 
 def fmt(*args, cwd=None):

@@ -467,7 +467,7 @@ def unselected(selection: dict) -> list:
     """Every #test under the selection's roots that it doesn't run, by file and name."""
     chosen = set(selection["files"])
     out = []
-    for root in selection.get("roots", ["verse", "psionic"]):
+    for root in selection.get("roots", ["metaverse", "psionic"]):
         for f in sorted((REPO / root).rglob("*.coax")):
             rel = str(f.relative_to(REPO))
             if rel in chosen or "/." in rel:

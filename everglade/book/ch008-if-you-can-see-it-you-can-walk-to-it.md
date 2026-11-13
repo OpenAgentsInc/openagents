@@ -54,7 +54,7 @@ test for the glade's own pieces. Both the pack tool and the colliders call it.
 ### A rock is its hull
 
 A rock's collider is the convex hull of its own mesh.
-`verse/tools/assets/everglade2_rock_hulls.coax` bakes the hulls from the
+`metaverse/tools/assets/everglade2_rock_hulls.coax` bakes the hulls from the
 Stylized Nature meshes into `rock-hulls.coax` (`E2_HULL_V`, `E2_HULL_F`). The
 page scales and turns each hull with its placed piece.
 

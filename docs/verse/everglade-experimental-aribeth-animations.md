@@ -28,7 +28,7 @@ stay valid. No second frozen Aribeth is drawn beneath the moving specimen.
 
 ## Playback
 
-`verse/experimental-aribeth.coax` validates the private catalog's frame rows and
+`metaverse/experimental-aribeth.coax` validates the private catalog's frame rows and
 clip schedule. `C glade/aribethN` identifies each pose; `A aribeth NAME FIRST
 COUNT DURATION_MS` gives the original clip timing. Missing, duplicate, out-of-range
 or incomplete frame banks stay inactive; catalog replacement resets the state.

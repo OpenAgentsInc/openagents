@@ -1,6 +1,6 @@
 // Metaverse OS's boot session (docs/os/2026-11-02-verse-os.md, milestone V0): the program a VT's login
 // runs so the machine shows the Metaverse instead of a desktop. It waits until its VT is the one on the
-// screen, runs the first realm there on the bare display (verse/gpu/vk-realm.c, which takes the
+// screen, runs the first realm there on the bare display (metaverse/gpu/vk-realm.c, which takes the
 // screen as this login's own, no root), follows travel from realm to realm as realm.sh's screen mode
 // does, and when the person leaves (Escape held a second) vk-realm shows the VT it was told to, and
 // this waits for its VT to come back, to start again where they were.
@@ -17,7 +17,7 @@
 // (--activity); once a second this session asks os/verse-pylon-policy.coax (#authority) whether
 // to run `CLI pylon start --model M` (--pylon-model, default psionic-toy; --pylon-source names the
 // checkout with scripts/join-pylon.sh) or `CLI pylon stop`, and does what it says.
-// DIR is what `verse/gpu/realm.sh HOST install DIR` keeps: a directory per realm (its vk-realm,
+// DIR is what `metaverse/gpu/realm.sh HOST install DIR` keeps: a directory per realm (its vk-realm,
 // drawdir and given) and the travel file (slug:module pairs). --tty N waits for ttyN to show
 // first (default: start at once); --leave-to VT is the VT shown on leaving (default 1); --state
 // DIR keeps the player, place and bar online (vk-realm --net); --once ends after one leave.

@@ -92,7 +92,7 @@ The physical-world phases share three continuous consumers: one running Metavers
 realm; one small simulated robot, the closed loop of Psionic chapters
 [168](../psionic/book/ch168-imitation-before-robotics-scale.md)–170 (see the [plan](../psionic/book/PLAN.md)), built on its deterministic and
 differentiable solvers (chapters 109 and 111); and one spacecraft scenario on
-the `verse/` space modules: a freighter that loads cargo, transfers to a moving
+the `metaverse/` space modules: a freighter that loads cargo, transfers to a moving
 destination, rides out a fault and docks, used by the Metaverse space games and by
 Metaverse Engine Part V (chapters 39–48). Each of R12–R20 must improve one of them,
 and a facility both the robot and the spacecraft need (frames, clocks,
@@ -168,7 +168,7 @@ evaluator supplies a separate algorithmic reference over the actual app asset;
 the Debug iOS capture exercises the real Grid and Metal command buffers.
 Original-source breakpoints, stepping, values, stacks, diagnostics and sanitizer
 traces are tested on Mac LLDB, with an actual Simulator app attachment too.
-See [methodology](../verse/benchmarks/README.md), [debugging](DEBUGGING.md) and
+See [methodology](../metaverse/benchmarks/README.md), [debugging](DEBUGGING.md) and
 [retained results](../docs/verification/coax-r0-2026-10-28.md).
 
 **Pose median gap closed; R0 remains open.** The follow-up Coax kernel rewrite
@@ -184,7 +184,7 @@ is not a frame-tail guarantee. Finish physical-device/tail budgets, complete
 asset/install/launch/GPU-preparation attribution and
 independent reference/gate review before closing R0.
 
-1. Retain the frozen live pose kernel in `HomeRenderer.swift`/`verse/cast.coax`,
+1. Retain the frozen live pose kernel in `HomeRenderer.swift`/`metaverse/cast.coax`,
    corpus, tolerance, reference revision and algorithms. Independently review
    its reader adaptation and assumptions before adoption sign-off. Add a new
    reference or representative kernel only with a documented reason and its own
@@ -743,7 +743,7 @@ products and quotients (W, J/K, W/(m²·K⁴), m³/s²), so a radiator law or a
 gravitational parameter is dimension-checked, not just labelled. Precision is
 part of the type: an astronomical frame holds f64 metres (at 1 AU f32 spacing
 is 16,384 m, f64 about 30.5 µm), and a local frame used for contacts or
-rendering is reached by an explicit, recorded origin change, as `verse/`'s
+rendering is reached by an explicit, recorded origin change, as `metaverse/`'s
 floating-origin camera already does by hand.
 
 **Consumer/gate:** move one Metaverse camera/world transform path and the joint

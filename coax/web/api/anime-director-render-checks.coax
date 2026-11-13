@@ -1,6 +1,6 @@
 // Independent finite render-profile receipts. Loaded by anime-director-policy.coax.
 // The expected tables come from the current stage and drawing branches, not the
-// policy implementation: verse/anime/stage.coax sg_pose_of/anime_stage/sg_frame,
+// policy implementation: metaverse/anime/stage.coax sg_pose_of/anime_stage/sg_frame,
 // and apps/openagents-web/animelab.coax's spell/effect drawing. A fallback pose,
 // fireball substituted for another spell, or fallback camera is unsupported.
 

@@ -83,7 +83,7 @@ tool_main :: ()->int #export_c #effects(all) {
   paths:[12][FS_PATH_MAX]u8;
   app:=fs_join(out,"app",paths[0][..]);source:=fs_join(app,"build/render/fixture",paths[1][..]);manifest:=fs_join(source,"render.json",paths[2][..]);old:=fs_join(out,"old",paths[3][..]);fresh:=fs_join(out,"coax",paths[4][..]);
   ref:=fs_join(out,"reference/coax/web",paths[5][..]);ref_stage:=fs_join(ref,"render_stage.py",paths[6][..]);ref_native:=fs_join(out,"reference/verse/native/render_package.py",paths[7][..]);origin:[FS_PATH_MAX]u8;
-  if !st_check_copy(fs_join(reference,"coax/web/render_stage.py",origin[..]),ref_stage) || !st_check_copy(fs_join(reference,"verse/native/render_package.py",origin[..]),ref_native) || !st_check_fixture(source) {tool_errln("could not retain reference or make fixture");return 1;}
+  if !st_check_copy(fs_join(reference,"coax/web/render_stage.py",origin[..]),ref_stage) || !st_check_copy(fs_join(reference,"metaverse/native/render_package.py",origin[..]),ref_native) || !st_check_fixture(source) {tool_errln("could not retain reference or make fixture");return 1;}
   if !st_check_stage_pair(stage_binary,ref,app,"/build/render/fixture/render.json",old,fresh,true,"valid-stage",out) {return 1;}
   raw:[RSP_MANIFEST]u8;n:=fs_read(manifest,raw[..]);if n<0 {return 1;}hash:[64]u8;if !S_hex(S_hash(cast(string)raw[0..<n]),hash[..]) {return 1;}
   rel:[128]u8;o:[1]Jo;jo_start(o[..],rel[..]);jo_put(o[..],"build/render/");jo_put(o[..],cast(string)hash[..]);

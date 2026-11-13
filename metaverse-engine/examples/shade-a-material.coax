@@ -1,7 +1,7 @@
 // Book chapter 12: a realm's material table admitted whole, one refused, and a grass material
 // shaded with the painterly preset at noon. The fixture realm's own fragment code
 // (apps/openagents-web/gpu/fixture.coax), run here on the CPU, gives the same colours.
-#load "../../verse/style-preset.coax";
+#load "../../metaverse/style-preset.coax";
 #load "../../apps/openagents-web/gpu/fixture.coax";
 #import "Basic";
 

@@ -74,10 +74,10 @@ die with one app.
 
 - The schema: `proto/openagents/voice/v1alpha1/voice.proto`, including
   per-frame `FrameFeatures` and `FrameDecision`.
-- The Coax engine: `verse/voice.coax`, `voice-wire.coax`, and the two
+- The Coax engine: `metaverse/voice.coax`, `voice-wire.coax`, and the two
   `#authority` files `voice-floor.coax` and `voice-meter.coax` (zero
-  surviving mutants), behind the C face `verse/platform/voice.h`.
-- The dev voice host: `verse/voice-host/` (C), running on this Mac only.
+  surviving mutants), behind the C face `metaverse/platform/voice.h`.
+- The dev voice host: `metaverse/voice-host/` (C), running on this Mac only.
   It calls Google Chirp 3, Chirp 3 HD and Vertex Gemini. How to run it:
   [dev.md](dev.md).
 - The phone: `apps/openagents-ios/OpenAgents/Voice/`, with the voice toggle

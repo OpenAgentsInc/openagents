@@ -96,8 +96,8 @@ another environment's realms.
 - Makers and tips ([makers.md](../../docs/verse/makers.md)): a one-time
   claim code, a Lightning address, "MADE BY NAME · TIP" drawn in Coax.
 - An agent publishes a hand-built realm by pull request
-  ([verse/SKILL.md](../../verse/SKILL.md)); the template is
-  [verse/realm-template/](../../verse/realm-template/index.md).
+  ([metaverse/SKILL.md](../../metaverse/SKILL.md)); the template is
+  [metaverse/realm-template/](../../metaverse/realm-template/index.md).
 
 The made-realm write and the hand-built table are separate code paths with
 separate checks.

@@ -34,7 +34,7 @@ once, in the engine, before any of the three:
    joints. Car-on-ball, car-on-wall and ship-on-ship all need collision
    detection and impulse response.
 3. **Many units, cheaply.** The Dead Gears entity system
-   (`verse/deadgears/ecs.coax`) and Everglade's level of detail
+   (`metaverse/deadgears/ecs.coax`) and Everglade's level of detail
    (`apps/openagents-web/everglade-lod.coax`) are the start. Belt 2200 and
    Hold the Stair both want hundreds to low thousands of moving things on a
    phone at 60 FPS: instanced drawing, simulation off the main thread, and

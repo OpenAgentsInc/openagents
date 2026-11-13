@@ -303,7 +303,7 @@ By default every declaration in a module is visible to every other module.
 An `#export` list makes a module's API explicit. The engine HUD does this:
 
 ```jai
-// verse/hud.coax
+// metaverse/hud.coax
 #module "verse.hud";
 #export HudRect, HudPoint, verse_hud_slot;
 #export verse_hud_frame_point, verse_hud_frame_arm, verse_hud_tone, verse_hud_cut, verse_hud_outline, verse_hud_arm_down;
@@ -312,7 +312,7 @@ An `#export` list makes a module's API explicit. The engine HUD does this:
 ```
 
 Once a module has a list, the rest of its declarations are private. The
-landing page's nostr board loads it as `#load "../../verse/hud.coax" as
+landing page's nostr board loads it as `#load "../../metaverse/hud.coax" as
 hud;` and calls `hud.verse_hud_slot(...)`; writing `hud.HUD_ARM`, or plain
 `HUD_ARM`, stops with E0389 (`'HUD_ARM' is private to module 'verse.hud'`).
 The files the module loads (`hud/frame.coax` here) are part of it, so they
@@ -322,7 +322,7 @@ module's name is E0390 and `#export other.Name;` (a reexport) is E0614.
 Visibility is a source rule only. It does not change C names: whether a
 procedure is a native symbol is still `#export_c`. A module without a list
 behaves as before, so you can add lists one module at a time.
-`coax deps verse/hud.coax --modules` prints the list as the module's
+`coax deps metaverse/hud.coax --modules` prints the list as the module's
 `exports`.
 
 ## Keep source, ABI and protocol identity distinct

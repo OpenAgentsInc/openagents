@@ -61,7 +61,7 @@ the cut's time, then jumps to the cut key. `verse_flight_take` tells the page
 which take is visible so it can change the scene at that boundary.
 
 Hecate's keys now live in
-[verse/planetary-villa/arrival.coax](../../verse/planetary-villa/arrival.coax).
+[metaverse/planetary-villa/arrival.coax](../../metaverse/planetary-villa/arrival.coax).
 The page and this chapter's checks load that same function. The planet centre
 is (-17, -40, 120); the table shows the resulting world coordinates.
 

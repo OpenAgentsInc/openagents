@@ -4,7 +4,7 @@
 > shown follows [the Coax specification](https://github.com/OpenAgentsInc/openagents/tree/main/coax/spec.md) and may change
 > before it's built. This is roadmap R26.
 
-Nothing in `coax0`, `verse/` or the iOS app reloads code today
+Nothing in `coax0`, `metaverse/` or the iOS app reloads code today
 ([chapter 19](ch19-builds-hot-reload.md)). R26 is the smallest useful
 experiment: on a restricted Mac host, replace the bodies of procedures whose
 exports, calling conventions, semantic profiles and layout fingerprints have

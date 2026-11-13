@@ -1,4 +1,4 @@
-// A lab walk's C face (verse/lab-walk.coax) for the browser (coax/web/host.js) and the Mac and iPhone
+// A lab walk's C face (metaverse/lab-walk.coax) for the browser (coax/web/host.js) and the Mac and iPhone
 // apps' page host (metaverse-engine/host/apple): scalar exports over the world's module. It decides nothing. The
 // module is an Everglade zone (everglade/zone.coax), as the Archery Range's is (archery-range-face.c,
 // whose shape this follows): nearly every export hands the host's call to the zone, and the frame, the

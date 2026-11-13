@@ -1,6 +1,6 @@
 // 5E Lab's figures (fivelab.coax): the Quaternius people Everglade's NPCs are made of (the
 // Universal Base Characters and the Modular Character Outfits - Fantasy parts in Everglade's pack,
-// rebound by verse/tools/people.py onto two skeletons, CC0), dressed by class, played by the
+// rebound by metaverse/tools/people.py onto two skeletons, CC0), dressed by class, played by the
 // Universal Animation Library's clips (everglade/scene/people-rig.coax, metaverse-engine/anim/skin.coax).
 //
 // Two hundred and more figures at once, so nothing is posed per figure on the CPU: bd_bake samples
@@ -43,7 +43,7 @@ BD_FPS :: 30.0;
 // The clips baked, as people-rig.coax numbers them, and their frames (each its seconds at 30 a second).
 #load "preview-rig.coax";
 #load "preview-clips.coax";
-#load "two-hand-rig.coax";   // the owned two-handed weapon clips (verse/tools/assets/two_hand_clips.py)
+#load "two-hand-rig.coax";   // the owned two-handed weapon clips (metaverse/tools/assets/two_hand_clips.py)
 #load "../../metaverse-engine/action/bow-pose.coax";   // the archer's keyed draw (docs/verse/bow-combat.md), baked as clip BD_BOW
 #load "../../metaverse-engine/action/ride-pose.coax";  // a rider's legs astride (everglade/docs/mounts-spec.md), baked as clip BD_RIDE
 BD_CLIPS :: 10;
@@ -224,7 +224,7 @@ Bodies :: struct {
   hand_at: [12] f32;           // where the right then left hand is in each body's bind pose (male, female)
 }
 
-// ---- the pack's catalog (verse/tools/pack_realm.py): "C NAME FIRST COUNT K WORD VERTICES JOINTS" a part
+// ---- the pack's catalog (metaverse/tools/pack_realm.py): "C NAME FIRST COUNT K WORD VERTICES JOINTS" a part
 
 bd_word_end :: (line: string, from: int) -> int { e := from; while e < line.count && line[e] != ' ' { e += 1; } return e; }
 bd_whole_at :: (line: string, from: int) -> int {

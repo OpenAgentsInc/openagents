@@ -1,5 +1,5 @@
-// The browser's face over the voice engine (verse/voice*.coax through
-// verse/platform/voice.c), as apps/openagents-ios/OpenAgents/Voice is the
+// The browser's face over the voice engine (metaverse/voice*.coax through
+// metaverse/platform/voice.c), as apps/openagents-ios/OpenAgents/Voice is the
 // phone's: the engine decides turns, barge-in, gain and the wire; voice.js
 // only moves samples and bytes. One engine per page, in this module's memory.
 //

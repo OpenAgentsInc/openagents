@@ -5,7 +5,7 @@
 #load "../../../../metaverse-engine/render/sampling.coax";
 #load "../../../../metaverse-engine/render/noise.coax";
 #load "../../../../metaverse-engine/gpu/wgsl.coax";
-#load "../../../../verse/style.coax";
+#load "../../../../metaverse/style.coax";
 #load "gpu-glade.coax";   // the glade south of the South Gate (#13018)
 #load "../../../../metaverse-engine/render/filmic.coax";
 
@@ -48,8 +48,8 @@
 //   tide 2096
 //   marks 2104
 //   path2 2300
-// the river's waves, look and mesh (verse/water-look.coax W_* rows)
-// the painterly preset at the clock (verse/style-preset.coax SU_*: row = SU / 4)
+// the river's waves, look and mesh (metaverse/water-look.coax W_* rows)
+// the painterly preset at the clock (metaverse/style-preset.coax SU_*: row = SU / 4)
 // where no grass grows: the buildings' and props' footprints (x0, z0, x1, z1)
 // the lamps lit, how lit (0 by day to 1 at night) (everglade.coax lamps), and how many of the last are the spells' blasts
 // each lamp: x, y, z, reach; r, g, b, strength
@@ -383,7 +383,7 @@ eg_bg_fs :: (sky:EgSky,u:[]f32)->EgLit {
   b:V4=eg_st(19,u);
   return EgLit.{light=v4(c.x,c.y,c.z,verse_style_bloom_share(verse_style_luma(c.x,c.y,c.z),b.x,b.y)),aux=v4(verse_style_shaft_source(wg_dot3(d,l)),0.0f32,0.0f32,0.0f32)};
 }
-EgObj :: struct {r0:V4; r1:V4; r2:V4; colour:V4; } // the Ranger's joints, then each person's (three rows each, then three of colours) // the river's baked nodes (verse/water-look.coax)
+EgObj :: struct {r0:V4; r1:V4; r2:V4; colour:V4; } // the Ranger's joints, then each person's (three rows each, then three of colours) // the river's baked nodes (metaverse/water-look.coax)
 eg_word :: (i:u32,vertices:[]u32)->f32 {
   return f32_from_bits(vertices[cast(int)i]);
 }
@@ -615,7 +615,7 @@ eg_clip :: (w:V3,u:[]f32)->V4 {
   p:V4=v4(w.x,w.y,w.z,1.0f32);
   return v4(wg_dot4(wg_at4(u,8),p),wg_dot4(wg_at4(u,12),p),wg_dot4(wg_at4(u,16),p),wg_dot4(wg_at4(u,20),p));
 }
-// ---- blob canopies (art-styles.md 7, verse/style.coax): the painterly preset's numbers until
+// ---- blob canopies (art-styles.md 7, metaverse/style.coax): the painterly preset's numbers until
 // eg-paint-light gives Everglade the preset's uniform block
 EG_CANOPY_MIX :: 0.85f32;
 EG_CANOPY_SWAY :: 0.05f32;
@@ -623,7 +623,7 @@ EG_WIND :: ()->V4 {return v4(0.30f32,12.0f32,3.0f32,1.0f32/25.0f32);} // amplitu
 EG_WIND_DIR :: ()->V2 {return v2(0.8f32,0.6f32);}
 EG_LOOK_FAR_CANOPY :: cast(u32)6; // a far tree's cone, lit as a blob
 EG_LOOK_CANOPY :: cast(u32)7; // a kit tree's leaves, lit as a blob
-EG_PERSON_SPAN :: 2.5f32; // a person's vertex box (verse/tools/people.py SPAN, LOW)
+EG_PERSON_SPAN :: 2.5f32; // a person's vertex box (metaverse/tools/people.py SPAN, LOW)
 EG_PERSON_LOW :: ()->V3 {return v3(-1.25f32,-0.25f32,-1.25f32);}
 EG_PERSON_JOINTS :: cast(u32)65; // everglade/scene/people-rig.coax PEOPLE_JOINTS
 EG_BAND_FAR_MID :: 0.6f32;
@@ -751,7 +751,7 @@ eg_place :: (id:u32,instance:u32,u:[]f32,vertices:[]u32,heights:[]f32,objects:[]
     } else if _sw3==6 {
       if ((m.colour.z>1.5f32)&&(m.colour.z<2.5f32)) {
         // One of the city's people (everglade/legacy/v1/folk.coax, colour.z 2): a part's 24-byte vertex
-        // (verse/tools/people.py vertex), skinned by up to four joints of its person's block of
+        // (metaverse/tools/people.py vertex), skinned by up to four joints of its person's block of
         // the pose, which starts at row colour.y; after the joints, their skin tone and the
         // outfit's colourway, their hair, and their dye.
         b:u32=add_wrap(wg_u32_f(m.colour.x),mul_wrap(id,6));
@@ -1033,7 +1033,7 @@ eg_shadow_fs :: (v:EgShade,vertices:[]u32,objects:[]EgObj,sheets:Tex2DArray,shee
     gpu_demote_helper();
   }
 }
-// ---- the debris (verse/demolish.coax's fracture; everglade-spells.coax sp_shards): a chunk is its
+// ---- the debris (metaverse/demolish.coax's fracture; everglade-spells.coax sp_shards): a chunk is its
 // piece's own mesh, drawn whole where its body is and cut here to its cell, up to 8 planes in the
 // mesh's space (x y z d: inside where x·p <= d) in the two objects its kind word names (over 256).
 // Where the cut opens the mesh you see its far side from within: that is the broken interior, lit as
@@ -1837,7 +1837,7 @@ eg_fx_fs :: (v:EgV,u:[]f32,sans_atlas:Tex2D,sans_sampler:Sampler)->V4 {
 // old imported renderer's, imported.wgsl). It implements public techniques:
 //
 // - Gerstner waves (Fournier and Reeves 1986, in Finch's GPU Gems 2004 form)
-//   from verse/water.coax's own terms: each angle's constant part comes from
+//   from metaverse/water.coax's own terms: each angle's constant part comes from
 //   the integer phase counter in f64 on the CPU (water_look_angles).
 // - Schlick's Fresnel (1994) at an index of 1.33, with Snell's window and
 //   total internal reflection from below.
@@ -1998,7 +1998,7 @@ eg_water_caustics :: (p:V3,n:V3,u:[]f32,water_nodes:[]f32)->f32 {
   up:f32=smoothstep(-0.2f32,0.6f32,n.y);
   return (((eg_water_caustic_pattern(v2(p.x,p.z),u[1048])*smoothstep(0.0f32,0.1f32,depth))*exp((-depth)*0.7f32))*up)*1.4f32;
 }
-// ---- under the water (phase W7, verse/water-under.coax): the eye's height over the river (the
+// ---- under the water (phase W7, metaverse/water-under.coax): the eye's height over the river (the
 // block's control.w, river.coax; large when not over it) splits each pixel at the near plane
 // (the waterline is affine across the screen: here with the surface taken flat at the eye), and
 // what lies under it takes the painted underwater look: per-channel Beer-Lambert fog toward a
@@ -3196,7 +3196,7 @@ eg_fountain_pool_shade :: (i:EgWaterOut,part:u32,v:V3,footprint:f32,u:[]f32,shad
   // and its shore line half as wide as a river's
   return eg_water_painted_teal(world,rest,flow,i.world_depth.w*deep,i.look.w*2.0f32,i.look.x,n,v,footprint,0.85f32,u,shadow_map,shadow_cmp,paint_leaf_far,wake_foam);
 }
-// ---- the painted look (art-styles.md 12; verse/water-look.coax water_paint_*, the `painted` preset,
+// ---- the painted look (art-styles.md 12; metaverse/water-look.coax water_paint_*, the `painted` preset,
 // W_ABSORB + 3): colour bands by depth in place of Beer-Lambert, the painted sky's gradient in
 // Schlick's Fresnel with no roughness blur, sparkles where a cell's tilt mirrors the key light, a
 // clean white shore line with a broken inner edge, W6's ripples as white rings, and faint streaks
@@ -3522,7 +3522,7 @@ eg_tone :: (c:V3,u:[]f32)->V3 {
   t=v3(verse_style_saturation(t.x,y,eg_st(18,u).y),verse_style_saturation(t.y,y,eg_st(18,u).y),verse_style_saturation(t.z,y,eg_st(18,u).y));
   return v3(verse_style_lift(t.x,eg_st(18,u).z),verse_style_lift(t.y,eg_st(18,u).z),verse_style_lift(t.z,eg_st(18,u).z));
 }
-// Under the water on a desktop (W7, verse/water-under.coax water_under_tier): the view wavers a
+// Under the water on a desktop (W7, metaverse/water-under.coax water_under_tier): the view wavers a
 // few pixels where the pixel's near-plane point is under the river, and a pale meniscus marks where
 // the surface crosses the lens. Nothing changes while the eye is well above the water.
 eg_water_waver_at :: (pos:V2,u:[]f32)->I2 {
@@ -3775,7 +3775,7 @@ eg_grass_fs :: (g:EgG,u:[]f32,heights:[]f32,water_nodes:[]f32,shadow_map:TexDept
   res.light=wg_make_f4_f3f(wg_add_f3f3(wg_add_f3f3(v3(res.light.x,res.light.y,res.light.z),wg_mul_f3f(g.glow,0.18f32)),through),res.light.w);
   return res;
 }
-// The art style's shading (verse/style.coax; docs/verse/art-styles.md), fed by the preset's STYLE_FLOATS.
+// The art style's shading (metaverse/style.coax; docs/verse/art-styles.md), fed by the preset's STYLE_FLOATS.
 
 // ---- generated by wgsl-coax: the vector helpers this file calls
 wg_sw_xyz_f4 :: (p:V4)->V3 {return v3(p.x,p.y,p.z);}

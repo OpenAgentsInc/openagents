@@ -1,7 +1,7 @@
 // Bitcoin Lab: an unlisted, recorded regtest block explorer on the shared Grid.
 // The shared Grid session owns walking, fixed steps, input, follow camera and replay.
 // Aethyr's HUD renderer and UI tree own strokes, text, picking and focus.
-#load "../../verse/gridwalk.coax" as gw;
+#load "../../metaverse/gridwalk.coax" as gw;
 #load "../../metaverse-engine/core/points.coax";
 #load "../../metaverse-engine/ui/draw.coax";
 #load "../../metaverse-engine/ui/tree.coax";

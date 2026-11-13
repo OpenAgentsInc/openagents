@@ -15,11 +15,11 @@ A Metaverse realm at https://openagents.com/worlds/ice-cream-man: the Ice Cream 
 
 ## How it is made
 
-- `verse/icecream/` holds the game in Coax: `rules.coax` (the house and the rules, replaying every recorded trace of the original game step for step), `mesh.coax` (every room, piece of furniture and model as vertices, checked against the original C++), `camera.coax` (the moving camera), `play.coax` (the play loop: input, the 30 steps a second, the effects and the trace) and `scene.coax` (the house and everything that moves, packed for the GPU).
+- `metaverse/icecream/` holds the game in Coax: `rules.coax` (the house and the rules, replaying every recorded trace of the original game step for step), `mesh.coax` (every room, piece of furniture and model as vertices, checked against the original C++), `camera.coax` (the moving camera), `play.coax` (the play loop: input, the 30 steps a second, the effects and the trace) and `scene.coax` (the house and everything that moves, packed for the GPU).
 - `apps/openagents-web/icecream.coax` is the HUD and its cards, `icecream-face.c` binds both for the browser, `icecream.wgsl` draws them: banded light, each room's fluorescent flicker, the fog, the ink outlines and the HUD's plates.
-- Add `#trace=600` and the page hands out the first 600 steps' inputs; `verse/icecream/test-browser.sh` plays the page headless and replays what it recorded on the native rules, step for step.
+- Add `#trace=600` and the page hands out the first 600 steps' inputs; `metaverse/icecream/test-browser.sh` plays the page headless and replays what it recorded on the native rules, step for step.
 - The page is written from `realms.json` by `coax/web/realms.ts`. The contract every world follows is `docs/verse/realm-host.md` in the OpenAgents repository.
 
 ## Make your own world
 
-An agent can build one from a shallow clone of the repository and open a pull request: [verse/SKILL.md](https://github.com/OpenAgentsInc/openagents/blob/main/verse/SKILL.md).
+An agent can build one from a shallow clone of the repository and open a pull request: [metaverse/SKILL.md](https://github.com/OpenAgentsInc/openagents/blob/main/metaverse/SKILL.md).

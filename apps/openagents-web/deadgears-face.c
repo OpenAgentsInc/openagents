@@ -1,5 +1,5 @@
 // Dead Gears' C face for the browser (coax/web/host.js): scalar Wasm exports
-// over deadgears.coax, which holds the fight (verse/deadgears/rules.coax),
+// over deadgears.coax, which holds the fight (metaverse/deadgears/rules.coax),
 // the page's controls, its drawing and its analytics. It decides nothing;
 // after each call it hands the analytics batch to the host's HTTP import.
 // Every pointer is an offset into the host's WebAssembly.Memory; the page's

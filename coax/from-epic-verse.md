@@ -427,7 +427,7 @@ Not yet filed, in order of value to Everglade:
 | S1 | Regions for views | Every view carries a region; refuse returning or storing a view in a longer region, or keeping it across reset, growth or frame return | The existing E0383 cases pass under the new rule; new cases for arena reset and growth refuse | R3 |
 | S2 | Regions for records that hold views | A record takes the shortest region of its views; refuse its escape | `EntityStore`-style records compile; a test that stores one in static storage refuses | R3 |
 | S3a | Scoped `#lease` blocks | Compiler support for `#lease NAME read\|write { }` over a boundary's acquire and release; the view, its slices and records holding it can't leave the block; release, requeue and conflicting device submission inside the block refuse | Escapes and in-block release refuse with clear errors; a test boundary with a stand-in adapter passes; no lease value exists in the language | R3, R11 |
-| S3b | Vulkan readback lease adapter | `verse/gpu` readback through `#lease`: fence and barrier on acquire, reader and writer counts per range kept in Coax, generations that retire | A realm's readback runs through it; tests refuse a second writer and a submission during a read; ASan runs cover cancellation, device loss and reacquiring with an old generation | R9 |
+| S3b | Vulkan readback lease adapter | `metaverse/gpu` readback through `#lease`: fence and barrier on acquire, reader and writer counts per range kept in Coax, generations that retire | A realm's readback runs through it; tests refuse a second writer and a submission during a read; ASan runs cover cancellation, device loss and reacquiring with an old generation | R9 |
 | S3c | Camera and dmabuf leases without copying | V4L2 frames and dmabuf mappings through `#lease`; requeue only after the block ends | Filed only after a measurement shows the camera copy costs too much; then the same tests as S3b plus requeue timing | R9 |
 
 ### Stage 4: undefined behavior and hardening
@@ -452,7 +452,7 @@ Not yet filed, in order of value to Everglade:
 
 | Issue | Title | Scope | Done when | R |
 | --- | --- | --- | --- | --- |
-| S7 | Safe profile on by default | New units are safe unless they declare otherwise; `#unsafe` needs a reason | All of `coax/lib`, `metaverse-engine/` and `verse/` build; unsafe counts published | R3 |
+| S7 | Safe profile on by default | New units are safe unless they declare otherwise; `#unsafe` needs a reason | All of `coax/lib`, `metaverse-engine/` and `metaverse/` build; unsafe counts published | R3 |
 | S8 | Change spec §3 | Replace "Do not promise general memory safety" with the guarantee in [memory-safety.md](memory-safety.md) and its "doesn't cover" list; update `INVARIANTS.md` | Merged in the same change as S7 | — |
 | S9 | Measure the cost | Realm frame time, Aethyr step time and compile time before and after Stages 3–5 | A record in `coax/perf/` with the numbers | R0, R22 |
 

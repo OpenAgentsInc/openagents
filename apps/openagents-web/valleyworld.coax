@@ -1,12 +1,12 @@
 // Valley Lab's contiguous source-world slice. Echo, input, pose and camera are shared with the inspector.
 #load "valleycanyon.coax";
-#load "../../verse/valley/world-catalog.coax";
-#load "../../verse/valley/world-pack-policy.coax";
-#load "../../verse/valley/world-host-policy.coax";
-#load "../../verse/valley/world-select.coax";
-#load "../../verse/valley/detail-runtime.coax";
-#load "../../verse/valley/detail-cluster-policy.coax";
-#load "../../verse/valley/detail-clusters.coax";
+#load "../../metaverse/valley/world-catalog.coax";
+#load "../../metaverse/valley/world-pack-policy.coax";
+#load "../../metaverse/valley/world-host-policy.coax";
+#load "../../metaverse/valley/world-select.coax";
+#load "../../metaverse/valley/detail-runtime.coax";
+#load "../../metaverse/valley/detail-cluster-policy.coax";
+#load "../../metaverse/valley/detail-clusters.coax";
 #load "../../metaverse-engine/core/frame-pacing.coax";
 #load "../../metaverse-engine/physics/ground.coax" as ground;
 #load "../../metaverse-engine/physics/query.coax" as query;

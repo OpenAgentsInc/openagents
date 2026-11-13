@@ -1,0 +1,344 @@
+// glTF for the human pack tool (pack_human.coax), as metaverse/tools/people.py read it: a .gltf with
+// its .bin or a .glb, accessors (normalized ones divided as Python divided them), a skin as a
+// skeleton (names, parents, rest t and q, inverse binds, rest world matrices), a part rebound onto
+// another skeleton (people.part_file) and the clips' keys (people.clips, channel, thin). Numbers
+// follow the Python's order of operations (ph_num: sum() is Neumaier's) so the results are its
+// bits.
+#load "ph_core.coax";
+#load "../../../coax/lib/json/json.coax";
+#load "../../../coax/lib/sys/fs.coax";
+
+GL_FILE :: 201326592; GL_BIN :: 16777216; GL_NODES :: 1048576; GL_ARR :: 16384;
+// the arrays a glTF's top level holds that the tool reads, indexed once
+GA_ACC :: 0; GA_VIEW :: 1; GA_NODE :: 2; GA_MESH :: 3; GA_MAT :: 4; GA_TEX :: 5; GA_IMG :: 6; GA_SKIN :: 7; GA_ANIM :: 8; GA_BUF :: 9;
+GA_NAMES :: [10] string.["accessors", "bufferViews", "nodes", "meshes", "materials", "textures", "images", "skins", "animations", "buffers"];
+Gltf :: struct {
+  dirb: [1024] u8; dir: string;          // the file's directory
+  file: [GL_FILE] u8; nfile: int;
+  binb: [GL_BIN] u8; bin: []u8;
+  d: [1] Jv; nodes: [GL_NODES] JvNode;
+  ix: [10][GL_ARR] int; nx: [10] int;
+}
+gl_load :: (g: []Gltf, path: string) {
+  n := fs_read(path, g[0].file[..]);
+  if n < 0 { ph_die2("pack_human: can't read ", path); }
+  if n >= GL_FILE { ph_die2("pack_human: a glTF past the port's buffer: ", path); }
+  g[0].nfile = n;
+  dd := dir_name(path);
+  for i: 0..<dd.count { g[0].dirb[i] = dd[i]; }
+  g[0].dir = cast(string) g[0].dirb[0..<dd.count];
+  text: string;
+  glb := n >= 20 && g[0].file[0] == 'g' && g[0].file[1] == 'l' && g[0].file[2] == 'T' && g[0].file[3] == 'F';
+  if glb {
+    jn := gl_u32(g[0].file[..], 12);
+    text = cast(string) g[0].file[20..<20 + jn];
+    o := 20 + jn;
+    bn := gl_u32(g[0].file[..], o);
+    g[0].bin = g[0].file[o + 8..<o + 8 + bn];
+  } else {
+    text = cast(string) g[0].file[0..<n];
+  }
+  if !jv_parse(g[0].d[..], text, g[0].nodes[..]) { ph_die2("pack_human: bad JSON in ", path); }
+  for k: 0..<10 {
+    a := jv_get(g[0].d[0], 0, GA_NAMES[k]);
+    g[0].nx[k] = jv_len(g[0].d[0], a);
+    if g[0].nx[k] > GL_ARR { ph_die2("pack_human: a glTF array past the port's index: ", path); }
+    c := ifx a >= 0 then g[0].d[0].nodes[a].first else -1; i := 0;
+    while c >= 0 { g[0].ix[k][i] = c; i += 1; c = g[0].d[0].nodes[c].next; }
+  }
+  if !glb {
+    if g[0].nx[GA_BUF] != 1 { ph_die2("pack_human: a glTF with other than one buffer: ", path); }
+    pb: [2048] u8; o: [1] Sb; o[0] = sb(pb[..]);
+    sb_put(o[..], g[0].dir); sb_byte(o[..], '/'); sb_put(o[..], gl_str(g, g[0].ix[GA_BUF][0], "uri"));
+    bn := fs_read(sb_text(o[..]), g[0].binb[..]);
+    if bn < 0 || bn >= GL_BIN { ph_die2("pack_human: can't read the buffer of ", path); }
+    g[0].bin = g[0].binb[0..<bn];
+  }
+}
+gl_u32 :: (b: []u8, at: int) -> int { return cast(int) b[at] | (cast(int) b[at + 1] << 8) | (cast(int) b[at + 2] << 16) | (cast(int) b[at + 3] << 24); }
+gl_at :: (g: []Gltf, k: int, i: int) -> int { if i < 0 || i >= g[0].nx[k] { ph_die("pack_human: a glTF index out of range"); } return g[0].ix[k][i]; }
+gl_get :: (g: []Gltf, node: int, key: string) -> int { return jv_get(g[0].d[0], node, key); }
+gl_has :: (g: []Gltf, node: int, key: string) -> bool { return jv_get(g[0].d[0], node, key) >= 0; }
+// a string member's raw text (the files' names carry no escapes)
+gl_str :: (g: []Gltf, node: int, key: string) -> string { return jv_raw(g[0].d[0], jv_get(g[0].d[0], node, key)); }
+gl_raw :: (g: []Gltf, node: int) -> string { return jv_raw(g[0].d[0], node); }
+gl_num :: (g: []Gltf, node: int) -> f64 { return pf(jv_raw(g[0].d[0], node)); }
+gl_int :: (g: []Gltf, node: int, key: string, fallback: int) -> int { v := jv_get(g[0].d[0], node, key); if v < 0 { return fallback; } return pint(jv_raw(g[0].d[0], v)); }
+gl_numk :: (g: []Gltf, node: int, key: string, fallback: f64) -> f64 { v := jv_get(g[0].d[0], node, key); if v < 0 { return fallback; } return gl_num(g, v); }
+gl_item :: (g: []Gltf, arr: int, i: int) -> int { return jv_at(g[0].d[0], arr, i); }
+gl_len :: (g: []Gltf, arr: int) -> int { return jv_len(g[0].d[0], arr); }
+// a numbers array (up to 16) into out; its length, or -1 when absent
+gl_nums :: (g: []Gltf, node: int, key: string, out: []f64) -> int {
+  a := jv_get(g[0].d[0], node, key);
+  if a < 0 { return -1; }
+  c := g[0].d[0].nodes[a].first; n := 0;
+  while c >= 0 { out[n] = gl_num(g, c); n += 1; c = g[0].d[0].nodes[c].next; }
+  return n;
+}
+
+// Accessor i: its count and components, and its values (as Python's struct.unpack, then divided
+// when normalized) into out, count * components of them.
+GlAcc :: struct { count: int; comps: int; }
+gl_acc_info :: (g: []Gltf, i: int) -> GlAcc {
+  a := gl_at(g, GA_ACC, i); r: GlAcc;
+  r.count = gl_int(g, a, "count", 0);
+  t := gl_str(g, a, "type");
+  r.comps = ifx t == "SCALAR" then 1 else ifx t == "VEC2" then 2 else ifx t == "VEC3" then 3 else ifx t == "VEC4" then 4 else ifx t == "MAT4" then 16 else 0;
+  if r.comps == 0 { ph_die("pack_human: an accessor type the port doesn't read"); }
+  return r;
+}
+gl_acc :: (g: []Gltf, i: int, out: []f64) -> GlAcc {
+  r := gl_acc_info(g, i);
+  a := gl_at(g, GA_ACC, i);
+  v := gl_at(g, GA_VIEW, gl_int(g, a, "bufferView", 0));
+  ct := gl_int(g, a, "componentType", 0);
+  size := ifx ct == 5120 || ct == 5121 then 1 else ifx ct == 5122 || ct == 5123 then 2 else 4;
+  stride := gl_int(g, v, "byteStride", r.comps * size);
+  off := gl_int(g, v, "byteOffset", 0) + gl_int(g, a, "byteOffset", 0);
+  if gl_int(g, v, "buffer", 0) != 0 { ph_die("pack_human: an accessor on a second buffer"); }
+  norm := gl_has(g, a, "normalized") && jv_bool(g[0].d[0], gl_get(g, a, "normalized"));
+  if r.count * r.comps > out.count { ph_die("pack_human: an accessor past the port's buffer"); }
+  b := g[0].bin;
+  for k: 0..<r.count {
+    at := off + k * stride;
+    for c: 0..<r.comps {
+      p := at + c * size; x := 0.0;
+      if ct == 5126 { x = cast(f64) f32_from_bits(cast(u32) gl_u32(b, p)); }
+      else if ct == 5125 { x = cast(f64) gl_u32(b, p); }
+      else if ct == 5123 { u := cast(int) b[p] | (cast(int) b[p + 1] << 8); x = ifx norm then cast(f64) u / 65535.0 else cast(f64) u; }
+      else if ct == 5122 { u := cast(int) b[p] | (cast(int) b[p + 1] << 8); if u >= 32768 { u -= 65536; } x = ifx norm then cast(f64) u / 32767.0 else cast(f64) u; }
+      else if ct == 5121 { u := cast(int) b[p]; x = ifx norm then cast(f64) u / 255.0 else cast(f64) u; }
+      else if ct == 5120 { u := cast(int) b[p]; if u >= 128 { u -= 256; } x = ifx norm then cast(f64) u / 127.0 else cast(f64) u; }
+      else { ph_die("pack_human: an accessor component type the port doesn't read"); }
+      out[k * r.comps + c] = x;
+    }
+  }
+  return r;
+}
+
+// ---- small maths: quaternions (x, y, z, w) and 4x4 matrices as rows (people.py)
+qmul :: (a: [4] f64, b: [4] f64) -> [4] f64 {
+  ax := a[0]; ay := a[1]; az := a[2]; aw := a[3]; bx := b[0]; by := b[1]; bz := b[2]; bw := b[3];
+  return [4] f64.[aw*bx + ax*bw + ay*bz - az*by, aw*by - ax*bz + ay*bw + az*bx, aw*bz + ax*by - ay*bx + az*bw, aw*bw - ax*bx - ay*by - az*bz];
+}
+q_sum4 :: (a: [4] f64, b: [4] f64) -> f64 { return pn_sum4(a[0] * b[0], a[1] * b[1], a[2] * b[2], a[3] * b[3]); }
+qunit :: (q: [4] f64) -> [4] f64 {
+  l := sqrt(q_sum4(q, q));
+  if l > 0.000000001 { return [4] f64.[q[0] / l, q[1] / l, q[2] / l, q[3] / l]; }
+  return [4] f64.[0.0, 0.0, 0.0, 1.0];
+}
+qangle :: (a: [4] f64, b: [4] f64) -> f64 { d := vmin(1.0, abs(q_sum4(a, b))); return 2.0 * acos(d); }
+slerp :: (a: [4] f64, b_in: [4] f64, f: f64) -> [4] f64 {
+  b := b_in;
+  d := q_sum4(a, b);
+  if d < 0.0 { b = [4] f64.[0.0 - b[0], 0.0 - b[1], 0.0 - b[2], 0.0 - b[3]]; d = 0.0 - d; }
+  if d > 0.9995 { return qunit([4] f64.[a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f, a[2] + (b[2] - a[2]) * f, a[3] + (b[3] - a[3]) * f]); }
+  th := acos(d); k := 1.0 / sin(th);
+  r: [4] f64;
+  for i: 0..<4 { r[i] = (a[i] * sin(th * (1.0 - f)) + b[i] * sin(th * f)) * k; }
+  return r;
+}
+mat_tr :: (t: [3] f64, q: [4] f64) -> [4][4] f64 {
+  x := q[0]; y := q[1]; z := q[2]; w := q[3];
+  m: [4][4] f64;
+  m[0] = [4] f64.[1.0 - 2.0*(y*y + z*z), 2.0*(x*y - z*w), 2.0*(x*z + y*w), t[0]];
+  m[1] = [4] f64.[2.0*(x*y + z*w), 1.0 - 2.0*(x*x + z*z), 2.0*(y*z - x*w), t[1]];
+  m[2] = [4] f64.[2.0*(x*z - y*w), 2.0*(y*z + x*w), 1.0 - 2.0*(x*x + y*y), t[2]];
+  m[3] = [4] f64.[0.0, 0.0, 0.0, 1.0];
+  return m;
+}
+mmul4 :: (a: [4][4] f64, b: [4][4] f64) -> [4][4] f64 {
+  r: [4][4] f64;
+  for i: 0..<4 { for j: 0..<4 { r[i][j] = pn_sum4(a[i][0] * b[0][j], a[i][1] * b[1][j], a[i][2] * b[2][j], a[i][3] * b[3][j]); } }
+  return r;
+}
+apply4 :: (m: [4][4] f64, v: [3] f64, w: f64) -> [3] f64 {
+  r: [3] f64;
+  for i: 0..<3 { r[i] = m[i][0] * v[0] + m[i][1] * v[1] + m[i][2] * v[2] + m[i][3] * w; }
+  return r;
+}
+// people.apply(people.mat_tr((0, 0, 0), q), v): a point turned by q
+qrot :: (q: [4] f64, v: [3] f64) -> [3] f64 { return apply4(mat_tr(vzero(), q), v, 1.0); }
+qconj :: (q: [4] f64) -> [4] f64 { return [4] f64.[0.0 - q[0], 0.0 - q[1], 0.0 - q[2], q[3]]; }
+
+// ---- a glTF skin
+SK_MAX :: 80;
+Skel :: struct {
+  n: int; names: [SK_MAX] string; parent: [SK_MAX] int;
+  t: [SK_MAX] [3] f64; q: [SK_MAX] [4] f64; ib: [SK_MAX] [4][4] f64; world: [SK_MAX] [4][4] f64;
+  namebuf: [4096] u8;
+}
+sk_load :: (g: []Gltf, s: []Skel) {
+  skin := gl_at(g, GA_SKIN, 0);
+  J := gl_get(g, skin, "joints");
+  n := gl_len(g, J);
+  if n > SK_MAX { ph_die("pack_human: a skeleton past the port's joints"); }
+  s[0].n = n;
+  js: [SK_MAX] int;
+  for k: 0..<n { js[k] = pint(gl_raw(g, gl_item(g, J, k))); }
+  at := 0;
+  for k: 0..<n {
+    nm := gl_str(g, gl_at(g, GA_NODE, js[k]), "name");
+    for i: 0..<nm.count { s[0].namebuf[at + i] = nm[i]; }
+    s[0].names[k] = cast(string) s[0].namebuf[at..<at + nm.count]; at += nm.count;
+  }
+  // parent_of: each node's parent (the last node naming it as a child)
+  nn := g[0].nx[GA_NODE];
+  par: [GL_ARR] int; for i: 0..<nn { par[i] = -1; }
+  for i: 0..<nn {
+    ch := gl_get(g, g[0].ix[GA_NODE][i], "children");
+    for c: 0..<gl_len(g, ch) { par[pint(gl_raw(g, gl_item(g, ch, c)))] = i; }
+  }
+  for k: 0..<n {
+    p := par[js[k]]; idx := -1;
+    for q: 0..<n { if js[q] == p { idx = q; break; } }
+    s[0].parent[k] = idx;
+    if p >= 0 && idx < 0 {
+      a := g[0].ix[GA_NODE][p];
+      if gl_has(g, a, "translation") || gl_has(g, a, "rotation") || gl_has(g, a, "scale") || gl_has(g, a, "matrix") {
+        ph_die2(s[0].names[k], ": the armature above the skeleton is not the identity");
+      }
+    }
+  }
+  for k: 0..<n { if s[0].parent[k] >= k { ph_die("a skeleton's joints aren't parents first"); } }
+  for k: 0..<n {
+    node := g[0].ix[GA_NODE][js[k]];
+    v: [16] f64;
+    if gl_nums(g, node, "translation", v[..]) == 3 { s[0].t[k] = [3] f64.[v[0], v[1], v[2]]; } else { s[0].t[k] = vzero(); }
+    if gl_nums(g, node, "rotation", v[..]) == 4 { s[0].q[k] = qunit([4] f64.[v[0], v[1], v[2], v[3]]); } else { s[0].q[k] = qunit([4] f64.[0.0, 0.0, 0.0, 1.0]); }
+    if gl_nums(g, node, "scale", v[..]) == 3 {
+      for c: 0..<3 { if abs(v[c] - 1.0) > 0.0001 { ph_die("a joint's rest scale isn't 1"); } }
+    }
+  }
+  ibs: [SK_MAX * 16] f64;
+  ia := gl_acc(g, gl_int(g, skin, "inverseBindMatrices", 0), ibs[..]);
+  for k: 0..<n { for r: 0..<4 { for c: 0..<4 { s[0].ib[k][r][c] = ibs[k * 16 + c * 4 + r]; } } }
+  for k: 0..<n {
+    m := mat_tr(s[0].t[k], s[0].q[k]);
+    s[0].world[k] = ifx s[0].parent[k] < 0 then m else mmul4(s[0].world[s[0].parent[k]], m);
+  }
+}
+sk_index :: (s: Skel, name: string) -> int {
+  for k: 0..<s.n { if s.names[k] == name { return k; } }
+  ph_die2("pack_human: no joint ", name);
+  return -1;
+}
+sk_pos :: (s: Skel, k: int) -> [3] f64 { return [3] f64.[s.world[k][0][3], s.world[k][1][3], s.world[k][2][3]]; }
+sk_file :: (path: string, s: []Skel, g: []Gltf) { gl_load(g, path); sk_load(g, s); }
+
+// people.quantize_weights: four weights as u8 255ths summing to 255 (largest remainders)
+quantize4 :: (ws: [4] f64) -> [4] int {
+  total := pn_sum4(ws[0], ws[1], ws[2], ws[3]); if total == 0.0 { total = 1.0; }
+  raw: [4] f64; q: [4] int; s := 0;
+  for i: 0..<4 { raw[i] = ws[i] / total * 255.0; q[i] = pn_floor(raw[i]); s += q[i]; }
+  // sorted(range(4), key=raw[i] - q[i], reverse=True): stable, equal keys in index order
+  o := [4] int.[0, 1, 2, 3];
+  for i: 1..<4 {
+    x := o[i]; j := i - 1;
+    while j >= 0 && raw[o[j]] - cast(f64) q[o[j]] < raw[x] - cast(f64) q[x] { o[j + 1] = o[j]; j -= 1; }
+    o[j + 1] = x;
+  }
+  for k: 0..<255 - s { if k < 4 { q[o[k]] += 1; } }
+  return q;
+}
+
+// ---- meshes: vertices and triangles in a store, pieces as ranges of it
+PV :: struct { p: [3] f64; n: [3] f64; uv: [2] f64; j: [4] u8; w: [4] u8; pt: int; }
+PV_MAX :: 1200000; T_MAX :: 2400000;
+Store :: struct { nv: int; v: [PV_MAX] PV; nt: int; t: [T_MAX] [3] int; }
+st_vert :: (s: []Store) -> int { if s[0].nv >= PV_MAX { ph_die("pack_human: more vertices than the port's store"); } s[0].nv += 1; return s[0].nv - 1; }
+st_tri :: (s: []Store, a: int, b: int, c: int) -> int {
+  if s[0].nt >= T_MAX { ph_die("pack_human: more triangles than the port's store"); }
+  s[0].t[s[0].nt] = [3] int.[a, b, c]; s[0].nt += 1; return s[0].nt - 1;
+}
+// A primitive part_file hands back: its base-colour image, material, vertices and triangles.
+Prim :: struct { image: string; material: string; mesh: string; vf: int; vn: int; tf: int; tn: int; }
+PRIMS :: 64;
+Prims :: struct { n: int; p: [PRIMS] Prim; }
+
+// people.part_file: each primitive of the meshes named (all when none are) rebound onto the target
+// skeleton: per vertex its position and normal moved to where its own skin puts it in the
+// target's rest, its joints in the target's numbering, heaviest first, and its weights quantized;
+// only the vertices its triangles use, renumbered.
+GL_VERTS :: 400000;
+part_file :: (path: string, meshes: []string, target: Skel, st: []Store, txt: []Txt, out: []Prims, g: []Gltf) {
+  gl_load(g, path);
+  own: [1] Skel; sk_load(g, own[..]);
+  remap: [SK_MAX] int;
+  for k: 0..<own[0].n { remap[k] = sk_index(target, own[0].names[k]); }
+  to_target: [SK_MAX] [4][4] f64;
+  for k: 0..<own[0].n { to_target[k] = mmul4(target.world[remap[k]], own[0].ib[k]); }
+  pos: [GL_VERTS * 3] f64; nor: [GL_VERTS * 3] f64; uv: [GL_VERTS * 2] f64; jo: [GL_VERTS * 4] f64; we: [GL_VERTS * 4] f64;
+  idx: [GL_VERTS * 6] f64;
+  used: [GL_VERTS] int;
+  start := out[0].n;
+  for mi: 0..<g[0].nx[GA_MESH] {
+    mesh := g[0].ix[GA_MESH][mi];
+    mname := gl_str(g, mesh, "name");
+    if meshes.count > 0 {
+      want := false; for m: meshes { if m == mname { want = true; } }
+      if !want { continue; }
+    }
+    prs := gl_get(g, mesh, "primitives");
+    for pi: 0..<gl_len(g, prs) {
+      pr := gl_item(g, prs, pi);
+      a := gl_get(g, pr, "attributes");
+      np := gl_acc(g, gl_int(g, a, "POSITION", 0), pos[..]).count;
+      x1 := gl_acc(g, gl_int(g, a, "NORMAL", 0), nor[..]);
+      x2 := gl_acc(g, gl_int(g, a, "TEXCOORD_0", 0), uv[..]);
+      x3 := gl_acc(g, gl_int(g, a, "JOINTS_0", 0), jo[..]);
+      x4 := gl_acc(g, gl_int(g, a, "WEIGHTS_0", 0), we[..]);
+      ni := gl_acc(g, gl_int(g, pr, "indices", 0), idx[..]).count;
+      mat := gl_at(g, GA_MAT, gl_int(g, pr, "material", 0));
+      tex := jv_path(g[0].d[0], mat, "pbrMetallicRoughness.baseColorTexture");
+      img := gl_at(g, GA_IMG, gl_int(g, gl_at(g, GA_TEX, gl_int(g, tex, "index", 0)), "source", 0));
+      // the vertices, all of them, past the store's end; the used ones are moved down after
+      v0 := st[0].nv;
+      if v0 + np > PV_MAX { ph_die("pack_human: more vertices than the port's store"); }
+      for i: 0..<np {
+        ws: [4] f64; js: [4] int;
+        for k: 0..<4 { ws[k] = we[i * 4 + k]; js[k] = remap[cast(int) jo[i * 4 + k]]; }
+        m: [4][4] f64;
+        for r: 0..<4 { for c: 0..<4 {
+          s: [1] PnSum;
+          for k: 0..<4 { pn_add(s[..], ws[k] * to_target[cast(int) jo[i * 4 + k]][r][c]); }
+          m[r][c] = pn_total(s[0]);
+        } }
+        p := apply4(m, [3] f64.[pos[i * 3], pos[i * 3 + 1], pos[i * 3 + 2]], 1.0);
+        n := apply4(m, [3] f64.[nor[i * 3], nor[i * 3 + 1], nor[i * 3 + 2]], 0.0);
+        l := sqrt(vdot(n, n)); if l == 0.0 { l = 1.0; }
+        n = vdiv(n, l);
+        // sorted(zip(ws, js), reverse=True): weight, then joint, both descending
+        o := [4] int.[0, 1, 2, 3];
+        for q: 1..<4 {
+          x := o[q]; j := q - 1;
+          while j >= 0 && (ws[o[j]] < ws[x] || (ws[o[j]] == ws[x] && js[o[j]] < js[x])) { o[j + 1] = o[j]; j -= 1; }
+          o[j + 1] = x;
+        }
+        sw: [4] f64; v: PV;
+        for k: 0..<4 { sw[k] = ws[o[k]]; v.j[k] = cast(u8) (ifx ws[o[k]] > 0.0 then js[o[k]] else 0); }
+        qw := quantize4(sw);
+        for k: 0..<4 { v.w[k] = cast(u8) qw[k]; }
+        v.p = p; v.n = n; v.uv = [2] f64.[uv[i * 2], uv[i * 2 + 1]]; v.pt = i;
+        st[0].v[v0 + i] = v;
+      }
+      for i: 0..<np { used[i] = -1; }
+      for k: 0..<ni { used[cast(int) idx[k]] = 0; }
+      kept := 0;
+      for i: 0..<np { if used[i] >= 0 { used[i] = kept; st[0].v[v0 + kept] = st[0].v[v0 + i]; kept += 1; } }
+      if kept == 0 { continue; }
+      st[0].nv = v0 + kept;
+      t0 := st[0].nt;
+      k := 0;
+      while k + 2 < ni { x := st_tri(st, used[cast(int) idx[k]], used[cast(int) idx[k + 1]], used[cast(int) idx[k + 2]]); k += 3; }
+      if out[0].n >= PRIMS { ph_die("pack_human: more primitives than the port holds"); }
+      pp: Prim;
+      pp.image = txt_cat3(txt, g[0].dir, "/", gl_str(g, img, "uri"));
+      pp.material = txt_keep(txt, gl_str(g, mat, "name"));
+      pp.mesh = txt_keep(txt, mname);
+      pp.vf = v0; pp.vn = kept; pp.tf = t0; pp.tn = st[0].nt - t0;
+      out[0].p[out[0].n] = pp; out[0].n += 1;
+    }
+  }
+  if out[0].n == start { ph_die2("nothing left of ", path); }
+}

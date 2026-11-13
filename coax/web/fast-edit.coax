@@ -83,11 +83,11 @@ ft_prepare :: (dir: string) -> int {
   if !p.ok || !fe_door_body(text[p.body..<p.end]) {tool_errln("fast-edit: unsupported baseline procedure");return 2;}
   if !ft_snapshot(dir,FE_SOURCE,text) {return 1;}
   prefix:[1]FeText;
-  helpers:[1048576]u8;hn:=fs_read("verse/grid.coax",helpers[..]);if hn<0 {return 1;}helper_source:=cast(string)helpers[0..<hn];
+  helpers:[1048576]u8;hn:=fs_read("metaverse/grid.coax",helpers[..]);if hn<0 {return 1;}helper_source:=cast(string)helpers[0..<hn];
   for c:FE_CONSTANTS {s:=fe_named(helper_source,c);if !s.ok {tool_errln("fast-edit: helper is not a complete declaration");return 2;}ft_add(prefix[..],helper_source[s.begin..<s.end]);ft_add(prefix[..],"\n");}
   // Both product load graphs, plus their compiler, seal the session's inputs.
   list:[1048576]u8;inputs:[4194304]u8;used:=0;file:[FE_FILE]u8;path:[1]FeText;hash:[64]u8;
-  for root:[8]string.["coax/web/room/room.coax","apps/openagents-web/everglade.coax","everglade/shared/everglade-step.coax","verse/grid.coax","everglade/legacy/v1/river.coax","everglade/npc/guard-guide-policy.coax","apps/openagents-web/carriers/everglade5e.coax","coax/web/fast-edit.coax"] {
+  for root:[8]string.["coax/web/room/room.coax","apps/openagents-web/everglade.coax","everglade/shared/everglade-step.coax","metaverse/grid.coax","everglade/legacy/v1/river.coax","everglade/npc/guard-guide-policy.coax","apps/openagents-web/carriers/everglade5e.coax","coax/web/fast-edit.coax"] {
     argv:=[4]string.["coax/web/tool.sh","wasm-size","sources",root];
     list[0]=0;out:[1048576]u8;err:[4096]u8;r:=proc_run(argv[..],780000,out[..],err[..]);
     if r.status!=0 || r.cut {tool_errln("fast-edit: cannot enumerate complete source graph");return 1;}
@@ -108,7 +108,7 @@ ft_prepare :: (dir: string) -> int {
   }
   // The resident SDK and C faces are part of the sealed program too. A
   // changed include or browser adapter requires an ordinary full rebuild.
-  for directory:[4]string.["coax/web","coax/web/room","verse/voice-host","apps/openagents-web"] {
+  for directory:[4]string.["coax/web","coax/web/room","metaverse/voice-host","apps/openagents-web"] {
     entries:[1]FsList;total:=fs_list(directory,entries[..]);if total<0 {return 1;}
     for i:0..<total {
       entry:=fs_entry(entries[..],i);

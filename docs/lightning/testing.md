@@ -77,7 +77,7 @@ mutants today.
 takes a `[] u8` target, adds coverage counters in the emitter, and turns
 crashes into fixtures. Until it lands:
 
-- **Harness.** A small C file in `verse/platform/` reads fuzz bytes as a
+- **Harness.** A small C file in `metaverse/platform/` reads fuzz bytes as a
   stream of host calls:
   - quote fields;
   - confirm and cancel;
@@ -100,7 +100,7 @@ crashes into fixtures. Until it lands:
   - `send` is never returned twice for one quote;
   - the reported balance never goes negative;
   - every state reached is in the table.
-- **Corpus.** Keep it in `verse/fuzz/wallet/`. Every crash becomes a
+- **Corpus.** Keep it in `metaverse/fuzz/wallet/`. Every crash becomes a
   `coax/tests/fail/` fixture or a `#test` before the fix lands.
 - **Second target.** The `payment.v1` decoder once imported, the same way
   `tests/proto/runtime.coax` covers the home profile:

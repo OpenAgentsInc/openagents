@@ -2,7 +2,7 @@
 # coax/web/tool.sh layer-check reads this file. It only shrinks: take a line out when its
 # load goes. A new line fails unless it ends with a reason and an issue number
 # ("# why (#1234)"), and a line that excuses nothing now fails. Lines:
-#   aethyr-up FROM -> TO      an engine or rules file loads from verse/, apps/, everglade/ or coax/web/
+#   aethyr-up FROM -> TO      an engine or rules file loads from metaverse/, apps/, everglade/ or coax/web/
 #   everglade-up FROM -> TO   a game file loads from apps/
 #   tests FROM -> TO          an engine, game, API or room file that is not support code loads a tests/ file with a
 #                             plain #load; a module loads its checks with #load "FILE" #test; (#13383).

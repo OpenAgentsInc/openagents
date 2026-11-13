@@ -13,7 +13,7 @@ import { tmpdir } from "node:os"
 import { join, resolve } from "node:path"
 import { launch as launchChrome } from "../chrome"
 
-const [origin = "https://staging.openagents.com", wav = join(import.meta.dir, "../../../verse/voice-host/fixtures/build-red-house.wav")] = process.argv.slice(2)
+const [origin = "https://staging.openagents.com", wav = join(import.meta.dir, "../../../metaverse/voice-host/fixtures/build-red-house.wav")] = process.argv.slice(2)
 const W = 1440, H = 900
 const profile = mkdtempSync(join(tmpdir(), "coax-voice-"))
 const proc = launchChrome(profile, ["--disable-features=AudioServiceSandbox,AudioServiceOutOfProcess", `--window-size=${W},${H}`,

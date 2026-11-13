@@ -1,6 +1,6 @@
 // Dictation evaluation (GitHub #12665): corpus check, runs, scores and gates.
 // Run from the repository root after apps/openagents-cli/build.sh (and
-// verse/voice-host/build.sh for the voice host's latency):
+// metaverse/voice-host/build.sh for the voice host's latency):
 //   coax/web/tool.sh apps/openagents-cli/tests/dictate-score.coax corpus
 //       verify the frozen corpus against its pinned hashes
 //   coax/web/tool.sh apps/openagents-cli/tests/dictate-score.coax run DIR STEP...
@@ -286,8 +286,8 @@ build_runner :: (dir: string) -> bool {
   return run_step(cc[..], "build the runner", 600000);
 }
 voicehost :: (dir: string) -> bool {
-  hostbin := "verse/voice-host/build/voice-host"; clientbin := "verse/voice-host/build/voice-client";
-  if !fs_exists(hostbin) || !fs_exists(clientbin) { tool_errln("build first: verse/voice-host/build.sh"); return false; }
+  hostbin := "metaverse/voice-host/build/voice-host"; clientbin := "metaverse/voice-host/build/voice-client";
+  if !fs_exists(hostbin) || !fs_exists(clientbin) { tool_errln("build first: metaverse/voice-host/build.sh"); return false; }
   mb: [1024] u8; model := model_dir(mb[..]);
   h := proc_new();
   hargs := [14] string.[hostbin, "--listen", "127.0.0.1:0", "--recognizer", "parakeet", "--synthesizer", "local",
@@ -303,9 +303,9 @@ voicehost :: (dir: string) -> bool {
   names := [4] string.["hello-foreman", "build-red-house", "garden-pause", "wait-stop"];
   texts := [4] string.["Hello Foreman. What are we building today?", "Build a small red house next to a tall tree.", "Let's take the long way through the garden, then pick a door.", "Wait, stop."];
   for k: 0..<4 {
-    fb: [1] Text; t_add(fb[..], "verse/voice-host/fixtures/"); t_add(fb[..], names[k]); t_add(fb[..], ".wav");
+    fb: [1] Text; t_add(fb[..], "metaverse/voice-host/fixtures/"); t_add(fb[..], names[k]); t_add(fb[..], ".wav");
     for rep: 0..<10 {
-      argv := [11] string.["verse/voice-host/build/voice-client", "--url", t_str(url[..]), "--hold", "--aethyr", "--timeout", "600", "--exact", texts[k], "--quiet", t_str(fb[..])];
+      argv := [11] string.["metaverse/voice-host/build/voice-client", "--url", t_str(url[..]), "--hold", "--aethyr", "--timeout", "600", "--exact", texts[k], "--quiet", t_str(fb[..])];
       out: [262144] u8; err: [65536] u8;
       r := proc_run(argv[..], 120000, out[..], err[..]);
       o := cast(string) out[0..<r.out_n];

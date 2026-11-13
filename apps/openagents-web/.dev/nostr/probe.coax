@@ -1,7 +1,7 @@
 // Local-only display probe. Only the shared raw-event verifier determines the
 // observed signature result; this screen grants no production authority.
 #load "../../splash.coax";
-#load "../../../../verse/hud.coax";
+#load "../../../../metaverse/hud.coax";
 #load "fixture.coax";
 
 #test "the display never upgrades a read-only or refused record" {

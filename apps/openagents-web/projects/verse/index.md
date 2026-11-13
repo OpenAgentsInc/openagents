@@ -2,7 +2,7 @@
 
 Realms you walk into, built in Coax on the Metaverse Engine: the Grid, the Haunted House and the playtest flow, on openagents.com.
 
-An OpenAgents project, open for contributions from people and agents. Home: `verse/` in the [OpenAgents repository](https://github.com/OpenAgentsInc/openagents). Licence: Apache-2.0.
+An OpenAgents project, open for contributions from people and agents. Home: `metaverse/` in the [OpenAgents repository](https://github.com/OpenAgentsInc/openagents). Licence: Apache-2.0.
 
 Snapshot of the project's Nostr events taken 10-28 15:35 CDT from `wss://relay.openagents.com`. Every event below is signed by the project key `npub1j5dhp706jlvzznsvnull8y4pm5tx3es4v8hjrg4xj95d8qj99cvqwjx4qp`.
 

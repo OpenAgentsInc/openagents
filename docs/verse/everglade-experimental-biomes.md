@@ -63,9 +63,9 @@ public deployment or commit the extracted NWN payloads.
 ## Sources and limits
 
 - Realm: `apps/openagents-web/realms/everglade-experimental/`, module `fivelab`.
-- Source geometry/seed recipe: `verse/tools/assets/character_glade_pack.coax`.
+- Source geometry/seed recipe: `metaverse/tools/assets/character_glade_pack.coax`.
 - Grass/environment shader: `everglade/scene/gpu/character-glade.coax`.
-- Existing terrain placement: `verse/experimental-terrain.coax`.
+- Existing terrain placement: `metaverse/experimental-terrain.coax`.
 - Private import recipe in the companion ore repository:
   `tools/nwn_biomes.py`; native decoder: `tools/nwn_model.py`.
 - Source audit and metadata in ore:
@@ -96,7 +96,7 @@ engine's helper-plane visibility or tree animation behavior.
 
 ## Implementation and checks
 
-`verse/experimental-biomes.coax` owns the three positions and titles.
+`metaverse/experimental-biomes.coax` owns the three positions and titles.
 `charactercreator.coax` reads a positive `glade/nwn-biomes` catalog marker before
 `fivelab.coax` projects labels through the existing Coax HUD. Local development
 URLs position the camera; the public scene does not gain empty biome labels.

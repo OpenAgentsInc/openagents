@@ -520,8 +520,8 @@ class LiteralArguments(unittest.TestCase):
                 self.assertEqual(codes, want)
 
     def test_the_water_clamp_consumer(self):
-        """r4a-generic-consumer: verse/water-spectrum.coax's one wsp_clamp serves int and f32."""
-        spectrum = (ROOT.parent / "verse/water-spectrum.coax").resolve()
+        """r4a-generic-consumer: metaverse/water-spectrum.coax's one wsp_clamp serves int and f32."""
+        spectrum = (ROOT.parent / "metaverse/water-spectrum.coax").resolve()
         head = f'#import "Basic";\n#load "{spectrum}";\n'
         ok = self.write("w.coax", head + "main :: () { x: f32 = 1.5; print(\"% % %\\n\", wsp_clamp(x, 0, 1), wsp_clamp(7, 1, 4), wsp_clamp(-0.25, -0.5, 0.5)); }\n")
         r = self.coax("run", ok)

@@ -1,5 +1,5 @@
 // A page's clock (realms.json "clock"; host.js's facts clock=, now=, day=): fixed, a 48-minute
-// cycle everyone shares, or the visitor's real day. Moved from verse/style-preset.coax (#13303):
+// cycle everyone shares, or the visitor's real day. Moved from metaverse/style-preset.coax (#13303):
 // the engine's day adapter (metaverse-engine/world/day.coax) reads it, so it lives in the engine and the
 // style presets load it from here.
 //   coax/bin/coax test metaverse-engine/world/style-clock.coax

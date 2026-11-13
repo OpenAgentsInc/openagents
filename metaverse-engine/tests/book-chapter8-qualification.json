@@ -6,8 +6,8 @@
       "source": "metaverse-engine/examples/jump-at-60.coax",
       "inputs": {
         "metaverse-engine/examples/jump-at-60.coax": "8c8b73615cc5372cc10a78b2cbcbf4e0e44d5046844935b5964c6c647a95952c",
-        "verse/player.coax": "4bf3005da0dc4fc4d445cfe55ac8ff3e39d542cdf2b0b2889af1dfa573b56528",
-        "verse/stand.coax": "a6c5d351b77cf14313a7cb97232894ad10525f148aa499ab87c01fc908e4f35b",
+        "metaverse/player.coax": "4bf3005da0dc4fc4d445cfe55ac8ff3e39d542cdf2b0b2889af1dfa573b56528",
+        "metaverse/stand.coax": "a6c5d351b77cf14313a7cb97232894ad10525f148aa499ab87c01fc908e4f35b",
         "metaverse-engine/loop.coax": "6dbb01f91a5cbee7338b71e18ce3577a9b56d7320432697eba034df94c16eb7b",
         "metaverse-engine/input.coax": "385291bb7460cc68813294756ca534d9a76bd85adc6829edbc6bd8b1bd68f974",
         "metaverse-engine/query.coax": "e040eb7558a706da6251edaf691fae1eee344c3d20a8ebbab4a0e580fa2a2efa",
@@ -32,7 +32,7 @@
         "metaverse-engine/fixtures/jump-at-60.out": "08275d3350f871d0cd6739d34bd908939910d072a9d726c7fe99324af18ebfe9"
       },
       "changed_inputs": [
-        "verse/player.coax",
+        "metaverse/player.coax",
         "metaverse-engine/query.coax",
         "metaverse-engine/ground.coax",
         "metaverse-engine/tests/ground-oracle.coax",
@@ -52,8 +52,8 @@
       "source": "metaverse-engine/examples/state-defaults.coax",
       "inputs": {
         "metaverse-engine/examples/state-defaults.coax": "d22f2e9e196b9da5683bc9b3ffdd2f097fa500e41880a38c83de9fb2b8be69da",
-        "verse/player.coax": "4bf3005da0dc4fc4d445cfe55ac8ff3e39d542cdf2b0b2889af1dfa573b56528",
-        "verse/stand.coax": "a6c5d351b77cf14313a7cb97232894ad10525f148aa499ab87c01fc908e4f35b",
+        "metaverse/player.coax": "4bf3005da0dc4fc4d445cfe55ac8ff3e39d542cdf2b0b2889af1dfa573b56528",
+        "metaverse/stand.coax": "a6c5d351b77cf14313a7cb97232894ad10525f148aa499ab87c01fc908e4f35b",
         "metaverse-engine/loop.coax": "6dbb01f91a5cbee7338b71e18ce3577a9b56d7320432697eba034df94c16eb7b",
         "metaverse-engine/input.coax": "385291bb7460cc68813294756ca534d9a76bd85adc6829edbc6bd8b1bd68f974",
         "metaverse-engine/query.coax": "e040eb7558a706da6251edaf691fae1eee344c3d20a8ebbab4a0e580fa2a2efa",
@@ -78,7 +78,7 @@
         "metaverse-engine/fixtures/state-defaults.out": "cf8ba7f668d8b02aed671988053864f11cb642ffe82fa6b2ff61bc0e68411c6c"
       },
       "changed_inputs": [
-        "verse/player.coax",
+        "metaverse/player.coax",
         "metaverse-engine/query.coax",
         "metaverse-engine/ground.coax",
         "metaverse-engine/tests/ground-oracle.coax",
@@ -104,8 +104,8 @@
         "metaverse-engine/tests/replay-oracle.coax": "718c9bbfb571c5cd41a130f567d3e5a89afda2d985674ce9ead7b57dba645f38",
         "metaverse-engine/rand.coax": "1310b9ab2b93af376bf4ce5b567aa51c866d05d72f858fa00da0a61759f26ce3",
         "metaverse-engine/loop.coax": "6dbb01f91a5cbee7338b71e18ce3577a9b56d7320432697eba034df94c16eb7b",
-        "verse/player.coax": "4bf3005da0dc4fc4d445cfe55ac8ff3e39d542cdf2b0b2889af1dfa573b56528",
-        "verse/stand.coax": "a6c5d351b77cf14313a7cb97232894ad10525f148aa499ab87c01fc908e4f35b",
+        "metaverse/player.coax": "4bf3005da0dc4fc4d445cfe55ac8ff3e39d542cdf2b0b2889af1dfa573b56528",
+        "metaverse/stand.coax": "a6c5d351b77cf14313a7cb97232894ad10525f148aa499ab87c01fc908e4f35b",
         "metaverse-engine/query.coax": "e040eb7558a706da6251edaf691fae1eee344c3d20a8ebbab4a0e580fa2a2efa",
         "metaverse-engine/space.coax": "bffd2f5cc1a1e879b33c029bd94bdae81db8391ea61508bd066cd485710b0b15",
         "coax/lib/quantity.coax": "325e9e7152de442b2da210cc0075ca4bb231d5a4c862898a6ee88ab161eeb583",
@@ -128,7 +128,7 @@
         "metaverse-engine/fixtures/replay-a-walk.out": "a75a8dda4620a66de274e0cd79d4d875a1ff01c773693bf751462ea719d096d7"
       },
       "changed_inputs": [
-        "verse/player.coax",
+        "metaverse/player.coax",
         "metaverse-engine/query.coax",
         "metaverse-engine/ground.coax",
         "metaverse-engine/tests/ground-oracle.coax",
@@ -157,7 +157,7 @@
         "metaverse-engine/tests/ground-ray-oracle.coax": "aa4c10b56f91daff668ac73d535e5d000a127f688543fb0e5ae2f27e6c71342c",
         "metaverse-engine/ground-contact.coax": "b2255da119965895e86a975699777bd56a125d70f284622e6de5a033178e6391",
         "metaverse-engine/tests/ground-contact-oracle.coax": "8d8ffe92c8e6ac1c33006f388e9a1c1cd254250121b69fd19df24d3d13b8603a",
-        "verse/stand.coax": "a6c5d351b77cf14313a7cb97232894ad10525f148aa499ab87c01fc908e4f35b",
+        "metaverse/stand.coax": "a6c5d351b77cf14313a7cb97232894ad10525f148aa499ab87c01fc908e4f35b",
         "metaverse-engine/tests/query-oracle.coax": "e088ba9b7be06e2a19d263e5b45859fddeae1f22523c3fdb45948abd895e3cb8",
         "metaverse-engine/tests/query-heightfield.coax": "89116124a89c073af84ec10298345bbb5039d5c8b85db0ac125581ab080aa510",
         "metaverse-engine/fixtures/four-questions.out": "4b8c7930b9381c12bd4cc300f7bac76ffc572d121e597c167d579133950fc1f4"
@@ -177,8 +177,8 @@
       "source": "metaverse-engine/examples/push-out.coax",
       "inputs": {
         "metaverse-engine/examples/push-out.coax": "bd9c7e2b1c772da3d5440a461bcfa647fac7f0d89f64fa96a5b9070a40aa9a5d",
-        "verse/player.coax": "4bf3005da0dc4fc4d445cfe55ac8ff3e39d542cdf2b0b2889af1dfa573b56528",
-        "verse/stand.coax": "a6c5d351b77cf14313a7cb97232894ad10525f148aa499ab87c01fc908e4f35b",
+        "metaverse/player.coax": "4bf3005da0dc4fc4d445cfe55ac8ff3e39d542cdf2b0b2889af1dfa573b56528",
+        "metaverse/stand.coax": "a6c5d351b77cf14313a7cb97232894ad10525f148aa499ab87c01fc908e4f35b",
         "metaverse-engine/loop.coax": "6dbb01f91a5cbee7338b71e18ce3577a9b56d7320432697eba034df94c16eb7b",
         "metaverse-engine/input.coax": "385291bb7460cc68813294756ca534d9a76bd85adc6829edbc6bd8b1bd68f974",
         "metaverse-engine/query.coax": "e040eb7558a706da6251edaf691fae1eee344c3d20a8ebbab4a0e580fa2a2efa",
@@ -203,7 +203,7 @@
         "metaverse-engine/fixtures/push-out.out": "b5aebf25e684293934eac43f2a958dbd947afece9446e7889a0937b215443cb8"
       },
       "changed_inputs": [
-        "verse/player.coax",
+        "metaverse/player.coax",
         "metaverse-engine/query.coax",
         "metaverse-engine/ground.coax",
         "metaverse-engine/tests/ground-oracle.coax",
@@ -223,8 +223,8 @@
       "source": "metaverse-engine/examples/run-and-jump.coax",
       "inputs": {
         "metaverse-engine/examples/run-and-jump.coax": "f17222a6cfce7cc4d51faa52cba26efd4df5aa297e69a8fdd562feaa0caa0844",
-        "verse/player.coax": "4bf3005da0dc4fc4d445cfe55ac8ff3e39d542cdf2b0b2889af1dfa573b56528",
-        "verse/stand.coax": "a6c5d351b77cf14313a7cb97232894ad10525f148aa499ab87c01fc908e4f35b",
+        "metaverse/player.coax": "4bf3005da0dc4fc4d445cfe55ac8ff3e39d542cdf2b0b2889af1dfa573b56528",
+        "metaverse/stand.coax": "a6c5d351b77cf14313a7cb97232894ad10525f148aa499ab87c01fc908e4f35b",
         "metaverse-engine/loop.coax": "6dbb01f91a5cbee7338b71e18ce3577a9b56d7320432697eba034df94c16eb7b",
         "metaverse-engine/input.coax": "385291bb7460cc68813294756ca534d9a76bd85adc6829edbc6bd8b1bd68f974",
         "metaverse-engine/query.coax": "e040eb7558a706da6251edaf691fae1eee344c3d20a8ebbab4a0e580fa2a2efa",
@@ -249,7 +249,7 @@
         "metaverse-engine/fixtures/run-and-jump.out": "a9568270b9ce84c978f9f92330fafb6765ff3b5bb36bd737be8ef752f47a3d41"
       },
       "changed_inputs": [
-        "verse/player.coax",
+        "metaverse/player.coax",
         "metaverse-engine/query.coax",
         "metaverse-engine/ground.coax",
         "metaverse-engine/tests/ground-oracle.coax",
@@ -279,7 +279,7 @@
         "metaverse-engine/tests/ground-ray-oracle.coax": "aa4c10b56f91daff668ac73d535e5d000a127f688543fb0e5ae2f27e6c71342c",
         "metaverse-engine/ground-contact.coax": "b2255da119965895e86a975699777bd56a125d70f284622e6de5a033178e6391",
         "metaverse-engine/tests/ground-contact-oracle.coax": "8d8ffe92c8e6ac1c33006f388e9a1c1cd254250121b69fd19df24d3d13b8603a",
-        "verse/stand.coax": "a6c5d351b77cf14313a7cb97232894ad10525f148aa499ab87c01fc908e4f35b",
+        "metaverse/stand.coax": "a6c5d351b77cf14313a7cb97232894ad10525f148aa499ab87c01fc908e4f35b",
         "metaverse-engine/tests/query-oracle.coax": "e088ba9b7be06e2a19d263e5b45859fddeae1f22523c3fdb45948abd895e3cb8",
         "metaverse-engine/tests/query-heightfield.coax": "89116124a89c073af84ec10298345bbb5039d5c8b85db0ac125581ab080aa510",
         "metaverse-engine/math.coax": "ab11cde7a46fc7822eb526cb75dd18989fafcda2e7a55939d6627c91572fffcb",
@@ -303,8 +303,8 @@
       "source": "metaverse-engine/examples/one-camera-at-a-time.coax",
       "inputs": {
         "metaverse-engine/examples/one-camera-at-a-time.coax": "3be0757819976cb2bf4a1dbe956694555ff790bc81d9b1445d4ae340d6246908",
-        "verse/player.coax": "4bf3005da0dc4fc4d445cfe55ac8ff3e39d542cdf2b0b2889af1dfa573b56528",
-        "verse/stand.coax": "a6c5d351b77cf14313a7cb97232894ad10525f148aa499ab87c01fc908e4f35b",
+        "metaverse/player.coax": "4bf3005da0dc4fc4d445cfe55ac8ff3e39d542cdf2b0b2889af1dfa573b56528",
+        "metaverse/stand.coax": "a6c5d351b77cf14313a7cb97232894ad10525f148aa499ab87c01fc908e4f35b",
         "metaverse-engine/loop.coax": "6dbb01f91a5cbee7338b71e18ce3577a9b56d7320432697eba034df94c16eb7b",
         "metaverse-engine/input.coax": "385291bb7460cc68813294756ca534d9a76bd85adc6829edbc6bd8b1bd68f974",
         "metaverse-engine/query.coax": "e040eb7558a706da6251edaf691fae1eee344c3d20a8ebbab4a0e580fa2a2efa",
@@ -329,7 +329,7 @@
         "metaverse-engine/fixtures/one-camera-at-a-time.out": "c24ea3df3616da563c25bb28dbfb06cb4a6e0295e2a2e472b600dab1fa284c0c"
       },
       "changed_inputs": [
-        "verse/player.coax",
+        "metaverse/player.coax",
         "metaverse-engine/query.coax",
         "metaverse-engine/ground.coax",
         "metaverse-engine/tests/ground-oracle.coax",
@@ -359,11 +359,11 @@
         "metaverse-engine/tests/ground-ray-oracle.coax": "aa4c10b56f91daff668ac73d535e5d000a127f688543fb0e5ae2f27e6c71342c",
         "metaverse-engine/ground-contact.coax": "b2255da119965895e86a975699777bd56a125d70f284622e6de5a033178e6391",
         "metaverse-engine/tests/ground-contact-oracle.coax": "8d8ffe92c8e6ac1c33006f388e9a1c1cd254250121b69fd19df24d3d13b8603a",
-        "verse/stand.coax": "a6c5d351b77cf14313a7cb97232894ad10525f148aa499ab87c01fc908e4f35b",
+        "metaverse/stand.coax": "a6c5d351b77cf14313a7cb97232894ad10525f148aa499ab87c01fc908e4f35b",
         "metaverse-engine/tests/query-oracle.coax": "e088ba9b7be06e2a19d263e5b45859fddeae1f22523c3fdb45948abd895e3cb8",
         "metaverse-engine/tests/query-heightfield.coax": "89116124a89c073af84ec10298345bbb5039d5c8b85db0ac125581ab080aa510",
         "metaverse-engine/tests/collide-oracle.coax": "12d24a26149fda48dd5b06e092ae6fc0746a86d69e12bcc2e7887248a94de042",
-        "verse/player.coax": "4bf3005da0dc4fc4d445cfe55ac8ff3e39d542cdf2b0b2889af1dfa573b56528",
+        "metaverse/player.coax": "4bf3005da0dc4fc4d445cfe55ac8ff3e39d542cdf2b0b2889af1dfa573b56528",
         "metaverse-engine/loop.coax": "6dbb01f91a5cbee7338b71e18ce3577a9b56d7320432697eba034df94c16eb7b",
         "metaverse-engine/input.coax": "385291bb7460cc68813294756ca534d9a76bd85adc6829edbc6bd8b1bd68f974",
         "metaverse-engine/math.coax": "ab11cde7a46fc7822eb526cb75dd18989fafcda2e7a55939d6627c91572fffcb",
@@ -386,7 +386,7 @@
         "metaverse-engine/tests/ground-contact-oracle.coax",
         "metaverse-engine/tests/query-heightfield.coax",
         "metaverse-engine/tests/collide-oracle.coax",
-        "verse/player.coax",
+        "metaverse/player.coax",
         "metaverse-engine/follow.coax",
         "metaverse-engine/collision-profiles.coax",
         "metaverse-engine/tests/player-collision-checks.coax",
@@ -479,7 +479,7 @@
       "source": "metaverse-engine/examples/feet-at-a-realm-boundary.coax",
       "inputs": {
         "metaverse-engine/examples/feet-at-a-realm-boundary.coax": "4b37a5fe3569d97db465e70e22ba3151e322e7372d99676cec82c7f540b34c1c",
-        "verse/space.coax": "735c5646da9dcf8387fecb909bfae2aec483161dbee6837923dc9ae8c3a3df77",
+        "metaverse/space.coax": "735c5646da9dcf8387fecb909bfae2aec483161dbee6837923dc9ae8c3a3df77",
         "metaverse-engine/space.coax": "bffd2f5cc1a1e879b33c029bd94bdae81db8391ea61508bd066cd485710b0b15",
         "coax/lib/quantity.coax": "325e9e7152de442b2da210cc0075ca4bb231d5a4c862898a6ee88ab161eeb583",
         "metaverse-engine/fixtures/feet-at-a-realm-boundary.out": "d21125d4a66eb0bf658f4753adbaaadc567e294acd493d8ac9eedd4ed74e64e9"

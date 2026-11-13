@@ -1,9 +1,9 @@
-// Making your fairy (ff-maker, verse/fairy-forest/README.md "You: a fairy you
+// Making your fairy (ff-maker, metaverse/fairy-forest/README.md "You: a fairy you
 // make"): a pane of rows, each part of her (body, skin, hair and its style,
 // eyes, outfit, wings, their colour and glow) with its choices to tap, and
 // she turns to face you while you choose. The first visit opens it; LOOK by
 // the title (L on a computer) and the mirror pool in Mossbank bring it back. What you choose is kept in the
-// save's tail (verse/fairy-forest/life.coax).
+// save's tail (metaverse/fairy-forest/life.coax).
 //   coax/bin/coax test apps/openagents-web/fairy.coax --steps 400000000
 
 FFM_CHIPS :: 64;

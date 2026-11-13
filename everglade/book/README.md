@@ -275,8 +275,8 @@ Everglade's code is currently spread across the repository:
 | The room's rules | `everglade/server/` |
 | Character Create's scene and the figures, which Experimental shares | `everglade/scene/` |
 | The page's C face, which builds `build/everglade2.wasm` | `apps/openagents-web/everglade2-face.c` |
-| The asset pack | `verse/tools/assets/everglade2_pack.coax` |
-| Experimental's combat and hostiles | `apps/openagents-web/experimental-*.coax`, `verse/experimental-*.coax` |
+| The asset pack | `metaverse/tools/assets/everglade2_pack.coax` |
+| Experimental's combat and hostiles | `apps/openagents-web/experimental-*.coax`, `metaverse/experimental-*.coax` |
 | SRD rules | `rules/srd/` |
 | The domain's pages | `apps/openagents-web/realms/everglade2/domain/` |
 

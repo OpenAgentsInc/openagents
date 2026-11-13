@@ -47,7 +47,7 @@ Each generator takes a record of sizes and colours and writes one part at the
 origin, its front facing +z and the ground at y 0. A realm stands the part
 with a record (`arch_stand`), which adds a place, a turn, a scale and a wash
 of colour. A new variant is a change of parameters, never a new mesh.
-[Painted Village](../../verse/painted/village-road.coax) is the first scene
+[Painted Village](../../metaverse/painted/village-road.coax) is the first scene
 built from it, drawn by [the Metaverse Engine's stylized shading](../render/README.md#stylized-shading).
 
 ```coax

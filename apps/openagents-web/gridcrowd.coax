@@ -1,6 +1,6 @@
 // The Grid crowd, openagents.com/demos/grid-crowd?stage=crowd: a staged
 // moment for clips (docs/verse/clips.md). Hundreds of players (the human
-// character from Cast.bin, verse/cast.coax) sprint across the Grid and into
+// character from Cast.bin, metaverse/cast.coax) sprint across the Grid and into
 // the Everglade gate, some hopping as they go, while agents (the Grid's
 // robot) stand along the way and round the gate watching them pass, under a
 // slow camera: high and wide, then a drift down to the gate.
@@ -10,7 +10,7 @@
 // a shirt and trousers colour, and a height (gpu/gridcrowd.coax tints the
 // character's texture layers with them; the face scales the joints).
 //
-// The world is the Grid's own art (verse/tools/pack_grid.py: the floor, the
+// The world is the Grid's own art (metaverse/tools/pack_grid.py: the floor, the
 // stations, the gym, the Everglade gate and its portal, the robot and its
 // clips), drawn by gpu/gridcrowd.coax the way the Grid page drew it before
 // the Grid became the homepage's scene. Nothing here is on the network: the

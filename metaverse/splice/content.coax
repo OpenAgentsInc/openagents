@@ -1,0 +1,170 @@
+// Splice's content tables (GitHub #13404; docs/audits/2026-11-12-chat-and-world-building.md, slice
+// 0): what may be placed in Splice, where its named places are and where nothing may be built,
+// as data. The document is metaverse-engine/content/tables.coax's (profile aethyr-content-v1); the tables
+// are metaverse/splice/content/splice.content, which the Metaverse Engine's table editor
+// (metaverse-engine/editor/content-edit.coax) edits, and a page is built with the copy in content/shipped.coax.
+//
+//   areas       id name x z hx hz r         where a piece may stand at all: a circle (r) or a box (hx, hz)
+//   kept_clear  id name x z hx hz r         where the run needs room: a box (hx, hz) grown by r, so a
+//                                           circle is hx 0, hz 0 and a radius
+//   landmarks   id name x z r               a named place and its radius (a pickup's reach, a door's width)
+//   looks       id name a b c               three colours of Splice's palette, red green blue bytes in one number
+//   pieces      id name kit scale look hx hz top   a placeable piece: the engine kit piece it draws
+//                                           (pieces.coax PK_NAME), its size in thousandths, its look,
+//                                           and its footprint: how far its body reaches to each
+//                                           side (hx) and ahead (hz), and how tall it is (top)
+// Places and lengths are centimetres. `looks` is a table of its own because a table has eight
+// columns at most. An edit or a save names a piece by its ID; names are for people and agents.
+//   coax/bin/coax test metaverse/splice/content.coax --library
+#load "../../metaverse-engine/content/tables.coax";
+#load "pieces.coax";
+#load "content/shipped.coax";
+
+SC_TABLES :: 5;
+SC_AREAS :: 0; SC_KEPT :: 1; SC_MARKS :: 2; SC_LOOKS :: 3; SC_PIECES :: 4;
+SC_HEAD :: [SC_TABLES] string.[
+  "table areas id name:text x:cm z:cm hx:int hz:int r:int",
+  "table kept_clear id name:text x:cm z:cm hx:int hz:int r:int",
+  "table landmarks id name:text x:cm z:cm r:int",
+  "table looks id name:text a:int b:int c:int",
+  "table pieces id name:text kit:text scale:int look:ref.looks hx:int hz:int top:int"];
+SC_NAME :: 24;          // bytes of a row's name kept for a refusal or a listing
+SC_AREA_MAX :: 8; SC_KEPT_MAX :: 48; SC_MARK_MAX :: 96; SC_PIECE_MAX :: 32;
+SC_SCALE_MIN :: 100; SC_SCALE_MAX :: 4000;   // a piece's size, thousandths
+
+// A zone: a box (half sizes hx, hz) round (x, z), grown by r. Metres.
+ScZone :: struct { id: int; x: f32; z: f32; hx: f32; hz: f32; r: f32; name: [SC_NAME] u8; name_n: int; }
+ScMark :: struct { id: int; x: f32; z: f32; r: f32; name: [SC_NAME] u8; name_n: int; }
+ScPiece :: struct { id: int; kit: int; scale: f32; a: int; b: int; c: int; hx: f32; hz: f32; top: f32; name: [SC_NAME] u8; name_n: int; }
+// The tables as the game reads them each frame: metres, kit numbers, colours.
+SpContent :: struct {
+  ok: bool; rev: int;
+  areas: [SC_AREA_MAX] ScZone; area_n: int;
+  kept: [SC_KEPT_MAX] ScZone; kept_n: int;
+  marks: [SC_MARK_MAX] ScMark; mark_n: int;
+  pieces: [SC_PIECE_MAX] ScPiece; piece_n: int;
+}
+
+sc_m :: (cm: int) -> f32 { return cast(f32) cm / 100; }
+sc_name :: (dst: [] u8, s: string) -> int {
+  n := ifx s.count < dst.count then s.count else dst.count;
+  for i: 0..<n { dst[i] = s[i]; }
+  return n;
+}
+sc_zone :: (d: [] ContentDoc, t: int, r: int) -> ScZone {
+  z := ScZone.{id = ct_get(d, t, r, 0), x = sc_m(ct_get(d, t, r, 2)), z = sc_m(ct_get(d, t, r, 3)), hx = sc_m(ct_get(d, t, r, 4)), hz = sc_m(ct_get(d, t, r, 5)), r = sc_m(ct_get(d, t, r, 6))};
+  z.name_n = sc_name(z.name[..], ct_str(d, t, r, 1));
+  return z;
+}
+// Whether d is Splice's content: a document that read, with exactly Splice's tables and columns,
+// no more rows than the game keeps, every piece a kit piece of a size the kits take with a
+// footprint, and every area a circle or a box, not both.
+sc_ok :: (d: [] ContentDoc) -> bool {
+  if !d[0].ok || d[0].t_n != SC_TABLES { return false; }
+  for t: 0..<SC_TABLES {
+    hb: [320] u8;
+    if cast(string) hb[0..<ct_put_table(d, t, hb[..], 0)] != SC_HEAD[t] { return false; }
+  }
+  if ct_rows(d, SC_AREAS) > SC_AREA_MAX || ct_rows(d, SC_KEPT) > SC_KEPT_MAX || ct_rows(d, SC_MARKS) > SC_MARK_MAX || ct_rows(d, SC_PIECES) > SC_PIECE_MAX { return false; }
+  for r: 0..<ct_rows(d, SC_AREAS) {
+    box := ct_get(d, SC_AREAS, r, 4) > 0 && ct_get(d, SC_AREAS, r, 5) > 0; round := ct_get(d, SC_AREAS, r, 6) > 0;
+    if box == round || (round && (ct_get(d, SC_AREAS, r, 4) != 0 || ct_get(d, SC_AREAS, r, 5) != 0)) { return false; }
+  }
+  for r: 0..<ct_rows(d, SC_LOOKS) { for k: 2..<5 { if ct_get(d, SC_LOOKS, r, k) > 0xFFFFFF { return false; } } }
+  for r: 0..<ct_rows(d, SC_PIECES) {
+    s := ct_get(d, SC_PIECES, r, 3);
+    if pk_of(ct_str(d, SC_PIECES, r, 2)) < 0 || s < SC_SCALE_MIN || s > SC_SCALE_MAX || ct_get(d, SC_PIECES, r, 5) < 1 || ct_get(d, SC_PIECES, r, 6) < 1 || ct_get(d, SC_PIECES, r, 7) < 1 { return false; }
+  }
+  return true;
+}
+// The tables in text into c; false, and c not ok, for anything but Splice's content.
+sc_load :: (c: [] SpContent, text: string) -> bool {
+  c[0].ok = false; c[0].area_n = 0; c[0].kept_n = 0; c[0].mark_n = 0; c[0].piece_n = 0;
+  d: [1] ContentDoc;
+  if !ct_read(d[..], text) || !sc_ok(d[..]) { return false; }
+  c[0].rev = d[0].rev;
+  for r: 0..<ct_rows(d[..], SC_AREAS) { c[0].areas[r] = sc_zone(d[..], SC_AREAS, r); }
+  c[0].area_n = ct_rows(d[..], SC_AREAS);
+  for r: 0..<ct_rows(d[..], SC_KEPT) { c[0].kept[r] = sc_zone(d[..], SC_KEPT, r); }
+  c[0].kept_n = ct_rows(d[..], SC_KEPT);
+  for r: 0..<ct_rows(d[..], SC_MARKS) {
+    m := ScMark.{id = ct_get(d[..], SC_MARKS, r, 0), x = sc_m(ct_get(d[..], SC_MARKS, r, 2)), z = sc_m(ct_get(d[..], SC_MARKS, r, 3)), r = sc_m(ct_get(d[..], SC_MARKS, r, 4))};
+    m.name_n = sc_name(m.name[..], ct_str(d[..], SC_MARKS, r, 1));
+    c[0].marks[r] = m;
+  }
+  c[0].mark_n = ct_rows(d[..], SC_MARKS);
+  for r: 0..<ct_rows(d[..], SC_PIECES) {
+    look := ct_find(d[..], SC_LOOKS, ct_get(d[..], SC_PIECES, r, 4));
+    p := ScPiece.{id = ct_get(d[..], SC_PIECES, r, 0), kit = pk_of(ct_str(d[..], SC_PIECES, r, 2)), scale = cast(f32) ct_get(d[..], SC_PIECES, r, 3) / 1000,
+                  a = ct_get(d[..], SC_LOOKS, look, 2), b = ct_get(d[..], SC_LOOKS, look, 3), c = ct_get(d[..], SC_LOOKS, look, 4),
+                  hx = sc_m(ct_get(d[..], SC_PIECES, r, 5)), hz = sc_m(ct_get(d[..], SC_PIECES, r, 6)), top = sc_m(ct_get(d[..], SC_PIECES, r, 7))};
+    p.name_n = sc_name(p.name[..], ct_str(d[..], SC_PIECES, r, 1));
+    c[0].pieces[r] = p;
+  }
+  c[0].piece_n = ct_rows(d[..], SC_PIECES);
+  c[0].ok = true;
+  return true;
+}
+// The landmark with this ID (rows ascend by ID), or one at the origin with ID 0.
+sc_mark :: (c: [] SpContent, id: int) -> ScMark {
+  lo := 0; hi := c[0].mark_n;
+  while lo < hi { mid := lo + (hi - lo) / 2; if c[0].marks[mid].id < id { lo = mid + 1; } else { hi = mid; } }
+  if lo < c[0].mark_n && c[0].marks[lo].id == id { return c[0].marks[lo]; }
+  return ScMark.{};
+}
+// The row of the landmark with this ID, or -1; and a row's name.
+sc_mark_row :: (c: [] SpContent, id: int) -> int {
+  for r: 0..<c[0].mark_n { if c[0].marks[r].id == id { return r; } }
+  return -1;
+}
+sc_mark_name :: (c: [] SpContent, row: int) -> string { return ifx row < 0 || row >= c[0].mark_n then "" else cast(string) c[0].marks[row].name[0..<c[0].marks[row].name_n]; }
+// The row of the piece with this content ID, or -1.
+sc_piece :: (c: [] SpContent, id: int) -> int {
+  for r: 0..<c[0].piece_n { if c[0].pieces[r].id == id { return r; } }
+  return -1;
+}
+sc_kept_name :: (c: [] SpContent, row: int) -> string { return ifx row < 0 || row >= c[0].kept_n then "" else cast(string) c[0].kept[row].name[0..<c[0].kept[row].name_n]; }
+sc_area_name :: (c: [] SpContent, row: int) -> string { return ifx row < 0 || row >= c[0].area_n then "" else cast(string) c[0].areas[row].name[0..<c[0].areas[row].name_n]; }
+sc_piece_name :: (c: [] SpContent, row: int) -> string { return ifx row < 0 || row >= c[0].piece_n then "" else cast(string) c[0].pieces[row].name[0..<c[0].pieces[row].name_n]; }
+// The tables without kept-clear zone `row`: what the mutant check plays against.
+sc_drop_kept :: (c: [] SpContent, row: int) {
+  if row < 0 || row >= c[0].kept_n { return; }
+  for r: row..<c[0].kept_n - 1 { c[0].kept[r] = c[0].kept[r + 1]; }
+  c[0].kept_n -= 1;
+}
+
+#test "Splice's shipped tables read: areas, kept-clear zones, landmarks and pieces, each by its ID" {
+  c: [1] SpContent;
+  #assert sc_load(c[..], SC_SHIPPED) && c[0].ok && c[0].rev >= 1;
+  #assert c[0].area_n == 4 && c[0].kept_n >= 20 && c[0].mark_n >= 40 && c[0].piece_n >= 15 && c[0].piece_n <= 30;
+  rover := sc_mark(c[..], 1);
+  #assert rover.id == 1 && sc_mark_name(c[..], sc_mark_row(c[..], 1)) == "Rover" && sc_mark_row(c[..], 19) == -1 && sc_kept_name(c[..], 0) == "Village start" && sc_area_name(c[..], 3) == "Mine" && rover.x == 6 && rover.z == 5 && rover.r == 4.5;
+  #assert sc_mark(c[..], 0).id == 0 && sc_mark(c[..], 9999).id == 0 && sc_mark(c[..], 19).id == 0;
+  p := sc_piece(c[..], 101);
+  #assert p >= 0 && sc_piece_name(c[..], p) == "Parked rover" && c[0].pieces[p].kit == PK_ROVER && c[0].pieces[p].scale == 1.5 && c[0].pieces[p].a == 0xEDE0C2;
+  #assert sc_piece(c[..], 100) == -1 && sc_piece_name(c[..], -1) == "";
+  n := c[0].kept_n; first := c[0].kept[1].id;
+  sc_drop_kept(c[..], 0);
+  #assert c[0].kept_n == n - 1 && c[0].kept[0].id == first;
+  sc_drop_kept(c[..], 99); #assert c[0].kept_n == n - 1;
+}
+#test "tables that are not Splice's are refused: a missing table, an unknown kit, a piece with no footprint, an area that is both shapes" {
+  c: [1] SpContent; o: [CT_BODY] u8;
+  #assert !sc_load(c[..], "aethyr.content.v1 splice 1\nreach 30000\n") && !c[0].ok;
+  #assert !sc_load(c[..], sc_swap("|rover|1500|", "|rocket|1500|", o[..]));
+  #assert !sc_load(c[..], sc_swap("|rover|1500|1|165|240|375", "|rover|1500|1|0|240|375", o[..]));
+  #assert !sc_load(c[..], sc_swap("|rover|1500|1|165|240|375", "|rover|99|1|165|240|375", o[..]));
+  #assert !sc_load(c[..], sc_swap("1|Dome village|17500|-7500|0|0|630", "1|Dome village|17500|-7500|10|10|630", o[..]));
+  #assert !sc_load(c[..], sc_swap("1|Dome village|17500|-7500|0|0|630", "1|Dome village|17500|-7500|0|0|0", o[..]));
+  #assert sc_load(c[..], sc_swap("|rover|1500|1|165|240|375", "|rover|1500|2|165|240|375", o[..]));
+}
+// SC_SHIPPED with its first `was` replaced by `with`, into out ("" when `was` is not in it).
+sc_swap :: (was: string, with: string, out: [] u8) -> string {
+  s := SC_SHIPPED;
+  for a: 0..<s.count - was.count + 1 {
+    if s[a..<a + was.count] != was { continue; }
+    n := ct_put(out, 0, s[0..<a]); n = ct_put(out, n, with); n = ct_put(out, n, s[a + was.count..<s.count]);
+    return cast(string) out[0..<n];
+  }
+  return "";
+}

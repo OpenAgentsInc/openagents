@@ -1,6 +1,6 @@
 // Chapter 150: generated motion toward a destination, retargeted onto the
 // Metaverse character's skeleton, written into a Cast's dance slot and played
-// by verse/cast.coax, fading in from the idle and out to the walk.
+// by metaverse/cast.coax, fading in from the idle and out to the walk.
 #import "Basic";
 #load "../lib/motion-verse.coax";
 

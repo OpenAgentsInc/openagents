@@ -274,15 +274,15 @@ candidate is prepared or its buffers are written. `vk-realm` prints the
 ledger at the last frame and after close:
 
 ```sh
-REALM=newland VERSE_GPU_CHECK_SIZES='' verse/gpu/realm.sh local check
+REALM=newland VERSE_GPU_CHECK_SIZES='' metaverse/gpu/realm.sh local check
 ```
 
 The iOS Metal host (`HomeRenderer.swift`) does not use the ledger yet.
 
 ### Native projection consumer and residual adapters
 
-[`verse/grid.coax`](../../verse/grid.coax)'s exported `verse_grid_view` calls
-[`verse/grid-render.coax`](../../verse/grid-render.coax). The adapter constructs
+[`metaverse/grid.coax`](../../metaverse/grid.coax)'s exported `verse_grid_view` calls
+[`metaverse/grid-render.coax`](../../metaverse/grid-render.coax). The adapter constructs
 a one-pass, sixteen-word uniform descriptor and delegates viewport/pass
 decisions to this authority module before any matrix output write. Short matrices
 or nonfinite viewports preserve caller output. This local synchronous
@@ -300,12 +300,12 @@ does not qualify the other target or the complete playable route.
 
 | Grid subsystem | Current implementation and public boundary | Still to migrate |
 | --- | --- | --- |
-| Browser frame and passes | `apps/openagents-web/newland.coax` → `newland-face.c` exports `coaxial_frame`, vertex/uniform extents. `coax/web/host.js` uploads and draws background/strokes; `verse/gpu/flat-pass.coax` describes its recorded Vulkan/browser comparison. | Shared `Render*` plans and browser adapter exist in this continuation; the complete current-source playable route remains to be qualified. |
+| Browser frame and passes | `apps/openagents-web/newland.coax` → `newland-face.c` exports `coaxial_frame`, vertex/uniform extents. `coax/web/host.js` uploads and draws background/strokes; `metaverse/gpu/flat-pass.coax` describes its recorded Vulkan/browser comparison. | Shared `Render*` plans and browser adapter exist in this continuation; the complete current-source playable route remains to be qualified. |
 | Browser material/light | `apps/openagents-web/gpu/newland.coax`, `.bindings`, `.module`: group0 uniform28vec4s, sans atlas and sampler, generated WGSL. | Shared binding, atlas, sampler and shader-layout admission exist in `Render*`; retain their exact profile and source qualification boundaries. |
-| Native line/material/light | `verse/grid.coax`, `verse/home.coax`, `verse/light.coax`; `verse/platform/host.c` receives line/dot/slot packets; `HomeRenderer.swift` owns Metal scene/bloom/composite passes. | Shared GPU resource registry and pass submission, including refusal/cleanup after real allocation failures. |
-| Figures | Native `verse/cast.coax` admits `Cast.bin`, poses and collision palettes; `HomeRenderer.swift` allocates buffers/textures. Browser `metaverse-engine/anim/figure.coax` supplies checked rounded-bone figures through `newland.coax`. | One admitted figure/material/binding interface; preserve interpolated feet and existing cast/figure data. |
-| HUD | `verse/hud.coax`, `metaverse-engine/ui/hud-frame.coax`; reusable `metaverse-engine/ui/{hud,draw}.coax` and the recorded HUD laboratory already exist. | Integrate those components; do not replace them with a second HUD implementation. |
-| Asset/frame budgets | `metaverse-engine/core/budget.coax`; `newland.coax` declares `LAND_BUDGET`; pack budgets and licences remain in `verse/packs/`/pack tooling. Cast/Haunt buffer gates admit their own binary layouts. | Content identity and generation ownership through real GPU allocation/use/release; writer-side reservation rather than silent clipping. |
+| Native line/material/light | `metaverse/grid.coax`, `metaverse/home.coax`, `metaverse/light.coax`; `metaverse/platform/host.c` receives line/dot/slot packets; `HomeRenderer.swift` owns Metal scene/bloom/composite passes. | Shared GPU resource registry and pass submission, including refusal/cleanup after real allocation failures. |
+| Figures | Native `metaverse/cast.coax` admits `Cast.bin`, poses and collision palettes; `HomeRenderer.swift` allocates buffers/textures. Browser `metaverse-engine/anim/figure.coax` supplies checked rounded-bone figures through `newland.coax`. | One admitted figure/material/binding interface; preserve interpolated feet and existing cast/figure data. |
+| HUD | `metaverse/hud.coax`, `metaverse-engine/ui/hud-frame.coax`; reusable `metaverse-engine/ui/{hud,draw}.coax` and the recorded HUD laboratory already exist. | Integrate those components; do not replace them with a second HUD implementation. |
+| Asset/frame budgets | `metaverse-engine/core/budget.coax`; `newland.coax` declares `LAND_BUDGET`; pack budgets and licences remain in `metaverse/packs/`/pack tooling. Cast/Haunt buffer gates admit their own binary layouts. | Content identity and generation ownership through real GPU allocation/use/release; writer-side reservation rather than silent clipping. |
 
 Next: qualify the complete Grid background+stroke route and actual resource
 lifecycle on matching declared browser/native profiles, preserving the four-word

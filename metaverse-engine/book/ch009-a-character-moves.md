@@ -372,7 +372,7 @@ animation, rather than instances of this follower controller.
 ```shell
 coax/bin/coax test metaverse-engine/move/walk.coax --library
 coax/bin/coax test metaverse-engine/move/player.coax --library
-coax/bin/coax test verse/gridwalk.coax --library
+coax/bin/coax test metaverse/gridwalk.coax --library
 ```
 
 Checks in `metaverse-engine/move/player.coax` for this chapter:

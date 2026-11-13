@@ -1,6 +1,6 @@
 // A realm's other text answers on the wire (compliance plan step E11, GitHub #13250): the lines
 // coax/web/api/realms.c answers for the feature list, the edit panes and the proposals, written in
-// SQL. The one reader: the realm edit layer (verse/edit/edit.coax) takes every line's parts from
+// SQL. The one reader: the realm edit layer (metaverse/edit/edit.coax) takes every line's parts from
 // here. (The spec's lines are spec.coax's, the board's board.coax's, a made realm's made.coax's,
 // the listed realms' listed.coax's.)
 //   GET  .../<slug>/asks        "ask ID STATE KIND WORDS" a line, newest first (verse.ask_list):

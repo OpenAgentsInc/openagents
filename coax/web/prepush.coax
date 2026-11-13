@@ -849,8 +849,8 @@ PP_T_HIST :: "@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa other-agent\n\n:000000 1
   #assert pp_free_host("oa-build-1 us-central1-a RUNNING 10.0.0.1 free slots: 2\n") && !pp_free_host("oa-build-1 us-central1-a RUNNING 10.0.0.1 free slots: 0\noa-build-2 us-central1-a TERMINATED - free slots: -\n");
   #assert !pp_free_host("") && !pp_free_host("about $3 over the last 24 hours\n");
   out: [256] u8;
-  list := "coax/web/layer-check.coax  default --library\napps/a.coax  default --library --native-link b.coax  (skipped here: loads x, not in the tree)\nverse/b.coax  default\n";
-  #assert pp_touched_suites(list, "AGENTS.md\ncoax/web/layer-check.coax\napps/a.coax\nverse/b.coax\n", out[..]) == "coax/web/layer-check.coax,verse/b.coax";
+  list := "coax/web/layer-check.coax  default --library\napps/a.coax  default --library --native-link b.coax  (skipped here: loads x, not in the tree)\nmetaverse/b.coax  default\n";
+  #assert pp_touched_suites(list, "AGENTS.md\ncoax/web/layer-check.coax\napps/a.coax\nmetaverse/b.coax\n", out[..]) == "coax/web/layer-check.coax,metaverse/b.coax";
   #assert pp_touched_suites(list, "AGENTS.md\n", out[..]) == "";
   #assert pp_only_docs("AGENTS.md\ndocs/x/y.png\n") && !pp_only_docs("AGENTS.md\ncoax/web/x.coax\n") && pp_only_docs("");
   #assert pp_listed("a\nb\n", "b") && !pp_listed("ab\n", "a") && pp_has("xx aaaaaaa yy", "aaaaaaa") && !pp_has("", "a");

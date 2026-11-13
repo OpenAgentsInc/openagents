@@ -134,7 +134,7 @@ buyer's wallet straight to its maker's Lightning Address (owner decision D6,
   then, optionally, seven colours of six hex digits that LOOK's choices don't
   give (the hair, the bodice, the skirt, the gloves and under-skirt, the three
   wing pairs): 51 characters, e.g. `120140210f2c94c3a1f6b7b4fd6e8d8ff9be4ffc76fe0fff6c8`.
-  `makers.look_of` and `ffl_code_read` (verse/fairy-forest/life.coax) check
+  `makers.look_of` and `ffl_code_read` (metaverse/fairy-forest/life.coax) check
   the same rules.
 - **Listing**: a logged-in maker posts
   `POST /api/playtest/upgrades/fairy {name, by, look, sats, lightning}` (the

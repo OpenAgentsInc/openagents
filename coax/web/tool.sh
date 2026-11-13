@@ -15,7 +15,7 @@
 # traps), for a long numerical tool such as a training run (psionic/examples/fit-mnist.coax).
 # A "// tool.sh: stack-gib N" line gives tool_main an N GiB stack (address space, committed
 # as it is touched) in place of 1 GiB, for a tool whose buffers are larger
-# (verse/tools/humans/pack_human.coax).
+# (metaverse/tools/humans/pack_human.coax).
 #   coax/web/tool.sh shot URL OUT.png [WxH] [WAIT_MS] [--eval JS]
 #   coax/web/tool.sh clip URL OUT.mp4 [--size WxH] [--seconds S] ...
 set -euo pipefail
@@ -73,7 +73,7 @@ if [[ -n "$why" ]]; then
   mkdir -p "$(dirname "$bin")"
   # IEEE arithmetic as written (no fused multiply-adds, as coax/web/wasm.sh, and pow() the C
   # library's, not folded to x * x): a tool that reproduces another program's floats
-  # (verse/tools/humans/pack_human.coax) needs each rounding
+  # (metaverse/tools/humans/pack_human.coax) needs each rounding
   build=("${cc[@]}" -std=c11 -O2 -ffp-contract=off -fno-fast-math -fno-builtin-pow ${stack[@]+"${stack[@]}"})
   units=("$p/tool-native.c" "$p/process-native.c" "$p/store-file-native.c" "$p/read-file-native.c" "$p/socket-native.c" "$p/entropy-native.c" "$p/entropy-foreign.c" "$p/agent-signer-none.c")
   # Every checkout shares the compiled tools (#13139): the C compiler takes most of a build

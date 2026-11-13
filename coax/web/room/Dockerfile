@@ -1,6 +1,6 @@
 # The room server on Cloud Run (coax/web/room/deploy.sh stages src/ with stage.sh: the Coax units already turned
 # into C, room.c and the controller's everglade-step.c, with room-host.c (and the room-tick.c and room-wt.c it includes), room-world.c, room-math.c,
-# verse/voice-host/ws.c, and WebTransport's wt.c with the vendored QUIC stack (third_party/, #13176).
+# metaverse/voice-host/ws.c, and WebTransport's wt.c with the vendored QUIC stack (third_party/, #13176).
 FROM debian:bookworm-slim AS build
 RUN apt-get update && apt-get install -y --no-install-recommends gcc libc6-dev binutils libcurl4-openssl-dev && rm -rf /var/lib/apt/lists/*
 COPY src/ /src/

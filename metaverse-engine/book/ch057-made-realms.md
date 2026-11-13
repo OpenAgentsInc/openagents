@@ -53,7 +53,7 @@ them, and every engine improvement reaches all of them at once.
   [myrealm-shapes.coax](../../apps/openagents-web/myrealm-shapes.coax)
   (`SLOT_A`, `NEAR_A`, `owl_home`, `roofs_out`, `wood`) and
   [myrealm-things.coax](../../apps/openagents-web/myrealm-things.coax), drawn
-  by `myrealm.wgsl` with [verse/style-preset.coax](../../verse/style-preset.coax).
+  by `myrealm.wgsl` with [metaverse/style-preset.coax](../../metaverse/style-preset.coax).
 - The catalogue, cameras and palettes in
   [realm-builder.md](../../docs/verse/realm-builder.md); figures from
   [metaverse-engine/anim/figure.coax](../anim/figure.coax).

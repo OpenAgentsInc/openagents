@@ -5,9 +5,9 @@ manifest and product bytes; copying does not create a new shader package.
 
 ```sh
 coax/web/tool.sh render-stage APP /build/render/PROFILE/render.json STAGE
-coax/web/tool.sh verse/native/render-package.coax \
+coax/web/tool.sh metaverse/native/render-package.coax \
   --package DIR/render.json --app APP --profile PROFILE --output RenderIdentity.h
-coax/web/tool.sh verse/native/render-assets.coax \
+coax/web/tool.sh metaverse/native/render-assets.coax \
   --table assets.json --package DIR/render.json --web-root APP --output ASSETS
 ```
 
@@ -42,8 +42,8 @@ and its asset qualification record.
 
 For a parity replay, extract the reference archive into a private scratch
 directory. `check-staging-tools.coax` accepts a reference root containing the
-old `coax/web/render_stage.py` and `verse/native/render_package.py` paths.
+old `coax/web/render_stage.py` and `metaverse/native/render_package.py` paths.
 `check-asset-staging.coax` accepts a root containing the old
-`verse/native/render_assets.py` path; its archived reference member can be
+`metaverse/native/render_assets.py` path; its archived reference member can be
 copied into that scratch layout. These are archived comparison inputs, not
 the build's tools. The normal build calls only the Coax replacements.

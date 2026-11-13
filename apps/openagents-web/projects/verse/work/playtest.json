@@ -607,10 +607,10 @@
         "playtest",
         "voice"
       ],
-      "body": "Reference: docs/verse/playtest-port.md (the inventory) and ~/work/aethyr-cpp (frozen/kiki/); ~/work/aethyr-demo is read-only. Port the playtest's voice bot and voice prompts (voice, voice-on) onto the Coax voice engine (verse/voice*.coax), after the first switch as coax/web.md decides. Text chat keeps working without it.",
+      "body": "Reference: docs/verse/playtest-port.md (the inventory) and ~/work/aethyr-cpp (frozen/kiki/); ~/work/aethyr-demo is read-only. Port the playtest's voice bot and voice prompts (voice, voice-on) onto the Coax voice engine (metaverse/voice*.coax), after the first switch as coax/web.md decides. Text chat keeps working without it.",
       "files": [
         "apps/openagents-web/",
-        "verse/voice-host/"
+        "metaverse/voice-host/"
       ],
       "acceptance": [
         "Voice on, a spoken question to a character gets a spoken answer in the realm",
@@ -659,7 +659,7 @@
       "body": "The /verse landing (verse.coax) says in short words that this is a Haunted House-themed playtest. The Agent orb is in the landing's scene; tapping it (or its voice button) starts a push-to-talk voice chat with a guide persona on the voice host (a `guide` route): what the test is for, what the Metaverse is for, what the Haunted House is for. PLAYTEST NOW still opens the house.",
       "files": [
         "apps/openagents-web/verse.coax",
-        "verse/voice-host/speech.c"
+        "metaverse/voice-host/speech.c"
       ],
       "acceptance": [
         "The landing names the Haunted House playtest",
@@ -705,7 +705,7 @@
       "files": [
         "apps/openagents-web/realm.coax",
         "apps/openagents-web/realm-face.c",
-        "verse/haunt.coax"
+        "metaverse/haunt.coax"
       ],
       "acceptance": [
         "Each gesture has a coax test",
@@ -726,7 +726,7 @@
       ],
       "body": "On touch, the move stick acts only when a finger starts on it. A finger elsewhere orbits the camera, and a tap selects or places. One perfect circle on the right jumps; holding it emotes.",
       "files": [
-        "verse/grid.coax",
+        "metaverse/grid.coax",
         "apps/openagents-web/realm.coax"
       ],
       "acceptance": [
@@ -793,7 +793,7 @@
       ],
       "body": "Give the Haunted House's characters idle variety, a look at the player when near, gestures while talking and reactions to haunts, with the engine's motions (metaverse-engine/anim/motion.coax) and skinned characters where available.",
       "files": [
-        "verse/haunt.coax"
+        "metaverse/haunt.coax"
       ],
       "acceptance": [
         "Shots or a probe show characters turning to the player and gesturing when talked to",
@@ -995,10 +995,10 @@
       ],
       "body": "The tour's first card says to walk with W A S D, but every key went to the card, so you couldn't move until it was closed. W, A, S, D and the up and down arrows now close the tour and walk; the left and right arrows still page it, and the stick on a phone closes it too.",
       "files": [
-        "verse/icecream/play.coax"
+        "metaverse/icecream/play.coax"
       ],
       "acceptance": [
-        "coax test verse/icecream/play.coax passes, with a check that W during the tour ends it and walks"
+        "coax test metaverse/icecream/play.coax passes, with a check that W during the tour ends it and walks"
       ],
       "blocked_by": []
     },

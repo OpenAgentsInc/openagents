@@ -6,12 +6,12 @@
 // block you, and the steps carry you up to the terrace (metaverse-engine/arch/solids.coax).
 //
 // This file is the page: the camera you walk, the HUD, and what it hands the host. It builds
-// nothing itself. The scene (verse/painted/village-road.coax) stands parts made by Aethyr's
+// nothing itself. The scene (metaverse/painted/village-road.coax) stands parts made by Aethyr's
 // architecture kit (metaverse-engine/arch/village.coax, flora.coax), and Aethyr's stylized shading
 // (metaverse-engine/render/stylized.coax, named by gpu/painted.coax) draws them: store 0 the kit's vertices,
 // store 1 the records, store 2 the ground table, each copied to the GPU once.
 //
-// South of the village (verse/painted/wilds.coax) the road runs on as a path through pines, over a
+// South of the village (metaverse/painted/wilds.coax) the road runs on as a path through pines, over a
 // plank bridge and into a meadow of oaks under a cliff and its waterfall. The river, the falls,
 // their spray and the rainbow are the scene's last draws: the host draws them in the water pass
 // (coaxial_water_draws; metaverse-engine/render/stylized.coax, stylized_water_*).
@@ -26,7 +26,7 @@
 
 #load "../../metaverse-engine/ui/font.coax";
 #load "../../metaverse-engine/core/loop.coax";
-#load "../../verse/painted/village-road.coax";
+#load "../../metaverse/painted/village-road.coax";
 
 VERTEX_FLOATS :: 16;
 MAX_VERTICES :: 6000;

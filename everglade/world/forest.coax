@@ -1,10 +1,10 @@
 // Everglade v2, piece 1 (GitHub #13023, docs/verse/everglade2.md): the land round Character
 // Create's glade and the long path out of it. Every function here is a pure function of position,
-// so the pack's ground (verse/tools/assets/everglade2_pack.coax), the planting
+// so the pack's ground (metaverse/tools/assets/everglade2_pack.coax), the planting
 // (everglade/world/plant.coax), the walk (everglade/client/client.coax) and the shader
 // (everglade/client/gpu/everglade2.coax) all read the same land. Inside the glade it is the
-// glade's own (verse/character-glade.coax): the same hills, path and autumn.
-#load "../../verse/character-glade.coax";
+// glade's own (metaverse/character-glade.coax): the same hills, path and autumn.
+#load "../../metaverse/character-glade.coax";
 #load "points.coax";   // E2_CLEAR_Z, the spawn and the named points the scripted checks read (#13078)
 #load "clearing.coax";   // Everglade's clearings and streams (#13093): this file only places them
 
@@ -26,7 +26,7 @@ e2_brook :: () -> Stream { return Stream.{x = 84, z_north = -55, z_south = -185,
 e2_brook_level :: (z: f32) -> f32 { return e2_city_level() - 0.3 + 0.003 * (z - E2_CITY_Z); }
 // The path's end clearing, as a Clearing (the camp's).
 e2_end :: () -> Clearing { return Clearing.{cx = e2_clear_x(), cz = E2_CLEAR_Z, radius = E2_CLEAR_R, edge = 8, rag = 0.3, slope = 0, ring = 12}; }
-// Which of the glade's own trees and rocks (verse/character-glade.coax cg_item) Everglade II keeps:
+// Which of the glade's own trees and rocks (metaverse/character-glade.coax cg_item) Everglade II keeps:
 // none on the path out (a small rock sat on its middle at z -13, hidden behind you as you met it),
 // and none in the road's way to the north. The pack and the colliders both ask this.
 e2_glade_kept :: (item:CgItem)->bool {

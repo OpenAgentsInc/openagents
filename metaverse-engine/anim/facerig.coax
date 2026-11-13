@@ -1,5 +1,5 @@
 // A face rig: a port of OpenRigLogic's evaluation (controls, pose-space correctives, joint groups
-// and blend shapes) to Coax, for a face from a DNA file (verse/tools/humans/ph_face.coax packs one).
+// and blend shapes) to Coax, for a face from a DNA file (metaverse/tools/humans/ph_face.coax packs one).
 //
 // Ported from OpenRigLogic (src/riglogic: psdnet/PSDNetImpl.cpp, joints/cpu/bpcm, blendshapes),
 // under its licence:

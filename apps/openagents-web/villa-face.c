@@ -1,5 +1,5 @@
 // Hecate's Cemetery's C face for the browser (coax/web/host.js): villa.coax
-// is the page, metaverse-engine/move/player.coax walks you, verse/grid.coax reads a phone's
+// is the page, metaverse-engine/move/player.coax walks you, metaverse/grid.coax reads a phone's
 // thumbs and villafig.coax poses the figures (each its own library). Once
 // a frame it passes values between them in order: the page's controls, the
 // player's step among the garden's walls, the page's step (the flight, the
@@ -248,7 +248,7 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   if (busy) sticks = verse_sticks_reset();
   verse_player_v2_input(control(), v->key_x, v->key_y, sticks.pad_x, sticks.pad_y, verse_runs(v->run, sticks.run, sticks.pad_x, sticks.pad_y), v->jump || sticks.jump, 0, 0);
   verse_player_v2_heading(control(), player, villa_player_theta(at(state)));
-  if (sticks.zoom != 0) villa_wheel(at(state), sticks.zoom);   /* a pinch zooms as the wheel does (verse/grid.coax) */
+  if (sticks.zoom != 0) villa_wheel(at(state), sticks.zoom);   /* a pinch zooms as the wheel does (metaverse/grid.coax) */
   sticks = verse_sticks_used(sticks);
   int64_t walls = villa_walls(at(state));
   coax_t_AdvanceTrace walked = verse_player_v2_advance(control(), player, frame, (coax_v_f32){0, 0}, (coax_v_f32){v->walls.e, walls * 6},

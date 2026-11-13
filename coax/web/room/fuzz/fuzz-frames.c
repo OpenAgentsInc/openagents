@@ -6,7 +6,7 @@
            2-byte length first (wt_frame_next, at most 4,096 bytes)
    Besides the sanitizers it holds each reader to its word: a frame lies wholly inside the bytes
    read, never past its limit, and every frame read moves on. Built and run by fuzz.sh. */
-#include "../../../../verse/voice-host/ws.h"
+#include "../../../../metaverse/voice-host/ws.h"
 #include "../wt.h"
 #include <stdio.h>
 #include <stdlib.h>

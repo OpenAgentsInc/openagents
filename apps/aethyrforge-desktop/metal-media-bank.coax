@@ -18,7 +18,7 @@ mmb_differences :: (left:[]u8,right:[]u8)->int {if left.count!=right.count {retu
 tool_main :: ()->int #export_c #effects(all) {
  a:[1]Args;if !args_load(a[..])||args_count(a[..])!=4 {tool_errln("usage: metal-media-bank ROOT RESOURCES EFFECTS NEW_OUTPUT");return 2;}
  root:=args_at(a[..],0);res:=args_at(a[..],1);effects:=args_at(a[..],2);dir:=args_at(a[..],3);paths:[10][4096]u8;
- if !fs_mkdir(dir) {return 1;}sourceDir:=fs_join(res,"web/realms/everglade/hotbar",paths[0][..]);facts:[65536]u8;fn:=fs_read(fs_join(root,"verse/native/everglade.facts",paths[1][..]),facts[..]);if fn<1 {return 1;}while fn>0&&facts[fn-1]=='\n' {fn-=1;}
+ if !fs_mkdir(dir) {return 1;}sourceDir:=fs_join(res,"web/realms/everglade/hotbar",paths[0][..]);facts:[65536]u8;fn:=fs_read(fs_join(root,"metaverse/native/everglade.facts",paths[1][..]),facts[..]);if fn<1 {return 1;}while fn>0&&facts[fn-1]=='\n' {fn-=1;}
  plan:[65536]u8;o:[1]Jo;jo_start(o[..],plan[..]);jo_obj(o[..]);mmb_field(o[..],"schema","aethyr.metal.effects.v1");jo_key(o[..],"golden");jo_bool(o[..],true);jo_key(o[..],"operations");jo_arr(o[..]);
  for kind:[2]int.[600,606] {jo_obj(o[..]);mmb_field(o[..],"op","message");jo_key(o[..],"kind");jo_int(o[..],kind);mmb_field(o[..],"text",ifx kind==600 then cast(string)facts[0..<fn] else "");jo_end(o[..]);}
  for i:0..<2 {jo_obj(o[..]);mmb_field(o[..],"op","frame");for key,k:[4]string.["width","height","scale","dt"] {jo_key(o[..],key);if k==3 {jo_raw(o[..],"0.016666666666666666");}else {jo_int(o[..],ifx k==0 then 320 else ifx k==1 then 180 else 1);}}jo_end(o[..]);}

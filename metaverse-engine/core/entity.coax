@@ -1,6 +1,6 @@
 // The Metaverse Engine's entities (the Metaverse Engine core, GitHub #12609, docs/verse/engine-core.md): who a
 // thing in a realm is, and when it is born and dies. It generalizes Dead Gears' entity system
-// (verse/deadgears/ecs.coax) with two identities and deferred spawns.
+// (metaverse/deadgears/ecs.coax) with two identities and deferred spawns.
 //
 //   Handle    a slot and its generation, for use inside a step: fast and checked. Despawning
 //             bumps the slot's generation, so a stale handle never reaches the slot's next owner.

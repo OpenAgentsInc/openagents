@@ -9,8 +9,8 @@
     "metaverse-engine/render/native-texture-profile.coax": "caaad4704b2e24c468dffd502a7f48f3540ba7de9bfd64b83cc6b59faf4740df",
     "metaverse-engine/render/tools/native-textures.coax": "dd1b1f4541cdb9cc04f9970e83e51717f964442afabdcd4e256da2e958bdff2e",
     "coax/lib/image/jpeg.coax": "98552cd3c170ab334ed26138387c375e54371d9c7c2c7f49e93ce6b0d7f6e830",
-    "verse/gpu/layers.coax": "910af1f5c17fc7012b608926d0f8b80757df76d59414505c1656af39b50fffcb",
-    "verse/tools/sans-atlas.coax": "ba5ed650f09e5ff5861ff0c6e2a1b0d17bbd8d6589fff3d704db92dc0891b952"
+    "metaverse/gpu/layers.coax": "910af1f5c17fc7012b608926d0f8b80757df76d59414505c1656af39b50fffcb",
+    "metaverse/tools/sans-atlas.coax": "ba5ed650f09e5ff5861ff0c6e2a1b0d17bbd8d6589fff3d704db92dc0891b952"
   },
   "policy_gate": {
     "mutants": 259,

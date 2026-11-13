@@ -4,7 +4,7 @@
 > Everglade v1 at `/worlds/everglade`, Everglade Experimental at
 > `/worlds/everglade-experimental` and Character Create at
 > `/worlds/character-creator`. Their code is in `apps/openagents-web/` and
-> `verse/`, so this chapter names functions and has no source listings yet.
+> `metaverse/`, so this chapter names functions and has no source listings yet.
 
 Everglade aims to follow the SRD's rules faithfully while adapting them for
 action combat. Three prototypes came before Everglade II, and each answered one
@@ -99,7 +99,7 @@ Class, and the rolls hit. The action-combat part was missing. In real time, you
 can only react to an attack that you can see and hear coming. An attack with no
 arrow is a hidden die roll.
 
-The fix (`verse/experimental-hostiles.coax`,
+The fix (`metaverse/experimental-hostiles.coax`,
 `everglade/zone-combat.coax`, `metaverse-engine/fx/puff.coax`) makes
 every shot a thing in the world:
 
@@ -118,9 +118,9 @@ the hit, and you see and hear what you're rolling against.
 
 ## The checks
 
-- `verse/experimental-hostiles.coax`, `#test "a shot flies before it lands:
+- `metaverse/experimental-hostiles.coax`, `#test "a shot flies before it lands:
   you can step out of its way, and one in the air lands where you stand"`.
-- `verse/experimental-hostiles.coax`, `#test "a safe spawn: nothing wakes or
+- `metaverse/experimental-hostiles.coax`, `#test "a safe spawn: nothing wakes or
   strikes you by the spawn or in your first seconds, and you see it coming"`.
 - `everglade/shared/move.coax`, `#test "the run is a jog and the
   walk a stroll"`: Everglade II's pace, apart from v1's.

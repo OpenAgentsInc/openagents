@@ -472,7 +472,7 @@ ends with `coax/bin/coax test --library everglade/legacy/v1/plan.coax` and
    drawing; most houses stay shut (`EG_INTERIOR` false). Touches
    `plan.coax` (a generated block table and the overlap and reach checks),
    `apps/openagents-web/everglade.coax` (`building()`, house paint),
-   `verse/packs/everglade.json` if new kit pieces are needed.
+   `metaverse/packs/everglade.json` if new kit pieces are needed.
 8. **Furnish the woods (M).** Walden Woods with the Writing Cabin, Quiet
    Cabin and Prototype Shed round Thinking Pond; Fernhollow with the Code
    Cabin and Lookout Hut by Fern Pond; the Orchard, the Beekeeper's Hut

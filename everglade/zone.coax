@@ -16,9 +16,9 @@
 //   the agent driver                                                                zone-drive.coax (metaverse-engine/agent/drive.coax)
 //   COAX_NATIVE_CHECKS=1 coax/bin/coax test --library everglade/zone.coax
 #load "scene/charactercreator.coax" as cc;
-#load "../verse/experimental-village.coax" as village;
-#load "../verse/experimental-hostiles.coax" as hostile;
-#load "../verse/experimental-dungeon.coax" as xdungeon;
+#load "../metaverse/experimental-village.coax" as village;
+#load "../metaverse/experimental-hostiles.coax" as hostile;
+#load "../metaverse/experimental-dungeon.coax" as xdungeon;
 #load "../metaverse-engine/core/loop.coax";
 #load "../metaverse-engine/core/quality-page.coax";   // the graphics governor, wired as every realm wires it (zone_quality_frame, #13147)
 #load "../rules/srd/battle.coax";
@@ -178,7 +178,7 @@ zone_move_floors :: (s: [] EgZone) -> [] f32 #export_c #effects(all) { return s[
 zone_keep :: (s: [] EgZone, x: f32, z: f32) -> P3 {
   // a zone that states its own ground keeps you on all of it (its edge is drawn: no invisible wall)
   if s[0].bound > 0 { b := s[0].bound; return P3.{x = lo(b, hi(-b, x)), z = lo(b, hi(-b, z))}; }
-  // the meadow's edge, but for the dungeon, which runs on south past it (verse/experimental-dungeon.coax)
+  // the meadow's edge, but for the dungeon, which runs on south past it (metaverse/experimental-dungeon.coax)
   kz:=lo(82,hi(-82,z));if x>f32(xdungeon.DG_X0) && x<xdungeon.dg_east() && z< -82 {kz=hi(xdungeon.dg_south()+0.3,z);}return P3.{x=lo(82,hi(-82,x)),z=kz};
 }
 // Translate the saved SRD turn to a physical jump envelope. Only an admitted

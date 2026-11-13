@@ -187,7 +187,7 @@ rp_echo_cast :: (s: [] Everglade, slot: int, at: Point) {
 // pi turns her front from +z to -z.
 RP_ECHO_SIDE :: 1.0;
 RP_ECHO_HEADING :: 3.14159265;
-// The orbit's camera (verse/valley/echo-orbit.coax) in her own frame: side along her right, front
+// The orbit's camera (metaverse/valley/echo-orbit.coax) in her own frame: side along her right, front
 // along the way she faces.
 rp_echo_shot :: (s: [] Everglade) -> Shot {
   feet := s[0].rp.echo_at; h := s[0].rp.echo_heading;
@@ -309,7 +309,7 @@ rp_draw :: (s: [] Everglade, dt: f32) {
   }
 }
 // What one of the cult wears on the Quaternius male body (everglade/legacy/v1/folk.coax PART_*): the Blender
-// robe (verse/tools/humans/cult_robe.py; Darian's his own), its far copy past RP_FAR, the hands and
+// robe (metaverse/tools/humans/cult_robe.py; Darian's his own), its far copy past RP_FAR, the hands and
 // the head; the robe dyed by kind (RP_DYE), gold-trimmed by RP_GOLD.
 rp_parts :: (npc: int, far: bool, out: [] int) -> int {
   if out.count < FOLK_PARTS_MAX { return 0; }

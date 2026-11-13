@@ -356,7 +356,7 @@
       "body": "Box select, control groups and a command queue in metaverse-engine/core/command.coax; on phones tap select and long-press for orders (the hotbar's rules).",
       "files": [
         "metaverse-engine/core/command.coax",
-        "verse/hud.coax"
+        "metaverse/hud.coax"
       ],
       "acceptance": [
         "Selecting three ships and giving one order moves all three"
@@ -480,7 +480,7 @@
       "title": "Save and resume a campaign",
       "size": "M",
       "labels": [],
-      "body": "Save and resume long campaigns, as Fairy Forest saves (verse/fairy-forest/), only bigger.",
+      "body": "Save and resume long campaigns, as Fairy Forest saves (metaverse/fairy-forest/), only bigger.",
       "files": [
         "apps/openagents-web/realms/belt-2200/"
       ],

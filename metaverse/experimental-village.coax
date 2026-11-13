@@ -1,0 +1,324 @@
+// Experimental village colliders, derived from the pinned Quaternius Godot
+// collision meshes and supplied to the same walker as Everglade's buildings.
+#module "verse.experimentalvillage";
+#load "experimental-terrain.coax" as terrain;
+#load "experimental-castle.coax" as castle;
+#load "experimental-dungeon.coax" as dungeon;
+#load "experimental-props.coax" as props;
+#load "../everglade/world/home.coax" as home;
+#load "../metaverse-engine/world/interact.coax" as interact;
+#load "../metaverse-engine/world/building.coax" as building;
+#load "../everglade/world/housewright.coax" as hw;
+#load "experimental-village-data.coax";
+#load "experimental-scene-colliders.coax";
+#load "../metaverse-engine/physics/stand.coax" as stand;
+#load "../metaverse-engine/physics/collide.coax" as collision;
+#load "../metaverse-engine/physics/query.coax" as query;
+#load "../metaverse-engine/core/space.coax" as space;
+#load "../metaverse-engine/physics/visibility.coax" as vis;   // what an eye sees through the village (#13073)
+
+EV_WALLS :: 1024;
+EV_FLOORS :: 16;
+// VC_BOXES comes grouped by kind (village_collision.coax writes each group's boxes together): where
+// each kind's run begins, so a site reads only its own kind's boxes, through a view, not all of them
+// copied one by one.
+VC_KINDS :: 4;
+VC_KIND_FROM :: [VC_KINDS + 1]int.[0,354,606,1255,1567];
+#test "each kind's run of VC_BOXES starts where VC_KIND_FROM says" {
+ #assert VC_KIND_FROM[VC_KINDS]==VC_BOXES.count;
+ for k:0..<VC_KINDS {for i:VC_KIND_FROM[k]..<VC_KIND_FROM[k+1] {#assert VC_BOXES[i][0]==k;}}
+}
+EvNear :: struct {walls:[EV_WALLS*6]f32;floors:[EV_FLOORS*10]f32;wall_n:int;floor_n:int;scene_begin:int;scene_end:int;overflow:bool;}
+#test "village collision supplies nearby walls and ignores the empty spawn" {
+ a:[1]EvNear;ev_near(a[..],0,0);#assert a[0].floor_n==0 && !a[0].overflow;for i:0..<a[0].wall_n {o:=i*6;#assert !(a[0].walls[o]<0 && a[0].walls[o+3]>0 && a[0].walls[o+2]<0 && a[0].walls[o+5]>0 && a[0].walls[o+1]<0.5 && a[0].walls[o+4]>0.5);}
+ ev_near(a[..],-18,-23);#assert a[0].wall_n>0 && !a[0].overflow;
+}
+#test "camera gathering includes walls beyond walker reach" {
+ a:[1]EvNear;b:[1]EvNear;ev_near(a[..],-5,-15);ev_camera_near(b[..],-5,-15);
+ #assert b[0].wall_n>a[0].wall_n && !b[0].overflow;
+}
+#test "camera gathering fits around every building" #steps 100000000 {
+ a:[1]EvNear;for i:0..<terrain.EXP_SITES {s:=terrain.exp_site(i);for dx:0..<3 {for dz:0..<3 {
+  ev_camera_near(a[..],s.x+f32(dx-1)*4,s.z+f32(dz-1)*4);#assert !a[0].overflow && a[0].wall_n>0;
+ }}}
+}
+#test "new neighborhood walls leave a walkable doorway" {
+ a:[1]EvNear;ev_near(a[..],47,46);#assert !a[0].overflow && a[0].wall_n>=6;
+}
+#test "stairs are sloped floors, not solid blocks" {
+ a:[1]EvNear;ev_near(a[..],-50,22);#assert a[0].floor_n>0 && !a[0].overflow;
+ found:=false;for i:0..<a[0].floor_n {if abs(a[0].floors[i*10+8])+abs(a[0].floors[i*10+9])>2 {found=true;}}#assert found;
+}
+#test "village collider gathering fits around every building" #steps 100000000 {
+ // (the housewright showcase's yards have open walks between their rows: its own walk tests cover them)
+ a:[1]EvNear;for si:0..<terrain.EXP_SITES {s:=terrain.exp_site(si);if terrain.exp_site_group(si)== -4 {continue;}
+  for ix:0..<5 {for iz:0..<5 {x:=s.x-s.left+(s.left+s.right)*f32(ix)/4;z:=s.z-s.back+(s.back+s.front)*f32(iz)/4;
+   ev_near(a[..],x,z);#assert !a[0].overflow && a[0].wall_n>0;}}}
+}
+#test "furniture colliders follow the placed table chairs and upper floor" {
+ a:[1]EvNear;site:=terrain.exp_site(0);p:=props.exp_prop_at(0,0);x:=site.x+p.x;z:=site.z+p.z;
+ ev_near(a[..],x,z);found:=false;for i:0..<a[0].wall_n {o:=i*6;if a[0].walls[o]<x && a[0].walls[o+3]>x && a[0].walls[o+2]<z && a[0].walls[o+5]>z && a[0].walls[o+4]>0.8 {found=true;}}#assert found;
+ #assert ev_prop_size("Chair_1")[1]>1 && ev_prop_size("Workbench")[0]>1 && ev_prop_size("Bed_Twin1")[2]>1;
+}
+// Walks the player's capsule from (x, z) toward (tx, tz) through the colliders the walker gathers,
+// 0.1 m a step, and returns where it stops.
+ev_walk_to :: (x:f32,z:f32,tx:f32,tz:f32,steps:int)->[2]f32 {
+ a:[1]EvNear;p:=[2]f32.[x,z];
+ for k:0..<steps {dx:=tx-p[0];dz:=tz-p[1];l:=sqrt(dx*dx+dz*dz);if l<0.01 {break;}st:=ifx l<0.1 then l else 0.1f32;
+  ev_near(a[..],p[0],p[1]);c:=query.Colliders.{boxes=a[0].walls[0..<a[0].wall_n*6],floors=a[0].floors[0..<a[0].floor_n*10]};
+  r:=collision.collide_move(c,collision.CollideProfile.{},collision.CollideState.{feet=space.world_point(p[0],0,p[1])},dx/l*st,dz/l*st);
+  if r.status!=collision.CollideStatus.ok {break;}p=[2]f32.[r.state.feet.x,r.state.feet.z];}
+ return p;
+}
+#test "you walk from spawn in through the home's doorway to the workbench, and through no wall" #steps 4000000000 {
+ f:=terrain.exp_home();door:=building.room4_door_out(f);spot:=home.home_bench_spot(f);
+ p:=ev_walk_to(0,0,door[0]+1.5,door[1],400);#assert abs(p[0]-door[0]-1.5)<0.02 && abs(p[1]-door[1])<0.02;
+ p=ev_walk_to(p[0],p[1],door[0]-1.6,door[1],60);#assert building.room4_inside(f,p[0],p[1]) && abs(p[0]-door[0]+1.6)<0.02;
+ p=ev_walk_to(p[0],p[1],spot.x,spot.z,60);#assert abs(p[0]-spot.x)<0.02 && abs(p[1]-spot.z)<0.02;
+ spots:=[1]interact.InteractSpot.[spot];#assert interact.interact_pick(spots[..],p[0],p[1])==0 && spot.id==home.HOME_BENCH_ID;
+ // the workbench stops you short of its front
+ bench:=props.exp_prop_at(terrain.EXP_HOME_SITE,0);bx:=f.x+bench.x;q:=ev_walk_to(spot.x,spot.z,bx,spot.z,40);#assert q[0]>bx+0.5+0.25;
+ // from outside, no wall lets you in: behind, both sides and the front beside the doorway
+ cx:=f.x;cz:=f.z;
+ q=ev_walk_to(cx-4,cz,cx,cz,60);#assert q[0]<cx-2.45;
+ q=ev_walk_to(cx,cz+4,cx,cz,60);#assert q[1]>cz+2.45;
+ q=ev_walk_to(cx,cz-4,cx,cz,60);#assert q[1]<cz-2.45;
+ q=ev_walk_to(cx+4,cz-1.2,cx,cz-1.2,60);#assert q[0]>cx+2.45;
+ // and from inside, none lets you out
+ q=ev_walk_to(cx+0.6,cz-0.3,cx+4,cz-0.3,60);#assert building.room4_inside(f,q[0],q[1]);
+ q=ev_walk_to(cx+0.5,cz+0.5,cx+0.5,cz+4,60);#assert building.room4_inside(f,q[0],q[1]);
+ q=ev_walk_to(cx+0.2,cz+0.2,cx+0.2,cz-4,60);#assert building.room4_inside(f,q[0],q[1]);
+ q=ev_walk_to(cx+0.5,cz+0.755,cx-4,cz+0.755,60);#assert building.room4_inside(f,q[0],q[1]);
+}
+// The housewright showcase (metaverse/experimental-terrain.coax exp_showcase): a point in a house's own
+// frame, in the world, and back.
+ev_hw_at :: (f:building.BuildingFrame,p:[2]f32)->[2]f32 {return building.building_point(f,p[0],p[1]);}
+ev_hw_walk :: (t:int) {
+ {n:=hw.hw_stages(t);r:=hw.HW_REACH[t];
+  // along the row's walk, 1.6 m out from the house fronts and clear of their signs, past every
+  // stage from the bare site to the finished house
+  a:=terrain.exp_showcase(t,1);b:=terrain.exp_showcase(t,n);w0:=ev_hw_at(a,[2]f32.[r[0]+2,r[1]+1.6]);w1:=ev_hw_at(b,[2]f32.[-r[0]-2,r[1]+1.6]);
+  if w0[0]>w1[0] {w0=ev_hw_at(a,[2]f32.[-r[0]-2,r[1]+1.6]);w1=ev_hw_at(b,[2]f32.[r[0]+2,r[1]+1.6]);}
+  p:=ev_walk_to(w0[0],w0[1],w1[0],w1[1],900);#assert abs(p[0]-w1[0])<0.02 && abs(p[1]-w1[1])<0.02;
+  f:=b;
+  // the finished house: in through its doorway
+  if t!=hw.HW_LEANTO {o:=ev_hw_at(f,hw.hw_door_out(t));i:=ev_hw_at(f,hw.hw_door_in(t));w:=ev_hw_at(f,[2]f32.[hw.hw_door_out(t)[0],r[1]+1.6]);
+   p=ev_walk_to(p[0],p[1],w[0],w[1],200);p=ev_walk_to(p[0],p[1],o[0],o[1],80);#assert abs(p[0]-o[0])<0.02 && abs(p[1]-o[1])<0.02;
+   p=ev_walk_to(p[0],p[1],i[0],i[1],80);l:=building.building_local(f,p[0],p[1]);#assert hw.hw_inside(t,l[0],l[1]) && abs(p[0]-i[0])<0.02 && abs(p[1]-i[1])<0.02;
+   // and from inside, no wall lets you out: the back and both sides
+   for d:[3][2]f32.[[2]f32.[0,-6],[2]f32.[-6,0],[2]f32.[6,0]] {g:=ev_hw_at(f,[2]f32.[i[0]*0.3+d[0],d[1]]);q:=ev_walk_to(i[0],i[1],g[0],g[1],90);l=building.building_local(f,q[0],q[1]);#assert hw.hw_inside(t,l[0],l[1]);}
+  }
+  // from outside, no wall lets you in: behind and both sides, aimed at the middle
+  for d:[3][2]f32.[[2]f32.[0,-r[2]-1.2],[2]f32.[-5,-0.3],[2]f32.[5,-0.3]] {s0:=ev_hw_at(f,d);c:=ev_hw_at(f,[2]f32.[d[0]*0.05,d[1]*0.05]);
+   q:=ev_walk_to(s0[0],s0[1],c[0],c[1],80);l:=building.building_local(f,q[0],q[1]);#assert !hw.hw_inside(t,l[0],l[1]);}
+ }
+}
+#test "you walk the lean-to row of the housewright showcase, and through none of its cover" #steps 4000000000 {ev_hw_walk(0);}
+#test "you walk the woven hut row of the housewright showcase, in at its finished doorway and through no wall" #steps 4000000000 {ev_hw_walk(1);}
+#test "you walk the wattle-and-daub cottage row of the housewright showcase, in at its finished doorway and through no wall" #steps 4000000000 {ev_hw_walk(2);}
+#test "you walk the timber house row of the housewright showcase, in at its finished doorway and through no wall" #steps 4000000000 {ev_hw_walk(3);}
+#test "you walk the stone cottage row of the housewright showcase, in at its finished doorway and through no wall" #steps 4000000000 {ev_hw_walk(4);}
+#test "a bare frame of the showcase lets you in between its posts, a woven wall does not" #steps 4000000000 {
+ // a bare frame lets you walk in between its posts: the hut's ring of posts, the cottage's frame
+ // on its foundation and the timber house's frame on its sill
+ for c:[3][2]int.[[2]int.[hw.HW_HUT,1],[2]int.[hw.HW_COTTAGE,3],[2]int.[hw.HW_TIMBER,2]] {f:=terrain.exp_showcase(c[0],c[1]);
+  from:=ifx c[0]==hw.HW_HUT then [2]f32.[-0.95,-2.7] else ifx c[0]==hw.HW_COTTAGE then [2]f32.[-3.0,1.2] else [2]f32.[-3.0,0.95];
+  to:=ifx c[0]==hw.HW_HUT then [2]f32.[-0.2,-0.4] else ifx c[0]==hw.HW_COTTAGE then [2]f32.[-0.5,1.2] else [2]f32.[-0.5,0.95];
+  s0:=ev_hw_at(f,from);e:=ev_hw_at(f,to);q:=ev_walk_to(s0[0],s0[1],e[0],e[1],80);#assert abs(q[0]-e[0])<0.02 && abs(q[1]-e[1])<0.02;}
+ // but the woven hut's wall, once woven, does not
+ f:=terrain.exp_showcase(hw.HW_HUT,2);s0:=ev_hw_at(f,[2]f32.[-0.95,-2.7]);e:=ev_hw_at(f,[2]f32.[-0.2,-0.4]);q:=ev_walk_to(s0[0],s0[1],e[0],e[1],80);l:=building.building_local(f,q[0],q[1]);#assert !hw.hw_inside(hw.HW_HUT,l[0],l[1]);
+}
+ev_prop_size :: (name:string)->[3]f32 {
+ if name=="Table_Large" {return [3]f32.[1.425,0.815,0.555];}
+ if name=="Chair_1" {return [3]f32.[0.291,1.121,0.292];}
+ if name=="Bed_Twin1" {return [3]f32.[0.938,0.806,1.206];}
+ if name=="Workbench" || name=="Workbench_Drawers" {return [3]f32.[1.01,0.9,0.515];}
+ if name=="Barrel_Apples" {return [3]f32.[0.35,0.902,0.35];}
+ if name=="Crate_Wooden" {return [3]f32.[0.426,0.88,0.455];}
+ if name=="Bucket_Wooden_1" {return [3]f32.[0.218,0.294,0.2];}
+ if name=="Stall_Empty" {return [3]f32.[0.923,2.623,0.472];}
+ if name=="Bench" {return [3]f32.[1.389,0.526,0.273];}
+ if name=="Stool" {return [3]f32.[0.238,0.583,0.238];}
+ if name=="Bookcase_2" {return [3]f32.[0.731,2.528,0.215];}
+ if name=="BookStand" {return [3]f32.[0.254,1.445,0.256];}
+ if name=="Whetstone" {return [3]f32.[0.579,1.173,0.527];}
+ if name=="Mug" {return [3]f32.[0.122,0.18,0.075];}
+ if name=="Book_Stack_1" {return [3]f32.[0.146,0.215,0.12];}
+ if name=="CandleStick" {return [3]f32.[0.177,0.157,0.09];}
+ if name=="Key_Metal" {return [3]f32.[0.025,0.007,0.059];}
+ if name=="Coin_Pile" {return [3]f32.[0.1,0.071,0.079];}
+ if name=="SmallBottles_1" {return [3]f32.[0.113,0.147,0.028];}
+ return [3]f32.[0,0,0];
+}
+ev_prop_near :: (out:[]EvNear,x:f32,z:f32,reach:f32,ground:f32) {
+ for furnished:0..<props.EXP_FURNISHED {si:=props.exp_furnished(furnished);site:=terrain.exp_site(si);for i:0..<props.exp_prop_count(si) {p:=props.exp_prop_at(si,i);sz:=ev_prop_size(p.name);if sz[1]<=0 {continue;}
+  px:=site.x+p.x;pz:=site.z+p.z;c:=abs(cos(p.yaw));s:=abs(sin(p.yaw));hx:=sz[0]*c+sz[2]*s;hz:=sz[0]*s+sz[2]*c;
+  if abs(x-px)>reach+hx || abs(z-pz)>reach+hz {continue;}
+  y:=terrain.exp_height(px,pz)-ground+p.y;ev_house_box(out,site,0,[6]f32.[p.x-hx,y,p.z-hz,p.x+hx,y+sz[1],p.z+hz]);
+ }}
+}
+#test "all captured scene assets are gathered where placed" #steps 500000000 {
+ a:[1]EvNear;for box:EXPERIMENTAL_SCENE_BOXES {x:=f32(box[0]+box[3])*0.0005;z:=f32(box[2]+box[5])*0.0005;ev_near(a[..],x,z);found:=false;for i:0..<a[0].wall_n {o:=i*6;if abs(a[0].walls[o]-f32(box[0])*0.001)<0.001 && abs(a[0].walls[o+2]-f32(box[2])*0.001)<0.001 && abs(a[0].walls[o+3]-f32(box[3])*0.001)<0.001 && abs(a[0].walls[o+5]-f32(box[5])*0.001)<0.001 {found=true;}}#assert found && !a[0].overflow;}
+}
+#test "nearby small scene objects have no impassable capsule-width gaps" #steps 500000000 {
+ a:=EXPERIMENTAL_SCENE_BOXES;for i:0..<a.count {for j:0..<i {p:=a[i];q:=a[j];if p[4]-p[1]<=550 || q[4]-q[1]<=550 || p[4]<=q[1] || q[4]<=p[1] {continue;}
+ minx:=ifx p[0]<q[0] then p[0] else q[0];maxx:=ifx p[3]>q[3] then p[3] else q[3];minz:=ifx p[2]<q[2] then p[2] else q[2];maxz:=ifx p[5]>q[5] then p[5] else q[5];if maxx-minx>6000 || maxz-minz>6000 {continue;}
+ dx:=ifx p[0]>q[3] then p[0]-q[3] else ifx q[0]>p[3] then q[0]-p[3] else 0;dz:=ifx p[2]>q[5] then p[2]-q[5] else ifx q[2]>p[5] then q[2]-p[5] else 0;#assert dx*dx+dz*dz>=650*650;
+ }}
+}
+#test "bush volume slows walking without affecting open space or air above it" {
+ boxes:=[2][6]int.[[6]int.[1000,0,2000,3000,1500,4000],[6]int.[5000,0,5000,6000,900,6000]];
+ #assert ev_bush_pace_in(boxes[..],2,0,3)==0.8 && ev_bush_pace_in(boxes[..],4,0,3)==1;
+ #assert ev_bush_pace_in(boxes[..],2,2,3)==1 && ev_bush_pace_in(boxes[..],5.5,0,5.5)==0.8;
+}
+#test "each placed bush is a soft volume, not a solid scene box" #steps 100000000 {
+ bushes:=EXPERIMENTAL_BUSH_BOXES;#assert bushes.count>0;
+ for b:bushes {x:=f32(b[0]+b[3])*0.0005;y:=f32(b[1]+b[4])*0.0005;z:=f32(b[2]+b[5])*0.0005;#assert ev_bush_pace_in(bushes[..],x,y,z)==0.8;
+  for solid:EXPERIMENTAL_SCENE_BOXES {same:=true;for k:0..<6 {if solid[k]!=b[k] {same=false;}}#assert !same;}}
+}
+// The character moves through bush foliage at 80% pace, only while vertically inside it.
+ev_bush_pace_in :: (boxes:[][6]int,x:f32,y:f32,z:f32)->f32 {
+ for b:boxes {if x>=f32(b[0])*0.001 && x<=f32(b[3])*0.001 && z>=f32(b[2])*0.001 && z<=f32(b[5])*0.001 && y>=f32(b[1])*0.001-0.15 && y<f32(b[4])*0.001 {return 0.8;}}return 1;
+}
+ev_bush_pace :: (x:f32,y:f32,z:f32)->f32 {boxes:=EXPERIMENTAL_BUSH_BOXES;return ev_bush_pace_in(boxes[..],x,terrain.exp_height(x,z)+y,z);}
+#test "a trapped player can escape large scene objects without dropping structural walls" {
+ a:[1]EvNear;a[0].wall_n=3;a[0].scene_begin=0;a[0].scene_end=2;
+ boxes:=[18]f32.[-10,0,-2,-0.2,2,2,0.2,0,-2,10,2,2,-20,0,-5,20,3,-4];for i:0..<18 {a[0].walls[i]=boxes[i];}
+ r:=ev_release_trap(a[..],0,0,0);#assert r==1 && a[0].wall_n==1 && a[0].walls[2]== -5 && a[0].walls[5]== -4;
+}
+#test "escape does not discard solid walls when there is no trap" {
+ a:[1]EvNear;a[0].wall_n=2;a[0].scene_begin=0;a[0].scene_end=1;
+ boxes:=[12]f32.[1,0,-2,2,2,2,-2,0,-3,2,3,-2];for i:0..<12 {a[0].walls[i]=boxes[i];}
+ r:=ev_release_trap(a[..],0,0,0);#assert r==0 && a[0].wall_n==2;
+}
+// A rescue is limited to scene props already intersecting the player. Castle
+// and building walls remain in the query, and ordinary contacts stay solid.
+#test "opposing structural walls are never dropped for escape" {
+ a:[1]EvNear;a[0].wall_n=2;a[0].scene_begin=0;a[0].scene_end=0;
+ boxes:=[12]f32.[-10,0,-2,-0.2,2,2,0.2,0,-2,10,2,2];for i:0..<12 {a[0].walls[i]=boxes[i];}
+ r:=ev_release_trap(a[..],0,0,0);#assert r==2 && a[0].wall_n==2;
+}
+ev_overlap :: (a:[]f32,i:int,x:f32,y:f32,z:f32)->bool {
+ o:=i*6;if a[o+4]<=y+0.55 || a[o+1]>=y+1.8 {return false;}
+ dx:=ifx x<a[o] then a[o]-x else ifx x>a[o+3] then x-a[o+3] else 0.0f32;
+ dz:=ifx z<a[o+2] then a[o+2]-z else ifx z>a[o+5] then z-a[o+5] else 0.0f32;return dx*dx+dz*dz<0.090001;
+}
+ev_state :: (a:[]EvNear,x:f32,y:f32,z:f32)->collision.CollideResult {
+ c:=query.Colliders.{boxes=a[0].walls[0..<a[0].wall_n*6],floors=a[0].floors[0..<a[0].floor_n*10]};
+ s:=collision.CollideState.{feet=space.world_point(x,y,z)};return collision.collide_move(c,collision.CollideProfile.{},s,0,0);
+}
+ev_release_trap :: (a:[]EvNear,x:f32,y:f32,z:f32)->int {
+ before:=ev_state(a,x,y,z);if before.status!=collision.CollideStatus.unresolved {if before.status==collision.CollideStatus.ok && abs(before.state.feet.x-x)<0.0001 && abs(before.state.feet.z-z)<0.0001 {return 0;}return 3;}if before.floor_cut {return 2;}
+ next:[1]EvNear;next[0]=a[0];n:=0;for i:0..<a[0].wall_n {if i>=a[0].scene_begin && i<a[0].scene_end && ev_overlap(a[0].walls[..],i,x,y,z) {continue;}
+  for k:0..<6 {next[0].walls[n*6+k]=a[0].walls[i*6+k];}n+=1;}
+ next[0].wall_n=n;after:=ev_state(next[..],x,y,z);if after.status==collision.CollideStatus.ok {a[0]=next[0];return 1;}return 2;
+}
+ev_player_near :: (a:[]EvNear,x:f32,y:f32,z:f32)->int {ev_near(a,x,z);return ev_release_trap(a,x,y,z);}
+ev_scene_near :: (out:[]EvNear,x:f32,z:f32,reach:f32,ground:f32) {
+ for b:EXPERIMENTAL_SCENE_BOXES {x0:=f32(b[0])*0.001;z0:=f32(b[2])*0.001;x1:=f32(b[3])*0.001;z1:=f32(b[5])*0.001;
+  if x<x0-reach || x>x1+reach || z<z0-reach || z>z1+reach {continue;}
+  if out[0].wall_n>=EV_WALLS {out[0].overflow=true;return;}o:=out[0].wall_n*6;out[0].walls[o]=x0;out[0].walls[o+1]=f32(b[1])*0.001-ground;out[0].walls[o+2]=z0;out[0].walls[o+3]=x1;out[0].walls[o+4]=f32(b[4])*0.001-ground;out[0].walls[o+5]=z1;out[0].wall_n+=1;
+ }
+}
+ev_point :: (m:[13]int,x:f32,y:f32,z:f32)->[3]f32 {
+ return [3]f32.[f32(m[10])*0.001+f32(m[1])*0.001*x+f32(m[2])*0.001*y+f32(m[3])*0.001*z,
+ f32(m[11])*0.001+f32(m[4])*0.001*x+f32(m[5])*0.001*y+f32(m[6])*0.001*z,
+ f32(m[12])*0.001+f32(m[7])*0.001*x+f32(m[8])*0.001*y+f32(m[9])*0.001*z];
+}
+ev_house_box :: (out:[]EvNear,site:terrain.ExpSite,dy:f32,box:[6]f32) {
+ if out[0].wall_n>=EV_WALLS {out[0].overflow=true;return;}o:=out[0].wall_n*6;
+ out[0].walls[o]=site.x+box[0];out[0].walls[o+1]=dy+box[1];out[0].walls[o+2]=site.z+box[2];out[0].walls[o+3]=site.x+box[3];out[0].walls[o+4]=dy+box[4];out[0].walls[o+5]=site.z+box[5];out[0].wall_n+=1;
+}
+#test "all castle gates stay open through the curtain walls" {
+ a:[1]EvNear;for gate:castle.CASTLE_GATES {a[0].wall_n=0;ev_castle_near(a[..],gate[0],gate[1],4,terrain.exp_height(gate[0],gate[1]));#assert a[0].wall_n>0 && !a[0].overflow;
+  for j:0..<a[0].wall_n {o:=j*6;#assert !(gate[0]>a[0].walls[o] && gate[0]<a[0].walls[o+3] && gate[1]>a[0].walls[o+2] && gate[1]<a[0].walls[o+5]);}}
+}
+ev_castle_near :: (out:[]EvNear,x:f32,z:f32,reach:f32,ground:f32) {
+ for i:0..<castle.CASTLE_SEGMENTS {p:=castle.castle_segment(i);hx:=ifx p[2]==0 then 1.02f32 else 0.23f32;hz:=ifx p[2]==0 then 0.23f32 else 1.02f32;
+  if abs(x-p[0])>reach+hx || abs(z-p[1])>reach+hz {continue;}site:=terrain.ExpSite.{x=p[0],z=p[1]};y:=terrain.exp_height(p[0],p[1])-ground;ev_house_box(out,site,0,[6]f32.[-hx,y-0.15,-hz,hx,y+6.1,hz]);
+ }
+}
+// ---- sight (#13073): the village's and castle's walls, the scene's solid props, the dungeon (its
+// roof too) and the meadow's land, as the Metaverse Engine's visibility service takes them. Bushes don't hide.
+// The walls are gathered EV_SIGHT_CHUNK metres of the line at a time, in world heights.
+EV_SIGHT_CHUNK :: 8.0;
+EV_SIGHT_BOXES :: 1024;
+EvSight :: struct {near:[1]EvNear;boxes:[EV_SIGHT_BOXES*6]f32;n:int;full:bool;}
+// The boxes round the line from the eye to (x, z), in world heights, into s.
+ev_sight_gather :: (s:[]EvSight,ex:f32,ez:f32,x:f32,z:f32) {
+ s[0].n=0;s[0].full=false;dx:=x-ex;dz:=z-ez;d:=sqrt(dx*dx+dz*dz);parts:=cast(int)(d/f32(EV_SIGHT_CHUNK))+1;
+ for k:0..<parts {
+  a:=f32(k)/f32(parts);b:=f32(k+1)/f32(parts);mx:=ex+dx*(a+b)*0.5;mz:=ez+dz*(a+b)*0.5;
+  ev_near_radius(s[0].near[..],mx,mz,d*(b-a)*0.5+1,true);g:=terrain.exp_height(mx,mz);
+  if s[0].near[0].overflow {s[0].full=true;}
+  for i:0..<s[0].near[0].wall_n {
+   if s[0].n>=EV_SIGHT_BOXES {s[0].full=true;return;}
+   o:=i*6;t:=s[0].n*6;for c:0..<6 {s[0].boxes[t+c]=s[0].near[0].walls[o+c];}s[0].boxes[t+1]+=g;s[0].boxes[t+4]+=g;s[0].n+=1;
+  }
+ }
+}
+// Whether an eye at (ex, ey, ez) sees a target standing at (x, y, z): `points` points from there up
+// `rise` metres (a body's feet to its head). For name plates, health bars and damage numbers. An
+// answer whose walls didn't all fit is invalid, so the caller keeps what it showed.
+ev_sight :: (s:[]EvSight,ex:f32,ey:f32,ez:f32,x:f32,y:f32,z:f32,rise:f32,points:int)->vis.Visibility {
+ q:=vis.VisQuery.{eye=space.world_point(ex,ey,ez),target=vis.VisTarget.{at=space.world_point(x,y,z),rise=rise,points=points}};
+ land:vis.VisTerrain;land.count=vis.vis_terrain_count(q);
+ for k:0..<land.count {p:=vis.vis_terrain_point(q,k);land.heights[k]=terrain.exp_height(p.x,p.z);}
+ ev_sight_gather(s,ex,ez,x,z);
+ if s[0].full {return vis.Visibility.{source=vis.VisSource.line};}
+ return vis.vis_line(query.Colliders.{ground_enabled=false,boxes=s[0].boxes[0..<s[0].n*6]},land,q);
+}
+#test "the village's walls, the dungeon's roof and the meadow's land hide what is behind them" #steps 400000000 {
+ s:[1]EvSight;
+ // in the open: 10 m apart on the spawn's clear ground
+ g:=terrain.exp_height(0,0);
+ v:=ev_sight(s[..],0,g+1.7,0,0,terrain.exp_height(0,-10),-10,1.8,3);#assert v.status==vis.VisStatus.visible && v.seen==3;
+ // a house: its four walls and roof hide the middle from outside (site 9's 4 m square)
+ h:=terrain.exp_site(9);hy:=terrain.exp_height(h.x,h.z);
+ w:=ev_sight(s[..],h.x,hy+1.6,h.z-9,h.x,hy,h.z,1.5,3);#assert w.status==vis.VisStatus.occluded && w.blocker==vis.VisBlocker.collider;
+ // above the dungeon's roof, looking down at a monster in the entrance hall: the roof hides it
+ dy:=terrain.exp_height(-38,-54);
+ r:=ev_sight(s[..],-38,dy+12,-45,-38,dy,-54,1.5,3);#assert r.status==vis.VisStatus.occluded && !s[0].full;
+ // inside the hall it shows
+ i:=ev_sight(s[..],-45,dy+1.7,-47,-31,dy,-58,1.5,3);#assert i.status==vis.VisStatus.visible;
+ // an eye under the land is hidden by it
+ u:=ev_sight(s[..],0,g-3,0,0,terrain.exp_height(0,-10),-10,1.8,3);#assert u.status==vis.VisStatus.occluded && u.blocker==vis.VisBlocker.terrain;
+}
+ev_near :: (out:[]EvNear,x:f32,z:f32) {ev_near_radius(out,x,z,4,true);}
+ev_camera_near :: (out:[]EvNear,x:f32,z:f32) {ev_near_radius(out,x,z,9,true);}
+ev_hostile_near :: (out:[]EvNear,x:f32,z:f32) {ev_near_radius(out,x,z,4,false);}
+ev_near_radius :: (out:[]EvNear,x:f32,z:f32,reach:f32,scene:bool) {
+ out[0].wall_n=0;out[0].floor_n=0;out[0].overflow=false;ground:=terrain.exp_height(x,z);ev_castle_near(out,x,z,reach,ground);out[0].scene_begin=out[0].wall_n;if scene {ev_scene_near(out,x,z,reach,ground);}else {ev_prop_near(out,x,z,reach,ground);}out[0].scene_end=out[0].wall_n;
+ for si:0..<terrain.EXP_SITES {site:=terrain.exp_site(si);if terrain.exp_distance(site,x,z)>reach+1 {continue;}kind:=terrain.exp_site_group(si);dy:=terrain.exp_height(site.x,site.z)-ground;
+  if si==18 {
+   // the dungeon's walls, arches, furnishings and roof (experimental-dungeon.coax)
+   b:[3000]f32;n:=dungeon.dg_boxes(x,z,reach,b[..],0,false);
+   for k:0..<n {o:=k*6;ev_house_box(out,terrain.ExpSite.{x=0,z=0},dy,[6]f32.[b[o],b[o+1],b[o+2],b[o+3],b[o+4],b[o+5]]);}continue;
+  }
+  if kind== -4 {
+   // the housewright showcase (everglade/world/housewright.coax): every house's walls, posts, low
+   // roofs and sign at its stage (metaverse-engine/world/build-site.coax), on this yard
+   b:[1200]f32;
+   for t:0..<hw.HW_TIERS {for st:1..<hw.hw_stages(t)+1 {f:=terrain.exp_showcase(t,st);if terrain.exp_showcase_site(t,st)!=si || abs(f.x-x)>reach+4 || abs(f.z-z)>reach+4 {continue;}
+     n:=terrain.exp_showcase_boxes(t,st,b[..],0);for k:0..<n {o:=k*6;ev_house_box(out,terrain.ExpSite.{x=0,z=0},dy,[6]f32.[b[o],b[o+1],b[o+2],b[o+3],b[o+4],b[o+5]]);}}}
+   continue;
+  }
+  if si==terrain.EXP_HOME_SITE || (si>=9 && si<18) {
+   // the engine's 4 m room (metaverse-engine/world/building.coax): the neighbourhood's houses face +z, the
+   // player's home (everglade/world/home.coax) faces spawn; the doorway is open
+   f:=ifx si==terrain.EXP_HOME_SITE then terrain.exp_home() else building.BuildingFrame.{x=site.x,z=site.z};
+   for i:0..<building.ROOM4_BOXES {ev_house_box(out,terrain.ExpSite.{x=0,z=0},dy,building.room4_box(f,i));}
+   continue;
+  }
+  if kind<0 || kind>=VC_KINDS {continue;}
+  for bi:VC_KIND_FROM[kind]..<VC_KIND_FROM[kind+1] {b:[] const int=VC_BOXES[bi][..];x0:=site.x+f32(b[1])*0.001;z0:=site.z+f32(b[3])*0.001;x1:=site.x+f32(b[4])*0.001;z1:=site.z+f32(b[6])*0.001;
+   if x<x0-reach || x>x1+reach || z<z0-reach || z>z1+reach {continue;}
+   if out[0].wall_n>=EV_WALLS {out[0].overflow=true;return;}o:=out[0].wall_n*6;out[0].walls[o]=x0;out[0].walls[o+1]=dy+f32(b[2])*0.001;out[0].walls[o+2]=z0;out[0].walls[o+3]=x1;out[0].walls[o+4]=dy+f32(b[5])*0.001;out[0].walls[o+5]=z1;out[0].wall_n+=1;
+  }
+  for m:VC_STAIRS {if m[0]!=kind {continue;}a:=ev_point(m,-0.823,0,0.251);b:=ev_point(m,0.823,0,0.251);c:=ev_point(m,-0.823,3.024,-4.018);
+   minx:=ifx a[0]<b[0] then a[0] else b[0];if c[0]<minx {minx=c[0];}maxx:=ifx a[0]>b[0] then a[0] else b[0];if c[0]>maxx {maxx=c[0];}minz:=ifx a[2]<b[2] then a[2] else b[2];if c[2]<minz {minz=c[2];}maxz:=ifx a[2]>b[2] then a[2] else b[2];if c[2]>maxz {maxz=c[2];}
+   if x<site.x+minx-5 || x>site.x+maxx+5 || z<site.z+minz-5 || z>site.z+maxz+5 {continue;}
+   if out[0].floor_n>=EV_FLOORS {out[0].overflow=true;return;}stand.stand_put_quad(out[0].floors[..],out[0].floor_n,site.x+a[0],site.z+a[2],b[0]-a[0],b[2]-a[2],c[0]-a[0],c[2]-a[2],dy+a[1],b[1]-a[1],c[1]-a[1]);out[0].floor_n+=1;
+  }
+ }
+}

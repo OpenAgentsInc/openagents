@@ -1,7 +1,7 @@
 {
  "asset": {
   "version": "2.0",
-  "generator": "verse/tools/humans/cult_robe.py",
+  "generator": "metaverse/tools/humans/cult_robe.py",
   "copyright": "OpenAgents' own, CC0 1.0; skeleton from the Quaternius Modular Character Outfits - Fantasy (CC0 1.0)"
  },
  "scene": 0,

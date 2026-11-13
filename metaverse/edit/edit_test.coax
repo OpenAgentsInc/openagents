@@ -1,0 +1,477 @@
+// Checks for the shared edit layer (edit.coax), loaded the way a realm loads it: Filament and the
+// page's analytics first, a realm's `lit`, then the layer.
+//   coax/bin/coax test metaverse/edit/edit_test.coax
+
+#load "../../metaverse-engine/ui/font.coax";
+#load "../../coax/web/analytics.coax";
+#load "edit.coax";
+
+VERTEX_FLOATS :: 16;
+lo :: (a: f32, b: f32) -> f32 { if a < b { return a; } return b; }
+hi :: (a: f32, b: f32) -> f32 { if a > b { return a; } return b; }
+lit :: (out: [] f32, at: int, ax: f32, ay: f32, bx: f32, by: f32, core: f32, light: f32, glow: f32,
+        red: f32, green: f32, blue: f32, mode: f32) -> bool {
+  if at < 0 || (at + 6) * VERTEX_FLOATS > out.count { return false; }
+  dx := bx - ax; dy := by - ay;
+  length := sqrt(dx * dx + dy * dy);
+  if length <= 0 { return false; }
+  ux := dx / length; uy := dy / length;
+  nx := -uy; ny := ux;
+  r := glow + core;
+  a := [6] f32.[-r, length + r, length + r, -r, length + r, -r];
+  c := [6] f32.[-r, -r, r, -r, r, r];
+  for v: 0..<6 {
+    o := (at + v) * VERTEX_FLOATS;
+    out[o] = ax + ux * a[v] + nx * c[v];
+    out[o + 1] = ay + uy * a[v] + ny * c[v];
+    out[o + 2] = a[v]; out[o + 3] = c[v];
+    out[o + 4] = length; out[o + 5] = core; out[o + 6] = light; out[o + 7] = glow;
+    out[o + 8] = red; out[o + 9] = green; out[o + 10] = blue; out[o + 11] = mode;
+    out[o + 12] = 0; out[o + 13] = 0; out[o + 14] = 0; out[o + 15] = 0;
+  }
+  return true;
+}
+
+HAND :: "200\nrealm the-grid\nrole admin\nowner 1\ntool map 1\ntool jump 0\nthing crate\nrow robots 1 Robots walking their rounds\nrow names 0 Place names in the air\nplaced crate 2.5 -3 0.5\nwaiting 2\n";
+VISITOR :: "200\nrealm the-grid\nrole visitor\nowner 0\ntool map 1\ntool jump 0\nrow robots 0 Robots walking their rounds\n";
+MADE :: "200\nrealm moonlit-marsh\nname Moonlit Marsh\nstyle painterly\nowner 1\ntool build 0\ntool fly 1\nfeature water large\nwaiting 0\nrole owner\nrow water 1 Large pond\nrow props:wagon 0 A wagon\n";
+
+url_is :: (e: [] RealmEdit, text: string) -> bool { return cast(string) e[0].req_url[0..<e[0].req_url_n] == text; }
+body_is :: (e: [] RealmEdit, text: string) -> bool { return cast(string) e[0].req_body[0..<e[0].req_body_n] == text; }
+answer :: (e: [] RealmEdit, id: int, text: string) -> bool { redit_requested(e, id); return redit_message(e, HTTP_KIND + id, text); }
+opened :: (e: [] RealmEdit, slug: string, spec: string) {
+  redit_start(e, slug);
+  redit_step(e, 1, 1440, 900, 1);
+  _ := answer(e, 0, spec);
+}
+tap :: (e: [] RealmEdit, b: RBox) -> bool {
+  x := (b.x0 + b.x1) / 2; y := (b.y0 + b.y1) / 2;
+  _ := redit_pointer(e, x, y, 0, 1);
+  return redit_pointer(e, x, y, 2, 1);
+}
+ANCHOR :: RBox.{x0 = 1300, y0 = 16, x1 = 1380, y1 = 54};
+
+#test "the spec: the role, the rows, the tools its code honours, what was placed" {
+  e: [1] RealmEdit;
+  redit_start(e[..], "the-grid");
+  redit_step(e[..], 0, 1440, 900, 1);
+  #assert e[0].req_ready && url_is(e[..], "/api/playtest/realms/the-grid") && (e[0].req_flags & HTTP_POST) == 0;
+  #assert answer(e[..], 3, HAND) && e[0].ready && e[0].role == REDIT_ADMIN && redit_may(e[..]);
+  #assert e[0].row_n == 2 && redit_row_on(e[..], "robots") && !redit_row_on(e[..], "names") && redit_row_on(e[..], "anything-else");
+  #assert redit_label_of(e[..], 0) == "ROBOTS WALKING THEIR ROUNDS" && e[0].waiting == 2;
+  #assert e[0].tool_has[3] && e[0].tool_on[3] && e[0].tool_has[2] && !e[0].tool_on[2] && !e[0].tool_has[0];
+  #assert e[0].placed_n == 1 && redit_placed_thing(e[..], 0) == "crate" && e[0].placed_x[0] == 2.5 && e[0].placed_z[0] == -3;
+  #assert redit_changed(e[..]) && !redit_changed(e[..]);
+  #assert e[0].cards_due;   // something waits: the cards are read next
+  // a visitor's tools are what the owner gave; an owner or admin may use every one
+  v: [1] RealmEdit;
+  opened(v[..], "the-grid", VISITOR);
+  #assert v[0].role == REDIT_VISITOR && !redit_may(v[..]) && redit_tool(v[..], "map") && !redit_tool(v[..], "jump") && redit_tool(v[..], "fly");
+  #assert redit_tool(e[..], "jump") && !redit_row_on(v[..], "robots");
+}
+
+#test "a made realm's spec: owner 1 before the role, and keys with a colon" {
+  e: [1] RealmEdit;
+  opened(e[..], "moonlit-marsh", MADE);
+  #assert e[0].role == REDIT_OWNER && e[0].row_n == 2 && redit_key_of(e[..], 1) == "props:wagon" && !redit_row_on(e[..], "props:wagon");
+}
+
+#test "only an owner or admin gets EDIT; it opens one pane at a time" {
+  v: [1] RealmEdit;
+  out: [20000 * VERTEX_FLOATS] f32;
+  opened(v[..], "the-grid", VISITOR);
+  #assert redit_hud(v[..], out[..], 0, ANCHOR) == 0 && !v[0].shown[RB_EDIT];
+  #assert !redit_pointer(v[..], 1340, 30, 0, 1);
+  e: [1] RealmEdit;
+  opened(e[..], "the-grid", HAND);
+  n := redit_hud(e[..], out[..], 0, ANCHOR);
+  #assert n > 0 && e[0].shown[RB_EDIT] && !e[0].shown[RB_TAB] && e[0].plate_n == 1;
+  #assert tap(e[..], e[0].boxes[RB_EDIT]) && e[0].pane == REDIT_BOARD;
+  n = redit_hud(e[..], out[..], 0, ANCHOR);
+  #assert e[0].row_shown[0] && e[0].row_shown[1] && e[0].shown[RB_TYPE] && !e[0].shown[RB_ACCEPT] && !e[0].shown[RB_TALK];
+  #assert e[0].plate_n <= REDIT_PLATES;
+  for b: 0..<RB_N { if e[0].shown[b] { #assert e[0].boxes[b].x1 <= 1440 && e[0].boxes[b].y1 <= 900 && e[0].boxes[b].x0 >= 0; } }
+  // SETTINGS replaces the board
+  #assert tap(e[..], e[0].boxes[RB_TAB + 1]) && e[0].pane == REDIT_SETTINGS;
+  n = redit_hud(e[..], out[..], 0, ANCHOR);
+  #assert e[0].row_shown[0] && e[0].row_shown[1] && !e[0].row_shown[2] && !e[0].shown[RB_TYPE];
+  // Esc closes it
+  #assert redit_key(e[..], REDIT_KEY_ESCAPE, true) == 1 && e[0].pane == REDIT_SHUT;
+  #assert redit_key(e[..], 'w', true) == 0;
+}
+
+#test "a tap on a row switches it for everyone: the request, then the spec again" {
+  e: [1] RealmEdit;
+  out: [20000 * VERTEX_FLOATS] f32;
+  opened(e[..], "the-grid", HAND);
+  _ := answer(e[..], -1, "");   // the cards' read refused: nothing in flight
+  e[0].cards_due = false; e[0].req_ready = false; e[0].req_id = -1;
+  redit_toggle(e[..]);
+  _n := redit_hud(e[..], out[..], 0, ANCHOR);
+  _ = redit_changed(e[..]);
+  #assert tap(e[..], e[0].rows[0]) && !redit_row_on(e[..], "robots") && redit_changed(e[..]);
+  redit_step(e[..], 2, 1440, 900, 1);
+  #assert url_is(e[..], "/api/playtest/realms/the-grid/switch") && body_is(e[..], "{\"row\":\"robots\",\"on\":false}") && (e[0].req_flags & HTTP_POST) != 0;
+  #assert answer(e[..], 1, "200\n{\"row\":\"robots\",\"on\":false}") && e[0].spec_due;
+  redit_step(e[..], 2.1, 1440, 900, 1);
+  #assert url_is(e[..], "/api/playtest/realms/the-grid");
+  // settings: a tool this realm honours, the whole set sent
+  _ = answer(e[..], 2, HAND);
+  redit_pane(e[..], REDIT_SETTINGS);
+  redit_set_tool(e[..], redit_settings_tool(e[..], 0));
+  redit_step(e[..], 3, 1440, 900, 1);
+  #assert url_is(e[..], "/api/playtest/realms/the-grid/settings") && body_is(e[..], "{\"tools\":{\"jump\":true,\"map\":true}}");
+}
+
+#test "talking or typing revises the board through the model; a refusal says why" {
+  e: [1] RealmEdit;
+  out: [20000 * VERTEX_FLOATS] f32;
+  opened(e[..], "the-grid", HAND);
+  e[0].cards_due = false;
+  redit_toggle(e[..]);
+  _ := redit_hud(e[..], out[..], 0, ANCHOR);
+  #assert tap(e[..], e[0].boxes[RB_TYPE]) && redit_typing(e[..]);
+  #assert redit_key(e[..], 'n', true) == 2;   // typed, the host sends it as text
+  #assert redit_message(e[..], REDIT_MSG_TEXT, "no \"robots\", names back");
+  #assert redit_key(e[..], REDIT_KEY_ENTER, true) == 1 && !redit_typing(e[..]);
+  redit_step(e[..], 2, 1440, 900, 1);
+  #assert url_is(e[..], "/api/playtest/realms/the-grid/asks") && body_is(e[..], "{\"words\":\"no \\\"robots\\\", names back\"}");
+  #assert answer(e[..], 4, "200\nask 7 applied\nplan 7\nrow robots 0 Robots walking their rounds\nrow names 1 Place names in the air\n");
+  #assert !redit_row_on(e[..], "robots") && redit_row_on(e[..], "names") && e[0].spec_due && e[0].asks_due;
+  // a page with a voice: HOLD TO TALK opens the microphone, the words heard go to the model
+  _f := redit_message(e[..], REDIT_FACTS, "voice=everglade\nplayer=p-1\n");
+  #assert e[0].voice;
+  _h := redit_hud(e[..], out[..], 0, ANCHOR);
+  b := e[0].boxes[RB_TALK];
+  #assert e[0].shown[RB_TALK] && redit_pointer(e[..], (b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2, 0, 3) && e[0].held;
+  ob: [32] u8;
+  a := redit_take_action(e[..], ob[..]);
+  #assert a.kind == REDIT_ACT_VOICE_TO && cast(string) ob[0..<a.n] == REDIT_FACING;
+  a = redit_take_action(e[..], ob[..]);
+  #assert a.kind == REDIT_ACT_VOICE && cast(string) ob[0..<a.n] == "on";
+  #assert redit_pointer(e[..], (b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2, 2, 3) && !e[0].held;
+  a = redit_take_action(e[..], ob[..]);
+  #assert a.kind == REDIT_ACT_VOICE && cast(string) ob[0..<a.n] == "end";
+  #assert redit_message(e[..], REDIT_MSG_VOICE, "heard|fog back") && e[0].revise_n > 0;
+  #assert !redit_message(e[..], REDIT_MSG_VOICE, "heard|what time is it");   // not ours: the realm hears it
+  e[0].req_ready = false; e[0].req_id = -1; e[0].spec_due = false;
+  redit_step(e[..], 5, 1440, 900, 1);
+  #assert url_is(e[..], "/api/playtest/realms/the-grid/asks") && answer(e[..], 5, "429\none at a time") && e[0].note_n > 0;
+  // a visitor can't talk the board round
+  v: [1] RealmEdit;
+  opened(v[..], "the-grid", VISITOR);
+  redit_say(v[..], "no robots");
+  #assert v[0].revise_n == 0;
+}
+
+#test "FEATURES: the rows and the asks, each APPLIED or NOT APPLIED; DELETE asks SURE? and sends it" {
+  e: [1] RealmEdit;
+  out: [40000 * VERTEX_FLOATS] f32;
+  opened(e[..], "the-grid", HAND);
+  e[0].cards_due = false;
+  redit_toggle(e[..]);
+  #assert e[0].pane == REDIT_BOARD && e[0].asks_due;
+  redit_step(e[..], 2, 1440, 900, 1);
+  #assert url_is(e[..], "/api/playtest/realms/the-grid/asks") && (e[0].req_flags & HTTP_POST) == 0;
+  #assert answer(e[..], 1, "200\nask 9 waiting ask a ghost cat by the gate\nask 4 applied ask no robots at night\nask 2 removing ask a bell\n");
+  #assert e[0].ask_n == 3 && e[0].ask_id[0] == 9 && e[0].ask_state[0] == ASK_WAITING && e[0].ask_state[1] == ASK_APPLIED && e[0].ask_state[2] == ASK_REMOVING;
+  #assert redit_ask_words(e[..], 0) == "A GHOST CAT BY THE GATE";
+  _ := redit_hud(e[..], out[..], 0, ANCHOR);
+  // two rows, three asks: five bullets, each with DELETE, inside the screen
+  for i: 0..<5 { #assert e[0].del_shown[i] && e[0].del_box[i].x1 <= 1440 && e[0].del_box[i].y1 <= 900; }
+  #assert !e[0].del_shown[5] && e[0].plate_n <= REDIT_PLATES;
+  // DELETE once reads SURE?; again, it sends the ask's delete
+  #assert tap(e[..], e[0].del_box[2]) && e[0].armed == 2 && e[0].del_ask == 0;
+  #assert tap(e[..], e[0].del_box[2]) && e[0].armed == -1 && e[0].del_ask == 9;
+  redit_step(e[..], 3, 1440, 900, 1);
+  #assert url_is(e[..], "/api/playtest/realms/the-grid/asks/9/delete") && (e[0].req_flags & HTTP_POST) != 0;
+  #assert answer(e[..], 2, "200\n{\"deleted\": 9, \"reverted\": 0}") && e[0].asks_due && e[0].spec_due;
+  // a row's DELETE goes to the row
+  _ = redit_hud(e[..], out[..], 0, ANCHOR);
+  #assert tap(e[..], e[0].del_box[0]) && tap(e[..], e[0].del_box[0]) && e[0].del_row == 0;
+  e[0].spec_due = false; e[0].asks_due = false;
+  redit_step(e[..], 4, 1440, 900, 1);
+  #assert url_is(e[..], "/api/playtest/realms/the-grid/rows/robots/delete");
+  // SURE? lapses
+  _w := answer(e[..], 3, "200\n{\"ask\": 11, \"state\": \"waiting\"}");
+  _ = redit_hud(e[..], out[..], 0, ANCHOR);
+  #assert tap(e[..], e[0].del_box[1]) && e[0].armed == 1;
+  redit_step(e[..], 10, 1440, 900, 1);
+  #assert tap(e[..], e[0].del_box[1]) && e[0].armed == 1 && e[0].del_row == -1;
+}
+
+#test "FEATURES on a phone: everything fits the width, and MORE pages a long list" {
+  e: [1] RealmEdit;
+  out: [40000 * VERTEX_FLOATS] f32;
+  redit_start(e[..], "the-grid");
+  redit_step(e[..], 1, 390 * 3, 700 * 3, 3);
+  _s := answer(e[..], 0, HAND);
+  e[0].cards_due = false;
+  redit_toggle(e[..]);
+  redit_step(e[..], 2, 390 * 3, 700 * 3, 3);
+  _l := answer(e[..], 1, "200\nask 30 waiting ask one\nask 29 waiting ask two\nask 28 waiting ask three\nask 27 waiting ask four\nask 26 waiting ask five\nask 25 waiting ask six\nask 24 waiting ask seven\nask 23 waiting ask eight\nask 22 waiting ask nine\nask 21 waiting ask ten\nask 20 waiting ask eleven\nask 19 waiting ask twelve\nask 18 waiting ask thirteen\nask 17 waiting ask fourteen\nask 16 waiting ask fifteen\nask 15 waiting ask sixteen\n");
+  #assert e[0].ask_n == 16;
+  anchor := RBox.{x0 = 390 * 3 - 100 * 3, y0 = 16 * 3, x1 = 390 * 3 - 16 * 3, y1 = 54 * 3};
+  _ := redit_hud(e[..], out[..], 0, anchor);
+  #assert e[0].shown[RB_MORE] && e[0].list_page < 18 && e[0].del_shown[0];
+  for i: 0..<REDIT_ITEMS { if e[0].del_shown[i] { #assert e[0].del_box[i].x0 >= 0 && e[0].del_box[i].x1 <= 390 * 3 && e[0].del_box[i].y1 <= 700 * 3; } }
+  page := e[0].list_page;
+  #assert tap(e[..], e[0].boxes[RB_MORE]) && e[0].list_first == page;
+  _ = redit_hud(e[..], out[..], 0, anchor);
+  #assert !e[0].del_shown[0] && e[0].del_shown[page];
+}
+
+#test "the cards: read, the first shown, ACCEPT sends it and takes it off" {
+  e: [1] RealmEdit;
+  out: [20000 * VERTEX_FLOATS] f32;
+  opened(e[..], "the-grid", HAND);
+  redit_step(e[..], 2, 1440, 900, 1);
+  #assert url_is(e[..], "/api/playtest/realms/the-grid/proposals");
+  _ := answer(e[..], 1, "200\nP 12|Visitor 4f2a|crate|2.5|-3|0|1|2\nP 9|Visitor 77b0|crate|1|1|0|1|2\n");
+  #assert e[0].card_n == 2 && e[0].card_id[0] == 12 && e[0].card_x[0] == 2.5 && e[0].card_after[0] == 2;
+  redit_pane(e[..], REDIT_CARDS_PANE);
+  e[0].cards_due = false;
+  _h := redit_hud(e[..], out[..], 0, ANCHOR);
+  #assert e[0].shown[RB_ACCEPT] && e[0].shown[RB_DECLINE] && tap(e[..], e[0].boxes[RB_ACCEPT]);
+  redit_step(e[..], 3, 1440, 900, 1);
+  #assert url_is(e[..], "/api/playtest/realms/the-grid/proposals/12/accept") && e[0].card_n == 1 && e[0].card_id[0] == 9 && e[0].waiting == 1;
+  #assert !redit_took(e[..]);
+  _ = answer(e[..], 2, "200\n{\"accepted\":true}");
+  // accepted: the realm is told what and where, once
+  #assert redit_took(e[..]) && cast(string) e[0].decided_thing[0..<e[0].decided_thing_n] == "crate" && e[0].decided_x == 2.5 && e[0].decided_z == -3 && !redit_took(e[..]);
+}
+
+#test "a thing the realm places goes to the server as the owner's or a visitor's card" {
+  e: [1] RealmEdit;
+  opened(e[..], "everglade", VISITOR);
+  redit_place(e[..], "barrel", 3.25, -12.5, 1.5);
+  redit_step(e[..], 2, 1440, 900, 1);
+  #assert url_is(e[..], "/api/playtest/realms/everglade/place") && body_is(e[..], "{\"thing\":\"barrel\",\"x\":3.25,\"z\":-12.50,\"yaw\":1.50}");
+  #assert answer(e[..], 2, "200\n{\"proposed\":4}") && e[0].note_n > 0;
+}
+
+#test "by a character, EDIT brings up its lore; the quest form's save makes the quest; everyone reads both" {
+  e: [1] RealmEdit;
+  out: [60000] f32;
+  opened(e[..], "fairy-forest", "200\nrealm fairy-forest\nrole admin\nowner 1\nwaiting 0\n");
+  redit_near(e[..], "bramble", "Bramble");
+  #assert e[0].pane == REDIT_SHUT;
+  // EDIT by Bramble: his lore, and the panes asked for
+  redit_toggle(e[..]);
+  #assert e[0].pane == REDIT_LORE_PANE && cast(string) e[0].focus_name[0..<e[0].focus_name_n] == "BRAMBLE";
+  redit_step(e[..], 2, 1440, 900, 1);
+  #assert url_is(e[..], "/api/playtest/realms/fairy-forest/panes") && (e[0].req_flags & HTTP_POST) == 0;
+  #assert answer(e[..], 1, "200\nlore bramble|Hoards acorns.\nquest pip|Find my lily pad|Look by the reeds|||A song\n");
+  #assert redit_draft(e[..], RF_LORE) == "Hoards acorns." && redit_lore(e[..], "bramble") == "Hoards acorns." && !e[0].dirty;
+  #assert redit_quest(e[..], "pip") == 0 && redit_quest_part(e[..], 0, 1) == "Look by the reeds" && redit_quest_part(e[..], 0, 4) == "A song" && redit_quest(e[..], "bramble") < 0;
+  // tap the lore, type more, Enter, SAVE
+  _ := redit_hud(e[..], out[..], 0, ANCHOR);
+  #assert e[0].fshown[RF_LORE] && !e[0].fshown[RF_ASK];
+  #assert tap(e[..], e[0].fbox[RF_LORE]) && redit_typing(e[..]) && e[0].field == RF_LORE + 1;
+  #assert redit_message(e[..], REDIT_MSG_TEXT, " Fears owls|.") && e[0].dirty;
+  #assert redit_key(e[..], REDIT_KEY_ENTER, true) == 1 && !redit_typing(e[..]);
+  _ = redit_hud(e[..], out[..], 0, ANCHOR);
+  #assert tap(e[..], e[0].boxes[RB_SAVE]);
+  redit_step(e[..], 3, 1440, 900, 1);
+  #assert url_is(e[..], "/api/playtest/realms/fairy-forest/lore") && body_is(e[..], "{\"who\":\"bramble\",\"text\":\"Hoards acorns. Fears owls.\"}");
+  #assert answer(e[..], 2, "200\n{\"who\":\"bramble\",\"saved\":true}") && !e[0].dirty && e[0].panes_due;
+  // QUEST: the form, its fields, SAVE QUEST makes it
+  _ = redit_hud(e[..], out[..], 0, ANCHOR);
+  #assert tap(e[..], e[0].boxes[RB_SWAP]) && e[0].pane == REDIT_QUEST_PANE;
+  _ = redit_hud(e[..], out[..], 0, ANCHOR);
+  #assert e[0].fshown[RF_ASK] && e[0].fshown[RF_REWARD] && !e[0].fshown[RF_LORE];
+  #assert tap(e[..], e[0].fbox[RF_ASK]) && redit_message(e[..], REDIT_MSG_TEXT, "Find acorns") && redit_key(e[..], REDIT_KEY_ENTER, true) == 1;
+  #assert tap(e[..], e[0].fbox[RF_STEP + 1]) && redit_message(e[..], REDIT_MSG_TEXT, "Fill the basket");
+  #assert tap(e[..], e[0].fbox[RF_REWARD]) && e[0].field == RF_REWARD + 1 && redit_message(e[..], REDIT_MSG_TEXT, "A lucky acorn");
+  _ = redit_hud(e[..], out[..], 0, ANCHOR);
+  #assert tap(e[..], e[0].boxes[RB_SAVE]) && !redit_typing(e[..]);
+  redit_step(e[..], 4, 1440, 900, 1);
+  #assert url_is(e[..], "/api/playtest/realms/fairy-forest/quest") && body_is(e[..], "{\"giver\":\"bramble\",\"ask\":\"Find acorns\",\"steps\":[\"\",\"Fill the basket\",\"\"],\"reward\":\"A lucky acorn\"}");
+  #assert answer(e[..], 3, "200\n{\"giver\":\"bramble\",\"saved\":true}");
+  redit_step(e[..], 5, 1440, 900, 1);
+  #assert url_is(e[..], "/api/playtest/realms/fairy-forest/panes");
+  // walking to Pip with nothing being typed brings up Pip's lore
+  redit_near(e[..], "", "");
+  redit_near(e[..], "pip", "Pip");
+  #assert e[0].pane == REDIT_LORE_PANE && cast(string) e[0].focus[0..<e[0].focus_n] == "pip" && redit_draft(e[..], RF_ASK) == "Find my lily pad";
+  // a visitor gets no panes, but reads the quests
+  v: [1] RealmEdit;
+  opened(v[..], "fairy-forest", "200\nrealm fairy-forest\nrole visitor\nowner 0\n");
+  redit_read_panes_too(v[..]);
+  redit_near(v[..], "bramble", "Bramble");
+  redit_toggle(v[..]);
+  #assert v[0].pane == REDIT_SHUT;
+  redit_step(v[..], 2, 1440, 900, 1);
+  #assert url_is(v[..], "/api/playtest/realms/fairy-forest/panes") && answer(v[..], 1, "200\nquest bramble|Find acorns||Fill the basket||A lucky acorn\n");
+  #assert redit_quest(v[..], "bramble") == 0 && redit_quest_part(v[..], 0, 0) == "Find acorns" && redit_quest_part(v[..], 0, 1) == "";
+}
+#test "ADD FROM A DOCUMENT: the picker opens for the realm's document URL, and its answer says what it applied" {
+  e: [1] RealmEdit;
+  out: [40000 * VERTEX_FLOATS] f32;
+  redit_start(e[..], "the-grid");
+  redit_step(e[..], 1, 390 * 3, 700 * 3, 3);
+  _s := answer(e[..], 0, HAND);
+  e[0].cards_due = false;
+  redit_toggle(e[..]);
+  redit_step(e[..], 2, 390 * 3, 700 * 3, 3);
+  _l := answer(e[..], 1, "200\n");
+  anchor := RBox.{x0 = 390 * 3 - 100 * 3, y0 = 16 * 3, x1 = 390 * 3 - 16 * 3, y1 = 54 * 3};
+  _ := redit_hud(e[..], out[..], 0, anchor);
+  #assert e[0].shown[RB_DOC] && e[0].boxes[RB_DOC].x1 <= 390 * 3 && e[0].boxes[RB_DOC].y1 <= 700 * 3;
+  #assert tap(e[..], e[0].boxes[RB_DOC]) && e[0].want_doc;
+  box: [200] u8;
+  a := redit_take_action(e[..], box[..]);
+  #assert a.kind == REDIT_ACT_DOC && cast(string) box[0..<a.n] == "/api/playtest/realms/the-grid/asks/doc" && !e[0].want_doc;
+  #assert redit_message(e[..], REDIT_MSG_DOC, "1\nGDD.md") && e[0].doc_busy;
+  #assert redit_message(e[..], REDIT_MSG_DOC, "200\ndoc 3 2 applied 1 waiting\nrow robots 1 Robots walking their rounds\n");
+  #assert !e[0].doc_busy && e[0].asks_due && cast(string) e[0].note[0..<e[0].note_n] == "From your document: 2 applied, 1 not applied yet.";
+  #assert redit_message(e[..], REDIT_MSG_DOC, "415\ndrop a .md, .txt, .pdf or .docx") && cast(string) e[0].note[0..<e[0].note_n] == "Drop a .md, .txt, .pdf or .docx.";
+}
+
+#test "the panel speaks plainly: IN IT, NOT IN IT YET, IDEAS for visitors' cards" {
+  #assert redit_tag(true, false) == "IN IT" && redit_tag(false, false) == "NOT IN IT YET" && redit_tag(false, true) == "REMOVING";
+}
+
+#test "edits from elsewhere show up: an owner's page reads its spec again every second; the same spec changes nothing" {
+  e: [1] RealmEdit;
+  opened(e[..], "the-grid", HAND);
+  e[0].cards_due = false; e[0].asks_due = false; e[0].panes_due = false; e[0].req_ready = false; e[0].req_id = -1;
+  _ := redit_changed(e[..]);
+  v := e[0].version;
+  redit_step(e[..], 3, 1440, 900, 1);
+  #assert e[0].req_ready && url_is(e[..], "/api/playtest/realms/the-grid");
+  #assert answer(e[..], 1, HAND) && e[0].version == v && redit_row_on(e[..], "robots");
+  redit_step(e[..], 3.5, 1440, 900, 1);
+  #assert !e[0].req_ready;   // not yet a second
+  redit_step(e[..], 4.2, 1440, 900, 1);
+  #assert e[0].req_ready && answer(e[..], 2, "200\nrealm the-grid\nrole admin\nowner 1\ntool map 1\ntool jump 0\nthing crate\nrow robots 0 Robots walking their rounds\nrow names 0 Place names in the air\n");
+  #assert e[0].version == v + 1 && !redit_row_on(e[..], "robots") && redit_changed(e[..]);
+  // a visitor's page doesn't
+  w: [1] RealmEdit;
+  opened(w[..], "the-grid", VISITOR);
+  w[0].req_ready = false; w[0].req_id = -1;
+  redit_step(w[..], 9, 1440, 900, 1);
+  #assert !w[0].req_ready || !url_is(w[..], "/api/playtest/realms/the-grid");
+}
+
+reads :: (out: [] u8, n: int, text: string) -> bool {
+  if n != text.count || n > out.count { return false; }
+  for i: 0..<n { if out[i] != text[i] { return false; } }
+  return true;
+}
+#test "what the voice heard: switch a row by its id, show a pane, a visitor told no" {
+  e: [1] RealmEdit;
+  out: [160] u8;
+  opened(e[..], "the-grid", HAND);
+  e[0].cards_due = false; e[0].req_ready = false; e[0].req_id = -1;
+  #assert redit_heard(e[..], "place", "", false, "", out[..]) == -1;
+  n := redit_heard(e[..], "switch", "robots", false, "", out[..]);
+  #assert reads(out[..], n, "Robots walking their rounds: off.");
+  #assert !redit_row_on(e[..], "robots");
+  #assert e[0].switch_row == 0;
+  e[0].switch_row = -1;
+  n = redit_heard(e[..], "switch", "robots", false, "", out[..]);
+  #assert e[0].switch_row == -1 && reads(out[..], n, "Robots walking their rounds: off.");   // already off: nothing sent
+  n = redit_heard(e[..], "switch", "dragons", true, "", out[..]);
+  #assert reads(out[..], n, "This world has no such switch.");
+  _ := redit_heard(e[..], "show", "", false, "edit", out[..]);
+  #assert e[0].pane == REDIT_BOARD;
+  _ = redit_heard(e[..], "show", "", false, "settings", out[..]);
+  #assert e[0].pane == REDIT_SETTINGS;
+  _ = redit_heard(e[..], "show", "", false, "close", out[..]);
+  #assert e[0].pane == REDIT_SHUT;
+  v: [1] RealmEdit;
+  opened(v[..], "the-grid", VISITOR);
+  n = redit_heard(v[..], "switch", "robots", true, "", out[..]);
+  #assert reads(out[..], n, "Only the world's owner can change that.") && !redit_row_on(v[..], "robots");
+}
+#test "a pane asked for by voice while open stays open" {
+  e: [1] RealmEdit;
+  out: [160] u8;
+  opened(e[..], "the-grid", HAND);
+  _ := redit_heard(e[..], "show", "", false, "edit", out[..]);
+  _ = redit_heard(e[..], "show", "", false, "edit", out[..]);
+  #assert e[0].pane == REDIT_BOARD;
+}
+
+// One trip through the selector: the request it sends, then the server's answer to it.
+heard_trip :: (e: [] RealmEdit, t: f32, url: string, p_body: string, reply: string) -> bool {
+  redit_step(e, t, 1440, 900, 1);
+  if !e[0].req_ready || !url_is(e, url) || !body_is(e, p_body) { return false; }
+  return answer(e, 2, reply);
+}
+#test "the realm's voice: words go to the selector; switch, show, look, ask and chat are done, shown and spoken" {
+  e: [1] RealmEdit;
+  ob: [400] u8;
+  opened(e[..], "moonlit-marsh", MADE);
+  e[0].cards_due = false; e[0].asks_due = false;
+  _f := redit_message(e[..], REDIT_FACTS, "voice=made-realm\nplayer=p-1\n");
+  // switch one of the board's rows by its key
+  #assert redit_hear(e[..], "get rid of the pond");
+  #assert heard_trip(e[..], 2, "/api/playtest/realm/moonlit-marsh/edit", "{\"sentence\":\"get rid of the pond\"}", "200\n{\"on\": false, \"row\": \"water\", \"edit\": \"switch\", \"model\": \"m\"}");
+  #assert (e[0].req_flags & REDIT_HTTP_FRAME) == 0 && !redit_row_on(e[..], "water") && e[0].switch_row == 0;
+  #assert redit_reply_of(e[..]) == "Large pond: off.";
+  a := redit_take_action(e[..], ob[..]);
+  #assert a.kind == REDIT_ACT_VOICE_SAY && cast(string) ob[0..<a.n] == "Large pond: off.";
+  redit_step(e[..], 3, 1440, 900, 1);
+  #assert url_is(e[..], "/api/playtest/realms/moonlit-marsh/switch") && answer(e[..], 2, "200\n{}");
+  e[0].spec_due = false;
+  // show: the editing screen opens
+  #assert redit_hear(e[..], "open the edit panel");
+  #assert heard_trip(e[..], 4, "/api/playtest/realm/moonlit-marsh/edit", "{\"sentence\":\"open the edit panel\"}", "200\n{\"edit\": \"show\", \"panel\": \"edit\"}");
+  #assert e[0].pane == REDIT_BOARD && redit_reply_of(e[..]) == "Here's the edit panel.";
+  e[0].asks_due = false;
+  // look: the same words again at /look, with the frame on screen; its answer said as it is
+  #assert redit_hear(e[..], "what's that dark strip");
+  #assert heard_trip(e[..], 5, "/api/playtest/realm/moonlit-marsh/edit", "{\"sentence\":\"what's that dark strip\"}", "200\n{\"edit\": \"look\"}");
+  #assert e[0].reply_n == 0;
+  #assert heard_trip(e[..], 6, "/api/playtest/realm/moonlit-marsh/look", "{\"question\":\"what's that dark strip\"}", "200\n{\"edit\": \"chat\", \"reply\": \"That is the edge of the sky dome.\"}");
+  #assert redit_reply_of(e[..]) == "That is the edge of the sky dome.";
+  // ask: the words go on the list, as the board's ADD
+  #assert redit_hear(e[..], "add a dragon by the lake");
+  #assert heard_trip(e[..], 7, "/api/playtest/realm/moonlit-marsh/edit", "{\"sentence\":\"add a dragon by the lake\"}", "200\n{\"edit\": \"ask\"}");
+  redit_step(e[..], 8, 1440, 900, 1);
+  #assert url_is(e[..], "/api/playtest/realms/moonlit-marsh/asks") && body_is(e[..], "{\"words\":\"add a dragon by the lake\"}");
+  _a := answer(e[..], 2, "200\nask 3 waiting\n");
+  e[0].spec_due = false; e[0].asks_due = false;
+  // a refusal is said too
+  #assert redit_hear(e[..], "mumble");
+  #assert heard_trip(e[..], 9, "/api/playtest/realm/moonlit-marsh/edit", "{\"sentence\":\"mumble\"}", "422\n{\"error\":\"none fit\"}");
+  #assert redit_reply_of(e[..]) == "Sorry, I didn't catch that.";
+  // a visitor's words are the realm's own
+  v: [1] RealmEdit;
+  opened(v[..], "the-grid", VISITOR);
+  #assert !redit_hear(v[..], "turn off the robots");
+}
+#test "a realm that offers its voice: V talks and Enter types to it with the panes shut; the reply shows under EDIT" {
+  e: [1] RealmEdit;
+  out: [20000 * VERTEX_FLOATS] f32;
+  ob: [400] u8;
+  opened(e[..], "moonlit-marsh", MADE);
+  e[0].cards_due = false;
+  #assert redit_key(e[..], 'v', true) == 0;   // not offered: the realm's key
+  redit_hears(e[..], true);
+  _f := redit_message(e[..], REDIT_FACTS, "voice=made-realm\nplayer=p-1\n");
+  _ := redit_hud(e[..], out[..], 0, ANCHOR);
+  #assert e[0].shown[RB_HEAR];
+  #assert redit_key(e[..], 'v', true) == 1 && e[0].held && e[0].to_selector;
+  a := redit_take_action(e[..], ob[..]);
+  #assert a.kind == REDIT_ACT_VOICE_TO && cast(string) ob[0..<a.n] == REDIT_FACING;
+  a = redit_take_action(e[..], ob[..]);
+  #assert a.kind == REDIT_ACT_VOICE && cast(string) ob[0..<a.n] == "on";
+  #assert redit_key(e[..], 'v', false) == 1 && !e[0].held;
+  a = redit_take_action(e[..], ob[..]);
+  #assert a.kind == REDIT_ACT_VOICE && cast(string) ob[0..<a.n] == "end";
+  #assert redit_message(e[..], REDIT_MSG_VOICE, "heard|what's in here") && e[0].hear_due == REQ_E_HEAR && e[0].revise_n == 0;
+  #assert heard_trip(e[..], 2, "/api/playtest/realm/moonlit-marsh/edit", "{\"sentence\":\"what's in here\"}", "200\n{\"edit\": \"chat\", \"reply\": \"A pond, mostly.\"}");
+  p0 := e[0].plate_n;
+  _ = redit_hud(e[..], out[..], 0, ANCHOR);
+  #assert e[0].plate_n > p0 || e[0].plate_n >= 2;   // the reply's plate under EDIT
+  // Enter types to it; the typed words go to the selector, not the board
+  #assert redit_key(e[..], REDIT_KEY_ENTER, true) == 1 && redit_typing(e[..]) && e[0].hear_typing;
+  #assert redit_message(e[..], REDIT_MSG_TEXT, "open the settings");
+  #assert redit_key(e[..], REDIT_KEY_ENTER, true) == 1 && !redit_typing(e[..]);
+  #assert e[0].hear_due == REQ_E_HEAR && e[0].revise_n == 0;
+  #assert heard_trip(e[..], 3, "/api/playtest/realm/moonlit-marsh/edit", "{\"sentence\":\"open the settings\"}", "200\n{\"edit\": \"show\", \"panel\": \"settings\"}");
+  #assert e[0].pane == REDIT_SETTINGS;
+}

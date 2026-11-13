@@ -58,10 +58,10 @@ export type Golden = { lit: number; settle: number; blocks: number }
 // clock: how its time of day runs (cycle, fixed:T with T 0 midnight to 1, or real: the visitor's time).
 export const STYLES = ["lowpoly", "painterly", "photoreal", "flat", "anime"] as const
 export type Style = (typeof STYLES)[number]
-// variant: an anime realm's or zone's look (verse/style-preset.coax ANIME_*); none is pastoral. Only anime has variants.
+// variant: an anime realm's or zone's look (metaverse/style-preset.coax ANIME_*); none is pastoral. Only anime has variants.
 export const ANIME_VARIANTS = ["pastoral", "action", "dusk", "neon"] as const
 export type AnimeVariant = (typeof ANIME_VARIANTS)[number]
-// ruleset: the rules a realm plays by (verse/rules/srd5.coax), read by its page as ruleset=; none casts nothing.
+// ruleset: the rules a realm plays by (metaverse/rules/srd5.coax), read by its page as ruleset=; none casts nothing.
 export const RULESETS = ["srd5"]
 export type Zone = { id: string; style?: Style; variant?: AnimeVariant }
 // share: the line a link preview shows (at most 200 characters; else the description, shortened).
@@ -86,8 +86,8 @@ const ID = /^[a-z0-9][a-z0-9-]{0,47}$/
 export const ADDED = /^20\d\d-[01]\d-[0-3]\dT[0-2]\d:[0-5]\d$/
 export const CLOCK = /^(cycle|real|fixed:(0(\.\d{1,4})?|1(\.0{1,4})?))$/
 // What coax wgsl writes into a realm's WGSL from the style presets: a painterly, photoreal, flat or
-// anime realm draws with it. Required once verse/style.coax exists (as-presets).
-export const STYLE_BLOCK = "// ---- generated: verse/style.coax"
+// anime realm draws with it. Required once metaverse/style.coax exists (as-presets).
+export const STYLE_BLOCK = "// ---- generated: metaverse/style.coax"
 // A module coax wgsl writes whole carries the style as its own functions (coax/web/wgsl-module.coax).
 export const STYLE_MODULE = "fn coax_p_verse_style_"
 // Or the module's Coax source (its first line names it, from the repo root) loads the presets,
@@ -100,8 +100,8 @@ export function styled(text: string, root = join(import.meta.dir, "../..")): boo
   const src = join(root, m[1])
   return existsSync(src) && /#load "[^"]*verse\/style\.coax";/.test(readFileSync(src, "utf8"))
 }
-const STYLE_SOURCE = join(import.meta.dir, "../../verse/style.coax")
-const PACKS = join(import.meta.dir, "../../verse/packs")
+const STYLE_SOURCE = join(import.meta.dir, "../../metaverse/style.coax")
+const PACKS = join(import.meta.dir, "../../metaverse/packs")
 // Painterly realms whose pack isn't painted yet: each leaves this set with its pack task
 // (Everglade: eg-paint-pack, #f300). A pack that names a style never passes by it.
 const PACK_STYLE_PENDING = new Set(["everglade"])
@@ -138,9 +138,9 @@ export function worlds(file = join(SITE, "realms.json"), opts: { site?: string; 
       // the shader the page loads: the one its row names (metaverse-engine/render/page-render.coax data-wgsl), else its module's
       const named = /data-wgsl="\/([^"]+)"/.exec(renderAttributes(r.slug, r.module))?.[1]
       const wgsl = join(site, named ?? `${r.module}.wgsl`)
-      if (!existsSync(wgsl) || !styled(readFileSync(wgsl, "utf8"))) throw new Error(`realms.json: ${r.slug} is drawn ${r.style === "lowpoly" ? "partly painterly or photoreal" : r.style} but ${r.module}.wgsl has no style block (coax/web/wgsl-block.coax verse/style.coax ... --into it)`)
+      if (!existsSync(wgsl) || !styled(readFileSync(wgsl, "utf8"))) throw new Error(`realms.json: ${r.slug} is drawn ${r.style === "lowpoly" ? "partly painterly or photoreal" : r.style} but ${r.module}.wgsl has no style block (coax/web/wgsl-block.coax metaverse/style.coax ... --into it)`)
     }
-    // its pack's style (verse/packs/<pack>.json "style", none is lowpoly) is one the realm draws in
+    // its pack's style (metaverse/packs/<pack>.json "style", none is lowpoly) is one the realm draws in
     for (const a of r.assets) {
       const pack = /^pack:.*\/([a-z0-9-]+)\.(?:pack|vpk3)$/.exec(a)?.[1]
       const manifest = pack && join(packs, `${pack}.json`)
@@ -148,9 +148,9 @@ export function worlds(file = join(SITE, "realms.json"), opts: { site?: string; 
       const declared = JSON.parse(readFileSync(manifest, "utf8")).style, ps = declared ?? "lowpoly"
       const drawn = [r.style, ...(r.zones ?? []).map((z) => z.style ?? r.style)]
       if (!drawn.includes(ps) && !(declared === undefined && PACK_STYLE_PENDING.has(r.slug)))
-        throw new Error(`realms.json: ${r.slug} is drawn ${drawn.join(" and ")} but its pack ${pack} is ${ps} (verse/packs/${pack}.json "style")`)
+        throw new Error(`realms.json: ${r.slug} is drawn ${drawn.join(" and ")} but its pack ${pack} is ${ps} (metaverse/packs/${pack}.json "style")`)
     }
-    // its ruleset (verse/rules/<ruleset>.coax): a realm without one casts nothing
+    // its ruleset (metaverse/rules/<ruleset>.coax): a realm without one casts nothing
     if (r.share !== undefined && !(typeof r.share === "string" && r.share.length >= 20 && r.share.length <= 200)) throw new Error(`realms.json: ${r.slug}: share is a line of 20 to 200 characters`)
     if (r.ruleset !== undefined && !RULESETS.includes(r.ruleset)) throw new Error(`realms.json: ${r.slug}: ruleset is one of ${RULESETS.join(", ")}, not ${JSON.stringify(r.ruleset)}`)
     if (w.kind === "open" && w.listed !== false && (typeof r.added !== "string" || !ADDED.test(r.added)))
@@ -211,7 +211,7 @@ export function coax(list: World[]): string {
     `PLANET_LISTED :: ${col("bool", (w) => String(w.listed !== false))};`,
     `PLANET_PATH :: ${col("string", (w) => lit(w.realm ? `/worlds/${w.realm.slug}` : ""))};`,
     "// Its art style (docs/verse/art-styles.md; a world without a realm is lowpoly) and its clock.",
-    "PLANET_LOWPOLY :: 0; PLANET_PAINTERLY :: 1; PLANET_PHOTOREAL :: 2; PLANET_FLAT :: 3; PLANET_ANIME :: 4;   // verse/style-preset.coax STYLE_*",
+    "PLANET_LOWPOLY :: 0; PLANET_PAINTERLY :: 1; PLANET_PHOTOREAL :: 2; PLANET_FLAT :: 3; PLANET_ANIME :: 4;   // metaverse/style-preset.coax STYLE_*",
     `PLANET_STYLE :: ${col("int", (w) => `PLANET_${(w.realm?.style ?? "lowpoly").toUpperCase()}`)};`,
     `PLANET_CLOCK :: ${col("string", (w) => lit(w.realm?.clock ?? ""))};`,
     "",

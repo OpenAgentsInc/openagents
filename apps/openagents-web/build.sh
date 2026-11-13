@@ -184,7 +184,7 @@ host_packs=$!
 # Range-addressable packs (VPK3, metaverse-engine/editor/page-pack.coax, #13001): each .vpk3 a realm names in
 # realms.json is written from its tracked .pack beside it (rewritten only when the pack changed),
 # and so is each block build (metaverse-engine/tools/block-pack.coax) a realm's blocks: asset names.
-# Everglade II's first takes this tree's planting into its catalog (verse/tools/assets/
+# Everglade II's first takes this tree's planting into its catalog (metaverse/tools/assets/
 # everglade2_plant.coax, #13150), so the page reads the woods instead of planting them for 1.8 s.
 vpk3s() {
   # Before Everglade II's pack is written, its zone is checked (everglade/model/tools/zone-cells.coax, #13280,
@@ -193,7 +193,7 @@ vpk3s() {
   "$here/../../coax/web/tool.sh" "$here/../../everglade/model/tools/zone-cells.coax" --check "$here/../../everglade/world/zone-cells.coax" "$here/../../everglade/content/everglade.content" > /dev/null
   for vpk3 in "$here"/realms/everglade2/assets/everglade2.vpk3; do
     planted="$here/build/$(basename "${vpk3%.vpk3}")-planted.pack"
-    "$here/../../coax/web/tool.sh" "$here/../../verse/tools/assets/everglade2_plant.coax" "${vpk3%.vpk3}.pack" "$planted" > /dev/null
+    "$here/../../coax/web/tool.sh" "$here/../../metaverse/tools/assets/everglade2_plant.coax" "${vpk3%.vpk3}.pack" "$planted" > /dev/null
     "$here/../../coax/web/tool.sh" "$here/../../metaverse-engine/tools/page-pack.coax" "$planted" "$vpk3" > /dev/null
     rm -f "$planted"
   done
@@ -212,21 +212,21 @@ vpk3=$!
 # Opt-in room timing stays separate from the realm's producer.
 timed host-latency "$here/../../coax/web/tool.sh" "$here/../../coax/web/build-latency.coax" "$here/../.." "$here/build/latency-client.wasm" &
 room_latency=$!
-# The HUD bar's light, the same function the iOS stages draw (verse/light.coax).
-# (splash.wgsl loads verse/light.coax in its Coax: gpu/splash.coax.)
+# The HUD bar's light, the same function the iOS stages draw (metaverse/light.coax).
+# (splash.wgsl loads metaverse/light.coax in its Coax: gpu/splash.coax.)
 timed splash "$here/../../coax/web/wasm.sh" "$here/splash.coax" "$here/face.c" "$here/build/splash.wasm" &
 splash=$!
 # The realms: the engine's house, player and thumbs, each its own library as on
 # iOS, under realm.coax's HUD; the house's light from the engine itself.
 # (realm.wgsl, the house, loads its light in its Coax: gpu/realm.coax.)
 # (particles.wgsl loads metaverse-engine/render/particle-motion.coax and haunt-light.coax in its Coax: gpu/particles.coax.)
-# The art styles' shading (verse/style.coax, docs/verse/art-styles.md) into the fixture and every
+# The art styles' shading (metaverse/style.coax, docs/verse/art-styles.md) into the fixture and every
 # painterly realm's WGSL (realms.ts --check refuses a painterly realm without it).
 style_fns="verse_style_wrap verse_style_bands verse_style_bands2 verse_style_shade verse_style_cool verse_style_keep_value verse_style_banded verse_style_ambient verse_style_dab verse_style_rim verse_style_haze verse_style_haze_glow verse_style_haze_teal verse_style_haze_hue verse_style_fog verse_style_sky_t verse_style_sky_band verse_style_halo verse_style_hash verse_style_noise verse_style_cloud_field verse_style_cloud_cover verse_style_cloud_lit verse_style_cloud_fade verse_style_tone verse_style_saturation verse_style_lift verse_style_luma verse_style_bloom_share verse_style_bloom_mix verse_style_shadow_reach verse_style_shadow_snap verse_style_shadow_across verse_style_shadow_depth verse_style_shadow_taps verse_style_shadow_radius verse_style_shadow_tap verse_style_contact verse_style_shaft_source verse_style_shaft_fade verse_style_shaft_tap verse_style_shaft_total verse_style_shaft verse_style_gust verse_style_wind verse_style_bend verse_style_grass_tilt verse_style_blade_height verse_style_grass_fade verse_style_grass_blades verse_style_grass_clear verse_style_segment verse_style_part verse_style_tip verse_style_jitter"
 # The blob canopies (art-styles.md 7) go where there are kit trees or a traced tree: the fixture and Everglade.
 foliage_fns="verse_style_canopy_axis verse_style_canopy_normal verse_style_canopy_sway verse_style_canopy_open verse_style_near_reach verse_style_near_blades verse_style_near_width verse_style_chroma_gain"
-# (the fixture's Coax, gpu/fixture.coax, loads verse/look.coax and verse/style.coax.)
-# Everglade's whole module is Coax (apps/openagents-web/gpu/everglade-v1/gpu.coax, with verse/style.coax): its
+# (the fixture's Coax, gpu/fixture.coax, loads metaverse/look.coax and metaverse/style.coax.)
+# Everglade's whole module is Coax (apps/openagents-web/gpu/everglade-v1/gpu.coax, with metaverse/style.coax): its
 # entries and bindings (apps/openagents-web/gpu/everglade-v1/gpu.module, gpu.bindings) as coax wgsl writes them; its
 # particles' module the same from gpu-fx.coax.
 # Every page's and realm's WGSL is written from its Coax: apps/openagents-web/gpu/NAME.coax, with
@@ -267,8 +267,8 @@ flat_fns="verse_style_flat_light verse_style_flat_band verse_style_flat_band2 ve
 # Fairy Forest draws in the flat style only, faceted: no painterly or grass functions.
 # (Fairy Forest, fairy.wgsl, loads them in its Coax: gpu/fairy.coax.)
 # (Orbit League, orbitleague.wgsl, loads them in its Coax: gpu/orbitleague.coax.)
-# (waterlab.wgsl loads verse/style.coax in its Coax: gpu/waterlab.coax.)
-m="$here/../../verse"
+# (waterlab.wgsl loads metaverse/style.coax in its Coax: gpu/waterlab.coax.)
+m="$here/../../metaverse"
 a="$here/../../metaverse-engine"   # the engine modules (#12609)
 # The voice engine for pages that talk (data-voice: the Haunted House), coax/web/voice.js.
 timed voice "$here/../../coax/web/voice/build.sh" "$here/build/voice.wasm" &
@@ -296,11 +296,11 @@ everglade5e=$!
 # Everglade's offline room (#12784): the room server's simulation, built to wasm for the local host (coax/web/room-worker.js).
 timed everglade-room "$here/../../coax/web/tool.sh" "$here/../../coax/web/room/worker.coax" "$here/build/everglade-room.wasm" &
 everglade_room=$!
-# /worlds/fairy-forest: the park (verse/fairy-forest/forest.coax), with the player, thumbs and its stream (verse/fairy-forest/stream.coax).
+# /worlds/fairy-forest: the park (metaverse/fairy-forest/forest.coax), with the player, thumbs and its stream (metaverse/fairy-forest/stream.coax).
 timed fairy "$here/../../coax/web/wasm.sh" "$here/fairy.coax" "$here/fairy-face.c" "$here/build/fairy.wasm" \
   "$a/move/player.coax" "$m/grid.coax" "$m/fairy-forest/stream.coax" "$here/../../coax/lib/qr/qr-memory.coax" &
 fairy=$!
-# /worlds/hecates-cemetery: Planetary Villa's first expansion (verse/planetary-villa/README.md),
+# /worlds/hecates-cemetery: Planetary Villa's first expansion (metaverse/planetary-villa/README.md),
 # with the player, thumbs and figures (villafig.coax: the engine's figures and motions) as libraries.
 timed villa "$here/../../coax/web/wasm.sh" "$here/villa.coax" "$here/villa-face.c" "$here/build/villa.wasm" \
   "$a/move/player.coax" "$m/grid.coax" "$here/villafig.coax" &
@@ -330,22 +330,22 @@ timed character-host "$here/../../coax/web/wasm.sh" "$here/character-host.coax" 
 characterhost=$!
 timed valleyworld "$here/../../coax/web/wasm.sh" "$here/valleyworld.coax" "$here/valleyworld-face.c" "$here/build/valleyworld.wasm" &
 valleyworld=$!
-# /worlds/anime-lab: direct an anime (docs/verse/anime-lab.md): the director and stage (verse/anime/), the
-# anime style's block from its own library (animelab-style.coax). (animelab.wgsl loads verse/style.coax in gpu/animelab.coax.)
+# /worlds/anime-lab: direct an anime (docs/verse/anime-lab.md): the director and stage (metaverse/anime/), the
+# anime style's block from its own library (animelab-style.coax). (animelab.wgsl loads metaverse/style.coax in gpu/animelab.coax.)
 old timed animelab "$here/../../coax/web/wasm.sh" "$here/animelab.coax" "$here/animelab-face.c" "$here/build/animelab.wasm" "$here/animelab-style.coax" &
 animelab=$!
-# /worlds/splice (unlisted): Mars at dusk on Anime Lab's shading (verse/splice/splice.coax, verse/splice/splice-face.c, verse/splice/gpu/splice.coax).
-timed splice "$here/../../coax/web/wasm.sh" "$here/../../verse/splice/splice.coax" "$here/../../verse/splice/splice-face.c" "$here/build/splice.wasm" "$here/animelab-style.coax" &
+# /worlds/splice (unlisted): Mars at dusk on Anime Lab's shading (metaverse/splice/splice.coax, metaverse/splice/splice-face.c, metaverse/splice/gpu/splice.coax).
+timed splice "$here/../../coax/web/wasm.sh" "$here/../../metaverse/splice/splice.coax" "$here/../../metaverse/splice/splice-face.c" "$here/build/splice.wasm" "$here/animelab-style.coax" &
 splice=$!
 # /worlds/drop and every /projects/<slug>/realm: a project's first realm, its drop's models on a floor.
 timed droprealm "$here/../../coax/web/wasm.sh" "$here/droprealm.coax" "$here/droprealm-face.c" "$here/build/droprealm.wasm" &
 droprealm=$!
 # /worlds/built and every /worlds/<slug> made at /worlds/new: a realm someone built (myrealm.coax).
-# YOUR COMPUTER's wire (verse/edit/computer-wire.coax) links beside it; its signing tables need the larger budget.
+# YOUR COMPUTER's wire (metaverse/edit/computer-wire.coax) links beside it; its signing tables need the larger budget.
 # With its renderer carrier, which loads the wire and entropy too, so one load graph owns
 # sha256-kernel.coax's S_hash and S_hex (#12661); wasm.sh folds the two libraries into it (#12675).
 COAXIAL_RUN_STEPS=250000000 timed myrealm "$here/../../coax/web/wasm.sh" "$here/myrealm.coax" "$here/myrealm-face.c" "$here/build/myrealm.wasm" \
-  "$here/../../verse/edit/computer-wire.coax" "$here/../../coax/lib/crypto/entropy.coax" &
+  "$here/../../metaverse/edit/computer-wire.coax" "$here/../../coax/lib/crypto/entropy.coax" &
 myrealm=$!
 # /worlds/new: build your own realm (docs/verse/realm-builder.md).
 timed builder "$here/../../coax/web/wasm.sh" "$here/builder.coax" "$here/builder-face.c" "$here/build/builder.wasm" &
@@ -355,13 +355,13 @@ builder=$!
 timed worldbuilder "$here/../../coax/web/wasm.sh" "$here/worldbuilder-walk.coax" "$here/worldbuilder-face.c" "$here/build/worldbuilder.wasm" \
   "$here/../../everglade/shared/everglade-step.coax" "$a/core/sticks.coax" &
 worldbuilder=$!
-# /worlds/ice-cream-man: Ice Cream Man's house (verse/icecream/scene.coax, its own library) under its HUD.
+# /worlds/ice-cream-man: Ice Cream Man's house (metaverse/icecream/scene.coax, its own library) under its HUD.
 timed icecream "$here/../../coax/web/wasm.sh" "$here/icecream.coax" "$here/icecream-face.c" "$here/build/icecream.wasm" "$m/icecream/scene.coax" &
 icecream=$!
-# /worlds/dead-gears: the ship survival game (verse/deadgears/rules.coax, loaded by the page).
+# /worlds/dead-gears: the ship survival game (metaverse/deadgears/rules.coax, loaded by the page).
 timed deadgears "$here/../../coax/web/wasm.sh" "$here/deadgears.coax" "$here/deadgears-face.c" "$here/build/deadgears.wasm" &
 deadgears=$!
-# /worlds/hold-the-stair: the popping tower defense on the SRD 5e rules (verse/rules/srd5-combat.coax).
+# /worlds/hold-the-stair: the popping tower defense on the SRD 5e rules (metaverse/rules/srd5-combat.coax).
 timed stair "$here/../../coax/web/wasm.sh" "$here/stair.coax" "$here/stair-face.c" "$here/build/stair.wasm" &
 stair=$!
 # /worlds/painted-village: the hand-painted look (metaverse-engine/render/stylized.coax) on generated assets (metaverse-engine/arch/village.coax, flora.coax).
@@ -386,7 +386,7 @@ old timed bitcoin-lab-walk "$here/../../coax/web/wasm.sh" "$here/bitcoin-lab-wal
   "$here/../../everglade/shared/everglade-step.coax" "$a/core/sticks.coax" &
 bitcoin_lab_walk=$!
 # /worlds/nostr-lab (unlisted): Nostr Lab, a key pair, an event, its ID and its signature as a walk on the Grid, on
-# the same lab walk (verse/lab-walk.coax). It signs its event at run time: secp256k1's tables need the larger budget.
+# the same lab walk (metaverse/lab-walk.coax). It signs its event at run time: secp256k1's tables need the larger budget.
 COAXIAL_RUN_STEPS=250000000 old timed nostr-lab-walk "$here/../../coax/web/wasm.sh" "$here/nostr-lab-walk.coax" "$here/nostr-lab-walk-face.c" "$here/build/nostr-lab-walk.wasm" \
   "$here/../../everglade/shared/everglade-step.coax" "$a/core/sticks.coax" &
 nostr_lab_walk=$!
@@ -408,7 +408,7 @@ splatlab=$!
 # /worlds/one-shot: the campaign creator's Table (oneshot.coax on oneshot-table.coax and the SRD engine).
 timed oneshot "$here/../../coax/web/wasm.sh" "$here/oneshot.coax" "$here/oneshot-face.c" "$here/build/oneshot.wasm" &
 oneshot=$!
-# /demos/grid-crowd: the Grid's art (verse/tools/pack_grid.py) with a staged crowd of players (verse/cast.coax)
+# /demos/grid-crowd: the Grid's art (metaverse/tools/pack_grid.py) with a staged crowd of players (metaverse/cast.coax)
 # and agents running into the Everglade gate, for clips (?stage=crowd, docs/verse/clips.md).
 timed gridcrowd "$here/../../coax/web/wasm.sh" "$here/gridcrowd.coax" "$here/gridcrowd-face.c" "$here/build/gridcrowd.wasm" \
   "$m/cast.coax" &
@@ -417,7 +417,7 @@ gridcrowd=$!
 # (?stage=ident ... ?stage=end, docs/verse/clips.md), drawn at twice its pixels for clips.
 timed speedrunhud "$here/../../coax/web/wasm.sh" "$here/speedrunhud.coax" "$here/speedrunhud-face.c" "$here/build/speedrunhud.wasm" &
 speedrunhud=$!
-# /worlds/belt-2200: the solar-system strategy game over the engine's orbits (metaverse-engine/physics/orbit.coax, metaverse-engine/cam/spacecam.coax; verse/stars.coax in gpu/belt.coax).
+# /worlds/belt-2200: the solar-system strategy game over the engine's orbits (metaverse-engine/physics/orbit.coax, metaverse-engine/cam/spacecam.coax; metaverse/stars.coax in gpu/belt.coax).
 timed belt "$here/../../coax/web/wasm.sh" "$here/belt.coax" "$here/belt-face.c" "$here/build/belt.wasm" &
 belt=$!
 # /worlds/orbit-league: car ball in orbit, on the space primitives (docs/verse/space.md).

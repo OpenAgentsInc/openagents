@@ -20,7 +20,7 @@ committed.
 
 ## Shared movement, prediction and room authority
 
-`verse/ocarina/locomotion.coax` is the common profile used by Ocarina Lab and the
+`metaverse/ocarina/locomotion.coax` is the common profile used by Ocarina Lab and the
 raid's shared `everglade-step.coax` motor. Walk is 0.64 m/s, run is
 2.2500002 m/s (the measured source carrier endpoints), and roll is 5.625 m/s.
 Acceleration is 12, turn rate 10 and ride height 0.35 m. Normal gravity is 16;
@@ -77,14 +77,14 @@ source/texture extraction documented in `2026-11-06-ocarina-lab.md`. Then:
 ```sh
 src="$HOME/.openagents/verse/private-build/ocarina/source"
 raid="$HOME/.openagents/verse/private-build/everglade-link/streams"
-coax/web/tool.sh verse/tools/ocarina-source-pack.coax \
+coax/web/tool.sh metaverse/tools/ocarina-source-pack.coax \
   "$src/Player_Child.Player_Child.bfres" \
   "$src/Player_Child_01_Animation.anim.bfres" \
   "$src/Player_Child_02_Animation.anim.bfres" \
   "$src/Player_Child_03_Animation.anim.bfres" \
   "$src/Player_Child_04_Animation.anim.bfres" \
   "$src/Player_Child.anim.bfres" "$raid" --raid
-coax/web/tool.sh verse/tools/everglade-link-pack.coax \
+coax/web/tool.sh metaverse/tools/everglade-link-pack.coax \
   /path/to/everglade.pack "$raid" \
   "$HOME/.openagents/verse/private-build/ocarina/streams" \
   "$HOME/.openagents/verse/private-build/ocarina/textures" \

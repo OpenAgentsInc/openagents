@@ -11,22 +11,22 @@ tool_main :: ()->int #export_c #effects(all) {
  product:=args_has(a[..],"--product");combined:=args_has(a[..],"--combined");if (product&&memory)||(combined&&!product) {return 2;}
  if !fs_mkdir(out) {return 1;}paths:[32][4096]u8;argv:[80]string;n:=0;
  for flag:[9]string.["nice","-n10","gcc","-std=gnu11",ifx sanitize then "-O1" else "-O2","-ffp-contract=off","-fno-fast-math","-Wno-unused-function","-Wno-unused-variable"] {argv[n]=flag;n+=1;}
- argv[n]="-I";argv[n+1]=emission;n+=2;argv[n]="-I";argv[n+1]=fs_join(root,"verse/native",paths[0][..]);n+=2;
+ argv[n]="-I";argv[n+1]=emission;n+=2;argv[n]="-I";argv[n+1]=fs_join(root,"metaverse/native",paths[0][..]);n+=2;
  argv[n]="-I";argv[n+1]=fs_join(dev,"include/pipewire-0.3",paths[1][..]);n+=2;argv[n]="-I";argv[n+1]=fs_join(dev,"include/spa-0.2",paths[2][..]);n+=2;
  inputs:[1]RtqInputs;
  check_c:=ifx product then "ProductCheck.c" else ifx memory then "HamCheck.c" else "AudioCheck.c";
  for name,i:[2]string.["NativeAudio.c",check_c] {if i==1&&combined {continue;}argv[n]=fs_join(emission,name,paths[3+i][..]);if !rtq_input_add(inputs[..],argv[n]) {return 1;}n+=1;}
- for name,i:[7]string.["verse/native/audio-host.c","verse/native/audio-pipewire.c",ifx product then "metaverse-engine/host/tests/linux-audio-product-effects.c" else ifx memory then "metaverse-engine/host/tests/linux-audio-memory-effects.c" else "metaverse-engine/host/tests/linux-audio-effects.c","coax/platform/tool-native.c","coax/platform/process-native.c","coax/platform/store-file-native.c","coax/platform/read-file-native.c"] {argv[n]=fs_join(root,name,paths[5+i][..]);if !rtq_input_add(inputs[..],argv[n]) {return 1;}n+=1;}
+ for name,i:[7]string.["metaverse/native/audio-host.c","metaverse/native/audio-pipewire.c",ifx product then "metaverse-engine/host/tests/linux-audio-product-effects.c" else ifx memory then "metaverse-engine/host/tests/linux-audio-memory-effects.c" else "metaverse-engine/host/tests/linux-audio-effects.c","coax/platform/tool-native.c","coax/platform/process-native.c","coax/platform/store-file-native.c","coax/platform/read-file-native.c"] {argv[n]=fs_join(root,name,paths[5+i][..]);if !rtq_input_add(inputs[..],argv[n]) {return 1;}n+=1;}
  for name,i:[4]string.["NativeAudio.h",ifx product then "ProductCheck.h" else ifx memory then "HamCheck.h" else "AudioCheck.h","profile.json",ifx product then "ProductCheck.profile.json" else ifx memory then "HamCheck.profile.json" else "AudioCheck.profile.json"] {if i==3&&combined {continue;}if !rtq_input_add(inputs[..],fs_join(emission,name,paths[12][..])) {return 1;}}
  if product {
   argv[n]="-no-pie";n+=1;
   argv[n]=fs_join(emission,"fixture.c",paths[15][..]);if !rtq_input_add(inputs[..],argv[n]) {return 1;}n+=1;
-  for name,i:[2]string.["verse/native/realm-host.c","metaverse-engine/host/tests/audio-fixture-face.c"] {argv[n]=fs_join(root,name,paths[16+i][..]);if !rtq_input_add(inputs[..],argv[n]) {return 1;}n+=1;}
+  for name,i:[2]string.["metaverse/native/realm-host.c","metaverse-engine/host/tests/audio-fixture-face.c"] {argv[n]=fs_join(root,name,paths[16+i][..]);if !rtq_input_add(inputs[..],argv[n]) {return 1;}n+=1;}
   for name:[2]string.["fixture.h","fixture.profile.json"] {if !rtq_input_add(inputs[..],fs_join(emission,name,paths[18][..])) {return 1;}}
-  for name:[5]string.["verse/native/realm-host.h","verse/native/face.h","metaverse-engine/host/tests/fixture-face.c","coax/web/host-transport-face.c","coax/web/host-lifecycle-face.c"] {if !rtq_input_add(inputs[..],fs_join(root,name,paths[18][..])) {return 1;}}
+  for name:[5]string.["metaverse/native/realm-host.h","metaverse/native/face.h","metaverse-engine/host/tests/fixture-face.c","coax/web/host-transport-face.c","coax/web/host-lifecycle-face.c"] {if !rtq_input_add(inputs[..],fs_join(root,name,paths[18][..])) {return 1;}}
  }
  for name:[4]string.["coax/platform/tool-native.h","coax/platform/process-native.h","coax/platform/store-file-native.h","coax/platform/read-file-native.h"] {if !rtq_input_add(inputs[..],fs_join(root,name,paths[19][..])) {return 1;}}
- if !rtq_input_add(inputs[..],fs_join(root,"verse/native/audio-host.h",paths[12][..])) {return 1;}
+ if !rtq_input_add(inputs[..],fs_join(root,"metaverse/native/audio-host.h",paths[12][..])) {return 1;}
  argv[n]="-L";argv[n+1]=lib;n+=2;argv[n]="-Xlinker";argv[n+1]="-rpath";argv[n+2]="-Xlinker";argv[n+3]=lib;n+=4;
  for flag:[3]string.["-lpipewire-0.3","-lpthread","-lm"] {argv[n]=flag;n+=1;}
  if sanitize {for flag:[4]string.["-fsanitize=address,undefined","-fno-sanitize-recover=all","-fno-omit-frame-pointer","-g"] {argv[n]=flag;n+=1;}}

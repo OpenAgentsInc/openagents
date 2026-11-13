@@ -194,15 +194,15 @@ not in the phone's renderer.
 
 ## A real engine baseline
 
-The repository's `verse/benchmarks/` harness uses the app's actual cast,
+The repository's `metaverse/benchmarks/` harness uses the app's actual cast,
 with 65 player joints and 402 robot joints. It compares player palette values
 against a pinned historical native evaluator, measures robots/body capsules
 and movement/collision, records allocation calls, and retains raw samples,
 compiler phases, peak compiler RSS and generated sizes. Run it with:
 
 ```shell
-python3 verse/benchmarks/run.py --output /tmp/coax-r0 --repeats 9
-python3 verse/benchmarks/run.py --output /tmp/coax-r0-asan --repeats 1 --sanitize
+python3 metaverse/benchmarks/run.py --output /tmp/coax-r0 --repeats 9
+python3 metaverse/benchmarks/run.py --output /tmp/coax-r0-asan --repeats 1 --sanitize
 ```
 
 The benchmark separates checked `-O0`, app-style checked `-O2` and wrapping

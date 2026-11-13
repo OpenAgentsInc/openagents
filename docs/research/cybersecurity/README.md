@@ -233,4 +233,4 @@ Three small, original concepts to test the thesis. Each is a sketch.
    file per topic.
 2. Pick one first realm (we lean toward Watchtower, because it costs nothing
    to host and tests the least-served segment).
-3. Write its game design document in `verse/` next to the other realms.
+3. Write its game design document in `metaverse/` next to the other realms.

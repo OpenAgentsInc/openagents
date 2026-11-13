@@ -5,7 +5,7 @@
 #load "../../../metaverse-engine/render/pbr-env.coax";
 #load "../../../metaverse-engine/render/filmic.coax";
 #load "../../../metaverse-engine/anim/morph-gpu.coax";
-#load "../../../verse/valley/slay-orb.coax";
+#load "../../../metaverse/valley/slay-orb.coax";
 #load "../../../metaverse-engine/render/slay-lights.coax";
 #load "../../../metaverse-engine/render/hair-fiber.coax";
 #load "../../../metaverse-engine/render/character.coax";

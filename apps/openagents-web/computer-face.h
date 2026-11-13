@@ -1,5 +1,5 @@
-// YOUR COMPUTER's wire for a realm's C face (openagents#12642; verse/edit/computer.coax is the pane,
-// verse/edit/computer-wire.coax the wire). A face that links the wire unit includes this after its
+// YOUR COMPUTER's wire for a realm's C face (openagents#12642; metaverse/edit/computer.coax is the pane,
+// metaverse/edit/computer-wire.coax the wire). A face that links the wire unit includes this after its
 // generated header and edit-face.h, and calls:
 //   computer_face_drain(e)                in its drain, after edit_face_drain
 //   computer_face_message(e, kind, text)  first in coaxial_message: true when it was the wire's

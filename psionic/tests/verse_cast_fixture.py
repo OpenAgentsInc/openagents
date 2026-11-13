@@ -4,8 +4,8 @@ as a Coax fixture.
 
     python3 -I psionic/tests/verse_cast_fixture.py [--write]
 
-Reads apps/openagents-ios/OpenAgents/Resources/Cast.bin (verse/tools/pack_cast.py
-writes it; verse/cast.coax reads it), records its SHA-256, and compares the
+Reads apps/openagents-ios/OpenAgents/Resources/Cast.bin (metaverse/tools/pack_cast.py
+writes it; metaverse/cast.coax reads it), records its SHA-256, and compares the
 fixture it would write with the committed one; --write replaces it. Values
 are copied as F32 bit patterns, so the fixture is exact. Tooling only.
 """

@@ -80,7 +80,7 @@ The denser green revision replaces the sparse scatter with 2,070 native grass tu
 
 ## Sunny spring presentation
 
-Nights now authors a spring EnvironmentProfile in `verse/nights/light.coax`, admitted and packed through the shared environment frame; shared glade defaults and other worlds stay unchanged. A softer key, brighter fill, clear blue sky and restrained saturation accompany local ground/vegetation material grades. Explicit float32 tags 7002–7005 distinguish native grass, ferns, leaves and flowers; actor/building/UI albedo stays outside those grades. Grass roots retain a darker gradient, while native flower RGB ratios are preserved.
+Nights now authors a spring EnvironmentProfile in `metaverse/nights/light.coax`, admitted and packed through the shared environment frame; shared glade defaults and other worlds stay unchanged. A softer key, brighter fill, clear blue sky and restrained saturation accompany local ground/vegetation material grades. Explicit float32 tags 7002–7005 distinguish native grass, ferns, leaves and flowers; actor/building/UI albedo stays outside those grades. Grass roots retain a darker gradient, while native flower RGB ratios are preserved.
 
 The private spring pack contains 2,085 lower grass tufts, 40 ferns, 40 native white/purple flower patches and 20 additional tree backdrops with trunk boxes. A source-pixel-preserving flora atlas keeps total image layers at 124. The less steep local default camera (phi 1.24) shows more sky and canopy. Seven pack checks and actual source-pixel/index-preservation checks cover the revised composition; full receipts are in ore’s `nights/spring.md`.
 

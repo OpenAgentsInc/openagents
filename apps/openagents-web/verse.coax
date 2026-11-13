@@ -3,7 +3,7 @@
 // frozen/kiki at revision 8, demo/kiki-2026-10-27b). The web's galaxy page is
 // retired (2026-10-31: /verse/galaxy redirects to /worlds); page 1 stays as
 // the native host's travel hub, which a realm's REALMS button opens there
-// (verse/native/realm-host.c rh_realm_of, verse/gpu/realm.sh).
+// (metaverse/native/realm-host.c rh_realm_of, metaverse/gpu/realm.sh).
 //
 // The landing, as playtest.openagents.com drew it: A HAUNTED HOUSE PLAYTEST over
 // ENTER THE VERSE, the one line about the house, and PLAYTEST NOW, which

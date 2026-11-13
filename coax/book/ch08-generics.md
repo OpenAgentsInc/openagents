@@ -435,7 +435,7 @@ register :: (r: [] Registry, m: Model) -> bool {
 ```
 
 Psionic's model registry (`psionic/lib/shadow.coax`) and the fairy
-forest's blooms (`verse/fairy-forest/forest.coax`) each carried their own
+forest's blooms (`metaverse/fairy-forest/forest.coax`) each carried their own
 array and count with its own capacity test; both use `Bounded` now, with
 the same observable results.
 
@@ -579,7 +579,7 @@ show that the existing facilities are insufficient.
 ## In the real world: five copies of `clamp`
 
 The Coax code behind the OpenAgents iOS world shows exactly the problem
-generics are for. `verse/grid.coax`, `cast.coax` and `player.coax`
+generics are for. `metaverse/grid.coax`, `cast.coax` and `player.coax`
 each carry the same three helpers:
 
 ```jai
@@ -600,7 +600,7 @@ been migrated. Preserve each helper's comparison order, NaN and signed-zero
 behavior, and qualify the actual call sites before replacing them.
 
 The water code has taken that path for its own copies.
-`verse/water-spectrum.coax` carried `clamp_i` for `int` and `clamp_f` for
+`metaverse/water-spectrum.coax` carried `clamp_i` for `int` and `clamp_f` for
 `f32`; one `wsp_clamp :: (v: $T: ordered, low: $T, high: $T) -> $T`
 replaced both, with the same comparison order, and the water lab's seven
 calls use it. Since 0.43.0 a literal argument takes the type a typed

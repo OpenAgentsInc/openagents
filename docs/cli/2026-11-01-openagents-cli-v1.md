@@ -400,7 +400,7 @@ they do not expand the existing v1 document/undo contract.
 | `realm ask SLUG "WORDS"` | `POST /<slug>/asks {words}`: adds to the feature list, applied or waiting for code |
 | `realm ask SLUG --doc FILE` | `POST /<slug>/asks/doc` |
 | `realm ask-delete SLUG ID` | `POST /<slug>/asks/<id>/delete` |
-| `realm ask-done SLUG ID --commit HASH` | `POST /<slug>/asks/<id>/done`: site admins, after the code is pushed ([verse/SKILL.md](../../verse/SKILL.md), "Asks waiting on code") |
+| `realm ask-done SLUG ID --commit HASH` | `POST /<slug>/asks/<id>/done`: site admins, after the code is pushed ([metaverse/SKILL.md](../../metaverse/SKILL.md), "Asks waiting on code") |
 | `realm row-delete SLUG ROW` | `POST /<slug>/rows/<key>/delete` |
 | `realm move SLUG ENTITY X Z` | `POST /<slug>/save {rev, moved}`: the document's moves with this one applied by `forge_apply`. `ENTITY` is `feature:index`, such as `trees:3`; X and Z in metres, within 40 m of the middle |
 | `realm place SLUG THING X Z [--yaw DEG]` | `POST /<slug>/place` |
@@ -470,7 +470,7 @@ Three ways, all on the same binary and the same login:
    publish), the exit codes, and the limits. `openagents skill realm --install`
    writes it to `.claude/skills/openagents-realm/SKILL.md` in the current
    directory. The text comes from the command table, so it can't drift.
-   [verse/SKILL.md](../../verse/SKILL.md) stays the skill for building a
+   [metaverse/SKILL.md](../../metaverse/SKILL.md) stays the skill for building a
    hand-made realm in code and opening a pull request.
 3. **MCP.** `openagents mcp` serves the same verbs as MCP tools over stdio:
 

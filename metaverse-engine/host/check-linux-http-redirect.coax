@@ -11,7 +11,7 @@ tool_main :: ()->int #export_c #effects(all) {
  if args_at(a[..],0)=="--redirect-peer" {if args_count(a[..])!=5 {return 2;}return hdr_peer(args_at(a[..],1),args_at(a[..],2),args_at(a[..],3),args_at(a[..],4));}
  if args_count(a[..])!=3 {tool_errln("usage: check-linux-http-redirect ROOT HELPER NEW_OUT");return 2;}
  root:=args_at(a[..],0);helper:=args_at(a[..],1);out:=args_at(a[..],2);if !fs_mkdir(out) {return 1;}paths:[12][4096]u8;self:[4096]u8;image:=gp_self(self[..]);portfile:=fs_join(out,"port.json",paths[0][..]);peerfile:=fs_join(out,"peer.json",paths[1][..]);
- inputs:[1]RtqInputs;for file:[5]string.[helper,image,"metaverse-engine/host/http-redirect.coax","verse/native/net.coax","metaverse-engine/host/http-native-conformance.coax"] {if !rtq_input_add(inputs[..],file) {return 1;}}
+ inputs:[1]RtqInputs;for file:[5]string.[helper,image,"metaverse-engine/host/http-redirect.coax","metaverse/native/net.coax","metaverse-engine/host/http-native-conformance.coax"] {if !rtq_input_add(inputs[..],file) {return 1;}}
  p:=proc_new();if p<0 {return 1;}for arg:[6]string.[image,"--redirect-peer",root,out,portfile,peerfile] {if !proc_arg(p,arg) {return 1;}}if proc_start(p)!=0 {return 1;}
  defer {k:=proc_kill(p,PROC_SIGTERM);w:=proc_wait(p,1000);freed:=proc_release(p);}
  bytes:[262144]u8;nodes:[32768]JvNode;d:[1]Jv;port:=-1;deadline:=proc_now_ms()+10000;

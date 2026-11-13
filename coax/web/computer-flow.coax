@@ -10,13 +10,13 @@
 // The owner opens EDIT > COMPUTER, pastes the host's key and pairs; the person at the computer allows
 // it (`coder host allow`); the pane shows the computer answers, a request runs as a job whose steps
 // come in, a reload keeps the pairing, a phone-width page shows the pane, and FORGET takes the
-// browser off the computer. It reads the pane through coaxial.guardProbe(2400 + f) (verse/edit/
+// browser off the computer. It reads the pane through coaxial.guardProbe(2400 + f) (metaverse/edit/
 // edit.coax redit_probe: 4 * b + 0..3 button b's box, 96 the pane, 97 the view).
 //
 //   nostr/relay/build.sh /tmp/relay && /tmp/relay --listen 127.0.0.1 --port 7777 --url ws://localhost:7777
 //   OPENAGENTS_NIP_HOST_RELAY=ws://localhost:7777 CODER_HOME=/tmp/host-home coder/tui/coder.sh host --engine echo
 //   COAXIAL_RUN_STEPS=250000000 coax/web/wasm.sh apps/openagents-web/myrealm.coax apps/openagents-web/myrealm-face.c \
-//     /tmp/myrealm.wasm verse/edit/computer-wire.coax coax/lib/crypto/entropy.coax
+//     /tmp/myrealm.wasm metaverse/edit/computer-wire.coax coax/lib/crypto/entropy.coax
 //   CODER_HOME=/tmp/host-home BROWSER=/usr/bin/true coax/web/tool.sh computer-flow ws://localhost:7777 /tmp/myrealm.wasm [SHOTS_DIR]
 //
 // --local SITE SPEC runs it with nothing remote (#12640): the page is this checkout's, served at
@@ -53,7 +53,7 @@ FL_MS :: 30000;                                 // the wait for one DevTools rep
 // machine's relay unless granted; the permission's names across Chrome versions.
 FL_LNA :: [3] string.["localNetworkAccess", "localNetwork", "loopbackNetwork"];
 
-// Views (verse/edit/computer.coax RV_*) and buttons (verse/edit/edit.coax RB_*) the flow reads.
+// Views (metaverse/edit/computer.coax RV_*) and buttons (metaverse/edit/edit.coax RB_*) the flow reads.
 RV_UNPAIRED_V :: 1; RV_ASKING_V :: 2; RV_ALLOWED_V :: 3; RV_RUNNING_V :: 7; RV_STOPPED_V :: 8; RV_FAILED_V :: 9; RV_DONE_V :: 10;
 FB_EDIT :: 0; FB_CTAB :: 12; FB_CMAIN :: 13; FB_CFORGET :: 14; FB_CFIELD :: 16;
 FP_PANE :: 96; FP_VIEW :: 97; FL_COMPUTER_PANE :: 6;

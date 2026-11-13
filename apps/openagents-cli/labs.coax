@@ -1268,7 +1268,7 @@ labs_board :: (a: [] Args, r: [] Rep, profile: string) -> int {
 // labs playtest: a game's bot plays seeded runs headless with the tuning you
 // set, and the summary says whether it is still winnable (Game Lab's
 // measure, without the chat). Ice Cream Man first: its rules, tunables and
-// bot are Coax (verse/icecream/rules.coax, tuning.coax), and
+// bot are Coax (metaverse/icecream/rules.coax, tuning.coax), and
 // ice_run (labs-rules.coax) plays a run to its end.
 
 LB_SEEDS_MAX :: 1024;

@@ -3,7 +3,7 @@
 // 30: "the houses don't have any internals"). Each now has a floor and a room that suits whoever lives or
 // works there, laid with the town (furnish, build_town) out of the kits' pieces, so every piece is a town
 // piece like the inn's tables: it breaks, wood and cloth burn (everglade-fire.coax fi_fuel), it falls
-// when what holds it goes (verse/demolish.coax supports), it draws by the same distance rules
+// when what holds it goes (metaverse/demolish.coax supports), it draws by the same distance rules
 // (everglade-lod.coax), and R or a long rest stands it back up with the town.
 //
 //   - House 1, Hollis's: a family home. A long table with a bench and chairs, plates, mugs and bread, a

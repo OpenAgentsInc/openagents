@@ -86,8 +86,8 @@ ws_resolve :: (dir: string, rel: string, out: [] u8) -> string {
 #test "paths resolve as the compiler's #load does" {
   o: [256] u8;
   #assert ws_resolve("apps/openagents-web", "../../metaverse-engine/move/player.coax", o[..]) == "metaverse-engine/move/player.coax";
-  #assert ws_resolve("verse/everglade", "plan.coax", o[..]) == "verse/everglade/plan.coax";
-  #assert ws_resolve("verse/everglade", "./../style.coax", o[..]) == "verse/style.coax";
+  #assert ws_resolve("metaverse/everglade", "plan.coax", o[..]) == "metaverse/everglade/plan.coax";
+  #assert ws_resolve("metaverse/everglade", "./../style.coax", o[..]) == "metaverse/style.coax";
   #assert ws_resolve("a", "../../b.coax", o[..]) == "../b.coax";
   #assert ws_resolve(".", "x.coax", o[..]) == "x.coax";
   #assert ws_resolve("a/b", "/abs/c/../d.coax", o[..]) == "/abs/d.coax";
@@ -131,9 +131,9 @@ ws_scan :: (c: [] Closure, unit: string, text: string) -> bool {
 #test "a unit's loads, once each, beside it" {
   c: [1] Closure;
   #assert ws_add(c[..], "apps/w/a.coax");
-  t := "#import \"Basic\";\n#load \"b.coax\";\n  #load \"../../verse/c.coax\" as c;\n// #load \"no.coax\";\nx := \"#load \\\"no\\\"\";\n#load \"b.coax\";";
+  t := "#import \"Basic\";\n#load \"b.coax\";\n  #load \"../../metaverse/c.coax\" as c;\n// #load \"no.coax\";\nx := \"#load \\\"no\\\"\";\n#load \"b.coax\";";
   #assert ws_scan(c[..], "apps/w/a.coax", t) && c[0].n == 3 && !c[0].proto;
-  #assert ws_path(c[..], 1) == "apps/w/b.coax" && ws_path(c[..], 2) == "verse/c.coax";
+  #assert ws_path(c[..], 1) == "apps/w/b.coax" && ws_path(c[..], 2) == "metaverse/c.coax";
   #assert ws_scan(c[..], "apps/w/b.coax", "#import_proto \"x.proto\";\n") && c[0].proto && c[0].n == 3;
 }
 

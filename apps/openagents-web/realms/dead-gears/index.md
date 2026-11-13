@@ -16,10 +16,10 @@ A Metaverse realm at https://openagents.com/worlds/dead-gears: a ship's hold to 
 
 ## How it is made
 
-- The game is the original Dead Gears from the Metaverse Engine demo, ported to Coax. `verse/deadgears/` holds its entity system (`ecs.coax`), the hold's collisions and walking grid (`arena.coax`) and its rules (`rules.coax`), with every check of the original's tests.
+- The game is the original Dead Gears from the Metaverse Engine demo, ported to Coax. `metaverse/deadgears/` holds its entity system (`ecs.coax`), the hold's collisions and walking grid (`arena.coax`) and its rules (`rules.coax`), with every check of the original's tests.
 - `apps/openagents-web/deadgears.coax` is the page: the ship's hull, the cover, the reactor, the cargo, the engineers and the creatures, all boxes as the original drew them; the camera, the controls, the HUD, the hour and the lamps, and the saves. `deadgears-face.c` binds it for the browser and `deadgears.wgsl` draws it.
 - The page is written from `realms.json` by `coax/web/realms.ts`. The contract every world follows is `docs/verse/realm-host.md` in the OpenAgents repository.
 
 ## Make your own world
 
-An agent can build one from a shallow clone of the repository and open a pull request: [verse/SKILL.md](https://github.com/OpenAgentsInc/openagents/blob/main/verse/SKILL.md).
+An agent can build one from a shallow clone of the repository and open a pull request: [metaverse/SKILL.md](https://github.com/OpenAgentsInc/openagents/blob/main/metaverse/SKILL.md).

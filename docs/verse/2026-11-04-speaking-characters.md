@@ -8,7 +8,7 @@ below with these limits:
   `speakingRate`. ElevenLabs, `*emphasis*` and SSML marks aren't built. Word times come from
   Speech-to-Text and the take's loudness: the tool splits the take into phrases by loudness and
   spreads each word's phonemes by length.
-- **Face.** The 14 visemes and 6 moods are raw-control sets in `verse/tools/humans/ph_face.coax`. The
+- **Face.** The 14 visemes and 6 moods are raw-control sets in `metaverse/tools/humans/ph_face.coax`. The
   lab mixes them by weight and clamps the sum. Blinks are seeded, and phrase breaks get an extra
   blink. Saccades, head nods, breathing and the `talk` body clip aren't built.
 - **Stage.** `?stage=speak&track=...` takes the track inline in the URL. The stage plays no sound:
@@ -19,7 +19,7 @@ below with these limits:
   pickups (`--revoice N` voices one cue again) and the `talk`-clip body aren't built.
 
 The first output is the Cultist Raid promo with the mayor's two lines, from
-`verse/cast/cues/raid-promo.cues`.
+`metaverse/cast/cues/raid-promo.cues`.
 
 This spec covers how you make a video in which a character speaks a scripted line. The character is a
 MetaHuman rendered by the OpenAgents Metaverse, with its voice made by text-to-speech and its lips synced to that voice.
@@ -187,7 +187,7 @@ The track is a list of controls per frame. Step 4 reads it, and a test reads it 
 
 ## The cast file
 
-`verse/cast/cast.txt`, in git: the names, voices, framing and look. Packs are named only by an ID
+`metaverse/cast/cast.txt`, in git: the names, voices, framing and look. Packs are named only by an ID
 that the owner-local private placements resolve. Rule 1 below keeps their digests and paths out of
 the repository.
 
@@ -195,7 +195,7 @@ the repository.
 character mayor
   name      "Mayor Tobin Hale"        # placeholder; the owner names him
   pack      everglade-mayor            # private pack ID, resolved owner-locally
-  outfit    mayor-coat                 # verse/tools/humans/ph_outfits.coax
+  outfit    mayor-coat                 # metaverse/tools/humans/ph_outfits.coax
   voice     google en-US-Chirp3-HD-Charon   # placeholder until the audition
   framing   head-shoulders
   backdrop  town-hall-night
@@ -208,10 +208,10 @@ ten costs nothing extra.
 
 ## Making the mayor
 
-`verse/tools/humans/make_character.py` makes the mayor with no clicks. It runs inside Unreal Editor
+`metaverse/tools/humans/make_character.py` makes the mayor with no clicks. It runs inside Unreal Editor
 5.8, headless (`UnrealEditor-Cmd -unattended -RenderOffscreen`), on a private project copy at
 `~/work/film-out/everglade-mayor/ue/Mayor/`, never the project open in the editor. Its look is the
-recipe `verse/tools/humans/characters/everglade-mayor.json`, in git: names and numbers only.
+recipe `metaverse/tools/humans/characters/everglade-mayor.json`, in git: names and numbers only.
 
 1. **Look.** The script duplicates the `Bruce` preset and blends 30% of `Walter`'s face into it (the
    1,397 face coefficients). It then sets the skin, the eyes, short casual grey hair, a short grey
@@ -237,7 +237,7 @@ recipe `verse/tools/humans/characters/everglade-mayor.json`, in git: names and n
    skirt to mid-calf, and `chain()` models a gold chain of office with a medallion. The head
    mesh's skin below the collar and the trunk's skin under the coat are left out, so his chest
    never shows through.
-6. **Pack.** `coax/web/tool.sh verse/tools/humans/pack_human.coax metahuman EXPORT_DIR OUT.pack --outfit mayoral --phone`
+6. **Pack.** `coax/web/tool.sh metaverse/tools/humans/pack_human.coax metahuman EXPORT_DIR OUT.pack --outfit mayoral --phone`
    builds the pack with its face rig (`DNA_DUMP` names OpenRigLogic's `dna_dump`). `pack_checks.py` checks
    that the mouth moves: each viseme must move the lips by at least 0.3 cm, and `mbp` must close
    them. The pack is `~/.openagents/verse/private-build/web/everglade-mayor.pack`, and the

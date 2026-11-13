@@ -4,15 +4,15 @@
 #load "../../metaverse-engine/core/points.coax";
 #load "../../metaverse-engine/ui/draw.coax";
 #load "../../metaverse-engine/core/budget.coax";
-#load "../../verse/valley/rock.coax";
-#load "../../verse/valley/rock-parent.coax";
-#load "../../verse/valley/rock-grid.coax";
-#load "../../verse/valley/field.coax";
+#load "../../metaverse/valley/rock.coax";
+#load "../../metaverse/valley/rock-parent.coax";
+#load "../../metaverse/valley/rock-grid.coax";
+#load "../../metaverse/valley/field.coax";
 #load "../../metaverse-engine/render/geometry/scan.coax";
 #load "../../metaverse-engine/render/geometry/hierarchy.coax";
 #load "../../metaverse-engine/render/geometry/fan.coax";
 #load "../../metaverse-engine/render/geometry/cut.coax";
-#load "../../verse/valley/parents.coax";
+#load "../../metaverse/valley/parents.coax";
 #load "../../metaverse-engine/render/geometry/pages.coax";
 
 VALLEY_VERTICES :: 81920;

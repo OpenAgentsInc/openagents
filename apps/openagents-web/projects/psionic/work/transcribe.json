@@ -44,7 +44,7 @@
       "title": "Audio decode in Coax: a WAV reader and a 16 kHz resampler",
       "size": "M",
       "labels": ["speech", "audio"],
-      "body": "GitHub #12615. `psionic/lib/whisper/wav.coax`: RIFF/WAVE PCM 16, float 32 and extensible, 1 to 8 channels averaged to mono, a typed refusal for each malformed chunk. A band-limited resampler from 8 to 48 kHz down to 16 kHz, shared with verse/voice.coax's. The CLI skips ffmpeg for WAV; ffmpeg stays only for compressed containers (Firm reason 6).",
+      "body": "GitHub #12615. `psionic/lib/whisper/wav.coax`: RIFF/WAVE PCM 16, float 32 and extensible, 1 to 8 channels averaged to mono, a typed refusal for each malformed chunk. A band-limited resampler from 8 to 48 kHz down to 16 kHz, shared with metaverse/voice.coax's. The CLI skips ffmpeg for WAV; ffmpeg stays only for compressed containers (Firm reason 6).",
       "files": ["psionic/lib/whisper/wav.coax", "apps/openagents-cli/transcribe.coax"],
       "status": "resolved",
       "acceptance": [
@@ -132,9 +132,9 @@
       "size": "M",
       "labels": ["speech", "verse", "voice"],
       "body": "GitHub #12622. voice-host --provider psionic: speech_recognize hands the turn's 16 kHz audio to psionic_stt_text (psionic/platform/psionic-stt.h, linked as libpsionic-whisper.a), with the model mapped once at startup (--whisper-model, --words). The encoder runs on the GPU when there is one. Metaverse Engine programs see the engine's Coax procedures, never the C host. Google and PROVIDER_LOCAL stay available.",
-      "files": ["verse/voice-host/speech.c", "verse/voice-host/speech.h", "verse/voice-host/host.c", "verse/voice-host/test.sh", "psionic/platform/psionic-stt.h", "psionic/platform/whisper-face.c"],
+      "files": ["metaverse/voice-host/speech.c", "metaverse/voice-host/speech.h", "metaverse/voice-host/host.c", "metaverse/voice-host/test.sh", "psionic/platform/psionic-stt.h", "psionic/platform/whisper-face.c"],
       "acceptance": [
-        "verse/voice-host/test.sh --offline plays a say fixture with PROVIDER_PSIONIC and asserts the transcript.",
+        "metaverse/voice-host/test.sh --offline plays a say fixture with PROVIDER_PSIONIC and asserts the transcript.",
         "A 5 s turn with base.en is transcribed in under 300 ms, from the turn log."
       ],
       "blocked_by": ["transcribe-timestamps"],

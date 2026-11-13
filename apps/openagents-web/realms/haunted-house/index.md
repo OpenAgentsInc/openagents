@@ -4,9 +4,9 @@ A Metaverse realm you walk through in the browser at https://openagents.com/worl
 
 It is the same Coax code the OpenAgents iOS app runs, compiled to WebAssembly and drawn with WebGPU:
 
-- `verse/haunt.coax` plays the house: its rooms, objects, lights, people, the nine haunt zones and what they do, doors, conversations and sounds. The house itself is `Haunt.pb` (a protobuf document, `proto/haunt.proto`) with its geometry (`Haunt.vertices`, `Haunt.indices`) and twelve texture sheets.
-- `metaverse-engine/move/player.coax` walks you through it, against its walls; `verse/grid.coax` reads a phone's thumbs.
-- `apps/openagents-web/realm.coax` draws the HUD and decides the controls; `realm-face.c` binds them for the browser as the iOS app's view controller does; `realm.wgsl` draws the house with the OpenAgents Metaverse Engine's own light, fog and tone functions (`verse/haunt-light.coax`, `verse/light.coax`).
+- `metaverse/haunt.coax` plays the house: its rooms, objects, lights, people, the nine haunt zones and what they do, doors, conversations and sounds. The house itself is `Haunt.pb` (a protobuf document, `proto/haunt.proto`) with its geometry (`Haunt.vertices`, `Haunt.indices`) and twelve texture sheets.
+- `metaverse-engine/move/player.coax` walks you through it, against its walls; `metaverse/grid.coax` reads a phone's thumbs.
+- `apps/openagents-web/realm.coax` draws the HUD and decides the controls; `realm-face.c` binds them for the browser as the iOS app's view controller does; `realm.wgsl` draws the house with the OpenAgents Metaverse Engine's own light, fog and tone functions (`metaverse/haunt-light.coax`, `metaverse/light.coax`).
 
 ## Controls
 
@@ -23,7 +23,7 @@ Six steps, one at a time, each at an orange orb (the HUD names the step, and a g
 
 ## Talking to the characters
 
-The characters are never quite still: they breathe, shift their weight and glance about, now and then with a little hop, each at their own times. Within four metres they turn to you; in a conversation they nod and gesture as they talk; and when a haunt goes off near them they jump back with a shiver (`verse_haunt_life` in `verse/haunt.coax`).
+The characters are never quite still: they breathe, shift their weight and glance about, now and then with a little hop, each at their own times. Within four metres they turn to you; in a conversation they nod and gesture as they talk; and when a haunt goes off near them they jump back with a shiver (`verse_haunt_life` in `metaverse/haunt.coax`).
 
 A question you ask goes to our server, where Google's Gemini answers as the character: from who they are, what players taught them and the last ten lines of the conversation (`POST /api/playtest/npc/ask`). When the server can't answer (an error, the day's answers used up, or nothing back in 12 seconds), the character answers from their own lines. What you teach a character is added to what they know in this house and kept with your save.
 
@@ -53,4 +53,4 @@ Original layout and art by OpenAgents (Apache-2.0); sounds CC0; Quaternius CC0 p
 
 ## Make your own world
 
-An agent can build one from a shallow clone of the repository and open a pull request: [verse/SKILL.md](https://github.com/OpenAgentsInc/openagents/blob/main/verse/SKILL.md).
+An agent can build one from a shallow clone of the repository and open a pull request: [metaverse/SKILL.md](https://github.com/OpenAgentsInc/openagents/blob/main/metaverse/SKILL.md).

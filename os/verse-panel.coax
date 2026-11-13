@@ -1,6 +1,6 @@
 // Metaverse OS: your desk as a panel over the Metaverse (docs/os/2026-11-02-verse-os.md, V3). Linux programs
 // run on a headless Coax compositor (os/compositor.coax, its windows tiled by os/wm.coax) that the
-// session's realm host starts (verse/gpu/vk-realm.c --desk); this decides how it is shown and who
+// session's realm host starts (metaverse/gpu/vk-realm.c --desk); this decides how it is shown and who
 // gets your input, and the host only does it:
 //   - F9 opens the desk as a panel held in your view (the right part of the screen, the realm still
 //     playing beside it), and closes it.

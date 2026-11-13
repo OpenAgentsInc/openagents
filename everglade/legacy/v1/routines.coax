@@ -19,12 +19,12 @@
 // A walk follows the town's road graph (plan.coax EG_NODE_XZ, EG_LINK_AB),
 // straight to and from the nearest street, or straight where the way is
 // short and clear of every solid and the woods. It takes the real seconds
-// FOLK_WALK gives, at half pace in the water (verse/water-wade.coax: the
+// FOLK_WALK gives, at half pace in the water (metaverse/water-wade.coax: the
 // player's rules), so a walk home is a minute or two of the 48-minute day.
 //   coax/bin/coax test --library everglade/legacy/v1/routines.coax --steps 2000000000
 
 #load "plan.coax";
-#load "../../../verse/water-wade.coax";
+#load "../../../metaverse/water-wade.coax";
 
 FOLK_WALK :: 1.2;         // m/s a person walks
 FOLK_ROWS :: 4;           // rows of a day at most
@@ -284,7 +284,7 @@ folk_surface :: (levels: [] f32, x: f32, z: f32) -> f32 {
   }
   return -1000;
 }
-// A walker's medium at (x, z): on the ground, wading or swimming (verse/water-wade.coax).
+// A walker's medium at (x, z): on the ground, wading or swimming (metaverse/water-wade.coax).
 folk_medium :: (heights: [] f32, levels: [] f32, x: f32, z: f32) -> int {
   if heights.count < EG_GROUND_POINTS { return MEDIUM_GROUND; }
   return medium_walking(folk_surface(levels, x, z), verse_terrain_height(everglade_ground(), heights, x, z));

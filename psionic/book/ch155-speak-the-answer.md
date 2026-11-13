@@ -10,7 +10,7 @@
 > audio was emitted. Still to do: a learned acoustic model or a pinned
 > text-to-speech checkpoint (none is surveyed with its terms yet), speech
 > that sounds natural, intelligibility measured with chapter 153's
-> transcriber, playback through the voice engine's `verse/platform/voice.h`,
+> transcriber, playback through the voice engine's `metaverse/platform/voice.h`,
 > and wall-clock time to first audio and real-time factor on a named host.
 
 A voice interface has to answer out loud, and it has to start talking
@@ -551,7 +551,7 @@ stream to keep up; this chapter does not yet measure that on a named host.
 ## Barge-in
 
 When the person starts talking over the answer, the voice engine
-(`verse/voice.coax`) cuts playback and opens a new media epoch. The stream stops
+(`metaverse/voice.coax`) cuts playback and opens a new media epoch. The stream stops
 too, and says exactly where:
 
 <!-- source: psionic/lib/speak.coax cancel -->
@@ -872,7 +872,7 @@ in the interpreter, and compare against references in
   chapter 153's transcription of the output, needs a real model on both
   sides.
 - **Playback.** The stream hands out samples; feeding them to the voice
-  engine's jitter buffer, gain and duck through `verse/platform/voice.h`,
+  engine's jitter buffer, gain and duck through `metaverse/platform/voice.h`,
   and taking barge-in from it, is not wired.
 - **Time.** First audio and real time are counted in transforms, not
   measured on a named host.

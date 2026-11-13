@@ -38,7 +38,7 @@ adopt metaverse-engine/core/frame-report.coax #13303  # the frame statistics and
 adopt metaverse-engine/agent/pin.coax #13296  # the protocol bots pin their sessions with the agent clock's seed and epoch
 
 # Built by name, or loaded by a pipeline tool
-built metaverse-engine/render/film.coax verse/gpu/realm.sh  # the film profile, compiled to C beside the native realm host
+built metaverse-engine/render/film.coax metaverse/gpu/realm.sh  # the film profile, compiled to C beside the native realm host
 pipeline metaverse-engine/render/exr.coax metaverse-engine/tools/film-frames.coax  # the film encoder writes its layers as OpenEXR
 pipeline metaverse-engine/audio/measure.coax metaverse-engine/audio/sfx-tool.coax  # the sound-effect bank is judged by loudness when it is built
 

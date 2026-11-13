@@ -3,7 +3,7 @@
 The OpenAgents Metaverse Engine is the engine every Metaverse realm runs on, written in Coax. This folder
 holds its core: a small set of primitives each realm uses instead of keeping
 its own copy (GitHub #12609). The realm editor and the world-creation
-tools are part of it. `verse/` keeps realm content.
+tools are part of it. `metaverse/` keeps realm content.
 
 The [Metaverse Engine book](book/README.md) builds the engine from its smallest
 primitives, one checked piece per chapter. Each module below has a chapter,
@@ -28,7 +28,7 @@ headless captures. Reference engines stay in its ignored lab cache.
 ## Layers
 
 Loads go down the layers, never up (#13264). `metaverse-engine/` is the engine:
-nothing in it loads from `verse/`, `apps/`, `everglade/` or `coax/web/`.
+nothing in it loads from `metaverse/`, `apps/`, `everglade/` or `coax/web/`.
 `everglade/` is the game on the engine: nothing in it loads from `apps/`.
 Product code in either folder does not ship its checks: a module loads its
 own checks file (one in a `tests/` folder, or `X-checks.coax` beside it) with
@@ -94,11 +94,11 @@ issue that will. A module nobody adopts by the end of the AAA program
 | `world/` | [Cell and resource contracts](world/README.md): historical residency/edge/save primitives, decoder-derived RCM1 manifests and named cost admission; the bounded corridor adopts shared owners, semantic queries and persistent HUD on browser/WebGPU and native/Vulkan hosts, with accepted-history CPU replay. [Qualification and remaining adapters](../docs/verification/aethyr-streaming-12990/delivery-audit.md) |
 | `render/frame.coax` | [Bounded CPU frame/pass/binding admission](render/README.md): resource slot/generation/epoch checks, atomic reservation/refusal and cleanup; adopted only at the Grid's native matrix-output boundary so far |
 | `render/geometry/residency.coax` | Watertight geometry-page residency (#12999): a page installs only after the pages holding its clusters' parents and leaves only after every page that depends on it, so a partly loaded cut never has holes; parents are fetched before their children, within N slots, a fetch cap and least-recently-wanted eviction, all without the GPU (`#authority`, zero mutants). `pages.coax` keeps bytes and identity |
-| `render/sky.coax`, `render/vegetation.coax` | Shared sky/cloud fields and world-space wind, grass, canopy, mask and fade functions; existing shaders consume them through `verse/style.coax` |
+| `render/sky.coax`, `render/vegetation.coax` | Shared sky/cloud fields and world-space wind, grass, canopy, mask and fade functions; existing shaders consume them through `metaverse/style.coax` |
 | `render/grass-root.coax` | Conservative whole-cell grass rejection against the existing root-clip planes; original instance IDs and density survive, with a bounded 128-range profile and independent terrain/corner oracle |
 | `world/environment.coax` | Environment records, version 1 (lighting Phase 1, #13062): `EnvironmentKnot`, `EnvironmentTrack` (1–12 irregular knots, cyclic over a day), `EnvironmentProfile`, `EnvironmentRegion` (sphere/box/prism shape fields, bands, priority), `EnvironmentSet` (replaced whole by `env_set_replace` or refused), `EnvironmentState` and `ResolvedEnvironment`; separate key, direct, ambient, sky, fog, cloud-shadow, water and presentation channels; linear-colour and nlerp interpolation with an antipodal refusal; the glade as `env_glade_profile`, built from the `ENV_GLADE_*` constants that hold the painterly default's numbers once (#13060) (`#authority`, zero mutants) |
-| `world/day.coax` | The day adapter for the environment resolver (lighting Phase 1, #13064): `DayClock` (version 1) with explicit fixed, cycle and real modes, a source (authored, authority, local), ticks per second and an epoch tick, read from `verse/style-preset.coax`'s `StyleClock` (`day_from_style`) or the room server's W header (`day_from_room`, anchored at a midnight tick so every seat holds the same clock); `day_at` and `day_state` give `env_resolve`'s `EnvironmentState` from the simulation tick, and a shared world refuses a visitor's local clock (`#authority`, zero mutants) |
-| `world/style-clock.coax` | A page's clock from its facts (`StyleClock`, `verse_style_clock`, `verse_style_clock_at`: fixed, the shared 48-minute cycle, or the visitor's real day). Moved from `verse/style-preset.coax` (#13303), which loads it; `world/day.coax` reads it |
+| `world/day.coax` | The day adapter for the environment resolver (lighting Phase 1, #13064): `DayClock` (version 1) with explicit fixed, cycle and real modes, a source (authored, authority, local), ticks per second and an epoch tick, read from `metaverse/style-preset.coax`'s `StyleClock` (`day_from_style`) or the room server's W header (`day_from_room`, anchored at a midnight tick so every seat holds the same clock); `day_at` and `day_state` give `env_resolve`'s `EnvironmentState` from the simulation tick, and a shared world refuses a visitor's local clock (`#authority`, zero mutants) |
+| `world/style-clock.coax` | A page's clock from its facts (`StyleClock`, `verse_style_clock`, `verse_style_clock_at`: fixed, the shared 48-minute cycle, or the visitor's real day). Moved from `metaverse/style-preset.coax` (#13303), which loads it; `world/day.coax` reads it |
 | `world/weather.coax` | The weather adapter (#13064): `WeatherCondition` (version 1) from `metaverse-engine/world/water-weather.coax`'s schedule and ground, global (`weather_cond_global`) apart from local spell overlays (`weather_cond_local`); `weather_env_apply` is Everglade's existing weather light on resolved values; `light_resolve` resolves day, condition and set, and `light_resolve_cached` keeps one value under its whole key (versions, set generation, profile, tick, world, clock, condition) (`#authority`, zero mutants) |
 | `render/painterly.coax` | The painterly default's GPU evaluation (lighting Phase 1 step 0, #13060): Character Create's glade lifted out of the app, reading only the glade profile's `ENV_GLADE_*` numbers. The key (`paint_sun_dir`, `paint_sun_colour`: 4500 K under 6500 K, x2.15), hemisphere ambient and `paint_irradiance` (indirect occlusion and sun visibility on separate terms), the height air (`paint_air_depth`, `paint_phase` g 0.62, `paint_haze_window` clear to 30 m and thicker to 65 m, `paint_atmosphere`), the sky, soil and cloud shadows (`paint_sky`, `paint_soil`, `paint_cloud`: sun x0.45 in shade), and the presentation (`paint_film` at exposure 1.18 through `filmic.coax`'s `film_exposed`, `paint_output` with saturation 1.16). The glade's `cg_*` names are delegates of these. Since #13066 the enabled passes use the `paint_env_*` forms, the same arithmetic reading the frame's resolved environment record at word 208 (`PAINT_ENV_U`) in place of the constants |
 | `render/transfer.coax` | The painterly transfer contract: decode display colour once (`transfer_linear`, `transfer_decode`), encode once (`transfer_srgb`, `transfer_encode`), and the HDR shoulder |
@@ -153,14 +153,14 @@ coax/bin/coax mutate metaverse-engine/audio/score.coax --library --root-only
 coax/web/tool.sh metaverse-engine/tools/score.coax promo-epic OUT.wav [--seconds S] [--home S] ...
 ```
 
-The engine modules that were in `verse/` moved here in one scripted commit
+The engine modules that were in `metaverse/` moved here in one scripted commit
 (ec-migrate, #12609), keeping their module names and C symbols:
 
 | Module | What |
 | --- | --- |
 | `move/player.coax` | The walking controller's C surface over `move/walk.coax` |
 | `cam/camera.coax`, `cam/cinematic.coax`, `cam/arrange.coax`, `cam/spacecam.coax` | The overview, dolly and free orbit; authored flights; the close-up arranging view; the floating-origin space camera |
-| `core/points.coax` | The points and arithmetic the world modules share (was `verse/space.coax`; `core/space.coax` here is the typed spaces) |
+| `core/points.coax` | The points and arithmetic the world modules share (was `metaverse/space.coax`; `core/space.coax` here is the typed spaces) |
 | `physics/stand.coax`, `world/terrain.coax`, `physics/throw.coax`, `anim/flock.coax` | Floors to stand on; heightfield ground, paths and followers; thrown and carried things; a following flock |
 | `core/sticks.coax` | The touch controls: move stick, look finger, pinch, tap, the hotbar's slot |
 | `anim/figure.coax`, `anim/motion.coax`, `anim/skin.coax` | Soft figures, keyframed motions, skinned clips |
@@ -205,7 +205,7 @@ Animation Lab's reusable document readers, project admission, scene sampling,
 scene checks and typed directing engine live in `anim/`. CLI and realm editors
 share the same catalogue, schema admission and one-component edit writer.
 Native version file effects live in `tools/anim-direction-store.coax`; browser
-session/effect bindings remain in `verse/animlab/`. The former realm project,
+session/effect bindings remain in `metaverse/animlab/`. The former realm project,
 scene and check paths are compatibility loaders. See the
 [directing profile](../docs/verse/anim-directing-v1.md).
 

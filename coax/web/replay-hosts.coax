@@ -5,8 +5,8 @@
 // contraction), runs it in headless Chrome (coax/web/wasm-chrome.coax), and
 // compares every number with the native run of
 // metaverse-engine/examples/replay-a-walk.coax. The second check does the same for a
-// recorded Grid session (verse/tests/grid-session.coax: the Grid's own
-// session code, verse/gridwalk.coax, with keys, a drag, the wheel, the touch
+// recorded Grid session (metaverse/tests/grid-session.coax: the Grid's own
+// session code, metaverse/gridwalk.coax, with keys, a drag, the wheel, the touch
 // stick, a pinch and taps) and compares the digest of every step. Both
 // sessions turn while they walk through angles where the hosts' sinf and
 // cosf round differently, so either check fails if a step calls the C
@@ -186,7 +186,7 @@ rh_crypto :: (c:[]Cdp)->bool {
 // A recorded Grid session gives the same digest at every step natively and in wasm.
 rh_grid :: (c: [] Cdp) -> bool {
   out: [RH_OUT] u8;
-  argv := [3] string.["coax/bin/coax", "run", "verse/tests/grid-session.coax"];
+  argv := [3] string.["coax/bin/coax", "run", "metaverse/tests/grid-session.coax"];
   n := rh_run(argv[..], out[..]);
   if n < 0 { return false; }
   text := cast(string) out[0..<n];
@@ -196,7 +196,7 @@ rh_grid :: (c: [] Cdp) -> bool {
   if !rh_check(records == 1, "the session is not one record") || !rh_check(steps > 600 && steps < 100000, "the session has too few steps") { return false; }
   session := rh_line(text, 1 + steps);
   if !rh_check(rh_session(session), "no session line after the steps") || !rh_check(rh_line(text, 2 + steps) == "replayed true", "the session did not replay") { return false; }
-  if !rh_wasm(c, "verse/tests/grid-session.coax", "verse/tests/grid-session-face.c", 256) { return false; }
+  if !rh_wasm(c, "metaverse/tests/grid-session.coax", "metaverse/tests/grid-session-face.c", 256) { return false; }
   if !rh_check(wc_int(c, "grid_play", "") == steps, "the browser played another number of steps") { return false; }
   if !rh_check(wc_int(c, "grid_records", "") == 1, "the browser's session is not one record") { return false; }
   first := -1; d: [24] u8; arg: [32] u8;

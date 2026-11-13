@@ -8,7 +8,7 @@ The interface uses NWN’s original Galahad bitmap font, blue-and-gold panels, b
 - **J / K / L:** skin, hair, cloth palette.
 - **Enter:** explore; **Escape:** close menu or change character; **M:** menu.
 - **WASD:** move (run by default); **Shift:** walk; **Space:** jump.
-- **Drag:** orbit/look; **wheel:** camera distance. Touch uses the shared movement and look thumbs.
+- **Drag:** metaverse/orbit-league/look; **wheel:** camera distance. Touch uses the shared movement and look thumbs.
 - **1 / 2 / 3:** region; **F:** inspect native animation clips; **R:** resume locomotion animation.
 
 The quickbar’s first six slots select Forest, Rural, City, a native animation, automatic locomotion and Jump. The remaining native slots are empty. Menu and creator buttons accept mouse or touch input. These are the experiment’s controls, not the original NWN combat commands.

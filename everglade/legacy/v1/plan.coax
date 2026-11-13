@@ -308,7 +308,7 @@ everglade_meet_glade :: (heights: [] f32) {
 
 // ---- the ponds (docs/verse/water.md, W3: the previous Everglade's four, verse/everglade/previous/water.md
 // "Owner decisions" 1): each a bowl carved into the ground off a trail, in its own clearing, its water a
-// verse/water.coax pond body at a still level (everglade/legacy/v1/river.coax). The level is 0.25 m under
+// metaverse/water.coax pond body at a still level (everglade/legacy/v1/river.coax). The level is 0.25 m under
 // the lowest ground 5 m past its rim; the bed falls from 0.25 m over the level at the rim to the pond's
 // depth under it at the middle, and past the rim climbs 0.7 in 1 to the ground.
 EG_PONDS :: 4;
@@ -381,7 +381,7 @@ everglade_in_pond :: (x: f32, z: f32, pad: f32) -> bool {
 }
 
 // ---- the river (docs/verse/water.md W3): a channel carved along x = 88
-// from the north edge to the south, its water one verse/water.coax river
+// from the north edge to the south, its water one metaverse/water.coax river
 // body (everglade/legacy/v1/river.coax). Its level falls from north to south,
 // never rising and always 0.2 m under the lowest ground it runs through,
 // so the water stays in its bed; the bed is a V 2.2 m under the level at

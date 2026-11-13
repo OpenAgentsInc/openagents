@@ -101,9 +101,9 @@ fill and a soft warm front bounce; its private shader stays in linear HDR throug
 the shared output transform. Normal/ORM sampling is not yet implemented.
 
 ```sh
-SOURCE="$(coax/web/tool.sh verse/tools/assets/registry.coax source fantasy "$HOME/.openagents/assets")"
+SOURCE="$(coax/web/tool.sh metaverse/tools/assets/registry.coax source fantasy "$HOME/.openagents/assets")"
 '/Applications/Blender.app/Contents/MacOS/Blender' --background --disable-autoexec \
-  --python verse/tools/humans/pack_fantasy_source.py -- \
+  --python metaverse/tools/humans/pack_fantasy_source.py -- \
   "$SOURCE" \
   apps/openagents-web/realms/everglade/assets/everglade.pack \
   apps/openagents-web/realms/character-creator/assets/fantasy.pack
@@ -173,11 +173,11 @@ development room and API are available with `coax/web/tool.sh coax/web/room/loca
 Rebuild and independently validate the appended wardrobe:
 
 ```sh
-coax/web/tool.sh verse/tools/assets/wardrobe_pack.coax \
+coax/web/tool.sh metaverse/tools/assets/wardrobe_pack.coax \
   apps/openagents-web/realms/everglade/assets/everglade.pack \
   apps/openagents-web/realms/character-creator/assets/fantasy.pack \
   apps/openagents-web/realms/everglade/assets/everglade-avatar.pack
-python3 verse/tools/assets/wardrobe_pack_oracle.py \
+python3 metaverse/tools/assets/wardrobe_pack_oracle.py \
   apps/openagents-web/realms/everglade/assets/everglade.pack \
   apps/openagents-web/realms/character-creator/assets/fantasy.pack \
   apps/openagents-web/realms/everglade/assets/everglade-avatar.pack
@@ -232,7 +232,7 @@ The page's side is `apps/openagents-web/everglade-classes.coax`. The hello's
 `KIND` word is `srd-barbarian` to `srd-wizard`. To show a class's bar without
 Character Create, add `?kit=srd-NAME` to Everglade's address; `&card=1` also
 shows slot 1's card. The icons and cards are generated with
-`coax/web/tool.sh verse/tools/everglade_hotbar.coax` (the `cl-*` pictures).
+`coax/web/tool.sh metaverse/tools/everglade_hotbar.coax` (the `cl-*` pictures).
 
 The legacy CHARACTER picker's druid and Warlock are unchanged. A record without a
 class (`CC2`) keeps Everglade's own druid.

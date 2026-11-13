@@ -1,0 +1,483 @@
+{
+  "pack": "everglade",
+  "title": "Everglade",
+  "style": "painterly",
+  "paint": [2, 3, 19, 23, 32, 33, 35],
+  "neutral": [0, 3, 4, 19, 22, 27, 28],
+  "budget": 9500000,
+  "scene": "~/work/aethyr-cpp/build-native/native-root/assets/scene.bin",
+  "layers": "~/work/aethyr-cpp/assets/layer{n}",
+  "texture_size": 512,
+  "identity": 1024,
+  "licences": {
+    "quaternius-stylized-nature": {
+      "name": "Quaternius Stylized Nature MegaKit",
+      "licence": "CC0 1.0 Universal",
+      "url": "https://quaternius.com/"
+    },
+    "quaternius-medieval-village": {
+      "name": "Quaternius Medieval Village MegaKit",
+      "licence": "CC0 1.0 Universal",
+      "url": "https://quaternius.com/"
+    },
+    "quaternius-fantasy-props": {
+      "name": "Quaternius Fantasy Props MegaKit",
+      "licence": "CC0 1.0 Universal",
+      "url": "https://quaternius.com/"
+    },
+    "quaternius-universal-characters": {
+      "name": "Quaternius Universal Base Characters, Modular Character Outfits - Fantasy and Universal Animation Library",
+      "licence": "CC0 1.0 Universal",
+      "url": "https://quaternius.com/"
+    },
+    "quaternius-standard-characters": {
+      "name": "Quaternius Universal Base Characters, Modular Character Outfits - Fantasy and Universal Animation Library 1 and 2 [Standard]",
+      "licence": "CC0 1.0 Universal (each pack's License_Standard.txt or License.txt)",
+      "url": "https://quaternius.com/"
+    },
+    "openagents-custom-models": {
+      "name": "OpenAgents' own low-poly models (pumpkin, rock, bush, cat, the people's robes on the Quaternius peasant's cloth, and the Cultist Raid's robes, metaverse/tools/humans/cult_robe.py), made for the Verse",
+      "licence": "CC0 1.0 Universal",
+      "url": "https://openagents.com/"
+    }
+  },
+  "meshes": [
+    "Pine_5",
+    "Pine_5_Leaves",
+    "Pine_4",
+    "Pine_4_Leaves",
+    "CommonTree_3",
+    "CommonTree_3_Leaves",
+    "CommonTree_4",
+    "CommonTree_4_Leaves",
+    "Bush_Common_Flowers",
+    "Fern_1",
+    "Rock_Medium_1",
+    "Rock_Medium_2",
+    "Wall_Plaster_Straight",
+    "Wall_Plaster_Window_Wide_Round",
+    "Wall_Plaster_Door_Round",
+    "Wall_Plaster_WoodGrid",
+    "Wall_UnevenBrick_Straight",
+    "Wall_UnevenBrick_Window_Wide_Round",
+    "Wall_UnevenBrick_Door_Round",
+    { "name": "Window_Wide_Round1", "glass": [-0.6, 1.05, 0.6, 2.62, -0.1] },
+    "Door_1_Round",
+    "Corner_Exterior_Wood",
+    "Roof_RoundTiles_6x8",
+    "Roof_Tower_RoundTiles",
+    "Roof_Log",
+    "Floor_WoodDark",
+    "Floor_Brick",
+    "Prop_Chimney",
+    "Stair_Interior_Solid",
+    "Stall_Empty",
+    "FarmCrate_Apple",
+    "Barrel",
+    "Crate_Wooden",
+    "Table_Large",
+    "Chair_1",
+    "Bench",
+    "Mug",
+    "Shelf_Arch",
+    "Bag",
+    "Anvil",
+    "WeaponStand",
+    "Sword_Bronze",
+    "Shield_Wooden",
+    "Cauldron",
+    "Dummy",
+    "Banner_1",
+    "Peg_Rack",
+    "Chalice",
+    "Roof_Front_Brick6",
+    "Scroll_1",
+    "Stairs_Exterior_Platform",
+    "Prop_WoodenFence_Single",
+    "Carrot",
+    "Pot_1",
+    "Bucket_Wooden_1",
+    "Stall_Cart_Empty",
+    "Vase_2",
+    "Stool",
+    "Coin_Pile",
+    "Flower_3_Single",
+    "Plant_7",
+    {
+      "name": "Custom_Pumpkin",
+      "licence": "openagents-custom-models"
+    },
+    {
+      "name": "Custom_Rock",
+      "licence": "openagents-custom-models"
+    },
+    {
+      "name": "Custom_Bush",
+      "licence": "openagents-custom-models"
+    },
+    {
+      "name": "Custom_Cat",
+      "licence": "openagents-custom-models"
+    },
+    "Bed_Twin1",
+    "Chest_Wood",
+    {
+      "name": "Custom_Rug",
+      "licence": "openagents-custom-models"
+    },
+    "Candle_1",
+    "Bookcase_2",
+    "BookGroup_Medium_1",
+    "Book_Stack_1",
+    "Potion_2",
+    "SmallBottles_1",
+    "Shelf_Simple",
+    "Table_Plate",
+    {
+      "name": "Custom_Portrait",
+      "licence": "openagents-custom-models"
+    },
+    {
+      "name": "Custom_Armchair",
+      "licence": "openagents-custom-models"
+    },
+    "Floor_WoodLight",
+    "Nightstand_Shelf",
+    {
+      "name": "Custom_Broom",
+      "licence": "openagents-custom-models"
+    },
+    "Prop_Crate",
+    {
+      "name": "Custom_Moon",
+      "licence": "openagents-custom-models"
+    }
+  ],
+  "character": {
+    "name": "player/male-ranger",
+    "revision": "853417f290e7cae1df18c081b89b0818432e60af",
+    "path": "assets/verse/everglade/a82df378ca7d06d9c755ae24076c89270d8a8097509c54a166d941da05f9de2f.vtp",
+    "sha256": "a82df378ca7d06d9c755ae24076c89270d8a8097509c54a166d941da05f9de2f",
+    "licence": "quaternius-universal-characters",
+    "rig": "everglade/legacy/v1/ranger.coax",
+    "prefix": "RANGER",
+    "lod": 0.2
+  },
+  "people": {
+    "texture_size": 256,
+    "licence": "quaternius-standard-characters",
+    "rig": "everglade/scene/people-rig.coax",
+    "prefix": "PEOPLE",
+    "quality": 80,
+    "skeletons": {
+      "male": "~/Downloads/Modular Character Outfits - Fantasy[Standard]/Exports/glTF (Godot-Unreal)/Outfits/Male_Peasant.gltf",
+      "female": "~/Downloads/Modular Character Outfits - Fantasy[Standard]/Exports/glTF (Godot-Unreal)/Outfits/Female_Peasant.gltf"
+    },
+    "libraries": {
+      "ual1": "~/.openagents/assets/originals/e2adadc59702bc88770e299949d1f4c6790db1852133fd1ce374d2a0815537cd/source/Unreal-Godot/UAL1_Standard.glb",
+      "ual2": "~/.openagents/assets/originals/9871d41237032c6a69b1458652be2a45ff4cffc8f4b594bf4c72ef4ebae39381/source/Unreal-Godot/UAL2_Standard.glb"
+    },
+    "clips": [
+      {
+        "name": "idle",
+        "library": "ual1",
+        "clip": "Idle_Loop"
+      },
+      {
+        "name": "walk",
+        "library": "ual1",
+        "clip": "Walk_Loop",
+        "distance": 1.3
+      },
+      {
+        "name": "talk",
+        "library": "ual1",
+        "clip": "Idle_Talking_Loop"
+      },
+      {
+        "name": "nod",
+        "library": "ual2",
+        "clip": "Yes"
+      },
+      {
+        "name": "fold",
+        "library": "ual2",
+        "clip": "Idle_FoldArms_Loop"
+      },
+      {
+        "name": "lantern",
+        "library": "ual2",
+        "clip": "Idle_Lantern_Loop"
+      },
+      {
+        "name": "spell",
+        "library": "ual1",
+        "clip": "Spell_Simple_Idle_Loop"
+      },
+      {
+        "name": "slash",
+        "library": "ual1",
+        "clip": "Sword_Attack",
+        "tolerance": 0.035,
+        "still_fingers": true
+      },
+      {
+        "name": "run",
+        "library": "ual1",
+        "clip": "Jog_Fwd_Loop",
+        "tolerance": 0.035,
+        "still_fingers": true,
+        "distance": 3.4
+      },
+      {
+        "name": "die",
+        "library": "ual1",
+        "clip": "Death01",
+        "tolerance": 0.035,
+        "still_fingers": true
+      },
+      {
+        "name": "knock",
+        "library": "ual2",
+        "clip": "Hit_Knockback",
+        "tolerance": 0.035,
+        "still_fingers": true
+      },
+      {
+        "name": "cower",
+        "library": "ual1",
+        "clip": "Crouch_Idle_Loop",
+        "tolerance": 0.035,
+        "still_fingers": true
+      },
+      { "name": "jump_start", "library": "ual1", "clip": "Jump_Start" },
+      { "name": "jump_loop", "library": "ual1", "clip": "Jump_Loop" },
+      { "name": "jump_land", "library": "ual1", "clip": "Jump_Land" }
+    ],
+    "kinds": {
+      "MI_Peasant": "pale",
+      "MI_Ranger": "green",
+      "MI_Regular_Male": "skin",
+      "MI_Superhero_Male": "skin",
+      "MI_Superhero_Female": "skin",
+      "MI_Hair_1": "hair",
+      "MI_Hair_2": "hair",
+      "MI_Eyes": "plain",
+      "MI_Cult_Robe": "pale"
+    },
+    "variants": {
+      "T_Peasant_BaseColor.png": "~/Downloads/Modular Character Outfits - Fantasy[Standard]/Textures/Peasant/T_Peasant_2_BaseColor.png",
+      "T_Ranger_BaseColor.png": "~/Downloads/Modular Character Outfits - Fantasy[Standard]/Textures/Ranger/T_Ranger_3_BaseColor.png",
+      "T_Cult_Robe_BaseColor.png": "assets/verse/cult-robe/T_Cult_Robe_2_BaseColor.png"
+    },
+    "parts": [
+      {
+        "name": "male-peasant",
+        "body": "male",
+        "file": "~/Downloads/Modular Character Outfits - Fantasy[Standard]/Exports/glTF (Godot-Unreal)/Outfits/Male_Peasant.gltf",
+        "keep": 0.5,
+        "drop_small": 0.025
+      },
+      {
+        "name": "male-ranger",
+        "body": "male",
+        "file": "~/Downloads/Modular Character Outfits - Fantasy[Standard]/Exports/glTF (Godot-Unreal)/Outfits/Male_Ranger.gltf",
+        "meshes": [
+          "Male_Ranger_Acc_Pauldron",
+          "Male_Ranger_Arms",
+          "Male_Ranger_Arms_Bracer",
+          "Male_Ranger_Body",
+          "Male_Ranger_Body_Belt_1",
+          "Male_Ranger_Legs"
+        ],
+        "keep": 0.5,
+        "also": [
+          {
+            "file": "~/Downloads/Modular Character Outfits - Fantasy[Standard]/Exports/glTF (Godot-Unreal)/Outfits/Male_Peasant.gltf",
+            "meshes": [
+              "Male_Peasant_Feet"
+            ]
+          }
+        ],
+        "drop_small": 0.025,
+        "plain": ["Male_Ranger_Acc_Pauldron"]
+      },
+      {
+        "name": "male-hood",
+        "body": "male",
+        "file": "~/Downloads/Modular Character Outfits - Fantasy[Standard]/Exports/glTF (Godot-Unreal)/Outfits/Male_Ranger.gltf",
+        "meshes": [
+          "Male_Ranger_Head_Hood"
+        ],
+        "keep": 0.5
+      },
+      {
+        "name": "female-peasant",
+        "body": "female",
+        "file": "~/Downloads/Modular Character Outfits - Fantasy[Standard]/Exports/glTF (Godot-Unreal)/Outfits/Female_Peasant.gltf",
+        "keep": 0.5,
+        "drop_small": 0.025
+      },
+      {
+        "name": "female-ranger",
+        "body": "female",
+        "file": "~/Downloads/Modular Character Outfits - Fantasy[Standard]/Exports/glTF (Godot-Unreal)/Outfits/Female_Ranger.gltf",
+        "meshes": [
+          "Female_Ranger_Acc_Pauldrons",
+          "Female_Ranger_Arms",
+          "Female_Ranger_Arms_Bracer",
+          "Female_Ranger_Body",
+          "Female_Ranger_Body_Belt_1",
+          "Female_Ranger_Body_Belt_2",
+          "Female_Ranger_Legs"
+        ],
+        "keep": 0.5,
+        "also": [
+          {
+            "file": "~/Downloads/Modular Character Outfits - Fantasy[Standard]/Exports/glTF (Godot-Unreal)/Outfits/Female_Peasant.gltf",
+            "meshes": [
+              "Female_Peasant_Feet"
+            ]
+          }
+        ],
+        "drop_small": 0.025,
+        "plain": ["Female_Ranger_Acc_Pauldrons"]
+      },
+      {
+        "name": "female-hood",
+        "body": "female",
+        "file": "~/Downloads/Modular Character Outfits - Fantasy[Standard]/Exports/glTF (Godot-Unreal)/Outfits/Female_Ranger.gltf",
+        "meshes": [
+          "Female_Ranger_Head_Hood"
+        ],
+        "keep": 0.5
+      },
+      {
+        "name": "male-head",
+        "body": "male",
+        "file": "~/Downloads/Universal Base Characters[Standard]/Base Characters/Godot - UE/Superhero_Male_FullBody.gltf",
+        "cut": [
+          "Head",
+          "neck_01"
+        ],
+        "crop": {
+          "MI_Superhero_Male": 0.01
+        },
+        "keep": 0.6
+      },
+      {
+        "name": "female-head",
+        "body": "female",
+        "file": "~/Downloads/Universal Base Characters[Standard]/Base Characters/Godot - UE/Superhero_Female_FullBody.gltf",
+        "cut": [
+          "Head",
+          "neck_01"
+        ],
+        "crop": {
+          "MI_Superhero_Female": 0.01
+        },
+        "keep": 0.6
+      },
+      {
+        "name": "hair-parted",
+        "body": "male",
+        "file": "~/Downloads/Universal Base Characters[Standard]/Hairstyles/Rigged to Head Bone/glTF (Godot -Unreal)/Hair_SimpleParted.gltf",
+        "keep": 0.6
+      },
+      {
+        "name": "hair-buzzed",
+        "body": "male",
+        "file": "~/Downloads/Universal Base Characters[Standard]/Hairstyles/Rigged to Head Bone/glTF (Godot -Unreal)/Hair_Buzzed.gltf",
+        "keep": 0.6
+      },
+      {
+        "name": "hair-beard",
+        "body": "male",
+        "file": "~/Downloads/Universal Base Characters[Standard]/Hairstyles/Rigged to Head Bone/glTF (Godot -Unreal)/Hair_Beard.gltf",
+        "keep": 0.6
+      },
+      {
+        "name": "hair-long",
+        "body": "female",
+        "file": "~/Downloads/Universal Base Characters[Standard]/Hairstyles/Rigged to Head Bone/glTF (Godot -Unreal)/Hair_Long.gltf",
+        "keep": 0.6
+      },
+      {
+        "name": "hair-buns",
+        "body": "female",
+        "file": "~/Downloads/Universal Base Characters[Standard]/Hairstyles/Rigged to Head Bone/glTF (Godot -Unreal)/Hair_Buns.gltf",
+        "keep": 0.6
+      },
+      {
+        "name": "hair-buzzed-female",
+        "body": "female",
+        "file": "~/Downloads/Universal Base Characters[Standard]/Hairstyles/Rigged to Head Bone/glTF (Godot -Unreal)/Hair_BuzzedFemale.gltf",
+        "keep": 0.6
+      },
+      {
+        "name": "male-robe",
+        "body": "male",
+        "licence": "openagents-custom-models",
+        "robe": {"top": 1.02, "hem": 0.14, "flare": 0.07, "fit": [
+          {"file": "~/Downloads/Modular Character Outfits - Fantasy[Standard]/Exports/glTF (Godot-Unreal)/Outfits/Male_Peasant.gltf", "meshes": ["Male_Peasant_Body", "Male_Peasant_Legs", "Male_Peasant_Feet"]},
+          {"file": "~/Downloads/Modular Character Outfits - Fantasy[Standard]/Exports/glTF (Godot-Unreal)/Outfits/Male_Ranger.gltf", "meshes": ["Male_Ranger_Body", "Male_Ranger_Legs", "Male_Ranger_Body_Belt_1"]}
+        ]}
+      },
+      {
+        "name": "female-robe",
+        "body": "female",
+        "licence": "openagents-custom-models",
+        "robe": {"top": 1.0, "hem": 0.14, "flare": 0.07, "fit": [
+          {"file": "~/Downloads/Modular Character Outfits - Fantasy[Standard]/Exports/glTF (Godot-Unreal)/Outfits/Female_Peasant.gltf", "meshes": ["Female_Peasant_Body", "Female_Peasant_Legs", "Female_Peasant_Feet"]},
+          {"file": "~/Downloads/Modular Character Outfits - Fantasy[Standard]/Exports/glTF (Godot-Unreal)/Outfits/Female_Ranger.gltf", "meshes": ["Female_Ranger_Body", "Female_Ranger_Legs", "Female_Ranger_Body_Belt_1"]}
+        ]}
+      },
+      {
+        "name": "cult-robe",
+        "body": "male",
+        "licence": "openagents-custom-models",
+        "file": "assets/verse/cult-robe/cult-robe.gltf"
+      },
+      {
+        "name": "cult-robe-far",
+        "body": "male",
+        "licence": "openagents-custom-models",
+        "file": "assets/verse/cult-robe/cult-robe-far.gltf"
+      },
+      {
+        "name": "darian-robe",
+        "body": "male",
+        "licence": "openagents-custom-models",
+        "file": "assets/verse/cult-robe/darian-robe.gltf"
+      },
+      {
+        "name": "darian-robe-far",
+        "body": "male",
+        "licence": "openagents-custom-models",
+        "file": "assets/verse/cult-robe/darian-robe-far.gltf"
+      },
+      {
+        "name": "male-hands",
+        "body": "male",
+        "file": "~/Downloads/Modular Character Outfits - Fantasy[Standard]/Exports/glTF (Godot-Unreal)/Outfits/Male_Peasant.gltf",
+        "meshes": ["Male_Peasant_Arms"],
+        "cut": ["hand_l", "index_01_l", "index_02_l", "index_03_l", "middle_01_l", "middle_02_l", "middle_03_l", "ring_01_l", "ring_02_l", "ring_03_l", "pinky_01_l", "pinky_02_l", "pinky_03_l", "thumb_01_l", "thumb_02_l", "thumb_03_l", "hand_r", "index_01_r", "index_02_r", "index_03_r", "middle_01_r", "middle_02_r", "middle_03_r", "ring_01_r", "ring_02_r", "ring_03_r", "pinky_01_r", "pinky_02_r", "pinky_03_r", "thumb_01_r", "thumb_02_r", "thumb_03_r"],
+        "keep": 0.6
+      }
+    ],
+    "clamp": [
+      "MI_Eyes"
+    ]
+  },
+  "hud": {
+    "about": "The spell bar's icons (metaverse/tools/everglade_hotbar.coax), served beside the pack under /realms/everglade/hotbar/, not in it",
+    "licence": {"name": "game-icons.net", "licence": "CC BY 3.0", "url": "https://game-icons.net", "credits": "assets/verse/icons/game-icons/CREDITS.md"},
+    "assets": [
+      {"name": "Meteor Swarm", "file": "lorc/meteor-impact.svg", "author": "Lorc"},
+      {"name": "Thunderbolt", "file": "lorc/lightning-frequency.svg", "author": "Lorc"},
+      {"name": "Mega Thunderbolt", "file": "lorc/lightning-frequency.svg", "author": "Lorc"},
+      {"name": "Water Orb", "file": "lorc/frozen-orb.svg", "author": "Lorc"},
+      {"name": "Rebuild", "file": "delapouite/house.svg", "author": "Delapouite"}
+    ]
+  }
+}

@@ -78,7 +78,7 @@ final class CastAssets {
 }
 
 /// Metal resource binding and bulk transfers only. Product visual functions are
-/// emitted from verse/light.coax; scene packets come from home.coax or
+/// emitted from metaverse/light.coax; scene packets come from home.coax or
 /// grid.coax.
 final class HomeRenderer {
     private let layer: CAMetalLayer

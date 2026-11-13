@@ -28,7 +28,7 @@ tool_main :: ()->int #export_c #effects(all) {
   emit_check:=[7]string.[coax,"c",ifx present then "metaverse-engine/host/check-vulkan-present.coax" else ifx lifecycle then "metaverse-engine/host/check-vulkan-lifecycle.coax" else ifx transport then "metaverse-engine/host/check-vulkan-transport.coax" else "metaverse-engine/host/check-vulkan.coax","--library","--header",check_h,"--release"];
   if !hvb_run(emit_fixture[..],fixture_c) || !hvb_run(emit_check[..],check_c) {return 1;}
   if !hnp_copy(fixture_h,fs_join(dir,"RenderHost.h",paths[6][..])) || !hnp_prepare(coax,dir) {return 1;}
-  base:=[29]string.["gcc","-std=gnu11","-O2","-no-pie","-ffp-contract=off","-fno-fast-math","-Wno-attributes","-DHF_EXTERNAL_TRANSPORT","-I",dir,"-I","verse/native","-I","coax/platform",fixture_c,check_c,"metaverse-engine/host/tests/fixture-face.c","metaverse-engine/host/tests/vulkan-effects.c","verse/native/realm-host.c","coax/platform/tool-native.c","coax/platform/process-native.c","coax/platform/store-file-native.c","coax/platform/read-file-native.c","-lpthread","-lm","-o",bin,"-Wno-unused-function","-Wno-unused-variable"];
+  base:=[29]string.["gcc","-std=gnu11","-O2","-no-pie","-ffp-contract=off","-fno-fast-math","-Wno-attributes","-DHF_EXTERNAL_TRANSPORT","-I",dir,"-I","metaverse/native","-I","coax/platform",fixture_c,check_c,"metaverse-engine/host/tests/fixture-face.c","metaverse-engine/host/tests/vulkan-effects.c","metaverse/native/realm-host.c","coax/platform/tool-native.c","coax/platform/process-native.c","coax/platform/store-file-native.c","coax/platform/read-file-native.c","-lpthread","-lm","-o",bin,"-Wno-unused-function","-Wno-unused-variable"];
   cc:[96]string;for i:0..<29 {cc[i]=base[i];}cn:=29;
   if args_has(a[..],"--native-address") {cc[4]="-DCOAXIAL_NATIVE_ADDRESS";cc[cn]="-fPIE";cc[cn+1]="-pie";cn+=2;}
   sdk_paths:[9][4096]u8;for file,i:[9]string.["HostNetwork.c","host-sockets.c","socket-native.c","tls-native.c","entropy-native.c","entropy-foreign.c","HostEntropy.c","host-transport.c","MetalSockets.c"] {cc[cn]=fs_join(dir,file,sdk_paths[i][..]);cn+=1;}
@@ -49,7 +49,7 @@ tool_main :: ()->int #export_c #effects(all) {
       xml:=fs_join(data,protocol,protocols[0][..]);target:=fs_join(dir,[2]string.["xdg-shell-client-protocol.h","xdg-decoration-unstable-v1-client-protocol.h"][i],protocols[1][..]);scan:=[4]string.["wayland-scanner","client-header",xml,target];if !hvb_run(scan[..],"") {return 1;}
       source:=fs_join(dir,[2]string.["xdg-shell-protocol.c","xdg-decoration-unstable-v1-protocol.c"][i],protocols[2+i][..]);scan=[4]string.["wayland-scanner","private-code",xml,source];if !hvb_run(scan[..],"") {return 1;}cc[cn]=source;cn+=1;
     }
-    for flag:[8]string.["-I","verse/gpu","-I","verse/kms","metaverse-engine/host/tests/vulkan-present-effects.c","verse/gpu/vkc.c","verse/gpu/vkp.c","-lvulkan"] {cc[cn]=flag;cn+=1;}
+    for flag:[8]string.["-I","metaverse/gpu","-I","metaverse/kms","metaverse-engine/host/tests/vulkan-present-effects.c","metaverse/gpu/vkc.c","metaverse/gpu/vkp.c","-lvulkan"] {cc[cn]=flag;cn+=1;}
   }
   if sanitize {cc[cn]="-fsanitize=address,undefined";cc[cn+1]="-fno-omit-frame-pointer";cc[cn+2]="-fno-sanitize-recover=all";cn+=3;}
   if !hvb_run(cc[0..<cn],"") {return 1;}

@@ -11,7 +11,7 @@
 // palisade, but for the trails and the clearings at their ends
 // (plan.coax everglade_in_woods): trees from the Stylized Nature kit, with
 // bushes, ferns and rocks along the tree line, out of the realm's pack
-// (verse/packs/everglade.json). The trees near you and in view are the
+// (metaverse/packs/everglade.json). The trees near you and in view are the
 // kit's meshes; the rest are cones, so a phone draws a few hundred kit
 // trees at most. You walk into the woods as anywhere: each trunk and rock
 // near you is a round body as wide as its mesh (forest_bodies), and at the
@@ -45,7 +45,7 @@
 // You are the old Everglade's player, the Universal male Ranger of the old
 // Rust Verse engine's last pinned pack: its mesh and textures come in the
 // realm's pack, its skeleton and clips are everglade/legacy/v1/ranger.coax
-// (both written by verse/tools/pack_realm.py), and metaverse-engine/anim/skin.coax plays
+// (both written by metaverse/tools/pack_realm.py), and metaverse-engine/anim/skin.coax plays
 // the clip the controller's state picks (idle, walk, run, jump), as the old
 // engine did. Its joints' skinning matrices go to the GPU each frame (store
 // 2) and everglade.wgsl skins its vertices with them.
@@ -66,7 +66,7 @@
 #load "../../everglade/legacy/v1/quests.coax";
 #load "../../metaverse-engine/anim/flock.coax";
 #load "../../everglade/legacy/v1/ranger.coax";
-#load "../../verse/valley/echo-orbit.coax";
+#load "../../metaverse/valley/echo-orbit.coax";
 #load "../../everglade/legacy/v1/folk.coax";
 #load "../../everglade/legacy/v1/rumours.coax";
 #load "../../everglade/legacy/v1/watch.coax";
@@ -101,7 +101,7 @@
 #load "../../metaverse-engine/render/grass-root.coax" as gr_root;
 #load "everglade-sound.coax";   // the spells', the fight's, the raid's and the town's sound (#12751)
 #load "everglade-access.coax";   // SETTINGS: keys and a pad through one record, text size, captions, the accessible layer (#12857)
-#load "../../verse/style-preset.coax";
+#load "../../metaverse/style-preset.coax";
 #load "../../metaverse-engine/core/budget.coax";
 #load "../../metaverse-engine/cam/flyover.coax";   // #fly=PATH: the flyover benchmark's camera (coax/web/flyover.coax, #13017)
 #load "everglade-glade.coax";   // the glade south of the South Gate, Character Create's, in this world (#13018)
@@ -124,14 +124,14 @@ U_PATH_INFO :: U_PATH + PATHS * 4;
 U_SQUARE :: U_PATH_INFO + 4;
 U_PLATE :: U_SQUARE + SQUARES * 4;
 // Then the river's block (everglade.wgsl WaterU), which the face has
-// everglade/legacy/v1/river.coax write after the frame: verse/water-look.coax
+// everglade/legacy/v1/river.coax write after the frame: metaverse/water-look.coax
 // WATER_FLOATS of them.
 U_WATER :: U_PLATE + PLATES * 8;
 WATER_FLOATS :: 324;
 // The fountain's two numbers in the block's spare W_GRID2 z and w (the river leaves them): the
 // ground under it, and 1 when it is drawn (everglade.wgsl fountain_vertex).
 U_FOUNTAIN :: U_WATER + 318;
-// Then the painterly preset at the clock (verse/style-preset.coax verse_style_at, SU_* rows; everglade.wgsl u.style).
+// Then the painterly preset at the clock (metaverse/style-preset.coax verse_style_at, SU_* rows; everglade.wgsl u.style).
 STYLE_AT :: U_WATER + WATER_FLOATS;
 // Then where no grass grows (art-styles.md 8): the buildings' and the props' footprints, x0, z0, x1, z1.
 SOLIDS :: 32;
@@ -340,7 +340,7 @@ WALLS :: 256;          // the player's walls (player.coax WALL numbers each)
 // bridge's six piles, which stand in a swimmer's way and not a walker's on the deck above them.
 BODIES :: 7;
 // Then the trunks and rocks round you (forest_bodies), the nearest first: a trunk at waist height
-// and a rock's middle and girth from the pack's meshes (verse/packs/everglade.json), at size 1.
+// and a rock's middle and girth from the pack's meshes (metaverse/packs/everglade.json), at size 1.
 FOREST_BODIES :: 24;
 FOREST_NEAR :: 3.0;    // metres past its girth that a trunk or rock is in your way
 TRUNK_RADIUS :: [4] f32.[0.36, 0.36, 0.48, 0.52];   // Pine_5, Pine_4, CommonTree_3, CommonTree_4
@@ -470,7 +470,7 @@ Everglade :: struct {
   boat_start: bool;         // #rowboat: start in the Lantern Pond's rowboat
   frog_spots: [EG_PONDS * 4 * 3] f32;   // each pond's frog's four spots at its water's edge (x, y, z), once worked out
   frog_known: bool;
-  // The water on the ground's grid for the debris (verse/demolish.coax demo_step_wet) and the spells
+  // The water on the ground's grid for the debris (metaverse/demolish.coax demo_step_wet) and the spells
   // (W6, W8): the surface's height (DEMO_DRY none), the current's x and z, 3 numbers a ground point.
   water_grid: [EG_GROUND_POINTS * 3] f32;
   // where the spells and the debris struck the water this frame (x, z, kind, size), for the face to
@@ -1054,7 +1054,7 @@ forest_bodies :: (s: [] Everglade, out: [] f32, at: int, x: f32, z: f32) -> int 
   return kept + tf_bodies(s, out, at + kept, x, z);   // and the trees lying felled (everglade-forest.coax)
 }
 
-// ---- the pack (verse/tools/pack_realm.py): its catalog, a line each; the
+// ---- the pack (metaverse/tools/pack_realm.py): its catalog, a line each; the
 // realm needs its meshes by name and its identity indices.
 
 word_end :: (line: string, from: int) -> int { e := from; while e < line.count && line[e] != ' ' { e += 1; } return e; }
@@ -3078,7 +3078,7 @@ folk_clock :: (s: [] Everglade, still: bool) -> FolkClock {
 }
 
 // A person's feet at (x, z): on the ground, or in a pond wading on its bed or swimming at the float line
-// (verse/water-wade.coax, the player's rules).
+// (metaverse/water-wade.coax, the player's rules).
 folk_feet :: (s: [] Everglade, x: f32, z: f32) -> f32 {
   // on the bridge they walk on its deck, as you do (walk_at), never in the river under it
   if everglade_on_bridge(s, x, z) { return walk_at(s, x, z); }
@@ -3527,7 +3527,7 @@ camera_frame :: (s: [] Everglade, feet: Point, vx: f32, vz: f32, dt: f32) -> Sho
   s[0].orbit = o;
   shot := verse_orbit_shot(o);
   // Diving, the camera comes down with you to about your head, so the view
-  // goes under the water (verse/water-under.coax) instead of staying on top.
+  // goes under the water (metaverse/water-under.coax) instead of staying on top.
   s[0].sink += ((ifx s[0].water == WATER_DIVING then 1.0f32 else 0.0f32) - s[0].sink) * settle(2.5, dt);
   if s[0].sink > 0.001 {
     low := hi(feet.y + 1.1, ground_at(s, shot.eye.x, shot.eye.z) + 0.35);

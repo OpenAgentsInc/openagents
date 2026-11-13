@@ -280,7 +280,7 @@ fails, comment on #12695.
 
 Done, nothing for the owner (#12859, 2026-11-05). `pack_human.py`,
 `metahuman.py`, `outfits.py`, `face_rig.py` and `shape.py` are ported to
-`verse/tools/humans/pack_human.coax` and its `ph_*.coax` files and deleted.
+`metaverse/tools/humans/pack_human.coax` and its `ph_*.coax` files and deleted.
 `pack_checks.py` keeps its reason 2 (an independent pixel oracle).
 
 ## Drop's Mac golden in golden mode (#12693, 2026-11-03)
@@ -315,7 +315,7 @@ needs an agent on the Mac with Xcode; coderos-4080 can't build the app
 of #12628; everything else in it is done on Linux.
 
 What the Mac agent does, following the native Vulkan host
-(`verse/native/render-host.c`, 491fbeb7e4), which uses the same exports:
+(`metaverse/native/render-host.c`, 491fbeb7e4), which uses the same exports:
 
 1. Add the ledger's C exports (`metaverse-engine/render/host.coax`, over
    `registry.coax`) to `apps/openagents-ios/generate.sh`; they aren't
@@ -368,7 +368,7 @@ sees. (On this machine's GPU, the default since #12678, a canvas presents
 without losing its device: Everglade drew 8 s with no loss. Only a
 screenshot leaves the canvas out, since Chrome composites in software.)
 
-The agent pane (EDIT > AGENT on a made realm; `verse/edit/agent.coax`,
+The agent pane (EDIT > AGENT on a made realm; `metaverse/edit/agent.coax`,
 `seats.c` now takes the page's logged-in session) ships with the same release.
 After step 1, on staging, logged in, on a made realm of yours: EDIT > AGENT >
 START YOUR AGENT, type `look left`, then CLOSE. Also `openagents realm look
@@ -386,7 +386,7 @@ a `path:` flake reference (os/nix/README.md); it needs about 10 GB free.
 The image evaluates (`nix flake check ./os/nix`) and its realms package
 builds, but the disk itself was not built here, to keep the machine free for
 the other work on it. On a free machine with an AMD or Intel GPU and TPM2:
-`REALM="newland verse everglade" verse/gpu/realm.sh local ship os/nix/ship`,
+`REALM="newland verse everglade" metaverse/gpu/realm.sh local ship os/nix/ship`,
 then `nix build ./os/nix#nixosConfigurations.verse-os-image.config.system.build.image`,
 write the image to a USB disk, and boot it. It should reach the Grid on tty1
 with no key pressed. Two choices for you: the host that serves update
@@ -419,11 +419,11 @@ coderos-4080 runs the module on tty3 (coder `890e81be0`, switched, no package
 changes). What's left is step 3 at the desk, and your answer on tty1.
 
 The boot session is built (docs/os/2026-11-02-verse-os.md, "Status"):
-`os/verse-session.coax`, `vk-realm --leave-to`, `verse/gpu/realm.sh local
+`os/verse-session.coax`, `vk-realm --leave-to`, `metaverse/gpu/realm.sh local
 install`, and the NixOS module `os/nix/modules/verse-os.nix`. Turning it on
 changes the machine's configuration, so it waits for you:
 
-1. Build the realms (no screen change): `verse/gpu/realm.sh local install
+1. Build the realms (no screen change): `metaverse/gpu/realm.sh local install
    ~/.local/share/verse-os/current` from an openagents checkout.
 2. In `~/coder/os`, add the input `verse-os.url =
    "git+file:///home/christopherdavid/openagents?dir=os/nix"`, import
@@ -1088,14 +1088,14 @@ No physical microphone or permission check was performed.
 
 ### Metaverse voice host: Parakeet recognition on the Mac (#12669)
 
-The Parakeet recognizer (`verse/voice-host --recognizer parakeet`) was built and
+The Parakeet recognizer (`metaverse/voice-host --recognizer parakeet`) was built and
 qualified on coderos-4080 (Linux; first the CPU path, now CUDA by default, #12672).
 The Mac was not available to the agent:
 
-- [ ] On the Mac, run `verse/voice-host/build.sh`. It now links both
+- [ ] On the Mac, run `metaverse/voice-host/build.sh`. It now links both
       `libpsionic-parakeet.a` and `libpsionic-whisper.a`; confirm the link has no
       duplicate-symbol error between the two Psionic archives.
-- [ ] Run `coax/web/tool.sh verse/voice-host/parakeet-check.coax` there (Metal by
+- [ ] Run `coax/web/tool.sh metaverse/voice-host/parakeet-check.coax` there (Metal by
       default) and add its latency lines to
       [the record](docs/verification/verse-parakeet-2026-11-02/README.md).
 - [ ] Hold to talk with the real microphone in the OpenAgents Metaverse Engine once its forge bar
