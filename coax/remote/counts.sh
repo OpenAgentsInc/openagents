@@ -13,7 +13,8 @@
 # EF_GAPS), components-to-move (coax/web/components-check.coax CC_TO_MOVE),
 # wire-allowlist (the lines of proto/wire-allowlist.txt), tools-port (the lines of
 # coax/tools-port.txt), layer-RULE (metaverse-engine/layer-allowlist.txt's lines per rule)
-# and sql-rules-routes (coax/web/api/*.c calling plpgsql functions in schema.sql).
+# and sql-rules-routes (coax/web/api/*.c calling plpgsql functions in schema.sql, directly or
+# through sql functions that call them).
 #
 # The rule. Walking BASE..REV (first parent), the baseline of a count starts at
 # its value at BASE and falls with it: the lowest value since BASE. REV is red
@@ -45,9 +46,27 @@ cn_show() {   # rev: NAME VALUE lines (a count whose file is missing at REV is l
   fi
   if git cat-file -e "$r:coax/web/api/schema.sql" 2> /dev/null; then
     local fns
+    # The plpgsql functions, and the sql functions that call one at any depth: a route that asks
+    # verse.edit_switch, a sql wrapper of the plpgsql verse.edit_switch_0110 (migrations/0110), asks
+    # plpgsql rules too. A function's text runs from its CREATE line to pg_dump's next "--" line.
     fns="$(git show "$r:coax/web/api/schema.sql" | awk '
-      /^CREATE (OR REPLACE )?FUNCTION / { fn = $0; sub(/^CREATE (OR REPLACE )?FUNCTION /, "", fn); sub(/\(.*/, "", fn) }
-      /LANGUAGE / && fn != "" { if ($0 ~ /LANGUAGE plpgsql([;[:space:]]|$)/ && fn ~ /\./) print fn "("; fn = "" }
+      function flush() { if (fn != "" && fn ~ /\./) { nm[++N] = fn; lg[N] = lang; bd[N] = body } fn = ""; lang = ""; body = "" }
+      /^CREATE (OR REPLACE )?FUNCTION / { flush(); fn = $0; sub(/^CREATE (OR REPLACE )?FUNCTION /, "", fn); sub(/\(.*/, "", fn) }
+      fn != "" && lang == "" && /LANGUAGE / { lang = ($0 ~ /LANGUAGE plpgsql([;[:space:]]|$)/) ? "plpgsql" : "other" }
+      fn != "" && /^--$/ { flush(); next }
+      fn != "" { body = body "\n" $0 }
+      END {
+        flush()
+        for (i = 1; i <= N; i++) if (lg[i] == "plpgsql") rules[nm[i]] = 1
+        do {
+          grew = 0
+          for (i = 1; i <= N; i++) {
+            if (nm[i] in rules) continue
+            for (f in rules) if (index(bd[i], f "(")) { rules[nm[i]] = 1; grew = 1; break }
+          }
+        } while (grew)
+        for (f in rules) print f "("
+      }
     ' | sort -u)"
     n=0
     [[ -z "$fns" ]] || n="$(git grep -Fl -f <(printf '%s\n' "$fns") "$r" -- ':(glob)coax/web/api/*.c' 2> /dev/null | wc -l | tr -d ' ')"
