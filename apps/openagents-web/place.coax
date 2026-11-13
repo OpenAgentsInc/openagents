@@ -35,7 +35,7 @@
 // round-trips exactly:
 //   verse-place 1 / realm=SLOT / at=MS / x= / y= / z= / face= / yaw= /
 //   pitch= / zoom= / view= / room=
-#load "save.coax";
+#load "../../metaverse-engine/state/save.coax";
 
 PLACE_HEAD :: "verse-place 1\n";
 PLACE_WORLD :: "place";          // the AESV container's world on the server

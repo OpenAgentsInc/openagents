@@ -183,7 +183,7 @@ check("nor a page from the revision before the erase", pt("POST", old_slot, {"by
 check("a page with revisions saves from the erase", pt("POST", old_slot, {"bytes": b64(s1), "rev": erased["rev"]}, key=guest["key"])[1]["rev"] == erased["rev"] + 1)
 
 # ---- the realm save's fixtures (E10, #13250): proto/verse/realm-save-aesv-v1.json, the containers the
-# pages write and read through apps/openagents-web/save.coax (save-profile.coax checks that side).
+# pages write and read through metaverse-engine/state/save.coax (save-profile.coax checks that side).
 # player.c's container_ok is held to the same bytes: every golden container is kept and comes back
 # byte for byte, and each malformed one gets what its "server" says: refused with a 400, or kept
 # (the server checks the magic, version, layer and CRC-32 only; the page's save_open refuses those).

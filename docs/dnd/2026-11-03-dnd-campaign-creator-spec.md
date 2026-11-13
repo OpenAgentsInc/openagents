@@ -74,7 +74,7 @@ and "Session recap", never "event", "authority", "replay" or "seed".
 | Sound | book ch065–ch068 | Music and ambience from numbers, a sequencer and a mixer |
 | Effects | book ch072 (design draft), `metaverse-engine/render/particles.coax` | Spell effects, fog, torchlight and weather in 3D scenes |
 | Rooms and shared state | book ch049–ch050, `coax/web/room/` | Who is at the table, and the same session state on every screen |
-| Saves | book ch081, `apps/openagents-web/save.coax` | A character and a campaign that persist between sessions |
+| Saves | book ch081, `metaverse-engine/state/save.coax` | A character and a campaign that persist between sessions |
 | Dice on the wire | `verse.rules.v1` `DiceReveal` in [openagents-verse-protocol.md](../verse/openagents-verse-protocol.md) | A roll's expression, faces and total, revealed after it resolves |
 
 ## Who uses it

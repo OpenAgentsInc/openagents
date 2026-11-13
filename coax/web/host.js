@@ -229,7 +229,7 @@
 // A traced page (no scene: bg_fs draws its world, 5E Lab's glade) with a particles: module draws them
 // too, right after bg_fs (and its grass and surface), the same two passes, not depth-tested: a page
 // with no depth buffer gets pipelines without one, and its shader hides puffs itself from what its
-// uniforms say (metaverse-engine/fx/gpu-puff.coax fades them into the ground it traces). Pages with a scene
+// uniforms say (everglade/client/gpu/gpu-puff.coax fades them into the ground it traces). Pages with a scene
 // draw theirs as before.
 // Pictures and videos from this site, optionally, drawn where the app says, over the scene and under
 // its strokes (Hecate's Cemetery's memorials):

@@ -20,7 +20,7 @@
 #load "../action/react.coax" as react;
 #load "../action/break.coax" as breaks;
 #load "../ai/stimulus.coax" as ai;
-#load "../../apps/openagents-web/save.coax";
+#load "save.coax";
 #load "../../coax/lib/net/ws.coax";
 
 STATE_LAB_RESOURCES :: 12;

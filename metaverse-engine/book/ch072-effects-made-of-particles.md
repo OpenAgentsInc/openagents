@@ -22,7 +22,7 @@
 > frame and never written past the budget. The engine says which feature
 > an event tells of (`RsEvent.feat`, `RS_FT_*`), so a world maps it to a
 > recipe without reading the log line.
-> [`metaverse-engine/fx/gpu-puff.coax`](../../metaverse-engine/fx/gpu-puff.coax) draws them on
+> [`everglade/client/gpu/gpu-puff.coax`](../../everglade/client/gpu/gpu-puff.coax) draws them on
 > a traced page (a pinhole camera from the uniforms, soft against the
 > ground it traces, no depth buffer) with Everglade's own shading, loaded
 > from [`everglade/client/gpu/gpu-fx.coax`](../../everglade/client/gpu/gpu-fx.coax),
@@ -108,7 +108,7 @@ and capped by a budget.
 - `metaverse-engine/fx/motion.coax`: stateless motion kinds, shared by the shader and
   the checks.
 - `metaverse-engine/fx/puff.coax` (built): puffs with heat and streaks, their two-pass
-  draw order, budgets and recipes; `metaverse-engine/fx/gpu-puff.coax` (built) draws
+  draw order, budgets and recipes; `everglade/client/gpu/gpu-puff.coax` (built) draws
   them on traced pages.
 
 ## Acceptance checks and oracles

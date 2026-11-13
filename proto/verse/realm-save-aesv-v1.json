@@ -1,7 +1,7 @@
 {
  "identity": "realm-save-aesv-v1",
  "check": "coax/web/tool.sh apps/openagents-web/save-profile.coax proto/verse/realm-save-aesv-v1.json",
- "codec": "apps/openagents-web/save.coax",
+ "codec": "metaverse-engine/state/save.coax",
  "doc": "docs/protocol/realm-save-aesv-v1.md",
  "scope": "A realm's save: the AESV container (kept in IndexedDB and in verse.progress on the server), the record of two saves the browser keeps, and the body that posts a save to /api/playtest/progress/WORLD/SLOT",
  "container": [
@@ -22,7 +22,7 @@
   "value": "cbf43926"
  },
  "readers": {
-  "apps/openagents-web/save.coax save_open": "everything: magic, version, layer, CRC-32, the world's name, a schema it knows, both lengths exact",
+  "metaverse-engine/state/save.coax save_open": "everything: magic, version, layer, CRC-32, the world's name, a schema it knows, both lengths exact",
   "coax/web/api/player.c container_ok": "at least 18 bytes, the magic, version 1 or 2, layer 2 and the CRC-32. It does not read the schema, the world or the lengths: a container it keeps that save_open refuses (\"server\": \"keeps\" below) is one the page never loads"
  },
  "containers": [

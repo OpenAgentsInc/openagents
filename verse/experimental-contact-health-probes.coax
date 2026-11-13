@@ -1,6 +1,6 @@
 // Native component chain: physical contact -> bounded identity -> shared strike/HP.
-#load "battle.coax";
-#load "../../verse/experimental-hostiles.coax" as hostile;
+#load "../rules/srd/battle.coax";
+#load "experimental-hostiles.coax" as hostile;
 
 contact_health_probe :: () -> bool {
   h: [1] hostile.Hostiles; hostile.hostile_test_start(h[..]); h[0].shared=true;

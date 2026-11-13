@@ -1,0 +1,128 @@
+// Text frames (#13270): a frame is a head and fields a space apart, written into a caller's buffer
+// and read back by a bounded reader. Everglade's wire (everglade/shared/everglade-wire.coax) and the
+// latency observation (latency.coax) are both made of these, so the engine holds them and neither
+// loads the other's records.
+
+// A reader: where it is in the frame, and ok until a field is missing or bad.
+WireRd :: struct { at: int; ok: bool = true; }
+
+// ---- writing
+
+wire_put :: (out: [] u8, at: int, t: string) -> int {
+  n := at;
+  for ch: t { if n >= out.count { break; } out[n] = ch; n += 1; }
+  return n;
+}
+wire_int :: (out: [] u8, at: int, v: int) -> int {
+  n := at;
+  if n < out.count { out[n] = ' '; n += 1; }
+  x := v;
+  if x < 0 { if n < out.count { out[n] = '-'; n += 1; } x = -x; }
+  digits: [20] u8; c := 0;
+  while true { digits[c] = cast(u8) (48 + x % 10); c += 1; x /= 10; if x == 0 || c >= 20 { break; } }
+  while c > 0 && n < out.count { c -= 1; out[n] = digits[c]; n += 1; }
+  return n;
+}
+// A word: spaces, ';' and controls left out, "-" when nothing is left.
+wire_text :: (out: [] u8, at: int, t: string) -> int {
+  n := wire_put(out, at, " ");
+  start := n;
+  for ch: t { if n >= out.count { break; } if ch <= 32 || ch == ';' || ch == 127 { continue; } out[n] = ch; n += 1; }
+  if n == start { n = wire_put(out, n, "-"); }
+  return n;
+}
+// A name: its spaces kept (it is a record's last field), ';' and controls left out.
+wire_name :: (out: [] u8, at: int, t: string) -> int {
+  n := wire_put(out, at, " ");
+  start := n;
+  for ch: t { if n >= out.count || n - start >= 40 { break; } if ch < 32 || ch == ';' || ch == 127 { continue; } out[n] = ch; n += 1; }
+  if n == start { n = wire_put(out, n, "-"); }
+  return n;
+}
+// ---- reading (bounded: a missing or bad field sets ok false)
+
+// Whether a field is left past the reader (a record's last, optional one: a cast's mode).
+wire_more :: (t: string, r: [] WireRd) -> bool {
+  i := r[0].at;
+  while i < t.count && t[i] == ' ' { i += 1; }
+  return r[0].ok && i < t.count;
+}
+wire_num :: (t: string, r: [] WireRd) -> int {
+  i := r[0].at;
+  while i < t.count && t[i] == ' ' { i += 1; }
+  neg := i < t.count && t[i] == '-';
+  if neg { i += 1; }
+  start := i; v := 0;
+  while i < t.count && t[i] >= '0' && t[i] <= '9' && i - start < 18 { v = v * 10 + cast(int) (t[i] - '0'); i += 1; }
+  if i == start || (i < t.count && t[i] != ' ') { r[0].ok = false; r[0].at = i; return 0; }
+  r[0].at = i;
+  return ifx neg then -v else v;
+}
+// The next word, to a space or the end ("-" reads as "").
+wire_word :: (t: string, r: [] WireRd) -> string {
+  i := r[0].at;
+  while i < t.count && t[i] == ' ' { i += 1; }
+  e := i;
+  while e < t.count && t[e] != ' ' { e += 1; }
+  r[0].at = e;
+  if e == i { r[0].ok = false; }
+  w := t[i..<e];
+  return ifx w == "-" then t[e..<e] else w;
+}
+// The rest: a record's last field, a name with its spaces ("-" reads as "").
+wire_rest :: (t: string, r: [] WireRd) -> string {
+  i := r[0].at;
+  while i < t.count && t[i] == ' ' { i += 1; }
+  r[0].at = t.count;
+  if i >= t.count { r[0].ok = false; return t[t.count..<t.count]; }
+  w := t[i..<t.count];
+  return ifx w == "-" then t[t.count..<t.count] else w;
+}
+// A record's reader, past its letters ("p ...": at 1; "e cast ...": at 6).
+wire_rd :: (t: string, letters: int) -> WireRd { return WireRd.{at = letters, ok = t.count > letters && t[letters] == ' '}; }
+wire_is :: (t: string, head: string) -> bool { return t.count > head.count && t[0..<head.count] == head && t[head.count] == ' '; }
+// How many fields a frame has, its head one of them: one more than its spaces (0 for an empty frame).
+// A reader that takes a frame whole compares this, so a doubled or trailing space is refused.
+wire_fields :: (t: string) -> int {
+  if t.count == 0 { return 0; }
+  n := 1;
+  for c: t { if c == ' ' { n += 1; } }
+  return n;
+}
+
+// ---- a snapshot's head
+
+// The head of a room's snapshot frame, "D tick ack flags part": the tick it is of, the last input
+// it answers, its flags and which part of the tick's rows it is. The rows after it are the
+// world's own (Everglade's are in everglade/shared/everglade-wire.coax); the latency client
+// (latency-client.coax) reads only this head, to time an input's answer.
+WireD :: struct { tick: int; ack: int; f: int; part: int; }
+wire_put_d :: (out: [] u8, at: int, d: WireD) -> int {
+  n := wire_put(out, at, "D");
+  n = wire_int(out, n, d.tick); n = wire_int(out, n, d.ack); n = wire_int(out, n, d.f); n = wire_int(out, n, d.part);
+  return wire_put(out, n, " ");
+}
+wire_read_d :: (t: string, r: [] WireRd) -> WireD {
+  d: WireD;
+  d.tick = wire_num(t, r); d.ack = wire_num(t, r); d.f = wire_num(t, r); d.part = wire_num(t, r);
+  return d;
+}
+
+#test "text frame: fields are written a space apart and read back; a missing or bad one is refused" {
+  b: [64] u8; n := wire_put(b[..], 0, "p"); n = wire_int(b[..], n, 7); n = wire_int(b[..], n, -120); n = wire_text(b[..], n, "a b;c"); n = wire_text(b[..], n, ""); n = wire_name(b[..], n, "Ann Lee");
+  t := cast(string) b[0..<n]; #assert t == "p 7 -120 abc - Ann Lee" && wire_is(t, "p") && !wire_is(t, "q") && !wire_is("p", "p") && wire_fields(t) == 7 && wire_fields("") == 0;
+  r: [1] WireRd; r[0] = wire_rd(t, 1); #assert r[0].ok && wire_num(t, r[..]) == 7 && wire_num(t, r[..]) == -120 && wire_word(t, r[..]) == "abc" && wire_more(t, r[..]);
+  #assert wire_word(t, r[..]) == "" && r[0].ok && wire_rest(t, r[..]) == "Ann Lee" && r[0].ok && !wire_more(t, r[..]);
+  _w := wire_word(t, r[..]); #assert !r[0].ok;
+  r[0] = wire_rd("p x", 1); _n := wire_num("p x", r[..]); #assert !r[0].ok;
+  r[0] = wire_rd("p 1x", 1); _n = wire_num("p 1x", r[..]); #assert !r[0].ok;
+  r[0] = wire_rd("p", 1); #assert !r[0].ok;
+  r[0] = wire_rd("p -", 1); #assert wire_rest("p -", r[..]) == "" && r[0].ok;
+  r[0] = wire_rd("p ", 1); _s := wire_rest("p ", r[..]); #assert !r[0].ok;
+  // a snapshot's head, both ways
+  n = wire_put_d(b[..], 0, WireD.{tick = 120, ack = 7, f = 2, part = 1}); t = cast(string) b[0..<n]; #assert t == "D 120 7 2 1 " && wire_is(t, "D");
+  r[0] = wire_rd(t, 1); d := wire_read_d(t, r[..]); #assert r[0].ok && d.tick == 120 && d.ack == 7 && d.f == 2 && d.part == 1;
+  r[0] = wire_rd("D 1 2 3", 1); d = wire_read_d("D 1 2 3", r[..]); #assert !r[0].ok;
+  // nothing is written past the buffer
+  #assert wire_put(b[0..<2], 0, "abc") == 2 && wire_int(b[0..<3], 0, 123456) == 3 && wire_name(b[..], 0, "") == 2;
+}

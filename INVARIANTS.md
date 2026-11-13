@@ -1005,7 +1005,7 @@ revisions has saved the slot (`marked`, which never clears). A change that
 names no revision (a sign-in moving a guest's saves, an erase) gets a
 revision no device has read. On a 409 a page of progress takes the server's
 save; a page of where you are or the spell bar sends its own again from the
-server's revision (`apps/openagents-web/save.coax` `SaveSync`). Server-owned
+server's revision (`metaverse-engine/state/save.coax` `SaveSync`). Server-owned
 room state (`verse.room_vitals`: HP, XP) is not a progress save: only
 `oa-room` writes it, signed with the seat-ticket key or the writing shard's
 own key (room writes v1, #13260), and XP only rises,

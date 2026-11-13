@@ -1,10 +1,10 @@
 // Everglade II's cast effects (#13058: everglade/client/cast.coax, metaverse-engine/fx/puff.coax): build.sh writes
 // apps/openagents-web/everglade2-fx.wgsl from this with coax/web/wgsl-module.coax (everglade2-fx.module
-// and everglade2-fx.bindings beside it). The puffs are metaverse-engine/fx/gpu-puff.coax's, through the same
+// and everglade2-fx.bindings beside it). The puffs are gpu-puff.coax's, through the same
 // pinhole (Everglade II's uniforms have it where 5E Lab's do), but on a raster page: the host draws
 // them after the scene, depth-tested against it, so each takes the scene's depth (fivelab_project's,
 // everglade/client/client.coax's) and the trees and you hide it, and none fades into a traced ground.
-#load "../../../metaverse-engine/fx/gpu-puff.coax";
+#load "gpu-puff.coax";
 
 E2FX_NEAR :: 0.1f32;   // everglade/scene/gpu/fivelab.coax FIVELAB_NEAR, FIVELAB_FAR: the scene's depth
 E2FX_FAR :: 900.0f32;

@@ -11,11 +11,6 @@
 # Seeded when the check landed: aethyr-up 57, everglade-up 7, tests 126.
 
 # The engine loads from a realm, a page or the game
-aethyr-up metaverse-engine/fx/gpu-puff.coax -> everglade/client/gpu/gpu-fx.coax  # its target moved from verse/everglade/ to everglade/client/gpu/; the load itself is as old (#13269)
-aethyr-up metaverse-engine/net/latency.coax -> everglade/shared/everglade-wire.coax  # its target moved from apps/openagents-web/ to everglade/shared/; the load itself is as old (#13346)
-aethyr-up rules/srd/contact-health-probes.coax -> verse/experimental-hostiles.coax  # its file moved from metaverse-engine/rules/srd/ to rules/srd/; the load itself is as old (#13270)
-aethyr-up rules/srd/hostile-permission-probes.coax -> verse/experimental-hostiles.coax  # its file moved from metaverse-engine/rules/srd/ to rules/srd/; the load itself is as old (#13270)
-aethyr-up metaverse-engine/state/fixture.coax -> apps/openagents-web/save.coax
 
 # The game loads from the web app
 

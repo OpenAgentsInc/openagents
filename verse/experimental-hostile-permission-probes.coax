@@ -1,5 +1,5 @@
 // Native body-adapter observation, not qualification of its legacy damage rolls.
-#load "../../verse/experimental-hostiles.coax" as hostile;
+#load "experimental-hostiles.coax" as hostile;
 
 hostile_permission_probe :: () -> bool {
   h: [1] hostile.Hostiles; hostile.hostile_test_start(h[..]);

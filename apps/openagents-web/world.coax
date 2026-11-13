@@ -4,7 +4,7 @@
 // and everyone else offers them (/api/playtest/change/<id>), and the owner
 // accepts or declines the offers waiting in its log (/api/playtest/log/<id>).
 
-#load "save.coax";
+#load "../../metaverse-engine/state/save.coax";
 
 WORLD_HOUSE :: "haunted-house";
 WORLD_GET :: 0; WORLD_OWNER :: 1; WORLD_LOG :: 2; WORLD_CHANGE :: 3; WORLD_ACCEPT :: 4; WORLD_DECLINE :: 5;

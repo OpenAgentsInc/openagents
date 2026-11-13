@@ -1,5 +1,5 @@
 // book:begin example
-#load "../../apps/openagents-web/save.coax";
+#load "../state/save.coax";
 #import "Basic";
 
 hex :: (b: [] u8, n: int) {

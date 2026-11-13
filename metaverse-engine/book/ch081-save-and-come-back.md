@@ -1,7 +1,7 @@
 # 81. Save and come back
 
 > **Status: partly implemented.**
-> [apps/openagents-web/save.coax](../../apps/openagents-web/save.coax) keeps
+> [metaverse-engine/state/save.coax](../state/save.coax) keeps
 > a realm's save as a versioned `AESV` container with a CRC-32, in two slots,
 > in the browser and, for a player with an account, on the server
 > (`/api/playtest/progress`, which checks the same container). A load tries
@@ -13,8 +13,8 @@
 > ([chapter 52](ch052-edit-a-realm-in-place.md)), and so is a player's
 > progress (#12719): the server keeps a progress save only from the revision
 > there now, and no decision reads a device's clock. The example below runs
-> natively in debug and release. Not built yet: the layer as
-> `metaverse-engine/save.coax`, declared save fields, retries that are applied once,
+> natively in debug and release. The container is in the engine
+> (`metaverse-engine/state/save.coax`, #13270). Not built yet: declared save fields, retries that are applied once,
 > and a merge or a conflict copy in place of taking the server's save. See
 > [Still to do](#still-to-do).
 
@@ -39,7 +39,7 @@ payload's schema as a little-endian `u32`, a varint and the world's ID, a
 varint and the payload, then a CRC-32 (polynomial `0xEDB88320`) of
 everything before it:
 
-<!-- source: apps/openagents-web/save.coax pack -->
+<!-- source: metaverse-engine/state/save.coax pack -->
 ```jai
 // payload packed into out as a progress container; its length, or -1 when it doesn't fit.
 save_pack :: (world: string, schema: int, payload: [] u8, n: int, out: [] u8) -> int #export_c #effects(all) {
@@ -64,7 +64,7 @@ save_pack :: (world: string, schema: int, payload: [] u8, n: int, out: [] u8) ->
 magic, a container version it knows (1 or 2), the layer, the CRC, a schema no
 newer than the build's, the world, and lengths that end exactly at the CRC:
 
-<!-- source: apps/openagents-web/save.coax open -->
+<!-- source: metaverse-engine/state/save.coax open -->
 ```jai
 // A container's payload, when its magic, version, layer, CRC and world are
 // right and its schema is one this build knows (at most max_schema).
@@ -117,7 +117,7 @@ previous one only when it opens; otherwise the old previous one stays, so a
 damaged save is never kept as the fallback. A load tries the current save,
 then the last good one:
 
-<!-- source: apps/openagents-web/save.coax pick -->
+<!-- source: metaverse-engine/state/save.coax pick -->
 ```jai
 SavePick :: struct { which: int; at: int; count: int; schema: int; time: f64; }   // which: 0 none, 1 current, 2 previous
 // The save to load, trying the current one first (from `from`: 1, or 2 when
@@ -148,7 +148,7 @@ The program is
 
 <!-- source: metaverse-engine/examples/save-and-come-back.coax example -->
 ```jai
-#load "../../apps/openagents-web/save.coax";
+#load "../state/save.coax";
 #import "Basic";
 
 hex :: (b: [] u8, n: int) {
@@ -237,7 +237,7 @@ save, and a schema newer than the build, which a newer build opens.
 
 ## Checks
 
-- `coax/bin/coax test apps/openagents-web/save.coax --library`: a save packs
+- `coax/bin/coax test metaverse-engine/state/save.coax --library`: a save packs
   into a container that opens again; another world's save and a newer schema
   don't open; the CRC table's check value; two saves in the record, the
   current one corrupted, falling back to the last good one, which a new save
@@ -276,7 +276,7 @@ that arrives last is kept. Once a page with revisions saves a slot, a save
 without a revision gets a 409 there. Existing saves become revision 1, and a
 save time that a fast clock put in the future is brought back to now.
 
-On the page, [save.coax](../../apps/openagents-web/save.coax)'s `SaveSync`
+On the page, [save.coax](../state/save.coax)'s `SaveSync`
 keeps the revision the server last answered and sends one save at a time; a
 save made while one is in flight waits for its answer. What a 409 does
 depends on what the slot holds:
@@ -314,10 +314,10 @@ XP stays.
 
 ## Still to do
 
-- **`metaverse-engine/save.coax`.** Move the container, the slots, the migrations and
-  the refusal of newer schemas from `apps/openagents-web/save.coax` into
-  the OpenAgents Metaverse Engine, and have every realm (Fairy Forest's payload included) load its
-  saves through it.
+- **Every realm through `metaverse-engine/state/save.coax`.** The container, the
+  slots, the migrations and the refusal of newer schemas are in the OpenAgents
+  Metaverse Engine (#13270). Still to do: every realm (Fairy Forest's payload
+  included) loads its saves through it.
 - **Declared save fields.** A realm marks the fields it saves and the Metaverse Engine
   derives the payload from them in a fixed order, with a layout fingerprint
   per schema; entities in a save by chapter 6's durable IDs. Today each realm
@@ -339,7 +339,7 @@ XP stays.
 ### Acceptance checks still open
 
 - Every realm that saves today loads its existing saves through
-  `metaverse-engine/save.coax`, and no realm keeps its own container code.
+  `metaverse-engine/state/save.coax`, and no realm keeps its own container code.
 - A save written by schema N opens in a build with schema N + 1 through that
   realm's migration (today the only migration is the bare-hex save to
   schema 0).

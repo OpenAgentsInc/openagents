@@ -13,7 +13,7 @@
 // coax/web/api/test_player.py, which posts every container: "server" says what it does with each.
 // Usage: coax/web/tool.sh apps/openagents-web/save-profile.coax proto/verse/realm-save-aesv-v1.json
 #import "Basic";
-#load "save.coax";
+#load "../../metaverse-engine/state/save.coax";
 #load "../../coax/lib/json/json.coax";
 #load "../../coax/lib/sys/tool.coax";
 #load "../../coax/lib/sys/fs.coax";
@@ -98,7 +98,7 @@ svp_check :: (raw: string) -> bool #effects(all) {
   if !jv_parse(doc[..], raw, nodes[..]) { return svp_fail("not JSON", ""); }
   d := doc[0];
   tb: [SVP_BUF] u8; wb: [64] u8;
-  if svp_str(d, jv_get(d, 0, "identity"), tb[..]) != "realm-save-aesv-v1" || svp_str(d, jv_get(d, 0, "codec"), tb[..]) != "apps/openagents-web/save.coax" { return svp_fail("identity or codec", ""); }
+  if svp_str(d, jv_get(d, 0, "identity"), tb[..]) != "realm-save-aesv-v1" || svp_str(d, jv_get(d, 0, "codec"), tb[..]) != "metaverse-engine/state/save.coax" { return svp_fail("identity or codec", ""); }
   if jv_int(d, jv_get(d, 0, "version"), -1) != SAVE_VERSION || jv_int(d, jv_get(d, 0, "layer"), -1) != SAVE_PROGRESS || jv_int(d, jv_get(d, 0, "min_bytes"), -1) != 18 { return svp_fail("version, layer or min_bytes", ""); }
   if svp_str(d, jv_get(d, 0, "record_head"), tb[..]) != SAVE_HEAD { return svp_fail("record_head", ""); }
   if jv_len(d, jv_get(d, 0, "container")) != 8 { return svp_fail("container", ""); }

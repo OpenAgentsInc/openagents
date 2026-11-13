@@ -30,7 +30,7 @@
 
 #load "../../metaverse-engine/ui/font.coax";
 #load "../../coax/web/analytics.coax";
-#load "save.coax";
+#load "../../metaverse-engine/state/save.coax";
 #load "../../metaverse-engine/cam/camera.coax";
 #load "../../metaverse-engine/physics/throw.coax";
 #load "../../metaverse-engine/move/follower.coax" as follow;

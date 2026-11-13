@@ -59,7 +59,6 @@ route coax/web/api/private.c  # private projects: hand-built bodies; the api.v1 
 route coax/web/api/villa.c  # the villa: hand-built bodies; the api.v1 envelope (#13250)
 
 # Codecs outside their owning context's folders (#13316).
-codec realm-save-aesv-v1 apps/openagents-web/save.coax  # engine codec still lives in apps/openagents-web/; the Aethyr book's chapter 81 plans its move to metaverse-engine/save.coax (#13250)
 codec orbit-session-v2 apps/openagents-web/orbit-session.coax  # room-session codec still lives in apps/openagents-web/ (#13316)
 codec openagents.metareal.haunt.v1alpha1 verse/haunt.coax  # engine codec still lives in verse/ (#13316)
 codec openagents.voice.v1alpha1 verse/voice-wire.coax  # room-session codec still lives in verse/ (#13316)
