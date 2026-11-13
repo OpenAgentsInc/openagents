@@ -105,7 +105,7 @@ uint32_t coaxial_frame(cx_face_addr state, cx_face_addr vertices, cx_face_addr u
   int64_t n = lab_frame(at(state), out, u, w, h, scale, dt, still != 0);
   draw_n = 0;
   if (zone_at(state)->bodies.e[0].ready) {
-    if (!baked) { zone_bake_from(zone(state), (coax_v_t_People){&rig, 1}, (coax_v_f32){bake, sizeof bake / sizeof bake[0]}, (coax_v_u8){rig_file, rig_bytes}); baked = 1; }
+    if (!baked && zone_bake_from(zone(state), (coax_v_t_People){&rig, 1}, (coax_v_f32){bake, sizeof bake / sizeof bake[0]}, (coax_v_u8){rig_file, rig_bytes})) baked = 1;   /* once the pack's rig is in (#13508) */
     draw_n = lab_scene(at(state), (coax_v_f32){zone_at(state)->records.e, sizeof zone_at(state)->records.e / sizeof(float)});
   }
   frames += 1;
@@ -117,6 +117,9 @@ uint32_t coaxial_frame(cx_face_addr state, cx_face_addr vertices, cx_face_addr u
 EXPORT("coaxial_pack_rig") cx_face_addr coaxial_pack_rig(cx_face_addr state, uint32_t bytes) { (void)state; return bytes <= sizeof rig_file ? (cx_face_addr)(uintptr_t)rig_file : 0u; }
 EXPORT("coaxial_pack_rig_capacity") uint32_t coaxial_pack_rig_capacity(cx_face_addr state) { (void)state; return (uint32_t)sizeof rig_file; }
 EXPORT("coaxial_pack_rig_ready") void coaxial_pack_rig_ready(cx_face_addr state, uint32_t bytes) { (void)state; rig_bytes = bytes <= sizeof rig_file ? bytes : 0u; }
+/* the same for a native host (metaverse-engine/host/README.md: coaxial_rig_v1, #13508) */
+EXPORT("coaxial_rig_v1") cx_face_addr coaxial_rig_v1(cx_face_addr state, uint32_t bytes) { return coaxial_pack_rig(state, bytes); }
+EXPORT("coaxial_rig_ready_v1") void coaxial_rig_ready_v1(cx_face_addr state, uint32_t bytes) { coaxial_pack_rig_ready(state, bytes); }
 EXPORT("coaxial_asset") cx_face_addr coaxial_asset(cx_face_addr state, int32_t i, uint32_t bytes) {
   (void)state;
   return i == 0 && bytes <= sizeof catalog ? (cx_face_addr)(uintptr_t)catalog : 0u;

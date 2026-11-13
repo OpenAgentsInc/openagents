@@ -1,0 +1,232 @@
+// The checks that pose Everglade's bodies from the rigs' keys (GitHub #13508). The keys are not source:
+// they are the rigs' file, everglade/model/rigs.vrg (its "people" and "two-hand" sets), and a check
+// that runs in `coax test` cannot read a file (coax/spec.md: no compile-time file). So these run here,
+// natively, on the file: a body baked as the skin plays it, the bow arm's joints, the two-handers'
+// fists on the haft and their room round the head, the bow out of the body in every clip, a rider's
+// seat and legs round the horse and the dragon, a person's height, and the engine mannequin's skeleton
+// as the file's. Each check prints its name; a failed #assert stops the run (exit not 0).
+//   coax/web/tool.sh everglade/model/tools/rig-poses.coax everglade/model/rigs.vrg
+//   coax/web/tool.sh everglade/model/tools/rig-poses.coax everglade/model/rigs.vrg --only WORD
+// coax/remote/check.sh runs it after landing (step rig-poses).
+// tool.sh: release
+// tool.sh: stack-gib 8
+#import "Basic";
+#load "../../scene/charactercreator.coax" as cc;
+#load "../../scene/bodies.coax" as figs;
+#load "../../mounts.coax" as egm;
+#load "../../dragon-clips.coax" as dragon;
+#load "../../../metaverse-engine/action/attach-overlap.coax" as overlap;
+#load "../../../metaverse-engine/anim/mannequin.coax";
+#load "../../../coax/lib/sys/tool.coax";
+#load "../../../coax/lib/sys/fs.coax";
+#load "../../../coax/lib/sys/args.coax";
+
+RP_FILE :: 4194304;
+RpRigs :: struct { people: [1] figs.People; own: [1] figs.Twohand; file: [RP_FILE] u8; n: int; }
+
+// ---- the bodies' bake (everglade/scene/bodies.coax)
+rp_arm_joints :: (r: [] RpRigs) {
+  for body: 0..<2 { rig := figs.people_rig(r[0].people[..], body == 1);
+    for j: 0..<3 { p := figs.bd_bind_at(rig.bind[(figs.BD_SHOULDER_L + j) * 12..<(figs.BD_SHOULDER_L + j) * 12 + 12]); q := figs.bd_arm_bind(body == 1, j);
+      for k: 0..<3 { #assert abs(p[k] - q[k]) < 0.0002; } } }
+}
+rp_baked_frame :: (r: [] RpRigs) {
+  out: [figs.BD_ROWS * 4 * 2] f32;
+  // the woman's knock back, frame 12, baked alone into a scratch the size of one frame
+  rig := figs.people_rig(r[0].people[..], true);
+  sk: [1] figs.Skin;
+  t := 12 * rig.duration[figs.PEOPLE_KNOCK] / f32(figs.BD_FRAMES[figs.BD_KNOCK]);
+  figs.skin_advance(rig, sk[..], figs.PEOPLE_KNOCK, 0, t);
+  figs.skin_palette(rig, sk[..], out[0..<figs.BD_ROWS * 4]);
+  sk2: [1] figs.Skin;
+  for j: 0..<figs.PEOPLE_JOINTS { sk2[0].now[j] = figs.skin_sample(rig, figs.PEOPLE_KNOCK, j, t); }
+  figs.skin_palette(rig, sk2[..], out[figs.BD_ROWS * 4..<figs.BD_ROWS * 8]);
+  worst := 0.0f32;
+  for k: 0..<figs.BD_ROWS * 4 { worst = hi(worst, abs(out[k] - out[figs.BD_ROWS * 4 + k])); }
+  #assert worst < 0.0001;
+}
+rp_two_hand_fists :: (r: [] RpRigs) {
+  // the metres between the fists, least and most: the axe's left hand slides down its haft in the cleave
+  lo := [6] f32.[0.40, 0.40, 0.12, 0.16, 0.16, 0.16]; up := [6] f32.[0.40, 0.40, 0.40, 0.16, 0.16, 0.16];
+  out: [figs.BD_ROWS * 4] f32; worst: [6] f32;
+  for body: 0..<2 {
+    rig := figs.twohand_rig(r[0].own[..], body == 1); sk: [1] figs.Skin;
+    br := figs.bd_bind_at(rig.bind[figs.BD_HAND * 12..<figs.BD_HAND * 12 + 12]); bl := figs.bd_bind_at(rig.bind[figs.BD_HAND_L * 12..<figs.BD_HAND_L * 12 + 12]);
+    br[0] -= 0.075; br[1] -= 0.03; bl[0] += 0.075; bl[1] -= 0.03;   // the fists' middles (charactercreator.coax CC_FIST)
+    for c: 0..<figs.TWOHAND_CLIPS { for f: 0..<figs.BD_OWN_FRAMES[c] {
+      t := f32(f) * rig.duration[c] / f32(figs.BD_OWN_FRAMES[c]);
+      for j: 0..<figs.PEOPLE_JOINTS { sk[0].now[j] = figs.skin_sample(rig, c, j, t); }
+      figs.skin_palette(rig, sk[..], out[..]);
+      a: [3] f32; b: [3] f32;
+      for k: 0..<3 {
+        hr := (figs.BD_HAND * 3 + k) * 4; hl := (figs.BD_HAND_L * 3 + k) * 4;
+        a[k] = out[hr] * br[0] + out[hr + 1] * br[1] + out[hr + 2] * br[2] + out[hr + 3];
+        b[k] = out[hl] * bl[0] + out[hl + 1] * bl[1] + out[hl + 2] * bl[2] + out[hl + 3];
+      }
+      gap := sqrt((b[0] - a[0]) * (b[0] - a[0]) + (b[1] - a[1]) * (b[1] - a[1]) + (b[2] - a[2]) * (b[2] - a[2]));
+      worst[c] = hi(worst[c], hi(lo[c] - gap, gap - up[c]));
+    } }
+  }
+  // on the game's bodies (the clips retargeted from the library's rig, whose arms differ) the gap stays
+  // within BD_GAP_SLACK of the authored spacing; the weapon runs through both fists either way
+  for c: 0..<figs.TWOHAND_CLIPS { #assert worst[c] < figs.BD_GAP_SLACK; }
+}
+rp_astride :: (r: [] RpRigs) {
+  out: [figs.BD_ROWS * 4] f32;
+  for body: 0..<2 { for seat: 0..<figs.BD_SEATS { p := figs.bd_ride_pose(r[0].people[..], body, seat, out[..]); #assert abs(p.y - figs.BD_RIDE_HIP[body]) < 0.012 && abs(p.x) < 0.02 && abs(p.z) < 0.1; } }
+}
+// standing, a man's and a woman's heads are 1.5 to 1.85 m up and their feet on the ground
+rp_standing :: (r: [] RpRigs) {
+  for body: 0..<2 {
+    rig := figs.people_rig(r[0].people[..], body == 1);
+    s: [1] figs.Skin;
+    figs.skin_advance(rig, s[..], figs.PEOPLE_IDLE, 0, 0.5);
+    head := figs.skin_joint(rig, s[..], figs.PEOPLE_HEAD);
+    low := 10.0f32;
+    for j: 0..<figs.PEOPLE_JOINTS { low = lo(low, figs.skin_joint(rig, s[..], j).y); }
+    #assert head.y > 1.5 && head.y < 1.85 && low > -0.05 && low < 0.12;
+    pal: [figs.PEOPLE_JOINTS * 12] f32;
+    figs.skin_palette(rig, s[..], pal[..]);
+    for k: 0..<figs.PEOPLE_JOINTS * 12 { #assert figs.finite(pal[k]); }
+  }
+}
+
+// ---- the mounts (everglade/zone-mounts.coax): astride the horse and the dragon, no leg bone sits
+// inside the mount's body at any frame it shows a rider
+rp_mount_legs :: (r: [] RpRigs) {
+  // each seat matches its mount, and the rows of a hull are the engine's
+  #assert egm.EG_SEAT_OF[egm.EG_HORSE] == figs.BD_SEAT_HORSE && egm.EG_SEAT_OF[egm.EG_DRAGON] == figs.BD_SEAT_DRAGON && figs.RIDE_HULL_ROWS == 14;
+  rows: [figs.BD_ROWS * 4] f32;
+  w := 2 * figs.RIDE_HULL_ROWS;
+  for body: 0..<2 {
+    // the horse: every frame of its idle, walk and gallop; thighs out round the barrel, knees bent,
+    // the feet below the barrel's widest at the stirrups, the pelvis on the back over the saddle bone
+    h := figs.bd_ride_posed(r[0].people[..], body, figs.BD_SEAT_HORSE, rows[..]);
+    hip := h.leg_a[0]; knee := h.leg_a[1]; ankle := h.leg_a[2];
+    #assert knee.x > hip.x + 0.25 && knee.z > hip.z && ankle.y < knee.y - 0.3 && ankle.y < h.pelvis.y - 0.7;
+    bend := figs.dot(figs.unit_or(figs.sub(hip, knee), figs.v3(0, 1, 0)), figs.unit_or(figs.sub(ankle, knee), figs.v3(0, -1, 0)));
+    #assert bend > -0.9 && bend < 0;   // the knee bent between 90 and about 155 degrees
+    left: [14] f32; right: [14] f32;
+    for f: 0..<egm.EG_HORSE_FRAMES {
+      for i: 0..<14 { left[i] = egm.EG_HORSE_HULL[f * w + i]; right[i] = egm.EG_HORSE_HULL[f * w + 14 + i]; }
+      #assert figs.ride_clearance(h, f32(egm.EG_HORSE_SEAT_UP), left[..], right[..], 0, 0.04) > 0;
+    }
+    // the dragon: every frame of each clip it plays under a rider, level and pitched as far as it goes
+    d := figs.bd_ride_posed(r[0].people[..], body, figs.BD_SEAT_DRAGON, rows[..]);
+    #assert d.leg_a[2].x > d.leg_a[0].x + 0.5 && d.leg_b[2].x < d.leg_b[0].x - 0.5 && d.leg_a[1].z > d.leg_a[0].z;
+    for c: 0..<egm.EG_DRAGON_CLIP.count {
+      clip := egm.EG_DRAGON_CLIP[c];
+      for k: 0..<dragon.DR_FRAMES[clip] {
+        f := dragon.dr_first(clip) + k;
+        for i: 0..<14 { left[i] = dragon.DR_HULL[f * w + i]; right[i] = dragon.DR_HULL[f * w + 14 + i]; }
+        for p: 0..<3 {
+          pitch := ifx p == 0 then f32(egm.EG_DRAGON_DIVE_PITCH) else ifx p == 1 then 0.0f32 else f32(egm.EG_DRAGON_CLIMB_PITCH);
+          #assert figs.ride_clearance(d, f32(egm.EG_DRAGON_SEAT_UP), left[..], right[..], pitch, 0.04) > 0;
+        }
+      }
+    }
+  }
+}
+
+// ---- what a body holds (everglade/scene/charactercreator.coax)
+rp_rooms :: (r: [] RpRigs, blends: bool, kit: int, first: int) {
+  room: [cc.CC_ROOM_ROWS * 3] f32; for i: 0..<cc.CC_ROOM_ROWS * 3 { room[i] = 9; }
+  cc.two_hand_rooms(room[..], 0, blends, kit, r[0].own[..], r[0].people[..]); cc.two_hand_rooms(room[..], 1, blends, kit, r[0].own[..], r[0].people[..]);
+  for row: first..<first + 6 { #assert room[row * 3] >= cc.CC_CLEAR && room[row * 3 + 1] >= cc.CC_CLEAR && room[row * 3 + 2] >= 0; }
+}
+rp_bow_clear :: (r: [] RpRigs, c0: int, c1: int) -> overlap.OverlapHit { return cc.cc_bow_sweep(c0, c1, r[0].own[..], r[0].people[..]); }
+rp_bow_side :: (r: [] RpRigs, c0: int, c1: int) { #assert cc.cc_bow_side_sweep(c0, c1, r[0].own[..], r[0].people[..]) > cc.CC_BOW_MEDIAL_MIN; }
+rp_bow_carry :: (r: [] RpRigs) { s := cc.cc_bow_carry_shape(r[0].own[..], r[0].people[..]); #assert s[0] < 0.001 && s[1] > 20 && s[2] < 40 && s[3] > 0.1; }
+
+// ---- the engine's mannequin (metaverse-engine/anim/mannequin.coax): the people's male skeleton, bit for bit
+rp_mannequin :: (r: [] RpRigs) {
+  rest: [455] f32; bind: [780] f32; mannequin_rest_bind(rest[..], bind[..]);
+  p := r[0].people[0];
+  for j: 0..<MANNEQUIN_JOINTS { #assert MANNEQUIN_PARENT[j] == p.parent[j] && MANNEQUIN_PARENT[j] == figs.PEOPLE_PARENT[j]; }
+  for k: 0..<455 { #assert f32_bits(rest[k]) == f32_bits(p.rest_m[k]); }
+  for k: 0..<780 { #assert f32_bits(bind[k]) == f32_bits(p.bind_m[k]); }
+}
+
+RP_CHECKS :: 20;
+RP_NAME :: [20] string.[
+  "the shoulder, elbow and wrist the bow arm turns about are the rig's, both bodies",
+  "a baked frame is the clip's pose as metaverse-engine/anim/skin.coax plays it",
+  "the owned two-handed clips keep both fists on the haft, the left its grip's spacing up from the right",
+  "astride, each body's pelvis sits where a realm seats it, its feet well below (mounts)",
+  "standing, a man's and a woman's heads are 1.5 to 1.85 m up and their feet on the ground",
+  "astride the horse and the dragon, no leg bone sits inside the mount's body at any frame it shows a rider (mounts)",
+  "a two-hander keeps 8 cm off the head and neck and out of the torso in its clips, on both bodies",
+  "a two-hander keeps 8 cm off the head and neck and out of the torso through the greataxe's blends",
+  "a two-hander keeps 8 cm off the head and neck and out of the torso through the greatsword's blends",
+  "standing, the carried bow's string is in toward the body and its back out, in every zone",
+  "walking and running, the carried bow's string is still in toward the body, in every zone",
+  "standing, the carried bow's grip is in the fist and its top leans out past the shoulder, as the reference",
+  "the drawn bow's limbs, string and arrow stay out of the body, both bodies, every frame",
+  "the carried bow stays out of the body standing, walking and running",
+  "the carried bow stays out of the body through a jump",
+  "the carried bow stays out of the body through a blow, a cast and a knock back",
+  "the carried bow stays out of the body as you fall",
+  "the mannequin's skeleton is the people's male body's, bit for bit",
+  "the file fills the people's and the two-handed rigs, and their shapes are people-clips.coax's and two-hand-clips.coax's",
+  "a set under another name, or cut short, fills nothing"];
+rp_check :: (r: [] RpRigs, i: int) {
+  if i == 0 { rp_arm_joints(r); }
+  if i == 1 { rp_baked_frame(r); }
+  if i == 2 { rp_two_hand_fists(r); }
+  if i == 3 { rp_astride(r); }
+  if i == 4 { rp_standing(r); }
+  if i == 5 { rp_mount_legs(r); }
+  if i == 6 { rp_rooms(r, false, 0, 0); }
+  if i == 7 { rp_rooms(r, true, 0, 6); }
+  if i == 8 { rp_rooms(r, true, 1, 12); }
+  if i == 9 { rp_bow_side(r, figs.BD_IDLE, figs.BD_IDLE); }
+  if i == 10 { rp_bow_side(r, figs.BD_WALK, figs.BD_RUN); }
+  if i == 11 { rp_bow_carry(r); }
+  if i == 12 { h := rp_bow_clear(r, figs.BD_BOW, figs.BD_BOW); #assert h.status == overlap.OverlapStatus.clear && h.poses == 2 * figs.BOW_POSE_FRAMES; }
+  if i == 13 { h := rp_bow_clear(r, figs.BD_IDLE, figs.BD_RUN); #assert h.status == overlap.OverlapStatus.clear; }
+  if i == 14 { h := rp_bow_clear(r, figs.BD_JUMP_START, figs.BD_JUMP_LAND); #assert h.status == overlap.OverlapStatus.clear; }
+  if i == 15 { h := rp_bow_clear(r, figs.BD_SLASH, figs.BD_KNOCK); #assert h.status == overlap.OverlapStatus.clear; }
+  if i == 16 { h := rp_bow_clear(r, figs.BD_DIE, figs.BD_DIE); #assert h.status == overlap.OverlapStatus.clear; }
+  if i == 17 { rp_mannequin(r); }
+  if i == 18 {
+    f := r[0].file[0..<r[0].n];
+    #assert figs.vrg_find(f, figs.E2RIG_PEOPLE).joints == figs.PEOPLE_JOINTS && figs.vrg_find(f, figs.E2RIG_TWOHAND).clips == figs.TWOHAND_CLIPS;
+    p := r[0].people[0]; o := r[0].own[0];
+    for c: 0..<figs.PEOPLE_CLIPS { #assert f32_bits(p.duration[c]) == f32_bits(figs.PEOPLE_DURATION[c]) && f32_bits(p.distance[c]) == f32_bits(figs.PEOPLE_DISTANCE[c]); }
+    for c: 0..<figs.TWOHAND_CLIPS { #assert f32_bits(o.duration[c]) == f32_bits(figs.TWOHAND_DURATION[c]) && f32_bits(o.distance[c]) == f32_bits(figs.TWOHAND_DISTANCE[c]); }
+    for j: 0..<figs.PEOPLE_JOINTS { #assert p.parent[j] == figs.PEOPLE_PARENT[j] && o.parent[j] == figs.TWOHAND_PARENT[j]; }
+  }
+  if i == 19 {
+    g: [1] figs.People; t: [1] figs.Twohand; n := r[0].n;
+    #assert !figs.e2rig_people(r[0].file[0..<n - 4], g[..]) && !figs.e2rig_twohand(r[0].file[0..<0], t[..]);
+    was := r[0].file[32]; r[0].file[32] = 'q';
+    #assert !figs.e2rig_people(r[0].file[0..<n], g[..]) && figs.e2rig_twohand(r[0].file[0..<n], t[..]);
+    r[0].file[32] = was;
+  }
+}
+rp_has :: (hay: string, needle: string) -> bool {
+  if needle.count == 0 { return true; }
+  if needle.count > hay.count { return false; }
+  for i: 0..<hay.count - needle.count + 1 { if hay[i..<i + needle.count] == needle { return true; } }
+  return false;
+}
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) || (args_count(a[..]) != 1 && args_count(a[..]) != 3) || (args_count(a[..]) == 3 && args_at(a[..], 1) != "--only") {
+    tool_errln("usage: rig-poses RIGS.vrg [--only WORD]"); return 2;
+  }
+  only := ifx args_count(a[..]) == 3 then args_at(a[..], 2) else "";
+  r: [1] RpRigs;
+  r[0].n = fs_read(args_at(a[..], 0), r[0].file[..]);
+  if r[0].n <= 0 || !figs.e2rig_people(r[0].file[0..<r[0].n], r[0].people[..]) || !figs.e2rig_twohand(r[0].file[0..<r[0].n], r[0].own[..]) {
+    tool_errln("rig-poses: the file does not fill the people's and the two-handed rigs"); return 1;
+  }
+  ran := 0;
+  for i: 0..<RP_CHECKS {
+    if !rp_has(RP_NAME[i], only) { continue; }
+    print("rig-poses: %\n", RP_NAME[i]);
+    rp_check(r[..], i); ran += 1;
+  }
+  print("rig-poses: % checks passed\n", ran);
+  return 0;
+}

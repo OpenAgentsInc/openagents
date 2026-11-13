@@ -653,7 +653,7 @@ fivelab_gaunt :: (p:V3)->V3 {
 }
 // A far figure as 13 blocks on its bones (everglade/scene/bodies.coax BD_BLOCK_PX): hips, chest, head, the
 // arms' two halves, thighs, shins and feet, each a box in the bind pose (the male body's joints,
-// people-rig.coax PEOPLE_BIND_M) carried by its one joint, 36 vertices a box, none indexed. Per
+// metaverse-engine/anim/mannequin.coax mannequin_rest_bind) carried by its one joint, 36 vertices a box, none indexed. Per
 // box: its joint, middle, half sizes and what it is (0 skin, 1 cloth, 2 the cloth's darker half,
 // 3 boots).
 fivelab_block_vs :: (id:u32,instance:u32,m:FivelabObj,u:[]f32,bake:[]V4)->FivelabS {

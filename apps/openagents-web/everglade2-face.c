@@ -264,7 +264,7 @@ uint32_t coaxial_frame(cx_face_addr state, cx_face_addr vertices, cx_face_addr u
   int64_t n = e2_frame(at(state), out, u, w, h, scale, dt, still != 0);
   draw_n = 0;
   if (e2_at(state)->bodies.e[0].ready) {
-    if (!baked) { e2_bake(at(state), (coax_v_t_People){&rig, 1}, (coax_v_u8){rig_file, rig_bytes}); baked = 1; }
+    if (!baked && e2_bake(at(state), (coax_v_t_People){&rig, 1}, (coax_v_u8){rig_file, rig_bytes})) baked = 1;   /* once the pack's rig is in (#13508) */
     /* the world's cells round you and the eye. A pack that came whole has each cell's content when it
        is asked for. One paged by cell (the catalog's Z lines) answers through coaxial_cell_loaded_v1 as
        the host fetches each cell; a cell that left gives its planting back, and the scene waits for
@@ -306,6 +306,9 @@ EXPORT("coaxial_asset") cx_face_addr coaxial_asset(cx_face_addr state, int32_t i
 EXPORT("coaxial_pack_rig") cx_face_addr coaxial_pack_rig(cx_face_addr state, uint32_t bytes) { (void)state; return bytes <= sizeof rig_file ? (cx_face_addr)(uintptr_t)rig_file : 0u; }
 EXPORT("coaxial_pack_rig_capacity") uint32_t coaxial_pack_rig_capacity(cx_face_addr state) { (void)state; return (uint32_t)sizeof rig_file; }
 EXPORT("coaxial_pack_rig_ready") void coaxial_pack_rig_ready(cx_face_addr state, uint32_t bytes) { (void)state; rig_bytes = bytes <= sizeof rig_file ? bytes : 0u; }
+/* the same for a native host (metaverse-engine/host/README.md: coaxial_rig_v1, #13508) */
+EXPORT("coaxial_rig_v1") cx_face_addr coaxial_rig_v1(cx_face_addr state, uint32_t bytes) { return coaxial_pack_rig(state, bytes); }
+EXPORT("coaxial_rig_ready_v1") void coaxial_rig_ready_v1(cx_face_addr state, uint32_t bytes) { coaxial_pack_rig_ready(state, bytes); }
 EXPORT("coaxial_asset_capacity") uint32_t coaxial_asset_capacity(cx_face_addr state, int32_t i) { (void)state; return i == 0 ? (uint32_t)sizeof catalog : 0u; }
 EXPORT("coaxial_asset_ready") void coaxial_asset_ready(cx_face_addr state, int32_t i, uint32_t bytes) {
   if (i == 0 && bytes > 0 && bytes <= sizeof catalog) e2_catalog(at(state), (coax_string){(const char *)catalog, bytes}, (coax_v_u8){ground_record, sizeof ground_record}, (coax_v_u8){catalog_rest, sizeof catalog_rest});

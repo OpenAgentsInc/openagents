@@ -20,14 +20,15 @@ func faceAtlas(_ device: MTLDevice) -> MTLTexture? {
   return texture
 }
 
-// Everglade II's pack: a catalog, the vertices, the indices and the texture layers. The host only
+// Everglade II's pack: a catalog, the vertices, the indices, the texture layers and the rigs (kind 7,
+// everglade/model/rigs.vrg's people's set, which the model bakes its clips from). The host only
 // finds the entries, through the one pack reader (metaverse-engine/host/pack-table.coax pack_table, by
 // metaverse-engine/host/pack-table.h); model.coax reads the catalog. The image is the page host's
 // choice for this GPU (AEPageHost packImage): the block build beside the pack when there is one,
 // so the layers go up as GPU blocks, else the pack itself, whose layers are pictures to decode.
 struct Pack {
   var image = Data()
-  var catalog = Data(), vertices = Data(), indices = Data(), layers: [Data] = []
+  var catalog = Data(), vertices = Data(), indices = Data(), rig = Data(), layers: [Data] = []
   init?(_ url: URL, device: MTLDevice) {
     guard let d = AEPageHost.packImage(url.path, device: device) else { return nil }
     image = d
@@ -42,10 +43,11 @@ struct Pack {
       case Int32(ENGINE_PACK_VERTICES): vertices = bytes
       case Int32(ENGINE_PACK_INDICES): indices = bytes
       case Int32(ENGINE_PACK_LAYER): layers.append(bytes)
+      case Int32(ENGINE_PACK_RIG): rig = bytes
       default: break
       }
     }
-    if catalog.isEmpty || vertices.isEmpty || indices.isEmpty || layers.isEmpty { return nil }
+    if catalog.isEmpty || vertices.isEmpty || indices.isEmpty || rig.isEmpty || layers.isEmpty { return nil }
   }
 }
 
@@ -195,7 +197,7 @@ final class Model {
           let b = device.makeBuffer(length: Int(egm_bake_floats()) * 4, options: .storageModeShared),
           let r = device.makeBuffer(length: Int(egm_records()) * Int(egm_record_floats()) * 4, options: .storageModeShared) else { return nil }
     var baked: Int32 = 0
-    Model.deep { baked = egm_bake(st, b.contents().assumingMemoryBound(to: Float.self)) }
+    Model.deep { baked = pack.rig.withUnsafeBytes { egm_bake(st, $0.bindMemory(to: UInt8.self).baseAddress, Int32($0.count), b.contents().assumingMemoryBound(to: Float.self)) } }
     guard baked == 1 else { return nil }
     vertices = v; indices = i; bake = b; records = r
     // A block build's layers go up as they are: no decode, no resize, and its own mip chains.

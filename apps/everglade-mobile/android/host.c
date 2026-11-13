@@ -357,13 +357,13 @@ static void place_open(void) {
 }
 
 // Your model: the pack's mesh and layers, the baked clips, and this frame's records.
-struct ModelOpen { const uint8_t *catalog; int32_t length; int named, baked; };
+struct ModelOpen { const uint8_t *catalog; int32_t length; const uint8_t *rig; int32_t rig_length; int named, baked; };
 static void model_make(void *p) {
   struct ModelOpen *o = p;
   g.model = egm_new();
   if (g.model) o->named = egm_catalog(g.model, o->catalog, o->length);
 }
-static void model_bake(void *p) { ((struct ModelOpen *)p)->baked = egm_bake(g.model, g.model_bake.map); }
+static void model_bake(void *p) { struct ModelOpen *o = p; o->baked = egm_bake(g.model, o->rig, o->rig_length, g.model_bake.map); }
 static void model_open(void) {
   // Everglade II's pack: a catalog, the vertices, the indices and the layers, found by the one pack
   // reader (metaverse-engine/host/pack-table.coax pack_table), sorted by kind by the host core
@@ -387,8 +387,9 @@ static void model_open(void) {
   const uint8_t *layers[64 + 16]; size_t cn = 0, vn = 0, in = 0, ln[64 + 16]; uint32_t layer_count = 0;
   const uint8_t *catalog = engine_core_entry(&pack, pack.catalog, &cn), *vertices = engine_core_entry(&pack, pack.vertices, &vn), *indices = engine_core_entry(&pack, pack.indices, &in);
   for (int k = 0; k < pack.colours && layer_count < 80; k++) { layers[layer_count] = engine_core_entry(&pack, pack.colour[k], &ln[layer_count]); layer_count++; }
-  if (!catalog || !vertices || !indices || layer_count == 0) STOP("%s", bad);
-  struct ModelOpen o = { catalog, (int32_t)cn, 0, 0 };
+  size_t rn = 0; const uint8_t *rig = pack.rig >= 0 ? engine_core_entry(&pack, pack.rig, &rn) : NULL;   /* the people's rig (kind 7, #13508) */
+  if (!catalog || !vertices || !indices || !rig || layer_count == 0) STOP("%s", bad);
+  struct ModelOpen o = { catalog, (int32_t)cn, rig, (int32_t)rn, 0, 0 };
   deep(model_make, &o);
   if (!g.model || o.named != 1) STOP("%s", bad);
   g.model_vertices = buffer(vn, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT); memcpy(g.model_vertices.map, vertices, vn);

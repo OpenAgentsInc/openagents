@@ -157,7 +157,8 @@ You fight the monsters with your class's level 1 kit
 - The `.blend` source, the GLB and
   their provenance are the registered package `openagents-two-hand-clips` (see
   `assets/registry/README.md`). `metaverse/tools/clip_rig.py` retargets them from
-  `metaverse/packs/everglade-two-hand.json` into `everglade/scene/two-hand-rig.coax`.
+  `metaverse/packs/everglade-two-hand.json` into the `two-hand` set of `everglade/model/rigs.vrg`
+  (its names in `everglade/scene/two-hand-clips.coax`).
 
 Thirty-six additional flower, plant, fern, clover, mushroom, bush and grass variants grow in
 the eastern meadow. The remaining sixty nature models, including trees, rocks and paths,

@@ -1,7 +1,8 @@
 // 5E Lab's figures (fivelab.coax): the Quaternius people Everglade's NPCs are made of (the
 // Universal Base Characters and the Modular Character Outfits - Fantasy parts in Everglade's pack,
 // rebound by metaverse/tools/people.py onto two skeletons, CC0), dressed by class, played by the
-// Universal Animation Library's clips (everglade/scene/people-rig.coax, metaverse-engine/anim/skin.coax).
+// Universal Animation Library's clips (the "people" set of everglade/model/rigs.vrg, named by
+// everglade/scene/people-clips.coax; metaverse-engine/anim/skin.coax).
 //
 // Two hundred and more figures at once, so nothing is posed per figure on the CPU: bd_bake samples
 // each clip once, 30 frames a second, into one store of skinning matrices (three rows of four a
@@ -18,10 +19,12 @@
 // Far figures leave off their hair (bd_build's LOD); the farthest, a few pixels tall, are 13 blocks
 // on the same bones, 156 triangles for some 10,000; figures out of view are not drawn.
 //   coax/bin/coax test --library everglade/scene/bodies.coax
+// The checks that pose a body from the rigs' keys read the rigs' file, so they are a tool's:
+//   coax/web/tool.sh everglade/model/tools/rig-poses.coax everglade/model/rigs.vrg
 
 #module "openagents.fivelab.bodies";
 
-#load "people-rig.coax";
+#load "people-clips.coax";
 // Player mode's camera (fivelab.coax lab_chase_step): Everglade's follow camera, metaverse-engine/cam/camera.coax's free
 // orbit. It loads here, not in fivelab.coax, as it shares points.coax with the figures' skin.
 #load "../../metaverse-engine/cam/camera.coax";
@@ -40,9 +43,9 @@ BD_PARTS_MAX :: 5;        // a figure's parts: outfit, head, hair, a beard or a 
 BD_RECORDS :: 54912;      // instances at most: 16384 skeletons of three parts, 1024 heroes and 128 corpses of five (fivelab-face.c)
 BD_REC_FLOATS :: 24;      // everglade/scene/gpu/fivelab.coax FivelabObj: six vec4s
 BD_FPS :: 30.0;
-// The clips baked, as people-rig.coax numbers them, and their frames (each its seconds at 30 a second).
+// The clips baked, as people-clips.coax numbers them, and their frames (each its seconds at 30 a second).
 #load "preview-clips.coax";
-#load "two-hand-rig.coax";   // the owned two-handed weapon clips (metaverse/tools/assets/two_hand_clips.py)
+#load "two-hand-clips.coax";   // the owned two-handed weapon clips (metaverse/tools/assets/two_hand_clips.py)
 #load "rig-asset.coax";      // the rigs from a pack's rig entry (VRG1, GitHub #13306)
 #load "../../metaverse-engine/character/graph-pose.coax";   // a posed body: the bake's frames and keyed poses
 #load "body-graph.coax";     // which clip a body plays: Everglade's table for the engine's blend graph (GitHub #13306)
@@ -56,7 +59,7 @@ BD_CLIP :: [10] int.[PEOPLE_IDLE, PEOPLE_WALK, PEOPLE_RUN, PEOPLE_SLASH, PEOPLE_
 BD_FRAMES :: [10] int.[75, 40, 28, 46, 63, 25, 72, 40, 75, 38];
 BD_FIRST :: [10] int.[0, 75, 115, 143, 189, 252, 277, 349, 389, 464];
 BD_BASE_TOTAL :: 502;
-// The owned two-handed clips (everglade/scene/two-hand-rig.coax), baked always after the previews, at
+// The owned two-handed clips (everglade/scene/two-hand-clips.coax), baked always after the previews, at
 // 30 a second: clip BD_OWN + k is TWOHAND clip k.
 BD_GAP_SLACK :: 0.10;      // metres the gap between a two-hander's fists may stray from its authored spacing on the game's bodies
 BD_OWN_IMPACT :: 0.46;    // the share of an owned cleave at its impact (two_hand_clips.py IMPACT: 0.55 s of 1.2)
@@ -87,7 +90,7 @@ BD_FAR_PX :: 70.0;        // a figure shorter than this on the screen leaves off
 BD_BLOCK_PX :: 30.0;      // and one shorter than this is drawn as 13 blocks on its bones (everglade/scene/gpu/fivelab.coax fivelab_block_vs)
 BD_BLOCK_VERTS :: 468;    // 13 blocks of 12 triangles
 
-// The pack's parts (people-rig.coax PEOPLE_PART_NAME's order).
+// The pack's parts (people-clips.coax PEOPLE_PART_NAME's order).
 BP_MALE_PEASANT :: 0; BP_MALE_RANGER :: 1; BP_MALE_HOOD :: 2;
 BP_FEMALE_PEASANT :: 3; BP_FEMALE_RANGER :: 4; BP_FEMALE_HOOD :: 5;
 BP_MALE_HEAD :: 6; BP_FEMALE_HEAD :: 7;
@@ -308,9 +311,11 @@ bd_bake_previews :: (out: [] f32, data: [] Preview, file: [] u8) -> bool {
   return true;
 }
 // The owned two-handed weapon clips, into their rows (a world whose figures hold weapons bakes them too).
-bd_bake_owned :: (out: [] f32, file: [] u8) {
-  if out.count < BD_BAKE_FLOATS { return; }
-  own:[1]Twohand;if !e2rig_twohand(file,own[..]) {twohand_load(own[..]);}
+// Their rig is the "two-hand" set of `file`, the pack's rig entry (GitHub #13508): a file without it
+// bakes nothing and says so (false).
+bd_bake_owned :: (out: [] f32, file: [] u8) -> bool {
+  if out.count < BD_BAKE_FLOATS { return false; }
+  own:[1]Twohand;if !e2rig_twohand(file,own[..]) {return false;}
   for body:0..<2 {rig:=twohand_rig(own[..],body==1);sk:[1]Skin;
     for c:0..<TWOHAND_CLIPS {n:=BD_OWN_FRAMES[c];for f:0..<n {
       t:=f32(f)*rig.duration[c]/f32(n);
@@ -318,6 +323,7 @@ bd_bake_owned :: (out: [] f32, file: [] u8) {
       at:=bd_row(body==1,BD_OWN+c,f)*4;skin_palette(rig,sk[..],out[at..<at+BD_ROWS*4]);
     }}
   }
+  return true;
 }
 
 // The people rig's joints the bow's pose moves (metaverse-engine/action/bow-pose.coax), and the bow fist's
@@ -337,7 +343,7 @@ bd_bake_bow :: (d: [] People, out: [] f32) {
   for body: 0..<2 { for f: 0..<BOW_POSE_FRAMES { at := bd_row(body == 1, BD_BOW, f) * 4; bd_bow_pose(d, body, f, out[at..<at + BD_ROWS * 4]); } }
   for body: 0..<2 { for f: 0..<BD_SEATS { at := bd_row(body == 1, BD_RIDE, f) * 4; _ := bd_ride_pose(d, body, f, out[at..<at + BD_ROWS * 4]); } }
 }
-// The people rig's legs (people-rig.coax PEOPLE_PARENT: 55 to 59 one leg, 60 to 64 the other).
+// The people rig's legs (people-clips.coax PEOPLE_PARENT: 55 to 59 one leg, 60 to 64 the other).
 // The pelvis's height astride, male then female (checked below): a realm lifts the figure by the saddle's height less this.
 BD_RIDE_HIP :: [2] f32.[0.91, 0.89];
 BD_RIDE_JOINTS :: RideJoints.{leg_a = [4] int.[55, 56, 57, 58], leg_b = [4] int.[60, 61, 62, 63]};
@@ -585,7 +591,7 @@ bd_blow :: (b: [] Bodies, female: bool, c: int) -> f32 {
 // hips and legs. A record's mix (its b.z) below 1.5 is the whole body's share of the second row, as
 // before; from 2 up it is a layer's code, 2 + the upper body's gait share * 255 + 256 * the legs'
 // * 255, and each joint takes its share by BD_UPPER, the mask everglade/scene/gpu/fivelab.coax fivelab_upper keeps
-// the same. The people rig's 65 joints (people-rig.coax PEOPLE_PARENT): 0 the root, 1 the pelvis,
+// the same. The people rig's 65 joints (people-clips.coax PEOPLE_PARENT): 0 the root, 1 the pelvis,
 // 2 to 4 the spine, 5 the neck, 6 the head, 7 to 54 the arms and hands, 55 to 64 the legs.
 BD_LAYER_FADE :: 0.15;    // seconds a layered action eases in and out
 bd_upper :: (j: int) -> f32 { return anim_graph_mask(eg_body_graph(), EG_BODY_UPPER, j); }
@@ -725,12 +731,6 @@ bd_hand_out :: (b: [] Bodies, ra: f32, rb: f32, mix0: f32) -> [12] f32 {
   w := bd_pose_at(t, [3] f32.[0, 1, 0.25]); a := f32(BD_ELBOW_OPEN) * 1.5707963;
   #assert abs(w[1] - (1 - 0.25 * sin(a))) < 0.0001 && abs(w[2] - 0.25 * cos(a)) < 0.0001 && abs(w[0]) < 0.0001;
 }
-#test "the shoulder, elbow and wrist the bow arm turns about are the rig's, both bodies" {
-  d: [1] People; people_load(d[..]);
-  for body: 0..<2 { rig := people_rig(d[..], body == 1);
-    for j: 0..<3 { p := bd_bind_at(rig.bind[(BD_SHOULDER_L + j) * 12..<(BD_SHOULDER_L + j) * 12 + 12]); q := bd_arm_bind(body == 1, j);
-      for k: 0..<3 { #assert abs(p[k] - q[k]) < 0.0002; } } }
-}
 bd_hand :: (b: [] Bodies, ra: f32, rb: f32, mix0: f32, left: bool) -> [12] f32 {
   side := ifx left then 12 else 0;
   mix := bd_gait_share(mix0, ifx left then BD_HAND_L else BD_HAND);
@@ -861,51 +861,7 @@ BD_CAM :: BdCam.{ex = 0, ey = 10, ez = -15, fx = 0, fy = -0.3162278, fz = 0.9486
   #assert bd_row(true, BD_RIDE, BD_SEATS - 1) * 4 + BD_ROWS * 4 == BD_BAKE_FLOATS && BD_OWN_FRAMES[TWOHAND_CLIPS + 1] == BD_SEATS;
 }
 
-#test "a baked frame is the clip's pose as metaverse-engine/anim/skin.coax plays it" #steps 400000000 {
-  d: [1] People;
-  people_load(d[..]);
-  out: [BD_ROWS * 4 * 2] f32;
-  // the woman's knock back, frame 12, baked alone into a scratch the size of one frame
-  rig := people_rig(d[..], true);
-  sk: [1] Skin;
-  t := 12 * rig.duration[PEOPLE_KNOCK] / f32(BD_FRAMES[BD_KNOCK]);
-  skin_advance(rig, sk[..], PEOPLE_KNOCK, 0, t);
-  skin_palette(rig, sk[..], out[0..<BD_ROWS * 4]);
-  sk2: [1] Skin;
-  for j: 0..<PEOPLE_JOINTS { sk2[0].now[j] = skin_sample(rig, PEOPLE_KNOCK, j, t); }
-  skin_palette(rig, sk2[..], out[BD_ROWS * 4..<BD_ROWS * 8]);
-  worst := 0.0f32;
-  for k: 0..<BD_ROWS * 4 { worst = hi(worst, abs(out[k] - out[BD_ROWS * 4 + k])); }
-  #assert worst < 0.0001;
-}
 
-#test "the owned two-handed clips keep both fists on the haft, the left its grip's spacing up from the right" #steps 2000000000 {
-  own: [1] Twohand; twohand_load(own[..]);
-  // the metres between the fists, least and most: the axe's left hand slides down its haft in the cleave
-  lo := [6] f32.[0.40, 0.40, 0.12, 0.16, 0.16, 0.16]; up := [6] f32.[0.40, 0.40, 0.40, 0.16, 0.16, 0.16];
-  out: [BD_ROWS * 4] f32; worst: [6] f32;
-  for body: 0..<2 {
-    rig := twohand_rig(own[..], body == 1); sk: [1] Skin;
-    br := bd_bind_at(rig.bind[BD_HAND * 12..<BD_HAND * 12 + 12]); bl := bd_bind_at(rig.bind[BD_HAND_L * 12..<BD_HAND_L * 12 + 12]);
-    br[0] -= 0.075; br[1] -= 0.03; bl[0] += 0.075; bl[1] -= 0.03;   // the fists' middles (charactercreator.coax CC_FIST)
-    for c: 0..<TWOHAND_CLIPS { for f: 0..<BD_OWN_FRAMES[c] {
-      t := f32(f) * rig.duration[c] / f32(BD_OWN_FRAMES[c]);
-      for j: 0..<PEOPLE_JOINTS { sk[0].now[j] = skin_sample(rig, c, j, t); }
-      skin_palette(rig, sk[..], out[..]);
-      r: [3] f32; l: [3] f32;
-      for k: 0..<3 {
-        hr := (BD_HAND * 3 + k) * 4; hl := (BD_HAND_L * 3 + k) * 4;
-        r[k] = out[hr] * br[0] + out[hr + 1] * br[1] + out[hr + 2] * br[2] + out[hr + 3];
-        l[k] = out[hl] * bl[0] + out[hl + 1] * bl[1] + out[hl + 2] * bl[2] + out[hl + 3];
-      }
-      gap := sqrt((l[0] - r[0]) * (l[0] - r[0]) + (l[1] - r[1]) * (l[1] - r[1]) + (l[2] - r[2]) * (l[2] - r[2]));
-      worst[c] = hi(worst[c], hi(lo[c] - gap, gap - up[c]));
-    } }
-  }
-  // on the game's bodies (the clips retargeted from the library's rig, whose arms differ) the gap stays
-  // within BD_GAP_SLACK of the authored spacing; the weapon runs through both fists either way
-  for c: 0..<TWOHAND_CLIPS { #assert worst[c] < BD_GAP_SLACK; }
-}
 #test "the action layer's mask: legs and pelvis the gait's, the spine partly, arms and head the action's" {
   for j: 0..<PEOPLE_JOINTS {
     m := bd_upper(j);
@@ -1071,10 +1027,6 @@ BD_CAM :: BdCam.{ex = 0, ey = 10, ez = -15, fx = 0, fy = -0.3162278, fz = 0.9486
   #assert (b[0].draws[last + 2] & 0x80000000) != 0 && (b[0].draws[last + 2] & 0x7fffffff) == cast(u32) nr;
   // its record says blocks (4) and bones (1)
   #assert cast(int) out[nr * BD_REC_FLOATS + 15] == 7;
-}
-#test "astride, each body's pelvis sits where a realm seats it, its feet well below (mounts)" #steps 400000000 {
-  d: [1] People; people_load(d[..]); out: [BD_ROWS * 4] f32;
-  for body: 0..<2 { for seat: 0..<BD_SEATS { p := bd_ride_pose(d[..], body, seat, out[..]); #assert abs(p.y - BD_RIDE_HIP[body]) < 0.012 && abs(p.x) < 0.02 && abs(p.z) < 0.1; } }
 }
 
 // ---- the blend graph (GitHub #13306)

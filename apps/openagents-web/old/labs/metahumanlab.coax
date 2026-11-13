@@ -2,10 +2,11 @@
 META_CLIPS :: 12;
 // MetaHuman Lab, openagents.com/worlds/metahuman-lab (unlisted): the bench where the Metaverse Engine's human
 // runtime is built (docs/metaverse/metahuman-support.md, phases 0 and 1). One figure stands on a lit
-// studio floor with a skeleton driving it.
+// studio floor with a skeleton driving it. Its clips' keys are the pack's rig entry (#13508): with no
+// pack, or one without the entry, it stands in the mannequin's rest pose.
 //
 // The figure is public and holds no MetaHuman asset. Its skeleton and clips are the CC0 Quaternius
-// people rig (everglade/scene/people-rig.coax: the Modular Character Outfits' male and female
+// people rig (everglade/scene/people-clips.coax: the Modular Character Outfits' male and female
 // skeletons and the Universal Animation Library's twelve clips), played by metaverse-engine/anim/skin.coax. Its
 // body is drawn here: a capsule per bone, posed from the same joints, on the Unreal mannequin's
 // joint names (metaverse-engine/anim/mannequin.coax). A private MetaHuman pack binds to those joints by name
@@ -19,7 +20,7 @@ META_CLIPS :: 12;
 
 #load "../../../../metaverse-engine/ui/font.coax";
 #load "../../../../metaverse-engine/core/loop.coax";
-#load "../../../../everglade/scene/people-rig.coax";   // the CC0 skeletons and clips (it loads metaverse-engine/anim/skin.coax)
+#load "../../../../everglade/scene/rig-asset.coax";   // the CC0 skeletons and clips: their names (people-clips.coax) and, from the pack's rig entry, their keys (#13508)
 #load "../../../../metaverse-engine/anim/mannequin.coax";
 #load "../../../../metaverse-engine/cam/shot.coax" as ash;   // the camera's orbit is the Metaverse Engine's (book chapter 10)
 #load "../../../../metaverse-engine/core/space.coax" as asp;
@@ -90,7 +91,7 @@ RIGHT_COL :: Col.{r = 1.0, g = 0.55, b = 0.25};  // and its right
 
 Lab :: struct {
   started: bool;
-  rig: [1] People;
+  rig: [1] People; rig_in: bool;   // the rig's keys are in (lab_rig): until then the figure has no pose
   skin: [1] Skin;
   clip: int = PEOPLE_IDLE;
   female: bool;
@@ -201,7 +202,9 @@ gait_speed :: (c: int) -> f32 {
 lab_start :: (s: [] Lab) {
   if s[0].started { return; }
   s[0].started = true;
-  people_load(s[0].rig[..]);
+  // until the pack's rig entry is in (lab_rig), the figure stands in the mannequin's rest: the
+  // people's male skeleton (metaverse-engine/anim/mannequin.coax) on both bodies, no clip moving it
+  if !s[0].rig_in { people_timing(s[0].rig[..]); mannequin_rest_bind(s[0].rig[0].rest_m[..], s[0].rig[0].bind_m[..]); mannequin_rest_bind(s[0].rig[0].rest_f[..], s[0].rig[0].bind_f[..]); }
   skin_advance(rig(s), s[0].skin[..], s[0].clip, 0, 0);
   posture(s);
   pose(s);
@@ -608,6 +611,12 @@ draw_top :: (s: [] Lab, out: [] f32, at: int, k: f32) -> int {
   return n;
 }
 
+// The people's rig: the "people" set of the pack's rig entry (a human pack carries it, #13508), handed
+// over before the catalog. The figure is posed again from it.
+lab_rig :: (s: [] Lab, file: [] u8) #export_c #effects(all) {
+  if !e2rig_people(file, s[0].rig[..]) { return; }
+  s[0].rig_in = true; s[0].started = false;
+}
 lab_frame :: (s: [] Lab, out: [] f32, u: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> int #export_c #effects(all) {
   lab_start(s);
   if u.count < UNIFORM_FLOATS || width < 1 || height < 1 { return 0; }
@@ -1317,7 +1326,9 @@ frame_u :: (s: [] Lab, u: [] f32) -> int {
   tall := s[0].joint[MQ_HEAD].y;
   #assert lab_key(s[..], 'g', 0) && s[0].female;
   lab_step(s[..], f32(STEP));
-  #assert s[0].joint[MQ_HEAD].y != tall;
+  // the woman's skeleton is the rigs' file's (#13508), which a test cannot read: with no rig handed
+  // over both bodies stand on the mannequin's, so only that she is chosen is checked here
+  #assert tall > 1.5;
   #assert lab_key(s[..], ' ', 0) && s[0].paused;
   t := s[0].skin[0].time;
   for i: 0..<30 { lab_step(s[..], f32(STEP)); }

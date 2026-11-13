@@ -3,7 +3,7 @@
 // Modular Character Outfits - Fantasy parts in the realm's pack (a body's
 // outfit, a head, a hairstyle, maybe a beard or a hood; metaverse/tools/people.py
 // rebinds every part onto one of two skeletons), and plays the Universal
-// Animation Library's clips through everglade/scene/people-rig.coax.
+// Animation Library's clips named by everglade/scene/people-clips.coax (their keys are a pack's rig entry).
 // Who wears what, their skin, hair and dye are here, a row a spot of
 // plan.coax; what they say is people.coax's. The cats are not here: they
 // are drawn apart, as cats.
@@ -26,7 +26,7 @@
 //   coax/bin/coax test --library everglade/legacy/v1/folk.coax --steps 2000000000
 
 #load "plan.coax";
-#load "../../scene/people-rig.coax";
+#load "../../scene/people-clips.coax";   // the rig's names; its keys are the pack's rig entry (#13508)
 #load "routines.coax";
 
 // The pack's parts, in PEOPLE_PART_NAME's order.
@@ -366,42 +366,7 @@ folk_pose :: (r: SkinRig, f: [] Folk, sk: [] Skin, dt: f32, out: [] f32) {
   #assert dressed == 25;
 }
 
-#test "the people's poses are the clips' as people.py sampled them, on both bodies" {
-  d: [1] People;
-  people_load(d[..]);
-  worst := 0.0f32;
-  check: [PEOPLE_CHECK_N] f32;
-  people_check(check[..]);
-  for row: 0..<check.count / 7 {
-    body := cast(int) check[row * 7]; clip := cast(int) check[row * 7 + 1];
-    at := check[row * 7 + 2]; j := cast(int) check[row * 7 + 3];
-    rig := people_rig(d[..], body == 1);
-    s: [1] Skin;
-    s[0] = Skin.{};
-    pace := ifx rig.distance[clip] > 0 then rig.distance[clip] / rig.duration[clip] else 0.0f32;
-    skin_advance(rig, s[..], clip, pace, at);
-    p := skin_joint(rig, s[..], j);
-    worst = hi(worst, length(sub(p, v3(check[row * 7 + 4], check[row * 7 + 5], check[row * 7 + 6]))));
-  }
-  #assert worst < 0.001;
-}
 
-#test "standing, a man's and a woman's heads are 1.5 to 1.85 m up and their feet on the ground" {
-  d: [1] People;
-  people_load(d[..]);
-  for body: 0..<2 {
-    rig := people_rig(d[..], body == 1);
-    s: [1] Skin;
-    skin_advance(rig, s[..], PEOPLE_IDLE, 0, 0.5);
-    head := skin_joint(rig, s[..], PEOPLE_HEAD);
-    low := 10.0f32;
-    for j: 0..<PEOPLE_JOINTS { low = lo(low, skin_joint(rig, s[..], j).y); }
-    #assert head.y > 1.5 && head.y < 1.85 && low > -0.05 && low < 0.12;
-    pal: [PEOPLE_JOINTS * 12] f32;
-    skin_palette(rig, s[..], pal[..]);
-    for k: 0..<PEOPLE_JOINTS * 12 { #assert finite(pal[k]); }
-  }
-}
 
 FOLK_AWAY :: Point.{x = 0, y = 0, z = 900};
 
@@ -475,25 +440,6 @@ FOLK_AWAY :: Point.{x = 0, y = 0, z = 900};
   #assert shifted >= 1 && back >= 1 && moved > 0 && alike < 60 * 40;
 }
 
-#test "a pose's palette with a glance: finite, and the head turned the way of the glance" {
-  d: [1] People;
-  people_load(d[..]);
-  rig := people_rig(d[..], false);
-  f: [1] Folk; sk: [1] Skin;
-  folk_start(f[..], 0);
-  pal: [PEOPLE_JOINTS * 12] f32;
-  folk_pose(rig, f[..], sk[..], 0.1, pal[..]);
-  ahead := skin_joint(rig, sk[..], PEOPLE_HEAD);
-  f[0].glance = 0.8;
-  folk_pose(rig, f[..], sk[..], 0.0, pal[..]);
-  for k: 0..<PEOPLE_JOINTS * 12 { #assert finite(pal[k]); }
-  // the nose (a point ahead of the head, in its frame at rest) swings toward +x for a positive glance
-  b := PEOPLE_HEAD * 12;
-  nose := v3(pal[b] * 0 + pal[b + 1] * 1.7 + pal[b + 2] * 0.15 + pal[b + 3],
-             pal[b + 4] * 0 + pal[b + 5] * 1.7 + pal[b + 6] * 0.15 + pal[b + 7],
-             pal[b + 8] * 0 + pal[b + 9] * 1.7 + pal[b + 10] * 0.15 + pal[b + 11]);
-  #assert nose.x > ahead.x + 0.03;
-}
 
 #test "on a turning day they walk their routine; talking stops them and turns them to you; let go, they catch up" #steps 170000000 {
   heights: [EG_GROUND_POINTS] f32;

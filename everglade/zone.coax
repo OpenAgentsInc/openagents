@@ -301,13 +301,18 @@ zone_catalog :: (s: [] EgZone, text: string) #export_c #effects(all) {
 }
 
 // The clips baked into the bake store, once (fivelab-face.c).
-// zone_bake_from takes the pack's rig entry (a VRG1 file, everglade/scene/rig-asset.coax; GitHub #13306): the
-// people's and the two-handed clips' rigs come from the file when it has the set, else from the
-// generated procedure, the same words. The developer's preview clips come from the file alone: a pack
-// without the "preview" set shows no animation browser (previews_missing). A face hands the file over when its host does (coaxial_pack_rig); zone_bake is the bake
-// with no file.
-zone_bake :: (s: [] EgZone, d: [] figs.People, out: [] f32) #export_c #effects(all) { none: [1] u8; zone_bake_from(s, d, out, none[0..<0]); }
-zone_bake_from :: (s: [] EgZone, d: [] figs.People, out: [] f32, file: [] u8) #export_c #effects(all) { if !figs.e2rig_people(file, d) { figs.people_load(d); } figs.bd_bake(d, out); if s[0].creator[0].dev_animations { previews: [1] figs.Preview; if !figs.bd_bake_previews(out, previews[..], file) { s[0].creator[0].previews_missing = true; s[0].creator[0].dev_animations = false; } } figs.bd_bake_owned(out, file); figs.bd_bake_bow(d, out); figs.bd_keep_hands(s[0].bodies[..], d, out); }
+// zone_bake_from takes the pack's rig entry (a VRG1 file, everglade/scene/rig-asset.coax; GitHub #13306,
+// #13508): the people's, the two-handed clips' and the developer's preview clips' rigs are the file's
+// sets, never source. A face hands the file over when its host does (coaxial_pack_rig) and bakes once
+// this says true: a file without the people's set bakes nothing (false), so the face asks again when
+// the rig is in. A pack without the "preview" set shows no animation browser (previews_missing).
+zone_bake_from :: (s: [] EgZone, d: [] figs.People, out: [] f32, file: [] u8) -> bool #export_c #effects(all) {
+  if !figs.e2rig_people(file, d) { return false; }
+  figs.bd_bake(d, out);
+  if s[0].creator[0].dev_animations { previews: [1] figs.Preview; if !figs.bd_bake_previews(out, previews[..], file) { s[0].creator[0].previews_missing = true; s[0].creator[0].dev_animations = false; } }
+  _ := figs.bd_bake_owned(out, file); figs.bd_bake_bow(d, out); figs.bd_keep_hands(s[0].bodies[..], d, out);
+  return true;
+}
 // Existing optional layer-size hook: Character Create owns its quality choice.
 zone_layers_side :: (s:[] EgZone)->int #export_c #effects(all) {return cc.texture_side(s[0].creator[0]);}
 // Character Create's shadow tiles for the host (coaxial_shadow_*_v1; charactercreator.coax shadow_frame): none on the lab's own pages.

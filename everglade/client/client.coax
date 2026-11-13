@@ -354,15 +354,17 @@ e2_ground :: (s: [] E2) {
 // The clips, baked once into the state's own store, sized by the bodies module so it never falls behind.
 // The clips, once: the shared ones and the bow's draw.
 // The people's rig is the pack's (its rig entry, a VRG1 file: everglade/scene/rig-asset.coax,
-// GitHub #13306). A host that does not hand the entry over yet (the desktop and phone apps, which
-// carry the tracked pack) passes no file, and the rig is the generated procedure's, the same words.
-e2_bake :: (s: [] E2, d: [] figs.People, file: [] u8) #export_c #effects(all) {
+// GitHub #13306, #13508): every host's pack carries it (the desktop and phone apps' build puts it into
+// the pack they bundle). Without it nothing is baked and this says false, so the face asks again
+// once the rig is in.
+e2_bake :: (s: [] E2, d: [] figs.People, file: [] u8) -> bool #export_c #effects(all) {
   s[0].rig_packed = figs.e2rig_people(file, d);
-  if !s[0].rig_packed { figs.people_load(d); }
+  if !s[0].rig_packed { return false; }
   figs.bd_bake(d, s[0].bake[..]); figs.bd_bake_bow(d, s[0].bake[..]);
   // the hands' rows of every baked frame, for what a figure holds (cc.held_pieces through figs.bd_hand):
   // without them a bow, a sword and the Guard's blade stand at their owner's feet
   figs.bd_keep_hands(s[0].bodies[..], d, s[0].bake[..]);
+  return true;
 }
 e2_layers_side :: (s: [] E2) -> int #export_c #effects(all) { return ifx s[0].width >= 840 * s[0].k then 1024 else 512; }
 // Your saved character (message 16, the browser's own copy) or a kept appearance (4); the page's

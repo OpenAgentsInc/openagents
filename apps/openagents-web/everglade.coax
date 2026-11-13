@@ -68,6 +68,7 @@
 #load "../../everglade/legacy/v1/ranger.coax";
 #load "../../metaverse/valley/echo-orbit.coax";
 #load "../../everglade/legacy/v1/folk.coax";
+#load "../../everglade/scene/rig-asset.coax";   // the people's rig from the pack's rig entry (#13508)
 #load "../../everglade/legacy/v1/rumours.coax";
 #load "../../everglade/legacy/v1/watch.coax";
 #load "../../metaverse-engine/world/water-weather.coax";
@@ -504,7 +505,8 @@ Everglade :: struct {
   rig: [1] Ranger; skin: [1] Skin; palette: [PALETTE_FLOATS] f32;
   // the city's people: how each lives, their poses, their rig, the pack's parts and who is shown
   folk: [EG_SPOTS] Folk; people_rig: [1] People;
-  rigs_loaded: bool;   // the two rigs' tables, loaded at the first pose (eg_ranger_rig, eg_people_rig)
+  rigs_loaded: bool;   // the Ranger's rig's tables, loaded at the first pose (eg_ranger_rig)
+  people_in: bool;     // the people's rig, from the pack's rig entry (everglade_rig, #13508)
   // each one shown's head this frame (for their name over it), and whether they were shown
   heads: [EG_SPOTS] Point; head_on: [EG_SPOTS] bool;
   // a pose for each one shown (a person keeps theirs while shown; one who comes into
@@ -731,15 +733,17 @@ everglade_start :: (s: [] Everglade) {
   sky_store(s);   // the sky each place sees, once the town and the woods stand (everglade-sky.coax)
 }
 
-// The rigs' clips (everglade/legacy/v1/ranger.coax, people-rig.coax), loaded at the first pose. Only drawing
-// poses anyone, so the room's Everglade, which draws nothing, carries none of their tables (about
-// 240 KB of the room worker's module, coax/web/room/worker.coax).
+// The Ranger's rig (everglade/legacy/v1/ranger.coax), loaded at the first pose. Only drawing poses
+// anyone, so the room's Everglade, which draws nothing, carries none of its tables (the room
+// worker's module, coax/web/room/worker.coax). The people's keys are the pack's rig entry (the
+// "people" set, everglade/scene/rig-asset.coax; GitHub #13508), which the host hands over before the
+// catalog (everglade_rig): the pack's parts, and so the people, come after it.
 eg_rigs_load :: (s: [] Everglade) {
   if s[0].rigs_loaded { return; }
   ranger_load(s[0].rig[..]);
-  people_load(s[0].people_rig[..]);
   s[0].rigs_loaded = true;
 }
+everglade_rig :: (s: [] Everglade, file: [] u8) #export_c #effects(all) { s[0].people_in = e2rig_people(file, s[0].people_rig[..]); }
 eg_ranger_rig :: (s: [] Everglade) -> SkinRig { eg_rigs_load(s); return ranger_rig(s[0].rig[..]); }
 eg_people_rig :: (s: [] Everglade, female: bool) -> SkinRig { eg_rigs_load(s); return people_rig(s[0].people_rig[..], female); }
 

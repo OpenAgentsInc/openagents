@@ -454,14 +454,13 @@ cc_pose :: (own:[]figs.Twohand,ppl:[]figs.People,sk:[]figs.Skin,female:bool,c:in
  rig:=figs.people_rig(ppl,female);cl:=figs.BD_CLIP[c];t:=f32(f)*rig.duration[cl]/f32(figs.BD_FRAMES[c]);
  figs.anim_graph_pose_clip(rig,sk[..],cl,t);figs.skin_palette(rig,sk[..],out);
 }
-// The least room, over every pose a two-hander shows, into room (three a row: head, neck, torso): rows 0 to 5
+// The least room, over every pose a two-hander shows (the rigs from the rigs' file: everglade/model/tools/rig-poses.coax checks it), into room (three a row: head, neck, torso): rows 0 to 5
 // the six owned clips played alone at 60 a second on both bodies; then the blends a frame of the game shows
 // (experimental_figure, mixed as everglade/scene/bodies.coax bd_record and the shader mix them), each kit's rows 6 to 11:
 // the cleave from standing, the cleave on the run, a standing jump, a running jump, a cleave in the air, and
 // the hold's idle to run and back.
 CC_ROOM_ROWS :: 18;
-two_hand_rooms :: (room:[]f32,body:int,blends:bool,kit:int) {
- own:[1]figs.Twohand;figs.twohand_load(own[..]);ppl:[1]figs.People;figs.people_load(ppl[..]);
+two_hand_rooms :: (room:[]f32,body:int,blends:bool,kit:int,own:[]figs.Twohand,ppl:[]figs.People) {
  pa:[figs.BD_ROWS*4]f32;pb:[figs.BD_ROWS*4]f32;sk:[1]figs.Skin;
  {
   female:=body==1;
@@ -495,18 +494,6 @@ two_hand_rooms :: (room:[]f32,body:int,blends:bool,kit:int) {
  }
 }
 cc_room_min :: (room:[]f32,row:int,r:[3]f32) { for i:0..<3 {if r[i]<room[row*3+i] {room[row*3+i]=r[i];}} }
-#test "a two-hander keeps 8 cm off the head and neck and out of the torso in its clips, on both bodies" #steps 2000000000 {
- room:[CC_ROOM_ROWS*3]f32;for i:0..<CC_ROOM_ROWS*3 {room[i]=9;}two_hand_rooms(room[..],0,false,0);two_hand_rooms(room[..],1,false,0);
- for r:0..<6 {#assert room[r*3]>=CC_CLEAR && room[r*3+1]>=CC_CLEAR && room[r*3+2]>=0;}
-}
-#test "a two-hander keeps 8 cm off the head and neck and out of the torso through the greataxe's blends" #steps 2000000000 {
- room:[CC_ROOM_ROWS*3]f32;for i:0..<CC_ROOM_ROWS*3 {room[i]=9;}two_hand_rooms(room[..],0,true,0);two_hand_rooms(room[..],1,true,0);
- for r:6..<12 {#assert room[r*3]>=CC_CLEAR && room[r*3+1]>=CC_CLEAR && room[r*3+2]>=0;}
-}
-#test "a two-hander keeps 8 cm off the head and neck and out of the torso through the greatsword's blends" #steps 2000000000 {
- room:[CC_ROOM_ROWS*3]f32;for i:0..<CC_ROOM_ROWS*3 {room[i]=9;}two_hand_rooms(room[..],0,true,1);two_hand_rooms(room[..],1,true,1);
- for r:12..<18 {#assert room[r*3]>=CC_CLEAR && room[r*3+1]>=CC_CLEAR && room[r*3+2]>=0;}
-}
 // ---- the bow through the body (#13073): every pose the Ranger shows, the bow's limbs, its string and
 // the nocked arrow tested against the body's capsules with the Metaverse Engine's attachment overlap check
 // (metaverse-engine/action/attach-overlap.coax). The bow is placed as held_weapon places it (bow_matrix,
@@ -559,8 +546,7 @@ cc_bow_pieces_w :: (pal:[]f32,bind:[][3]f32,w:[12]f32,k:f32,nocked:bool,out:[]ov
 }
 // The deepest overlap of the bow with the body over clips c0 to c1 (base clips, or figs.BD_BOW for the
 // draw and its release), every frame, on both bodies.
-cc_bow_sweep :: (c0:int,c1:int)->overlap.OverlapHit {
- own:[1]figs.Twohand;figs.twohand_load(own[..]);ppl:[1]figs.People;figs.people_load(ppl[..]);
+cc_bow_sweep :: (c0:int,c1:int,own:[]figs.Twohand,ppl:[]figs.People)->overlap.OverlapHit {
  pal:[figs.BD_ROWS*4]f32;sweep:overlap.OverlapHit;sk:[1]figs.Skin;
  for body:0..<2 {female:=body==1;rig:=figs.people_rig(ppl[..],female);
   bind:[figs.PEOPLE_JOINTS][3]f32;for j:0..<figs.PEOPLE_JOINTS {bind[j]=figs.bd_bind_at(rig.bind[j*12..<j*12+12]);}
@@ -588,8 +574,7 @@ cc_bow_arm :: (pal:[]f32,female:bool,c:int,f:int) {
 // arm out, turned to each of CC_BOW_SIDE_YAWS), so a zone whose record, hand rows or turn put the string
 // out fails here too.
 CC_BOW_SIDE_YAWS :: [4]f32.[0,1.3,3.14159265,-2.0];
-cc_bow_side_sweep :: (c0:int,c1:int)->f32 {
- own:[1]figs.Twohand;figs.twohand_load(own[..]);ppl:[1]figs.People;figs.people_load(ppl[..]);
+cc_bow_side_sweep :: (c0:int,c1:int,own:[]figs.Twohand,ppl:[]figs.People)->f32 {
  pal:[figs.BD_ROWS*4]f32;sk:[1]figs.Skin;least:f32=f32(overlap.OVERLAP_TOO_BIG);
  bodies:[1]figs.Bodies;
  for body:0..<2 {female:=body==1;rig:=figs.people_rig(ppl[..],female);
@@ -610,19 +595,12 @@ cc_bow_side_sweep :: (c0:int,c1:int)->f32 {
  }
  return least;
 }
-#test "standing, the carried bow's string is in toward the body and its back out, in every zone" #steps 4000000000 {
- #assert cc_bow_side_sweep(figs.BD_IDLE,figs.BD_IDLE)>CC_BOW_MEDIAL_MIN;
-}
-#test "walking and running, the carried bow's string is still in toward the body, in every zone" #steps 4000000000 {
- #assert cc_bow_side_sweep(figs.BD_WALK,figs.BD_RUN)>CC_BOW_MEDIAL_MIN;
-}
 CC_BOW_MEDIAL_MIN :: 0.08;   // metres: the string nearer the body's middle than the bow's back
 // Carried standing (#13073, the owner's reference: an archer at rest, the bow in the left fist at his
 // side), over the idle's every frame on both bodies: [0] the farthest the bow's grip lies from the fist's
 // middle, [1] and [2] the least and most the bow's long axis (tip to tip) leans its top out from upright,
 // toward the bow hand's side, in degrees, and [3] the least its tip lies out past the shoulder.
-cc_bow_carry_shape :: ()->[4]f32 {
- own:[1]figs.Twohand;figs.twohand_load(own[..]);ppl:[1]figs.People;figs.people_load(ppl[..]);
+cc_bow_carry_shape :: (own:[]figs.Twohand,ppl:[]figs.People)->[4]f32 {
  pal:[figs.BD_ROWS*4]f32;sk:[1]figs.Skin;o:=[4]f32.[0,1000,-1000,1000];
  for body:0..<2 {female:=body==1;rig:=figs.people_rig(ppl[..],female);
   bind:[figs.PEOPLE_JOINTS][3]f32;for j:0..<figs.PEOPLE_JOINTS {bind[j]=figs.bd_bind_at(rig.bind[j*12..<j*12+12]);}
@@ -639,25 +617,6 @@ cc_bow_carry_shape :: ()->[4]f32 {
   }
  }
  return o;
-}
-#test "standing, the carried bow's grip is in the fist and its top leans out past the shoulder, as the reference" #steps 2000000000 {
- s:=cc_bow_carry_shape();
- #assert s[0]<0.001 && s[1]>20 && s[2]<40 && s[3]>0.1;
-}
-#test "the drawn bow's limbs, string and arrow stay out of the body, both bodies, every frame" #steps 2000000000 {
- h:=cc_bow_sweep(figs.BD_BOW,figs.BD_BOW);#assert h.status==overlap.OverlapStatus.clear && h.poses==2*figs.BOW_POSE_FRAMES;
-}
-#test "the carried bow stays out of the body standing, walking and running" #steps 2000000000 {
- h:=cc_bow_sweep(figs.BD_IDLE,figs.BD_RUN);#assert h.status==overlap.OverlapStatus.clear;
-}
-#test "the carried bow stays out of the body through a jump" #steps 2000000000 {
- h:=cc_bow_sweep(figs.BD_JUMP_START,figs.BD_JUMP_LAND);#assert h.status==overlap.OverlapStatus.clear;
-}
-#test "the carried bow stays out of the body through a blow, a cast and a knock back" #steps 2000000000 {
- h:=cc_bow_sweep(figs.BD_SLASH,figs.BD_KNOCK);#assert h.status==overlap.OverlapStatus.clear;
-}
-#test "the carried bow stays out of the body as you fall" #steps 2000000000 {
- h:=cc_bow_sweep(figs.BD_DIE,figs.BD_DIE);#assert h.status==overlap.OverlapStatus.clear;
 }
 #test "a two-hander's haft runs from the right fist through the left" {
  id:=[12]f32.[1,0,0,0, 0,1,0,0, 0,0,1,0];hand:=[3]f32.[-0.1,1.0,0.3];hl:=[3]f32.[-0.1-0.075-0.075,1.0+0.4,0.3];

@@ -243,7 +243,7 @@ shader (`person_dye`), so a guard's tunic is crimson, the astronomer's deep
 indigo with a silver plait, without another texture.
 
 They move with seven clips of the Universal Animation Library 1 and 2,
-retargeted to the two bodies (`everglade/scene/people-rig.coax`): idle,
+retargeted to the two bodies (the `people` set of `everglade/model/rigs.vrg`; names in `everglade/scene/people-clips.coax`): idle,
 walk, talk, a nod, folded arms, a raised lantern and a spell idle. Alone,
 they shift their weight and glance about; within 4 m they turn to face you
 and look at you (the neck and head turned through `skin_turn` in

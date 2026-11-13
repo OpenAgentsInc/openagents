@@ -1,8 +1,10 @@
 // Original block mannequin on the existing CC0 65-joint character skeleton.
 #load "../../metaverse-engine/anim/bundle.coax";
-#load "../../everglade/scene/people-rig.coax";
+#load "../../metaverse-engine/anim/skin.coax";
+#load "../../metaverse-engine/anim/mannequin.coax";   // the mannequin's skeleton: the people's male body's (#13508)
 al_mannequin :: (lib:[]AnimLibrary,bytes:[]u8) {
- data:[1]People;people_load(data[..]);source:=people_rig(data[..],false);r:AnimRig;r.ready=true;r.name=anim_named("mannequin");r.joints=65;r.sections=1;r.material_count=1;r.materials[0]=anim_named("studio");
+ mrest:[455]f32;mbind:[780]f32;mannequin_rest_bind(mrest[..],mbind[..]);none:[1]int;nf:[1]f32;mpar:=MANNEQUIN_PARENT;
+ source:=SkinRig.{joints=MANNEQUIN_JOINTS,clips=0,parent=mpar[..],rest=mrest[..],bind=mbind[..],duration=nf[0..<0],distance=nf[0..<0],track_t=none[0..<0],track_r=none[0..<0],keys_t=nf[0..<0],keys_r=nf[0..<0]};r:AnimRig;r.ready=true;r.name=anim_named("mannequin");r.joints=65;r.sections=1;r.material_count=1;r.materials[0]=anim_named("studio");
  q:[65]Quat;points:[65]Point;for j:0..<65 {r.names[j]=anim_named(MANNEQUIN_NAME[j]);r.parents[j]=source.parent[j];r.rest[j]=skin_rest(source,j);r.mapped[j]=j;pose_chain(q[..],points[..],r.parents[j],j,r.rest[j]);for k:0..<12 {r.bind[j*12+k]=source.bind[j*12+k];}}
  // Six rigidly weighted box faces per joint. They are made here, not sampled
  // from a licensed mesh. Every skin8 record still has eight influence slots.

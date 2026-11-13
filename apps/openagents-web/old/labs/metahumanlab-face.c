@@ -86,6 +86,13 @@ EXPORT("coaxial_outbox") uint32_t coaxial_outbox(uint32_t state) { return (uint3
 EXPORT("coaxial_outbox_len") uint32_t coaxial_outbox_len(uint32_t state) { return (uint32_t)lab_at(state)->out_n; }
 EXPORT("coaxial_action_done") void coaxial_action_done(uint32_t state) { lab_action_done(at(state)); }
 
+/* the pack's rig entry (kind 7, #13508): the people's keys, handed over before the catalog */
+static uint8_t rig_file[262144];
+EXPORT("coaxial_pack_rig") uint32_t coaxial_pack_rig(uint32_t state, uint32_t bytes) { (void)state; return bytes <= sizeof rig_file ? (uint32_t)(uintptr_t)rig_file : 0u; }
+EXPORT("coaxial_pack_rig_capacity") uint32_t coaxial_pack_rig_capacity(uint32_t state) { (void)state; return (uint32_t)sizeof rig_file; }
+EXPORT("coaxial_pack_rig_ready") void coaxial_pack_rig_ready(uint32_t state, uint32_t bytes) { if (bytes > 0 && bytes <= sizeof rig_file) lab_rig(at(state), (coax_v_u8){rig_file, bytes}); }
+EXPORT("coaxial_rig_v1") uint32_t coaxial_rig_v1(uint32_t state, uint32_t bytes) { return coaxial_pack_rig(state, bytes); }
+EXPORT("coaxial_rig_ready_v1") void coaxial_rig_ready_v1(uint32_t state, uint32_t bytes) { coaxial_pack_rig_ready(state, bytes); }
 EXPORT("coaxial_asset") uint32_t coaxial_asset(uint32_t state, int32_t i, uint32_t bytes) {
   (void)state;
   return i == 0 && bytes <= sizeof catalog ? (uint32_t)(uintptr_t)catalog : 0u;

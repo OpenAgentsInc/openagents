@@ -93,7 +93,7 @@ EG_BODY_MASK :: [65] f32.[
   1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
   1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
 ];
-// thigh, calf, foot of each leg (people-rig.coax: 55 to 57 and 60 to 62); the head (6)
+// thigh, calf, foot of each leg (people-clips.coax: 55 to 57 and 60 to 62); the head (6)
 EG_BODY_IK :: [3] AnimGraphIk.[
   AnimGraphIk.{kind = ANIM_GRAPH_IK_FOOT, root = 55, mid = 56, end = 57, weight_param = EG_BODY_FOOT},
   AnimGraphIk.{kind = ANIM_GRAPH_IK_FOOT, root = 60, mid = 61, end = 62, weight_param = EG_BODY_FOOT},

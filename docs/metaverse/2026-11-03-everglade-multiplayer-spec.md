@@ -595,7 +595,7 @@ are stamped with it.
 - A player whose page the server hasn't heard for 3 s (`WG_AWAY`) fades to a
   third, nameplate too, until it is heard again.
 - Class gear: the druid carries a staff across their back.
-- Later, the townsfolk rig (`everglade/scene/people-rig.coax`: male and
+- Later, the townsfolk rig (`everglade/model/rigs.vrg` (names in `everglade/scene/people-clips.coax`): male and
   female, 65 joints, 12 clips including spell, slash, die and knock) as a
   second body choice, so players can look like anyone in town.
 

@@ -815,7 +815,7 @@ def build(manifest_path):
             indices += part["indices"]
             plic = licence_of(part["licence"], f"people/{part['name']}") if part.get("licence") else lic
             character_lines.append(f"C people/{part['name']} {first} {len(part['indices'])} {plic} {word} {part['count']} {len(prig[0]['male'].names)}")
-        rigs.append((spec["rig"], people.rig_coax(m, prig, parts, spec.get("prefix", "PEOPLE"))))
+        rigs.append((spec["rig"], people.rig_coax(m, prig, parts, spec.get("prefix", "PEOPLE"), spec.get("set", "people"))))
     for s in m.get("sounds", []):
         lic = licence_of(s.get("licence"), f"sound {s['name']}")
         entries.append((KIND_SOUND, lic, s["name"], home(s["file"]).read_bytes()))

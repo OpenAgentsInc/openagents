@@ -625,7 +625,7 @@ EG_LOOK_FAR_CANOPY :: cast(u32)6; // a far tree's cone, lit as a blob
 EG_LOOK_CANOPY :: cast(u32)7; // a kit tree's leaves, lit as a blob
 EG_PERSON_SPAN :: 2.5f32; // a person's vertex box (metaverse/tools/people.py SPAN, LOW)
 EG_PERSON_LOW :: ()->V3 {return v3(-1.25f32,-0.25f32,-1.25f32);}
-EG_PERSON_JOINTS :: cast(u32)65; // everglade/scene/people-rig.coax PEOPLE_JOINTS
+EG_PERSON_JOINTS :: cast(u32)65; // everglade/scene/people-clips.coax PEOPLE_JOINTS
 EG_BAND_FAR_MID :: 0.6f32;
 EG_BAND_FAR_SHARE :: 0.45f32;
 EG_BAND_FAR_FROM :: 15.0f32;

@@ -606,6 +606,17 @@ EXPORT("coaxial_message") void coaxial_message(uint32_t state, int32_t kind, uin
   if (track_message(tr(), kind, (coax_string){(const char *)inbox, length})) track_drain(&track_state);
 }
 
+/* the pack's rig entry (kind 7, #13508): the people's keys, handed over before the catalog
+   (coax/web/host.js deliverRig; a native host's coaxial_rig_v1) */
+static uint8_t rig_file[262144];
+EXPORT("coaxial_pack_rig") uint32_t coaxial_pack_rig(uint32_t state, uint32_t bytes) { (void)state; return bytes <= sizeof rig_file ? (uint32_t)(uintptr_t)rig_file : 0u; }
+EXPORT("coaxial_pack_rig_capacity") uint32_t coaxial_pack_rig_capacity(uint32_t state) { (void)state; return (uint32_t)sizeof rig_file; }
+EXPORT("coaxial_pack_rig_ready") void coaxial_pack_rig_ready(uint32_t state, uint32_t bytes) {
+  start(state);
+  if (bytes > 0 && bytes <= sizeof rig_file) everglade_rig(at(state), (coax_v_u8){rig_file, bytes});
+}
+EXPORT("coaxial_rig_v1") uint32_t coaxial_rig_v1(uint32_t state, uint32_t bytes) { return coaxial_pack_rig(state, bytes); }
+EXPORT("coaxial_rig_ready_v1") void coaxial_rig_ready_v1(uint32_t state, uint32_t bytes) { coaxial_pack_rig_ready(state, bytes); }
 EXPORT("coaxial_asset") uint32_t coaxial_asset(uint32_t state, int32_t i, uint32_t bytes) {
   (void)state;
   return i == 0 && bytes <= sizeof catalog ? (uint32_t)(uintptr_t)catalog : 0u;

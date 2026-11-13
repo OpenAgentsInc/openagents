@@ -20,45 +20,45 @@ html,body{margin:0;min-height:100%;background:#000;color:#eee;font-family:ui-san
 <h1>OpenAgents status</h1>
 <p><a href="/status/index.md">Read the status as Markdown</a></p>
 </main>
-<script type="module" src="/coaxial/host.js" data-app="status" data-wgsl="/newland.wgsl" data-lines="61:https://api.github.com/repos/OpenAgentsInc/openagents/commits?sha=main&amp;per_page=30 62:/api/playtest/service-health 63:/api/playtest/capacity" data-text="build 63e092cf684ef2778be89a337732d40fa27a402b 1794260745
-green -
+<script type="module" src="/coaxial/host.js" data-app="status" data-wgsl="/newland.wgsl" data-lines="61:https://api.github.com/repos/OpenAgentsInc/openagents/commits?sha=main&amp;per_page=30 62:/api/playtest/service-health 63:/api/playtest/capacity" data-text="build 30361db7380eb3f194b7682af1183a53c41b8fd5 1794607003
+green 47f14799fdc225f078d522bb3ae20cf0bd71b09a
 queue 0
-rejected 0
+rejected 2
 red 0
-day 222
-week 1822
-trailers 9
-hosts 6 3 411 1455
-c 63e092cf684ef2778be89a337732d40fa27a402b 1794260185 - Everglade Experimental: the red dragon as a flying mount, and riding stages (#13113)
-c 683ab0cd9ef4a14f66456f2c1da21edeb2014244 1794260004 - Aethyr: the camera orbit check splits in two, each well under its step budget (#13115)
-c 575281d3e37bd1c08bf7a7cc3886dfec6d3734e1 1794260004 - wasm.sh: a unit past its compile headroom line stops a release build (#13115)
-c a8c3a052a5fb4f9f0c71d0f97f3af142599d9d0e 1794260003 - Experimental terrain: the building sites are a constant table, not a chain of tests (#13115)
-c 739fe14cfa99c3eb75428456a6fcec4679652f2c 1794259972 ab1bb60c Agent workflow audit: where agent time and tokens go, and the green-main cutover (#13102)
-c 272d885c76f573a54f8fdf9658f503040cadb763 1794259584 builder Experimental: a builder at each build site, and its landings' sounds (#13108)
-c c4c2d2723859b3555ef5bd0f510f4317dc7e3513 1794259465 - Housewright stages: a check that the camera never enters a house (#13107)
-c 7697b0f16a86ad20262afa19eba063de6485cd86 1794259412 - Everglade's side bar: an open menu and its tip push the frame-rate plaque aside (#13103)
-c e5c48a8edfa5ebde8a15d1ee6e900b5525218f6b 1794259222 green-main after.sh: a full run at most once an hour
-c eec10a9c44c1efb7250e268149892adb5d12b55c 1794259012 green-main check.sh: report module sizes against a start stamp
-c e023e90f621deaee3e0ffd34fdae674797e464ab 1794258989 - Everglade Experimental: ?stage=house-* time-lapses own the camera, the sun and the clock (#13107)
-c f0e14a9ae5222fafa4b14c184114d69f0853b022 1794258771 - Everglade parity: spell effects through one shared module (#13086)
-c d1526b6bb2f8bca9d04c80f5082c9b4cfa056cbc 1794258648 - docs(293): owner decisions, the production format and what to collect for each beat
-c ebdb24733735cfd4765cb4ec32a9b00ffb1e20d7 1794258560 green-main AGENTS.md: the Agent: trailer and the red list
-c 22dac5ed1e60749d4130f51a7f512b4447216c77 1794258550 green-main release.sh: release origin/main-green by default
-c e1e0cc4fb0d7e4017bf7770b611abce072aaa514 1794258524 green-main Green-main pipeline: after.sh runs the full check on main and bisects a failure to its commit
-c 25b11c2f466101b1a3ded1cd22d1a403d02749f3 1794258490 - Plots and many build sites in Aethyr, Everglade's 16-plot town and its stages (#13109)
-c e3593722519c8cb8012ccb5e2bd46da685f2947c 1794258413 - Experimental: a build site sounds its busiest material in a quick rhythm (#13108)
-c 35a64551c21e149dfa7d9a8ebbcc5f0f328e320d 1794258364 - Plans: seven implementation plans from a full audit, with an index
-c ae4888602ec7e3d868247cf3e70a7aaa870af2c9 1794258287 - Build sites: the piles' meshes, bottom first, and the carried item (#13108)
-c 42b9c975e14594b154af71db3c21eac279c79fd2 1794258129 - Build sites: material piles, a builder's trips and material sounds (#13108)
-c 30374a987d0835b666ea22fce5f59b0c2bf1d0c3 1794258112 green-main Green-main pipeline: the integrator checks queued branches and lands the green prefix
-c c9e47701e8bd79e2a57c6909349715b54ffed7de 1794258102 - remote builds: daily cap to $50 (owner, 2026-11-09)
-c 6785c3d2a38529712c9bf946fbf795f324a9b14f 1794258055 - Episode 293: retime transcript and show notes to the recut video
-c e50c65e29570c63bf3df4be2326383f5adb1ff07 1794257712 - Everglade: the housewright time-lapse setups (#13107)
-c 661a7e2bbc9f8a380be2873db27c3631d77de2fa 1794257499 - Aethyr: the glade's day profile, so any realm can sweep a day (#13107)
-c 95362abaca352f3956683dfa3d2e947e2ef91f26 1794257423 - Aethyr: a camera track any zone can load from a stage (#13107)
-c 909813c186be6028df3b922bfdd94942df5a4507 1794257381 - Aethyr build sites: one progress value, the arriving part and the materials used (#13106)
-c c54fb1176f5cb2ae3e716f07ba887faa24d73650 1794257351 - Aethyr HUD widgets: text fits its box, and side-bar rows are touch-sized on a tablet (#13103)
-c b2046998bf691676513867c0fc4dea0ae0c82771 1794257263 - Everglade: the red dragon model, its clips and its place in the glade pack
+day 0
+week 0
+trailers 0
+hosts 6 3 0 0
+c 30361db7380eb3f194b7682af1183a53c41b8fd5 1767225600 - remote.sh snapshot
+c 124b14a96c4465e00ed684533a0a58a2518507ed 1794604540 /root Specify Coax Native shared application architecture
+c cdbc5d6389ab71be3b05e593e4c748faa279dcce 1794604460 splice-slice-c Splice Bots: the battles' own stills (20 the desert battle, 21 the boss's phase two) and their HUD fixed from screenshots (#13505 part C)
+c 19e6eb4245bff34a5cdf8967f857b294dbca3636 1794604300 claude-opus-bgvs-fix wasm_isolation.py drops COAX from its env, so its fixture compiler runs
+c 146579ae4bc5f6c3d7a4cc2c26820d487b27fb41 1794604224 claude-code-opus-devbox The boat exit plan (#13474, stage 6)
+c 0bc67097e8c6fe713502da43744cbe7ed139abb6 1794604224 claude-code-opus-devbox /chat devbox conversations, and dependable dev boxes (#13474, stages 4 and 5)
+c 27e37ca7673a660886122b1302ec11fd543c785c 1794604074 claude-code-devlogin Dev server: one account named by its email, and Log out sticks (#13493)
+c 778ed18425a07522050fcfd70ac03ffba326d8b0 1794604062 claude-code-fable-aaa4080-wire The landing page draws again: verse.wgsl's entry points are bg_vs and fx_vs once more
+c 09b306f166c6a713ddcf27097f5b1200eb27d0e0 1794603913 - check-visuals: the play page's bar is an empty mount, like the editor's and a pane's
+c 34d87d0ca6e99a415a5f9791be52d3b128ca0cae 1794603734 claude-code-coderos-4080 Microcoder on a real issue: the four runs on #13435, and where each part of #13445 stands (#13444, #13445)
+c cde308e848dd75737493cf6d887d5e8e8a50f424 1794603734 - WIP doc2
+c 93c3efa04bda9e62fbb8e51cb4ea21b1b60c7d94 1794603655 claude-code-opus-home Home page: someone logged in gets a new chat at /; no aborted view transition; serve drops stale module lists
+c 1d40528c4a12dbb82def2ef1e2734fb09b67c47b 1794603590 splice-slice-c Splice Bots: bot battles, the drill mech, the raider mech, the two-phase boss and the ending (#13505 part C)
+c 2a8e01b8824e26468013fa45842b5980f77ca24b 1794603568 splice-slice-c Engine: bot battles (cards as moves, battery, health, core swaps) and the dinosaur machine kit (#13505)
+c d7258e72e9bc2d0bc009176daf4fb9bc3bca24cb 1794603377 claude-code-fable-aaa4080-wire Page checks: a fresh headless Chrome's first page on Linux gets a GPU (#13451)
+c 65b29535d7087804a523d5e76a31b555ca0f2b7a 1794603305 - Splice Bots: the map fits between the HUD panels; the crosshair shows on light floors (#13505)
+c e3a3d20afc121c4ba0f83a379be45ea5ae616cff 1794603284 claude-code-coderos-4080 Microcoder: a long read with no edit is told to edit; edits in one action may name the hash read before it (#13444, #13445)
+c c046166119ddff87f4b78655cadfe2ad8be5ed4c 1794603213 claude-code-coderos-4080 Microcoder: restore the compiler's answers and the working memory, reverted by 0f2d65714d (#13444, #13445)
+c 5765bd57a2de7d46b9ff5e1b8ab8443a0896fdeb 1794602720 claude-opus-slice-a Splice Bots: the Director's controls and systems from the slice-1 key map (#13505, part A)
+c 3b13184242cd7a832fab19b1566cf497e2be657d 1794602719 claude-opus-slice-a Metaverse Engine: stance (sneak, sprint keys), carry (a slot grid) and vitals (health, power down, charge) (#13505)
+c 4502712763c222ae13b1be57e705b5ba57c5efd1 1794602633 claude-code-fable-aaa4080-wire Frame plan: every page without a plan of its own draws in the engine's order (#13451)
+c ab2b51a3e1aeea9247feb61810014f8e567927e3 1794602438 - API tests: script_cli_checks counts only Splice Bots' scripts
+c e5bc4560ca8212f9f4f5ad348cd069bdb2707307 1794602264 - Editor bar: boxed buttons everywhere, one-row strip with More, Fullscreen, clean world edits
+c 28f3520157020ef7f39d58cdeca2013fd4146661 1794602252 claude-wnew-goldens Goldens: a page that became the app shell starts its engine in the held frame (#13487)
+c 0f2d65714d8687576fbee46fca25bce14a288dcc 1794601615 - P1.2, P1.3: apps/openagents-web's sources move into a folder for each page; the old set goes under old/ (#13268, #13269)
+c 6d88d1bd64bc97f8c7125723faad8a1915dcc349 1794601584 claude-code-coderos-4080 Microcoder: the compiler's answers and the working memory in the JSON-action loop (#13444, #13445)
+c f502e662266a26a72febd6a1c34cbbee6df42316 1794601523 - Realm edit docs: the layer's panes go with #13506
+c 16ac833b5b6b8ebae4d28fd4a33dc3a9fe98b197 1794601306 - Realm pages follow their realm's world and open the editor shell on it (#13478)
+c 461218c6106069bc6f460a0c5b39fd97e468eff6 1794600920 claude-opus-splice-jump Splice Bots: Space jumps, on the engine's jump (metaverse-engine/move/jump.coax)
+c 558766265038ca80a18b989e7d4633fe92b32af6 1794600695 - API tests: use the Postgres on the PATH when /usr/lib/postgresql has none
 "></script>
 </body>
 </html>

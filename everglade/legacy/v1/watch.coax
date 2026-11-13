@@ -41,7 +41,7 @@
 
 #load "plan.coax";
 #load "routines.coax";
-#load "../../scene/people-rig.coax";
+#load "../../scene/people-clips.coax";
 #load "srd5-combat.coax";
 #load "../../../metaverse-engine/physics/stand.coax";
 #load "../../shared/everglade-handles.coax";
@@ -59,7 +59,7 @@ BRAVE_RUN :: 4.2;
 FLEE_RUN :: 3.8;
 BACK_WALK :: 1.4;         // m/s walking back to their day
 REACH :: 1.5;             // m from you a blow reaches
-SWING :: 1.5333333;       // s the sword's swing (people-rig PEOPLE_SLASH) and its rest after
+SWING :: 1.5333333;       // s the sword's swing (people-clips PEOPLE_SLASH) and its rest after
 SWING_EVERY :: 1.9;
 STRIKE_AT :: 0.62;        // s into the swing its blow lands
 PUNCH :: 1.5333333;       // s a bare-handed swing (the sword's clip, PEOPLE_SLASH)

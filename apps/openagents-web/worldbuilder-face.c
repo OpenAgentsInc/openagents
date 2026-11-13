@@ -109,7 +109,7 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   int64_t n = wbw_frame(walk(state), (coax_v_f32){zone_strokes, sizeof zone_strokes / sizeof zone_strokes[0]}, out, u, w, h, scale, dt, run, still != 0);
   figure_draws = 0;
   if (zone_at(state)->bodies.e[0].ready) {
-    if (!baked) { zone_bake_from(zone(state), (coax_v_t_People){&rig, 1}, (coax_v_f32){bake, sizeof bake / sizeof bake[0]}, (coax_v_u8){rig_file, rig_bytes}); baked = 1; }
+    if (!baked && zone_bake_from(zone(state), (coax_v_t_People){&rig, 1}, (coax_v_f32){bake, sizeof bake / sizeof bake[0]}, (coax_v_u8){rig_file, rig_bytes})) baked = 1;   /* once the pack's rig is in (#13508) */
     figure_draws = zone_scene(zone(state), (coax_v_f32){zone_at(state)->records.e, sizeof zone_at(state)->records.e / sizeof(float)});
   }
   wbw_scene(walk(state), figure_draws);
@@ -175,6 +175,9 @@ EXPORT("coaxial_action_done") void coaxial_action_done(uint32_t state) { worldbu
 EXPORT("coaxial_pack_rig") uint32_t coaxial_pack_rig(uint32_t state, uint32_t bytes) { (void)state; return bytes <= sizeof rig_file ? (uint32_t)(uintptr_t)rig_file : 0u; }
 EXPORT("coaxial_pack_rig_capacity") uint32_t coaxial_pack_rig_capacity(uint32_t state) { (void)state; return (uint32_t)sizeof rig_file; }
 EXPORT("coaxial_pack_rig_ready") void coaxial_pack_rig_ready(uint32_t state, uint32_t bytes) { (void)state; rig_bytes = bytes <= sizeof rig_file ? bytes : 0u; }
+/* the same for a native host (metaverse-engine/host/README.md: coaxial_rig_v1, #13508) */
+EXPORT("coaxial_rig_v1") uint32_t coaxial_rig_v1(uint32_t state, uint32_t bytes) { return coaxial_pack_rig(state, bytes); }
+EXPORT("coaxial_rig_ready_v1") void coaxial_rig_ready_v1(uint32_t state, uint32_t bytes) { coaxial_pack_rig_ready(state, bytes); }
 EXPORT("coaxial_asset") uint32_t coaxial_asset(uint32_t state, int32_t i, uint32_t bytes) {
   (void)state;
   if (i == PEOPLE_CATALOG) return bytes <= sizeof people_catalog ? (uint32_t)(uintptr_t)people_catalog : 0u;

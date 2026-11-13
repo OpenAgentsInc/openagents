@@ -75,8 +75,9 @@ void *egm_new(void);
 // The pack's catalog text; 1 when it names every part the model needs.
 int32_t egm_catalog(void *model, const uint8_t *text, int32_t length);
 int32_t egm_bake_floats(void);
-// Every frame of the clips as skinning rows (egm_bake_floats floats); 1 when written.
-int32_t egm_bake(void *model, float *out);
+// Every frame of the clips as skinning rows (egm_bake_floats floats), from the pack's rig entry (kind 7,
+// everglade/model/rigs.vrg's people's set); 1 when written, 0 when the rig holds no people's set.
+int32_t egm_bake(void *model, const uint8_t *rig, int32_t rig_length, float *out);
 int32_t egm_records(void);
 int32_t egm_record_floats(void);
 // This frame's records (egm_records * egm_record_floats floats) and draws (first index, count,

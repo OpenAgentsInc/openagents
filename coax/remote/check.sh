@@ -260,6 +260,7 @@ reports() {
   step splice-content coax/web/tool.sh metaverse/splice-bots/tools/content-check.coax metaverse/splice-bots/content/splice.content --check || status=1
   # Everglade's tables hold their rules, and the kept tables of the release before are the revision before them (#13408)
   step everglade-content coax/web/tool.sh everglade/model/tools/content-check.coax everglade/content/everglade.content || status=1
+  rig_checks
   step wire-check coax/web/tool.sh wire-check || status=1
   step layer-check coax/web/tool.sh layer-check || status=1
   # the editor has no look of its own: the frames set in the mono skin, as the chat page (#13416)
@@ -303,6 +304,14 @@ pack_reader_c() {
   step pack-reader-c bash -c 'coax/bin/coax c metaverse-engine/host/pack-table-face.coax --library | cmp -s - metaverse/native/pack-table-gen.h || { echo "metaverse/native/pack-table-gen.h is not what the compiler writes for metaverse-engine/host/pack-table-face.coax. From the repository root: coax/bin/coax c metaverse-engine/host/pack-table-face.coax --library > metaverse/native/pack-table-gen.h, then commit it."; exit 1; }' || status=1
   # host-core-gen.h beside it is the one C host core as one header, for the same builds.
   step host-core-c coax/web/tool.sh metaverse-engine/tools/host-core-flat.coax "$PWD" --check || status=1
+}
+# Everglade's rigs are a file, everglade/model/rigs.vrg, not source (#13508): its sets' shapes are the names
+# files' (rig-pack --check), the checks that pose its bodies pass on it (rig-poses.coax), and the packs
+# that carry a rig entry carry the file's (rig-pack --holds; gunzipped for the glade's).
+rig_checks() {
+  step rig-source coax/web/tool.sh everglade/model/tools/rig-pack.coax --check everglade/model/rigs.vrg || status=1
+  step rig-poses coax/web/tool.sh everglade/model/tools/rig-poses.coax everglade/model/rigs.vrg || status=1
+  step rig-packs bash -c 'set -e; t="$(mktemp -d)"; r=0; h() { coax/web/tool.sh everglade/model/tools/rig-pack.coax --holds everglade/model/rigs.vrg "$1" || r=1; }; a=apps/openagents-web/realms; h $a/everglade2/assets/everglade2.pack; h $a/everglade/assets/everglade.pack; h $a/everglade/assets/everglade-zone.pack; gzip -dc $a/everglade-experimental/assets/glade.pack.gz > "$t/glade.pack"; h "$t/glade.pack"; rm -f "$t/glade.pack"; rmdir "$t"; exit $r' || status=1
 }
 # The packs the Mac and iPhone apps ship are packs the admission takes as they are (#13304): Everglade
 # II's, and Experimental's once inflated. A pack tool that leaves its working form fails here; the
@@ -554,6 +563,8 @@ reports_since() {
     step everglade-parity coax/web/tool.sh everglade-parity || status=1
     step splice-content coax/web/tool.sh metaverse/splice-bots/tools/content-check.coax metaverse/splice-bots/content/splice.content --check || status=1
     step everglade-content coax/web/tool.sh everglade/model/tools/content-check.coax everglade/content/everglade.content || status=1   # and the kept tables before (#13408)
+    # the rigs' file, the code that poses it, or a pack that carries it (#13508)
+    if grep -Eq '^(everglade/(model/(rigs\.vrg|tools/rig-)|scene/|mounts\.coax|dragon-clips\.coax)|metaverse-engine/(anim|action)/|apps/openagents-web/realms/(everglade|everglade2|everglade-experimental)/assets/)' "$out/changed"; then rig_checks; fi
     # every wire shape registered (proto/registry.json, #13236); the allowlist against the base's copy
     step wire-check coax/web/tool.sh wire-check --base "$arg" || status=1
     # no load up the layers (metaverse-engine/README.md "Layers", #13264); the allowlist against the base's copy

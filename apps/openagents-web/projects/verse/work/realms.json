@@ -1155,7 +1155,8 @@
       "files": [
         "metaverse/tools/people.py",
         "everglade/legacy/v1/folk.coax",
-        "everglade/scene/people-rig.coax",
+        "everglade/scene/people-clips.coax",
+        "everglade/model/rigs.vrg",
         "apps/openagents-web/everglade.coax",
         "apps/openagents-web/everglade.wgsl",
         "metaverse/packs/everglade.json",

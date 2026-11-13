@@ -9,7 +9,7 @@
 #load "../../everglade/scene/bodies.coax" as figs;
 
 WS_MODEL_PARTS :: 48;     // records at most: 40 worn pieces, a head, hair and a beard
-WS_STRIDE_WALK :: 1.3;    // metres one loop of the walk covers (people-rig.coax PEOPLE_DISTANCE)
+WS_STRIDE_WALK :: 1.3;    // metres one loop of the walk covers (rigs.vrg; people-clips.coax PEOPLE_DISTANCE)
 WS_STRIDE_RUN :: 3.4;
 // The pack's parts (the people's and the wardrobe's), your character, and what it plays.
 WsModel :: struct {
@@ -28,11 +28,11 @@ ws_model_catalog :: (m: []WsModel, text: string) -> bool #export_c #effects(all)
   m[0].ready = m[0].bodies[0].ready && cc.catalog_ready(m[0].you[0]);
   return m[0].ready;
 }
-// Every frame of the people's clips as skinning rows, for the GPU: BD_BAKE_FLOATS floats.
+// Every frame of the people's clips as skinning rows, for the GPU: BD_BAKE_FLOATS floats. `rig` is the
+// pack's rig entry (kind 7, VRG1; everglade/scene/rig-asset.coax): false when it holds no people's set.
 ws_model_bake_floats :: () -> int #export_c #effects(all) { return figs.BD_BAKE_FLOATS; }
-ws_model_bake :: (m: []WsModel, out: []f32) -> bool #export_c #effects(all) {
-  if out.count < figs.BD_BAKE_FLOATS { return false; }
-  figs.people_load(m[0].people[..]);
+ws_model_bake :: (m: []WsModel, rig: []u8, out: []f32) -> bool #export_c #effects(all) {
+  if out.count < figs.BD_BAKE_FLOATS || !figs.e2rig_people(rig, m[0].people[..]) { return false; }
   figs.bd_bake(m[0].people[..], out);
   return true;
 }

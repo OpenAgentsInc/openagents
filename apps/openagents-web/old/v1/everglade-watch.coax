@@ -1549,7 +1549,7 @@ eg_fire_blame :: (by: int, next_by: int, out: [] int) {
 
 #test "watch: a fall seen again, or late, is where its time says; a fall just begun plays from its start (#12862)" #steps 4000000000 {
   g: [1] Everglade;
-  people_load(g[0].people_rig[..]);
+  people_timing(g[0].people_rig[..]);
   rig := people_rig(g[0].people_rig[..], false);
   out: [PEOPLE_JOINTS * 12] f32;
   d := rig.duration[PEOPLE_DIE];
