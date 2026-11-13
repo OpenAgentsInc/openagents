@@ -147,6 +147,28 @@ for f in pages:
     # the bucket can't map to index.html on its own; upload.py serves it as HTML.
     if os.path.basename(f) == "index.html" and os.path.dirname(f):
         shutil.copy(os.path.join(site, f), os.path.join(site, os.path.dirname(f) + ".page"))
+# The pages the browser draws (coax/web/dom-host.js: /chat, /components, /settings, /worlds, and the panes
+# host.js opens over a world) load /coaxial/dom-host.js and /build/NAME.wasm under those fixed names,
+# checked on every visit like the pages. Every module whose face answers dom-host (it exports dom_frame)
+# ships so, with its function names; a page that names a module the app lacks stops the build. Before
+# this none of them shipped, and /chat drew nothing in production.
+dom_host = os.path.join(site, "coaxial", "dom-host.js")
+os.makedirs(os.path.dirname(dom_host), exist_ok=True)
+shutil.copy(os.path.join(tools, "dom-host.js"), dom_host)
+dom_mods = set()
+for w in sorted(os.listdir(os.path.join(app, "build"))):
+    src = os.path.join(app, "build", w)
+    if not w.endswith(".wasm") or not os.path.isfile(src) or b"dom_frame" not in open(src, "rb").read(): continue
+    os.makedirs(os.path.join(site, "build"), exist_ok=True)
+    shutil.copy(src, os.path.join(site, "build", w))
+    if os.path.exists(src + ".syms"): shutil.copy(src + ".syms", os.path.join(site, "build", w + ".syms"))
+    dom_mods.add(w[:-len(".wasm")])
+for f in pages:
+    if not f.endswith(".html"): continue
+    text = open(os.path.join(app, f), encoding="utf-8").read()
+    named = re.findall(r'src="/coaxial/dom-host\.js" data-app="([^"]+)"', text) + re.findall(r'/coaxial/dom-host\.js\?app=([A-Za-z0-9_-]+)', text)
+    for name in named:
+        if name not in dom_mods: sys.exit(f"deploy: {f} draws with the module {name}, which the build did not make for dom-host.js")
 # Settings, About (apps/openagents-web/settings-web.coax) reads /build/about.txt: the commit this build is
 # of and the day it was built. A tree that isn't a git checkout writes none, and the page says so.
 import time
