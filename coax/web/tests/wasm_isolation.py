@@ -35,6 +35,7 @@ else: print('int generated(void) { return 7; }')
             face = root / 'face.c'; face.write_text('#include "Shared.h"\nint face(void) { return shared(); }\n')
             output = root / 'out'; output.mkdir()
             env = dict(os.environ, HEADER_LOG=str(root/'headers.log'), COAXIAL_MODE='dev')
+            env.pop('COAX', None)  # wasm.sh takes $COAX over the fixture's coax/bin/coax
             procs = []
             for name in ('alpha','beta','alpha'):
                 procs.append(subprocess.Popen([str(repo/'coax/web/wasm.sh'),str(root/(name+'.coax')),
