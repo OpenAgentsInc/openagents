@@ -120,6 +120,26 @@ dv_draw :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
   g_draw_rover(buf, p, v3(c.x, 0.2, c.z), dv_yaw(g, s));
 }
 
+// Moments for stills and checks (g_stage): 25, a drive two fifths of the way (the world's first ride
+// portal: none, no drive); 26, the empty section where the drill mech stands; 27, the field at dusk,
+// facing the blocked hallway straight across from the entry.
+dv_stage :: (g: [] SpGame, n: int) {
+  if n == 25 {
+    g[0].have[H_DRILL] = true; g[0].phase = PH_DAY;
+    c := g[0].c[..];
+    for k: 0..<c[0].portal_n {
+      p := c[0].portals[k];
+      if !p.ok || !p.ride { continue; }
+      g[0].dv[0].boarded = false;
+      dv_start(g, sc_m(p.to_x), sc_m(p.to_z), p.yaw);
+      g[0].dv[0].t = g[0].dv[0].span * 0.4;
+      return;
+    }
+  }
+  if n == 26 { ga_look_into(g, ga_in_bay(g, sc_mark(g[0].c[..], 81).x, sc_mark(g[0].c[..], 81).z)); }
+  if n == 27 { g[0].px = 0; g[0].pz = g[0].at.wall_z + 40; g[0].yaw = PI; g[0].pitch = 0; }
+}
+
 // While it drives: a strip along the bottom, who drives and where, and the key that gets you there now.
 dv_overlay :: (g: [] SpGame, out: [] f32, u: [] f32, q: Ui) -> int {
   k := q.k; n := 0;
@@ -154,4 +174,8 @@ dv_overlay :: (g: [] SpGame, out: [] f32, u: [] f32, q: Ui) -> int {
   cam := dv_camera(g[..]); #assert cam.eye.y > 4;   // outside, above the road
   for i: 0..<2000 { g_step(g[..], 0.02); if g[0].mode != M_DRIVE { break; } }
   #assert g[0].mode == M_PLAY && g[0].px == 0 && g[0].pz == 10 && g[0].phase == PH_DUSK;   // parked at the mine's mouth: dusk
+  // the stills: on the way, the drill mech's section, the field facing the hallway
+  g_stage(g[..], 25); #assert g[0].mode == M_DRIVE && g[0].have[H_DRILL] && g[0].phase == PH_DAY && dv_s(g[..]) > 0.3;
+  g_stage(g[..], 26); #assert g[0].mode == M_PLAY && ga_section_of(g[..], g[0].px, g[0].pz) == GA_EMPTY;
+  g_stage(g[..], 27); #assert ga_section_of(g[..], 0, g[0].at.wall_z - 10) == GA_HALLWAY;
 }

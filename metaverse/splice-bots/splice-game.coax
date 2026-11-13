@@ -763,7 +763,7 @@ g_look :: (g: [] SpGame, dx: f32, dy: f32) {
 g_lock :: (g: [] SpGame, status: int) { d_lock(g, status); g[0].look_free = status != 1; }
 
 // A moment of the run to stand in (the page's message 610, "N"): for stills and checks of each beat.
-g_stage :: (g: [] SpGame, n: int) { g_stage_set(g, n); if g[0].bot { g_bot_home(g); } sb_stage(g, n); }
+g_stage :: (g: [] SpGame, n: int) { g_stage_set(g, n); if g[0].bot { g_bot_home(g); } sb_stage(g, n); dv_stage(g, n); }
 g_stage_set :: (g: [] SpGame, n: int) {
   g_reset(g); g[0].mode = M_PLAY;
   if n == 0 { g[0].mode = M_TITLE; return; }

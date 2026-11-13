@@ -232,12 +232,14 @@ SPE_FOOT :: 28;      // a row's footprint is not its pack mesh's bounds at the r
 SpwTables :: struct { d: [1] EditorDoc; text: [SPW_TABLES] u8; text_n: int; open: bool; changed: bool; why: [240] u8; why_n: int; }
 SPE_PLAN :: 29;      // a foe's plan or the clock does not hold: the words are the tables' (SpwTables.why)
 // Opens the tables from text ("": the ones the build shipped with) into the edit log and the game.
-// False, and nothing changed, for anything but Splice's content at this build's revision.
+// False, and nothing changed, for anything but Splice's content at this build's revision (tables
+// saved at an earlier one are lifted to it: sc_upgrade_rev, #13505).
 spw_tables_open :: (g: [] SpGame, ct: [] SpwTables, text: string) -> bool {
   up: [SPW_TABLES] u8; up2: [SPW_TABLES] u8;
   // tables saved before the plans and the clock, or before the front door's menu, credits and dolly, get the shipped ones
   up3: [SPW_TABLES] u8;   // and tables saved when the map reached less far reach as far as the shipped ones
-  from := sc_upgrade_reach(sc_upgrade_front(sc_upgrade(ifx text.count == 0 then SC_SHIPPED else text, up[..]), up2[..]), up3[..]);
+  up4: [SPW_TABLES] u8;   // and tables saved at an earlier revision are at the shipped one
+  from := sc_upgrade_rev(sc_upgrade_reach(sc_upgrade_front(sc_upgrade(ifx text.count == 0 then SC_SHIPPED else text, up[..]), up2[..]), up3[..]), up4[..]);
   read: [1] SpContent; shipped: [1] SpContent;
   if from.count > SPW_TABLES || !sc_load(read[..], from) || !sc_load(shipped[..], SC_SHIPPED) || read[0].rev != shipped[0].rev { return false; }
   if !editor_content_open(ct[0].d[..], from) { return false; }

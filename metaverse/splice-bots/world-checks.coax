@@ -531,3 +531,15 @@ spt_cell :: (out: [] u8, rev: int, table: string, row: int, col: string, value: 
   b = spw_batch(t[0].g[..], t[0].x[..], four, undo, false, t[0].third[..], t[0].did[..], t[0].back[..], t[0].why[..]);
   #assert b.status == SPB_OK && b.edits == 2 && t[0].g[0].layer[0].st[0].n == 2;
 }
+#test "a world's tables saved at an earlier revision of the shipped ones open at the shipped one, their rows kept; a later one does not open (#13505)" #steps 200000000 {
+  g := [1] SpGame.[SpGame.{}]; ct := [1] SpwTables.[SpwTables.{}]; o: [1] [CT_BODY] u8; head: [64] u8;
+  shipped: [1] SpContent; #assert sc_load(shipped[..], SC_SHIPPED) && shipped[0].rev > 2;
+  n := ct_put(head[..], 0, "aethyr.content.v1 splice "); n = ct_put_int(head[..], n, shipped[0].rev); n = ct_put(head[..], n, "\n");
+  older := sc_swap(cast(string) head[0..<n], "aethyr.content.v1 splice 2\n", o[0][..]);
+  #assert older.count > 0 && spw_tables_open(g[..], ct[..], older) && g[0].c[0].rev == shipped[0].rev && spw_tables_text(ct[..]) == SC_SHIPPED;
+  later: [1] [CT_BODY] u8; m := ct_put(later[0][..], 0, "aethyr.content.v1 splice "); m = ct_put_int(later[0][..], m, shipped[0].rev + 1); m = ct_put(later[0][..], m, "\n");
+  newer := sc_swap(cast(string) head[0..<n], cast(string) later[0][0..<m], o[0][..]);
+  r := shipped[0].rev; #assert newer.count > 0 && sc_rev_of(newer) == r + 1 && sc_upgrade_rev(newer, o[0][..]) == newer;   // Splice's tables, one revision on
+  g2 := [1] SpGame.[SpGame.{}]; ct2 := [1] SpwTables.[SpwTables.{}];
+  #assert !spw_tables_open(g2[..], ct2[..], newer);
+}

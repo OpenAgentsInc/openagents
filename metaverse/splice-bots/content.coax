@@ -355,6 +355,25 @@ sc_upgrade_reach :: (text: string, out: [] u8) -> string {
   n := ct_put(out, 0, text[0..<a + 7]); n = ct_put_int(out, n, want); n = ct_put(out, n, text[e..<text.count]);
   return ifx n > out.count then text else cast(string) out[0..<n];
 }
+// Tables saved at an earlier revision than the shipped ones (before a carry, #13505): the same tables at
+// the shipped revision, into out, so a world keeps its rows and a document saved with it is this
+// build's. Tables at the shipped revision or later, or whose first line is not Splice's, come back as
+// they were.
+SC_HEAD_LINE :: "aethyr.content.v1 splice ";
+sc_rev_of :: (text: string) -> int {
+  h := SC_HEAD_LINE;
+  if text.count <= h.count || cast(string) text[0..<h.count] != h { return -1; }
+  e := h.count; v := 0;
+  while e < text.count && text[e] >= '0' && text[e] <= '9' && e - h.count < 9 { v = v * 10 + cast(int) text[e] - 48; e += 1; }
+  return ifx e == h.count || e >= text.count || text[e] != '\n' then -1 else v;
+}
+sc_upgrade_rev :: (text: string, out: [] u8) -> string {
+  have := sc_rev_of(text); want := sc_rev_of(SC_SHIPPED);
+  if have < 0 || want < 0 || have >= want { return text; }
+  h := SC_HEAD_LINE; e := h.count; while text[e] != '\n' { e += 1; }
+  n := ct_put(out, 0, h); n = ct_put_int(out, n, want); n = ct_put(out, n, text[e..<text.count]);
+  return ifx n > out.count then text else cast(string) out[0..<n];
+}
 // "\ntable NAME ", for a table name of at most 24 bytes.
 SC_HEADS :: [3] string.["\ntable credits ", "\ntable dolly ", "\ntable menu "];
 sc_head_of :: (nm: string) -> string { names := SC_FRONT_TABLES; heads := SC_HEADS; for w, i: names { if w == nm { return heads[i]; } } return "\ntable ?"; }
@@ -381,8 +400,8 @@ sc_shipped_table :: (s: string, name: string) -> string {
 sc_load :: (c: [] SpContent, text: string) -> bool {
   c[0].ok = false; c[0].area_n = 0; c[0].kept_n = 0; c[0].mark_n = 0; c[0].piece_n = 0; c[0].portal_n = 0; c[0].start_n = 0; c[0].beat_n = 0;
   d: [1] ContentDoc; up: [CT_BODY] u8; up2: [CT_BODY] u8;
-  up3: [CT_BODY] u8;
-  if !ct_read(d[..], sc_upgrade_reach(sc_upgrade_front(sc_upgrade(text, up[..]), up2[..]), up3[..])) || !sc_ok(d[..]) { return false; }
+  up3: [CT_BODY] u8; up4: [CT_BODY] u8;
+  if !ct_read(d[..], sc_upgrade_rev(sc_upgrade_reach(sc_upgrade_front(sc_upgrade(text, up[..]), up2[..]), up3[..]), up4[..])) || !sc_ok(d[..]) { return false; }
   c[0].rev = d[0].rev;
   for r: 0..<ct_rows(d[..], SC_AREAS) { c[0].areas[r] = sc_zone(d[..], SC_AREAS, r); }
   c[0].area_n = ct_rows(d[..], SC_AREAS);
