@@ -73,11 +73,13 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   now += dt;
   width = w; height = h; dpr = scale;
   zone_quality_frame(zone(state), dt, w, h, scale, golden);
+  // the time the world runs this frame: the frame's own, or what the editor's clock gives (pause, step)
+  float run = wbw_run_dt(walk(state), dt);
   // your body's step on Everglade's controller, in lab-walk-face.h's order; in the overview it stands
   coax_t_ZoneWalk zw = zone_walk(zone(state));
   if (zw.put) player = metaverse_player_place(zw.x, zw.y, zw.z, zw.face);
   if (zw.on && wbw_walks(walk(state))) {
-    float frame = dt;
+    float frame = run;
     float step = metaverse_player_counts(player, frame);
     coax_t_EgMoveIn input = zone_move_in(zone(state));
     input.pad_x = sticks.pad_x; input.pad_y = sticks.pad_y;
@@ -104,7 +106,7 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   sticks = metaverse_sticks_used(sticks);
   coax_v_f32 out = {(float *)(uintptr_t)vertices, wbw_max_vertices() * wbw_vertex_floats()};
   coax_v_f32 u = {(float *)(uintptr_t)uniforms, wbw_uniform_floats()};
-  int64_t n = wbw_frame(walk(state), (coax_v_f32){zone_strokes, sizeof zone_strokes / sizeof zone_strokes[0]}, out, u, w, h, scale, dt, still != 0);
+  int64_t n = wbw_frame(walk(state), (coax_v_f32){zone_strokes, sizeof zone_strokes / sizeof zone_strokes[0]}, out, u, w, h, scale, dt, run, still != 0);
   figure_draws = 0;
   if (zone_at(state)->bodies.e[0].ready) {
     if (!baked) { zone_bake_from(zone(state), (coax_v_t_People){&rig, 1}, (coax_v_f32){bake, sizeof bake / sizeof bake[0]}, (coax_v_u8){rig_file, rig_bytes}); baked = 1; }
@@ -142,6 +144,19 @@ EXPORT("coaxial_cursor") int32_t coaxial_cursor(uint32_t state) { return (int32_
 EXPORT("coaxial_wants_text") uint32_t coaxial_wants_text(uint32_t state) { return worldbuilder_wants_text(at(state)) ? 1u : 0u; }
 // The typed line, in device pixels: x0, y0, x1, y1.
 EXPORT("coaxial_field") uint32_t coaxial_field(uint32_t state) { return (uint32_t)(uintptr_t)state_at(state)->field.e; }
+
+// The editor shell (coax/web/host.js carries it to the shell on ?edit): this page's model of its world,
+// which is the visitor's own and kept in this browser, so the shell opens for whoever asks; and the
+// page lays its own interface out in the room the shell's panes leave (message 525).
+EXPORT("coaxial_edit_rev") int32_t coaxial_edit_rev(uint32_t state) { return (int32_t)worldbuilder_edit_rev(at(state)); }
+EXPORT("coaxial_edit_model") uint32_t coaxial_edit_model(uint32_t state) { return (uint32_t)(uintptr_t)worldbuilder_edit_model(at(state)).data; }
+EXPORT("coaxial_edit_model_len") uint32_t coaxial_edit_model_len(uint32_t state) { return (uint32_t)worldbuilder_edit_model(at(state)).count; }
+EXPORT("coaxial_edit_own") uint32_t coaxial_edit_own(void) { return 1u; }
+EXPORT("coaxial_edit_room_v1") uint32_t coaxial_edit_room_v1(void) { return 1u; }
+
+/* The agent driver (metaverse-engine/agent/drive.coax, coax drive): the zone's answer to the last command (message 700). */
+EXPORT("coaxial_drive_out") uint32_t coaxial_drive_out(uint32_t state) { return (uint32_t)(uintptr_t)zone_drive_out(zone(state)).data; }
+EXPORT("coaxial_drive_out_len") uint32_t coaxial_drive_out_len(uint32_t state) { return (uint32_t)zone_drive_out(zone(state)).count; }
 
 EXPORT("coaxial_inbox") uint32_t coaxial_inbox(uint32_t state) { (void)state; return (uint32_t)(uintptr_t)inbox; }
 EXPORT("coaxial_inbox_cap") uint32_t coaxial_inbox_cap(void) { return sizeof inbox; }

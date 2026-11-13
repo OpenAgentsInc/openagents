@@ -3793,27 +3793,31 @@ function player() {
 // app as messages of the kind the shell names (520 a batch of edits, 521 a selection), and on the dev server
 // the word that the realm's code can be opened here (event 9, #13421). It decides nothing
 // but whether to open: on a deployed page, only for an admin (the viewer's lines), since the server lets
-// nobody else write a world.
+// nobody else write a world; or for anyone, on a page that says its world is the visitor's own and kept
+// in this browser (coaxial_edit_own: WorldBuilder, #13422). It tells such a page the part of the window
+// the shell's panes leave free (message 525), so the page's own interface is not under them.
 const EDITOR = "editor-shell";
 // A press, a key or a paste on the shell is the shell's: the world under it hears nothing of it.
 const inEditor = (e) => !!e.target?.closest?.("#coaxial-editor");
 let editorAsked = false, editorRev = -1, editorFor = null;
 function editorOpen() {
   if (editorAsked || !engine?.exports.coaxial_edit_model || !new URLSearchParams(location.search).has("edit")) return;
-  // the dev server's page opens it for whoever asks; a deployed page only for an admin (who else writes a world: nobody)
-  if (!dev && !viewerAdmin) return;
+  // the dev server's page opens it for whoever asks; a deployed page only for an admin (who else writes a world: nobody),
+  // unless the world is the visitor's own
+  if (!dev && !viewerAdmin && !engine.exports.coaxial_edit_own?.()) return;
   editorAsked = true;
   const root = document.createElement("div"); // editor shell
   root.id = "coaxial-editor";
   document.body.appendChild(root);
   import(`/coaxial/dom-host.js?app=${EDITOR}&root=${root.id}`).catch((error) => { console.error(error); document.documentElement.dataset.coaxialError = String(error); });
 }
-let editorIn = false;
+let editorIn = false, editorRoomTold = "", editorTicks = 0;
 function editorStep() {
   const shell = globalThis.coaxialDoms?.[EDITOR], x = engine?.exports;
   if (!shell || !x?.coaxial_edit_model || editorIn || !arena) return;
   editorIn = true;
   try { editorCarry(shell, x); } finally { editorIn = false; }
+  if ((editorTicks++ & 7) === 0) editorRoom();   // the panes may have changed size since the last look: a few times a second is enough
 }
 // The agent strip (E9, #13418): the shell's foot has a slot, and what fills it is the chat page's own
 // module (chat-web, the same conversation as /chat), opened by address the first time the slot is there.
@@ -3857,7 +3861,7 @@ function agentActs() {
 }
 function editorCarry(shell, x) {
   agentOpen(); agentTell();
-  shell.after ||= () => { editorActs(); agentOpen(); after(false); };
+  shell.after ||= () => { editorActs(); agentOpen(); editorRoom(); after(false); };
   shell.still = agentMode;
   // ?edit=agent: the page was opened for the agent (a world's card on /chat), so the foot is open from the start
   if (!shell.told) { shell.told = true; if (new URLSearchParams(location.search).get("edit") === "agent") { shell.exports().dom_event(shell.state(), 7, 0, 0); shell.ask(); } }
@@ -3881,6 +3885,25 @@ function editorCarry(shell, x) {
   }
   editorActs();
 }
+// The part of the window the shell's panes leave free, for a page that asks (coaxial_edit_room_v1): message
+// 525, "X0 Y0 X1 Y1" in CSS pixels. A pane that lies across is a strip above or below it; a narrow one is a side.
+function editorRoom() {
+  if (!engine?.exports.coaxial_edit_room_v1 || !arena) return;
+  const w = innerWidth, h = innerHeight;
+  let x0 = 0, y0 = 0, x1 = w, y1 = h;
+  for (const pane of document.querySelectorAll("#coaxial-editor .pane")) {
+    const r = pane.getBoundingClientRect();
+    if (r.width < 1 || r.height < 1) continue;
+    if (r.width > w * 0.4) { if (r.top + r.height / 2 < h / 2) y0 = Math.max(y0, r.bottom); else y1 = Math.min(y1, r.top); }
+    else if (r.left + r.width / 2 < w / 2) x0 = Math.max(x0, r.right);
+    else x1 = Math.min(x1, r.left);
+  }
+  const room = [x0, y0, x1, y1].map(Math.round).join(" ");
+  if (room === editorRoomTold) return;
+  editorRoomTold = room;
+  send(525, room);
+}
+addEventListener("resize", () => editorRoom());
 function editorActs() {
   const shell = globalThis.coaxialDoms?.[EDITOR];
   if (!shell) return;

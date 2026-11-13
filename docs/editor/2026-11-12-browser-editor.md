@@ -46,7 +46,7 @@ keeps its state.
 | Content tables | **Exists, CLI only.** The editor isn't reachable from a page; the page doesn't load the tables yet (#13381) | `metaverse-engine/content/tables.coax`, `metaverse-engine/editor/content-edit.coax` |
 | Picking | **Partial.** `query_ray` exists; every editor picks its own way (Everglade by 56 px screen distance) | `metaverse-engine/physics/query.coax` |
 | Gizmos, outliner, inspector, fly camera, snapping, asset browser, play/simulate | **Missing** | — |
-| In-world editors | **Four, separate.** Everglade admin EDIT, the realm edit layer and agent pane, WorldBuilder (with a terrain brush, browser save only), Splice's layer (fixture only) | `everglade-edit.coax`, `metaverse/edit/`, `worldbuilder*.coax`, `metaverse/splice/layer*.coax` |
+| In-world editors | **Two in the shell, two separate.** Splice's layer and WorldBuilder run in the editor shell (E13, #13422). Everglade admin EDIT and the realm edit layer with its agent pane are still their own | `metaverse/splice/world.coax`, `worldbuilder-world.coax`, `everglade-edit.coax`, `metaverse/edit/` |
 | Programmatic building | **Exists for worlds with an ID (E6, #13415).** The edit verbs are rows of `REALM_COMMANDS`: `realm world`, `world-place`, `world-move` and the rest, each also a `realm_*` MCP tool and a `coax drive` verb. There is no second `world_*` family. Every row has an effect and an approval rule, and answers one result shape | `apps/openagents-cli/commands.coax`, `realm-world.coax`, `metaverse-engine/editor/op-result.coax`, `coax/web/drive.coax` |
 | Code changes from a browser | **Exists on the dev server** (E12, #13421): the editor's Code pane opens and saves the realm's own sources, and the dev server checks and rebuilds them. A deployed page has no such path | `coax/web/serve.c`, `metaverse-engine/editor/code-wire.coax` |
 | Agents in `/chat` | **Exists.** Claude Code, Codex, Antigravity and Microcoder through the local Coder | `apps/openagents-web/chat-web.coax`, `coder/tui/mcp_http.coax` |
@@ -252,6 +252,54 @@ not a flat folder scan.
     stood and the world's revision unchanged; a compile error showed in the
     pane in 104 ms and the last good build kept running; a changed shader
     constant in `gpu/splice.coax` was swapped in 453 ms after Save.
+
+- **As built (E13, #13422): WorldBuilder in the shell.** `/create-world?edit`
+  (the page's EDIT button) opens the shell over WorldBuilder, for anyone: the
+  world is the visitor's own, kept in their browser.
+  - **Its world is behind `world.edit.v1`.** Every edit of a thing and every
+    dab of a brush is a typed edit, checked by the page's own Coax
+    (`apps/openagents-web/worldbuilder-world.coax`) and carried out on the
+    engine's edit log. No server holds the world, so there is no route: the
+    same codec, the same batch and the same fence by revision, on the page
+    ([the rules](../protocol/world-edit-v1.md#worldbuilders-world)). The
+    chat's edits of things go the same way.
+  - **The land.** WorldBuilder is the first world to take the `terrain` edit.
+    The viewport has a Land tool (`viewport.coax`, `vp_dab`), and the shell
+    shows it only for a world whose model says its land takes edits: the
+    brush's kind, the material it paints, and its radius and strength as
+    steppers (`k_stepper`, new in the kit and shown on `/components`).
+  - **What the model says more** (`editor.model.v1`): how many things the
+    world holds and takes (the shell lists the newest 256 and says so), how
+    many kinds it has, that it is kept on this device (no Publish), and its
+    land's brushes and materials.
+  - **Deleted from WorldBuilder:** its UNDO and REDO buttons, its brush bar
+    (tools, layers and two sliders), its own ray from the screen to the
+    ground, and its per-frame brush. Undo and redo are the shell's (and
+    Cmd/Ctrl+Z and "undo" typed in the line). Picking is `vp_pick`.
+  - **Kept:** the chat line. It asks WorldBuilder's own model under the day's
+    shared cap with no account; the shell's agent strip is the `/chat`
+    conversation and does not do that. The panel with the limits, WALK,
+    FRAME and the hints are the game's. The host tells the page the part of
+    the window the shell's panes leave free, and the page lays these out
+    inside it.
+  - Proved in headless Chrome on the dev server
+    ([picture](shots/2026-11-13-e13-worldbuilder-shell.png),
+    [a phone's size](shots/2026-11-13-e13-worldbuilder-phone.png),
+    [a full world](shots/2026-11-13-e13-worldbuilder-full.png)):
+    `docs/editor/acceptance/worldbuilder-run.ops` places, selects, moves,
+    turns, sizes and removes a cottage and raises and paints the ground; each
+    edit of a thing is one revision and shows in the same frame; Undo and
+    Redo walk them. A world of 4,096 things kept in the old save's bytes
+    loads, one more is refused in words ("This world is full: 4096 things at
+    most. Delete some to add more."), and after one is removed the next
+    stands.
+  - **A phone's size.** The strip's menus lie over the side panes, and on a
+    narrow window a menu opens across the strip, so the Land tool and its
+    brush can be picked there. Not proved with a finger: the driver's tap on
+    a menu row did not register on this page at 390 px wide, though a script's
+    click does and the same tap does on Splice.
+  - **Not moved:** Everglade's admin EDIT and the realm edit layer. What each
+    needs is on #13422.
 
 ### Programmatic building
 

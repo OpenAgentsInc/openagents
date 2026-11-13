@@ -350,6 +350,8 @@ mono_dock_css :: (out: [] u8, at: int) -> int {
   n = mc(out, n, ".row-x{display:flex;align-items:center;gap:2px}.row-x>.row{flex:1;min-width:0;width:auto}");
   // a prop: its name, then its field
   n = mc(out, n, ".prop{display:grid;grid-template-columns:76px minmax(0,1fr);gap:10px;align-items:center}.prop .field{padding:6px 10px;max-width:none}.fact{overflow-wrap:anywhere}");
+  // a stepper: its name, less, what it is now, more
+  n = mc(out, n, ".step{display:inline-flex;flex-wrap:wrap;align-items:center;gap:4px}.step .ib{flex:none}.step .fact{min-width:52px;text-align:center}.step .ib[disabled]{opacity:.35;pointer-events:none}");
   // a select in a pane opens downward, and in the right pane toward the middle
   n = mc(out, n, ".pane .menu.pop{bottom:auto;top:calc(100% + 10px)}.pane-r .menu.pop{left:auto;right:0}");
   // an open select's menu shows whole, over what is round the pane: the pane's body does not cut it while it is open.
@@ -359,6 +361,8 @@ mono_dock_css :: (out: [] u8, at: int) -> int {
   n = mc(out, n, ".pane .menu.pop:has(>.row:nth-of-type(10)){display:grid;grid-template-columns:repeat(2,minmax(0,1fr));width:min(560px,calc(100vw - 48px))}");
   n = mc(out, n, ".pane .menu.pop:has(>.row:nth-of-type(25)){grid-template-columns:repeat(3,minmax(0,1fr));width:min(820px,calc(100vw - 48px))}");
   n = mc(out, n, "@media (max-width:760px){.dock,.dock:has(.pane-w){grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.pane-l,.pane-r{max-height:38vh;align-self:start}.pane-r{grid-column:2}.pane-w{grid-column:1/-1}}");
+  // the strip's menus lie over the side panes; on a narrow window a menu opens under its select across the strip, so all of it is on the screen (#13422)
+  n = mc(out, n, ".pane-t{z-index:2}@media (max-width:760px){.pane-t .anchor{position:static;display:block}.pane-t .menu.pop{top:auto;left:8px;right:8px;margin-top:6px}}");
   // under a finger a prop's field is a whole target too (#13448)
   n = mc(out, n, "@media (pointer:coarse){.prop{grid-template-columns:minmax(0,76px) minmax(44px,1fr)}.prop .field{padding:0}.prop .field input{padding:11px 10px}}");
   return n;

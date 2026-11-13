@@ -12,17 +12,20 @@
 //   fly        a camera that flies free of the player
 //   run        play, pause and one step at a time on a fixed clock; simulate runs the World with
 //              the player's hands off
+//   land       a brush on the ground (E13, #13422): its kind, how wide it is, how hard it presses
+//              and what it paints; each dab is one `terrain` edit (vp_dab) for a realm whose land
+//              takes them
 // The realm keeps one Viewport, gives it the pointer while a tool other than play is picked, and
 // reads back the selection, the edit a drag made and the view. The editor shell
 // (shell.coax) picks the tool, the grid and the rest by a short action (vp_act).
 //   coax/bin/coax test metaverse-engine/editor/viewport.coax --library
 #load "../physics/query.coax";
-#load "../core/points.coax";
 #load "world-edit.coax";
 
-VT_PLAY :: 0; VT_SELECT :: 1; VT_MOVE :: 2; VT_TURN :: 3; VT_SIZE :: 4;
-VT_TOOLS :: 5;
-VT_TOOL :: [VT_TOOLS] string.["play", "select", "move", "turn", "size"];
+VT_PLAY :: 0; VT_SELECT :: 1; VT_MOVE :: 2; VT_TURN :: 3; VT_SIZE :: 4; VT_LAND :: 5;
+VT_TOOLS :: 6;
+VT_TOOL :: [VT_TOOLS] string.["play", "select", "move", "turn", "size", "land"];
+VP_STRENGTH_MAX :: 100;  // percent a brush presses, at most
 VP_GRIDS :: 4;
 VP_GRID :: [VP_GRIDS] int.[10, 25, 50, 100];   // centimetres a move snaps to
 VP_TURN_STEP :: 15;      // degrees a turn snaps to
@@ -50,9 +53,26 @@ Viewport :: struct {
   held: VpThing; holding: bool;        // the thing a drag moves, turns or sizes
   now: VpThing;                        // where the drag would leave it, snapped
   here_ok: bool; here_x: int; here_z: int;   // the last point tapped on the ground, centimetres
+  // the land's brush: its kind (world-edit.coax WE_BRUSH), its radius in centimetres, how hard it presses in percent, the material it paints
+  brush: int = 1; brush_r: int = 800; brush_v: int = 60; brush_mat: int = 1;
 }
 
 vp_len :: (x: f32, y: f32, z: f32) -> f32 { return sqrt(x * x + y * y + z * z); }
+// The angle of (x, y) from +X, in [-PI, PI]; 0 for the origin: the engine's atan2
+// (metaverse-engine/core/points.coax), which this file cannot load. That file has no module of its
+// own, so a realm that already holds it under another module (an Everglade zone, as WorldBuilder is)
+// could not load the viewport's tools with it.
+vp_atan2 :: (y: f32, x: f32) -> f32 {
+  ax := abs(x); ay := abs(y);
+  if ax == 0 && ay == 0 { return 0; }
+  t := ifx ay > ax then ax / ay else ay / ax;
+  s := t * t;
+  a := t * (0.99997726 + s * (-0.33262347 + s * (0.19354346 + s * (-0.11643287 + s * (0.05265332 + s * -0.01172120)))));
+  if ay > ax { a = WE_PI / 2 - a; }
+  if x < 0 { a = WE_PI - a; }
+  if y < 0 { a = -a; }
+  return a;
+}
 // The ray from the eye through a point of the screen (pixels from its top left corner).
 vp_ray :: (v: VpView, px: f32, py: f32) -> VpRay {
   if v.w <= 0 || v.h <= 0 || v.fov <= 0 { return VpRay.{}; }
@@ -126,7 +146,7 @@ vp_grid_ok :: (cm: int) -> bool { grids := VP_GRID; for g: grids { if g == cm { 
 // A press. `thing`: the selected thing under the gizmo (id 0: none is selected).
 vp_press :: (p: [] Viewport, x: f32, y: f32, thing: VpThing) {
   p[0].down = true; p[0].x0 = x; p[0].y0 = y; p[0].x = x; p[0].y = y; p[0].far = false;
-  p[0].holding = thing.id > 0 && p[0].tool >= VT_MOVE;
+  p[0].holding = thing.id > 0 && p[0].tool >= VT_MOVE && p[0].tool <= VT_SIZE;
   p[0].held = thing; p[0].now = thing;
 }
 // The pointer moved while pressed: the held thing follows, snapped. `v`: the view the page draws.
@@ -172,6 +192,18 @@ vp_here :: (p: [] Viewport, spot: VpSpot) { if spot.ok { p[0].here_ok = true; p[
 // Whether the realm should draw the held thing where the drag has it, and not where it stands.
 vp_dragging :: (p: [] Viewport) -> bool { return p[0].down && p[0].holding && p[0].far; }
 
+// ---- the land's brush
+
+// Whether the pointer is a brush on the ground now.
+vp_brushing :: (p: [] Viewport) -> bool { return p[0].tool == VT_LAND && p[0].down; }
+// One dab of the brush at a point of the ground: the `terrain` edit a realm whose land takes them carries out.
+vp_dab :: (p: [] Viewport, spot: VpSpot) -> WorldEdit {
+  if !spot.ok { return WorldEdit.{}; }
+  e := WorldEdit.{op = WE_TERRAIN, col = p[0].brush, x = vp_cm(spot.x), z = vp_cm(spot.z), r = p[0].brush_r, v = p[0].brush_v, mat = p[0].brush_mat};
+  e.ok = we_valid(e);
+  return e;
+}
+
 // ---- the fly camera
 
 // The fly camera starts where the page's own view is.
@@ -179,8 +211,8 @@ vp_fly_from :: (p: [] Viewport, v: VpView) {
   p[0].fx = v.ex; p[0].fy = v.ey; p[0].fz = v.ez;
   dx := v.ax - v.ex; dy := v.ay - v.ey; dz := v.az - v.ez;
   flat := sqrt(dx * dx + dz * dz);
-  p[0].fyaw = ifx flat > 0.0001 then atan2(dx, dz) else 0.0f32;
-  p[0].fpitch = ifx flat > 0.0001 || abs(dy) > 0.0001 then atan2(dy, flat) else 0.0f32;
+  p[0].fyaw = ifx flat > 0.0001 then vp_atan2(dx, dz) else 0.0f32;
+  p[0].fpitch = ifx flat > 0.0001 || abs(dy) > 0.0001 then vp_atan2(dy, flat) else 0.0f32;
   if p[0].fpitch > VP_PITCH { p[0].fpitch = VP_PITCH; } if p[0].fpitch < -VP_PITCH { p[0].fpitch = -VP_PITCH; }
 }
 // One frame of flying: ahead, right and up are -1, 0 or 1 (the keys held).
@@ -224,7 +256,8 @@ vp_hands :: (p: [] Viewport) -> bool { return p[0].tool == VT_PLAY && !p[0].fly 
 // ---- the shell's actions
 
 // One action from the editor shell, as words: "tool NAME", "grid CM", "fly on|off", "run play|pause",
-// "step", "sim on|off". False for anything else, which changes nothing.
+// "step", "sim on|off", and the land's brush: "brush NAME", "radius CM", "strength PCT", "mat N".
+// False for anything else, which changes nothing.
 vp_act :: (p: [] Viewport, text: string, v: VpView) -> bool {
   word := ct_part(text, ' ', 0); arg := ct_part(text, ' ', 1);
   if ct_parts(text, ' ') > 2 { return false; }
@@ -238,6 +271,10 @@ vp_act :: (p: [] Viewport, text: string, v: VpView) -> bool {
     return true;
   }
   if word == "grid" { g := ct_num(arg); if !g.ok || !vp_grid_ok(g.v) { return false; } p[0].grid = g.v; return true; }
+  if word == "brush" { brushes := WE_BRUSH; k := we_index(brushes[..], arg); if k < 0 { return false; } p[0].brush = k; return true; }
+  if word == "radius" { g := ct_num(arg); if !g.ok || g.v < 1 || g.v > WE_REACH { return false; } p[0].brush_r = g.v; return true; }
+  if word == "strength" { g := ct_num(arg); if !g.ok || g.v < 1 || g.v > VP_STRENGTH_MAX { return false; } p[0].brush_v = g.v; return true; }
+  if word == "mat" { g := ct_num(arg); if !g.ok || g.v < 0 || g.v > 255 { return false; } p[0].brush_mat = g.v; return true; }
   on := arg == "on";
   if word == "fly" && (on || arg == "off") {
     if on && !p[0].fly { vp_fly_from(p, v); }
@@ -403,4 +440,27 @@ vp_near :: (a: f32, b: f32) -> bool { return abs(a - b) < 0.01; }
   #assert !vp_act(p, "tool paint", v) && !vp_act(p, "grid 30", v) && !vp_act(p, "grid", v) && !vp_act(p, "fly maybe", v) && !vp_act(p, "run", v);
   #assert !vp_act(p, "step now", v) && !vp_act(p, "tool move now", v) && !vp_act(p, "", v) && !vp_act(p, "sim", v) && !vp_act(p, "run fast", v);
   #assert p[0].tool == VT_PLAY && p[0].grid == 50 && !p[0].fly && !p[0].paused && !p[0].sim && p[0].steps == 0;
+}
+
+#test "the land's brush: its kind, radius, strength and material are picked in words, and a dab is one terrain edit at the point" {
+  h: [1] VpTest; p := h[0].p[..]; v := vp_test_view(); o: [WE_LINE] u8;
+  #assert vp_act(p, "tool land", v) && p[0].tool == VT_LAND && !vp_hands(p);
+  #assert vp_act(p, "brush smooth", v) && p[0].brush == 3 && vp_act(p, "radius 1200", v) && vp_act(p, "strength 35", v) && vp_act(p, "mat 4", v);
+  e := vp_dab(p, VpSpot.{ok = true, x = 3, z = -2.5});
+  #assert e.ok && we_write(e, o[..]) == "{\"op\":\"terrain\",\"brush\":\"smooth\",\"x\":300,\"z\":-250,\"r\":1200,\"v\":35,\"mat\":4}";
+  // no point, no dab; what is no brush, radius, strength or material changes nothing
+  #assert !vp_dab(p, VpSpot.{}).ok;
+  #assert !vp_act(p, "brush dig", v) && !vp_act(p, "radius 0", v) && !vp_act(p, "strength 101", v) && !vp_act(p, "strength 0", v) && !vp_act(p, "mat 256", v) && !vp_act(p, "mat -1", v);
+  #assert p[0].brush == 3 && p[0].brush_r == 1200 && p[0].brush_v == 35 && p[0].brush_mat == 4;
+  // the brush holds no thing: a press with one selected is a stroke, and its release is no edit of a thing
+  vp_press(p, 500, 250, VpThing.{id = 4});
+  #assert vp_brushing(p) && !p[0].holding;
+  vp_drag(p, v, 560, 250);
+  r := vp_release(p);
+  #assert !r.tap && !r.edit.ok && !vp_brushing(p);
+}
+
+#test "the viewport's own arctangent is the engine's: the four quadrants, the axes and the origin" {
+  #assert vp_near(vp_atan2(0, 1), 0) && vp_near(vp_atan2(1, 0), WE_PI / 2) && vp_near(vp_atan2(0, -1), WE_PI) && vp_near(vp_atan2(-1, 0), -WE_PI / 2) && vp_atan2(0, 0) == 0;
+  #assert vp_near(vp_atan2(1, 1), WE_PI / 4) && vp_near(vp_atan2(1, -1), 3 * WE_PI / 4) && vp_near(vp_atan2(-1, -1), -3 * WE_PI / 4) && vp_near(vp_atan2(-2, 2), -WE_PI / 4) && vp_near(vp_atan2(5, 1), 1.373401);
 }

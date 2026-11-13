@@ -48,7 +48,18 @@ ES_TOOL_NOTE :: [ES_TOOLS] string.["Walk the world as a player", "Tap a thing to
 ES_GRIDS :: 4;
 ES_GRID :: [ES_GRIDS] string.["10 cm", "25 cm", "50 cm", "1 m"];
 ES_GRID_CM :: [ES_GRIDS] int.[10, 25, 50, 100];
-ES_OPEN_NONE :: 0; ES_OPEN_WHEN :: 1; ES_OPEN_KIND :: 2; ES_OPEN_TOOL :: 3; ES_OPEN_GRID :: 4; ES_OPEN_ADD :: 5; ES_OPEN_COUNT :: 6; ES_OPEN_FILE :: 7;
+ES_OPEN_NONE :: 0; ES_OPEN_WHEN :: 1; ES_OPEN_KIND :: 2; ES_OPEN_TOOL :: 3; ES_OPEN_GRID :: 4; ES_OPEN_ADD :: 5; ES_OPEN_COUNT :: 6; ES_OPEN_FILE :: 7; ES_OPEN_BRUSH :: 8; ES_OPEN_MAT :: 9;
+// The land's brush (E13, #13422), for a world that says its land takes `terrain` edits (the model's `land` line):
+// the tool after the others, the brush's kinds as a person reads them (world-edit.coax WE_BRUSH), and the steps
+// its radius and its strength are picked from.
+ES_TOOL_LAND :: 5;
+ES_LAND :: "Land";
+ES_LAND_NOTE :: "Drag on the ground to shape or paint it";
+ES_BRUSH :: [WE_BRUSHES] string.["Paint", "Raise", "Lower", "Smooth", "Flatten"];
+ES_BRUSH_NOTE :: [WE_BRUSHES] string.["Paint a material on the ground", "Raise the ground under the brush", "Lower the ground under the brush", "Smooth the ground under the brush", "Level the ground to the height at the brush's middle"];
+ES_RADII :: 9;
+ES_RADIUS_CM :: [ES_RADII] int.[100, 200, 400, 800, 1200, 1600, 2400, 3200, 4000];
+ES_STRENGTHS :: 10;   // 10 percent a step, to 100
 ES_PLAN :: 523;        // an action: "add KIND COUNT": the page plans where COUNT things of a kind go from the point last tapped (place.coax) and sends them as one batch
 // How many things Add places: one where you tapped, or several spread out round it.
 ES_COUNTS :: 4;
@@ -67,6 +78,7 @@ EdShell :: struct {
   tool: int; grid: int = 2;              // the viewport's tool (ES_TOOL) and the grid a move snaps to (ES_GRID)
   fly: bool; paused: bool; sim: bool;    // the camera flies; the World is paused; the World runs with the player's hands off
   count: int;                            // how many Add places (ES_COUNT)
+  brush: int = 1; mat: int; radius: int = 3; strength: int = 5;   // the land's brush: its kind (ES_BRUSH), the material it paints (its place in the model's list), its radius (ES_RADIUS_CM) and its strength (tens of percent, less one)
   group: [PL_PARTS] int; ngroup: int;    // the things gathered to save as a template, by ID
   tname: [EM_NAME] u8; tname_n: int;     // the name typed for it
   agent: bool; agent_made: bool;         // the foot with the chat's conversation is open; it was opened once (it is then kept, put away)
@@ -134,6 +146,22 @@ es_group_id :: (id: string) -> int {
   if !es_id_is(id, "thing.") || id.count < 9 || cast(string) id[id.count - 2..<id.count] != ".x" { return -1; }
   v := ct_num(id[6..<id.count - 2]);
   return ifx v.ok && v.v > 0 then v.v else -1;
+}
+// The land's brush is the tool: the world's land takes edits and the tool was picked.
+es_landing :: (s: [] EdShell) -> bool { return s[0].model[0].land && s[0].tool == ES_TOOL_LAND; }
+// Whether step k of the radii is one the world's land takes.
+es_radius_ok :: (s: [] EdShell, k: int) -> bool {
+  radii := ES_RADIUS_CM;
+  return k >= 0 && k < ES_RADII && radii[k] >= s[0].model[0].land_lo && radii[k] <= s[0].model[0].land_hi;
+}
+// Tells the page one part of the brush (viewport.coax vp_act): 0 its kind, 1 its material, 2 its radius, 3 its strength.
+es_brush_tell :: (s: [] EdShell, part: int) {
+  m := s[0].model[..]; words: [24] u8; n := 0;
+  if part == 0 { kinds := WE_BRUSH; n = ct_put(words[..], 0, "brush "); n = ct_put(words[..], n, kinds[s[0].brush]); }
+  if part == 1 { if m[0].nm == 0 { return; } n = ct_put(words[..], 0, "mat "); n = ct_put_int(words[..], n, m[0].mat_id[ifx s[0].mat < m[0].nm then s[0].mat else 0]); }
+  if part == 2 { radii := ES_RADIUS_CM; n = ct_put(words[..], 0, "radius "); n = ct_put_int(words[..], n, radii[s[0].radius]); }
+  if part == 3 { n = ct_put(words[..], 0, "strength "); n = ct_put_int(words[..], n, (s[0].strength + 1) * 10); }
+  _ := es_act(s, ES_VIEW, cast(string) words[0..<n]);
 }
 es_select :: (s: [] EdShell, id: int) {
   out: [12] u8; n := ct_put_int(out[..], 0, id);
@@ -326,19 +354,47 @@ es_build :: (s: [] EdShell) {
   tr_attr(t, bar, AT_LABEL, "Editor");
   undo := k_button(t, u, "undo", "Undo", ifx m[0].undo > 0 then BS_PLAIN else BS_DISABLED);
   redo := k_button(t, u, "redo", "Redo", ifx m[0].redo > 0 then BS_PLAIN else BS_DISABLED);
-  pub := k_button(t, u, "publish", "Publish", BS_PRIMARY);
-  whens := ES_WHEN; notes := ES_WHEN_NOTE;
-  k_select_begin(t, u, "when", whens[s[0].when], "When a publish reaches people", s[0].open == ES_OPEN_WHEN);
-  if s[0].open == ES_OPEN_WHEN { for k: 0..<2 { r := k_row(t, u, tr_join(buf[..], "when.", k), whens[k], notes[k], k == s[0].when); } }
-  k_select_end(t, s[0].open == ES_OPEN_WHEN);
+  // a world kept on this device has no live lane: nothing to publish
+  if !m[0].local {
+    pub := k_button(t, u, "publish", "Publish", BS_PRIMARY);
+    whens := ES_WHEN; notes := ES_WHEN_NOTE;
+    k_select_begin(t, u, "when", whens[s[0].when], "When a publish reaches people", s[0].open == ES_OPEN_WHEN);
+    if s[0].open == ES_OPEN_WHEN { for k: 0..<2 { r := k_row(t, u, tr_join(buf[..], "when.", k), whens[k], notes[k], k == s[0].when); } }
+    k_select_end(t, s[0].open == ES_OPEN_WHEN);
+  }
   // the viewport: the tool the pointer is, the grid a move snaps to, a new thing at the point last tapped, the camera and the clock
   tools := ES_TOOL; tnotes := ES_TOOL_NOTE; grids := ES_GRID;
-  k_select_begin(t, u, "tool", tools[s[0].tool], "What the pointer does in the world", s[0].open == ES_OPEN_TOOL);
-  if s[0].open == ES_OPEN_TOOL { for k: 0..<ES_TOOLS { r := k_row(t, u, tr_join(buf[..], "tool.", k), tools[k], tnotes[k], k == s[0].tool); } }
+  landing := es_landing(s);
+  k_select_begin(t, u, "tool", ifx landing then ES_LAND else tools[ifx s[0].tool < ES_TOOLS then s[0].tool else 0], "What the pointer does in the world", s[0].open == ES_OPEN_TOOL);
+  if s[0].open == ES_OPEN_TOOL {
+    for k: 0..<ES_TOOLS { r := k_row(t, u, tr_join(buf[..], "tool.", k), tools[k], tnotes[k], k == s[0].tool); }
+    if m[0].land { r := k_row(t, u, tr_join(buf[..], "tool.", ES_TOOL_LAND), ES_LAND, ES_LAND_NOTE, landing); }
+  }
   k_select_end(t, s[0].open == ES_OPEN_TOOL);
-  k_select_begin(t, u, "grid", grids[s[0].grid], "The grid a moved thing snaps to", s[0].open == ES_OPEN_GRID);
-  if s[0].open == ES_OPEN_GRID { for k: 0..<ES_GRIDS { r := k_row(t, u, tr_join(buf[..], "grid.", k), grids[k], "", k == s[0].grid); } }
-  k_select_end(t, s[0].open == ES_OPEN_GRID);
+  // the land's brush: its kind, what it paints, how wide it is and how hard it presses
+  if landing {
+    brushes := ES_BRUSH; bnotes := ES_BRUSH_NOTE;
+    k_select_begin(t, u, "brush", brushes[s[0].brush], "What the brush does to the ground", s[0].open == ES_OPEN_BRUSH);
+    if s[0].open == ES_OPEN_BRUSH { for k: 0..<WE_BRUSHES { r := k_row(t, u, tr_join(buf[..], "brush.", k), brushes[k], bnotes[k], k == s[0].brush); } }
+    k_select_end(t, s[0].open == ES_OPEN_BRUSH);
+    if s[0].brush == 0 && m[0].nm > 0 {
+      at := ifx s[0].mat < m[0].nm then s[0].mat else 0;
+      mn := m[0].mat_name[at];
+      k_select_begin(t, u, "mat", cast(string) mn[0..<m[0].mat_n[at]], "What the brush paints", s[0].open == ES_OPEN_MAT);
+      if s[0].open == ES_OPEN_MAT { for k: 0..<m[0].nm { kn := m[0].mat_name[k]; r := k_row(t, u, tr_join(buf[..], "mat.", k), cast(string) kn[0..<m[0].mat_n[k]], "", k == at); } }
+      k_select_end(t, s[0].open == ES_OPEN_MAT);
+    }
+    radii := ES_RADIUS_CM;
+    n0 := ct_put_int(line[..], 0, radii[s[0].radius] / 100); n0 = ct_put(line[..], n0, " m");
+    rs := k_stepper(t, "radius", "Radius", cast(string) line[0..<n0], es_radius_ok(s, s[0].radius - 1), es_radius_ok(s, s[0].radius + 1));
+    n0 = ct_put_int(line[..], 0, (s[0].strength + 1) * 10); n0 = ct_put(line[..], n0, "%");
+    ss := k_stepper(t, "strength", "Strength", cast(string) line[0..<n0], s[0].strength > 0, s[0].strength < ES_STRENGTHS - 1);
+  }
+  if !landing {
+    k_select_begin(t, u, "grid", grids[s[0].grid], "The grid a moved thing snaps to", s[0].open == ES_OPEN_GRID);
+    if s[0].open == ES_OPEN_GRID { for k: 0..<ES_GRIDS { r := k_row(t, u, tr_join(buf[..], "grid.", k), grids[k], "", k == s[0].grid); } }
+    k_select_end(t, s[0].open == ES_OPEN_GRID);
+  }
   if m[0].here && m[0].nk > 0 {
     k_select_begin(t, u, "add", "Add", "Place a new thing at the point you last tapped", s[0].open == ES_OPEN_ADD);
     if s[0].open == ES_OPEN_ADD {
@@ -349,6 +405,11 @@ es_build :: (s: [] EdShell) {
       for k: 0..<m[0].nt {
         tn := m[0].t_name[k];
         r := k_row(t, u, tr_join(buf[..], "addt.", m[0].t_id[k]), cast(string) tn[0..<m[0].t_name_n[k]], "Template", false);
+      }
+      // a world with more kinds than a model names says how many of them are here
+      if m[0].kinds_all > m[0].nk {
+        n := ct_put_int(line[..], 0, m[0].nk); n = ct_put(line[..], n, " of "); n = ct_put_int(line[..], n, m[0].kinds_all); n = ct_put(line[..], n, " kinds are listed here.");
+        more := k_meta(t, "add.more", cast(string) line[0..<n]);
       }
     }
     k_select_end(t, s[0].open == ES_OPEN_ADD);
@@ -373,6 +434,15 @@ es_build :: (s: [] EdShell) {
 
   // the world's things
   left := k_pane(t, u, "things", DK_LEFT, "Things");
+  // a world that says how many things it holds and takes: the count, and how many of them are listed here
+  if m[0].all {
+    n = 0;
+    if m[0].ne < m[0].all_n { n = ct_put_int(line[..], n, m[0].ne); n = ct_put(line[..], n, " of "); }
+    n = ct_put_int(line[..], n, m[0].all_n); n = ct_put(line[..], n, ifx m[0].all_n == 1 then " thing" else " things");
+    if m[0].ne < m[0].all_n { n = ct_put(line[..], n, " listed, the newest"); }
+    n = ct_put(line[..], n, ". This world holds "); n = ct_put_int(line[..], n, m[0].all_cap); n = ct_put(line[..], n, " at most.");
+    cap := k_meta(t, "things.all", cast(string) line[0..<n]);
+  }
   if m[0].ne == 0 { none := k_meta(t, "things.none", "Nothing is placed yet."); }
   else {
     list := tr_open(t, "things.list", TG_NAV, "list");
@@ -515,7 +585,7 @@ es_click :: (s: [] EdShell, id: string) {
   m := s[0].model[..];
   // a select opens, or closes if it was the open one; any other press closes whichever is open
   was := s[0].open; s[0].open = ES_OPEN_NONE;
-  names := [7] string.["when", "kind", "tool", "grid", "add", "count", "file"];
+  names := [9] string.["when", "kind", "tool", "grid", "add", "count", "file", "brush", "mat"];
   for name, k: names { if id == name { s[0].open = ifx was == k + 1 then ES_OPEN_NONE else k + 1; return; } }
   if es_code_click(s, id) { return; }
   if es_index(id, "when.") >= 0 && es_index(id, "when.") < 2 { s[0].when = es_index(id, "when."); return; }
@@ -525,6 +595,30 @@ es_click :: (s: [] EdShell, id: string) {
     s[0].tool = es_index(id, "tool."); tw := ES_TOOL_WORD;
     n := ct_put(words[..], 0, "tool "); n = ct_put(words[..], n, tw[s[0].tool]);
     _ := es_act(s, ES_VIEW, cast(string) words[0..<n]);
+    return;
+  }
+  // the land's brush: picking the tool tells the page the brush as the shell shows it
+  if es_index(id, "tool.") == ES_TOOL_LAND && m[0].land {
+    s[0].tool = ES_TOOL_LAND;
+    _ := es_act(s, ES_VIEW, "tool land");
+    es_brush_tell(s, 0); es_brush_tell(s, 2); es_brush_tell(s, 3);
+    return;
+  }
+  if es_index(id, "brush.") >= 0 && es_index(id, "brush.") < WE_BRUSHES && es_landing(s) {
+    s[0].brush = es_index(id, "brush.");
+    es_brush_tell(s, 0);
+    if s[0].brush == 0 { es_brush_tell(s, 1); }
+    return;
+  }
+  if es_index(id, "mat.") >= 0 && es_index(id, "mat.") < m[0].nm && es_landing(s) { s[0].mat = es_index(id, "mat."); es_brush_tell(s, 1); return; }
+  if es_landing(s) && (id == "radius.less" || id == "radius.more") {
+    to := s[0].radius + (ifx id == "radius.more" then 1 else -1);
+    if es_radius_ok(s, to) { s[0].radius = to; es_brush_tell(s, 2); }
+    return;
+  }
+  if es_landing(s) && (id == "strength.less" || id == "strength.more") {
+    to := s[0].strength + (ifx id == "strength.more" then 1 else -1);
+    if to >= 0 && to < ES_STRENGTHS { s[0].strength = to; es_brush_tell(s, 3); }
     return;
   }
   if es_index(id, "grid.") >= 0 && es_index(id, "grid.") < ES_GRIDS {
@@ -572,7 +666,7 @@ es_click :: (s: [] EdShell, id: string) {
   }
   if id == "undo" && m[0].undo > 0 { es_batch(s, WB_UNDO, none); }
   else if id == "redo" && m[0].redo > 0 { es_batch(s, WB_REDO, none); }
-  else if id == "publish" { es_batch(s, ifx s[0].when == 1 then WB_PUBLISH_NEXT else WB_PUBLISH_NOW, none); }
+  else if id == "publish" && !m[0].local { es_batch(s, ifx s[0].when == 1 then WB_PUBLISH_NEXT else WB_PUBLISH_NOW, none); }
   else if id == "remove" && em_entity_at(m, m[0].sel) >= 0 { es_batch(s, WB_APPLY, WorldEdit.{ok = true, op = WE_DESPAWN, id = m[0].sel}); }
   else if id == "deselect" { es_select(s, 0); }
   else if es_index(id, "thing.") > 0 { es_select(s, es_index(id, "thing.")); }
@@ -1494,4 +1588,94 @@ es_test_ask :: (h: [] EsTest) -> string {
     }
   }
   #assert seen > 60 && es_test_styled(sheet, "pane-w") && es_test_styled(sheet, "code-in") && tr_find(t, "code.errors") > 0 && tr_find(t, "file.0") > 0;
+}
+
+// A world kept on this device, whose land takes brushes: WorldBuilder's (E13, #13422).
+es_test_local :: (h: [] EsTest, listed: int, in_all: int) {
+  s := h[0].s[..]; out := h[0].text[..];
+  cols: [WE_COLS] bool; cols[WEC_X] = true; cols[WEC_Z] = true; cols[WEC_YAW] = true;
+  n := em_begin(out, "create-world", 0, 9, 2, 0, 0);
+  n = em_cols(out, n, cols[..]);
+  n = em_kind(out, n, 3, "nature/rock-1");
+  for k: 0..<listed { n = em_entity(out, n, k + 1, 3, k * 100, 0, 0, 0, 100); }
+  n = em_all(out, n, in_all, 4096);
+  n = em_kinds_all(out, n, 788);
+  n = em_local(out, n);
+  n = em_land(out, n, 100, 4000);
+  n = em_mat(out, n, 1, "Grass"); n = em_mat(out, n, 3, "Sand"); n = em_mat(out, n, 0, "Grid");
+  n = em_here(out, n, 100, 200);
+  for i: 0..<n { s[0].inbox[i] = out[i]; }
+  coaxial_editor_event(s, ES_MODEL, 0, n);
+}
+#test "a world kept on this device has no Publish; it says how many things it holds, how many are listed and how many it takes" {
+  h: [1] EsTest; s := h[0].s[..]; t := s[0].tree[..];
+  es_test_local(h[..], 2, 2);
+  es_test_frames(h[..], 1);
+  #assert tr_find(t, "publish") < 0 && tr_find(t, "when") < 0 && tr_find(t, "undo") > 0 && tr_find(t, "redo") > 0;
+  #assert tr_text_of(t, tr_find(t, "things.all")) == "2 things. This world holds 4096 at most.";
+  es_test_local(h[..], 2, 1203);
+  es_test_frames(h[..], 1);
+  #assert tr_text_of(t, tr_find(t, "things.all")) == "2 of 1203 things listed, the newest. This world holds 4096 at most.";
+  // Add says how many of the world's kinds it lists, when not all
+  es_test_press(h[..], "add");
+  #assert tr_text_of(t, tr_find(t, "add.more")) == "1 of 788 kinds are listed here." && tr_find(t, "add.3") > 0;
+  es_test_press(h[..], "add");
+  // a world that has a live lane keeps Publish, and one that does not count says nothing of it
+  es_test_model(h[..], 0, 7, 3, "");
+  es_test_frames(h[..], 1);
+  #assert tr_find(t, "publish") > 0 && tr_find(t, "when") > 0 && tr_find(t, "things.all") < 0;
+  es_test_here(h[..]);
+  es_test_frames(h[..], 1);
+  es_test_press(h[..], "add");
+  #assert tr_find(t, "add.1001") > 0 && tr_find(t, "add.more") < 0;
+}
+#test "the land's brush is a tool only where the world's land takes edits: its kind, material, radius and strength are told to the page in words, and every class it shows is the skin's" {
+  h: [1] EsTest; s := h[0].s[..]; t := s[0].tree[..]; w: [32] u8;
+  // Splice's land takes none: no Land among the tools
+  es_test_model(h[..], 0, 7, 3, "");
+  es_test_frames(h[..], 1);
+  es_test_press(h[..], "tool");
+  #assert tr_find(t, "tool.4") > 0 && tr_find(t, "tool.5") < 0;
+  es_test_press(h[..], "tool");
+  es_test_local(h[..], 1, 1);
+  es_test_frames(h[..], 1);
+  #assert tr_find(t, "brush") < 0 && tr_find(t, "radius") < 0 && tr_find(t, "grid") > 0;
+  es_test_press(h[..], "tool");
+  #assert tr_text_of(t, tr_find(t, "tool.5.t")) == "Land" && tr_text_of(t, tr_find(t, "tool.5.m")) == "Drag on the ground to shape or paint it";
+  es_test_press(h[..], "tool.5");
+  // picking it tells the page the tool and the brush as it is shown
+  #assert es_test_view(h[..], w[..]) == "tool land" && es_test_view(h[..], w[..]) == "brush raise" && es_test_view(h[..], w[..]) == "radius 800" && es_test_view(h[..], w[..]) == "strength 60" && s[0].nacts == 0;
+  #assert tr_text_of(t, tr_find(t, "tool.l")) == "Land" && tr_text_of(t, tr_find(t, "brush.l")) == "Raise" && tr_text_of(t, tr_find(t, "radius")) == "8 m" && tr_text_of(t, tr_find(t, "strength")) == "60%";
+  #assert tr_find(t, "mat") < 0 && tr_find(t, "grid") < 0;
+  // paint shows what it paints, the world's materials by name
+  es_test_press(h[..], "brush");
+  #assert tr_text_of(t, tr_find(t, "brush.4.m")) == "Level the ground to the height at the brush's middle";
+  es_test_press(h[..], "brush.0");
+  #assert es_test_view(h[..], w[..]) == "brush paint" && es_test_view(h[..], w[..]) == "mat 1" && tr_text_of(t, tr_find(t, "mat.l")) == "Grass";
+  es_test_press(h[..], "mat"); es_test_press(h[..], "mat.1");
+  #assert es_test_view(h[..], w[..]) == "mat 3" && tr_text_of(t, tr_find(t, "mat.l")) == "Sand";
+  // the steppers: a step each press, held to what the land takes and to 10 to 100 percent
+  es_test_press(h[..], "radius.more");
+  #assert es_test_view(h[..], w[..]) == "radius 1200" && tr_text_of(t, tr_find(t, "radius")) == "12 m";
+  for k: 0..<8 { es_test_press(h[..], "radius.more"); _ := es_test_view(h[..], w[..]); }
+  #assert s[0].radius == ES_RADII - 1 && tr_text_of(t, tr_find(t, "radius")) == "40 m" && tr_has(t, tr_find(t, "radius.more"), AT_DISABLED);
+  es_test_press(h[..], "strength.less");
+  #assert es_test_view(h[..], w[..]) == "strength 50" && tr_text_of(t, tr_find(t, "strength")) == "50%";
+  for k: 0..<8 { es_test_press(h[..], "strength.less"); _ := es_test_view(h[..], w[..]); }
+  #assert s[0].strength == 0 && tr_text_of(t, tr_find(t, "strength")) == "10%" && tr_has(t, tr_find(t, "strength.less"), AT_DISABLED) && s[0].nacts == 0;
+  // every class shown with the brush out is one the skin has a rule for
+  css: [ES_CSS] u8;
+  sheet := cast(string) css[0..<mono_dock_css(css[..], mono_css(css[..]))];
+  for i: 0..<t[0].n {
+    cls := tr_class(t, i);
+    for k: 0..<ct_parts(cls, ' ') {
+      word := ct_part(cls, ' ', k);
+      bare := ES_TEST_BARE;
+      #assert word.count == 0 || es_test_styled(sheet, word) || word == bare[0] || word == bare[1];
+    }
+  }
+  #assert es_test_styled(sheet, "step");
+  // another tool puts the brush away and brings the grid back
+  es_test_press(h[..], "tool"); es_test_press(h[..], "tool.1");
+  #assert es_test_view(h[..], w[..]) == "tool select" && tr_find(t, "brush") < 0 && tr_find(t, "grid") > 0;
 }

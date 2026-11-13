@@ -15,7 +15,8 @@
   "refusal_bytes": 240,
   "bytes": 65536,
   "templates": 32,
-  "parts_bytes": 480
+  "parts_bytes": 480,
+  "materials": 16
  },
  "lines": [
   "editor.model.v1 WORLD LANE REV UNDO REDO SELECTED",
@@ -27,6 +28,11 @@
   "c KIND COLUMN VALUE",
   "t ID NAME",
   "tp ID PARTS",
+  "all N CAP",
+  "kinds N",
+  "local",
+  "land RMIN RMAX",
+  "m ID NAME",
   "here X Z",
   "no WORDS"
  ],
@@ -62,6 +68,24 @@
   "editor.model.v1 splice test 0 0 0 0\ncols\n",
   "editor.model.v1 splice dev 0 0 0 0\ncols\nhere 1\n",
   "editor.model.v1 splice dev 0 0 0 0\ncols\ntable two words\n",
-  "editor.model.v1 splice dev 0 0 0 0\ncols\nt 1 A template with no parts\n"
- ]
+  "editor.model.v1 splice dev 0 0 0 0\ncols\nt 1 A template with no parts\n",
+  "editor.model.v1 splice dev 0 0 0 0\ncols\nlocal yes\n",
+  "editor.model.v1 splice dev 0 0 0 0\ncols\nall 5 4\n",
+  "editor.model.v1 splice dev 0 0 0 0\ncols\nland 0 5\n",
+  "editor.model.v1 splice dev 0 0 0 0\ncols\nkinds 0\n"
+ ],
+ "local": {
+  "wire": "editor.model.v1 create-world dev 12 3 1 0\ncols x z yaw kind\nk 786 Cottage (house)\ne 1 786 350 0 -1200 90 150\nall 1203 4096\nkinds 788\nlocal\nland 100 4000\nm 1 Grass\nm 3 Sand\nm 0 Bare grid\nhere 420 -75\n",
+  "world": "create-world",
+  "all": [
+   1203,
+   4096
+  ],
+  "kinds": 788,
+  "land": [
+   100,
+   4000
+  ],
+  "materials": 3
+ }
 }

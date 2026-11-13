@@ -32,7 +32,8 @@ order, no spaces, every number in range.
 A world takes the ops its own code allows and refuses the rest in words.
 Splice takes `spawn`, `despawn`, `move`, `rotate`, a `set` of `x`, `z` or
 `yaw`, and a `cell` of its content tables. It refuses a size and the land, and
-says why.
+says why. WorldBuilder takes every op of a thing and the land, and refuses a
+`cell` ([WorldBuilder's world](#worldbuilders-world)).
 
 ### A cell of the content tables
 
@@ -55,6 +56,49 @@ an event, an inverse, and undo and redo walk it.
 - To put a world's tables in the repository, save the answer of
   `openagents realm world ID --json` (its `content`) as the realm's content
   file.
+
+### WorldBuilder's world
+
+Code: `apps/openagents-web/worldbuilder-world.coax` (#13422, the browser
+editor's E13).
+
+A WorldBuilder world (`/create-world`) is kept in the visitor's browser and
+has no account, so no server holds it and it has no route. The page's own Coax
+checks each edit with this codec and carries it out on the engine's edit log
+(`metaverse-engine/editor/edit.coax`), which keeps its inverse. A batch is
+fenced by the world's revision, is taken whole or not at all, and is one step:
+one undo takes it back. Each edit taken, undone or redone moves the revision
+by one. The chat's edits of things, the editor shell's batches and the
+viewport's drags all come this way.
+
+| Op | What WorldBuilder does |
+| --- | --- |
+| `spawn` | Places a thing. `id` is 0: the world numbers it. `kind` is the model's place in the pack, from 1. The thing stands on the ground, so `y` is not read |
+| `despawn`, `move`, `rotate`, `scale` | Removes, moves, turns or sizes a thing |
+| `set` | `x`, `z`, `yaw` or `kind`. A `y` is refused (a thing's height is the ground's), and so is any other column |
+| `cell` | Refused: a WorldBuilder world has no content tables |
+| `terrain` | One dab of a brush on the ground. `brush` is `paint`, `raise`, `lower`, `smooth` or `flatten`; `x`, `z` and `r` are its middle and radius in centimetres (100 to 4,000); `v` is how hard it presses, 1 to 100 percent; `mat` is the material painted: 0 the bare grid, 1 grass, 2 dirt, 3 sand, 4 stone, 5 snow, 6 water |
+
+At 100 percent one dab raises or lowers the middle by 47 cm, paints fully,
+smooths by two thirds and levels by a third toward the height at its own
+middle. A brush held down dabs 30 times a second. A stroke's dabs are one
+step, however many revisions they are.
+
+Its rules, each refused in words: a world holds 4,096 things; a kind is one of
+the pack's models; a brush is 1 m to 40 m wide and acts on the ground, 256 m a
+side; a batch changes things or shapes the ground, not both; the world has no
+live lane, so a publish is refused. The day's shared $50 of AI and a visitor's
+pace are the API's rules for the chat line (`coax/web/api/worldbuilder.c`) and
+are unchanged.
+
+Not typed edits: the chat's ground commands that are no disc (the whole
+ground, a strip along an edge, a level given in metres). They are steps of the
+same log and move the revision, but a `terrain` edit cannot say their shape. A
+later version of this shape could carry a box and a level.
+
+A world kept before this change loads as it was (the save's bytes, `WB1`, are
+unchanged). A thing whose size is outside 25 to 400 percent keeps it until an
+edit sizes it. The undo history is not kept with a world, as before.
 
 ## A batch
 
@@ -198,8 +242,9 @@ Places are whole centimetres. Each write answers
 `--shot OUT.png` adds a frame of the page at the edit's revision.
 `--dry-run` carries the batch out in a copy and saves nothing.
 
-Not built: `new`. A world gets its ID from a migration today (Splice). Making
-one from the command line comes with WorldBuilder's worlds (E13, #13422).
+Not built: `new`. A world gets its ID from a migration today (Splice).
+WorldBuilder's worlds are kept in the browser and have no ID on the server
+(E13, #13422), so these commands do not reach them.
 
 ### An agent edits and checks in one session
 

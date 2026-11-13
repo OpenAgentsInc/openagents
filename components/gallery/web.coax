@@ -32,6 +32,7 @@ WebPage :: struct {
   presses: int;
   tool_open: bool;
   row: int; model: int; thing: int; grouped: [3] bool;
+  radius: int = 2;   // the dock's stepper: which of its five steps it stands at
   answer: int;                       // the approval notice: 0 not answered, 1 allowed, 2 denied
   draft: [WG_DRAFT] u8; draft_n: int;
   sent: [WG_SENT] [WG_DRAFT] u8; sent_n: [WG_SENT] int; nsent: int;
@@ -161,6 +162,9 @@ wg_build :: (s: [] WebPage) {
   px := k_prop(t, u, "dock.x", "X cm", "0");
   pz := k_prop(t, u, "dock.z", "Z cm", "0");
   fk := k_fact(t, "dock.kit", "Kit", "rover");
+  // a stepper: a value that is stepped, not typed
+  radii := [5] string.["2 m", "4 m", "8 m", "16 m", "32 m"];
+  sr := k_stepper(t, "dock.radius", "Radius", radii[s[0].radius], s[0].radius > 0, s[0].radius < 4);
   tr_close(t);
   k_pane_end(t);
   dfoot := k_pane(t, u, "dock.foot", DK_BOTTOM, "Agent");
@@ -222,6 +226,8 @@ wg_click :: (s: [] WebPage, id: string) {
   else if wg_index(id, "row.") >= 0 { s[0].row = wg_index(id, "row."); }
   else if id.count == 9 && wg_id_is(id, "thing.") && cast(string) id[7..<9] == ".x" && id[6] >= '0' && id[6] <= '2' { k := cast(int) (id[6] - '0'); s[0].grouped[k] = !s[0].grouped[k]; }
   else if wg_index(id, "thing.") >= 0 { s[0].thing = wg_index(id, "thing."); }
+  else if id == "dock.radius.less" && s[0].radius > 0 { s[0].radius -= 1; }
+  else if id == "dock.radius.more" && s[0].radius < 4 { s[0].radius += 1; }
   else if wg_index(id, "model.") >= 0 { s[0].model = wg_index(id, "model."); }
 }
 
@@ -287,6 +293,12 @@ WgTest :: struct { s: [1] WebPage; }
   #assert tr_find(t, "notice.error") > 0 && tr_find(t, "row.2") > 0 && tr_find(t, "model.0") > 0 && tr_find(t, "msg.1.b0") > 0;
   #assert tr_find(t, "dock.bar.b") > 0 && tr_class(t, tr_find(t, "dock.foot")) == "pane pane-bm" && tr_find(t, "dock.x") > 0 && tr_text_of(t, tr_find(t, "dock.kit.v")) == "rover" && tr_class(t, tr_find(t, "dock")) == "dock";
   #assert coaxial_kit_frame(s, 0.016, true) == 0;
+  // the stepper steps: more raises its value, and at its last step More can't be pressed
+  #assert tr_text_of(t, tr_find(t, "dock.radius")) == "8 m";
+  coaxial_kit_event(s, WG_CLICK, dm_find(s[0].dom[..], "dock.radius.more"), 0);
+  coaxial_kit_event(s, WG_CLICK, dm_find(s[0].dom[..], "dock.radius.more"), 0);
+  _ := coaxial_kit_frame(s, 0.016, true);
+  #assert s[0].radius == 4 && tr_text_of(t, tr_find(t, "dock.radius")) == "32 m" && tr_has(t, tr_find(t, "dock.radius.more"), AT_DISABLED) && !tr_has(t, tr_find(t, "dock.radius.less"), AT_DISABLED);
   coaxial_kit_event(s, WG_CLICK, dm_find(s[0].dom[..], "thing.1"), 0);
   n = coaxial_kit_frame(s, 0.016, true);
   #assert s[0].thing == 1 && tr_text_of(t, tr_find(t, "dock.card.h")) == "Parked rover";

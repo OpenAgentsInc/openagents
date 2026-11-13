@@ -53,6 +53,29 @@ and `gpu/splice.coax`) and then save them back as they were. If the run stops
 between the two saves, `git diff metaverse/splice` shows the one changed
 number; put it back with `git checkout -- metaverse/splice`.
 
+## WorldBuilder
+
+A second pass runs the same shell on WorldBuilder (E13, #13422). It needs no
+empty world first: the driver's browser keeps none.
+
+```sh
+coax/web/tool.sh drive web apps/openagents-web /create-world \
+  --query edit --size 1280x800 --live http://127.0.0.1:9538 \
+  --ops docs/editor/acceptance/worldbuilder-run.ops
+```
+
+It adds a cottage at a tapped point, picks it in the world, moves, turns and
+sizes it with the gizmos, undoes and redoes, removes it and brings it back,
+then raises a hill and paints sand with the land's brush. Each edit of a thing
+must be one revision; a stroke must be one undo step. It leaves
+`worldbuilder-run.png` in `apps/openagents-web/build/`. On the build this was
+written against every edit showed in the frame it was made in: the page
+checks its own world, so nothing waits on a server.
+
+It does not check the chat line (the dev server has no model behind it) or a
+phone's size: the driver's change of size mid-run garbles the page's own text,
+so take that picture from a fresh load at 390x844.
+
 ## What it checks
 
 | Step | What must hold |

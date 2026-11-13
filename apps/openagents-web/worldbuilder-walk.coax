@@ -1,5 +1,5 @@
 // WorldBuilder's walk (openagents.com/create-world, #13225): your character in the world you build.
-// The page is WorldBuilder (worldbuilder.coax: the chat, the things, the ground, the brush bar) and
+// The page is WorldBuilder (worldbuilder.coax: the chat, the things, the ground, and with ?edit the editor's shell) and
 // an Everglade zone (everglade/zone.coax), as the Archery Range and Bitcoin Lab are: the zone walks
 // your character on Everglade's controller (W, A, S, D, Shift, Space, a phone's thumb stick) under
 // its follow camera and mouselook, and makes your figure's frame from the people's baked clips, the
@@ -61,13 +61,14 @@ wbw_up :: (w: [] WalkBuilder) -> bool { s := w[0].z[..]; return zone_world(s) &&
 // `strokes` is the zone's own room for its HUD's strokes (MAX_VERTICES of them, 16 floats each): they
 // are made, as every zone's frame makes them, and not drawn.
 wbw_zone_vertices :: () -> int #export_c #effects(all) { return MAX_VERTICES * VERTEX_FLOATS; }
-wbw_frame :: (w: [] WalkBuilder, strokes: [] f32, out: [] f32, u: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> int #export_c #effects(all) {
+// `run` is the time the world runs this frame (wbw_run_dt: the editor's clock may pause or step it); `dt` is the frame's own.
+wbw_frame :: (w: [] WalkBuilder, strokes: [] f32, out: [] f32, u: [] f32, width: f32, height: f32, dpr: f32, dt: f32, run: f32, still: bool) -> int #export_c #effects(all) {
   s := w[0].z[..]; b := w[0].b[..];
   if s[0].creator[0].on {
     // the zone's frame: its camera and its figure's playback
     zone_begin(s);
-    n0 := zone_draw(s, strokes, w[0].zu[..], width, height, dpr, dt, still);
-    n0 = zone_finish(s, strokes, w[0].zu[..], n0, dt, still);
+    n0 := zone_draw(s, strokes, w[0].zu[..], width, height, dpr, run, still);
+    n0 = zone_finish(s, strokes, w[0].zu[..], n0, run, still);
   }
   up := wbw_up(w);
   b[0].walk_ok = up;
@@ -130,7 +131,13 @@ wbw_key :: (w: [] WalkBuilder, key: int, mods: int) -> bool #export_c #effects(a
   if wb.worldbuilder_roams(b) { return zone_key(w[0].z[..], key); }
   return false;
 }
-wbw_key_up :: (w: [] WalkBuilder, key: int, mods: int) -> bool #export_c #effects(all) { return zone_key_up(w[0].z[..], key, mods); }
+// A key let go: the editor's fly camera's first (its W, S, A, D, Q and E are held keys), then the zone's.
+wbw_key_up :: (w: [] WalkBuilder, key: int, mods: int) -> bool #export_c #effects(all) {
+  if wb.worldbuilder_key(w[0].b[..], key, false, mods) { return true; }
+  return zone_key_up(w[0].z[..], key, mods);
+}
+// The time the world runs this frame: once a frame, before the body's step and the zone's frame.
+wbw_run_dt :: (w: [] WalkBuilder, dt: f32) -> f32 #export_c #effects(all) { return wb.worldbuilder_run_dt(w[0].b[..], dt); }
 wbw_blur :: (w: [] WalkBuilder) #export_c #effects(all) { wb.worldbuilder_blur(w[0].b[..]); zone_blur(w[0].z[..]); }
 // Pointers: WorldBuilder's HUD, chat box and brush first; walking, a press on the world is the
 // zone's (its camera's drag, its mouselook, a phone's thumb stick).
@@ -175,4 +182,20 @@ wbw_uniform_floats :: () -> int #export_c #effects(all) { return wb.UNIFORM_FLOA
   #assert wbw_key(w[..], wb.KEY_TAB, 0) && !wbw_walks(w[..]);
   far := w[0].b[0].dist;
   #assert wbw_wheel(w[..], 100) && w[0].b[0].dist > far;
+  // with ?edit and a tool of the editor's picked, the keys and the pointer are not the character's
+  #assert wbw_key(w[..], wb.KEY_TAB, 0) && wbw_walks(w[..]) && wb.worldbuilder_roams(w[0].b[..]);
+  wbw_message(w[..], HOST_PAGE, "url=https://openagents.com/create-world?edit\n");
+  #assert w[0].b[0].edit && wb.worldbuilder_roams(w[0].b[..]);
+  wbw_message(w[..], 522, "tool select");
+  #assert wbw_walks(w[..]) && wbw_mouselook(w[..]) == 0 && !wb.worldbuilder_roams(w[0].b[..]);
+  #assert wbw_pointer(w[..], 400, 300, 0, 0, 1, 0) && wbw_pointer(w[..], 400, 300, 2, 0, 1, 0);
+  // the editor's clock: paused, the world's time stands; a step is one sixtieth
+  #assert wbw_run_dt(w[..], 0.02) == 0.02;
+  wbw_message(w[..], 522, "run pause");
+  #assert wbw_run_dt(w[..], 0.02) == 0;
+  wbw_message(w[..], 522, "step");
+  #assert wbw_run_dt(w[..], 0.02) > 0.016 && wbw_run_dt(w[..], 0.02) == 0;
+  // flying, W is the camera's while it is held, and its release is taken too
+  wbw_message(w[..], 522, "fly on");
+  #assert wbw_key(w[..], 'w', 0) && w[0].b[0].vkeys[0] && wbw_key_up(w[..], 'w', 0) && !w[0].b[0].vkeys[0];
 }

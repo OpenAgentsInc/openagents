@@ -7,8 +7,10 @@
 // The world: up to WB_OBJECTS things, each a catalogue mesh standing on the ground (y = 0, the
 // meshes are packed with their base at 0 and their footprint centred) at x, z, turned by yaw and
 // scaled. Each has an id that never changes. "Last" is what the newest edit placed or changed,
-// so "make it bigger" and "delete them" find it. Every edit goes through Aethyrforge's typed scene
-// edit log (metaverse-engine/editor/edit.coax) with undo and redo (#13226).
+// so "make it bigger" and "delete them" find it. Every edit of a thing is a typed world.edit.v1
+// edit (worldbuilder-world.coax wbe_thing: places in whole centimetres, turns in whole degrees,
+// sizes in whole percent from 25 to 400), carried out on the engine's typed scene edit log
+// (metaverse-engine/editor/edit.coax) with undo and redo (#13226, #13422).
 //
 // Where things go is worked out from an anchor (the tapped spot, the middle of the view, the last
 // edit's things, the newest thing of a name, the grid's middle) and a side as the camera sees it
@@ -22,6 +24,7 @@
 #load "../../metaverse-engine/editor/edit.coax";
 #load "../../metaverse-engine/editor/place.coax";   // the placement planner: anchors, sides, spreads (#13414)
 #load "worldbuilder-land.coax";
+#load "worldbuilder-world.coax";   // the world behind world.edit.v1: every thing edit is typed and checked there (#13422)
 
 WB_OBJECTS :: FORGE_SCENE_ITEMS;   // things a world holds (the page shows the count and this)
 WB_MESHES :: 1024;                 // catalogue meshes
@@ -69,6 +72,8 @@ WbWorld :: struct {
   last: [WB_LAST] int; last_n: int;
   plan: [WB_OBJECTS] PlaceSpot;   // what stands, as the planner is told it (scratch for one edit)
   version: int;     // changes with every edit (the page redraws its instances)
+  rev: int;         // the world's revision: one for every edit taken, undone or redone (world.edit.v1)
+  stroke_rev: int;  // the revision the brush stroke under way began at
   seed: int;
   full: bool;       // the last edit wanted more room than the world has
   missing: bool;    // the last edit named something the catalogue doesn't have
@@ -273,7 +278,7 @@ wb_sync :: (w: [] WbWorld) {
   w[0].n = w[0].fg[0].n;
   if w[0].fg[0].land_rev != w[0].land_rev { w[0].land_rev = w[0].fg[0].land_rev; w[0].land[0].version += 1; wb_land_scan(w[0].land[..]); }
 }
-wb_reset :: (w: [] WbWorld) { forge_scene_reset(wb_scene(w)); wb_land_reset(w[0].land[..]); wb_sync(w); w[0].last_n = 0; w[0].version += 1; }
+wb_reset :: (w: [] WbWorld) { forge_scene_reset(wb_scene(w)); wb_land_reset(w[0].land[..]); wb_sync(w); w[0].last_n = 0; w[0].version += 1; w[0].rev += 1; }
 wb_index :: (w: [] WbWorld, id: int) -> int { return forge_scene_find(wb_scene(w), id); }
 wb_can_undo :: (w: [] WbWorld) -> bool { return forge_scene_can_undo(wb_scene(w)); }
 wb_can_redo :: (w: [] WbWorld) -> bool { return forge_scene_can_redo(wb_scene(w)); }
@@ -292,26 +297,23 @@ wb_last_from_top :: (w: [] WbWorld) {
 }
 wb_undo :: (w: [] WbWorld) -> bool {
   if !forge_scene_undo(wb_scene(w)) { return false; }
-  wb_sync(w); wb_last_from_top(w); w[0].version += 1;
+  wb_sync(w); wb_last_from_top(w); w[0].version += 1; w[0].rev += 1;
   return true;
 }
 wb_redo :: (w: [] WbWorld) -> bool {
   if !forge_scene_redo(wb_scene(w)) { return false; }
-  wb_sync(w); wb_last_from_top(w); w[0].version += 1;
+  wb_sync(w); wb_last_from_top(w); w[0].version += 1; w[0].rev += 1;
   return true;
 }
-wb_add_kind :: (w: [] WbWorld, kind: int, mesh: int, x: f32, z: f32, yaw: f32, scale: f32) -> int {
-  if w[0].fg[0].n >= WB_OBJECTS { w[0].full = true; return -1; }
-  s := wb_scene(w);
-  id := ifx kind == FORGE_SCENE_DUPLICATE
-    then forge_scene_duplicate(s, mesh, x, 0, z, yaw, scale)
-    else forge_scene_place(s, mesh, x, 0, z, yaw, scale);
-  wb_sync(w);
-  if id >= 0 { wb_last_add(w, id); }
-  return id;
+wb_add_kind :: (w: [] WbWorld, c: [] WbCat, kind: int, mesh: int, x: f32, z: f32, yaw: f32, scale: f32) -> int {
+  // one typed spawn (worldbuilder-world.coax): whole centimetres, degrees and percent, WorldBuilder's rules
+  r := wbe_thing(w, c, WorldEdit.{ok = true, op = WE_SPAWN, id = 0, kind = wbe_kind(mesh), x = we_cm(x), z = we_cm(z), yaw = we_deg(yaw), scale = wbe_pct(scale)});
+  if !r.ok { return -1; }
+  wb_last_add(w, r.id - 1);
+  return r.id - 1;
 }
-wb_add :: (w: [] WbWorld, mesh: int, x: f32, z: f32, yaw: f32, scale: f32) -> int {
-  return wb_add_kind(w, FORGE_SCENE_PLACE, mesh, x, z, yaw, scale);
+wb_add :: (w: [] WbWorld, c: [] WbCat, mesh: int, x: f32, z: f32, yaw: f32, scale: f32) -> int {
+  return wb_add_kind(w, c, FORGE_SCENE_PLACE, mesh, x, z, yaw, scale);
 }
 
 // The camera's directions on the ground: away from the viewer and to their right.
@@ -393,7 +395,7 @@ wb_place :: (w: [] WbWorld, c: [] WbCat, v: PlaceView, a: WbAct) -> WbDone {
     nudge = a.anchor == A_VIEW || a.anchor == A_ORIGIN || (a.anchor == A_HERE && !v.has_here), seed = w[0].seed + w[0].version * 7919};
   n := pl_plan(wb_kind(c, a.asset), p, v, ask, w[0].plan[0..<w[0].n], out[..]);
   w[0].last_n = 0;
-  for i: 0..<n { if wb_add(w, a.asset, out[i].x, out[i].z, out[i].yaw, out[i].scale) >= 0 { done.placed += 1; } }
+  for i: 0..<n { if wb_add(w, c, a.asset, out[i].x, out[i].z, out[i].yaw, out[i].scale) >= 0 { done.placed += 1; } }
   done.ok = done.placed > 0;
   return done;
 }
@@ -422,23 +424,23 @@ wb_move :: (w: [] WbWorld, c: [] WbCat, v: PlaceView, a: WbAct, idx: [] int) -> 
     }
     dx = tx - g.x; dz = tz - g.z;
   }
-  s := wb_scene(w);
-  for i: idx {
-    o := w[0].objs[i];
-    if forge_scene_move(s, o.id, o.x + dx, o.y, o.z + dz) { done.changed += 1; }
+  ids: [WB_OBJECTS] int;
+  for k: 0..<idx.count { ids[k] = w[0].objs[idx[k]].id; }
+  for k: 0..<idx.count {
+    o := w[0].objs[wb_index(w, ids[k])];
+    if wbe_thing(w, c, WorldEdit.{ok = true, op = WE_MOVE, id = o.id + 1, x = we_cm(o.x + dx), y = we_cm(o.y), z = we_cm(o.z + dz)}).ok { done.changed += 1; }
   }
   if done.changed > 0 { wb_set_last(w, idx); done.ok = true; }
   return done;
 }
 
-wb_delete :: (w: [] WbWorld, idx: [] int) -> WbDone {
+wb_delete :: (w: [] WbWorld, c: [] WbCat, idx: [] int) -> WbDone {
   done: WbDone;
   if idx.count == 0 { return done; }
   ids: [WB_OBJECTS] int;
   for k: 0..<idx.count { ids[k] = w[0].objs[idx[k]].id; }
-  s := wb_scene(w);
   for k: 0..<idx.count {
-    if forge_scene_delete(s, ids[k]) { done.changed += 1; }
+    if wbe_thing(w, c, WorldEdit.{ok = true, op = WE_DESPAWN, id = ids[k] + 1}).ok { done.changed += 1; }
   }
   wb_sync(w);
   if done.changed > 0 { w[0].last_n = 0; done.ok = true; }
@@ -461,7 +463,7 @@ wb_duplicate :: (w: [] WbWorld, c: [] WbCat, v: PlaceView, a: WbAct, idx: [] int
   copies: [WB_OBJECTS] ForgeItem; n := 0;
   for i: idx { copies[n] = w[0].objs[i]; n += 1; }
   w[0].last_n = 0;
-  for k: 0..<n { o := copies[k]; if wb_add_kind(w, FORGE_SCENE_DUPLICATE, o.mesh, o.x + dx, o.z + dz, o.yaw, o.scale) >= 0 { done.placed += 1; } }
+  for k: 0..<n { o := copies[k]; if wb_add_kind(w, c, FORGE_SCENE_DUPLICATE, o.mesh, o.x + dx, o.z + dz, o.yaw, o.scale) >= 0 { done.placed += 1; } }
   done.ok = done.placed > 0;
   return done;
 }
@@ -524,43 +526,12 @@ wb_land_act :: (w: [] WbWorld, c: [] WbCat, v: PlaceView, a: WbAct) -> WbDone {
   }
   if !r.any { return done; }
   if forge_scene_land_step(wb_scene(w), l[0].was_h[..], l[0].was_ids[..], l[0].was_w[..], r.i0, r.j0, r.i1, r.j1) {
-    done.changed = 1; done.ground = 1; done.ok = true; w[0].version += 1;
+    done.changed = 1; done.ground = 1; done.ok = true; w[0].version += 1; w[0].rev += 1;
   }
   wb_sync(w);
   return done;
 }
-// A brush stroke from the page: begin where it goes down, a dab a frame while it is held, end when
-// it lifts (one undo step for the whole stroke). `strength` is the brush's, 0 to 1; dt the frame's seconds.
-wb_stroke_begin :: (w: [] WbWorld, x: f32, z: f32) {
-  l := w[0].land[..];
-  wb_land_begin(l);
-  wb_land_keep(l);
-  l[0].stroke = true; l[0].reach = TerrainEditRect.{};
-  l[0].level = terrain_edit_height(wb_land_edit(l), x, z);
-}
-wb_stroke_dab :: (w: [] WbWorld, tool: int, layer: int, x: f32, z: f32, radius: f32, strength: f32, dt: f32) {
-  l := w[0].land[..];
-  if !l[0].stroke { return; }
-  st := wb_lo(wb_hi(strength, 0.02), 1);
-  shape := terrain_edit_disc(x, z, wb_lo(wb_hi(radius, 1), WB_LAND_HALF));
-  r: TerrainEditRect;
-  if tool == LT_PAINT { r = wb_land_tool(l, tool, layer, shape, 0, st); }
-  else if tool == LT_RAISE || tool == LT_LOWER { r = wb_land_tool(l, tool, 0, shape, 14 * st * dt, 1); }
-  else if tool == LT_SMOOTH { r = wb_land_tool(l, tool, 0, shape, 0, wb_lo(st * dt * 20, 1)); }
-  else { r = wb_land_tool(l, tool, 0, shape, l[0].level, wb_lo(st * dt * 10, 1)); }
-  l[0].reach = terrain_edit_join(l[0].reach, r);
-}
-wb_stroke_end :: (w: [] WbWorld) -> bool {
-  l := w[0].land[..];
-  if !l[0].stroke { return false; }
-  l[0].stroke = false;
-  r := l[0].reach;
-  if !r.any { return false; }
-  ok := forge_scene_land_step(wb_scene(w), l[0].was_h[..], l[0].was_ids[..], l[0].was_w[..], r.i0, r.j0, r.i1, r.j1);
-  if ok { w[0].version += 1; }
-  wb_sync(w);
-  return ok;
-}
+// A brush on the ground is typed dabs (worldbuilder-world.coax wbe_stroke_begin, wbe_dab, wbe_stroke_end).
 
 // Carries one edit out through Aethyrforge's scene edit log: every edit has undo and redo.
 wb_apply :: (w: [] WbWorld, c: [] WbCat, v: PlaceView, a: WbAct) -> WbDone {
@@ -580,7 +551,13 @@ wb_apply :: (w: [] WbWorld, c: [] WbCat, v: PlaceView, a: WbAct) -> WbDone {
   if a.op >= OP_PAINT && a.op <= OP_FLATTEN { return wb_land_act(w, c, v, a); }
   s := wb_scene(w);
   if a.op == OP_CLEAR {
-    removed := forge_scene_clear(s);
+    removed := 0;
+    forge_scene_begin(s, FORGE_SCENE_CLEAR);
+    while w[0].n > 0 {
+      if !wbe_thing(w, c, WorldEdit.{ok = true, op = WE_DESPAWN, id = w[0].objs[w[0].n - 1].id + 1}).ok { break; }
+      removed += 1;
+    }
+    _ := forge_scene_end(s);
     wb_sync(w);
     if removed > 0 { w[0].last_n = 0; done.changed = removed; done.ok = true; w[0].version += 1; }
     return done;
@@ -600,7 +577,7 @@ wb_apply :: (w: [] WbWorld, c: [] WbCat, v: PlaceView, a: WbAct) -> WbDone {
       forge_scene_begin(s, FORGE_SCENE_ROTATE);
       for i: idx[0..<n] {
         o := w[0].objs[i];
-        if forge_scene_rotate(s, o.id, o.yaw + a.degrees * 0.017453292) { done.changed += 1; }
+        if wbe_thing(w, c, WorldEdit.{ok = true, op = WE_ROTATE, id = o.id + 1, yaw = we_deg(o.yaw + a.degrees * 0.017453292)}).ok { done.changed += 1; }
       }
       done.ok = forge_scene_end(s);
       if done.ok { wb_set_last(w, idx[0..<n]); }
@@ -609,13 +586,13 @@ wb_apply :: (w: [] WbWorld, c: [] WbCat, v: PlaceView, a: WbAct) -> WbDone {
       forge_scene_begin(s, FORGE_SCENE_SCALE);
       for i: idx[0..<n] {
         o := w[0].objs[i];
-        if forge_scene_scale(s, o.id, wb_lo(wb_hi(o.scale * f, 0.05), 40)) { done.changed += 1; }
+        if wbe_thing(w, c, WorldEdit.{ok = true, op = WE_SCALE, id = o.id + 1, scale = wbe_pct(o.scale * f)}).ok { done.changed += 1; }
       }
       done.ok = forge_scene_end(s);
       if done.ok { wb_set_last(w, idx[0..<n]); }
     } else if a.op == OP_DELETE {
       forge_scene_begin(s, FORGE_SCENE_DELETE);
-      done = wb_delete(w, idx[0..<n]);
+      done = wb_delete(w, c, idx[0..<n]);
       done.ok = forge_scene_end(s);
     } else if a.op == OP_DUPLICATE {
       forge_scene_begin(s, FORGE_SCENE_DUPLICATE);
@@ -938,14 +915,15 @@ WB_PIECES_CAT :: "M village/wall-plaster-door-round 0 9 1 -1 0 -0.205 1 3.12 0.2
   c: [1] WbCat; wb_catalog(c[..], WB_TEST_CAT);
   w: [1] WbWorld; v := wb_test_view();
   l := w[0].land[..];
-  wb_stroke_begin(w[..], 10, 10);
-  for k: 0..<30 { wb_stroke_dab(w[..], LT_RAISE, 0, 10 + cast(f32) k * 0.5, 10, 6, 1, 1.0 / 60.0); }
-  #assert wb_stroke_end(w[..]) && w[0].fg[0].step_n == 1 && wb_land_y(l, 15, 10) > 1;
-  wb_stroke_begin(w[..], 12, 10);
-  for k: 0..<20 { wb_stroke_dab(w[..], LT_PAINT, L_STONE, 12 + cast(f32) k * 0.5, 10, 4, 0.6, 1.0 / 60.0); }
-  #assert wb_stroke_end(w[..]) && w[0].fg[0].step_n == 2;
-  wb_stroke_begin(w[..], 50, 50);
-  #assert !wb_stroke_end(w[..]) && w[0].fg[0].step_n == 2;   // a stroke that touched nothing
+  // typed dabs (worldbuilder-world.coax): a stroke is begun, dabbed and ended as one step
+  wbe_stroke_begin(w[..]);
+  for k: 0..<30 { #assert wbe_dab(w[..], WorldEdit.{ok = true, op = WE_TERRAIN, col = LT_RAISE, x = 1000 + k * 50, z = 1000, r = 600, v = 100}).ok; }
+  #assert wbe_stroke_end(w[..]).ok && w[0].fg[0].step_n == 1 && wb_land_y(l, 15, 10) > 1 && w[0].rev == 30;
+  wbe_stroke_begin(w[..]);
+  for k: 0..<20 { #assert wbe_dab(w[..], WorldEdit.{ok = true, op = WE_TERRAIN, col = LT_PAINT, x = 1200 + k * 50, z = 1000, r = 400, v = 60, mat = L_STONE}).ok; }
+  #assert wbe_stroke_end(w[..]).ok && w[0].fg[0].step_n == 2;
+  wbe_stroke_begin(w[..]);
+  #assert !wbe_stroke_end(w[..]).ok && w[0].fg[0].step_n == 2 && w[0].rev == 50;   // a stroke that touched nothing
   s := wb_one(w[..], c[..], v, "A place|nature/rock-1|1|||here||at||||||\nA paint|water||||origin||at||9|||\n");
   top := wb_land_y(l, 15, 10); stone := terrain_edit_share(wb_land_edit(l), (10 + 128) * WB_LAND_SIDE + 15 + 128, L_STONE);
   #assert stone > 0.5;

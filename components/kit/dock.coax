@@ -1,7 +1,8 @@
 // The dock: the frames set's pieces for panes that stand round something else (a canvas, a
 // document, a map) and leave it showing (GitHub #13416). A dock is a layer over the page that
 // takes no press itself; a pane is a panel on one of its sides with a strip of controls or a
-// body that scrolls inside it; a prop is a field with its name beside it. Each builds nodes in
+// body that scrolls inside it; a prop is a field with its name beside it; a stepper is a value with
+// a button to lower it and one to raise it. Each builds nodes in
 // the tree and nothing else; every look is the skin's (components/skin/mono.coax, mono_dock_css).
 //   coax/bin/coax test components/kit/dock.coax
 
@@ -65,6 +66,24 @@ k_fact :: (t: [] Tree, id: string, name: string, value: string) -> int {
   return p;
 }
 
+// Stepper: a named value that is stepped, not typed: its name, a button that lowers it, what it is
+// now, and a button that raises it (a brush's radius, a count). The buttons' ids are `id` with
+// ".less" and ".more"; one at its end can't be pressed. Answers the value's node (its id is `id`).
+k_stepper :: (t: [] Tree, id: string, name: string, value: string, can_less: bool, can_more: bool) -> int {
+  ida: [UI_ID] u8; idb: [UI_ID] u8; idc: [UI_ID] u8; idd: [UI_ID] u8; la: [UI_ID] u8; lb: [UI_ID] u8;
+  p := tr_open(t, tr_cat(ida[..], id, ".step"), TG_DIV, "step");
+  tr_attr(t, p, AT_ROLE, "group"); tr_attr(t, p, AT_LABEL, name);
+  n := tr_leaf(t, tr_cat(idb[..], id, ".n"), TG_SPAN, "meta", name);
+  less := k_icon_button(t, tr_cat(idc[..], id, ".less"), IC_MINUS, tr_cat(la[..], "Less: ", name));
+  if !can_less { tr_attr(t, less, AT_DISABLED, ""); }
+  v := tr_leaf(t, id, TG_SPAN, "fact", value);
+  tr_attr(t, v, AT_LIVE, "polite");
+  more := k_icon_button(t, tr_cat(idd[..], id, ".more"), IC_PLUS, tr_cat(lb[..], "More: ", name));
+  if !can_more { tr_attr(t, more, AT_DISABLED, ""); }
+  tr_close(t);
+  return v;
+}
+
 DkTest :: struct { t: [1] Tree; u: [1] Ui; }
 
 #test "a dock holds a strip and side panes, each a framed section whose body is its own node" {
@@ -95,6 +114,13 @@ DkTest :: struct { t: [1] Tree; u: [1] Ui; }
   #assert f == tr_find(t, "x") && tr_text_of(t, tr_find(t, "x.n")) == "X cm" && tr_class(t, tr_find(t, "x.prop")) == "prop";
   #assert tr_class(t, tr_find(t, "thing.2.w")) == "row-x" && rw == tr_find(t, "thing.2") && tr_attr_of(t, tr_find(t, "thing.2.x"), AT_PRESSED) == "true" && tr_attr_of(t, tr_find(t, "thing.2.x"), AT_LABEL) == "Add to the group";
   #assert tr_class(t, g) == "prop" && tr_text_of(t, tr_find(t, "kit.n")) == "Kit" && tr_text_of(t, tr_find(t, "kit.v")) == "rover";
+  // a stepper: its name, less, the value, more; at an end, that end's button can't be pressed
+  tr_begin(t);
+  sv := k_stepper(t, "radius", "Radius", "8 m", true, false);
+  #assert tr_class(t, tr_find(t, "radius.step")) == "step" && tr_attr_of(t, tr_find(t, "radius.step"), AT_LABEL) == "Radius" && tr_text_of(t, tr_find(t, "radius.n")) == "Radius";
+  #assert sv == tr_find(t, "radius") && tr_text_of(t, sv) == "8 m" && tr_class(t, sv) == "fact";
+  #assert tr_class(t, tr_find(t, "radius.less")) == "ib" && tr_attr_of(t, tr_find(t, "radius.less"), AT_LABEL) == "Less: Radius" && !tr_has(t, tr_find(t, "radius.less"), AT_DISABLED);
+  #assert tr_attr_of(t, tr_find(t, "radius.more"), AT_LABEL) == "More: Radius" && tr_has(t, tr_find(t, "radius.more"), AT_DISABLED) && t[0].depth == 0;
   tr_begin(t);
   d = k_dock(t, "dock", false);
   w := k_pane(t, u, "code", DK_WIDE, "Code");

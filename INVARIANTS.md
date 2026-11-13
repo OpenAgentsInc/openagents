@@ -8034,6 +8034,15 @@ Checks: `coax/bin/coax test metaverse/splice/splice-game.coax --only "Splice's w
 `metaverse-engine/editor/shell.coax` ("a hosted turn's plan") and
 `apps/openagents-web/chat-web.coax` ("in the editor").
 
+Model boundary (#13422): a WorldBuilder world (`/create-world`) is not a world
+with an ID. It is kept in the visitor's browser, no server stores or trusts
+it, and it has no route. Its page takes the same `world.edit.v1` edits and
+batches, fenced by its own revision and checked by its own Coax
+(`apps/openagents-web/worldbuilder-world.coax`: `wbe_thing`, `wbe_dab`,
+`wbe_batch`). Check: `coax/bin/coax test apps/openagents-web/worldbuilder-plan.coax`
+and `apps/openagents-web/worldbuilder.coax`. A WorldBuilder world that is ever
+stored on a server becomes a world with an ID and takes every rule above.
+
 ## A seam inside level ground is never a wall
 
 A seam is an edge inside the ground: a heightfield cell's diagonal, the line

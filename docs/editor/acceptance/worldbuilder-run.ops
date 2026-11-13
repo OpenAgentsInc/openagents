@@ -1,0 +1,72 @@
+# WorldBuilder in the editor shell, for coax drive (docs/editor/acceptance/README.md, "WorldBuilder").
+# Start from an empty world: the driver's browser has none kept. Size 1280x800, query "edit".
+clock +1500
+clock until b.cat_ready == true within 60000
+# the overview, and a tap on the ground: "here"
+type - key Tab
+clock +400
+tap 640 520
+clock until b.ep.here == true within 3000
+# Add a cottage at the point: one typed spawn, revision 1
+tap add
+tap add.786
+clock until b.world.rev == 1 within 3000
+clock until b.world.n == 1 within 3000
+# Select: a tap in the world picks the thing under it (vp_pick)
+tap tool
+tap tool.1
+tap 640 500
+clock until b.ep.sel == 1 within 3000
+# Move: a drag is one snapped move, revision 2
+tap tool
+tap tool.2
+drag 640 500 760 560
+clock until b.world.rev == 2 within 3000
+# Turn: revision 3
+tap tool
+tap tool.3
+drag 500 620 560 620
+clock until b.world.rev == 3 within 3000
+# Size: revision 4
+tap tool
+tap tool.4
+drag 500 620 500 560
+clock until b.world.rev == 4 within 3000
+# Undo takes the size back and Redo makes it again; each is a revision
+tap undo
+clock until b.world.rev == 5 within 3000
+tap redo
+clock until b.world.rev == 6 within 3000
+# Remove: the thing is gone, revision 7; Undo brings it back
+tap remove
+clock until b.world.n == 0 within 3000
+tap undo
+clock until b.world.n == 1 within 3000
+# the land's brush: Raise, a drag on the ground is one stroke and one undo step
+tap tool
+tap tool.5
+drag 420 560 540 600
+clock until b.world.land.bare == false within 3000
+clock until b.stroking == false within 3000
+tap undo
+clock until b.world.land.bare == true within 3000
+tap redo
+clock until b.world.land.bare == false within 3000
+# Paint sand, a wider brush
+tap brush
+tap brush.0
+tap mat
+tap mat.2
+tap radius.more
+drag 700 620 820 660
+clock until b.stroking == false within 3000
+state b.world.rev
+state b.world.fg.done
+# the overview framed on what was built, and the page drawn at the last revision
+tap tool
+tap tool.1
+clock +600
+hit 57 35
+hit 640 400
+screenshot apps/openagents-web/build/worldbuilder-run.png
+logs

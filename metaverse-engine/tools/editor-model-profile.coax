@@ -36,6 +36,15 @@ emp_check :: (profile_json: string, w: [] EmpWork) -> bool {
   if jv_int(d, jv_get(d, one, "templates"), -1) != m[0].nt || jv_int(d, jv_get(d, lim, "templates"), 0) != EM_TEMPLATES || jv_int(d, jv_get(d, lim, "parts_bytes"), 0) != EM_PARTS { return false; }
   here := jv_get(d, one, "here");
   if !m[0].here || jv_int(d, jv_at(d, here, 0), 0) != m[0].here_x || jv_int(d, jv_at(d, here, 1), 0) != m[0].here_z { return false; }
+  // a world kept on this device: how many things it holds and takes, its kinds in all, its land's brushes and materials
+  if jv_int(d, jv_get(d, lim, "materials"), 0) != EM_MATS { return false; }
+  loc := jv_get(d, 0, "local");
+  lw := emp_str(d, jv_get(d, loc, "wire"), w[0].wire[..]);
+  if lw.count == 0 || !em_read(m, lw, w[0].scratch[..]) || em_write(m, w[0].out[..]) != lw || !m[0].local || !m[0].all || !m[0].land || !m[0].here { return false; }
+  lworld := m[0].world;
+  if emp_str(d, jv_get(d, loc, "world"), nb[..]) != cast(string) lworld[0..<m[0].world_n] { return false; }
+  if jv_int(d, jv_at(d, jv_get(d, loc, "all"), 0), -1) != m[0].all_n || jv_int(d, jv_at(d, jv_get(d, loc, "all"), 1), -1) != m[0].all_cap || jv_int(d, jv_get(d, loc, "kinds"), -1) != m[0].kinds_all { return false; }
+  if jv_int(d, jv_at(d, jv_get(d, loc, "land"), 0), -1) != m[0].land_lo || jv_int(d, jv_at(d, jv_get(d, loc, "land"), 1), -1) != m[0].land_hi || jv_int(d, jv_get(d, loc, "materials"), -1) != m[0].nm { return false; }
   empty := emp_str(d, jv_get(d, jv_get(d, 0, "empty"), "wire"), w[0].wire[..]);
   if empty.count == 0 || !em_read(m, empty, w[0].scratch[..]) || m[0].ne != 0 || m[0].lane != 1 { return false; }
   rej := jv_get(d, 0, "rejected");

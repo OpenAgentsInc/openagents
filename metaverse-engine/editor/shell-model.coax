@@ -19,6 +19,12 @@
 //                                       (E5, #13414): saved groups of things, each placed as one edit
 //   t ID NAME                           a template: its row's ID and its name
 //   tp ID PARTS                         its parts (place.coax pl_template_write)
+//   all N CAP                           how many things the world holds in all, and how many it takes at
+//                                       most (E13, #13422): a world with more things than a model lists says so
+//   kinds N                             how many kinds the world has in all, when the model names only some of them
+//   local                               the world is kept on this device and has no live lane: nothing to publish
+//   land RMIN RMAX                      the world takes `terrain` edits: the smallest and the widest brush, centimetres
+//   m ID NAME                           a material a brush paints: its number in a `terrain` edit and its name
 //   here X Z                            the last point tapped on the ground, whole centimetres (E8, #13417);
 //                                       left out until a point is tapped
 //   no WORDS                            the last refusal, in words
@@ -38,6 +44,7 @@ EM_VALUE :: 80;        // bytes in a cell's value
 EM_WORDS :: 240;       // bytes in a refusal
 EM_TEMPLATES :: 32;    // templates
 EM_PARTS :: 480;       // bytes in a template's parts (place.coax PL_TEMPLATE)
+EM_MATS :: 16;         // materials a brush paints
 EM_BYTES :: 65536;     // bytes a model may take
 
 EdModel :: struct {
@@ -51,6 +58,11 @@ EdModel :: struct {
   nk: int; kind_id: [EM_KINDS] int; kind_name: [EM_KINDS] [EM_NAME] u8; kind_n: [EM_KINDS] int;
   ne: int; e_id: [EM_ENTS] int; e_kind: [EM_ENTS] int; e_x: [EM_ENTS] int; e_y: [EM_ENTS] int; e_z: [EM_ENTS] int; e_yaw: [EM_ENTS] int; e_scale: [EM_ENTS] int;
   nc: int; c_kind: [EM_CELLS] int; c_col: [EM_CELLS] [WE_NAME] u8; c_col_n: [EM_CELLS] int; c_val: [EM_CELLS] [EM_VALUE] u8; c_val_n: [EM_CELLS] int;
+  all: bool; all_n: int; all_cap: int;   // the world's things in all and at most (left out: the model lists them all)
+  kinds_all: int;                        // the world's kinds in all (0: the model names them all)
+  local: bool;                           // kept on this device: no live lane
+  land: bool; land_lo: int; land_hi: int;   // terrain edits are taken: a brush's radius, centimetres
+  nm: int; mat_id: [EM_MATS] int; mat_name: [EM_MATS] [EM_NAME] u8; mat_n: [EM_MATS] int;
   here: bool; here_x: int; here_z: int;
   no: [EM_WORDS] u8; no_n: int;
 }
@@ -120,6 +132,27 @@ em_cell :: (out: [] u8, at: int, kind: int, col: string, value: string) -> int {
   n = ct_put(out, n, " "); n = ct_put(out, n, col); n = ct_put(out, n, " "); n = ct_put(out, n, value);
   return ct_put(out, n, "\n");
 }
+em_all :: (out: [] u8, at: int, n_all: int, cap: int) -> int {
+  if n_all < 0 || cap < n_all { return out.count + 1; }
+  n := ct_put(out, at, "all "); n = ct_put_int(out, n, n_all); n = ct_put(out, n, " "); n = ct_put_int(out, n, cap);
+  return ct_put(out, n, "\n");
+}
+em_kinds_all :: (out: [] u8, at: int, n_all: int) -> int {
+  if n_all < 1 { return out.count + 1; }
+  n := ct_put(out, at, "kinds "); n = ct_put_int(out, n, n_all);
+  return ct_put(out, n, "\n");
+}
+em_local :: (out: [] u8, at: int) -> int { return ct_put(out, at, "local\n"); }
+em_land :: (out: [] u8, at: int, lo: int, hi: int) -> int {
+  if lo < 1 || hi < lo || hi > WE_REACH { return out.count + 1; }
+  n := ct_put(out, at, "land "); n = ct_put_int(out, n, lo); n = ct_put(out, n, " "); n = ct_put_int(out, n, hi);
+  return ct_put(out, n, "\n");
+}
+em_mat :: (out: [] u8, at: int, id: int, name: string) -> int {
+  if id < 0 || id > 255 || !em_text_ok(name, EM_NAME) { return out.count + 1; }
+  n := ct_put(out, at, "m "); n = ct_put_int(out, n, id); n = ct_put(out, n, " "); n = ct_put(out, n, name);
+  return ct_put(out, n, "\n");
+}
 em_here :: (out: [] u8, at: int, x: int, z: int) -> int {
   if x < -WE_REACH || x > WE_REACH || z < -WE_REACH || z > WE_REACH { return out.count + 1; }
   n := ct_put(out, at, "here "); n = ct_put_int(out, n, x); n = ct_put(out, n, " "); n = ct_put_int(out, n, z);
@@ -141,6 +174,11 @@ em_write :: (m: [] EdModel, out: [] u8) -> string {
   for k: 0..<m[0].ne { n = em_entity(out, n, m[0].e_id[k], m[0].e_kind[k], m[0].e_x[k], m[0].e_y[k], m[0].e_z[k], m[0].e_yaw[k], m[0].e_scale[k]); }
   for k: 0..<m[0].nc { n = em_cell(out, n, m[0].c_kind[k], cast(string) m[0].c_col[k][0..<m[0].c_col_n[k]], cast(string) m[0].c_val[k][0..<m[0].c_val_n[k]]); }
   for k: 0..<m[0].nt { n = em_template(out, n, m[0].t_id[k], cast(string) m[0].t_name[k][0..<m[0].t_name_n[k]], cast(string) m[0].t_parts[k][0..<m[0].t_parts_n[k]]); }
+  if m[0].all { n = em_all(out, n, m[0].all_n, m[0].all_cap); }
+  if m[0].kinds_all > 0 { n = em_kinds_all(out, n, m[0].kinds_all); }
+  if m[0].local { n = em_local(out, n); }
+  if m[0].land { n = em_land(out, n, m[0].land_lo, m[0].land_hi); }
+  for k: 0..<m[0].nm { n = em_mat(out, n, m[0].mat_id[k], cast(string) m[0].mat_name[k][0..<m[0].mat_n[k]]); }
   if m[0].here { n = em_here(out, n, m[0].here_x, m[0].here_z); }
   if m[0].no_n > 0 { n = em_no(out, n, cast(string) m[0].no[0..<m[0].no_n]); }
   if n > out.count { return ""; }
@@ -163,6 +201,7 @@ em_copy :: (to: [] u8, s: string) -> int {
 // The model in text, into m. False (and m not ok) for any bytes em_write would not write.
 em_read :: (m: [] EdModel, text: string, scratch: [] u8) -> bool {
   m[0].ok = false; m[0].nk = 0; m[0].ne = 0; m[0].nc = 0; m[0].no_n = 0; m[0].world_n = 0; m[0].here = false; m[0].table_n = 0; m[0].ttable_n = 0; m[0].nt = 0;
+  m[0].all = false; m[0].local = false; m[0].land = false; m[0].nm = 0; m[0].kinds_all = 0;
   for k: 0..<WE_COLS { m[0].cols[k] = false; }
   if text.count < EM_SCHEMA.count || text.count > EM_BYTES { return false; }
   lines := ct_parts(text, '\n');
@@ -208,6 +247,19 @@ em_read :: (m: [] EdModel, text: string, scratch: [] u8) -> bool {
       m[0].c_col_n[k] = em_copy(m[0].c_col[k][..], ct_part(line, ' ', 2));
       m[0].c_val_n[k] = em_copy(m[0].c_val[k][..], em_rest(line, 3));
       m[0].nc += 1;
+    } else if word == "all" {
+      m[0].all = true; m[0].all_n = ct_num(ct_part(line, ' ', 1)).v; m[0].all_cap = ct_num(ct_part(line, ' ', 2)).v;
+    } else if word == "kinds" {
+      m[0].kinds_all = ct_num(ct_part(line, ' ', 1)).v;
+    } else if word == "local" {
+      m[0].local = true;
+    } else if word == "land" {
+      m[0].land = true; m[0].land_lo = ct_num(ct_part(line, ' ', 1)).v; m[0].land_hi = ct_num(ct_part(line, ' ', 2)).v;
+    } else if word == "m" && m[0].nm < EM_MATS {
+      k := m[0].nm;
+      m[0].mat_id[k] = ct_num(ct_part(line, ' ', 1)).v;
+      m[0].mat_n[k] = em_copy(m[0].mat_name[k][..], em_rest(line, 2));
+      m[0].nm += 1;
     } else if word == "here" {
       m[0].here = true; m[0].here_x = ct_num(ct_part(line, ' ', 1)).v; m[0].here_z = ct_num(ct_part(line, ' ', 2)).v;
     } else if word == "no" {
@@ -299,4 +351,32 @@ em_test_text :: (out: [] u8) -> string {
   #assert em_entity(h[0].out[..], 0, 0, 1, 0, 0, 0, 0, 100) > EM_BYTES;
   #assert em_cell(h[0].out[..], 0, 1, "Kit", "v") > EM_BYTES && em_cell(h[0].out[..], 0, 1, "kit", "") > EM_BYTES;
   #assert em_no(h[0].out[..], 0, "") > EM_BYTES;
+}
+
+#test "a world kept on this device says so, with how many things it holds and takes, and the brushes its land takes" {
+  h: [1] EmTest; m := h[0].m[..]; out := h[0].out[..];
+  cols: [WE_COLS] bool; cols[WEC_X] = true;
+  n := em_begin(out, "create-world", 0, 12, 1, 0, 0);
+  n = em_cols(out, n, cols[..]);
+  n = em_kind(out, n, 3, "nature/rock-1");
+  n = em_entity(out, n, 900, 3, 0, 0, 0, 0, 100);
+  n = em_all(out, n, 1203, 4096);
+  n = em_kinds_all(out, n, 788);
+  n = em_local(out, n);
+  n = em_land(out, n, 100, 4000);
+  n = em_mat(out, n, 1, "Grass");
+  n = em_mat(out, n, 0, "Grid");
+  text := cast(string) out[0..<n];
+  #assert em_read(m, text, h[0].scratch[..]) && m[0].all && m[0].all_n == 1203 && m[0].all_cap == 4096 && m[0].kinds_all == 788 && m[0].local && m[0].land && m[0].land_lo == 100 && m[0].land_hi == 4000;
+  mn := m[0].mat_name[0];
+  #assert m[0].nm == 2 && m[0].mat_id[0] == 1 && cast(string) mn[0..<m[0].mat_n[0]] == "Grass" && m[0].mat_id[1] == 0;
+  // a model without them has none
+  n = em_begin(out, "splice", 0, 1, 0, 0, 0); n = em_cols(out, n, cols[..]);
+  #assert em_read(m, cast(string) out[0..<n], h[0].scratch[..]) && !m[0].all && !m[0].local && !m[0].land && m[0].nm == 0 && m[0].kinds_all == 0;
+  // what is not one is not written or read
+  #assert em_all(out, 0, 5, 4) > EM_BYTES && em_all(out, 0, -1, 4) > EM_BYTES && em_land(out, 0, 0, 10) > EM_BYTES && em_land(out, 0, 20, 10) > EM_BYTES;
+  #assert em_kinds_all(out, 0, 0) > EM_BYTES && !em_read(m, "editor.model.v1 splice dev 0 0 0 0\ncols\nkinds 0\n", h[0].scratch[..]) && !em_read(m, "editor.model.v1 splice dev 0 0 0 0\ncols\nkinds 5 6\n", h[0].scratch[..]);
+  #assert em_mat(out, 0, 256, "x") > EM_BYTES && em_mat(out, 0, 1, "") > EM_BYTES;
+  #assert !em_read(m, "editor.model.v1 splice dev 0 0 0 0\ncols\nlocal yes\n", h[0].scratch[..]) && !em_read(m, "editor.model.v1 splice dev 0 0 0 0\ncols\nall 5\n", h[0].scratch[..]);
+  #assert !em_read(m, "editor.model.v1 splice dev 0 0 0 0\ncols\nland 0 5\n", h[0].scratch[..]) && !em_read(m, "editor.model.v1 splice dev 0 0 0 0\ncols\nm 1\n", h[0].scratch[..]);
 }
