@@ -74,7 +74,7 @@
    "key": "made row",
    "form": "PATH|made||TITLE|LINE|URL|IMAGE|ALT|IMAGE_KIND|1200|630|KB|ERRORS|WARNINGS|",
    "says": "a made realm as a row of /og's table: its page, its link preview's words and picture, and what is missing",
-   "example": "/realms/list-fixture|made||List Fixture|A meadow by day with 6 pine trees, where Old Mott lives. A world built on the Verse.|https://openagents.com/worlds/list-fixture|/og/default.jpg|List Fixture|default|1200|630|0|no picture of its own yet (its owner's next visit takes one)|line written from what is in it|"
+   "example": "/realms/list-fixture|made||List Fixture|A meadow by day with 6 pine trees, where Old Mott lives. A world built on the OpenAgents Metaverse.|https://openagents.com/worlds/list-fixture|/og/default.jpg|List Fixture|default|1200|630|0|no picture of its own yet (its owner's next visit takes one)|line written from what is in it|"
   },
   {
    "key": "want",
@@ -225,7 +225,7 @@
    "as": "none",
    "body": "",
    "status": 200,
-   "reply": "list-fixture|List Fixture|A meadow by day with 6 pine trees, where Old Mott lives. A world built on the Verse.|2099-12-31T18:00|lowpoly",
+   "reply": "list-fixture|List Fixture|A meadow by day with 6 pine trees, where Old Mott lives. A world built on the OpenAgents Metaverse.|2099-12-31T18:00|lowpoly",
    "message": "ListedRow",
    "has_line": true
   },
@@ -236,7 +236,7 @@
    "as": "none",
    "body": "",
    "status": 200,
-   "reply": "/realms/list-fixture|made||List Fixture|A meadow by day with 6 pine trees, where Old Mott lives. A world built on the Verse.|https://openagents.com/worlds/list-fixture|/og/default.jpg|List Fixture|default|1200|630|0|no picture of its own yet (its owner's next visit takes one)|line written from what is in it|",
+   "reply": "/realms/list-fixture|made||List Fixture|A meadow by day with 6 pine trees, where Old Mott lives. A world built on the OpenAgents Metaverse.|https://openagents.com/worlds/list-fixture|/og/default.jpg|List Fixture|default|1200|630|0|no picture of its own yet (its owner's next visit takes one)|line written from what is in it|",
    "message": "MadeRow",
    "has_line": true
   },

@@ -177,7 +177,7 @@
    "as": "owner",
    "body": "{\"published\":true}",
    "status": 200,
-   "reply": "{\"listed\": true, \"published\": true, \"visibility\": \"public\", \"description\": \"A fork of Everglade on the Verse by OpenAgents, with the same rules.\"}",
+   "reply": "{\"listed\": true, \"published\": true, \"visibility\": \"public\", \"description\": \"A fork of Everglade on the OpenAgents Metaverse by OpenAgents, with the same rules.\"}",
    "message": "ForkPublishReply",
    "request": "ForkPublishRequest"
   },
@@ -198,7 +198,7 @@
    "as": "owner",
    "body": "{\"published\":false}",
    "status": 200,
-   "reply": "{\"listed\": false, \"published\": false, \"visibility\": \"unlisted\", \"description\": \"A fork of Everglade on the Verse by OpenAgents, with the same rules.\"}",
+   "reply": "{\"listed\": false, \"published\": false, \"visibility\": \"unlisted\", \"description\": \"A fork of Everglade on the OpenAgents Metaverse by OpenAgents, with the same rules.\"}",
    "message": "ForkPublishReply",
    "request": "ForkPublishRequest"
   }
