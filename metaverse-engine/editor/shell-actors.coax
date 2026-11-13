@@ -1,0 +1,164 @@
+// The editor shell's actors (GitHub #13466): a world whose NPCs move by plans by time of day
+// (metaverse-engine/ai/npc-plan.coax) shows a time-of-day control in the bar, an Actors list
+// beside the things, and the selected actor's plan at that time of day as a card of fields. The
+// model says all of it (shell-model.coax: plans, clock, a, p, as). shell.coax loads this file;
+// it is kit components like the rest of the shell and names no colour, face or size.
+//
+// Every change is a cell edit of the world's tables, so it is one undo step and the server's checks
+// answer it: the time of day is row 1 of the clock table, and a plan is row WHO * 10 + WHEN of the
+// plans table. Picking an actor is the page's to show: the shell asks it (ES_ACTOR, "actor N"), and
+// the page draws its route and notice range and frames it, then says so in the next model.
+#load "../ai/npc-plan.coax";
+
+ES_ACTOR :: 527;       // an action for the page: "actor N" (0: none): the NPC to show
+ES_CLOCKS :: 5;
+ES_CLOCK_WORD :: [ES_CLOCKS] string.["story", "dawn", "day", "dusk", "night"];
+ES_CLOCK_NAME :: [ES_CLOCKS] string.["Story time", "Dawn", "Day", "Dusk", "Night"];
+ES_CLOCK_NOTE :: [ES_CLOCKS] string.["The time of day the story is at", "", "", "", ""];
+ES_DO_NAME :: [NPL_DOS] string.["Stand", "Dance", "Sleep", "Guard", "Patrol", "Wander", "Follow"];
+ES_DO_NOTE :: [NPL_DOS] string.["At one point", "At one point", "At one point; notices less", "A post, then where it looks", "Along the route, 2 to 8 points", "Within X Z R", "Another actor: foe N"];
+ES_ON_NAME :: [NPL_ONS] string.["Chase", "Call", "Flee", "Ignore"];
+ES_ON_NOTE :: [NPL_ONS] string.["Goes after you", "Turns the others near it on you", "Runs from you", "Takes no notice"];
+ES_PLAN_COLS :: 3;
+ES_PLAN_COL :: [ES_PLAN_COLS] string.["speed", "notice", "route"];
+ES_PLAN_LABEL :: [ES_PLAN_COLS] string.["Speed cm/s", "Notices within cm", "Route"];
+ES_PLAN_HINT :: [ES_PLAN_COLS] string.["0 to 800", "0 to 3000", "X Z, X Z"];
+ES_OPEN_CLOCK :: 11; ES_OPEN_DO :: 12; ES_OPEN_ON :: 13;
+
+// The editor's time of day as a place in ES_CLOCK_WORD (0: the story's).
+es_clock_at :: (m: [] EdModel) -> int {
+  words := ES_CLOCK_WORD; ck := m[0].clock;
+  for k: 0..<ES_CLOCKS { if cast(string) ck[0..<m[0].clock_n] == words[k] { return k; } }
+  return 0;
+}
+// The time of day a plan card shows: the editor's, or dawn while the story keeps the time.
+es_plan_when :: (m: [] EdModel) -> string { words := ES_CLOCK_WORD; at := es_clock_at(m); return words[ifx at == 0 then 1 else at]; }
+// The selected actor's plan at that time: its place in the model, or -1.
+es_plan_shown :: (m: [] EdModel) -> int { return ifx m[0].asel > 0 then em_plan_at(m, m[0].asel, es_plan_when(m)) else -1; }
+
+// The bar's time-of-day control.
+es_build_clock :: (s: [] EdShell) {
+  t := s[0].tree[..]; u := s[0].ui[..]; m := s[0].model[..]; buf: [UI_ID] u8;
+  if m[0].ctable_n == 0 { return; }
+  names := ES_CLOCK_NAME; notes := ES_CLOCK_NOTE; at := es_clock_at(m);
+  k_select_begin(t, u, "clock", names[at], "The time of day the actors keep and the light is", s[0].open == ES_OPEN_CLOCK);
+  if s[0].open == ES_OPEN_CLOCK { for k: 0..<ES_CLOCKS { r := k_row(t, u, tr_join(buf[..], "clock.", k), names[k], notes[k], k == at); } }
+  k_select_end(t, s[0].open == ES_OPEN_CLOCK);
+}
+// The Actors list, under the things: each actor and what it does at the time shown.
+es_build_actors :: (s: [] EdShell) {
+  t := s[0].tree[..]; u := s[0].ui[..]; m := s[0].model[..]; buf: [UI_ID] u8;
+  if m[0].na == 0 { return; }
+  head := k_header(t, u, "actors.head", "Actors");
+  list := tr_open(t, "actors.list", TG_NAV, "list");
+  tr_attr(t, list, AT_LABEL, "Actors in the world");
+  when := es_plan_when(m); dn := ES_DO_NAME; ld := NPL_DO;
+  for k: 0..<m[0].na {
+    p := em_plan_at(m, m[0].a_id[k], when);
+    act := ifx p >= 0 then npl_word(ld[..], cast(string) m[0].p_do[p][0..<m[0].p_do_n[p]]) else -1;
+    an := m[0].a_name[k];
+    r := k_row(t, u, tr_join(buf[..], "actor.", m[0].a_id[k]), cast(string) an[0..<m[0].a_name_n[k]], ifx act >= 0 then dn[act] else "", m[0].a_id[k] == m[0].asel);
+  }
+  tr_close(t);
+}
+// The selected actor's plan at the time shown: what it does and on noticing, as selects; its speed, notice range and route as fields.
+es_build_plan :: (s: [] EdShell) {
+  t := s[0].tree[..]; u := s[0].ui[..]; m := s[0].model[..]; buf: [UI_ID] u8; line: [EM_WORDS] u8;
+  p := es_plan_shown(m); a := em_actor_at(m, m[0].asel);
+  if p < 0 || a < 0 { return; }
+  an := m[0].a_name[a];
+  n := ct_put(line[..], 0, cast(string) an[0..<m[0].a_name_n[a]]); n = ct_put(line[..], n, " at "); n = ct_put(line[..], n, es_plan_when(m));
+  card := k_card(t, u, "plan.card", cast(string) line[0..<n]);
+  ld := NPL_DO; lo := NPL_ON; dn := ES_DO_NAME; dnote := ES_DO_NOTE; on := ES_ON_NAME; onote := ES_ON_NOTE;
+  act := npl_word(ld[..], cast(string) m[0].p_do[p][0..<m[0].p_do_n[p]]); noticed := npl_word(lo[..], cast(string) m[0].p_on[p][0..<m[0].p_on_n[p]]);
+  k_select_begin(t, u, "pdo", ifx act >= 0 then dn[act] else "Does", "What it does", s[0].open == ES_OPEN_DO);
+  if s[0].open == ES_OPEN_DO { for k: 0..<NPL_DOS { r := k_row(t, u, tr_join(buf[..], "pdo.", k), dn[k], dnote[k], k == act); } }
+  k_select_end(t, s[0].open == ES_OPEN_DO);
+  k_select_begin(t, u, "pon", ifx noticed >= 0 then on[noticed] else "On noticing", "What it does when it notices you", s[0].open == ES_OPEN_ON);
+  if s[0].open == ES_OPEN_ON { for k: 0..<NPL_ONS { r := k_row(t, u, tr_join(buf[..], "pon.", k), on[k], onote[k], k == noticed); } }
+  k_select_end(t, s[0].open == ES_OPEN_ON);
+  labels := ES_PLAN_LABEL; hints := ES_PLAN_HINT;
+  for c: 0..<ES_PLAN_COLS { f := k_prop(t, u, tr_join(buf[..], "plan.", c), labels[c], hints[c]); }
+  off := k_icon_button(t, "actor.0", IC_X, "Show no actor");
+  tr_close(t);
+}
+// What a plan's column holds in the model, as text.
+es_plan_value :: (m: [] EdModel, p: int, c: int, out: [] u8) -> string {
+  if c == 0 { return cast(string) out[0..<ct_put_int(out, 0, m[0].p_speed[p])]; }
+  if c == 1 { return cast(string) out[0..<ct_put_int(out, 0, m[0].p_notice[p])]; }
+  return cast(string) m[0].p_route[p][0..<m[0].p_route_n[p]];
+}
+// One cell of the selected actor's plan at the time shown, as an edit of the plans table.
+es_plan_cell :: (s: [] EdShell, col: string, value: string) {
+  m := s[0].model[..];
+  p := es_plan_shown(m);
+  if p < 0 || m[0].ptable_n == 0 { return; }
+  lw := NPL_WHEN; w := npl_word(lw[..], es_plan_when(m));
+  e := WorldEdit.{ok = true, op = WE_CELL, id = npl_id(m[0].asel, w)};
+  tb := m[0].ptable;
+  e.table_n = ct_copy(e.table[..], cast(string) tb[0..<m[0].ptable_n]);
+  e.name_n = ct_copy(e.name[..], col);
+  e.text_n = ct_copy(e.text[..], value);
+  es_batch(s, WB_APPLY, e);
+}
+// A press on the actors' controls: true when it was one.
+es_actors_click :: (s: [] EdShell, id: string) -> bool {
+  m := s[0].model[..]; words: [24] u8;
+  if es_index(id, "clock.") >= 0 && es_index(id, "clock.") < ES_CLOCKS && m[0].ctable_n > 0 {
+    k := es_index(id, "clock.");
+    if k == es_clock_at(m) { return true; }
+    cw := ES_CLOCK_WORD;
+    e := WorldEdit.{ok = true, op = WE_CELL, id = 1};
+    tb := m[0].ctable;
+    e.table_n = ct_copy(e.table[..], cast(string) tb[0..<m[0].ctable_n]);
+    e.name_n = ct_copy(e.name[..], "when");
+    e.text_n = ct_copy(e.text[..], cw[k]);
+    es_batch(s, WB_APPLY, e);
+    return true;
+  }
+  if id == "actor.0" || (es_index(id, "actor.") > 0 && em_actor_at(m, es_index(id, "actor.")) >= 0) {
+    who := es_index(id, "actor.");
+    if who == m[0].asel { who = 0; }   // the shown one, pressed again: none
+    n := ct_put(words[..], 0, "actor "); n = ct_put_int(words[..], n, who);
+    _ := es_act(s, ES_ACTOR, cast(string) words[0..<n]);
+    return true;
+  }
+  ld := NPL_DO; lo := NPL_ON; p := es_plan_shown(m);
+  if es_index(id, "pdo.") >= 0 && es_index(id, "pdo.") < NPL_DOS {
+    k := es_index(id, "pdo.");
+    if p >= 0 && cast(string) m[0].p_do[p][0..<m[0].p_do_n[p]] != ld[k] { es_plan_cell(s, "do", ld[k]); }
+    return true;
+  }
+  if es_index(id, "pon.") >= 0 && es_index(id, "pon.") < NPL_ONS {
+    k := es_index(id, "pon.");
+    if p >= 0 && cast(string) m[0].p_on[p][0..<m[0].p_on_n[p]] != lo[k] { es_plan_cell(s, "on", lo[k]); }
+    return true;
+  }
+  return false;
+}
+// Enter in a plan's field: what is typed becomes a cell edit, unless it is what the plan holds.
+es_plan_submit :: (s: [] EdShell, c: int) {
+  m := s[0].model[..]; was: [16] u8;
+  p := es_plan_shown(m);
+  if p < 0 || c < 0 || c >= ES_PLAN_COLS { return; }
+  text := cast(string) s[0].pdraft[c][0..<s[0].pdraft_n[c]];
+  if text == es_plan_value(m, p, c, was[..]) { s[0].said_n = 0; return; }
+  if !em_text_ok(text, EM_ROUTE) { es_say(s, "A plan's field takes one line, and may not be empty."); return; }
+  cols := ES_PLAN_COL;
+  es_plan_cell(s, cols[c], text);
+}
+// The plan's fields hold what the model says: filled when the actor, the time shown or the revision changes.
+es_plan_fill :: (s: [] EdShell, d: [] Dom) {
+  m := s[0].model[..];
+  p := es_plan_shown(m);
+  key := ifx p < 0 then -1 else m[0].asel * 8 + es_clock_at(m);
+  if key == s[0].pshown && m[0].rev == s[0].pshown_rev { return; }
+  s[0].pshown = key; s[0].pshown_rev = m[0].rev;
+  if p < 0 { return; }
+  buf: [UI_ID] u8; was: [16] u8;
+  for c: 0..<ES_PLAN_COLS {
+    v := es_plan_value(m, p, c, was[..]);
+    s[0].pdraft_n[c] = em_copy(s[0].pdraft[c][..], v);
+    dm_value(d, tr_join(buf[..], "plan.", c), v);
+  }
+}

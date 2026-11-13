@@ -21,6 +21,7 @@
 #load "../../coax/lib/agent/world/turn.coax";   // what the agent's turn is told, and a hosted turn's plan
 #load "code-wire.coax";                         // a realm's code on the dev server: what is asked and answered
 #load "shell-assets.coax";                      // the Assets pane: the world's imports, a file dropped, its licence and the limits (#13420)
+#load "shell-actors.coax";                      // the actors: the time of day, the Actors list and the selected actor's plan (#13466)
 
 ES_INBOX :: 200704;    // a model (EM_BYTES), a field's text, or a file of code as typed (RC_TEXT, and room to see that it is longer), from the host
 ES_CSS :: 24576;
@@ -88,6 +89,8 @@ EdShell :: struct {
   draft: [WE_COLS] [ES_DRAFT] u8; draft_n: [WE_COLS] int;
   cell: [EM_CELLS] [EM_VALUE] u8; cell_n: [EM_CELLS] int;   // what is typed into a content cell's field, by the cell's place in the model
   shown_sel: int; shown_rev: int;        // the thing and the revision the fields were last filled for
+  pdraft: [ES_PLAN_COLS] [EM_ROUTE] u8; pdraft_n: [ES_PLAN_COLS] int;   // what is typed into the shown plan's fields (shell-actors.coax)
+  pshown: int = -2; pshown_rev: int = -1;  // the actor and time, and the revision, the plan's fields were last filled for
   acts: [ES_ACTS] [ES_ACT] u8; act_n: [ES_ACTS] int; act_kind: [ES_ACTS] int; nacts: int;
   // code: the page's module as the dev server knows it (none: no code here), the realm's files, and the one open
   code_page: [RC_PAGE] u8; code_page_n: int;
@@ -434,6 +437,7 @@ es_build :: (s: [] EdShell) {
     if s[0].open == ES_OPEN_COUNT { for k: 0..<ES_COUNTS { r := k_row(t, u, tr_join(buf[..], "count.", k), counts[k], "", k == s[0].count); } }
     k_select_end(t, s[0].open == ES_OPEN_COUNT);
   }
+  es_build_clock(s);
   fly := k_button(t, u, "fly", ifx s[0].fly then "Stop flying" else "Fly", BS_PLAIN);
   run := k_button(t, u, "run", ifx s[0].paused then "Play" else "Pause", BS_PLAIN);
   step := k_button(t, u, "step", "Step", BS_PLAIN);
@@ -476,6 +480,7 @@ es_build :: (s: [] EdShell) {
     }
     tr_close(t);
   }
+  es_build_actors(s);
   k_pane_end(t);
 
   // the realm's code takes the right side while it is open; else the selected thing, and what was refused
@@ -495,7 +500,8 @@ es_build :: (s: [] EdShell) {
     tr_close(t);
     tr_close(t);
   }
-  if sel < 0 { none := k_meta(t, "one.none", "Pick a thing from the list."); }
+  es_build_plan(s);
+  if sel < 0 { none := k_meta(t, "one.none", ifx m[0].na > 0 then "Pick a thing or an actor from the list." else "Pick a thing from the list."); }
   else {
     kind := em_kind_name(m, m[0].e_kind[sel], name[..]);
     card := k_card(t, u, "one.card", ifx kind.count > 0 then kind else "Thing");
@@ -605,9 +611,10 @@ es_click :: (s: [] EdShell, id: string) {
   m := s[0].model[..];
   // a select opens, or closes if it was the open one; any other press closes whichever is open
   was := s[0].open; s[0].open = ES_OPEN_NONE;
-  names := [10] string.["when", "kind", "tool", "grid", "add", "count", "file", "brush", "mat", "licence"];
+  names := [13] string.["when", "kind", "tool", "grid", "add", "count", "file", "brush", "mat", "licence", "clock", "pdo", "pon"];
   for name, k: names { if id == name { s[0].open = ifx was == k + 1 then ES_OPEN_NONE else k + 1; return; } }
   if es_as_click(s, id) { return; }
+  if s[0].have && es_actors_click(s, id) { return; }
   if es_code_click(s, id) { if s[0].code { s[0].assets = false; } return; }
   if es_index(id, "when.") >= 0 && es_index(id, "when.") < 2 { s[0].when = es_index(id, "when."); return; }
   // the viewport's tools are the shell's to pick and the page's to obey
@@ -826,6 +833,7 @@ coaxial_editor_frame :: (s: [] EdShell, dt: f32, reduced: bool) -> int #export_c
       dm_value(d, tr_join(buf[..], "cell.", k), cast(string) val[0..<m[0].c_val_n[k]]);
     }
   }
+  if s[0].have { es_plan_fill(s, d); }
   s[0].animating = s[0].ui[0].busy;
   s[0].dirty = false;
   bytes := dm_flush(d, s[0].tree[..], s[0].sets[..]);
@@ -835,7 +843,7 @@ coaxial_editor_frame :: (s: [] EdShell, dt: f32, reduced: bool) -> int #export_c
     if with >= 0 { s[0].code_fill = false; }
     if with > 0 { bytes = with; }
   }
-  if d[0].overflow { dm_reset(d); s[0].dirty = true; s[0].shown_sel = -1; s[0].code_fill = s[0].code && s[0].code_at >= 0; return -1; }
+  if d[0].overflow { dm_reset(d); s[0].dirty = true; s[0].shown_sel = -1; s[0].pshown = -2; s[0].code_fill = s[0].code && s[0].code_at >= 0; return -1; }
   return bytes;
 }
 coaxial_editor_busy :: (s: [] EdShell) -> bool #export_c #effects(all) { return s.count > 0 && (s[0].dirty || s[0].animating); }
@@ -885,6 +893,19 @@ es_event :: (s: [] EdShell, kind: int, slot: int, length: int) {
       s[0].cell_n[cell] = n;
     }
     if kind == ES_SUBMIT { es_submit_cell(s, cell); }
+    return;
+  }
+  pc := es_index(id, "plan.");
+  if pc >= 0 && pc < ES_PLAN_COLS {
+    if kind == ES_INPUT {
+      lo := 0; hi := ifx length < 0 then 0 else ifx length > ES_INBOX then ES_INBOX else length;
+      while lo < hi && (s[0].inbox[lo] == ' ' || s[0].inbox[lo] == '\n') { lo += 1; }
+      while hi > lo && (s[0].inbox[hi - 1] == ' ' || s[0].inbox[hi - 1] == '\n') { hi -= 1; }
+      n := ifx hi - lo > EM_ROUTE then 0 else hi - lo;   // longer than a route holds: not one
+      for i: 0..<n { s[0].pdraft[pc][i] = s[0].inbox[lo + i]; }
+      s[0].pdraft_n[pc] = n;
+    }
+    if kind == ES_SUBMIT { es_plan_submit(s, pc); }
     return;
   }
   col := es_index(id, "col.");
@@ -1710,3 +1731,4 @@ es_test_local :: (h: [] EsTest, listed: int, in_all: int) {
   #assert es_test_view(h[..], w[..]) == "tool select" && tr_find(t, "brush") < 0 && tr_find(t, "grid") > 0;
 }
 #load "shell-assets-checks.coax" #test;   // the Assets pane (#13420)
+#load "shell-actors-checks.coax" #test;   // the actors (#13466)

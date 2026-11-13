@@ -252,6 +252,15 @@ SptShell :: struct { m: [1] EdModel; scratch: [EM_BYTES] u8; name: [EM_NAME] u8;
   out := "{\"schema\":\"world.edit.v1\",\"rev\":3,\"do\":\"apply\",\"edits\":[{\"op\":\"despawn\",\"id\":1}]}";
   #assert spt_round(x[..], 1.1, spt_events(x[..], out, 4)) == WFQ_EVENTS && f[0].rev == 4;
   #assert em_read(m, spw_model(g, p), k[0].scratch[..]) && m[0].ne == 1 && m[0].undo == 1 && m[0].redo == 1 && m[0].e_id[0] == 2;
+  // the foes and their plans by time of day, the clock the story's, no foe shown (#13466)
+  pt := m[0].ptable; ck := m[0].clock; an := m[0].a_name[5]; pr := m[0].p_route[em_plan_at(m, 6, "dusk")];
+  #assert m[0].na == FOES && m[0].np == FOES * 4 && m[0].asel == 0 && cast(string) pt[0..<m[0].ptable_n] == "plans" && cast(string) ck[0..<m[0].clock_n] == "story";
+  #assert cast(string) an[0..<m[0].a_name_n[5]] == "Imperial 1" && cast(string) pr[0..<m[0].p_route_n[em_plan_at(m, 6, "dusk")]] == "850 -4500, 850 -5700";
+  // a foe shown: the model says so, the game draws its plan, and a page in the village goes to the mine
+  spw_actor(g, p, 6);
+  #assert em_read(m, spw_model(g, p), k[0].scratch[..]) && m[0].asel == 6 && g[0].shown == 5 && g[0].zone == Z_MINE;
+  spw_actor(g, p, 10);
+  #assert em_read(m, spw_model(g, p), k[0].scratch[..]) && m[0].asel == 0 && g[0].shown == -1;
 }
 
 SptView :: struct { vp: [1] Viewport; w: [1] SpvWork; }

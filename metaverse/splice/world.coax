@@ -199,6 +199,8 @@ spw_why :: (g: [] SpGame, r: SpwEdit, out: [] u8) -> string {
 // ---- the content tables, edited (GitHub #13419, the browser editor's E10)
 
 SPW_KINDS :: "pieces";   // the table a placed piece's kind is a row of
+SPW_PLANS :: "plans";   // the table the foes' plans are rows of (#13466)
+SPW_CLOCK :: "clock";   // the table whose row 1 is the editor's time of day
 SPW_TEMPLATES :: "templates";   // the table a saved group of pieces is a row of (place.coax pl_template_*)
 SPW_TABLES :: 16384;   // bytes the content tables' document may take (the shipped one is about 4,000)
 SPE_CELL :: 25;      // no such table, row or column, or a value the column does not take
@@ -395,7 +397,8 @@ SpwPage :: struct {
   tables_gen: int;     // counts the changes to them the page must draw: a read of other tables, or a cell event
   sel: int; own_rev: int = -1;
   here: bool; here_x: int; here_z: int;   // the last point tapped on the ground (viewport.coax), centimetres
-  model: [EM_BYTES] u8; model_n: int; model_rev: int; model_key: [10] int;
+  actor: int;   // the selected foe (1 to FOES; 0: none): the page draws its route and notice range (#13466)
+  model: [EM_BYTES] u8; model_n: int; model_rev: int; model_key: [12] int;
 }
 // The page opens the world on a lane: dev for someone who edits, live for someone who plays.
 spw_page_open :: (g: [] SpGame, p: [] SpwPage, lane: int) -> bool { return wf_open(p[0].f[..], SPW_ID, lane, spw_pins(g)); }
@@ -487,13 +490,14 @@ spw_model :: (g: [] SpGame, p: [] SpwPage) -> string {
     if f[0].undo < 1 { f[0].undo = 1; } if f[0].redo < 1 { f[0].redo = 1; }
     p[0].own_rev = f[0].rev;
   }
-  key: [10] int;
+  key: [12] int;
+  key[10] = p[0].tables_gen * 16 + p[0].actor; key[11] = c[0].clock;
   key[8] = ifx p[0].here then p[0].here_x else -1; key[9] = ifx p[0].here then p[0].here_z else -1;
   key[0] = l[0].rev; key[1] = f[0].rev; key[2] = f[0].undo; key[3] = f[0].redo; key[4] = p[0].sel;
   key[5] = f[0].refused_n * 1000 + f[0].refused_status; key[6] = f[0].status; key[7] = f[0].sent;
   same := p[0].model_n > 0;
   for k: 0..<7 { if key[k] != p[0].model_key[k] { same = false; } }
-  if key[8] != p[0].model_key[8] || key[9] != p[0].model_key[9] { same = false; }
+  for k: 8..<12 { if key[k] != p[0].model_key[k] { same = false; } }
   // (a refusal in the same words as the last is a new one when a request went between them)
   if key[7] != p[0].model_key[7] && f[0].refused_n > 0 { same = false; }
   if same { return cast(string) p[0].model[0..<p[0].model_n]; }
@@ -525,11 +529,53 @@ spw_model :: (g: [] SpGame, p: [] SpwPage) -> string {
       if col.count > 0 && val.count > 0 { n = em_cell(out, n, row.v, col, val); }
     }
   }
+  n = spw_model_plans(g, p, tables, out, n);
   if p[0].here { n = em_here(out, n, p[0].here_x, p[0].here_z); }
   if f[0].refused_n > 0 { n = em_no(out, n, wf_refused(f)); }
   p[0].model_n = ifx n > out.count then 0 else n;
   p[0].model_rev += 1;
   return cast(string) p[0].model[0..<p[0].model_n];
+}
+// The foes' plans for the shell (#13466): the plans and clock tables, the clock, each foe by name, each
+// plan as its row holds it, and the selected foe.
+spw_model_plans :: (g: [] SpGame, p: [] SpwPage, tables: string, out: [] u8, at: int) -> int {
+  c := g[0].c[..]; words := SC_CLOCK_WORD;
+  n := em_plans(out, at, SPW_PLANS);
+  n = em_clock(out, n, SPW_CLOCK, words[c[0].clock + 1]);
+  nm: [EM_NAME] u8;
+  for i: 0..<FOES { n = em_actor(out, n, i + 1, spw_foe_name(i, nm[..])); }
+  inside := false;
+  for k: 0..<ct_parts(tables, '\n') {
+    line := ct_part(tables, '\n', k);
+    if ct_part(line, ' ', 0) == "table" { inside = ct_part(line, ' ', 1) == SPW_PLANS; continue; }
+    if !inside || ct_parts(line, '|') != 8 { continue; }
+    // id|who|when|do|route|speed|notice|on
+    n = em_plan(out, n, ct_num(ct_part(line, '|', 1)).v, ct_part(line, '|', 2), ct_part(line, '|', 3), ct_num(ct_part(line, '|', 5)).v, ct_num(ct_part(line, '|', 6)).v, ct_part(line, '|', 7), ct_part(line, '|', 4));
+  }
+  if p[0].actor > 0 { n = em_asel(out, n, p[0].actor); }
+  return n;
+}
+// A foe's name: Raider 1 to 5, then Imperial 1 to 4.
+spw_foe_name :: (i: int, out: [] u8) -> string {
+  n := ct_put(out, 0, ifx i < F_RAIDERS then "Raider " else "Imperial ");
+  n = ct_put_int(out, n, ifx i < F_RAIDERS then i + 1 else i - F_RAIDERS + 1);
+  return ifx n > out.count then "" else cast(string) out[0..<n];
+}
+// The shell selects a foe by its number (1 to FOES; 0 or any other: none). The game draws its route
+// and notice range, and a foe stands in the mine: a page elsewhere goes there.
+spw_actor :: (g: [] SpGame, p: [] SpwPage, id: int) {
+  p[0].actor = ifx id >= 1 && id <= FOES then id else 0;
+  g[0].shown = p[0].actor - 1;
+  if p[0].actor > 0 && g[0].zone != Z_MINE { g_enter_mine(g); }
+}
+// The fly camera over foe i: above and behind the middle of where it stands and its route at this time of day, looking down at it.
+spv_frame_foe :: (g: [] SpGame, vp: [] Viewport, seen: VpView, i: int) {
+  pl := sc_plan(g[0].c[..], i, g_phase(g));
+  x := g[0].fx[i]; z := g[0].fz[i]; n := 1;
+  for k: 0..<pl.n { x += mp_m(pl.x[k]); z += mp_m(pl.z[k]); n += 1; }
+  x = x / cast(f32) n; z = z / cast(f32) n;
+  v := seen; v.ex = x; v.ey = 14; v.ez = z + 12; v.ax = x; v.ay = 0; v.az = z;
+  vp_fly_from(vp, v); vp[0].fly = true;
 }
 // The shell's batch (world.edit.v1), sent as this page's own write. False while one is in flight.
 spw_shell_batch :: (p: [] SpwPage, body: string) -> bool {

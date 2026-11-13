@@ -44,6 +44,8 @@ Splice :: struct {
   imports_n: int;             // bytes of the world's import pack the face keeps (splice_imports); imports_refused: packs that did not read
   imports_refused: int;
   tables_seen: int;           // the page's count of table changes it has drawn (world.coax SpwPage.tables_gen)
+  foes_seen: int = -1;        // the same count, and the editor's clock, the foes last started from their plans at (#13466)
+  clock_seen: int = -2;
   drive: [1] Drive;           // the agent driver's lists and its last answer (metaverse-engine/agent/drive.coax)
   // In the site's sandboxed frame (metaverse-engine/host/realm-frame.coax, #13432): what the frame is
   // (the host says before each message), and the last answer to the page that holds it.
@@ -433,6 +435,13 @@ splice_message :: (s: [] Splice, kind: int, body: string) #export_c #effects(all
   // "mesh NAME HX HZ TOP": the shell imported a mesh into the world's pack; its row of the pieces table is this page's write (world.coax spw_import_kind)
   if kind == 525 && s.count > 0 && s[0].edit && s[0].follow == 2 { _ := spw_import_kind(s[0].page[..], body); return; }
   if kind == 522 && s.count > 0 && s[0].edit { _ := vp_act(s[0].vp[..], body, s[0].vview); return; }   // the viewport's tool, grid, camera and clock
+  // "actor N": the foe to show (0: none); its route and notice range are drawn and the camera flies to it (#13466)
+  if kind == 527 && s.count > 0 && s[0].edit && ct_part(body, ' ', 0) == "actor" {
+    g := s[0].game[..]; s[0].started = true;
+    spw_actor(g, s[0].page[..], sp_whole(body, 0));
+    if s[0].page[0].actor > 0 { spv_frame_foe(g, s[0].vp[..], s[0].vview, s[0].page[0].actor - 1); }
+    return;
+  }
   if kind == 610 && s.count > 0 && body.count > 0 {   // a moment of the game to stand in: "0" to "10"
     n := 0;
     for i: 0..<body.count { d := cast(int) body[i] - 48; if d >= 0 && d <= 9 { n = n * 10 + d; } }
@@ -528,6 +537,14 @@ splice_frame :: (s: [] Splice, out: [] f32, u: [] f32, width: f32, height: f32, 
     // simulated, the player's keys do not reach the game
     vp := s[0].vp[..];
     if !vp_hands(vp) { g[0].fwd = false; g[0].back = false; g[0].left = false; g[0].right = false; g[0].turn_l = false; g[0].turn_r = false; }
+    // the editor's time of day is the world's clock table; Simulate runs the foes as if no one were there (#13466)
+    if s[0].edit {
+      g[0].unseen = vp[0].sim;
+      if s[0].clock_seen != g[0].c[0].clock || s[0].foes_seen != s[0].page[0].tables_gen {
+        s[0].clock_seen = g[0].c[0].clock; s[0].foes_seen = s[0].page[0].tables_gen;
+        g[0].view = g[0].c[0].clock; g_foes(g);
+      }
+    }
     g_step(g, vp_run_dt(vp, step));
     view = g_camera(g); key = g_key_light(g); flash = g[0].flash;
     seen := VpView.{ex = view.eye.x, ey = view.eye.y, ez = view.eye.z, ax = view.at.x, ay = view.at.y, az = view.at.z, fov = view.fov, w = width, h = height};
