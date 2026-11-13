@@ -70,7 +70,7 @@ fo_out_bin::(o:[]FrameObserved,text:string,to:int,bytes:int)->int #effects(all) 
     if !e.ok{fo_bump(o,128+cast(int)'?',(text.count-at)*to,to);break;}
     en:=text[e.a..<e.b];key:=128+fo_bin_letter(en);
     if wt_kind(en)==WT_ROWS||wt_kind(en)==WT_ROW{
-      r:[1]WtR;r[0]=wt_r(en,1);if wt_kind(en)==WT_ROWS{ignored:=wt_get(r[..],en,1);}id:=wt_get_u(r[..],en,WT_ID_G);
+      r:[1]WtR;r[0]=wt_r(en,1);id:=wt_get_u(r[..],en,WT_ID_G);
       if r[0].ok{key=ifx id>=200000 then FO_MADE else ifx id>=100000 then FO_FOLK else FO_PLAYER;}
     }
     fo_bump(o,key,(e.b-at)*to,to);at=e.b;

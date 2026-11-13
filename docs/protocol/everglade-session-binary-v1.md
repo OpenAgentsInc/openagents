@@ -88,7 +88,8 @@ The rounding is where a float becomes its whole number, in `everglade-wire.coax`
 entries. Each entry is its length (one byte under 128; else two: 128 plus the high bits, then
 the low byte) and its bytes, which are a frame of their own: an opcode and fields.
 
-Rows go as one entry, a run (kind 2): for each row a 1 bit and the row, then a 0 bit. A row
+Rows go as one entry, a run (kind 2): the rows back to back, each ended with zero bits to a
+whole byte, to the entry's end. A row
 is its entity's id (`u8`), BACK (`b4`), the mask of the fields that changed, and each changed
 field's change (`i4`). The mask is two levels: five bits say which runs of fields changed
 (fields 0 to 4, 5 to 7, 8 to 12, 13 to 17, 18 to 22), then each changed run's own bits. The 23

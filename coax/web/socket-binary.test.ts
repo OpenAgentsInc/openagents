@@ -156,7 +156,7 @@ test("the latency observer reads a binary state frame's head as text", () => {
   // the table's golden bytes for "D 900 41 0 0 x 7;o 3" and "D 901 41 2 1 ..." (proto/verse/everglade-session-binary-v1.json)
   const hex = (h: string) => new Uint8Array(h.match(/../g)!.map((x) => parseInt(x, 16)))
   expect(binaryState(hex("81090e520003840700028f06"))).toBe("D 900 41 0 0 ")
-  expect(binaryState(hex("810b0e5244800b82804041084201010421000791a91ead1e3840"))).toBe("D 901 41 2 1 ")
+  expect(binaryState(hex("810b0e5244800b82008082108000808210800791a91ead1e3840"))).toBe("D 901 41 2 1 ")
   expect(binaryState(hex("b1520470005bde81048700"))).toBe("")
   expect(binaryState(hex("8109"))).toBe("")
 })

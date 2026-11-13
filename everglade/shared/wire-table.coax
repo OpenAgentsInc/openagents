@@ -27,7 +27,7 @@
 // The state frame D is its header (tick, ack, flags, part), zero bits to a whole byte, then its
 // entries, each its length (one byte under 128, else two: 128 + the high bits, then the low byte)
 // and its bytes, which are a frame of their own (an opcode and fields). Rows go as one entry, a
-// run: for each row a 1 bit and the row, then a 0 bit.
+// run: the rows back to back, each ended with zero bits to a whole byte, to the entry's end.
 // A row: its entity's id as u8, BACK as b4, the mask of the fields that changed in two levels
 // (which of five runs of fields changed, then each changed run's own bits), then each changed
 // field's change as i4. The fields and their units are WT_ROW_FIELDS.
@@ -55,13 +55,14 @@ WtKind :: struct { head: string; spec: string; who: int; ex: string; note: strin
 
 // The kinds a writer or reader names in code. A kind's number is its row and never changes; a kind
 // that goes keeps its row.
-WT_ANY :: 0; WT_D :: 1; WT_ROWS :: 2; WT_ROW :: 3; WT_X :: 4; WT_W :: 5; WT_R :: 6; WT_N :: 10; WT_WANTED :: 11;
+WT_ANY :: 0; WT_D :: 1; WT_ROWS :: 2; WT_ROW :: 3; WT_X :: 4; WT_W :: 5; WT_REFUSED :: 6; WT_N :: 10; WT_WANTED :: 11;
 WT_LINK :: 14; WT_OUTCOMES :: 15; WT_P :: 47; WT_H :: 48; WT_I :: 49; WT_J1 :: 50; WT_C :: 51; WT_E :: 52;
+WT_R :: 53; WT_L :: 54; WT_Z :: 55; WT_V :: 56; WT_ADMIN :: 57; WT_K :: 58; WT_T :: 59; WT_O :: 60; WT_A :: 61; WT_F :: 62;
 WT_KINDS :: 63;
 WT :: [WT_KINDS] WtKind.[
   WtKind.{head = "", spec = "", who = 0, ex = "q 1 two -3", note = "a frame the table has no row for: one bit, 0 its words (their count as u4, each as t), 1 its bytes as a word"},
   WtKind.{head = "D", spec = "tick:u7@tick ack:u7@seq f:b3@bits part:u3", who = WT_ROOM, ex = "D 900 41 0 0 x 7;o 3", note = "state at TICK; ACK the last input stepped; F 1 a snapshot, 2 more of this tick follows, 4 out of band; then the entries"},
-  WtKind.{head = "S", spec = "", who = WT_ENTRY, ex = "SBQCEIA", note = "a run of rows (wire 7: one S entry each)"},
+  WtKind.{head = "S", spec = "", who = WT_ENTRY, ex = "SBQCEIA", note = "a run of rows, each ended with zero bits to a whole byte (wire 7: one S entry each)"},
   WtKind.{head = "s", spec = "", who = WT_ENTRY, ex = "s 5 0 3 2 -40", note = "one row, as wire 7's plain s wrote it: the same bits as a row of a run"},
   WtKind.{head = "x", spec = "id:u8@id", who = WT_ENTRY, ex = "x 1170301", note = "an entity gone, or out of your view"},
   WtKind.{head = "W", spec = "tick:u7@tick hz:u6@hz seed:i8 day:u8@ms weather:u3 budget:u7@bytes", who = WT_ROOM, ex = "W 900 30 12345 600000 2 1000", note = "the world header"},
@@ -572,7 +573,7 @@ wt_bin_entry :: (t: string, out: [] u8, at: int, tabled: [] bool) -> int {
     row := wt_row_of_text(t);
     if row.ok {
       w: [1] WtW; w[0] = wt_w(at + 1);
-      if t[0] == 'S' { out[at] = cast(u8) (WT_BIN + WT_ROWS); wt_put(w[..], out, 1, 1); wt_row_put_d(w[..], out, row); wt_put(w[..], out, 0, 1); }
+      if t[0] == 'S' { out[at] = cast(u8) (WT_BIN + WT_ROWS); wt_row_put_d(w[..], out, row); }
       else { out[at] = cast(u8) (WT_BIN + WT_ROW); wt_row_put_d(w[..], out, row); }
       return ifx w[0].ok then wt_end(w[..]) else -1;
     }
@@ -596,15 +597,15 @@ wt_text_entry :: (t: string, out: [] u8, at: int) -> int {
   r: [1] WtR; r[0] = wt_r(t, 1);
   if k == WT_ROWS {
     n := at; first := true;
-    while wt_get(r[..], t, 1) == 1 {
-      row := wt_row_get(r[..], t);
-      if !row.ok { return -1; }
+    while r[0].bit < r[0].end {
+      row := wt_row_get(r[..], t); wt_get_pad(r[..], t);
+      if !row.ok || !r[0].ok { return -1; }
       if !first { n = wt_text_put(out, n, ";"); }
       if n >= 0 { n = wt_row_text(row, true, out, n); }
       if n < 0 { return -1; }
       first = false;
     }
-    return ifx !first && wt_done(r[..], t) then n else -1;
+    return ifx !first then n else -1;
   }
   if k == WT_ROW {
     row := wt_row_get(r[..], t);
@@ -640,7 +641,7 @@ wt_bin_told :: (t: string, out: [] u8, tabled: [] bool) -> int {
         if n + 3 > out.count { return -1; }
         run_at = n; out[n + 2] = cast(u8) (WT_BIN + WT_ROWS); run[0] = wt_w(n + 3);
       }
-      wt_put(run[..], out, 1, 1); wt_row_put_d(run[..], out, row);
+      wt_row_put_d(run[..], out, row); wt_put_pad(run[..], out);
     } else {
       if run_at >= 0 { n = wt_run_end(run[..], out, run_at); run_at = -1; if n < 0 { return -1; } }
       // the entry after a byte for its length; moved a byte on when it needs two
@@ -660,9 +661,8 @@ wt_bin_told :: (t: string, out: [] u8, tabled: [] bool) -> int {
   if run_at >= 0 && n >= 0 { n = wt_run_end(run[..], out, run_at); }
   return n;
 }
-// A run of rows closed: its last bit, and its length in the two bytes kept before it. The bytes' end.
+// A run of rows closed: its length in the two bytes kept before it. The bytes' end.
 wt_run_end :: (run: [] WtW, out: [] u8, run_at: int) -> int {
-  wt_put(run, out, 0, 1);
   if !run[0].ok { return -1; }
   end := wt_end(run); size := end - (run_at + 2);
   if size >= 32768 { return -1; }
@@ -700,13 +700,16 @@ wt_test_round :: (t: string, bytes: int) -> bool {
   return m == t.count && cast(string) back[0..<m] == t;
 }
 #test "wire table: every kind's opcode is its row, its example is written as its row says and comes back byte for byte" {
+  #assert WT[WT_R].head == "R" && WT[WT_L].head == "L" && WT[WT_Z].head == "Z" && WT[WT_V].head == "V" && WT[WT_ADMIN].head == "X" && WT[WT_K].head == "K" && WT[WT_T].head == "T" && WT[WT_O].head == "O" && WT[WT_A].head == "A" && WT[WT_F].head == "F";
   #assert WT.count == WT_KINDS && WT[WT_I].head == "I" && WT[WT_J1].head == "J1" && WT[WT_H].head == "H" && WT[WT_P].head == "P" && WT[WT_C].head == "C" && WT[WT_E].head == "E";
-  #assert WT[WT_X].head == "x" && WT[WT_W].head == "W" && WT[WT_R].head == "r" && WT[WT_N].head == "n" && WT[WT_WANTED].head == "w" && WT[WT_LINK].head == "k" && WT[WT_OUTCOMES].head == "o";
+  #assert WT[WT_X].head == "x" && WT[WT_W].head == "W" && WT[WT_REFUSED].head == "r" && WT[WT_N].head == "n" && WT[WT_WANTED].head == "w" && WT[WT_LINK].head == "k" && WT[WT_OUTCOMES].head == "o";
   for k: 0..<WT_KINDS {
     b: [512] u8; tabled: [1] bool;
     n := wt_bin_told(WT[k].ex, b[..], tabled[..]);
     #assert n > 0 && cast(int) b[0] == WT_BIN + k && tabled[0] == (k != WT_ANY) && wt_test_round(WT[k].ex, 0);
     #assert WT[k].who >= 0 && WT[k].who <= WT_PAGE && WT[k].note.count > 0;
+    // the kinds named in code are the rows they name
+    for nm: [10] int.[WT_R, WT_L, WT_Z, WT_V, WT_ADMIN, WT_K, WT_T, WT_O, WT_A, WT_F] { if k == nm { #assert WT[k].who == WT_PAGE; } }
     // a spec's fields all parse: a name, a known type, bits where the type has them
     at := 0;
     while true {

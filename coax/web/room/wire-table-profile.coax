@@ -71,7 +71,7 @@ wp_write :: (o: [] WpOut, file: string) {
   wp_s(o, "  \"row\": {\"id\": \"u"); wp_int(o, WT_ID_G); wp_s(o, "\", \"back\": \"b"); wp_int(o, WT_BACK_BITS); wp_s(o, "\", \"change\": \"i"); wp_int(o, WT_D_G);
   wp_s(o, "\", \"mask\": \"b5 which runs of fields changed, then each changed run's bits\", \"runs\": [");
   for g: 0..<WT_RUNS + 1 { if g > 0 { wp_s(o, ", "); } wp_int(o, WT_RUN_AT[g]); }
-  wp_s(o, "], \"run\": \"kind 2: for each row a 1 bit and the row, then a 0 bit\",\n    \"fields\": [");
+  wp_s(o, "], \"run\": \"kind 2: the rows back to back, each ended with zero bits to a whole byte, to the entry's end\",\n    \"fields\": [");
   for q: 0..<WT_SF {
     f := WT_ROW_FIELDS[q]; a := 0; while a < f.count && f[a] != '@' { a += 1; }
     if q > 0 { wp_s(o, ", "); }

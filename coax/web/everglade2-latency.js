@@ -36,13 +36,14 @@
       let len = u8[at], a = at + 1;
       if (len >= 128) { len = (len - 128) * 256 + u8[at + 1]; a = at + 2; }
       if (!len || a + len > u8.length) break;
-      if (u8[a] === 130) {   // a run of rows: for each a 1 bit and the row (id u8, BACK b4, the mask in two levels, each change i4)
+      if (u8[a] === 130) {   // a run of rows, each to a whole byte: id u8, BACK b4, the mask in two levels, each change i4
         n.row_b = (n.row_b || 0) + a + len - at; bit = (a + 1) * 8;
         const runs = [5, 3, 5, 5, 5];
-        for (let rows = 0; rows < 4096 && bit < (a + len) * 8 && get(1); rows++) {
+        for (let rows = 0; rows < 4096 && bit < (a + len) * 8; rows++) {
           u(8); get(4); const said = get(5); let fields = 0;
           for (let g = 0; g < 5; g++) if (said & (1 << g)) { let m = get(runs[g]); while (m) { fields += m & 1; m >>= 1; } }
           for (let q = 0; q < fields; q++) u(4);
+          bit = (bit + 7) & ~7;
           n.row_n = (n.row_n || 0) + 1;
         }
       }

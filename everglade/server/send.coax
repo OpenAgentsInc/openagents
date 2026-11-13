@@ -3,6 +3,9 @@
 // ---- what a seat hears
 
 EgOut :: struct { b: [EG_CHUNK + 512] u8; n: int; any: bool; part: int;
+  // bin: the seat's page reads binary frames (#13278): each entry goes in after its length, as the table's
+  // bytes (a row run and an x come so from the seat's frame; any other entry is turned from its text here)
+  bin: bool;
   // dg: a WebTransport seat (room-wt.coax): its state entries in g, one datagram; the rest in b, out of band
   dg: bool; g: [EG_DG_ROWS] u8; gn: int; gany: bool; }
 eg_out_entry :: (o: [] EgOut, v: [] RmServer, k: int, s_id: SeatId, f: int, entry: string) { s := s_id.value;
@@ -15,10 +18,34 @@ eg_out_entry :: (o: [] EgOut, v: [] RmServer, k: int, s_id: SeatId, f: int, entr
     }
     c := v[0].eg[k].seat[s].conn; if rm_wt_on(v, c) { v[0].wt[c].spilled += 1; }   // past the datagram: out of band, never lost
   }
+  if o[0].bin {
+    if o[0].any && o[0].n + entry.count + 10 > EG_CHUNK { eg_out_send(o, v, k, s_id, f | 2); }
+    at := o[0].n + 1; m := at;
+    if wt_is_bin(entry) { m = put(o[0].b[..], at, entry); }
+    else {
+      tabled: [1] bool; tabled[0] = true;
+      m = wt_bin_entry(entry, o[0].b[..], at, tabled[..]);
+      if m < 0 { return; }
+      if !tabled[0] { v[0].st.wire_any += 1; }
+    }
+    size := m - at;
+    if size >= 128 {   // two bytes of length: the entry moves one on
+      i := m; while i > at { o[0].b[i] = o[0].b[i - 1]; i -= 1; }
+      m += 1;
+    }
+    if size <= 0 || wt_len_put(o[0].b[..], o[0].n, size) < 0 { return; }
+    o[0].n = m; o[0].any = true;
+    return;
+  }
   if o[0].any && o[0].n + entry.count + 1 > EG_CHUNK { eg_out_send(o, v, k, s_id, f | 2); }
   if o[0].any { o[0].b[o[0].n] = ';'; o[0].n += 1; }
   o[0].n = put(o[0].b[..], o[0].n, entry);
   o[0].any = true;
+}
+// A D's header for the seat's wire: the table's bytes for a page that reads binary, else text.
+eg_out_head :: (o: [] EgOut, h: [] u8, d: WireD) -> int {
+  if o[0].bin { return wt_d_put(h, 0, d.tick, d.ack, d.f, d.part); }
+  return wire_put_d(h, 0, d);
 }
 // The entries so far out as one D frame with F f, the tick's next part; the next start a new frame.
 // A WebTransport seat's: the entries in b as an out-of-band D (F 4) when there are any, and at the
@@ -28,20 +55,20 @@ eg_out_send :: (o: [] EgOut, v: [] RmServer, k: int, s_id: SeatId, f: int) { s :
   if o[0].dg {
     c := v[0].eg[k].seat[s].conn;
     if o[0].any {
-      n := wire_put_d(h[..], 0, WireD.{tick = v[0].eg[k].tick, ack = v[0].eg[k].seat[s].ack, f = WIRE_F_OOB, part = 0});
+      n := eg_out_head(o, h[..], WireD.{tick = v[0].eg[k].tick, ack = v[0].eg[k].seat[s].ack, f = WIRE_F_OOB, part = 0});
       rl_queue(v, v[0].eg[k].relay, c, -1, cast(string) h[0..<n], cast(string) o[0].b[0..<o[0].n]);
       if rm_wt_on(v, c) { v[0].wt[c].oob += 1; }
       o[0].n = 0; o[0].any = false;
     }
     if (f & 2) == 0 {
-      n := wire_put_d(h[..], 0, WireD.{tick = v[0].eg[k].tick, ack = v[0].eg[k].seat[s].ack, f = f & 1, part = 0});
+      n := eg_out_head(o, h[..], WireD.{tick = v[0].eg[k].tick, ack = v[0].eg[k].seat[s].ack, f = f & 1, part = 0});
       rl_queue(v, v[0].eg[k].relay, c, -1, cast(string) h[0..<n], cast(string) o[0].g[0..<o[0].gn]);
       if rm_wt_on(v, c) { v[0].wt[c].dgrams += 1; }
       o[0].gn = 0; o[0].gany = false;
     }
     return;
   }
-  n := wire_put_d(h[..], 0, WireD.{tick = v[0].eg[k].tick, ack = v[0].eg[k].seat[s].ack, f = f, part = o[0].part});
+  n := eg_out_head(o, h[..], WireD.{tick = v[0].eg[k].tick, ack = v[0].eg[k].seat[s].ack, f = f, part = o[0].part});
   rl_queue(v, v[0].eg[k].relay, v[0].eg[k].seat[s].conn, -1, cast(string) h[0..<n], cast(string) o[0].b[0..<o[0].n]);
   o[0].n = 0; o[0].any = false; o[0].part += 1;
 }
@@ -192,6 +219,9 @@ eg_send :: (v: [] RmServer, k: int, s_id: SeatId) { s := s_id.value;
   }
   o: [1] EgOut;
   o[0].dg = rm_wt_on(v, c);   // a WebTransport seat: its state one datagram a tick (room-wt.coax)
+  // a page that reads binary frames (#13278): its frame is written as the table's bytes, rows and all
+  o[0].bin = !o[0].dg && c >= 0 && c < CONNS && v[0].conns[c].bin;
+  st[0].rep[0].bin = o[0].bin;
   me := st[0].pose;
   e: [320] u8;
   // the town owed (every seat's first, or one its page asked for): said after the rows (#12902)
@@ -227,6 +257,18 @@ eg_send :: (v: [] RmServer, k: int, s_id: SeatId) { s := s_id.value;
   observed_seat:=k*EG_SEATS+s;v[0].st.rows_last[observed_seat]=0;v[0].st.left_last[observed_seat]=st[0].rep[0].left;v[0].st.rows_deferred+=st[0].rep[0].left;
   // each entry once, in one pass over the bytes (wire_entry from the start for each was the square of them, #13278)
   rt := cast(string) rows[0..<n]; ri := 0;
+  if o[0].bin {
+    // the frame's entries as they are: runs of rows and x's, each after its length
+    v[0].st.rows += st[0].rep[0].rows; v[0].st.rows_last[observed_seat] += st[0].rep[0].rows;
+    while ri < rt.count {
+      en := wt_ent(rt, ri);
+      if !en.ok { break; }
+      if wt_kind(rt[en.a..<en.b]) == WT_X { v[0].st.life_b += en.b - ri; } else { v[0].st.row_bytes += en.b - ri; }
+      eg_out_entry(o[..], v, k, s_id, f, rt[en.a..<en.b]);
+      ri = en.b;
+    }
+    ri = rt.count + 1;
+  }
   while ri < rt.count && rt[ri] == ' ' { ri += 1; }
   while ri < rt.count || (ri == rt.count && ri > 0 && rt[ri - 1] == ';') {
     re := ri; while re < rt.count && rt[re] != ';' { re += 1; }

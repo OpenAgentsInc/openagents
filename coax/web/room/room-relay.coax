@@ -381,10 +381,15 @@ rl_heard :: (v: [] RmServer, conn: int, text: string) {
     // a binary frame (#13278) is read as the text the table says it is, so one set of readers hears
     // both; a hello's flag says which its page reads from here on (input.coax eg_heard_hello)
     if wt_is_bin(text) {
+      kind := wt_kind(text);
+      // an input, the frame a page says most: read from its bits (input.coax eg_heard_in)
+      if kind == WT_I || kind == WT_J1 { eg_heard_in(v, c.relay, SeatId.{value = c.seat}, text); return; }
       tb: [RL_FRAME_BYTES * 4] u8 = ---;
       m := wt_text(text, tb[..]);
       if m < 0 { v[0].st.wire_bad += 1; return; }
-      eg_heard(v, c.relay, SeatId.{value = c.seat}, cast(string) tb[0..<m]);
+      // dispatched by its opcode's kind; a frame the table has no row for, by its text's head
+      if kind == WT_ANY { eg_heard(v, c.relay, SeatId.{value = c.seat}, cast(string) tb[0..<m]); }
+      else { eg_heard_as(v, c.relay, SeatId.{value = c.seat}, kind, cast(string) tb[0..<m]); }
       return;
     }
     eg_heard(v, c.relay, SeatId.{value = c.seat}, text);

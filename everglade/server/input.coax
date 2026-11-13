@@ -2,29 +2,47 @@
 // Moved from coax/web/room/room-everglade.coax (#13267), which loads it.
 // ---- intents
 
-// A seat's frame (past the relay's rate limits and pings).
-eg_heard :: (v: [] RmServer, r: int, seat_id: SeatId, text: string) { seat := seat_id.value;
+// A seat's frame (past the relay's rate limits and pings), in text. What it is comes from the wire's
+// table (wire-table.coax, #13278): the kind whose head the frame has.
+eg_heard :: (v: [] RmServer, r: int, seat_id: SeatId, text: string) { eg_heard_as(v, r, seat_id, wt_kind_of_text(text), text); }
+// The table's kinds a page may say, and those of them that are play (a seat cut over for travel, a
+// paused room and a seat that may not play yet take none of these).
+eg_kind_heard :: (kind: int) -> bool { return kind >= 0 && kind < WT_KINDS && WT[kind].who == WT_PAGE; }
+eg_kind_play :: (kind: int) -> bool {
+  return kind == WT_I || kind == WT_J1 || kind == WT_C || kind == WT_F || kind == WT_E || kind == WT_L || kind == WT_Z || kind == WT_R || kind == WT_T || kind == WT_V;
+}
+// A frame of the previous wire only (wire-prev.coax): its M and U frames have no row in the table.
+eg_prev_only :: (text: string) -> bool { return wire_is(text,"U1") || wire_is(text,"M1") || wire_is(text,"M3") || wire_is(text,"M4") || wire_is(text,"M5") || wire_is(text,"M6") || wire_is(text,"M7"); }
+// The seat a frame is for, when its room is up and the seat lives: its room, else -1. The seat is heard from now.
+eg_heard_room :: (v: [] RmServer, r: int, seat_id: SeatId) -> int { seat := seat_id.value;
   k := eg_room_at(v, r);
-  if k < 0 || seat < 0 || seat >= eg_cap(v, k) || !v[0].eg[k].seat[seat].live || text.count < 3 || (text[1] != ' ' && !(wire_is(text,"J1") || wire_is(text,"U1") || wire_is(text,"M1") || wire_is(text,"M3") || wire_is(text,"M4") || wire_is(text,"M5") || wire_is(text,"M6") || wire_is(text,"M7"))) { return; }
+  if k < 0 || seat < 0 || seat >= eg_cap(v, k) || !v[0].eg[k].seat[seat].live { return -1; }
+  return k;
+}
+// A frame whose kind is known: by its opcode when it came binary (room-relay.coax rl_heard), by its head
+// when it came as text. One dispatch by kind for both.
+eg_heard_as :: (v: [] RmServer, r: int, seat_id: SeatId, kind: int, text: string) { seat := seat_id.value;
+  k := eg_heard_room(v, r, seat_id);
+  prev := kind < 0 && eg_prev_only(text);
+  if k < 0 || text.count < 3 || (!eg_kind_heard(kind) && !prev) { return; }
   v[0].eg[k].seat[seat].heard_ms = v[0].mono_ms;
-  c := text[0];
   // a seat cut over for travel takes no intents while its page goes (room-travel.coax, #12850)
-  if (c == 'I' || c == 'J' || c == 'C' || c == 'F' || c == 'E' || c == 'L' || c == 'Z' || c == 'U' || c == 'M' || c == 'R' || c == 'T' || c == 'V') && (eg_travel_drops(v, k, seat_id) || rm_checkpoint_paused(v, k) || !ck_can_play(v, k, seat_id)) { return; }
+  if (eg_kind_play(kind) || prev) && (eg_travel_drops(v, k, seat_id) || rm_checkpoint_paused(v, k) || !ck_can_play(v, k, seat_id)) { return; }
   if wprev_heard(v, k, seat, text) { return; }   // a frame only the previous wire has (wire-prev.coax, #13398)
-  if c == 'X' { e2_admin_heard(v, k, seat_id, text); return; }   // admin mode: a local room's only (everglade/server/admin.coax)
-  if c == 'T' { eg_heard_travel(v, k, seat_id, text); return; }
-  if c == 'I' || (c=='J' && wire_is(text,"J1")) { eg_heard_input(v, k, seat_id, text); return; }
-  if c == 'F' { e2_arrow_heard(v, k, seat_id, text); return; }   // an arrow's launch, before its Attack's C (everglade/server/arrows.coax)
-  if c == 'C' { eg_heard_cast(v, k, seat_id, text); return; }
-  if c == 'P' {   // the page's build, for its hello's admission (#12839)
+  if kind == WT_ADMIN { e2_admin_heard(v, k, seat_id, text); return; }   // admin mode: a local room's only (everglade/server/admin.coax)
+  if kind == WT_T { eg_heard_travel(v, k, seat_id, text); return; }
+  if kind == WT_I || kind == WT_J1 { eg_heard_input(v, k, seat_id, text); return; }
+  if kind == WT_F { e2_arrow_heard(v, k, seat_id, text); return; }   // an arrow's launch, before its Attack's C (everglade/server/arrows.coax)
+  if kind == WT_C { eg_heard_cast(v, k, seat_id, text); return; }
+  if kind == WT_P {   // the page's build, for its hello's admission (#12839)
     rp: [1] WireRd; rp[0] = wire_rd(text, 1);
     pins := wire_read_pins(text, rp[..]);
     if rp[0].ok && eg_fields(text) == 4 { v[0].eg[k].seat[seat].pins = pins; v[0].eg[k].seat[seat].pinned = true; }
     return;
   }
-  if c == 'H' { eg_heard_hello(v, k, seat_id, text); v[0].eg[k].seat[seat].hello = true; return; }
-  if c == 'V' { eg_heard_change(v, k, seat_id, text); return; }   // Change character (Everglade II)
-  if c == 'A' {   // where an Everglade II page stands as it sits again (#13057): heard before its first place only
+  if kind == WT_H { eg_heard_hello(v, k, seat_id, text); v[0].eg[k].seat[seat].hello = true; return; }
+  if kind == WT_V { eg_heard_change(v, k, seat_id, text); return; }   // Change character (Everglade II)
+  if kind == WT_A {   // where an Everglade II page stands as it sits again (#13057): heard before its first place only
     ra: [1] WireRd; ra[0] = wire_rd(text, 1);
     at := wire_read_at(text, ra[..]);
     st := v[0].eg[k].seat[seat..<seat + 1];
@@ -33,9 +51,9 @@ eg_heard :: (v: [] RmServer, r: int, seat_id: SeatId, text: string) { seat := se
     }
     return;
   }
-  if c == 'K' { im_heard_blocks(v, k, seat_id, text); return; }   // who it blocks (room-interest.coax, #12789)
-  if c == 'O' { eg_heard_missed(v, k, seat_id); return; }   // it missed an outcome (#12902)
-  if c == 'E' {
+  if kind == WT_K { im_heard_blocks(v, k, seat_id, text); return; }   // who it blocks (room-interest.coax, #12789)
+  if kind == WT_O { eg_heard_missed(v, k, seat_id); return; }   // it missed an outcome (#12902)
+  if kind == WT_E {
     rd: [1] WireRd; rd[0] = wire_rd(text, 1);
     u := wire_read_use(text, rd[..]);
     if !rd[0].ok || eg_fields(text) != 4 { return; }
@@ -63,8 +81,18 @@ eg_heard :: (v: [] RmServer, r: int, seat_id: SeatId, text: string) { seat := se
     eg_end_now(v, k, seat_id, u.seq, u.id);
     return;
   }
-  if c == 'L' { e2_heard_old_rest(v, k, seat_id, text); return; }
-  if c == 'Z' { e2_heard_rest(v, k, seat_id, text); return; }   // an Everglade II rest (everglade/server/rest.coax)   // a Long Rest (room-events.coax ev_rest_ok)
+  if kind == WT_L { e2_heard_old_rest(v, k, seat_id, text); return; }
+  if kind == WT_Z { e2_heard_rest(v, k, seat_id, text); return; }   // an Everglade II rest (everglade/server/rest.coax)
+}
+// One step's input as it came binary (#13278): read straight from its bits, no text between.
+eg_heard_in :: (v: [] RmServer, r: int, seat_id: SeatId, frame: string) { seat := seat_id.value;
+  k := eg_heard_room(v, r, seat_id);
+  if k < 0 { return; }
+  v[0].eg[k].seat[seat].heard_ms = v[0].mono_ms;
+  if eg_travel_drops(v, k, seat_id) || rm_checkpoint_paused(v, k) || !ck_can_play(v, k, seat_id) { return; }
+  i := wt_in_get(frame); link := wt_kind(frame) == WT_J1;
+  if !i.ok || (link && !wire_link_input_ok(i.b)) { v[0].st.wire_bad += ifx i.ok then 0 else 1; return; }
+  eg_input(v, k, seat_id, WireIn.{seq = i.seq, kx = i.kx, ky = i.ky, px = i.px, py = i.py, theta = f32(i.theta) / f32(WIRE_FINE), b = i.b, heard = i.heard}, link);
 }
 // Seat seat's page heard tick `heard` whole: what went out that tick is its page's (rows, n and w
 // entries), and its snapshots end once it is one of them.
@@ -108,11 +136,15 @@ eg_waits :: (v: [] RmServer, k: int, s_id: SeatId, seq: int) -> bool { s := s_id
 // book:begin intent-queue
 // I SEQ KX KY PX PY THETA B HEARD: one step's input (THETA in WIRE_FINE units), queued for the tick; and the state tick its page
 // heard whole, which is now its page's (wire_seat_ack), and ends its snapshots once it is one of them.
-eg_heard_input :: (v: [] RmServer, k: int, seat_id: SeatId, text: string) { seat := seat_id.value;
+eg_heard_input :: (v: [] RmServer, k: int, seat_id: SeatId, text: string) {
   r: [1] WireRd; link:=wire_is(text,"J1");
   r[0] = wire_rd(text,ifx link then 2 else 1);
   w := wire_read_in(text, r[..]);
   if !r[0].ok || eg_fields(text) != 9 || (link && !wire_link_input_ok(w.b)) { return; }
+  eg_input(v, k, seat_id, w, link);
+}
+// An input read whole, from text or from bits: queued for the tick.
+eg_input :: (v: [] RmServer, k: int, seat_id: SeatId, w: WireIn, link: bool) { seat := seat_id.value;
   eg_seat_heard(v, k, seat_id, w.heard);
   if w.heard > 0 { v[0].eg[k].seat[seat].said_heard = w.heard; v[0].eg[k].seat[seat].said_ms = v[0].mono_ms; }
   if w.theta == w.theta { v[0].eg[k].seat[seat].cam = w.theta; v[0].eg[k].seat[seat].cam_on = true; }   // where it looks: its rows' view (#13178)
@@ -174,7 +206,8 @@ eg_heard_hello :: (v: [] RmServer, k: int, seat_id: SeatId, text: string) { seat
   st[0].flags = eg_clamp(h.flags, 0, 255);
   st[0].rep[0].packed = (st[0].flags & (WIRE_HELLO_PACKED | WIRE_HELLO_BINARY)) != 0;   // its rows go bit-packed (everglade-wire.coax, #13165); a binary page's always do
   // its frames go binary from here on (wire-table.coax, #13278): the out buffer writes them so (room-relay.coax ob_put)
-  if st[0].conn >= 0 && st[0].conn < CONNS { v[0].conns[st[0].conn].bin = (st[0].flags & WIRE_HELLO_BINARY) != 0; }
+  // (a WebTransport seat's frames stay text: its datagrams are text records still, room-wt.coax)
+  if st[0].conn >= 0 && st[0].conn < CONNS { v[0].conns[st[0].conn].bin = (st[0].flags & WIRE_HELLO_BINARY) != 0 && !rm_wt_on(v, st[0].conn); }
   if tk.schema == 2 && tk.capture.ok { st[0].flags = (st[0].flags & (255-EV_DEMO_FLAG)) | (ifx tk.capture.state[1]==1 && tk.admin then EV_DEMO_FLAG else 0); }
   ev_hello(v, k, seat_id, st[0].flags);   // an admin's demo character (room-events.coax)
   // Character Create's hello (RM_GLADE_FLAG) can come after the seat's first tick put it at the

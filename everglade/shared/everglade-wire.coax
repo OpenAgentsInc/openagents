@@ -1255,6 +1255,10 @@ WireSeat :: struct {
   oldest: int;                // ticks the oldest row still waiting has waited, after this tick
   spaced: int;                // rows held back for their tier (wire_every), all so far
   packed: bool;               // its page reads packed rows (WIRE_HELLO_PACKED): its rows go as S (kept through wire_seat_reset)
+  // its page reads binary frames (WIRE_HELLO_BINARY, #13278): its frame's rows are written as the table's runs
+  // and its x's as the table's entries, each entry after its length (wire-table.coax); kept through wire_seat_reset
+  bin: bool;
+  rows: int;                  // rows written into this tick's frame
   // its updates are datagrams that can pass the reliable stream (a WebTransport seat, #13176): an
   // unacknowledged spawn's updates wait (metaverse-engine/net/spawn.coax); false, one ordered stream (kept through wire_seat_reset)
   datagrams: bool;
@@ -1300,8 +1304,17 @@ wire_seat_put :: (st: [] WireSeat, h: [] WireHist, q: int, out: [] u8, at: int) 
   zero: [WIRE_SF] s32;
   back := ifx b >= 0 then now - st[0].base[q] else 0;
   base := ifx b >= 0 then h[0].f[b..<b + WIRE_SF] else zero[..];
-  n := ifx st[0].packed then wire_put_s_packed(out, at, id1 - 1, back, base, h[0].f[cur..<cur + WIRE_SF], st[0].wanted[q])
-       else wire_put_s_fields(out, at, id1 - 1, back, base, h[0].f[cur..<cur + WIRE_SF], st[0].wanted[q]);
+  n := at;
+  if st[0].bin {
+    // the row's bits, to a whole byte: one row of a run (wire-table.coax)
+    d := net_row_delta(WIRE_SF, st[0].wanted[q], base, h[0].f[cur..<cur + WIRE_SF]);
+    if d.ok && id1 > 0 && back >= 0 && back < WIRE_BASES {
+      w: [1] WtW; w[0] = wt_w(at);
+      wt_row_put(w[..], out, id1 - 1, back, d.mask, base, h[0].f[cur..<cur + WIRE_SF]); wt_put_pad(w[..], out);
+      if w[0].ok { n = wt_end(w[..]); }
+    }
+  } else if st[0].packed { n = wire_put_s_packed(out, at, id1 - 1, back, base, h[0].f[cur..<cur + WIRE_SF], st[0].wanted[q]); }
+  else { n = wire_put_s_fields(out, at, id1 - 1, back, base, h[0].f[cur..<cur + WIRE_SF], st[0].wanted[q]); }
   wire_replica_set(st,q,net_replica_sent(wire_replica(st,q),id1,now,WIRE_ACKS));
   st[0].allowed[q]=st[0].wanted[q];
   return n;
@@ -1359,9 +1372,57 @@ WireLook :: struct { fx: f32; fz: f32; }
 // The lesser of a row's budget and what out still holds: a row is noted sent only when it is written.
 WIRE_TRY_MISSES :: 16;   // rows in a row that did not fit a seat's budget before the rest wait unwritten (wire_seat_frame_look)
 wire_fit :: (budget: int, left: int) -> int { return ifx budget < left then budget else left; }
+// A seat's frame being written (wire_seat_frame_look): its bytes so far and its rows. Text: entries ';'
+// apart. Binary (#13278): each entry after its length, as a D holds them (wire-table.coax); rows next to
+// each other go into one run, begun with two bytes kept for its length and closed when another entry
+// follows, the frame ends, or it would pass WIRE_RUN bytes (so a D's parts can be cut between runs).
+WIRE_RUN :: 1024;
+WireOut :: struct { n: int; bin: bool; run: int; rows: int; }
+// What out still holds for a row: a text row's separator, or a run's first three bytes, kept back.
+wire_out_room :: (wo: [] WireOut, out: [] u8) -> int { return out.count - wo[0].n - (ifx wo[0].bin then 4 else 1); }
+wire_out_close :: (wo: [] WireOut, out: [] u8) {
+  if wo[0].run < 0 { return; }
+  size := wo[0].n - (wo[0].run + 2);
+  out[wo[0].run] = cast(u8) (128 + size / 256); out[wo[0].run + 1] = cast(u8) (size % 256);
+  wo[0].run = -1;
+}
+// One row's bytes (wire_seat_put's) into the frame.
+wire_out_row :: (wo: [] WireOut, out: [] u8, row: string) {
+  if row.count == 0 { return; }
+  n := wo[0].n;
+  if !wo[0].bin {
+    if n > 0 { n = wire_sep(out, n); }
+  } else {
+    if wo[0].run >= 0 && n - (wo[0].run + 2) + row.count > WIRE_RUN { wire_out_close(wo, out); }
+    if wo[0].run < 0 { wo[0].run = n; out[n + 2] = cast(u8) (WT_BIN + WT_ROWS); n += 3; }
+  }
+  for i: 0..<row.count { out[n + i] = row[i]; }
+  wo[0].n = n + row.count; wo[0].rows += 1;
+}
+// An x's bytes in the frame, its separator or length among them (e: scratch).
+wire_out_x_size :: (wo: [] WireOut, e: [] u8, id: int) -> int {
+  if !wo[0].bin { return wire_put_x(e, 0, id) + 1; }
+  w: [1] WtW; w[0] = wt_w(0); wt_put_u(w[..], e, id, 8);
+  return wt_end(w[..]) + 2;
+}
+wire_out_x :: (wo: [] WireOut, out: [] u8, id: int) {
+  n := wo[0].n;
+  if !wo[0].bin {
+    if n > 0 { n = wire_sep(out, n); }
+    wo[0].n = wire_put_x(out, n, id);
+    return;
+  }
+  wire_out_close(wo, out);
+  out[n + 1] = cast(u8) (WT_BIN + WT_X);
+  w: [1] WtW; w[0] = wt_w(n + 2); wt_put_u(w[..], out, id, 8);
+  end := wt_end(w[..]);
+  out[n] = cast(u8) (end - (n + 1));
+  wo[0].n = end;
+}
 wire_seat_frame_look :: (st:[]WireSeat,h:[]WireHist,me:int,px:f32,pz:f32,pick:[]f32,fields:[]int,look:WireLook,combat:[]int,budget:int,out:[]u8)->int {
   now := h[0].now; row := now % WIRE_BASES;
-  n := 0; e: [WIRE_ROW] u8;
+  e: [WIRE_ROW] u8;
+  wo: [1] WireOut; wo[0].bin = st[0].bin; wo[0].run = -1;
   life := 0;   // this tick's x bytes (WIRE_LIFE_BUDGET)
   cand := h[0].sc_cand[..]; cn := 0;
   spawn := h[0].sc_spawn[..]; sn := 0;
@@ -1381,18 +1442,16 @@ wire_seat_frame_look :: (st:[]WireSeat,h:[]WireHist,me:int,px:f32,pz:f32,pick:[]
     }
     // the despawns owed, on the reliable lane, again until a tick that held them is acknowledged
     if net_despawn_due(cast(int) st[0].gone2[q], st[0].gone2_t[q], now, WIRE_RESEND) {
-      m := wire_put_x(e[..], 0, cast(int) st[0].gone2[q] - 1) + 1;
-      if life + m <= WIRE_LIFE_BUDGET && n + m < out.count {
-        if n > 0 { n = wire_sep(out, n); }
-        n = wire_put_x(out, n, cast(int) st[0].gone2[q] - 1);
+      m := wire_out_x_size(wo[..], e[..], cast(int) st[0].gone2[q] - 1);
+      if life + m <= WIRE_LIFE_BUDGET && wo[0].n + m < out.count {
+        wire_out_x(wo[..], out, cast(int) st[0].gone2[q] - 1);
         st[0].gone2_t[q] = now; life += m;
       }
     }
     if net_despawn_due(cast(int) st[0].gone[q], st[0].gone_t[q], now, WIRE_RESEND) {
-      m := wire_put_x(e[..], 0, cast(int) st[0].gone[q] - 1) + 1;
-      if life + m <= WIRE_LIFE_BUDGET && n + m < out.count {
-        if n > 0 { n = wire_sep(out, n); }
-        n = wire_put_x(out, n, cast(int) st[0].gone[q] - 1);
+      m := wire_out_x_size(wo[..], e[..], cast(int) st[0].gone[q] - 1);
+      if life + m <= WIRE_LIFE_BUDGET && wo[0].n + m < out.count {
+        wire_out_x(wo[..], out, cast(int) st[0].gone[q] - 1);
         st[0].gone_t[q] = now; life += m;
       }
     }
@@ -1438,17 +1497,14 @@ wire_seat_frame_look :: (st:[]WireSeat,h:[]WireHist,me:int,px:f32,pz:f32,pick:[]
   own_live := me >= 0 && me < h[0].slots && st[0].wanted[me]!=0 && h[0].id[row * WIRE_ZSLOTS + me] != 0 && net_replica_ready(wire_replica(st,me));
   own_spawn := own_live && net_spawn_row(wire_replica(st,me), cast(int) h[0].id[row * WIRE_ZSLOTS + me]);
   if own_spawn {
-    if n > 0 { n = wire_sep(out, n); }
-    was := n; n = wire_seat_put(st, h, me, out, n); wrote += n - was;
+    m := wire_seat_put(st, h, me, e[..], 0); wire_out_row(wo[..], out, cast(string) e[0..<m]); wrote += m;
   }
   for c: 0..<mn {
     q := mine[c];
     if !net_spawn_row(wire_replica(st,q), cast(int) h[0].id[row * WIRE_ZSLOTS + q]) { continue; }
-    m := wire_seat_put_try(st, h, q, e[..], out.count - n - 1);   // (never noted sent when out can't hold it)
-    if m <= 0 || n + m + 1 > out.count { continue; }
-    if n > 0 { n = wire_sep(out, n); }
-    for i: 0..<m { out[n + i] = e[i]; }
-    n += m; wrote += m;
+    m := wire_seat_put_try(st, h, q, e[..], wire_out_room(wo[..], out));   // (never noted sent when out can't hold it)
+    if m <= 0 || m > wire_out_room(wo[..], out) { continue; }
+    wire_out_row(wo[..], out, cast(string) e[0..<m]); wrote += m;
   }
   order := h[0].sc_order[..];
   room := WIRE_AGED_BUDGET;   // the aged rows' own bytes, spawns' and updates' alike
@@ -1457,33 +1513,29 @@ wire_seat_frame_look :: (st:[]WireSeat,h:[]WireHist,me:int,px:f32,pz:f32,pick:[]
     sa := net_order(st[0].acc[..], st[0].since[..], spawn[..], sn, now, WIRE_MAX_AGE, order[..]);
     for c: 0..<sn {
       q := order[c];
-      m := ifx c < sa then wire_seat_put_try(st, h, q, e[..], wire_fit(room, out.count - n - 1)) else 0;
+      m := ifx c < sa then wire_seat_put_try(st, h, q, e[..], wire_fit(room, wire_out_room(wo[..], out))) else 0;
       if m > 0 { room -= m; st[0].aged += 1; }
-      else { m = wire_seat_put_try(st, h, q, e[..], wire_fit(budget - spent, out.count - n - 1)); spent += m; }
-      if m <= 0 || n + m + 1 > out.count { st[0].spawn_wait += 1; if now - st[0].since[q] > oldest { oldest = now - st[0].since[q]; } continue; }
-      if n > 0 { n = wire_sep(out, n); }
-      for i: 0..<m { out[n + i] = e[i]; }
-      n += m; wrote += m;
+      else { m = wire_seat_put_try(st, h, q, e[..], wire_fit(budget - spent, wire_out_room(wo[..], out))); spent += m; }
+      if m <= 0 || m > wire_out_room(wo[..], out) { st[0].spawn_wait += 1; if now - st[0].since[q] > oldest { oldest = now - st[0].since[q]; } continue; }
+      wire_out_row(wo[..], out, cast(string) e[0..<m]); wrote += m;
     }
   } else {
     st[0].spawn_wait = sn;
     for c: 0..<sn { if now - st[0].since[spawn[c]] > oldest { oldest = now - st[0].since[spawn[c]]; } }
   }
-  st[0].rel = n;
+  wire_out_close(wo[..], out);   // (the reliable lane ends on an entry's edge)
+  st[0].rel = wo[0].n;
   // the updates: your own player first, every tick: its row with the ACK is where your page re-runs from
   if own_live && !own_spawn {
-    if n > 0 { n = wire_sep(out, n); }
-    was := n; n = wire_seat_put(st, h, me, out, n); wrote += n - was;
+    m := wire_seat_put(st, h, me, e[..], 0); wire_out_row(wo[..], out, cast(string) e[0..<m]); wrote += m;
   }
   // then what is on you (your effects), budget or not
   for c: 0..<mn {
     q := mine[c];
     if st[0].last[q] == now { continue; }   // gone as a spawn
-    m := wire_seat_put_try(st, h, q, e[..], out.count - n - 1);
-    if m <= 0 || n + m + 1 > out.count { continue; }
-    if n > 0 { n = wire_sep(out, n); }
-    for i: 0..<m { out[n + i] = e[i]; }
-    n += m; wrote += m;
+    m := wire_seat_put_try(st, h, q, e[..], wire_out_room(wo[..], out));
+    if m <= 0 || m > wire_out_room(wo[..], out) { continue; }
+    wire_out_row(wo[..], out, cast(string) e[0..<m]); wrote += m;
   }
   // those that waited WIRE_MAX_AGE ticks, the oldest first, from their own bytes; then the rest by
   // priority, as long as each fits what the spawns, your own row and what is on you left of the budget
@@ -1491,11 +1543,9 @@ wire_seat_frame_look :: (st:[]WireSeat,h:[]WireHist,me:int,px:f32,pz:f32,pick:[]
   aged := ifx budget > 0 then net_order(st[0].acc[..], st[0].since[..], cand[..], cn, now, WIRE_MAX_AGE, order[..]) else 0;
   if budget > 0 {
     for c: 0..<aged {
-      m := wire_seat_put_try(st, h, order[c], e[..], wire_fit(room, out.count - n - 1));
-      if m <= 0 || n + m + 1 > out.count { continue; }
-      if n > 0 { n = wire_sep(out, n); }
-      for i: 0..<m { out[n + i] = e[i]; }
-      n += m; wrote += m; room -= m; st[0].aged += 1;
+      m := wire_seat_put_try(st, h, order[c], e[..], wire_fit(room, wire_out_room(wo[..], out)));
+      if m <= 0 || m > wire_out_room(wo[..], out) { continue; }
+      wire_out_row(wo[..], out, cast(string) e[0..<m]); wrote += m; room -= m; st[0].aged += 1;
     }
     st[0].aged_all += st[0].aged;
   }
@@ -1506,15 +1556,14 @@ wire_seat_frame_look :: (st:[]WireSeat,h:[]WireHist,me:int,px:f32,pz:f32,pick:[]
   for c: 0..<cn {
     q := ifx budget > 0 then order[c] else cand[c];
     if st[0].last[q] == now { continue; }   // gone for its age
-    m := ifx misses >= WIRE_TRY_MISSES then 0 else wire_seat_put_try(st, h, q, e[..], wire_fit(budget - pre - spent, out.count - n - 1));
-    if m <= 0 || n + m + 1 > out.count { misses += 1; left += 1; if now - st[0].since[q] > oldest { oldest = now - st[0].since[q]; } continue; }
+    m := ifx misses >= WIRE_TRY_MISSES then 0 else wire_seat_put_try(st, h, q, e[..], wire_fit(budget - pre - spent, wire_out_room(wo[..], out)));
+    if m <= 0 || m > wire_out_room(wo[..], out) { misses += 1; left += 1; if now - st[0].since[q] > oldest { oldest = now - st[0].since[q]; } continue; }
     misses = 0;
-    if n > 0 { n = wire_sep(out, n); }
-    for i: 0..<m { out[n + i] = e[i]; }
-    n += m; wrote += m; spent += m;
+    wire_out_row(wo[..], out, cast(string) e[0..<m]); wrote += m; spent += m;
   }
-  st[0].bytes = wrote; st[0].left = left; st[0].oldest = oldest;
-  return n;
+  wire_out_close(wo[..], out);
+  st[0].bytes = wrote; st[0].left = left; st[0].oldest = oldest; st[0].rows = wo[0].rows;
+  return wo[0].n;
 }
 // Slot q's row into e, if it is at most `room` bytes (and so sent): its bytes, else 0 and nothing noted.
 wire_seat_put_try :: (st: [] WireSeat, h: [] WireHist, q: int, e: [] u8, room: int) -> int {
