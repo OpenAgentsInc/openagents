@@ -28,6 +28,17 @@
 #load "../../lib/agent/world/turn.coax";   // a world's card (world.card.v1)
 #load "world-files.coax";   // attachments on a world and its project (#13468)
 #load "../../../metaverse/edit/realm-world.coax";   // a realm's world: its board and settings as tables, a switch as a cell (#13422)
+#load "realm-role.coax";   // a realm's role for the asker, from facts worlds.c reads (verse.edit_role's rule)
+
+// The asker's role in realm `id`, in verse.edit_role's words ("" for none), from the facts worlds.c reads with
+// plain SQL (realm-role.coax rr_role).
+wr_edit_role :: (made: bool, owns: bool, hand: bool, site_admin: bool, owner: bool, member: bool) -> string #export_c #effects(all) {
+  return rr_words(rr_role(made, owns, hand, site_admin, owner, member));
+}
+#test "a realm role in verse.edit_role's words, for worlds.c" {
+  #assert wr_edit_role(true, true, false, false, false, false) == "owner" && wr_edit_role(false, false, true, true, false, false) == "admin";
+  #assert wr_edit_role(false, false, true, false, false, false) == "visitor" && wr_edit_role(false, false, false, true, true, true) == "";
+}
 
 WR_OK :: 0;
 WR_CROSS :: 1;       // a write from another site's page

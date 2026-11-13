@@ -90,7 +90,15 @@ static long long ask_n(PGconn *db, const char *sql, int n, const char *const *v)
 static long long day_hit(PGconn *db, const char *name, const char *who, long long *left_ms) {
   *left_ms = 0;
   const char *v[2] = {name, who};
-  PGresult *r = PQexecParams(db, "SELECT started_ms, n, now_ms FROM auth.limit_hit($1, left(encode(sha256(convert_to($2, 'UTF8')), 'hex'), 40), 86400000, true)", 2, NULL, v, NULL, NULL, 0);
+  // the count in one statement (auth.limit_hit's, with count_it true): a window that has ended starts again
+  PGresult *r = PQexecParams(db,
+    "WITH t AS (SELECT projects.now_ms() AS now_ms) "
+    "INSERT INTO auth.limit_counts AS c (name, key, started_ms, n) "
+    "SELECT $1, left(encode(sha256(convert_to($2, 'UTF8')), 'hex'), 40), t.now_ms, 1 FROM t "
+    "ON CONFLICT (name, key) DO UPDATE SET "
+    "started_ms = CASE WHEN c.started_ms <= (SELECT now_ms FROM t) - 86400000 THEN (SELECT now_ms FROM t) ELSE c.started_ms END, "
+    "n = CASE WHEN c.started_ms <= (SELECT now_ms FROM t) - 86400000 THEN 0 ELSE c.n END + 1 "
+    "RETURNING c.started_ms, c.n, (SELECT now_ms FROM t)", 2, NULL, v, NULL, NULL, 0);
   long long n = 0;
   if (PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1) {
     n = atoll(PQgetvalue(r, 0, 1));
@@ -113,8 +121,12 @@ static int64_t may_store(const request *q, PGconn *db, const char *id, bool exis
   int64_t role = 0;
   if (known && !admin && p->pubkey[0]) {
     const char *v[2] = {id, p->pubkey};
-    PGresult *r = PQexecParams(db, "SELECT coalesce(verse.edit_role($1, $2, false), '')", 2, NULL, v, NULL, NULL, 0);
-    if (PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1) role = wsp_role(cs(PQgetvalue(r, 0, 0)));
+    PGresult *r = PQexecParams(db, "SELECT " API_REALM_ROLE_FACTS("$1", "$2") " FROM " API_REALM_ROLE_FROM("$1", "$2"), 2, NULL, v, NULL, NULL, 0);
+    if (PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1) {
+      bool f[5];
+      for (int i = 0; i < 5; i++) f[i] = !strcmp(PQgetvalue(r, 0, i), "t");
+      role = wsp_edit_role(f[0], f[1], f[2], false, f[3], f[4]);
+    }
     PQclear(r);
   }
   return wsp_may(auth_same_site(q), known, admin, role, exists);

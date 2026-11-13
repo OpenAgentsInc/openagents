@@ -45,6 +45,12 @@ bool chat_route(const request *q);        // chat.c
 void chat_key(const request *q, const char *pubkey, bool member);   // KEY for a signed-in admin, or a project member (private.c)
 bool player_route(const request *q);      // player.c
 bool rooms_route(const request *q, PGconn *db, const char *rest);   // rooms.c: the Everglade instance directory (#12717)
+// A realm's role facts for the asker, for realm-role.coax rr_role (worlds.c, scripts.c): five columns, made,
+// owns, hand, owner and member, from plain SQL over FROM ... API_REALM_ROLE_FROM(S, K), S the slug and K the
+// player's key as SQL. verse.edit_role states the same rule for the database's own functions (COAX.md).
+#define API_REALM_ROLE_FACTS(S, K) "verse.edit_made(" S "), verse.builder_owns(" K ", " S "), h.slug IS NOT NULL, " \
+  "coalesce(p.account = h.owner_account, false), coalesce(p.account = ANY (h.admins), false)"
+#define API_REALM_ROLE_FROM(S, K) "verse.edit_hand(" S ") h CROSS JOIN verse.builder_player(" K ") p"
 #define ROOM_SEATS 16   // an Everglade room's seats: the pages' WIRE_SEATS (everglade-wire.coax), the room's EG_SEATS and RELAY_SEATS
 void rooms_print_limits(FILE *out);       // api --limits: the rooms' section of /docs/limits (rooms.c)
 bool rooms_pick(PGconn *db, const char *realm, const char *asked, const char *pid, const char *via, const char *build, char *code, size_t cap, int *shard, bool *full);

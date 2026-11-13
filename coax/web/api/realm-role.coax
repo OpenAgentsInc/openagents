@@ -1,0 +1,43 @@
+// A realm's role for someone who asks (COAX.md "Where API rules go"): the rule verse.edit_role states in
+// schema.sql for the database's own functions, here for the routes. A route reads the facts with plain SQL
+// (verse.edit_made, verse.builder_owns, the realm's rights row and the asker's account) and asks rr_role;
+// world-policy.coax and script-policy.coax word the answer for worlds.c and scripts.c.
+//   a made realm         its owner is "owner"; a site admin "admin"; anyone else "visitor"
+//   a hand-built realm   (a row in verse.realm_rights) the account it names is "owner"; a site admin or an
+//                        account among its admins "admin"; anyone else "visitor"
+//   neither              no role: no realm has this slug
+//   coax/bin/coax test coax/web/api/realm-role.coax --library
+
+RR_NONE :: 0; RR_VISITOR :: 1; RR_ADMIN :: 2; RR_OWNER :: 3;
+// made: a made realm has this slug; owns: the asker owns that made realm; hand: a hand-built realm's rights
+// row has it; owner, member: the asker's account is that row's owner, or among its admins.
+rr_role :: (made: bool, owns: bool, hand: bool, site_admin: bool, owner: bool, member: bool) -> int {
+  if made {
+    if owns { return RR_OWNER; }
+    return ifx site_admin then RR_ADMIN else RR_VISITOR;
+  }
+  if !hand { return RR_NONE; }
+  if owner { return RR_OWNER; }
+  if site_admin || member { return RR_ADMIN; }
+  return RR_VISITOR;
+}
+// The role in verse.edit_role's words: "owner", "admin", "visitor", or "" for none.
+rr_words :: (role: int) -> string {
+  if role == RR_OWNER { return "owner"; }
+  if role == RR_ADMIN { return "admin"; }
+  if role == RR_VISITOR { return "visitor"; }
+  return "";
+}
+
+#test "a realm's role: made, hand-built or neither, as verse.edit_role says" {
+  // a made realm: its owner, then a site admin, then anyone
+  #assert rr_role(true, true, false, false, false, false) == RR_OWNER && rr_role(true, true, true, true, false, false) == RR_OWNER;
+  #assert rr_role(true, false, false, true, false, false) == RR_ADMIN && rr_role(true, false, true, false, true, true) == RR_VISITOR;
+  // a hand-built realm: the row's owner, then a site admin or one of its admins, then anyone
+  #assert rr_role(false, false, true, false, true, false) == RR_OWNER && rr_role(false, false, true, true, true, true) == RR_OWNER;
+  #assert rr_role(false, false, true, true, false, false) == RR_ADMIN && rr_role(false, false, true, false, false, true) == RR_ADMIN;
+  #assert rr_role(false, true, true, false, false, false) == RR_VISITOR;
+  // neither: no role, even for a site admin
+  #assert rr_role(false, false, false, true, true, true) == RR_NONE;
+  #assert rr_words(RR_OWNER) == "owner" && rr_words(RR_ADMIN) == "admin" && rr_words(RR_VISITOR) == "visitor" && rr_words(RR_NONE) == "";
+}

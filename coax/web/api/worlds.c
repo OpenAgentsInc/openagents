@@ -174,17 +174,26 @@ static bool who_asks(const request *q, PGconn *db, world_asker *a) {
   a->player = a->key[0] != 0;
   return true;
 }
+// The asker's role from the five API_REALM_ROLE_FACTS columns of row k from column at, in verse.edit_role's words
+// ("" for none): world-policy.coax wr_edit_role.
+static coax_string role_of(PGresult *r, int k, int at, bool site_admin) {
+  bool f[5];
+  for (int i = 0; i < 5; i++) f[i] = !strcmp(PQgetvalue(r, k, at + i), "t");
+  return wr_edit_role(f[0], f[1], f[2], site_admin, f[3], f[4]);
+}
 // A realm's facts for the asker (migrations/0050, 0099): whether it is hidden from them, their role ("" for none) and
 // its spec (malloc'd; NULL when it is no realm). False on a database error.
 static bool realm_facts(PGconn *db, const char *id, const world_asker *a, bool *hidden, char role[16], char **spec) {
   const char *v[3] = {id, a->key, a->admin ? "true" : "false"};
-  PGresult *r = PQexecParams(db, "SELECT verse.realm_hidden($1, $2, $3::boolean), coalesce(verse.edit_role($1, $2, $3::boolean), ''), verse.edit_spec($1, $2, $3::boolean)", 3, NULL, v, NULL, NULL, 0);
+  PGresult *r = PQexecParams(db, "SELECT verse.realm_hidden($1, $2, $3::boolean), " API_REALM_ROLE_FACTS("$1", "$2") ", "
+    "verse.edit_spec($1, $2, $3::boolean) FROM " API_REALM_ROLE_FROM("$1", "$2"), 3, NULL, v, NULL, NULL, 0);
   bool ok = PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1;
   *hidden = false; role[0] = 0; *spec = NULL;
   if (ok) {
     *hidden = !strcmp(PQgetvalue(r, 0, 0), "t");
-    snprintf(role, 16, "%s", PQgetvalue(r, 0, 1));
-    if (!PQgetisnull(r, 0, 2)) *spec = strdup(PQgetvalue(r, 0, 2));
+    coax_string w = role_of(r, 0, 1, a->admin);
+    snprintf(role, 16, "%.*s", (int)w.count, w.data);
+    if (!PQgetisnull(r, 0, 6)) *spec = strdup(PQgetvalue(r, 0, 6));
   } else api_log("worlds: %s", PQerrorMessage(db));
   PQclear(r);
   return ok;
@@ -1063,17 +1072,17 @@ static void world_list(const request *q, PGconn *db) {
   if (a.signed_in) {
     const char *v[2] = {a.key, a.admin ? "true" : "false"};
     PGresult *r = PQexecParams(db,
-      "SELECT d.id, d.kind, coalesce(verse.edit_role(d.id, $1, $2::boolean), ''), coalesce(m.name, '') FROM verse.world_docs d "
-      "LEFT JOIN verse.made_realms m ON m.slug = d.id WHERE NOT verse.realm_hidden(d.id, $1, $2::boolean) "
-      "ORDER BY d.id <> 'splice', d.id LIMIT 64", 2, NULL, v, NULL, NULL, 0);
+      "SELECT d.id, d.kind, coalesce(m.name, ''), " API_REALM_ROLE_FACTS("d.id", "$1") " FROM verse.world_docs d "
+      "LEFT JOIN verse.made_realms m ON m.slug = d.id CROSS JOIN LATERAL " API_REALM_ROLE_FROM("d.id", "$1") " "
+      "WHERE NOT verse.realm_hidden(d.id, $1, $2::boolean) ORDER BY d.id <> 'splice', d.id LIMIT 64", 2, NULL, v, NULL, NULL, 0);
     if (PQresultStatus(r) != PGRES_TUPLES_OK) { api_log("worlds: %s", PQerrorMessage(db)); PQclear(r); refuse(q->fd, 500, cs("not read"), -1); return; }
     for (int k = 0; k < PQntuples(r) && k < 24; k++) {
-      const char *id = PQgetvalue(r, k, 0), *kind = PQgetvalue(r, k, 1), *role = PQgetvalue(r, k, 2);
-      if (!kind_known(kind) || !wr_loads(cs(id), cs(kind)) || !wr_may(cs(id), cs(kind), a.admin, cs(role))) continue;
+      const char *id = PQgetvalue(r, k, 0), *kind = PQgetvalue(r, k, 1);
+      if (!kind_known(kind) || !wr_loads(cs(id), cs(kind)) || !wr_may(cs(id), cs(kind), a.admin, role_of(r, k, 3, a.admin))) continue;
       char name[64];
       coax_string sn = splice_world_name();
       if (!strcmp(kind, "splice")) snprintf(name, sizeof name, "%.*s", (int)sn.count, sn.data);
-      else snprintf(name, sizeof name, "%s", PQgetvalue(r, k, 3)[0] ? PQgetvalue(r, k, 3) : id);
+      else snprintf(name, sizeof name, "%s", PQgetvalue(r, k, 2)[0] ? PQgetvalue(r, k, 2) : id);
       for (char *c = name; *c; c++) if ((unsigned char)*c < 32) *c = ' ';
       int w = snprintf(out + n, sizeof out - n, "world %s %s\n", id, name);
       if (w < 0 || (size_t)w >= sizeof out - n) break;

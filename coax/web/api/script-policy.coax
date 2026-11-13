@@ -25,6 +25,7 @@
 //   coax/bin/coax mutate coax/web/api/script-policy.coax --library --root-only
 #authority;
 #load "../../../metaverse-engine/script/store-limits.coax";
+#load "realm-role.coax";   // a realm's role for the asker, from facts scripts.c reads (verse.edit_role's rule)
 
 // ---- who
 
@@ -37,6 +38,15 @@ WSP_ROLE_NONE :: 0; WSP_ROLE_ADMIN :: 1; WSP_ROLE_OWNER :: 2;
 // A realm role as verse.edit_role words it: owner, admin, or anything else for neither.
 wsp_role :: (word: string) -> int #export_c #effects(all) {
   return ifx word == "owner" then WSP_ROLE_OWNER else (ifx word == "admin" then WSP_ROLE_ADMIN else WSP_ROLE_NONE);
+}
+// The asker's role in realm `id` (WSP_ROLE_*), from the facts scripts.c reads with plain SQL (realm-role.coax).
+wsp_edit_role :: (made: bool, owns: bool, hand: bool, site_admin: bool, owner: bool, member: bool) -> int #export_c #effects(all) {
+  r := rr_role(made, owns, hand, site_admin, owner, member);
+  return ifx r == RR_OWNER then WSP_ROLE_OWNER else (ifx r == RR_ADMIN then WSP_ROLE_ADMIN else WSP_ROLE_NONE);
+}
+#test "a realm role for scripts.c: an owner, an admin, and a visitor or no realm as none" {
+  #assert wsp_edit_role(false, false, true, false, true, false) == WSP_ROLE_OWNER && wsp_edit_role(false, false, true, false, false, true) == WSP_ROLE_ADMIN;
+  #assert wsp_edit_role(true, false, false, false, false, false) == WSP_ROLE_NONE && wsp_edit_role(false, false, false, false, true, true) == WSP_ROLE_NONE;
 }
 // Who may store or compile a script for a world: the world's owner or one of its admins, or a site
 // admin; from this site, logged in. This is wider than who may write the rest of the world's
