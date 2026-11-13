@@ -75,7 +75,17 @@ xh_ride :: (s: []Creator, i: mount.MountIn, dt: f32, now: f32) -> egm.EgRider {
   k := ifx m[0].riding >= 0 then m[0].riding else 0;
   h := m[0].mounts[k]; near: [1]village.EvNear; n := xh_walls(s, h.x, h.z, xh_reach(s, k), near[..]);
   _ := egm.eg_mounts_fly(m, i, dt, now, meadow.exp_height(h.x, h.z), near[0].walls[..], n);
-  if !s[0].field && !mount.mount_aloft(m[0].mounts[k]) && dungeon.dg_inside(m[0].mounts[k].x, m[0].mounts[k].z, 1.5) { m[0].mounts[k].x = h.x; m[0].mounts[k].z = h.z; m[0].mounts[k].speed = 0; }
+  if !s[0].field && !mount.mount_aloft(m[0].mounts[k]) && dungeon.dg_inside(m[0].mounts[k].x, m[0].mounts[k].z, 1.5) {
+    // kept out of the dungeon's block: it slides along the block's edge (the step's x alone, else its z
+    // alone, as a walker's land keeps it: shared/move.coax e2m_keep) and stops only when neither is
+    // open. Until #13449 any step into the edge was undone whole and its speed set to nothing, so a
+    // mount ridden along the block stood still on open ground 1.5 m from the wall.
+    nx := m[0].mounts[k].x; nz := m[0].mounts[k].z;
+    if !dungeon.dg_inside(nx, h.z, 1.5) { m[0].mounts[k].z = h.z; }
+    else if !dungeon.dg_inside(h.x, nz, 1.5) { m[0].mounts[k].x = h.x; }
+    else { m[0].mounts[k].x = h.x; m[0].mounts[k].z = h.z; m[0].mounts[k].speed = 0; }
+    m[0].mounts[k].blocked = true;
+  }
   return xh_rider(s, now);
 }
 // E (or the phone's button): mount the mount in reach or get off the one you ride. You ask with

@@ -59,7 +59,13 @@ E2Rock :: struct { model: int; x: f32; y: f32; z: f32; yaw: f32; sh: f32; sv: f3
 // What a placed rock's hull needs that doesn't depend on who asks: its turn, the land's height and
 // slope under it, and its bounds. The land's height is the costly part (the zone's procedural ground),
 // and a rock never moves, so the room works each rock's out once and keeps it (E2Still, #13384).
-E2RockPrep :: struct { ok: bool; c: f32; sn: f32; lift: f32; gx: f32; gz: f32; lo: [3] f32; hi: [3] f32; }
+// tall is the part of it a mount meets (mount-land.coax, #13449): the circle round the hull's points
+// from a little under a riding horse's step up (middle x, middle z, radius; radius 0 when the rock
+// is under the step everywhere). A rock's bounds reach past what stands in the way: a mount stopped
+// by them stopped in open ground beside a low stone.
+E2_MOUNT_STEP :: 0.6;     // m: a riding horse's step (mount-kinds.coax: the horse's `low`)
+E2_MOUNT_UNDER :: 0.2;    // m under the step the tall part is taken from: the hull's cut at the step lies between its points
+E2RockPrep :: struct { ok: bool; c: f32; sn: f32; lift: f32; gx: f32; gz: f32; lo: [3] f32; hi: [3] f32; tall: [3] f32; }
 e2_rock_prep :: (r: E2Rock) -> E2RockPrep {
   p: E2RockPrep;
   m := r.model; if m < 0 || m >= E2_HULL_MODELS || r.sh <= 0 || r.sv <= 0 { return p; }
@@ -75,6 +81,21 @@ e2_rock_prep :: (r: E2Rock) -> E2RockPrep {
     for k: 0..<3 { if q[k] < lo[k] { lo[k] = q[k]; } if q[k] > hi[k] { hi[k] = q[k]; } }
   }
   p.ok = true; p.c = c; p.sn = sn; p.lift = lift; p.gx = gx; p.gz = gz; p.lo = lo; p.hi = hi;
+  // its tall part: the middle of the bounds of the points over the cut, and the farthest of them from it
+  if hi[1] >= f32(E2_MOUNT_STEP) {
+    cut := f32(E2_MOUNT_STEP) - f32(E2_MOUNT_UNDER);
+    tl := [2] f32.[1000000, 1000000]; th := [2] f32.[-1000000, -1000000];
+    for pass: 0..<2 {
+      for v: v0..<v1 {
+        a := f32(E2_HULL_V[v * 3]) / 10000; b := f32(E2_HULL_V[v * 3 + 1]) / 10000; cz := f32(E2_HULL_V[v * 3 + 2]) / 10000;
+        dx := r.sh * (a * c + cz * sn); dz := r.sh * (-a * sn + cz * c);
+        if lift + r.sv * b - gx * dx - gz * dz < cut { continue; }
+        if pass == 0 { if r.x + dx < tl[0] { tl[0] = r.x + dx; } if r.x + dx > th[0] { th[0] = r.x + dx; } if r.z + dz < tl[1] { tl[1] = r.z + dz; } if r.z + dz > th[1] { th[1] = r.z + dz; } }
+        else { ex := r.x + dx - p.tall[0]; ez := r.z + dz - p.tall[1]; d := sqrt(ex * ex + ez * ez); if d > p.tall[2] { p.tall[2] = d; } }
+      }
+      if pass == 0 { p.tall[0] = (tl[0] + th[0]) / 2; p.tall[1] = (tl[1] + th[1]) / 2; p.tall[2] = 0.05; }
+    }
+  }
   return p;
 }
 e2_rock_hull :: (out: [] f32, at: int, r: E2Rock, x: f32, z: f32) -> int { return e2_rock_hull_prep(out, at, r, e2_rock_prep(r), x, z); }

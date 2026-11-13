@@ -4,9 +4,13 @@
 // predicts it with the same call on the same inputs, so both put the mount in the same place.
 //
 // The mount engine (metaverse-engine/action/mount.coax) collides with boxes (six floats: x0 y0 z0 x1
-// y1 z1, y from the walker's plane). A trunk is the square round its circle, as tall as the tree; a
-// rock is its hull's bounds; a camp prop its footprint's bounds. A mount keeps to the land a walker
-// may stand on (e2m_keep): past its edge it slides along it or stops.
+// y1 z1, y from the walker's plane) and posts (round things, mount_post). A trunk is a post, the
+// circle the walker walks round, as tall as the tree; a rock is a post round its tall part (move.coax
+// E2RockPrep.tall: what stands over a horse's step), and nothing when it is under the step
+// everywhere; a round camp prop is a post, a square one its footprint's bounds. A mount keeps to
+// the land a walker may stand on (e2m_keep): past its edge it slides along it or stops.
+// Until #13449 a trunk was the square round its circle and a rock its hull's whole bounds: a mount
+// stopped at a corner of them, in open ground up to a metre from what it could see.
 //   coax/bin/coax test everglade/shared/mount-land.coax --library
 #load "move.coax";
 #load "mount-rules.coax";
@@ -21,13 +25,20 @@ e2ml_box :: (out: [] f32, n: int, x0: f32, y0: f32, z0: f32, x1: f32, y1: f32, z
   out[o] = x0; out[o + 1] = y0; out[o + 2] = z0; out[o + 3] = x1; out[o + 4] = y1; out[o + 5] = z1;
   return n + 1;
 }
-e2ml_trunk :: (out: [] f32, n: int, t: [3] f32, x: f32, z: f32, reach: f32) -> int {
-  if abs(t[0] - x) > reach + t[2] || abs(t[1] - z) > reach + t[2] { return n; }
-  return e2ml_box(out, n, t[0] - t[2], 0, t[1] - t[2], t[0] + t[2], f32(E2ML_TREE_TOP), t[1] + t[2]);
+// A post at (px, pz) of radius r from y0 to y1, when it is within `reach` of (x, z).
+e2ml_post :: (out: [] f32, n: int, px: f32, pz: f32, r: f32, y0: f32, y1: f32, x: f32, z: f32, reach: f32) -> int {
+  if abs(px - x) > reach + r || abs(pz - z) > reach + r { return n; }
+  if n >= E2ML_BOXES || (n + 1) * 6 > out.count { return n; }
+  mount_post(out, n * 6, px, pz, r, y0, y1);
+  return n + 1;
 }
+e2ml_trunk :: (out: [] f32, n: int, t: [3] f32, x: f32, z: f32, reach: f32) -> int {
+  return e2ml_post(out, n, t[0], t[1], t[2], 0, f32(E2ML_TREE_TOP), x, z, reach);
+}
+// A rock: the post round its tall part, from its foot to its top. One under a horse's step all over is nothing.
 e2ml_rock :: (out: [] f32, n: int, p: E2RockPrep, x: f32, z: f32, reach: f32) -> int {
-  if !p.ok || x < p.lo[0] - reach || x > p.hi[0] + reach || z < p.lo[2] - reach || z > p.hi[2] + reach { return n; }
-  return e2ml_box(out, n, p.lo[0], p.lo[1], p.lo[2], p.hi[0], p.hi[1], p.hi[2]);
+  if !p.ok || p.tall[2] <= 0 { return n; }
+  return e2ml_post(out, n, p.tall[0], p.tall[1], p.tall[2], p.lo[1], p.hi[1], x, z, reach);
 }
 // The boxes within `reach` of (x, z) into out (six floats each); how many. `still` is the land's kept
 // numbers (move.coax E2Still) or empty: the boxes are the same either way.
@@ -123,24 +134,30 @@ e2ml_lay :: (r: [] E2Mounts) #effects(all) {
   // the glade's middle: its own trees and stones within 30 m, each a box off the ground's plane
   n := e2ml_boxes(g[0].still[..], g[0].items[..], g[0].kinds[..], g[0].first[..], true, 0, 0, 30, out[..]);
   #assert n > 4 && n <= E2ML_BOXES;
-  for q: 0..<n { #assert out[q * 6] < out[q * 6 + 3] && out[q * 6 + 2] < out[q * 6 + 5] && out[q * 6 + 1] < out[q * 6 + 4]; }
+  posts := 0;
+  for q: 0..<n {
+    #assert out[q * 6 + 1] < out[q * 6 + 4];
+    if mount_is_post(out[..], q * 6) { posts += 1; #assert out[q * 6 + 3] > 0 && out[q * 6 + 3] < 4; }
+    else { #assert out[q * 6] < out[q * 6 + 3] && out[q * 6 + 2] < out[q * 6 + 5]; }
+  }
+  #assert posts > 4;   // the trees and the stones are round
   // the same boxes with nothing kept (a page's): bit for bit
   none: [] E2Still;
   m := e2ml_boxes(none, g[0].items[..], g[0].kinds[..], g[0].first[..], true, 0, 0, 30, bare[..]);
   #assert m == n; for q: 0..<n * 6 { #assert out[q] == bare[q]; }
-  // a walker's trunk near a place on the path is one of the mount's boxes there, the square round it
+  // a walker's trunk near a place on the path is one of the mount's posts there: the same circle
   z := -120.0f32; x := e2_road_x(z) + 9;
   w := e2mg_move_world(g[..], x, z, false); b := e2mg_bodies(g[..]);
   n = e2ml_boxes(g[0].still[..], g[0].items[..], g[0].kinds[..], g[0].first[..], true, x, z, 8, out[..]);
   for q: 0..<w.bodies {
     found := false;
-    for i: 0..<n { if abs(out[i * 6] - (b[q * 7] - b[q * 7 + 6])) < 0.001 && abs(out[i * 6 + 5] - (b[q * 7 + 2] + b[q * 7 + 6])) < 0.001 && out[i * 6 + 4] == f32(E2ML_TREE_TOP) { found = true; } }
+    for i: 0..<n { if mount_is_post(out[..], i * 6) && abs(out[i * 6] - b[q * 7]) < 0.001 && abs(out[i * 6 + 2] - b[q * 7 + 2]) < 0.001 && abs(out[i * 6 + 3] - b[q * 7 + 6]) < 0.001 && out[i * 6 + 4] == f32(E2ML_TREE_TOP) { found = true; } }
     #assert found;
   }
   // the camp's stall is a box where it stands
   stall := E2_CAMP[1]; sx := e2_camp_px(stall); sz := e2_camp_pz(stall);
   n = e2ml_boxes(g[0].still[..], g[0].items[..], g[0].kinds[..], g[0].first[..], true, sx, sz, 3, out[..]);
-  held := false; for i: 0..<n { if out[i * 6] < sx && out[i * 6 + 3] > sx && out[i * 6 + 2] < sz && out[i * 6 + 5] > sz { held = true; } }
+  held := false; for i: 0..<n { if !mount_is_post(out[..], i * 6) && out[i * 6] < sx && out[i * 6 + 3] > sx && out[i * 6 + 2] < sz && out[i * 6 + 5] > sz { held = true; } }
   #assert held;
   // out past the land's cells: none, and no trap
   #assert e2ml_boxes(g[0].still[..], g[0].items[..], g[0].kinds[..], g[0].first[..], true, 5000, 5000, 8, out[..]) == 0;
@@ -178,4 +195,27 @@ e2ml_lay :: (r: [] E2Mounts) #effects(all) {
   #assert e2ml_dismount(r[..], 9, true, 3000, g[0].still[..], g[0].items[..], g[0].kinds[..], g[0].first[..], true) == E2R_ON_FOOT;
   #assert e2ml_step(r[..], 7, 0, 0, false, false, 1, 30, g[0].still[..], g[0].items[..], g[0].kinds[..], g[0].first[..], true).rider == -1;
   #assert e2ml_axis(60, 0) == 60 && e2ml_axis(0, -30) == -30 && e2ml_axis(80, 80) == 100 && e2ml_axis(-80, -80) == -100;
+}
+#test "mount land: a rock is the post round its tall part, inside its bounds and smaller than them; a rock under a horse's step is nothing (#13449)" #steps 4000000000 {
+  #assert mk_tune(MK_HORSE).low == f32(E2_MOUNT_STEP);
+  g: [1] E2MoveGround; e2mg_plant(g[..]);
+  tall := 0; low := 0; smaller := 0;
+  for i: 0..<E2_GLADE_STONES {
+    p := e2_rock_prep(e2_glade_stone(i)); #assert p.ok;
+    out: [12] f32; n := e2ml_rock(out[..], 0, p, p.tall[0], p.tall[1], 4);
+    if p.hi[1] < f32(E2_MOUNT_STEP) { low += 1; #assert n == 0 && p.tall[2] == 0; continue; }
+    tall += 1;
+    #assert n == 1 && mount_is_post(out[..], 0) && out[1] == p.lo[1] && out[4] == p.hi[1];
+    // its middle is inside the bounds, and its circle is no wider than their diagonal
+    #assert out[0] >= p.lo[0] && out[0] <= p.hi[0] && out[2] >= p.lo[2] && out[2] <= p.hi[2];
+    wx := p.hi[0] - p.lo[0]; wz := p.hi[2] - p.lo[2];
+    #assert out[3] > 0 && out[3] * 2 <= sqrt(wx * wx + wz * wz) + 0.001;
+    // the corner of the bounds is open ground now: outside the post
+    cx := p.hi[0] - out[0]; cz := p.hi[2] - out[2];
+    if cx * cx + cz * cz > out[3] * out[3] { smaller += 1; }
+  }
+  #assert tall + low == E2_GLADE_STONES && tall > 0 && smaller == tall;
+  // far from it, nothing
+  p := e2_rock_prep(e2_glade_stone(0)); out: [12] f32;
+  #assert e2ml_rock(out[..], 0, p, p.tall[0] + 100, p.tall[1], 4) == 0 && e2ml_rock(out[..], 0, E2RockPrep.{}, 0, 0, 4) == 0;
 }

@@ -10,7 +10,11 @@
 //   up and slows with its own acceleration and turns slower the faster it goes, so it carves arcs;
 //   riding collision: its body is a capsule along its heading (radius, half_length) and never
 //   enters a box of the world's (the same boxes the walker collides with, six floats each: x0 y0 z0
-//   x1 y1 z1, y from the ground); blocked, it slides along a wall, else stops;
+//   x1 y1 z1, y from the ground) or a post (a round thing: a trunk, a pillar, the tall part of a
+//   rock; mount_post writes one in a box's six floats). A world gives the shape the walker meets,
+//   never the square round a round thing: a mount stopped by a box's corner stops in open ground
+//   beside the tree (#13449). Blocked, it slides round what it brushes and keeps its way (the step
+//   turned aside, mount_slide), and only what it meets head on stops it;
 //   ground clutter (mount_counts): what a mount meets is scaled to it. It steps over a box whose top
 //   is under its step (`low`: a horse's 0.6 m, a dragon's far more) and rides through a small one
 //   (no taller than brush_high and no wider than brush_wide: a tuft, a stone, a stump). Everything
@@ -101,12 +105,21 @@ mount_reach :: (t: MountTune) -> f32 { return t.half_length + t.radius + 1.0; }
 mount_counts :: (t: MountTune, lift: f32, walls: [] f32, o: int) -> bool {
   top := walls[o + 4];
   if top < t.low + lift || walls[o + 1] > t.high + lift { return false; }
-  wx := walls[o + 3] - walls[o]; wz := walls[o + 5] - walls[o + 2];
-  wide := ifx wx > wz then wx else wz;
+  wide := walls[o + 3] * 2;   // a post is as wide as its circle
+  if !mount_is_post(walls, o) { wx := walls[o + 3] - walls[o]; wz := walls[o + 5] - walls[o + 2]; wide = ifx wx > wz then wx else wz; }
   return !(top <= t.brush_high && wide <= t.brush_wide);
 }
-// Whether a circle of radius r at (x, z) reaches into the box at walls[o].
+// A post: a round thing standing on the ground, in a box's six floats (x, y0, z, radius, y1,
+// MOUNT_POST). Its last float is no coordinate, so a box is never read as one.
+MOUNT_POST :: -1.0e30;
+mount_is_post :: (walls: [] f32, o: int) -> bool { return walls[o + 5] == f32(MOUNT_POST); }
+// The post at (x, z) of radius r, from y0 to y1, written at walls[o].
+mount_post :: (walls: [] f32, o: int, x: f32, z: f32, r: f32, y0: f32, y1: f32) {
+  walls[o] = x; walls[o + 1] = y0; walls[o + 2] = z; walls[o + 3] = r; walls[o + 4] = y1; walls[o + 5] = f32(MOUNT_POST);
+}
+// Whether a circle of radius r at (x, z) reaches into the box or the post at walls[o].
 mount_touch :: (x: f32, z: f32, r: f32, walls: [] f32, o: int) -> bool {
+  if mount_is_post(walls, o) { px := x - walls[o]; pz := z - walls[o + 2]; reach := r + walls[o + 3]; return px * px + pz * pz < reach * reach; }
   dx := x - mt_clamp(x, walls[o], walls[o + 3]); dz := z - mt_clamp(z, walls[o + 2], walls[o + 5]);
   return dx * dx + dz * dz < r * r;
 }
@@ -227,8 +240,26 @@ mount_turn_rate :: (t: MountTune, speed: f32) -> f32 {
   if s < 0.5 { return t.turn_still + (t.turn_walk - t.turn_still) * s / 0.5; }
   return t.turn_walk + (t.turn_gallop - t.turn_walk) * mt_clamp((s - t.walk) / (t.gallop - t.walk), 0, 1);
 }
+// Where a step (dx, dz) that something stops may go instead: the same step turned aside, a little
+// at first and then more, to the side `prefer` first (+1 raises the heading, -1 lowers it), and
+// shortened by the turn's cosine, so it slides round a trunk or along a wall at the pace it has
+// along it. ok false: every turned step is stopped too, which is a thing met head on.
+MOUNT_SLIDE_ANGLES :: [4] f32.[0.35, 0.7, 1.05, 1.4];
+MOUNT_PIVOT_STEP :: 0.04; MOUNT_PIVOT_TRIES :: 3;   // m a refused turn backs it off, tried up to this many times as far
+MountSlide :: struct { ok: bool; x: f32; z: f32; side: f32; keep: f32; }
+mount_slide :: (t: MountTune, lift: f32, x0: f32, z0: f32, f0: f32, dx: f32, dz: f32, face: f32, prefer: f32, walls: [] f32, n: int) -> MountSlide {
+  for a: MOUNT_SLIDE_ANGLES {
+    c := cos(a); sn := sin(a);
+    for q: 0..<2 {
+      side := ifx q == 0 then prefer else -prefer;
+      x := x0 + (dx * c + dz * sn * side) * c; z := z0 + (dz * c - dx * sn * side) * c;
+      if !mount_stopped(t, lift, x0, z0, f0, x, z, face, walls, n) { return MountSlide.{ok = true, x = x, z = z, side = side, keep = c}; }
+    }
+  }
+  return MountSlide.{};
+}
 // One step of riding, dt seconds, among the world's boxes: it speeds toward what's asked, turns, and
-// moves as far as its body stays clear (sliding along a wall it meets). A mount not ridden stands.
+// moves as far as its body stays clear (sliding round what it brushes). A mount not ridden stands.
 // The jump's press leaps it: its feet leave the ground at jump_v and gravity brings them down. In the
 // air it keeps its speed, turns a little, and clears whatever its feet are above (a box counts from
 // the feet's height up); it never comes down inside a box, it stays over it until it has passed.
@@ -253,15 +284,34 @@ mount_step :: (m: [] Mount, t0: MountTune, i: MountIn, dt: f32, walls: [] f32, n
   face := m[0].face - turn;   // a right turn (facing +Z, toward -X) lowers the heading
   x0 := m[0].x; z0 := m[0].z; f0 := m[0].face;
   if !mount_stopped(t, lift, x0, z0, f0, x0, z0, face, walls, n) { m[0].face = face; }
+  else if turn != 0 && !air {
+    // the turn would swing its body into something: it backs off a little as it turns (a horse with
+    // its nose in a corner steps back to come round). A turn refused outright left it wedged between
+    // a wall and a stall, unable to turn or go on (#13449)
+    for q: 1..<MOUNT_PIVOT_TRIES + 1 {
+      back := f32(MOUNT_PIVOT_STEP) * f32(q);
+      bx := x0 - sin(face) * back; bz := z0 - cos(face) * back;
+      if !mount_stopped(t, lift, x0, z0, f0, bx, bz, face, walls, n) { m[0].x = bx; m[0].z = bz; m[0].face = face; x0 = bx; z0 = bz; f0 = face; break; }
+    }
+  }
   dx := sin(m[0].face) * m[0].speed * d; dz := cos(m[0].face) * m[0].speed * d;
   m[0].blocked = false;
   if !mount_stopped(t, lift, x0, z0, f0, x0 + dx, z0 + dz, m[0].face, walls, n) { m[0].x += dx; m[0].z += dz; }
   else {
     m[0].blocked = true;
-    if !mount_stopped(t, lift, x0, z0, f0, x0 + dx, z0, m[0].face, walls, n) { m[0].x += dx; }
-    else if !mount_stopped(t, lift, x0, z0, f0, x0, z0 + dz, m[0].face, walls, n) { m[0].z += dz; }
-    // a wall it meets head on stops it: what's left of the step is lost, and its speed with it
-    m[0].speed *= 0.5;
+    prefer: f32 = ifx i.turn > 0 then -1.0f32 else 1.0f32;   // the way its rider steers, else left
+    sl := mount_slide(t, lift, x0, z0, f0, dx, dz, m[0].face, prefer, walls, n);
+    if sl.ok {
+      // it slides, facing as it did (the reins are its rider's): it keeps the pace it has along
+      // what it brushes, and never less each tick. A touch that halved its speed every step left it
+      // crawling at 0.2 m/s beside a rock (#13449)
+      m[0].x = sl.x; m[0].z = sl.z;
+      top := mt_abs(mount_want(t, i)) * sl.keep;
+      if !air && mt_abs(m[0].speed) > top { m[0].speed = ifx m[0].speed < 0 then -top else top; }
+    } else {
+      // a wall it meets head on stops it: what's left of the step is lost, and its speed with it
+      m[0].speed *= 0.5;
+    }
   }
   // coming down over a box it cleared: it holds its height until it is past
   if air && m[0].hop < hop0 && mount_body_clear_at(t, hop0, m[0].x, m[0].z, m[0].face, walls, n) && !mount_body_clear_at(t, m[0].hop, m[0].x, m[0].z, m[0].face, walls, n) { m[0].hop = hop0; m[0].hop_v = 0; m[0].landed = false; }
@@ -337,10 +387,9 @@ mount_step_wings :: (m: [] Mount, t: MountTune, p: WingProfile, i: MountIn, grou
   m[0].blocked = false;
   if mount_stopped(t, alt, x0, z0, f0, o.x, o.z, o.yaw, walls, n) {
     m[0].blocked = true;
-    if !mount_stopped(t, alt, x0, z0, f0, o.x, z0, o.yaw, walls, n) { o.z = z0; }
-    else if !mount_stopped(t, alt, x0, z0, f0, x0, o.z, o.yaw, walls, n) { o.x = x0; }
-    else { o.x = x0; o.z = z0; }
-    o.speed *= 0.5;
+    sl := mount_slide(t, alt, x0, z0, f0, o.x - x0, o.z - z0, o.yaw, ifx i.turn > 0 then -1.0f32 else 1.0f32, walls, n);
+    if sl.ok { o.x = sl.x; o.z = sl.z; slow := o.speed * sl.keep; o.speed = ifx slow < t.walk && o.speed > t.walk then t.walk else slow; }   // it slides round it, never under its walk's pace
+    else { o.x = x0; o.z = z0; o.speed *= 0.5; }
   }
   m[0].x = o.x; m[0].z = o.z; m[0].face = o.yaw; m[0].speed = o.speed; m[0].wing = o;
   mount_wing_gait(m, t, p, d);
@@ -398,8 +447,8 @@ MT_WALL :: [6] f32.[-5, 0, 6, 5, 3, 7];   // a wall across +Z, 6 m ahead
 }
 #test "a wall stops it: its body never enters a box" {
   t := MountTune.{}; m: [1] Mount; m[0] = mount_place(0, 0, 0); m[0].state = MOUNT_RIDDEN; w := MT_WALL;
-  for k: 0..<600 { mount_step(m[..], t, MountIn.{forward = 1, gallop = true}, 1.0f32 / 60, w[..], 1); #assert m[0].z + t.half_length + t.radius <= 6.001; }
-  #assert m[0].blocked && m[0].z > 4.5;
+  for k: 0..<600 { mount_step(m[..], t, MountIn.{forward = 1, gallop = true}, 1.0f32 / 60, w[..], 1); #assert m[0].z + t.half_length + t.radius <= 6.001 && mount_body_clear(t, m[0].x, m[0].z, m[0].face, w[..], 1); }
+  #assert m[0].blocked && m[0].z > 4.5 && m[0].speed < 1.0 && abs(m[0].x) < 4.0;   // met head on, it stops there: it doesn't creep along the wall
   // a box too low to matter (a kerb) or overhead (a sign) doesn't stop it
   low := [12] f32.[-5, 0, 6, 5, 0.2, 7,   -5, 2.0, 6, 5, 3, 7];
   m[0] = mount_place(0, 0, 0); m[0].state = MOUNT_RIDDEN;
@@ -408,6 +457,18 @@ MT_WALL :: [6] f32.[-5, 0, 6, 5, 3, 7];   // a wall across +Z, 6 m ahead
 }
 // A big mount for the checks: a dragon's body, step and clutter.
 MT_BIG :: MountTune.{walk = 8, gallop = 12, radius = 1.6, half_length = 4.5, low = 1.5, high = 5.0, brush_high = 2.0, brush_wide = 1.6};
+// The same ride, and whether it met something and its body stayed out of every box all the way.
+MtRide :: struct { m: Mount; met: bool; clear: bool; }
+mt_ride_among :: (t: MountTune, walls: [] f32, n: int, steps: int) -> MtRide {
+  m: [1] Mount; m[0] = mount_place(0, 0, 0); m[0].state = MOUNT_RIDDEN; r := MtRide.{clear = true};
+  for k: 0..<steps {
+    mount_step(m[..], t, MountIn.{forward = 1, gallop = true}, 1.0f32 / 60, walls, n);
+    if m[0].blocked { r.met = true; }
+    if !mount_body_clear(t, m[0].x, m[0].z, m[0].face, walls, n) { r.clear = false; }
+  }
+  r.m = m[0];
+  return r;
+}
 mt_ride :: (t: MountTune, walls: [] f32, n: int, steps: int) -> Mount {
   m: [1] Mount; m[0] = mount_place(0, 0, 0); m[0].state = MOUNT_RIDDEN;
   for k: 0..<steps { mount_step(m[..], t, MountIn.{forward = 1, gallop = true}, 1.0f32 / 60, walls, n); }
@@ -424,15 +485,16 @@ mt_ride :: (t: MountTune, walls: [] f32, n: int, steps: int) -> Mount {
   tree := [6] f32.[-0.4, 0, 20, 0.4, 8, 20.8];     // a trunk
   a := mt_ride(h, trunk[..], 1, 120); #assert a.z > 10 && !a.blocked;
   a = mt_ride(h, stone[..], 1, 120); #assert a.z > 10 && !a.blocked;
-  a = mt_ride(h, rock[..], 1, 120); #assert a.z + h.half_length + h.radius <= 6.001;
-  a = mt_ride(h, hedge[..], 1, 120); #assert a.z + h.half_length + h.radius <= 6.001;
+  // the rock and the hedge are met, and never entered: it goes round the rock and on, and turns along the hedge
+  ar := mt_ride_among(h, rock[..], 1, 240); #assert ar.met && ar.clear && ar.m.z + h.half_length + h.radius <= 6.001;
+  ar = mt_ride_among(h, hedge[..], 1, 120); #assert ar.met && ar.clear && ar.m.z + h.half_length + h.radius <= 6.001;
   // the dragon walks over all four, and through nothing that is big: a cart wider than its clutter, a tree
   d := mt_ride(MT_BIG, rock[..], 1, 240); #assert d.z > 30 && !d.blocked;
   d = mt_ride(MT_BIG, hedge[..], 1, 240); #assert d.z > 30 && !d.blocked;
-  d = mt_ride(MT_BIG, cart[..], 1, 240); #assert d.z + MT_BIG.half_length + MT_BIG.radius <= 20.001;
-  d = mt_ride(MT_BIG, tree[..], 1, 240); #assert d.z + MT_BIG.half_length + MT_BIG.radius <= 20.001;
+  dr := mt_ride_among(MT_BIG, cart[..], 1, 240); #assert dr.met && dr.clear && dr.m.z + MT_BIG.half_length + MT_BIG.radius <= 20.001;
+  dr = mt_ride_among(MT_BIG, tree[..], 1, 240); #assert dr.met && dr.clear && dr.m.z + MT_BIG.half_length + MT_BIG.radius <= 20.001;
   // a tall thin post is no clutter, and nobody steps down into a stone a mount rides through
-  post := [6] f32.[-0.1, 0, 6, 0.1, 2.5, 6.2]; a = mt_ride(h, post[..], 1, 120); #assert a.z < 6;
+  post := [6] f32.[-0.1, 0, 6, 0.1, 2.5, 6.2]; ar = mt_ride_among(h, post[..], 1, 120); #assert ar.met && ar.clear && ar.m.z < 6;
   beside := [6] f32.[0.8, 0, -0.3, 1.4, 0.85, 0.3];
   #assert mount_body_clear(h, 0, 0, 0, beside[..], 1) && mount_step_off(mount_place(0, 0, 0), h, beside[..], 1).x < 0;
 }
@@ -442,13 +504,15 @@ mt_ride :: (t: MountTune, walls: [] f32, n: int, steps: int) -> Mount {
   #assert !mount_body_clear(t, 0, 0, 0, w[..], 1);
   for k: 0..<600 { mount_step(m[..], t, MountIn.{forward = -1}, 1.0f32 / 60, w[..], 1); #assert !m[0].blocked; }
   #assert m[0].z < -4.1 && mount_body_clear(t, m[0].x, m[0].z, m[0].face, w[..], 1);   // backed out of it
-  for k: 0..<600 { mount_step(m[..], t, MountIn.{forward = 1}, 1.0f32 / 60, w[..], 1); }
-  #assert m[0].blocked && m[0].z + t.half_length + t.radius <= 2.001;                   // and the wall is a wall again
+  again := false;
+  for k: 0..<600 { mount_step(m[..], t, MountIn.{forward = 1}, 1.0f32 / 60, w[..], 1); if m[0].blocked { again = true; } #assert mount_body_clear(t, m[0].x, m[0].z, m[0].face, w[..], 1); }
+  #assert again && m[0].blocked && m[0].z + t.half_length + t.radius <= 2.001;                   // and the wall is a wall again
   // a second wall it is clear of still stops it while it stands in the first
   two := [12] f32.[-10, 0, 2, 10, 6, 4,   -10, 0, -9, 10, 6, -8];
   m[0] = mount_place(0, 0, 0); m[0].state = MOUNT_RIDDEN;
-  for k: 0..<600 { mount_step(m[..], t, MountIn.{forward = -1}, 1.0f32 / 60, two[..], 2); }
-  #assert m[0].blocked && m[0].z - t.half_length - t.radius >= -8.001;
+  behind := false;
+  for k: 0..<600 { mount_step(m[..], t, MountIn.{forward = -1}, 1.0f32 / 60, two[..], 2); if m[0].blocked { behind = true; } }
+  #assert behind && m[0].blocked && m[0].z - t.half_length - t.radius >= -8.001;
 }
 #test "a flier in the air tests no ground clutter, and comes down on nothing: over a roof it holds its height and glides on until it is past" {
   t := MT_BIG; p := wing_profile_srd(40, 80, 7.5);
@@ -510,8 +574,9 @@ mt_ride :: (t: MountTune, walls: [] f32, n: int, steps: int) -> Mount {
   t: MountTune;
   low := [6] f32.[-5, 0, 40, 5, 0.8, 40.6];    // a fence 0.8 m high across +Z, 40 m ahead
   m: [1] Mount; m[0] = mount_place(0, 0, 0); #assert mount_begin(m[..], t, 7, 1, 0, 0); mount_settle(m[..], t, 5);
-  for k: 0..<400 { mount_step(m[..], t, MountIn.{forward = 1, gallop = true}, 1.0 / 60, low[..], 1); }
-  #assert m[0].z < 40 && m[0].blocked;   // on the ground it stops there
+  fence := false;
+  for k: 0..<400 { mount_step(m[..], t, MountIn.{forward = 1, gallop = true}, 1.0 / 60, low[..], 1); if m[0].blocked { fence = true; } }
+  #assert m[0].z < 40 && fence && m[0].blocked;   // on the ground it stops there
   j: [1] Mount; j[0] = mount_place(0, 0, 0); #assert mount_begin(j[..], t, 7, 1, 0, 0); mount_settle(j[..], t, 5);
   for k: 0..<400 {
     near := j[0].z > 35.5 && j[0].z < 36.5;   // the press a stride out, at a gallop
@@ -591,4 +656,70 @@ mt_fly :: (m: [] Mount, t: MountTune, p: WingProfile, i: MountIn, steps: int, wa
   // the float clock is untouched by the tick forms
   f: [1] Mount; f[0] = mount_place(0, 0, 0);
   #assert mount_begin(f[..], t, 1, 1.5, 0, 7.5) && f[0].since == 7.5 && f[0].since_tick == 0;
+}
+#test "a post is round: a mount passes the corner of the square round a trunk, and a touch never leaves it crawling (#13449)" {
+  t := MountTune.{};
+  post: [6] f32; mount_post(post[..], 0, 0, 10, 0.5, 0, 14);
+  square := [6] f32.[-0.5, 0, 9.5, 0.5, 14, 10.5];
+  #assert mount_is_post(post[..], 0) && !mount_is_post(square[..], 0) && mount_counts(t, 0, post[..], 0);
+  // a point by the square's corner is in the square's reach and clear of the circle
+  #assert mount_touch(0.75, 9.25, 0.42, square[..], 0) && !mount_touch(0.75, 9.25, 0.42, post[..], 0);
+  #assert mount_touch(0.6, 10, 0.42, post[..], 0) && !mount_touch(0.93, 10, 0.42, post[..], 0);
+  // a thin low post is clutter it rides through; a thin tall one is not
+  twig: [6] f32; mount_post(twig[..], 0, 0, 10, 0.3, 0, 1.0); #assert !mount_counts(t, 0, twig[..], 0);
+  pole: [6] f32; mount_post(pole[..], 0, 0, 10, 0.3, 0, 3.0); #assert mount_counts(t, 0, pole[..], 0);
+  // ridden past the trunk on a slant, its line a metre from the trunk's middle: the square's corner
+  // (1.13 m out) stops it in open ground, and the post (0.92 m) never touches it
+  for shape: 0..<2 {
+    m: [1] Mount; m[0] = mount_place(-7.778, 0.808, 0.78539816); m[0].state = MOUNT_RIDDEN; met := false;
+    for k: 0..<300 { mount_step(m[..], t, MountIn.{forward = 1}, 1.0f32 / 60, ifx shape == 0 then square[..] else post[..], 1); if m[0].blocked { met = true; } }
+    #assert met == (shape == 0) && m[0].z > 11;
+  }
+  m: [1] Mount; met := false; slowest: f32 = 100;
+  // ridden at the trunk 0.6 m off its middle: it brushes it, slides round and rides on at its pace
+  m[0] = mount_place(0.6, 0, 0); m[0].state = MOUNT_RIDDEN;
+  for k: 0..<360 {
+    mount_step(m[..], t, MountIn.{forward = 1}, 1.0f32 / 60, post[..], 1);
+    if m[0].blocked { met = true; }
+    if k > 120 && m[0].speed < slowest { slowest = m[0].speed; }
+    #assert mount_body_clear(t, m[0].x, m[0].z, m[0].face, post[..], 1);
+  }
+  #assert met && m[0].z > 12 && slowest > 1.0;   // past it, and never the 0.2 m/s crawl a halved speed settled at
+  // nearly head on (0.3 m off its middle) it is slower round it, and still gets past
+  m[0] = mount_place(0.3, 0, 0); m[0].state = MOUNT_RIDDEN;
+  for k: 0..<600 { mount_step(m[..], t, MountIn.{forward = 1}, 1.0f32 / 60, post[..], 1); #assert mount_body_clear(t, m[0].x, m[0].z, m[0].face, post[..], 1); }
+  #assert m[0].z > 12;
+  // the same against a box, met on a slant: it slides along the wall's face at more than a crawl
+  wall := [6] f32.[-50, 0, 10, 50, 3, 11];
+  m[0] = mount_place(-5, 6, 0.7); m[0].state = MOUNT_RIDDEN; met = false; slowest = 100;
+  for k: 0..<360 {
+    mount_step(m[..], t, MountIn.{forward = 1}, 1.0f32 / 60, wall[..], 1);
+    if m[0].blocked { met = true; if m[0].speed < slowest { slowest = m[0].speed; } }
+    #assert mount_body_clear(t, m[0].x, m[0].z, m[0].face, wall[..], 1);
+  }
+  #assert met && m[0].x > 3 && m[0].z < 10 && slowest > 1.0;
+  // met head on with the reins held straight, nothing slides: mount_slide finds no way
+  wide := [6] f32.[-50, 0, 10, 50, 3, 11];
+  #assert !mount_slide(t, 0, 0, 8.6299, 0, 0, 0.07, 0, 1, wide[..], 1).ok;
+  #assert mount_slide(t, 0, 0.3, 8.0, 0, 0, 0.5, 0, 1, post[..], 1).ok;
+}
+#test "a mount with its nose in a corner comes round: a turn its body can't swing through backs it off as it turns (#13449)" {
+  t := MountTune.{};
+  // a wall to its right front and a stall across its way, as in the village: its nose is in the corner
+  corner := [12] f32.[-5, 0, 2.0, 0.6, 1.1, 4,   -0.6, 0, 0, -0.45, 3, 4];
+  m: [1] Mount; m[0] = mount_place(0, 0, 0); m[0].state = MOUNT_RIDDEN;
+  for k: 0..<240 { mount_step(m[..], t, MountIn.{forward = 1}, 1.0f32 / 60, corner[..], 2); }
+  #assert m[0].blocked && m[0].z < 0.7 && mount_body_clear(t, m[0].x, m[0].z, m[0].face, corner[..], 2);   // met head on: it stands in the corner
+  // reined away from the wall with forward held, it comes round and rides out; reined into the wall
+  // beside it, it can't. Either way its body is never inside a box
+  for side: 0..<2 {
+    h: [1] Mount; h[0] = m[0];
+    for k: 0..<360 { mount_step(h[..], t, MountIn.{forward = 1, turn = ifx side == 0 then -1.0f32 else 1.0f32}, 1.0f32 / 60, corner[..], 2); #assert mount_body_clear(t, h[0].x, h[0].z, h[0].face, corner[..], 2); }
+    away := sqrt((h[0].x - m[0].x) * (h[0].x - m[0].x) + (h[0].z - m[0].z) * (h[0].z - m[0].z));
+    if side == 0 { #assert away > 3 && h[0].face - m[0].face > 0.5; } else { #assert away < 1; }
+  }
+  // in open ground a turn never moves it back
+  o: [1] Mount; o[0] = mount_place(0, 0, 0); o[0].state = MOUNT_RIDDEN; none: [6] f32;
+  mount_step(o[..], t, MountIn.{turn = 1}, 1.0f32 / 60, none[..], 0); #assert o[0].x == 0 && o[0].z == 0 && o[0].face < 0;
+  #assert MOUNT_PIVOT_TRIES == 3;
 }

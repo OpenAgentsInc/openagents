@@ -61,3 +61,20 @@ mk_land_holds :: (land: bool, space: bool, aloft: bool) -> bool { return land &&
   d = mk_keys(MK_DRAGON, i, false, true, true, false); #assert d.dive && !d.land;
   #assert mk_land_holds(true, false, true) && !mk_land_holds(true, true, true) && !mk_land_holds(true, false, false) && !mk_land_holds(false, false, true);
 }
+// The rein for a mount facing `face` (forward is sin face, cos face) whose way to go is (dx, dz): D
+// (1) when the way lies to its right (a right turn lowers the heading), A (-1) to its left or straight
+// behind, 0 when it is ahead within about three degrees. An agent's driver rides with it
+// (everglade/client/drive.coax, everglade/zone-drive.coax, #13449).
+mk_rein :: (face: f32, dx: f32, dz: f32) -> f32 {
+  across := sin(face) * dz - cos(face) * dx; along := sin(face) * dx + cos(face) * dz;
+  far := sqrt(dx * dx + dz * dz);
+  if far <= 0 || (along > 0 && across < 0.05 * far && across > -0.05 * far) { return 0; }
+  return ifx across > 0 then 1.0f32 else -1.0f32;
+}
+#test "mount kinds: the rein turns a mount toward the way to go, D to its right and A to its left" {
+  // facing +Z (face 0): a way to -X is to its right (a right turn lowers the heading), to +X its left
+  #assert mk_rein(0, -1, 0.2) == 1 && mk_rein(0, 1, 0.2) == -1 && mk_rein(0, 0, 1) == 0 && mk_rein(0, 0.02, 1) == 0 && mk_rein(0, -0.02, 1) == 0;
+  // straight behind is a turn (left), nowhere to go is none, and the same holds whatever it faces
+  #assert mk_rein(0, 0.1, -1) == -1 && mk_rein(0, 0, -1) == -1 && mk_rein(0, 0, 0) == 0;
+  #assert mk_rein(1.5707963, 1, 0) == 0 && mk_rein(1.5707963, 0, 1) == 1 && mk_rein(1.5707963, 0, -1) == -1 && mk_rein(0, -3, 0) == 1 && mk_rein(0, 3, 0) == -1;
+}

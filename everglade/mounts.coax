@@ -219,6 +219,8 @@ eg_mount_press :: (m: [] EgMounts, who: int, x: f32, z: f32, now: f32, b: DeedBe
 }
 // The rider's steering from the keys (W and S forward and back, D and A turn right and left, Shift
 // gallops) and a phone's stick (up forward, sideways turns, pushed all the way gallops).
+// The rein an agent's driver rides with (shared/mount-kinds.coax mk_rein), for a zone's own files.
+eg_rein :: (face: f32, dx: f32, dz: f32) -> f32 { return mk_rein(face, dx, dz); }
 eg_mount_input :: (forward: f32, turn: f32, gallop: bool, stick_on: bool, stick_x: f32, stick_y: f32) -> MountIn {
   if stick_on && stick_x * stick_x + stick_y * stick_y > 0.0004 {
     far := sqrt(stick_x * stick_x + stick_y * stick_y);

@@ -36,6 +36,8 @@ zone_ride_body :: (s: [] EgZone, origin: EgBody, proposed: EgBody) -> EgBody {
   cr := s[0].creator[..]; h := s[0].held;
   keys := egm.EgRideKeys.{forward = axis(h, HOLD_W, HOLD_S), turn = axis(h, HOLD_D, HOLD_A), shift = s[0].shift, space = (h & HOLD_JUMP) != 0,
     stick_on = s[0].stick_on, stick_x = s[0].stick_px, stick_y = s[0].stick_py};
+  // an agent's walk-to rides there when no key is held (zone-drive.coax fd_ride, #13449)
+  if h == 0 && !s[0].stick_on { fr := fd_ride(s); if fr.ok { keys.forward = fr.forward; keys.turn = fr.turn; keys.shift = fr.gallop; } }
   // a film stage canters: a gallop's stick pushed part way (rein)
   at := cc.xh_ride_keys(cr, keys, s[0].rein, cr[0].clock);
   zone_breath_stream(s);

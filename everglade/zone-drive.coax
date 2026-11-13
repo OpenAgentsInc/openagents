@@ -65,6 +65,20 @@ fd_move_in :: (s: [] EgZone) -> FdIn {
   // forward goes along -(sin theta, cos theta): theta is the heading turned half round
   return FdIn.{ok = true, in = EgMoveIn.{key_y = 1, run = st.dist > 6, theta = figs.wrap_angle(figs.atan2(st.dx, st.dz) + 3.14159265)}};
 }
+// In the saddle a world operation steers the mount (#13449): from where it stands and faces, forward,
+// and A or D toward the way to go (shared/mount-kinds.coax mk_rein). ok false: no operation is going,
+// or you are on foot.
+FdRide :: struct { ok: bool; forward: f32; turn: f32; gallop: bool; }
+fd_ride :: (s: [] EgZone) -> FdRide {
+  if s[0].drive.count == 0 { return FdRide.{}; }
+  d := s[0].drive; m := s[0].creator[0].mounts[..];
+  if !d[0].on || d[0].status != DRV_GOING || !fd_on(s) || m[0].riding < 0 { return FdRide.{}; }
+  h := m[0].mounts[m[0].riding];
+  st := drv_steer(d, h.x, h.z, h.face, s[0].creator[0].clock);
+  if st.press { fd_press(s); return FdRide.{}; }
+  if !st.go { return FdRide.{}; }
+  return FdRide.{ok = true, forward = 1, turn = egm.eg_rein(h.face, st.dx, st.dz), gallop = st.dist > 12};
+}
 fd_press :: (s: [] EgZone) {
   d := s[0].drive; x := s[0].xc[..];
   if d[0].op == DRV_RIDE { drv_pressed(d, zone_mount_key(s), "E (mount)"); return; }   // zone-ride.coax: the key a player presses

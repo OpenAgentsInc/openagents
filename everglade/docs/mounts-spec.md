@@ -401,6 +401,29 @@ multiplayer realm.
    it. Route walks check it: the horse and the dragon across Experimental's
    glade, meadow and village (`everglade/zone-mounts.coax`, "route walk")
    and down the Archery Range (`archery-range.coax`).
+   **A mount never stands stuck on open ground** (GitHub #13449). Four
+   faults did that, and each is fixed where every zone gets it:
+   - *A round thing is round.* A world gives a trunk, a pillar or the tall
+     part of a rock as a post (`mount_post`: a circle from a height to a
+     height), not the square round it. Everglade II gave each trunk its
+     square and each rock its whole bounds, so a horse stopped at a corner
+     of them up to a metre from what it could see. A rock is now the circle
+     round what stands over a horse's step (`E2RockPrep.tall`), and nothing
+     when it is under the step everywhere.
+   - *A touch doesn't drain its speed.* Blocked, the mount tries its step
+     turned aside, a little and then more (`mount_slide`), and keeps the
+     pace it has along what it brushes. Before, any touch halved its speed
+     every step, and it crawled at 0.2 m/s. Met head on, it still stops.
+   - *It comes round out of a corner.* A turn that would swing its body
+     into a box backs it off a few centimetres as it turns. Before, the
+     turn was refused, and a horse with its nose between a wall and a stall
+     could not turn or go on.
+   - *It slides along the dungeon's block* in the zone pages
+     (`xh_ride`). Before, a step into the block's edge was undone whole
+     and its speed set to nothing, 1.5 m from the wall.
+
+   An agent rides by the driver: `mount horse-0`, then `walk-to ID` steers
+   the mount there (`mk_rein`), on the zone pages and in Everglade II.
 2. **Owned horses.** Stables, buying, the whistle, feed and care, death and
    recovery, stat blocks in the SRD engine (the horse's HP and AC, falling
    off).
@@ -412,6 +435,7 @@ multiplayer realm.
    Steed, and Dragon's Call.
 6. **Mounted combat in full.** Two-handed stowing, the Warhorse's charge,
    Opportunity Attacks on the horse and monsters that target mounts.
+
 
 ## Tests
 
