@@ -1,0 +1,231 @@
+// The work log: what an agent did in a turn, in a transcript (GitHub #13481). A tool call is one quiet row: an
+// icon for its kind, what it did in words, the argument that matters, how it stands and how long it took. A
+// press opens it onto what it sent and what came back; a long answer is cut at whole lines with Show all, and
+// Copy takes the whole of it. A call that failed or was refused says why under its row. Calls of one tool in a
+// row are a group with a count that opens onto them, and a finished turn's calls are one line that opens onto
+// its groups, so the answer under them stays what you read. While a call runs its glyph turns, and the line
+// under the transcript names it.
+//
+// The rows are plain lines, not frames: the frame is for the answer's actions and the composer. The look is the
+// mono skin's (components/skin/mono.coax mono_work_css). The page decides what a call is and holds which rows
+// are open; these build the nodes and do the pure sums (where a long answer is cut, seconds as words, runs of
+// one key).
+//   coax/bin/coax test components/kit/work.coax
+
+#load "frames.coax";
+
+// How a call stands. The words say it too: state is never shown by colour (the skin has none).
+KW_RUN :: 0;       // it runs
+KW_DONE :: 1;      // it answered
+KW_FAILED :: 2;    // it answered with an error
+KW_ASK :: 3;       // nothing was done: it waits for someone to approve it
+KW_DRY :: 4;       // a dry run: nothing was saved
+KW_REFUSED :: 5;   // refused: nothing was saved
+KW_UNKNOWN :: 6;   // it was sent and no answer came: it may have been done
+KW_STATES :: 7;
+KW_STATE :: [KW_STATES] string.["run", "done", "failed", "ask", "dry", "refused", "unknown"];
+KW_WORDS :: [KW_STATES] string.["", "", "Failed", "Needs approval", "Dry run", "Refused", "Outcome unknown"];
+// What came back shows this much before Show all: so many lines, and so many bytes of them.
+KW_CLIP_LINES :: 12;
+KW_CLIP_BYTES :: 1200;
+
+kw_state :: (state: int) -> string { return ifx state >= 0 && state < KW_STATES then KW_STATE[state] else KW_STATE[KW_UNKNOWN]; }
+kw_words :: (state: int) -> string { return ifx state >= 0 && state < KW_STATES then KW_WORDS[state] else KW_WORDS[KW_UNKNOWN]; }
+// Whether a state is one where nothing was saved, or may not have been: the row says it in words.
+kw_marked :: (state: int) -> bool { return state != KW_RUN && state != KW_DONE; }
+
+// Where text is cut to show at most `lines` lines and `bytes` bytes of it: after a whole line when one fits, never
+// inside a character. text.count when all of it fits.
+kw_clip :: (text: string, lines: int, bytes: int) -> int {
+  seen := 0; last := -1;
+  for i: 0..<text.count {
+    if text[i] == '\n' {
+      seen += 1;
+      if i + 1 > bytes { break; }
+      last = i + 1;
+      if seen >= lines { return ifx i + 1 >= text.count then text.count else i + 1; }
+    }
+  }
+  if text.count <= bytes && seen < lines { return text.count; }
+  if last > 0 { return last; }
+  cut := ifx bytes < text.count then bytes else text.count;
+  while cut > 0 && cut < text.count && (text[cut] & 0xC0) == 0x80 { cut -= 1; }
+  return ifx cut < 0 then 0 else cut;
+}
+// How many lines text has (a last line with no newline counts).
+kw_lines :: (text: string) -> int {
+  n := 0;
+  for c: text { if c == '\n' { n += 1; } }
+  return ifx text.count > 0 && text[text.count - 1] != '\n' then n + 1 else n;
+}
+// A call's time in words: "" under a second (or not known), "4s", "1m 20s".
+kw_seconds :: (ms: int, out: [] u8) -> string {
+  if ms < 1000 { return ""; }
+  s := ms / 1000; n := 0; num: [24] u8;
+  if s >= 60 {
+    n = kw_put(out, 0, tr_join(num[..], "", s / 60)); n = kw_put(out, n, "m ");
+    s = s % 60;
+  }
+  n = kw_put(out, n, tr_join(num[..], "", s)); n = kw_put(out, n, "s");
+  return ifx n < 0 then "" else cast(string) out[0..<n];
+}
+kw_put :: (out: [] u8, at: int, text: string) -> int {
+  if at < 0 || at + text.count > out.count { return -1; }
+  for i: 0..<text.count { out[at + i] = text[i]; }
+  return at + text.count;
+}
+// Runs of one key: keys in order, and where each run starts into starts. How many runs (at most starts.count;
+// the rest join the last).
+kw_runs :: (keys: [] int, starts: [] int) -> int {
+  n := 0;
+  for i: 0..<keys.count {
+    if i > 0 && keys[i] == keys[i - 1] { continue; }
+    if n >= starts.count { break; }
+    starts[n] = i; n += 1;
+  }
+  return n;
+}
+// The state a run of calls shows: running while any runs, else the worst of them (refused, failed, unknown,
+// waiting for approval, a dry run), else done.
+kw_worst :: (states: [] int) -> int {
+  order := [KW_STATES] int.[KW_RUN, KW_REFUSED, KW_FAILED, KW_UNKNOWN, KW_ASK, KW_DRY, KW_DONE];
+  for o: order { for s: states { if s == o { return o; } } }
+  return KW_DONE;
+}
+
+// A tool call: one row that opens. `icon` is its kind's (components/core/icons.coax), `label` what it did,
+// `arg` the argument that matters, `note` why it failed or was refused (shown under the row, open or not),
+// `ms` how long it took (-1: not known). Open, it shows `input` and `output`: the output cut by kw_clip unless
+// `whole`, with Show all (the id `ID.all`) and Copy (`ID.copy`; the caller copies the whole output).
+k_work_row :: (t: [] Tree, u: [] Ui, id: string, icon: int, label: string, arg: string, state: int, note: string, ms: int, open: bool, input: string, output: string, whole: bool) -> int {
+  ida: [UI_ID] u8; idb: [UI_ID] u8; idc: [UI_ID] u8; idd: [UI_ID] u8; ide: [UI_ID] u8; idf: [UI_ID] u8; idg: [UI_ID] u8; idh: [UI_ID] u8;
+  w := tr_open(t, tr_cat(ida[..], id, ".row"), TG_DIV, "wk");
+  tr_attr(t, w, AT_STATE, kw_state(state));
+  h := k_work_head(t, id, icon, label, arg, state, ms, open, -1);
+  if note.count > 0 { why := tr_leaf(t, tr_cat(idb[..], id, ".why"), TG_P, "wk-why", note); }
+  if open {
+    b := tr_open(t, tr_cat(idc[..], id, ".body"), TG_DIV, "wk-b");
+    if input.count > 0 {
+      k1 := tr_leaf(t, tr_cat(idd[..], id, ".ink"), TG_P, "wk-k", "Sent");
+      p1 := tr_leaf(t, tr_cat(ide[..], id, ".in"), TG_PRE, "wk-p", input);
+    }
+    k2 := tr_leaf(t, tr_cat(idd[..], id, ".outk"), TG_P, "wk-k", ifx state == KW_RUN then "No answer yet" else ifx output.count == 0 then "Nothing came back" else "Came back");
+    if output.count > 0 {
+      cut := ifx whole then output.count else kw_clip(output, KW_CLIP_LINES, KW_CLIP_BYTES);
+      p2 := tr_leaf(t, tr_cat(ide[..], id, ".out"), TG_PRE, "wk-p", cast(string) output[0..<cut]);
+      bar := tr_open(t, tr_cat(idf[..], id, ".acts"), TG_DIV, "wk-acts");
+      if cut < output.count || whole && kw_clip(output, KW_CLIP_LINES, KW_CLIP_BYTES) < output.count {
+        num: [24] u8; words: [64] u8;
+        all := k_link(t, tr_cat(idg[..], id, ".all"), ifx whole then "Show less" else tr_cat(words[..], tr_join(num[..], "Show all ", kw_lines(output)), " lines"));
+      }
+      cp := k_icon_button(t, tr_cat(idh[..], id, ".copy"), IC_COPY, "Copy what came back");
+      tr_close(t);
+    }
+    tr_close(t);
+  }
+  tr_close(t);
+  return w;
+}
+// The head of a row or a group: the button that opens it. count >= 0 is a group's count.
+k_work_head :: (t: [] Tree, id: string, icon: int, label: string, arg: string, state: int, ms: int, open: bool, count: int) -> int {
+  ida: [UI_ID] u8; idb: [UI_ID] u8; idc: [UI_ID] u8; idd: [UI_ID] u8; ide: [UI_ID] u8; idf: [UI_ID] u8; idg: [UI_ID] u8;
+  h := tr_open(t, id, TG_BUTTON, "wk-h");
+  tr_attr(t, h, AT_EXPANDED, ifx open then "true" else "false");
+  i := k_icon(t, tr_cat(ida[..], id, ".ic"), icon);
+  l := tr_leaf(t, tr_cat(idb[..], id, ".l"), TG_SPAN, "wk-l", label);
+  if count >= 0 { num: [24] u8; c := tr_leaf(t, tr_cat(idc[..], id, ".n"), TG_SPAN, "wk-n", tr_join(num[..], "", count)); }
+  if arg.count > 0 { a := tr_leaf(t, tr_cat(idd[..], id, ".a"), TG_SPAN, "wk-a", arg); }
+  if kw_marked(state) { s := tr_leaf(t, tr_cat(ide[..], id, ".s"), TG_SPAN, "wk-s", kw_words(state)); }
+  secs: [24] u8; time := kw_seconds(ms, secs[..]);
+  if time.count > 0 { m := tr_leaf(t, tr_cat(idf[..], id, ".t"), TG_SPAN, "wk-t", time); }
+  if state == KW_RUN { g := k_glyph(t, tr_cat(idg[..], id, ".g"), TL_RUN); }
+  x := k_icon(t, tr_cat(idg[..], id, ".x"), ifx open then IC_CHEVRON_UP else IC_CHEVRON_DOWN);
+  tr_close(t);
+  return h;
+}
+// A group: calls of one tool in a row, or a finished turn's calls. Its head says what in words and how many,
+// with the newest one's argument; open, the caller adds its rows, then k_work_group_end closes it either way.
+k_work_group_begin :: (t: [] Tree, u: [] Ui, id: string, icon: int, label: string, count: int, arg: string, state: int, open: bool) -> int {
+  ida: [UI_ID] u8; idb: [UI_ID] u8;
+  g := tr_open(t, tr_cat(ida[..], id, ".grp"), TG_DIV, "wk wk-grp");
+  tr_attr(t, g, AT_STATE, kw_state(state));
+  h := k_work_head(t, id, icon, label, arg, state, -1, open, count);
+  if open { b := tr_open(t, tr_cat(idb[..], id, ".rows"), TG_DIV, "wk-rows"); }
+  return g;
+}
+k_work_group_end :: (t: [] Tree, open: bool) {
+  if open { tr_close(t); }
+  tr_close(t);
+}
+// What is happening now, under the transcript: the running call's words beside a turning glyph.
+k_work_now :: (t: [] Tree, id: string, label: string) -> int {
+  ida: [UI_ID] u8; idb: [UI_ID] u8;
+  i := tr_open(t, id, TG_P, "wk-now");
+  tr_attr(t, i, AT_ROLE, "status");
+  g := k_glyph(t, tr_cat(ida[..], id, ".g"), TL_RUN);
+  l := tr_leaf(t, tr_cat(idb[..], id, ".l"), TG_SPAN, "wk-l", label);
+  tr_close(t);
+  return i;
+}
+
+// ---------------------------------------------------------------- checks
+
+KwTest :: struct { t: [1] Tree; u: [1] Ui; }
+
+#test "what came back is cut at whole lines within the bytes, never inside a character" {
+  #assert kw_clip("", 12, 100) == 0 && kw_clip("abc", 12, 100) == 3 && kw_clip("a\nb\nc\n", 12, 100) == 6;
+  #assert kw_clip("a\nb\nc\nd", 2, 100) == 4 && kw_clip("a\nb\nc\nd", 3, 100) == 6 && kw_clip("a\nb", 1, 100) == 2;
+  #assert kw_clip("aaaa\nbbbb\ncccc\n", 12, 11) == 10 && kw_clip("aaaa\nbbbb\n", 12, 10) == 10;
+  #assert kw_clip("abcdefgh", 12, 5) == 5 && kw_clip("abécd", 12, 3) == 2 && kw_clip("é", 12, 1) == 0;
+  #assert kw_clip("a\nb", 12, 100) == 3 && kw_clip("a\n", 1, 100) == 2;
+  #assert kw_lines("") == 0 && kw_lines("a") == 1 && kw_lines("a\n") == 1 && kw_lines("a\nb") == 2 && kw_lines("\n\n") == 2;
+}
+#test "seconds in words, runs of one key, and the state a group shows" {
+  b: [24] u8;
+  #assert kw_seconds(-1, b[..]) == "" && kw_seconds(999, b[..]) == "" && kw_seconds(1000, b[..]) == "1s" && kw_seconds(59999, b[..]) == "59s";
+  #assert kw_seconds(60000, b[..]) == "1m 0s" && kw_seconds(80500, b[..]) == "1m 20s" && kw_seconds(80500, b[0..<3]) == "";
+  keys := [7] int.[4, 9, 9, 9, 4, 4, 2]; starts: [8] int;
+  n := kw_runs(keys[..], starts[..]);
+  #assert n == 4 && starts[0] == 0 && starts[1] == 1 && starts[2] == 4 && starts[3] == 6;
+  #assert kw_runs(keys[..], starts[0..<2]) == 2 && kw_runs(keys[0..<0], starts[..]) == 0;
+  a := [3] int.[KW_DONE, KW_DRY, KW_DONE]; b2 := [3] int.[KW_DONE, KW_REFUSED, KW_RUN]; c := [3] int.[KW_FAILED, KW_REFUSED, KW_ASK]; d := [2] int.[KW_ASK, KW_UNKNOWN];
+  #assert kw_worst(a[..]) == KW_DRY && kw_worst(b2[..]) == KW_RUN && kw_worst(c[..]) == KW_REFUSED && kw_worst(d[..]) == KW_UNKNOWN && kw_worst(keys[0..<0]) == KW_DONE;
+  #assert kw_state(KW_DRY) == "dry" && kw_state(99) == "unknown" && kw_words(KW_REFUSED) == "Refused" && kw_words(-1) == "Outcome unknown";
+  #assert !kw_marked(KW_RUN) && !kw_marked(KW_DONE) && kw_marked(KW_DRY) && kw_marked(KW_FAILED);
+}
+#test "a call is a row that says how it stands and opens onto what it sent and what came back, cut with Show all" {
+  h: [1] KwTest; t := h[0].t[..]; u := h[0].u[..];
+  ui_begin(u, 0, true); tr_begin(t);
+  r := k_work_row(t, u, "c.1", IC_EDIT_PENCIL, "Set foe 3's night plan: patrol", "splice", KW_RUN, "", -1, false, "{}", "", false);
+  #assert tr_attr_of(t, r, AT_STATE) == "run" && tr_text_of(t, tr_find(t, "c.1.l")) == "Set foe 3's night plan: patrol" && tr_text_of(t, tr_find(t, "c.1.a")) == "splice";
+  #assert tr_attr_of(t, tr_find(t, "c.1"), AT_EXPANDED) == "false" && tr_find(t, "c.1.g") > 0 && tr_find(t, "c.1.s") < 0 && tr_find(t, "c.1.t") < 0 && tr_find(t, "c.1.body") < 0;
+  long: [4000] u8; n := 0;
+  for k: 0..<40 { for c: "line of what came back\n" { long[n] = c; n += 1; } }
+  out := cast(string) long[0..<n];
+  tr_begin(t);
+  r = k_work_row(t, u, "c.2", IC_EDIT_PENCIL, "Place a thing", "", KW_REFUSED, "Refused: in the kept-clear zone 'Scanner gate'", 2400, true, "{\"slug\":\"splice\"}", out, false);
+  #assert tr_attr_of(t, r, AT_STATE) == "refused" && tr_text_of(t, tr_find(t, "c.2.s")) == "Refused" && tr_text_of(t, tr_find(t, "c.2.t")) == "2s" && tr_find(t, "c.2.g") < 0;
+  #assert tr_text_of(t, tr_find(t, "c.2.why")) == "Refused: in the kept-clear zone 'Scanner gate'" && tr_text_of(t, tr_find(t, "c.2.in")) == "{\"slug\":\"splice\"}";
+  shown := tr_text_of(t, tr_find(t, "c.2.out"));
+  #assert kw_lines(shown) == KW_CLIP_LINES && tr_text_of(t, tr_find(t, "c.2.all")) == "Show all 40 lines" && tr_find(t, "c.2.copy") > 0 && tr_text_of(t, tr_find(t, "c.2.outk")) == "Came back";
+  tr_begin(t);
+  r = k_work_row(t, u, "c.2", IC_EDIT_PENCIL, "Place a thing", "", KW_DONE, "", -1, true, "", out, true);
+  #assert tr_text_of(t, tr_find(t, "c.2.out")) == out && tr_text_of(t, tr_find(t, "c.2.all")) == "Show less" && tr_find(t, "c.2.ink") < 0 && tr_find(t, "c.2.why") < 0;
+  tr_begin(t);
+  r = k_work_row(t, u, "c.3", IC_EYE, "Read the world splice", "", KW_DONE, "", -1, true, "", "short", false);
+  #assert tr_find(t, "c.3.all") < 0 && tr_find(t, "c.3.copy") > 0 && t[0].depth == 0 && t[0].lost == 0;
+}
+#test "a group says what and how many and opens onto its rows; the now line names the running call" {
+  h: [1] KwTest; t := h[0].t[..]; u := h[0].u[..];
+  ui_begin(u, 0, true); tr_begin(t);
+  g := k_work_group_begin(t, u, "g.1", IC_EDIT_PENCIL, "Set foe plans", 12, "foe 3", KW_DONE, false);
+  k_work_group_end(t, false);
+  #assert tr_text_of(t, tr_find(t, "g.1.n")) == "12" && tr_text_of(t, tr_find(t, "g.1.l")) == "Set foe plans" && tr_find(t, "g.1.rows") < 0 && tr_attr_of(t, tr_find(t, "g.1"), AT_EXPANDED) == "false";
+  g = k_work_group_begin(t, u, "g.2", IC_EDIT_PENCIL, "Set foe plans", 2, "", KW_DRY, true);
+  r := k_work_row(t, u, "g.2.c.0", IC_EDIT_PENCIL, "Set foe 1's day plan: guard", "", KW_DRY, "", -1, false, "", "", false);
+  k_work_group_end(t, true);
+  #assert t[0].nodes[tr_find(t, "g.2.c.0.row")].parent == tr_find(t, "g.2.rows") && tr_text_of(t, tr_find(t, "g.2.s")) == "Dry run" && tr_attr_of(t, g, AT_STATE) == "dry";
+  w := k_work_now(t, "now", "Set foe 3's night plan: patrol");
+  #assert tr_attr_of(t, w, AT_ROLE) == "status" && tr_text_of(t, tr_find(t, "now.l")) == "Set foe 3's night plan: patrol" && tr_attr_of(t, tr_find(t, "now.g"), AT_STATE) == "run";
+  #assert t[0].depth == 0 && t[0].lost == 0;
+}

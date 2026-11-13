@@ -443,6 +443,35 @@ mono_set_css :: (out: [] u8, at: int) -> int {
   n = mc(out, n, "@media (max-width:760px){.side~.st{margin-left:0}}@media (max-width:600px){.st-b{padding:18px 16px 64px}.st-r{flex-direction:column;align-items:stretch;gap:10px}.st-c{max-width:none;justify-content:flex-start}.st-c .field{width:100%}}");
   return n;
 }
+// The work log's rules (components/kit/work.coax, #13481), after the page's: an agent's tool calls as quiet rows
+// with an icon, the words, the argument in the code face, how it stands in words (a refusal inverted), a group's
+// count, why a call failed under it, what it sent and what came back behind a line, and the running call.
+mono_work_css :: (out: [] u8, at: int) -> int {
+  n := at;
+  n = mc(out, n, ".wk-log{display:flex;flex-direction:column;margin:12px 0 2px;min-width:0}.wk{display:flex;flex-direction:column;min-width:0}");
+  n = mc(out, n, ".wk-h{appearance:none;border:0;background:none;color:var(--ink-muted);font:13px/1.5 var(--sans);display:flex;align-items:center;gap:8px;width:calc(100% + 12px);box-sizing:border-box;min-width:0;min-height:28px;padding:2px 6px;margin:0 -6px;text-align:left;cursor:pointer}");
+  n = mc(out, n, ".wk-h:hover,.wk-h:focus-visible{color:var(--ink);background:var(--raised);outline:none}.wk-h>.ic{width:15px;height:15px;flex:none}.wk-h>.ic:last-child{width:12px;height:12px;margin-left:auto;color:var(--ink-faint)}");
+  n = mc(out, n, ".wk-l{flex:0 1 auto;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--ink)}");
+  n = mc(out, n, ".wk-a{flex:1 1 0;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font:12px/1.5 var(--mono);color:var(--ink-faint)}");
+  n = mc(out, n, ".wk-n{flex:none;font:12px/1.4 var(--mono);color:var(--ink-muted);padding:0 5px;outline:1px solid var(--line-dim);outline-offset:-1px}");
+  n = mc(out, n, ".wk-s{flex:none;font:500 10px/1.5 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--ink);padding:0 5px;outline:1px dashed var(--line);outline-offset:-1px}");
+  n = mc(out, n, ".wk[data-state=refused]>.wk-h .wk-s,.wk[data-state=failed]>.wk-h .wk-s{color:#000;background:#fff;outline:0}.wk-t{flex:none;font:12px/1.5 var(--mono);color:var(--ink-faint)}");
+  n = mc(out, n, ".wk-h .gl,.wk-now .gl{width:16px;height:16px}.wk-h .gl .ic,.wk-now .gl .ic{width:13px;height:13px}");
+  n = mc(out, n, ".wk-why{margin:0 0 4px 23px;font:12px/1.5 var(--mono);color:var(--ink);overflow-wrap:anywhere}");
+  n = mc(out, n, ".wk-b{margin:2px 0 8px 7px;padding-left:15px;border-left:1px solid var(--line-dim);display:flex;flex-direction:column;gap:4px;min-width:0}");
+  n = mc(out, n, ".wk-k{margin:4px 0 0;font:500 10px/1.4 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--ink-faint)}");
+  n = mc(out, n, ".wk-p{margin:0;font:12px/1.5 var(--mono);color:var(--ink-muted);white-space:pre-wrap;overflow-wrap:anywhere;max-height:320px;overflow:auto;scrollbar-width:thin;scrollbar-color:var(--line-dim) transparent}");
+  n = mc(out, n, ".wk-acts{display:flex;align-items:center;gap:6px;margin-left:-6px}.wk-rows{margin:0 0 4px 7px;padding-left:15px;border-left:1px solid var(--line-dim);display:flex;flex-direction:column;min-width:0}");
+  n = mc(out, n, ".wk-now{display:flex;align-items:center;gap:8px;margin:10px 0 0;min-width:0;font:13px/1.5 var(--sans);color:var(--ink-muted)}.wk-now .wk-l{color:var(--ink-muted)}");
+  n = mc(out, n, "@media (pointer:coarse){.wk-h{min-height:44px}}");
+  return n;
+}
+#test "the work log's rules follow the page's, fit, and have no hue" {
+  css: [32768] u8; n := mono_css(css[..]);
+  m := mono_work_css(css[..], n);
+  #assert m > n + 1500 && m < n + 4000 && mono_work_css(css[0..<n], n) == n;
+  for i: n..<m { if css[i] == '#' { #assert (css[i + 1] == 'f' && css[i + 2] == 'f' && css[i + 3] == 'f') || (css[i + 1] == '0' && css[i + 2] == '0' && css[i + 3] == '0'); } }
+}
 
 #test "every role has an ARWES kind and its settings, and the stylesheet fits and has no hue" {
   sets: [MF_COUNT] AfSettings;

@@ -13,6 +13,7 @@
 
 #load "../kit/dock.coax";
 #load "../kit/settings.coax";
+#load "../kit/work.coax";
 #load "../backend/dom.coax";
 
 WG_INBOX :: 4096;      // a press's or a field's text from the host
@@ -26,12 +27,15 @@ WG_THINGS :: [3] string.["Cargo crate", "Parked rover", "Crab-bot"];
 WG_MODELS :: [3] string.["Opus 5.5", "Sonnet 5.5", "Haiku 5.5"];
 WG_MODEL_NOTES :: [3] string.["For complex work", "For everyday tasks", "Fastest for quick answers"];
 WG_ANSWER :: "The page reads `/api/chat/state` every **2 seconds** and rebuilds the whole transcript from it. Three things follow:\n\n- an answer appears only when its turn ends\n- a stopped turn loses what was written\n- nothing marks where a long chat was cut\n\nThe fix is on the server first: keep each line of the session record, then stream it. See [the audit](/docs/audits/2026-11-11-chat-zero-base-audit.md).\n\n| Limit | Value |\n| --- | --- |\n| Turns sent | 40 |\n| Tools a turn | 12 |";
+// What a refused tool call got back, as the realm CLI says it in words.
+WG_REFUSED :: "refused (edit-refused; a retry won't help): foe 2 has no route for the dusk patrol\nrev 5, nothing was saved";
 WG_CODE :: "dm_flush :: (d: [] Dom, t: [] Tree, sets: [] AfSettings) -> int {\n  // compare the tree with what was last sent, by id\n  // write only what changed\n}";
 
 WebPage :: struct {
   ready: bool; time: f32; dirty: bool; animating: bool;
   presses: int;
   tool_open: bool;
+  work: [4] bool;                    // the work log's run, group, refused row and its Show all are open
   row: int; model: int; thing: int; grouped: [3] bool;
   radius: int = 2;   // the dock's stepper: which of its five steps it stands at
   switched: bool = true;   // the settings page's switch
@@ -98,6 +102,26 @@ wg_build :: (s: [] WebPage) {
     m := k_user(t, u, tr_join(buf[..], "sent.", k), cast(string) s[0].sent[k][0..<s[0].sent_n[k]]);
   }
   tr_close(t);
+  tr_close(t);
+
+  sec = wg_section(t, "work", "Work log", "An agent's tool calls. A call is a row: what it does in words, what it worked on, how it stands and how long it took; it opens onto what it sent and what came back. Calls of one tool in a row are a group with a count. A finished run is one line above the answer. A dry run, a refusal and a wait for approval each say so in words, and why.");
+  wl := tr_open(t, "work.log", TG_DIV, "wk-log");
+  sum := k_work_group_begin(t, u, "work.w", IC_EDIT_PENCIL, "Set foe plans ×12, Look up tools, and 2 more tools", 15, "", KW_REFUSED, s[0].work[0]);
+  if s[0].work[0] {
+    r0 := k_work_row(t, u, "work.c.0", IC_EYE, "Read the world splice", "splice", KW_DONE, "", 1200, false, "{\"slug\":\"splice\"}", "{\"ok\":true,\"things\":14}", false);
+    g := k_work_group_begin(t, u, "work.g", IC_EDIT_PENCIL, "Set foe plans", 12, "Set foe 3's night plan: hunt", KW_REFUSED, s[0].work[1]);
+    if s[0].work[1] {
+      r1 := k_work_row(t, u, "work.c.1", IC_EDIT_PENCIL, "Set foe 2's dusk plan: rest", "splice", KW_REFUSED, "foe 2 has no route for the dusk patrol. Trying again won't help.", 0, s[0].work[2],
+        "{\"slug\":\"splice\",\"foe\":2,\"daytime\":\"dusk\",\"act\":\"rest\"}", WG_REFUSED, s[0].work[3]);
+      r2 := k_work_row(t, u, "work.c.2", IC_EDIT_PENCIL, "Set foe 3's dawn plan: patrol", "splice", KW_DRY, "Nothing was saved: carried out whole in a throwaway copy of the world.", 0, false, "", "", false);
+      r3 := k_work_row(t, u, "work.c.3", IC_GLOBE, "Publish splice now", "splice", KW_ASK, "Nothing was done. It runs once it is approved.", 0, false, "", "", false);
+      r4 := k_work_row(t, u, "work.c.4", IC_EDIT_PENCIL, "Set foe 3's night plan: hunt", "splice", KW_RUN, "", 4000, false, "", "", false);
+    }
+    k_work_group_end(t, s[0].work[1]);
+  }
+  k_work_group_end(t, s[0].work[0]);
+  tr_close(t);
+  wn := k_work_now(t, "work.now", "Set foe 3's night plan: hunt");
   tr_close(t);
 
   sec = wg_section(t, "code", "Code block", "Its language and Copy in a strip, then the code, which scrolls sideways before it wraps.");
@@ -271,6 +295,11 @@ wg_click :: (s: [] WebPage, id: string) {
   if id == "replay" { ui_replay(s[0].ui[..]); }
   else if id == "press.primary" || id == "press.plain" || id == "press.stop" { s[0].presses += 1; }
   else if id == "tool.1" { s[0].tool_open = !s[0].tool_open; }
+  else if id == "work.w" { s[0].work[0] = !s[0].work[0]; }
+  else if id == "work.g" { s[0].work[1] = !s[0].work[1]; }
+  else if id == "work.c.1" { s[0].work[2] = !s[0].work[2]; }
+  else if id == "work.c.1.all" { s[0].work[3] = !s[0].work[3]; }
+  else if id == "work.c.1.copy" { s[0].clip_n = 0; for c: WG_REFUSED { if s[0].clip_n < WG_DRAFT { s[0].clip[s[0].clip_n] = c; s[0].clip_n += 1; } } }
   else if id == "allow" { s[0].answer = 1; }
   else if id == "deny" { s[0].answer = 2; }
   else if id == "ask.again" { s[0].answer = 0; }
@@ -300,7 +329,7 @@ coaxial_kit_frame :: (s: [] WebPage, dt: f32, reduced: bool) -> int #export_c #e
   if !s[0].dirty && !s[0].animating { return 0; }
   d := s[0].dom[..];
   if !d[0].styled {
-    n := mono_set_css(s[0].css[..], mono_dock_css(s[0].css[..], mono_css(s[0].css[..])));
+    n := mono_work_css(s[0].css[..], mono_set_css(s[0].css[..], mono_dock_css(s[0].css[..], mono_css(s[0].css[..]))));
     dm_style(d, cast(string) s[0].css[0..<n]);
   }
   ui_begin(s[0].ui[..], s[0].time, reduced);
@@ -392,6 +421,12 @@ WgTest :: struct { s: [1] WebPage; }
   coaxial_kit_event(s, WG_CLICK, dm_find(d, "tool.1"), 0);
   n = coaxial_kit_frame(s, 0.016, true);
   #assert s[0].tool_open && dm_find(d, "tool.1.out") >= 0;
+  // the work log: its run opens onto a group, the group onto its rows, a refused row onto what came back
+  #assert tr_find(s[0].tree[..], "work.w") > 0 && tr_find(s[0].tree[..], "work.g") < 0;
+  for id: [3] string.["work.w", "work.g", "work.c.1"] { coaxial_kit_event(s, WG_CLICK, dm_find(d, id), 0); n = coaxial_kit_frame(s, 0.016, true); }
+  #assert tr_attr_of(s[0].tree[..], tr_find(s[0].tree[..], "work.c.1.row"), AT_STATE) == "refused" && dm_find(d, "work.c.1.out") >= 0 && tr_find(s[0].tree[..], "work.c.4.g") > 0;
+  coaxial_kit_event(s, WG_CLICK, dm_find(d, "work.c.1.copy"), 0);
+  #assert coaxial_kit_clip(s) == WG_REFUSED.count;
   coaxial_kit_event(s, WG_CLICK, dm_find(d, "allow"), 0);
   n = coaxial_kit_frame(s, 0.016, true);
   #assert s[0].answer == 1 && dm_find(d, "allow") < 0 && dm_find(d, "ask.again") >= 0;
