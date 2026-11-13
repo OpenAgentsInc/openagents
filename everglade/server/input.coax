@@ -327,7 +327,7 @@ eg_heard_change :: (v: [] RmServer, k: int, seat_id: SeatId, text: string) { sea
   st := v[0].eg[k].seat[seat..<seat + 1];
   if !r[0].ok || !st[0].hello || look.count == 0 || look.count > EG_LOOK || egb_klass_of(kind) < EGB_CL0 { return; }
   me := EGB_SEAT + seat; b := v[0].eg[k].rules[0].b[..];
-  if b[0].c[me].dead || b[0].c[me].hp <= 0 || v[0].eg[k].guard[0].foe == seat { return; }
+  if b[0].c[me].dead || b[0].c[me].hp <= 0 || e2_patrol_foe(v, k) == seat { return; }
   hp := b[0].c[me].hp; most := rs_max(b[0].c[me].hp_max, 1);
   st[0].look_n = eg_word(look, st[0].look[..]);
   // the look always; the class and level only where the page decides them (#13259): elsewhere the

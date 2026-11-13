@@ -90,10 +90,23 @@ document with other tables or columns.
 | `reward` | `quest`, `item`, `coin`, `xp` | Paid in ID order once a quest's steps are done |
 | `spawn` | `creature`, `point`, `count` | Where a creature appears |
 | `step` | `quest`, `creature`, `point`, `item`, `talk`, `count` | One objective, in ID order: kill `count` of a creature, reach a point, bring `count` of an item, or talk |
+| `template` | `creature`, `block`, `style`, `notice`, `leash`, `run` | How a creature fights (`docs/metaverse/creatures.md`) |
+| `troop` | `spawn`, `group`, `face`, `respawn`, `slot` | A spawn's place in the room |
+| `troop_beat` | `troop`, `point`, `rest` | A patrol's beat: the points its troop walks, in ID order, and the seconds it stands at each |
+| `troop_phase` | `troop`, `hp`, `after`, `style`, `run` | A boss script: at a percent of its Hit Points or seconds after it is roused, a troop's member fights by another style and run |
+
+The tables come in three sets: the first ten, those with `template` and
+`troop`, and those with `troop_beat` and `troop_phase`. Each set is the one
+before with tables added after it. Table order is by name, so a new table's
+name must sort after `troop_phase`. That keeps every table's place the same
+in an older document, which a room still reads for one release
+([the previous pins](everglade-previous-pins.md)).
 
 Everglade also refuses an item slot the record doesn't have, a step with no
 target or more than one, a quest with no step, and a quest with more stages
-than the record holds (255).
+than the record holds (255). It refuses a phase with no key (`hp` and `after`
+both 0), with `hp` over 100, or with a style that doesn't fight, and a beat
+point with a rest over 600 seconds.
 
 ## Edit the tables
 

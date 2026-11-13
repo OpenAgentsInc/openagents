@@ -732,10 +732,10 @@ eg_test_input_on :: (v: [] RmServer, c: int, seq: int, heard: int) {
   rm_heard(v[..], 0, "V ranger.0.0.0 srd-wizard-5"); eg_test_tick(v[..], k);
   #assert r[0].klass[0] == EGB_CL0 + FB_CL_RANGER;
   // the guard fighting it: the same
-  b[0].c[me].hp = 20; v[0].eg[k].guard[0].foe = 0;
+  b[0].c[me].hp = 20; e2_patrol(v[..], k)[0].state = E2M_CHASE; e2_patrol(v[..], k)[0].foe = 0;
   rm_heard(v[..], 0, "V ranger.0.0.0 srd-wizard-5");
   #assert r[0].klass[0] == EGB_CL0 + FB_CL_RANGER;
-  v[0].eg[k].guard[0].foe = -1;
+  e2_patrol(v[..], k)[0].state = E2M_IDLE; e2_patrol(v[..], k)[0].foe = -1;
   rm_heard(v[..], 0, "V ranger.0.0.0 srd-wizard-5"); eg_test_tick(v[..], k);
   #assert r[0].klass[0] == EGB_CL0 + FB_CL_WIZARD;
 }

@@ -27,7 +27,7 @@ The service gives each NPC five behaviours:
 | --- | --- | --- |
 | Engine | The agent, its tuning, the window, planning, pursuit, circling, body avoidance and the leash | `metaverse-engine/ai/steer.coax` |
 | Engine | A window filled from a realm's colliders and terrain (boxes, capsules, hulls, heightfields, steep ground) | `metaverse-engine/ai/steer-colliders.coax` |
-| Game | Each kind's tuning: its speed, body, reach, ring and leash | `E2G_NAV` in `everglade/server/guard.coax`; `hostile_tune` in `metaverse/experimental-hostiles.coax` |
+| Game | Each kind's tuning: its speed, body, reach, ring and leash | `hostile_tune` in `metaverse/experimental-hostiles.coax` |
 | Zone | Where a body may stand, the bodies near it, and the final slide of a step | `e2_may_stand` and `e2m_keep` (Everglade II); `hostile_blocked_pad`, `hostile_walk` and the dungeon's doorway graph (Experimental) |
 
 Coax has no procedure values, so the zone fills the window itself. It does this only when the
@@ -58,11 +58,11 @@ Experimental, it runs on the page's frame.
 
 ## Who uses it
 
-- The Everglade II path guard fights on it in the room (`e2g_fight`). His leash stays his own:
-  `E2G_LEASH` from where he was struck, then back to his walk.
-- The Everglade II wolves and goblins move on the navigation cells (`e2mo_move` through `e2nv_go`).
-  Their notice, circling, blows and leash stay their own. The guard's window is filled from the
-  cells while he fights.
+- Every creature of an Everglade room moves on the navigation cells (`e2mo_move` through
+  `e2nv_go_among` in `everglade/server/nav.coax`): the wolves, the goblins, the Ogre and the path
+  guard, on his beat and in a fight (#13427). The guard goes round the players, who are bodies to
+  him. Each behavior's notice, circling, blows and leash are the creature runtime's
+  (`docs/metaverse/creatures.md`).
 - The Experimental monsters chase, circle and leash on it (`hostile_steer`). The dungeon's doorway
   graph supplies their waypoints between rooms.
 

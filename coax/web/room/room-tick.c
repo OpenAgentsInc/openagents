@@ -8,8 +8,6 @@
    (relay_flush, pump_all), printed with the tick line; each tick's are the room view's workloads too
    (room-stats.h). abilities, town, spells and people were v1's parts: they stay in the report at 0
    until the report's columns change (#13267). */
-/* the trunks the guard is handed each tick: everglade/server/guard.coax E2G_NEAR */
-#define E2G_NEAR_C 24
 enum { PART_MOVE, PART_ABILITIES, PART_TOWN, PART_SPELLS, PART_PEOPLE, PART_RULES, PART_WRITE, PART_SEND, PARTS };
 static int64_t part_us[PARTS];
 #ifdef COAX_ROOM_PROFILE
@@ -65,9 +63,6 @@ static bool everglade2_room_tick(int k, int64_t room_work_start) {
   float guard[2] = {0, 0};
   bool guard_on = rm_e2_guard_body(view(), k, (coax_v_f32){guard, 2});
   world2_guard(k, guard_on, guard[0], guard[1]);
-  /* the trunks round him, which his steps go round (everglade/server/guard.coax) */
-  float near[E2G_NEAR_C * 3];
-  rm_e2_guard_near(view(), k, (coax_v_f32){near, guard_on ? world2_near(guard[0], guard[1], near, E2G_NEAR_C) * 3 : 0});
   for (int s = 0, seats = (int)rm_eg_cap(view(), k); s < seats; s++) {
     everglade2_place(k, s, pose);
     /* admin mode's teleport (everglade/server/admin.coax): asked of a local room only */

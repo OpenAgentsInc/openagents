@@ -251,7 +251,7 @@ egb_step :: (r: [] EgBattle, clock: int) #effects(all) {
   }
   egb_beasts_check(r);
 }
-// A patrolling guard's turn (everglade/server/guard.coax walks it): an Attack action at the creature it
+// A patrolling guard's turn (everglade/server/creatures.coax walks it, the patrol behavior): an Attack action at the creature it
 // is set on, its own stat block's weapon through the shared attack (Extra Attack's blows with it), once
 // the room has brought it within reach. It never chooses a foe: the room sets one only on a creature
 // that harmed it. `swing` keeps the battle's clock of its last blow, which the room tells the pages.
@@ -264,7 +264,7 @@ egb_patrol_turn :: (r: [] EgBattle, q: int) #effects(all) {
   // action while the foe still stands (a stat block without them does neither)
   if b[0].c[i].hp * 2 < b[0].c[i].hp_max { _ := rs_second_wind(b, i); }
   // out of reach: far off, his ranged weapon (its Attack action; none, none shot); nearer, the Dash
-  // action to close (the room runs him faster while it lasts: everglade/server/guard.coax E2G_DASH)
+  // action to close (the room runs him faster while it lasts: everglade/server/creatures.coax e2pt_step)
   if rs_feet_to(b, i, foe) > rs_weapon(b[0].c[i].weapon).reach_ft {
     if rs_feet_to(b, i, foe) >= EGB_SHOOT_FROM_FT && rs_shoot(b, i, foe) { bt[0].shot_at = b[0].clock; return; }
     if rs_dash(b, i) { bt[0].dash_at = b[0].clock; }

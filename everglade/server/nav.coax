@@ -299,6 +299,11 @@ e2nv_near_open :: (v: [] RmServer, k: int, x: f32, z: f32, reach: f32) -> [3] f3
 // Creature `who` (a monster's number, or E2NV_GUARD) at (x, z) takes one tick's step toward
 // (tx, tz) at `speed`, on the cells: where it stands after, and the way it went ([x, z, dx, dz]).
 e2nv_go :: (v: [] RmServer, k: int, who: int, x: f32, z: f32, tx: f32, tz: f32, speed: f32, dt: f32) -> [4] f32 {
+  none: [1] f32;
+  return e2nv_go_among(v, k, who, x, z, tx, tz, speed, dt, none[0..<0]);
+}
+// The same among `bodies` (x, z, radius each), which it goes round: the players, to a patrol.
+e2nv_go_among :: (v: [] RmServer, k: int, who: int, x: f32, z: f32, tx: f32, tz: f32, speed: f32, dt: f32, bodies: [] f32) -> [4] f32 {
   nv := e2nv_room(v, k); sh := v[0].nav[..];
   a := nv[0].agent[who..<who + 1];
   // its pages aren't all in yet: it stands until they are
@@ -314,9 +319,8 @@ e2nv_go :: (v: [] RmServer, k: int, who: int, x: f32, z: f32, tx: f32, tz: f32, 
     a[0].x = q[0]; a[0].z = q[1];
     return [4] f32.[q[0], q[1], q[0] - x, q[1] - z];
   }
-  none: [1] f32;
   t := NavTune.{speed = speed, body = f32(E2N_BODY)};
-  s := nav_cells_go(a, nv[0].guide[who..<who + 1], t, sh[0].pages[..], sh[0].window[..], sh[0].far[..], tx, tz, dt, none[0..<0], -1);
+  s := nav_cells_go(a, nv[0].guide[who..<who + 1], t, sh[0].pages[..], sh[0].window[..], sh[0].far[..], tx, tz, dt, bodies, -1);
   // the room's last word: never onto a cell it doesn't hold
   if !e2nv_open(v, k, s.x, s.z) { a[0].x = x; a[0].z = z; return [4] f32.[x, z, 0, 0]; }
   return [4] f32.[s.x, s.z, s.x - x, s.z - z];

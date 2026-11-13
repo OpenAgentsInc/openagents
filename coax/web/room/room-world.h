@@ -23,5 +23,4 @@ void *world2_ground(void);
 bool world2_place(int k, int s, const float *at, float out[WORLD_POSE]);
 bool world2_step(int k, int s, const int64_t in[WORLD_IN], const float *ride, float out[WORLD_POSE]);
 void world2_guard(int k, bool on, float x, float z);
-int world2_near(float x, float z, float *out, int cap);
 #endif

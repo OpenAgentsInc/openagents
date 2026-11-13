@@ -21,8 +21,18 @@
 //   troop     id spawn group face respawn slot         a spawn's place in the room: spawns of one group fight as
 //                                                      one; the way it faces at home (degrees); seconds from a fall
 //                                                      to the next; the number its first member has on the wire
-// The tables of revisions 1 and 2 had no template and no troop: such a document is still Everglade's
-// (a room keeps the release before's tables, #13408), and a room that loads one has no creatures.
+//   troop_beat  id troop point rest                    a patrol's beat (#13427): the points its troop walks, in ID
+//                                                      order, there and back; the seconds it stands at each
+//   troop_phase id troop hp after style run            a boss script (#13427): once a member of the troop is at
+//                                                      `hp` percent of its Hit Points or under (0: not by Hit
+//                                                      Points), or `after` seconds have passed since it was roused
+//                                                      (0: not by time), it fights by `style` and runs at `run`
+//                                                      (cm a second; 0: its template's). The last row that holds,
+//                                                      in ID order, is the one in force.
+// The tables come in three sets, each the one before with tables added after it: the first ten (revision
+// 1: no creatures in a room that loads it; a room keeps the release before's tables, #13408), those and
+// template and troop, and those and troop_beat and troop_phase. A new table's name sorts after the last
+// one's, so no table's place in the document changes.
 //
 // A quest's stage (the character record's, everglade/model/character.coax) counts what is done:
 // 0 not taken; 1 taken; each unit of a step done adds one (a kill, an item brought, a point reached,
@@ -33,10 +43,11 @@
 #load "../../metaverse-engine/content/tables.coax";
 #load "content-checks.coax" #test;   // the checks' fixture and helpers
 
-EC_TABLES :: 12;
-EC_TABLES_WAS :: 10;     // the tables of revisions 1 and 2: the first ten
+EC_TABLES :: 14;
+EC_TABLES_WILD :: 12;    // the first twelve: the creature runtime's template and troop, no beat and no phase
+EC_TABLES_WAS :: 10;     // the tables of revision 1: the first ten
 EC_ABILITY :: 0; EC_CREATURE :: 1; EC_DIALOGUE :: 2; EC_ITEM :: 3; EC_LOOT :: 4; EC_POINT :: 5; EC_QUEST :: 6; EC_REWARD :: 7; EC_SPAWN :: 8; EC_STEP :: 9;
-EC_TEMPLATE :: 10; EC_TROOP :: 11;
+EC_TEMPLATE :: 10; EC_TROOP :: 11; EC_TROOP_BEAT :: 12; EC_TROOP_PHASE :: 13;
 EC_HEAD :: [EC_TABLES] string.[
   "table ability id name:text",
   "table creature id name:text kind:int xp:int",
@@ -49,7 +60,9 @@ EC_HEAD :: [EC_TABLES] string.[
   "table spawn id creature:ref.creature point:ref.point count:int",
   "table step id quest:ref.quest creature:opt.creature point:opt.point item:opt.item talk:opt.dialogue count:int",
   "table template id creature:ref.creature block:int style:int notice:int leash:int run:int",
-  "table troop id spawn:ref.spawn group:int face:int respawn:int slot:int"];
+  "table troop id spawn:ref.spawn group:int face:int respawn:int slot:int",
+  "table troop_beat id troop:ref.troop point:ref.point rest:int",
+  "table troop_phase id troop:ref.troop hp:int after:int style:int run:int"];
 EC_NAME :: 1;
 EC_CREATURE_KIND :: 2; EC_CREATURE_XP :: 3;
 EC_DIALOGUE_POINT :: 2; EC_DIALOGUE_QUEST :: 3; EC_DIALOGUE_LINE :: 4;
@@ -60,6 +73,9 @@ EC_REWARD_QUEST :: 1; EC_REWARD_ITEM :: 2; EC_REWARD_COIN :: 3; EC_REWARD_XP :: 
 EC_SPAWN_CREATURE :: 1; EC_SPAWN_POINT :: 2; EC_SPAWN_COUNT :: 3;
 EC_TEMPLATE_CREATURE :: 1; EC_TEMPLATE_BLOCK :: 2; EC_TEMPLATE_STYLE :: 3; EC_TEMPLATE_NOTICE :: 4; EC_TEMPLATE_LEASH :: 5; EC_TEMPLATE_RUN :: 6;
 EC_TROOP_SPAWN :: 1; EC_TROOP_GROUP :: 2; EC_TROOP_FACE :: 3; EC_TROOP_RESPAWN :: 4; EC_TROOP_SLOT :: 5;
+EC_BEAT_TROOP :: 1; EC_BEAT_POINT :: 2; EC_BEAT_REST :: 3;
+EC_PHASE_TROOP :: 1; EC_PHASE_HP :: 2; EC_PHASE_AFTER :: 3; EC_PHASE_STYLE :: 4; EC_PHASE_RUN :: 5;
+EC_REST_MAX :: 600;      // the longest a patrol stands at a point of its beat, in seconds
 EC_STEP_QUEST :: 1; EC_STEP_CREATURE :: 2; EC_STEP_POINT :: 3; EC_STEP_ITEM :: 4; EC_STEP_TALK :: 5; EC_STEP_COUNT :: 6;
 EC_STYLE_PACK :: 0; EC_STYLE_MELEE :: 1; EC_STYLE_ARCHER :: 2; EC_STYLE_PATROL :: 3; EC_STYLE_STANDS :: 4; EC_STYLES :: 5;   // a template's style: the behaviors (everglade/server/creatures.coax)
 EC_LOOT_WHOLE :: 100;    // a creature's loot weights add up to this
@@ -91,9 +107,10 @@ ec_rewards :: (d: [] ContentDoc, quest: int) -> int #effects(all) {
 // Whether d is Everglade's content: a document that read, with exactly Everglade's tables and
 // columns; loot weights that add up to 100 for each creature; an item slot the record has; each step
 // one objective with a count (one for a point or a talk); each quest with a step, and stages the
-// record can hold.
+// record can hold; each phase keyed on Hit Points (1 to 100 percent) or on time, or both, with a style
+// that fights; each beat point's rest no longer than EC_REST_MAX.
 ec_ok :: (d: [] ContentDoc) -> bool #effects(all) {
-  if !d[0].ok || (d[0].t_n != EC_TABLES && d[0].t_n != EC_TABLES_WAS) { return false; }
+  if !d[0].ok || (d[0].t_n != EC_TABLES && d[0].t_n != EC_TABLES_WILD && d[0].t_n != EC_TABLES_WAS) { return false; }
   for t: 0..<d[0].t_n {
     hb: [320] u8;
     if cast(string) hb[0..<ct_put_table(d, t, hb[..], 0)] != EC_HEAD[t] { return false; }
@@ -110,11 +127,18 @@ ec_ok :: (d: [] ContentDoc) -> bool #effects(all) {
     quest := ct_get(d, EC_QUEST, r, 0); total := ec_total(d, quest);
     if total < 1 || total + ec_rewards(d, quest) >= EC_STAGE_MAX { return false; }
   }
+  for r: 0..<ct_rows(d, EC_TROOP_BEAT) { if ct_get(d, EC_TROOP_BEAT, r, EC_BEAT_REST) > EC_REST_MAX { return false; } }
+  for r: 0..<ct_rows(d, EC_TROOP_PHASE) {
+    hp := ct_get(d, EC_TROOP_PHASE, r, EC_PHASE_HP); after := ct_get(d, EC_TROOP_PHASE, r, EC_PHASE_AFTER); style := ct_get(d, EC_TROOP_PHASE, r, EC_PHASE_STYLE);
+    if hp > 100 || (hp == 0 && after == 0) || style > EC_STYLE_ARCHER { return false; }
+  }
   return true;
 }
 
 // Whether d holds the creature runtime's tables (template and troop): a room's creatures come from them.
-ec_wild :: (d: [] ContentDoc) -> bool #effects(all) { return d[0].ok && d[0].t_n == EC_TABLES; }
+ec_wild :: (d: [] ContentDoc) -> bool #effects(all) { return d[0].ok && d[0].t_n >= EC_TABLES_WILD; }
+// Whether d holds the beats and the boss scripts too (troop_beat and troop_phase).
+ec_scripted :: (d: [] ContentDoc) -> bool #effects(all) { return d[0].ok && d[0].t_n == EC_TABLES; }
 // An item's slot in the record (0 to 9), or -1 for an item that is not worn, or no item.
 ec_slot :: (d: [] ContentDoc, item: int) -> int #effects(all) { return ct_get(d, EC_ITEM, ct_find(d, EC_ITEM, item), EC_ITEM_SLOT) - 1; }
 // What a creature drops for a roll of 0 to 99: an item's content ID, or 0 for nothing. Its loot
@@ -216,7 +240,7 @@ eq_offer_open :: (d: [] ContentDoc, quest: int, dialogue: int, stages: [] int) -
 #test "everglade content: the creature runtime's tables come both or not at all, with their own columns (#13293)" {
   o: [CT_BODY] u8; p: [CT_BODY] u8; d: [1] ContentDoc;
   wild := ec_swap("6|2|0|0|0|2|1\n", "6|2|0|0|0|2|1\ntable template id creature:ref.creature block:int style:int notice:int leash:int run:int\n1|1|6|0|1500|4000|900\ntable troop id spawn:ref.spawn group:int face:int respawn:int slot:int\n1|1|1|270|180|0\n", o[..]);
-  #assert ct_read(d[..], wild) && ec_ok(d[..]) && ec_wild(d[..]) && d[0].t_n == EC_TABLES && ct_get(d[..], EC_TEMPLATE, 0, EC_TEMPLATE_RUN) == 900 && ct_get(d[..], EC_TROOP, 0, EC_TROOP_FACE) == 270;
+  #assert ct_read(d[..], wild) && ec_ok(d[..]) && ec_wild(d[..]) && !ec_scripted(d[..]) && d[0].t_n == EC_TABLES_WILD && ct_get(d[..], EC_TEMPLATE, 0, EC_TEMPLATE_RUN) == 900 && ct_get(d[..], EC_TROOP, 0, EC_TROOP_FACE) == 270;
   d[0].ok = false; #assert !ec_wild(d[..]);
   // the first ten alone are the tables of revisions 1 and 2: Everglade's, with no creatures
   #assert ct_read(d[..], EC_FIXTURE) && ec_ok(d[..]) && !ec_wild(d[..]) && d[0].t_n == EC_TABLES_WAS;
@@ -225,6 +249,24 @@ eq_offer_open :: (d: [] ContentDoc, quest: int, dialogue: int, stages: [] int) -
   #assert ec_reads(half) && !ec_takes(half);
   #assert ec_reads(ec_sub(wild, "leash:int run:int", "leash:int walk:int", p[..])) && !ec_takes(ec_sub(wild, "leash:int run:int", "leash:int walk:int", p[..]));
   #assert ec_reads(ec_sub(wild, "respawn:int slot:int", "respawn:int place:int", p[..])) && !ec_takes(ec_sub(wild, "respawn:int slot:int", "respawn:int place:int", p[..]));
+}
+#test "everglade content: a beat and a boss script are rows of two tables after the troops, both or neither, each with its own rules (#13427)" {
+  o: [CT_BODY] u8; p: [CT_BODY] u8; q: [CT_BODY] u8; d: [1] ContentDoc;
+  wild := ec_swap("6|2|0|0|0|2|1\n", "6|2|0|0|0|2|1\ntable template id creature:ref.creature block:int style:int notice:int leash:int run:int\n1|1|6|0|1500|4000|900\ntable troop id spawn:ref.spawn group:int face:int respawn:int slot:int\n1|1|1|270|180|0\n", o[..]);
+  full := ec_sub(wild, "1|1|1|270|180|0\n", "1|1|1|270|180|0\ntable troop_beat id troop:ref.troop point:ref.point rest:int\n1|1|2|2\n2|1|3|0\ntable troop_phase id troop:ref.troop hp:int after:int style:int run:int\n1|1|50|0|1|700\n2|1|0|90|2|0\n", p[..]);
+  #assert ct_read(d[..], full) && ec_ok(d[..]) && ec_wild(d[..]) && ec_scripted(d[..]) && d[0].t_n == EC_TABLES;
+  #assert ct_get(d[..], EC_TROOP_BEAT, 0, EC_BEAT_POINT) == 2 && ct_get(d[..], EC_TROOP_BEAT, 0, EC_BEAT_REST) == 2 && ct_get(d[..], EC_TROOP_BEAT, 1, EC_BEAT_TROOP) == 1;
+  #assert ct_get(d[..], EC_TROOP_PHASE, 0, EC_PHASE_HP) == 50 && ct_get(d[..], EC_TROOP_PHASE, 0, EC_PHASE_STYLE) == EC_STYLE_MELEE && ct_get(d[..], EC_TROOP_PHASE, 0, EC_PHASE_RUN) == 700 && ct_get(d[..], EC_TROOP_PHASE, 1, EC_PHASE_AFTER) == 90;
+  d[0].ok = false; #assert !ec_scripted(d[..]);
+  // a beat with no phase table is not Everglade's, nor a column of another name
+  #assert ec_reads(ec_sub(full, "table troop_phase id troop:ref.troop hp:int after:int style:int run:int\n1|1|50|0|1|700\n2|1|0|90|2|0\n", "", q[..])) && !ec_takes(ec_sub(full, "table troop_phase id troop:ref.troop hp:int after:int style:int run:int\n1|1|50|0|1|700\n2|1|0|90|2|0\n", "", q[..]));
+  #assert ec_reads(ec_sub(full, "point:ref.point rest:int", "point:ref.point wait:int", q[..])) && !ec_takes(ec_sub(full, "point:ref.point rest:int", "point:ref.point wait:int", q[..]));
+  // a rest of ten minutes is the longest
+  #assert ec_takes(ec_sub(full, "1|1|2|2\n", "1|1|2|600\n", q[..])) && !ec_takes(ec_sub(full, "1|1|2|2\n", "1|1|2|601\n", q[..])) && ec_reads(ec_sub(full, "1|1|2|2\n", "1|1|2|601\n", q[..]));
+  // a phase: Hit Points of 1 to 100 percent or a time, and a style that fights (pack, melee, archer)
+  #assert ec_takes(ec_sub(full, "1|1|50|0|1|700", "1|1|100|0|0|700", q[..])) && !ec_takes(ec_sub(full, "1|1|50|0|1|700", "1|1|101|0|1|700", q[..])) && ec_reads(ec_sub(full, "1|1|50|0|1|700", "1|1|101|0|1|700", q[..]));
+  #assert !ec_takes(ec_sub(full, "1|1|50|0|1|700", "1|1|0|0|1|700", q[..])) && ec_takes(ec_sub(full, "1|1|50|0|1|700", "1|1|0|1|1|700", q[..])) && ec_takes(ec_sub(full, "1|1|50|0|1|700", "1|1|50|30|2|700", q[..]));
+  #assert !ec_takes(ec_sub(full, "1|1|50|0|1|700", "1|1|50|0|3|700", q[..])) && !ec_takes(ec_sub(full, "2|1|0|90|2|0", "2|1|0|90|4|0", q[..])) && ec_reads(ec_sub(full, "1|1|50|0|1|700", "1|1|50|0|3|700", q[..]));
 }
 #test "everglade content: loot adds up to 100 for each creature, an item's slot is the record's, a step is one objective" {
   o: [CT_BODY] u8;

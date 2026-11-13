@@ -134,8 +134,8 @@ es_foes :: (v: [] RmServer, k: int, enc: int, f: [] int) -> int {
   b := v[0].eg[k].rules[0].b[..];
   for j: 0..<f.count { f[j] = -1; }
   if enc == ES_GUARD {
-    g := v[0].eg[k].guard[0];
-    if g.q >= 0 && b[0].c[EGB_BEAST0 + g.q].hp > 0 { f[0] = EGB_BEAST0 + g.q; n = 1; }
+    g := e2_patrol(v, k)[0];
+    if e2mo_up(v, k, E2M_PATROL) { f[0] = EGB_BEAST0 + g.q; n = 1; }
     return n;
   }
   for j: 0..<es_pack_n(enc) {
@@ -146,8 +146,8 @@ es_foes :: (v: [] RmServer, k: int, enc: int, f: [] int) -> int {
 }
 // Where creature i stands (metres).
 es_at :: (v: [] RmServer, k: int, i: int) -> [2] f32 {
-  g := v[0].eg[k].guard[0];
-  if g.q >= 0 && i == EGB_BEAST0 + g.q { return [2] f32.[g.x, g.z]; }
+  g := e2_patrol(v, k)[0];
+  if g.q >= 0 && g.state != E2M_GONE && i == EGB_BEAST0 + g.q { return [2] f32.[g.x, g.z]; }
   bt := v[0].eg[k].rules[0].beasts[i - EGB_BEAST0];
   return [2] f32.[bt.x, bt.z];
 }
@@ -178,8 +178,8 @@ es_fight :: (v: [] RmServer, enc: int, c: int, level: int, seed: int, trace: boo
   // where the player stands: on the path by the pack's middle wolf, or beside the guard
   px: f32 = 0; pz: f32 = 0;
   if enc == ES_GUARD {
-    g := v[0].eg[k].guard[0];
-    if g.q < 0 { return out; }
+    g := e2_patrol(v, k)[0];
+    if !e2mo_up(v, k, E2M_PATROL) { return out; }
     px = g.x + 1.0; pz = g.z;
   } else {
     w := v[0].eg[k].monsters[0].mon[es_pack(enc) + (ifx es_pack_n(enc) > 1 then 1 else 0)];

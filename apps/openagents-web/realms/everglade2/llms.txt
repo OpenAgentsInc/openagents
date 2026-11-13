@@ -10,7 +10,7 @@ The site's index is [llms.txt](https://openagents.com/llms.txt). Look a Coax nam
 - page: `/worlds/everglade2` (module `everglade2`, source `apps/openagents-web/realms/everglade2/`)
 - wire: 7 (`everglade/shared/everglade-wire.coax` `WIRE_VERSION`). A room also seats a page one version behind, 6, for one release. A frame written for any other version is refused with `r 0 version`
 - pins: engine 1, rules 1, content 1 (`WIRE_ENGINE`, `WIRE_RULES`, `WIRE_CONTENT`). A page says them before its hello. A room refuses a hello whose pins are neither its own nor the release before's (`r 0 version`)
-- content: `everglade/content/everglade.content`, revision 2, sha256 `7f7cace1e119d532810b06c947873926563c97f8d2c072c058780c30f6f692ac`; on the wire its pin is 2
+- content: `everglade/content/everglade.content`, revision 2, sha256 `4bce8ce74b0ab604edc4c51782ec1cb74fc99d7b463545125477df7aa1ab0c6c`; on the wire its pin is 2
 - diagnostics: `engine-diagnostics-v1`, 17 codes, sha256 `55aa5a9b50ff02e1256e64909abf901a29f9c98a1575ae6b669281410b69c31c` (`proto/verse/engine-diagnostics-v1.json`)
 - language: Coax; the compiler's version is in `coax/release-status.json` and what it claims to do in `coax/book/capability-claims.json`
 - reference: the last line of this file is the sha256 of everything above it. Two builds with the same line have the same reference
@@ -47,17 +47,19 @@ From `metaverse-engine/editor/authority.coax` (INVARIANTS.md, "Authoring never w
 | Table | Columns | Rows |
 | --- | --- | --- |
 | `ability` | `id name:text` | 83 |
-| `creature` | `id name:text kind:int xp:int` | 5 |
+| `creature` | `id name:text kind:int xp:int` | 6 |
 | `dialogue` | `id npc:text point:ref.point quest:opt.quest line:text` | 6 |
 | `item` | `id name:text slot:int` | 4 |
-| `loot` | `id creature:ref.creature item:opt.item weight:int` | 6 |
-| `point` | `id name:text x:cm z:cm r:int` | 18 |
+| `loot` | `id creature:ref.creature item:opt.item weight:int` | 8 |
+| `point` | `id name:text x:cm z:cm r:int` | 42 |
 | `quest` | `id name:text` | 5 |
 | `reward` | `id quest:ref.quest item:opt.item coin:int xp:int` | 5 |
-| `spawn` | `id creature:ref.creature point:ref.point count:int` | 12 |
+| `spawn` | `id creature:ref.creature point:ref.point count:int` | 13 |
 | `step` | `id quest:ref.quest creature:opt.creature point:opt.point item:opt.item talk:opt.dialogue count:int` | 14 |
-| `template` | `id creature:ref.creature block:int style:int notice:int leash:int run:int` | 5 |
-| `troop` | `id spawn:ref.spawn group:int face:int respawn:int slot:int` | 12 |
+| `template` | `id creature:ref.creature block:int style:int notice:int leash:int run:int` | 6 |
+| `troop` | `id spawn:ref.spawn group:int face:int respawn:int slot:int` | 13 |
+| `troop_beat` | `id troop:ref.troop point:ref.point rest:int` | 24 |
+| `troop_phase` | `id troop:ref.troop hp:int after:int style:int run:int` | 2 |
 
 A table's first column is `id`. Another column is `NAME:int`, `NAME:text`, `NAME:cm` (centimetres), `NAME:ref.TABLE` (the id of a row of TABLE) or `NAME:opt.TABLE` (the same, or 0 for none). A row's id is never changed or used again.
 
@@ -197,4 +199,4 @@ table ability id name:text
 128|Rage
 ```
 
-reference sha256: 0817627006a7276fb4d7a3a06ecb92db016aec20e8126e499e7080d8f5bdd093
+reference sha256: 42cb96e5d1ed247681c352062305a855fe09f96897621df0544a2722bac1649b

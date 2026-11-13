@@ -69,8 +69,7 @@ e2a_remember :: (v: [] RmServer, k: int) {
   a := e2a_room(v, k); t := v[0].eg[k].tick; ms := e2mo_room(v, k);
   net_past_begin(a[0].past[..], t);
   for m: 0..<E2M_N { if e2mo_up(v, k, m) { net_past_put(a[0].past[..], m, ms[0].mon[m].x, ms[0].mon[m].z); } }
-  g := v[0].eg[k].guard[..];
-  if g[0].q >= 0 && g[0].state != E2G_DOWN && g[0].state != E2G_NONE { net_past_put(a[0].past[..], E2AR_GUARD, g[0].x, g[0].z); }
+  if e2mo_up(v, k, E2M_PATROL) { net_past_put(a[0].past[..], E2AR_GUARD, ms[0].mon[E2M_PATROL].x, ms[0].mon[E2M_PATROL].z); }
   for s: 0..<eg_cap(v, k) {
     if v[0].eg[k].seat[s].live && v[0].eg[k].seat[s].placed { net_past_put(a[0].past[..], E2A_SEAT0 + s, v[0].eg[k].seat[s].pose.x, v[0].eg[k].seat[s].pose.z); }
     f := e2a_familiar(v, k, s);
@@ -96,7 +95,7 @@ e2a_bodies :: (v: [] RmServer, k: int, tick: int, out: [] arch.ArcheryBody) -> i
 }
 // The rules' creature for body b now (-1: it no longer stands).
 e2a_creature :: (v: [] RmServer, k: int, b: int) -> int {
-  if b == E2AR_GUARD { g := v[0].eg[k].guard[0]; return ifx g.q >= 0 && g.state != E2G_DOWN && g.state != E2G_NONE then egb0(v, k) + g.q else -1; }
+  if b == E2AR_GUARD { return e2_guard_creature(v, k); }
   if b < 0 || b >= E2M_N || !e2mo_up(v, k, b) { return -1; }
   return egb0(v, k) + e2mo_room(v, k)[0].mon[b].q;
 }

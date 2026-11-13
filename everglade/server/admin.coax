@@ -57,21 +57,21 @@ e2_admin_heard :: (v: [] RmServer, k: int, seat_id: SeatId, text: string) {
   // srd-CLASS-L, as a hello says it), even when its ticket's checkpoint holds its later hellos
   if verb == WIRE_X_CLASS { if egb_klass_of(arg) >= EGB_CL0 { eg_seat_kind(v, k, seat_id, arg); } return; }
   if verb == WIRE_X_GUARD {
-    g := v[0].eg[k].guard[..]; r := v[0].eg[k].rules[..];
-    if arg == "kill" { if g[0].q >= 0 && r[0].beasts[g[0].q].id == g[0].id { b[0].c[egb0(v, k) + g[0].q].hp = 0; } return; }
+    g := e2_patrol(v, k); r := v[0].eg[k].rules[..];
+    if arg == "kill" { if e2mo_up(v, k, E2M_PATROL) { b[0].c[egb0(v, k) + g[0].q].hp = 0; } return; }
     if arg == "reset" || arg == "off" {
-      if g[0].q >= 0 && r[0].beasts[g[0].q].id == g[0].id { egb_beast_gone(r, g[0].q); }
-      g[0].q = -1; g[0].state = E2G_NONE; g[0].foe = -1; g[0].hp = 0; g[0].down_at = -1;
+      if e2mo_up(v, k, E2M_PATROL) { egb_beast_gone(r, g[0].q); }
+      g[0].q = -1; g[0].state = E2M_GONE; g[0].foe = -1; g[0].threat_n = 0; g[0].down_t = -100000;   // gone now, and due at once
       v[0].adm.guard_off[k] = arg == "off";
       return;
     }
-    if arg == "on" { v[0].adm.guard_off[k] = false; g[0].down_at = -1; return; }
+    if arg == "on" { v[0].adm.guard_off[k] = false; g[0].down_t = -100000; return; }
   }
 }
 // Before the guard's tick: a guard switched off doesn't come back.
 e2_admin_before :: (v: [] RmServer, k: int) {
   if !v[0].adm.local || !v[0].adm.guard_off[k] { return; }
-  g := v[0].eg[k].guard[..]; if g[0].q < 0 { g[0].down_at = v[0].eg[k].tick; }
+  g := e2_patrol(v, k); if g[0].state == E2M_GONE { g[0].down_t = v[0].eg[k].tick; }
 }
 // After the rules' step, before the guard's fall is told: god mode's Hit Points, KNOCK OUT's guard.
 e2_admin_after :: (v: [] RmServer, k: int) {
@@ -82,8 +82,8 @@ e2_admin_after :: (v: [] RmServer, k: int) {
     c := b[0].c[EGB_SEAT + s..<EGB_SEAT + s + 1];
     c[0].hp = c[0].hp_max; c[0].dead = false; if (c[0].cond & RS_UNCONSCIOUS) != 0 { c[0].cond -= RS_UNCONSCIOUS; }
   }
-  g := v[0].eg[k].guard[0];
-  if g.q >= 0 && g.foe < eg_cap(v, k) && slot_set_has(e2_admin_set(v[0].adm.ko[..], k), g.foe) {
+  g := e2_patrol(v, k)[0]; foe := e2_patrol_foe(v, k);
+  if g.q >= 0 && g.state != E2M_GONE && g.state != E2M_DEAD && foe >= 0 && slot_set_has(e2_admin_set(v[0].adm.ko[..], k), foe) {
     c := b[0].c[egb0(v, k) + g.q..<egb0(v, k) + g.q + 1];
     if c[0].hp <= 0 { c[0].hp = 1; c[0].dead = false; c[0].cond = c[0].cond | RS_UNCONSCIOUS; }
   }
@@ -114,22 +114,22 @@ rm_e2_admin_warp :: (v: [] RmServer, k: int, s_id: SeatId, out: [] f32) -> bool 
     k := eg_room_at(v[..], v[0].conns[0].relay);
     rm_heard(v[..], 0, "H 6 ranger.0.0.0 srd-fighter 0 -");
     eg_test_tick(v[..], k);
-    #assert v[0].eg[k].guard[0].q >= 0;
+    #assert e2mo_up(v[..], k, E2M_PATROL);
     c := v[0].eg[k].rules[0].b[0].c[EGB_SEAT..<EGB_SEAT + 1]; c[0].hp = 1;
     for line: [6] string.["X heal", "X god 1", "X ko 1", "X at 5000 -40000 0", "X guard off", "X class srd-ranger-3"] { rm_heard(v[..], 0, line); }
     out: [3] f32;
     if local == 0 {
       #assert c[0].hp == 1 && !slot_set_any(e2_admin_set(v[0].adm.god[..], k)) && !slot_set_any(e2_admin_set(v[0].adm.ko[..], k)) && !v[0].adm.guard_off[k];
-      #assert !rm_e2_admin_warp(v[..], k, SeatId.{value = 0}, out[..]) && v[0].eg[k].guard[0].q >= 0 && v[0].adm.heard == 0 && v[0].adm.dropped == 6;
+      #assert !rm_e2_admin_warp(v[..], k, SeatId.{value = 0}, out[..]) && e2mo_up(v[..], k, E2M_PATROL) && v[0].adm.heard == 0 && v[0].adm.dropped == 6;
       #assert v[0].eg[k].rules[0].klass[0] == EGB_CL0 + FB_CL_FIGHTER;
     } else {
       #assert c[0].hp == c[0].hp_max && slot_set_has(e2_admin_set(v[0].adm.god[..], k), 0) && slot_set_count(e2_admin_set(v[0].adm.god[..], k)) == 1 && slot_set_has(e2_admin_set(v[0].adm.ko[..], k), 0) && slot_set_count(e2_admin_set(v[0].adm.ko[..], k)) == 1 && v[0].adm.guard_off[k] && v[0].adm.heard == 6;
       #assert v[0].eg[k].rules[0].klass[0] == EGB_CL0 + FB_CL_RANGER && v[0].eg[k].rules[0].b[0].c[EGB_SEAT].level == 3;   // the CLASSES menu
       #assert rm_e2_admin_warp(v[..], k, SeatId.{value = 0}, out[..]) && out[0] == 5 && out[1] == -40 && !rm_e2_admin_warp(v[..], k, SeatId.{value = 0}, out[..]);
-      #assert v[0].eg[k].guard[0].q < 0;
+      #assert !e2mo_up(v[..], k, E2M_PATROL) && e2_guard_state(v[..], k) == E2G_NONE;
       for t: 0..<3 { eg_test_tick(v[..], k); }
-      #assert v[0].eg[k].guard[0].q < 0;   // off: no new guard
-      rm_heard(v[..], 0, "X guard on"); eg_test_tick(v[..], k); #assert v[0].eg[k].guard[0].q >= 0;
+      #assert !e2mo_up(v[..], k, E2M_PATROL);   // off: no new guard
+      rm_heard(v[..], 0, "X guard on"); eg_test_tick(v[..], k); #assert e2mo_up(v[..], k, E2M_PATROL);
       c[0].hp = 1; eg_test_tick(v[..], k); #assert c[0].hp == c[0].hp_max;   // god
     }
   }

@@ -144,7 +144,7 @@ e2nt_ticks :: (v: [] RmServer, k: int, x: f32, z: f32, n: int) { for q: 0..<n { 
   for q: 0..<240 {
     e2nt_ticks(v[..], k, px, pz, 1);
     for m: 0..<3 {
-      if e2mo_retired(v[..], m) { continue; }
+      if e2mo_retired(v[..], m) || ms[0].mon[m].group != w.group { continue; }   // the wolf's pack (monster 1 is the camp's Ogre, far off)
       mo := ms[0].mon[m];
       #assert e2nv_open(v[..], k, mo.x, mo.z);
       if mo.act == E2M_ACT_BLOW && e2mo_dist(mo.x, mo.z, px, pz) <= f32(E2M_REACH) + 0.6 { bit = true; }

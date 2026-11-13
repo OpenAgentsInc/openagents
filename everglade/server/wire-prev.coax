@@ -149,12 +149,13 @@ wprev_familiar_snapshot :: (v: [] RmServer, k: int, s: int) {
 
 // The guard's state to seat s: each tick he changes, and once a second when he doesn't.
 wprev_guard_snapshot :: (v: [] RmServer, k: int, s: int) {
-  room := v[0].eg[k..<k + 1]; g := room[0].guard[0]; st := room[0].seat[s..<s + 1];
+  // he is the creature runtime's patrol (#13427): his state as his row says it (everglade/server/guard.coax)
+  room := v[0].eg[k..<k + 1]; g := e2_patrol(v, k)[0]; st := room[0].seat[s..<s + 1]; state := e2_guard_state(v, k);
   hp := 0; max := 0;
-  if g.q >= 0 { hp = room[0].rules[0].b[0].c[EGB_BEAST0 + g.q].hp; max = room[0].rules[0].b[0].c[EGB_BEAST0 + g.q].hp_max; }
+  if g.q >= 0 && state != E2G_NONE && state != E2G_DOWN { hp = room[0].rules[0].b[0].c[EGB_BEAST0 + g.q].hp; max = room[0].rules[0].b[0].c[EGB_BEAST0 + g.q].hp_max; }
   row: [128] u8;
-  n := wprev_guard_put_body(row[..], 0, WprevGuard.{life = g.life, state = g.state, x = cast(int) floor(g.x * 1000 + 0.5), z = cast(int) floor(g.z * 1000 + 0.5),
-    yaw = cast(int) floor(e2g_wrap(g.yaw) * 1000 + 0.5), hp = hp, max = max, swing = g.swing_tick, foe = g.foe});
+  n := wprev_guard_put_body(row[..], 0, WprevGuard.{life = g.life, state = state, x = cast(int) floor(g.x * 1000 + 0.5), z = cast(int) floor(g.z * 1000 + 0.5),
+    yaw = cast(int) floor(e2mo_wrap(g.yaw) * 1000 + 0.5), hp = hp, max = max, swing = g.swing_t, foe = e2_patrol_foe(v, k)});
   hash := eg_hash(cast(string) row[0..<n]);
   if st[0].prev.guard_hash == hash && room[0].tick - st[0].prev.guard_sent < EG_HZ { return; }
   st[0].prev.guard_hash = hash; st[0].prev.guard_sent = room[0].tick;
@@ -368,7 +369,7 @@ wpt_at :: (v: [] RmServer, k: int, s: int, x: f32, z: f32) { v[0].eg[k].seat[s].
 #test "previous wire: the guard's blows reach a wire 5 seat as g3, and his state as g2 with it as his foe" #steps 12000000000 #traversal 1073741824 {
   v: [1] RmServer; k := wpt_room(v[..], "pair-e2-prev-guard", 5, WIRE_VERSION); #assert k >= 0;
   box: [1] EgInbox;
-  g := v[0].eg[k].guard[..]; r := v[0].eg[k].rules[..]; b := r[0].b[..];
+  g := e2_patrol(v[..], k); r := v[0].eg[k].rules[..]; b := r[0].b[..];
   for s: 0..<2 { b[0].c[EGB_SEAT + s].hp = 900; b[0].c[EGB_SEAT + s].hp_max = 900; }
   for q: 0..<EG_HZ { wpt_at(v[..], k, 0, g[0].x + 0.9, g[0].z); wpt_at(v[..], k, 1, g[0].x + 40, g[0].z); eg_test_tick(v[..], k); }
   // the old seat strikes him: he turns on it

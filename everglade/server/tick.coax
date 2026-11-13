@@ -177,10 +177,10 @@ rm_eg_rules :: (v: [] RmServer, k: int) #export_c #effects(all) {
   rc_tick_first(v, k);
   e2_aid_commit(v,k); e2_familiar_commit(v,k); e2_admin_before(v,k);
   e2_nav_tick(v,k);   // the room's cells and their navigation pages, before its creatures step (everglade/server/nav.coax)
-  e2_guard_tick(v,k); e2_monsters_tick(v,k); e2_arrows_tick(v,k);
+  e2_monsters_tick(v,k); e2_arrows_tick(v,k);   // the monsters and the patrol (the path's guard) step
   egb_step(v[0].eg[k].rules[..], t * RS_TICKS / EG_HZ);   // the room's tick in the battle's: whole numbers (#13287)
   e2_admin_after(v,k);
-  e2_guard_after(v,k); e2_monsters_after(v,k);
+  e2_monsters_after(v,k); e2_guard_after(v,k);   // the fallen, then what the pages hear of the guard
   e2_rest_tell_all(v, k); e2_kit_tell_all(v, k);
   eg_engine_events(v, k);
   eg_sky_tick(v, k);   // the weather turned: everyone hears it (room-sky.coax)

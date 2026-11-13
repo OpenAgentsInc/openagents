@@ -133,11 +133,11 @@ e2_cast_release :: (v: [] RmServer, k: int, h: [] E2CastHold) {
 // An area's cast is done: every guard or monster it harmed (its Hit Points fell below `before`) was struck
 // by seat s, as one a single cast named is (everglade/server/guard.coax, creatures.coax).
 e2_area_struck :: (v: [] RmServer, k: int, s: int, before: [] const int) {
-  r := v[0].eg[k].rules[..]; g := v[0].eg[k].guard[0];
+  r := v[0].eg[k].rules[..]; guard := e2_guard_beast(v, k);
   for q: 0..<EGB_BEASTS {
     i := egb0(v, k) + q;
     if r[0].beasts[q].id == 0 || r[0].b[0].c[i].hp >= before[q] { continue; }
-    if g.q == q { e2_guard_struck(v, k, s, before[q]); } else { e2_monster_struck(v, k, s, i, before[q]); }
+    if guard == q { e2_guard_struck(v, k, s, before[q]); } else { e2_monster_struck(v, k, s, i, before[q]); }
   }
 }
 // Whether a caster with feet at `me` sees the aim (ax, az) (#13262): v1's line (everglade-cast-sight.coax

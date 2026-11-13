@@ -90,6 +90,7 @@ table creature id name:text kind:int xp:int
 3|Goblin Archer|1|50
 4|Path Guard|2|0
 5|Warden|3|0
+6|Ogre|1|450
 table dialogue id npc:text point:ref.point quest:opt.quest line:text
 1|Warden|15|1|The wolves grow bold on the south road. A lone one dens beside it. Put it down and come back to me.
 2|Warden|15|2|Goblins have made a camp past the far woods. Find it and drive them off.
@@ -110,6 +111,8 @@ sum weight by creature 100
 4|2|0|50
 5|3|2|50
 6|3|0|50
+7|6|3|30
+8|6|0|70
 table point id name:text x:cm z:cm r:int
 1|Glade|0|0|6000
 2|Wolf woods|0|-17500|6000
@@ -129,6 +132,30 @@ table point id name:text x:cm z:cm r:int
 16|Thicket overlook|420|-21500|1200
 17|The thicket|485|-24620|2500
 18|The hollow|107|-31500|2500
+19|Road post 1|272|-4000|300
+20|Road post 2|-744|-5900|300
+21|Road post 3|-2001|-7800|300
+22|Road post 4|-2450|-9700|300
+23|Road post 5|-1549|-11600|300
+24|Road post 6|-888|-13500|300
+25|Road post 7|-427|-15400|300
+26|Road post 8|129|-17300|300
+27|Road post 9|-121|-19200|300
+28|Road post 10|217|-21100|300
+29|Road post 11|1060|-23000|300
+30|Road post 12|1319|-24900|300
+31|Road post 13|1700|-26800|300
+32|Road post 14|1157|-28700|300
+33|Road post 15|-257|-30600|300
+34|Road post 16|-961|-32500|300
+35|Road post 17|-1625|-34400|300
+36|Road post 18|-1713|-36300|300
+37|Road post 19|-1056|-38200|300
+38|Road post 20|-1215|-40100|300
+39|Road post 21|-1280|-42000|300
+40|Road post 22|-1075|-43900|300
+41|Road post 23|-1094|-45500|300
+42|Ogre's ground|-435|-48200|300
 table quest id name:text
 1|Thin the pack
 2|The goblin camp
@@ -154,6 +181,7 @@ table spawn id creature:ref.creature point:ref.point count:int
 10|3|13|1
 11|4|14|1
 12|5|15|1
+13|6|42|1
 table step id quest:ref.quest creature:opt.creature point:opt.point item:opt.item talk:opt.dialogue count:int
 1|1|1|0|0|0|1
 2|1|0|0|0|3|1
@@ -173,8 +201,9 @@ table template id creature:ref.creature block:int style:int notice:int leash:int
 1|1|6|0|1500|4000|900
 2|2|3|1|1800|3000|550
 3|3|3|2|900|3000|550
-4|4|0|3|0|2800|360
+4|4|0|3|0|2800|425
 5|5|0|4|0|0|0
+6|6|4|1|800|3500|500
 table troop id spawn:ref.spawn group:int face:int respawn:int slot:int
 1|1|1|270|180|0
 2|2|2|90|180|3
@@ -188,3 +217,32 @@ table troop id spawn:ref.spawn group:int face:int respawn:int slot:int
 10|10|8|270|180|11
 11|11|5|180|20|0
 12|12|6|329|0|0
+13|13|9|0|600|1
+table troop_beat id troop:ref.troop point:ref.point rest:int
+1|11|14|2
+2|11|19|0
+3|11|20|0
+4|11|21|0
+5|11|22|0
+6|11|23|0
+7|11|24|0
+8|11|25|0
+9|11|26|0
+10|11|27|0
+11|11|28|0
+12|11|29|0
+13|11|30|0
+14|11|31|0
+15|11|32|0
+16|11|33|0
+17|11|34|0
+18|11|35|0
+19|11|36|0
+20|11|37|0
+21|11|38|0
+22|11|39|0
+23|11|40|0
+24|11|41|2
+table troop_phase id troop:ref.troop hp:int after:int style:int run:int
+1|13|100|0|2|0
+2|13|50|0|1|650

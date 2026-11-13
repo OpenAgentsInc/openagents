@@ -113,7 +113,7 @@ eg_table :: (v: [] RmServer, k: int) {
   bf: [EGB_BEAST_FLOATS] f32;
   for q: 0..<EGB_BEASTS {
     id := egb_beast(rm[0].rules[..], q, bf[..]);
-    if id <= 0 || bf[9] < 0.5 || e2_monster_of_beast(v, k, q) >= 0 || rm[0].guard[0].q == q { continue; }
+    if id <= 0 || bf[9] < 0.5 || e2_monster_of_beast(v, k, q) >= 0 || e2_guard_beast(v, k) == q { continue; }
     wire_hist_put(h, EG_SLOT_BEAST + q, WireS.{id = WIRE_ID_MADE + id, kind = WK_BEAST, x = bf[0], y = bf[1], z = bf[2], yaw = bf[3], hp = cast(int) bf[4], max = cast(int) bf[5],
                                                 g = cast(int) bf[8], owner = cast(int) bf[6], p1 = cast(int) bf[7]}, wire_rel(WK_BEAST), false, true);
   }
