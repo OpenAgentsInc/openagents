@@ -18,8 +18,8 @@ FC_ENGINES :: [6]string.["codex","claude","cursor","microcoder","psionic","echo"
 FC_LABELS :: [6]string.["Codex","Claude Code","Cursor","Microcoder","Psionic (local)","Echo (offline)"];
 ForgeChatEvent :: struct {kind:int=0; session:[128]u8; sn:int; text:[262144]u8; tn:int;live:bool=false;}
 ForgeChatModels :: struct {n:int=0; ids:[64][128]u8; levels:[64][8][16]u8; counts:[64]int;}
-FC_ROUTER_DEFAULT :: "{\"schema\":\"coder.router.v1\",\"url\":\"http://127.0.0.1:8793/v1/systemone\",\"remote\":false}\n";
-fc_router_default :: ()->string #export_c #effects(all) {return FC_ROUTER_DEFAULT;}
+// router.json's local default is its codec's (coax/lib/agent/engine/route.coax, coder.router.v1).
+fc_router_default :: ()->string #export_c #effects(all) {return agr_router_local();}
 
 #test "desktop routing reports the chosen engine and honest fallback without exposing controls" {
   s:[1]ForgeChatEvent;

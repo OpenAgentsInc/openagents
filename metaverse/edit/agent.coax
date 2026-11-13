@@ -156,28 +156,6 @@ ra_answer :: (a: [] RealmAgent, status: int, p_body: string) {
 
 // ---- an observation, as plain lines
 
-// A JSON string's value, unescaped, into p_out ("" when the key has no string).
-ra_json_str :: (p_text: string, key: string, p_out: [] u8) -> string {
-  at := redit_json_at(p_text, key);
-  if at < 0 || at >= p_text.count || p_text[at] != '"' { return ""; }
-  i := at + 1; n := 0;
-  while i < p_text.count && p_text[i] != '"' && n < p_out.count {
-    c := p_text[i];
-    if c == '\\' && i + 1 < p_text.count {
-      d := p_text[i + 1]; i += 2;
-      if d == 'u' { i += 4; c = '?'; } else if d == 'n' || d == 't' || d == 'r' { c = ' '; } else { c = d; }
-    } else { i += 1; }
-    p_out[n] = c; n += 1;
-  }
-  return cast(string) p_out[0..<n];
-}
-// A number at i (its end in p_end[0]).
-ra_num_at :: (p_text: string, i: int, p_end: [] int) -> f32 {
-  e := i;
-  while e < p_text.count && ((p_text[e] >= '0' && p_text[e] <= '9') || p_text[e] == '-' || p_text[e] == '.') { e += 1; }
-  p_end[0] = e;
-  return ifx e > i then redit_number(p_text[i..<e]) else 0;
-}
 // One decimal, half away from zero: -1.25 is -1.3.
 ra_put_dec :: (p_buf: [] u8, at: int, v: f32) -> int {
   t := cast(int) (redit_hi(v, -v) * 10 + 0.5);
@@ -186,59 +164,47 @@ ra_put_dec :: (p_buf: [] u8, at: int, v: f32) -> int {
   n = redit_put_int(p_buf, n, t / 10); n = redit_put(p_buf, n, ".");
   return redit_put_int(p_buf, n, t % 10);
 }
-ra_saw :: (a: [] RealmAgent, p_body: string) {
-  b: [RA_LINE] u8; s: [RA_LINE] u8; end: [1] int;
-  p_op := ra_json_str(p_body, "op", s[..]);
+// p_text into p_out with each control byte a space: one line of the log.
+ra_plain :: (p_text: string, p_out: [] u8) -> string {
   n := 0;
-  if redit_json_true(p_body, "ok") {
-    n = redit_put(b[..], 0, p_op);
+  for c: p_text { if n < p_out.count { p_out[n] = ifx c < 32 then cast(u8) ' ' else c; n += 1; } }
+  return cast(string) p_out[0..<n];
+}
+// The observation is read by its one codec (coax/lib/media/realm_seat_wire.coax seatw_read_obs,
+// seat.proto's Observation); a body that is not one says only that nothing was done.
+ra_saw :: (a: [] RealmAgent, p_body: string) {
+  b: [RA_LINE] u8; s: [RA_LINE] u8;
+  w: [1] SeatwObs;
+  if !seatw_read_obs(p_body, w[..]) { ra_add(a, RAL_SAW, "Not done: ."); return; }
+  n := 0;
+  if w[0].ok {
+    n = redit_put(b[..], 0, seatw_obs_op(w[..]));
     if n > 0 && b[0] >= 'a' && b[0] <= 'z' { b[0] -= 32; }
     n = redit_put(b[..], n, ": ");
   } else { n = redit_put(b[..], 0, "Not done: "); }
-  n = redit_put(b[..], n, ra_json_str(p_body, "result", s[..])); n = redit_put(b[..], n, ".");
+  n = redit_put(b[..], n, ra_plain(seatw_obs_result(w[..]), s[..])); n = redit_put(b[..], n, ".");
   ra_add(a, RAL_SAW, cast(string) b[0..<n]);
-  at := redit_json_at(p_body, "at");
-  if at >= 0 && at < p_body.count && p_body[at] == '[' {
-    x := ra_num_at(p_body, at + 1, end[..]);
-    z := ifx end[0] < p_body.count && p_body[end[0]] == ',' then ra_num_at(p_body, end[0] + 1, end[..]) else 0.0f32;
-    fa := redit_json_at(p_body, "facing");
-    f := ifx fa >= 0 then ra_num_at(p_body, fa, end[..]) else 0.0f32;
-    n = redit_put(b[..], 0, "At "); n = ra_put_dec(b[..], n, x); n = redit_put(b[..], n, ", "); n = ra_put_dec(b[..], n, z);
-    n = redit_put(b[..], n, ", facing ");
-    p_deg := cast(int) (redit_hi(f, -f) + 0.5);
-    if f < 0 && p_deg > 0 { n = redit_put(b[..], n, "-"); }
-    n = redit_put_int(b[..], n, p_deg); n = redit_put(b[..], n, " degrees.");
-    ra_add(a, RAL_SAW, cast(string) b[0..<n]);
-  }
-  p_who := ra_json_str(p_body, "talking", s[..]);
-  if p_who.count > 0 {
-    n = redit_put(b[..], 0, p_who); n = redit_put(b[..], n, ": ");
-    t: [RA_LINE] u8;
-    n = redit_put(b[..], n, ra_json_str(p_body, "answer", t[..]));
+  f := w[0].facing;
+  n = redit_put(b[..], 0, "At "); n = ra_put_dec(b[..], n, w[0].x); n = redit_put(b[..], n, ", "); n = ra_put_dec(b[..], n, w[0].z);
+  n = redit_put(b[..], n, ", facing ");
+  p_deg := cast(int) (redit_hi(f, -f) + 0.5);
+  if f < 0 && p_deg > 0 { n = redit_put(b[..], n, "-"); }
+  n = redit_put_int(b[..], n, p_deg); n = redit_put(b[..], n, " degrees.");
+  ra_add(a, RAL_SAW, cast(string) b[0..<n]);
+  if w[0].talking_n > 0 {
+    n = redit_put(b[..], 0, ra_plain(seatw_obs_talking(w[..]), s[..])); n = redit_put(b[..], n, ": ");
+    n = redit_put(b[..], n, ra_plain(seatw_obs_answer(w[..]), s[..]));
     ra_add(a, RAL_SAW, cast(string) b[0..<n]);
   }
   // what's near, nearest first: the first three
-  na := redit_json_at(p_body, "near");
-  if na < 0 || na >= p_body.count || p_body[na] != '[' { return; }
   n = redit_put(b[..], 0, "Near: "); p_k := 0;
-  i := na + 1;
-  while i < p_body.count && p_body[i] != ']' && p_k < 3 {
-    if p_body[i] != '{' { i += 1; continue; }
-    e := i + 1; p_in := false;
-    while e < p_body.count && (p_in || p_body[e] != '}') {
-      if p_body[e] == '\\' && p_in { e += 2; continue; }
-      if p_body[e] == '"' { p_in = !p_in; }
-      e += 1;
-    }
-    if e >= p_body.count { break; }
-    p_obj := p_body[i..<e + 1];
-    p_name := ra_json_str(p_obj, "name", s[..]);
-    if p_name.count == 0 { p_name = ra_json_str(p_obj, "kind", s[..]); }
-    da := redit_json_at(p_obj, "d");
+  for i: 0..<w[0].near_n {
+    if p_k >= 3 { break; }
+    p_name := ifx w[0].near[i].named && w[0].near[i].name_n > 0 then ra_plain(seatw_near_name(w[..], i), s[..]) else seatw_near_kind(w[..], i);
     if p_k > 0 { n = redit_put(b[..], n, ", "); }
     n = redit_put(b[..], n, p_name); n = redit_put(b[..], n, " ");
-    n = ra_put_dec(b[..], n, ifx da >= 0 then ra_num_at(p_obj, da, end[..]) else 0.0f32); n = redit_put(b[..], n, " m");
-    p_k += 1; i = e + 1;
+    n = ra_put_dec(b[..], n, w[0].near[i].d); n = redit_put(b[..], n, " m");
+    p_k += 1;
   }
   if p_k > 0 { n = redit_put(b[..], n, "."); ra_add(a, RAL_SAW, cast(string) b[0..<n]); }
 }
@@ -273,16 +239,25 @@ ra_one_word :: (p_w: string) -> bool {
   for c: p_w { if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')) { return false; } }
   return true;
 }
+// An action's bytes through its one codec (coax/lib/media/realm_seat_wire.coax seatw_action_json,
+// seat.proto's Action): 0 when a word does not fit its place or a number is not one.
+ra_emit :: (w: [] SeatwAction, p_op: string, p_out: [] u8) -> int {
+  w[0].op_n = seatw_set(w[0].op[..], p_op);
+  n := seatw_action_json(w, p_out);
+  return ifx n < 0 then 0 else n;
+}
 ra_use :: (p_out: [] u8, p_tool: string, p_thing: string) -> int {
-  n := redit_put(p_out, 0, "{\"op\":\"use\",\"tool\":\""); n = redit_put(p_out, n, p_tool); n = redit_put(p_out, n, "\"");
-  if p_thing.count > 0 { n = redit_put(p_out, n, ",\"thing\":\""); n = redit_put(p_out, n, p_thing); n = redit_put(p_out, n, "\""); }
-  return redit_put(p_out, n, "}");
+  w: [1] SeatwAction;
+  w[0].tool_n = seatw_set(w[0].tool[..], p_tool); w[0].thing_n = seatw_set(w[0].thing[..], p_thing);
+  return ra_emit(w[..], "use", p_out);
 }
 ra_turn :: (p_out: [] u8, p_field: string, v: int) -> int {
-  n := redit_put(p_out, 0, "{\"op\":\"look\",\""); n = redit_put(p_out, n, p_field); n = redit_put(p_out, n, "\":");
-  n = redit_put_int(p_out, n, v);
-  return redit_put(p_out, n, "}");
+  w: [1] SeatwAction; t: [SEATW_NUM] u8;
+  n := ifx v < 0 then redit_put_int(t[..], redit_put(t[..], 0, "-"), -v) else redit_put_int(t[..], 0, v);
+  if p_field == "turn" { w[0].turn_n = seatw_set(w[0].turn[..], cast(string) t[0..<n]); } else { w[0].pitch_n = seatw_set(w[0].pitch[..], cast(string) t[0..<n]); }
+  return ra_emit(w[..], "look", p_out);
 }
+ra_op :: (p_out: [] u8, p_op: string) -> int { w: [1] SeatwAction; return ra_emit(w[..], p_op, p_out); }
 ra_action :: (p_words: string, p_out: [] u8) -> int {
   p_line := ra_trim(p_words);
   p_w0 := redit_word(p_line, 0);
@@ -290,7 +265,7 @@ ra_action :: (p_words: string, p_out: [] u8) -> int {
   p_w1 := redit_word(p_rest, 0);
   p_more := ra_trim(redit_rest(p_rest, 1));
   if p_line.count == 0 { return 0; }
-  if ra_is(p_w0, "see") || ra_is(p_w0, "where") || ((ra_is(p_w0, "look") || ra_is(p_w0, "turn")) && p_rest.count == 0) { return redit_put(p_out, 0, "{\"op\":\"see\"}"); }
+  if ra_is(p_w0, "see") || ra_is(p_w0, "where") || ((ra_is(p_w0, "look") || ra_is(p_w0, "turn")) && p_rest.count == 0) { return ra_op(p_out, "see"); }
   if ra_is(p_w0, "look") || ra_is(p_w0, "turn") {
     if p_more.count > 0 { return 0; }
     if ra_is(p_w1, "left") { return ra_turn(p_out, "turn", -90); }
@@ -309,16 +284,19 @@ ra_action :: (p_words: string, p_out: [] u8) -> int {
     if p_to.count == 0 || p_to.count > RA_NAME { return 0; }
     p_x := redit_word(p_to, 0); p_z := ra_trim(redit_rest(p_to, 1));
     if ra_numeric(p_x) && ra_numeric(p_z) {
-      n := redit_put(p_out, 0, "{\"op\":\"go\",\"x\":"); n = redit_put(p_out, n, p_x); n = redit_put(p_out, n, ",\"z\":"); n = redit_put(p_out, n, p_z);
-      return redit_put(p_out, n, "}");
+      w: [1] SeatwAction;
+      w[0].x_n = seatw_set(w[0].x[..], p_x); w[0].z_n = seatw_set(w[0].z[..], p_z);
+      return ra_emit(w[..], "go", p_out);
     }
-    n := redit_put(p_out, 0, "{\"op\":\"go\",\"to\":"); n = redit_quote(p_out, n, p_to);
-    return redit_put(p_out, n, "}");
+    w: [1] SeatwAction;
+    w[0].to_n = seatw_set(w[0].to[..], p_to);
+    return ra_emit(w[..], "go", p_out);
   }
   if ra_is(p_w0, "say") {
     if p_rest.count == 0 || p_rest.count > RA_SAY { return 0; }
-    n := redit_put(p_out, 0, "{\"op\":\"say\",\"words\":"); n = redit_quote(p_out, n, p_rest);
-    return redit_put(p_out, n, "}");
+    w: [1] SeatwAction;
+    w[0].words_n = seatw_set(w[0].words[..], p_rest);
+    return ra_emit(w[..], "say", p_out);
   }
   if (ra_is(p_w0, "jump") || ra_is(p_w0, "map")) && p_rest.count == 0 { return ra_use(p_out, ifx ra_is(p_w0, "jump") then "jump" else "map", ""); }
   if ra_is(p_w0, "use") {
@@ -327,6 +305,6 @@ ra_action :: (p_words: string, p_out: [] u8) -> int {
     return 0;
   }
   if ra_is(p_w0, "build") && ra_one_word(p_rest) { return ra_use(p_out, "build", p_rest); }
-  if ra_is(p_w0, "bye") && p_rest.count == 0 { return redit_put(p_out, 0, "{\"op\":\"bye\"}"); }
+  if ra_is(p_w0, "bye") && p_rest.count == 0 { return ra_op(p_out, "bye"); }
   return 0;
 }

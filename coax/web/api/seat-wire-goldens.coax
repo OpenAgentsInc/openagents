@@ -29,17 +29,18 @@ TG_FIXTURE :: "proto/verse/realm-seat-v1alpha1.json";
 TG_DESCRIPTOR :: "proto/descriptors/api-routes.pb";
 TG_BODY :: 8192;
 TG_SEATS :: 16;
-TG_N :: 11;
-TG_WRITERS :: [TG_N] string.["error", "open", "grant", "none", "seats", "kept", "closed", "runner-open", "runner-close", "runner-act", "start"];
+TG_N :: 13;
+TG_WRITERS :: [TG_N] string.["error", "open", "grant", "none", "seats", "kept", "closed", "runner-open", "runner-close", "runner-act", "start", "action", "observation"];
 TG_MESSAGES :: [TG_N] string.[".openagents.api.v1alpha1.ErrorReply", ".openagents.verse.seat.v1alpha1.OpenRequest",
                               ".openagents.verse.seat.v1alpha1.Grant", ".openagents.verse.seat.v1alpha1.Grant",
                               ".openagents.verse.seat.v1alpha1.SeatsReply", ".openagents.verse.seat.v1alpha1.Kept",
                               ".openagents.verse.seat.v1alpha1.Closed", ".openagents.verse.seat.v1alpha1.RunnerOpen",
                               ".openagents.verse.seat.v1alpha1.RunnerClose", ".openagents.verse.seat.v1alpha1.RunnerAct",
-                              ".openagents.verse.seat.v1alpha1.SeatStart"];
+                              ".openagents.verse.seat.v1alpha1.SeatStart", ".openagents.verse.seat.v1alpha1.Action",
+                              ".openagents.verse.seat.v1alpha1.Observation"];
 // Whether a body of the kind always carries every field of its message, in field order (a
 // request may leave hosted out, and a hosted seat's grant has no key).
-TG_EXACT :: [TG_N] bool.[true, false, false, false, true, true, true, false, true, false, false];
+TG_EXACT :: [TG_N] bool.[true, false, false, false, true, true, true, false, true, false, false, false, false];
 
 TgText :: struct { b: [TG_BODY] u8; n: int; }
 tg_s :: (d: Jv, at: int, key: string, t: [] TgText) -> string {
@@ -90,6 +91,25 @@ tg_write :: (writer: string, d: Jv, v: int, out: [] u8) -> int {
     g: [1] SeatwGrant;
     if !seatw_grant_of(g[..], tg_i(d, v, "id"), tg_s(d, v, "slug", a[..]), tg_i(d, v, "until"), true, tg_s(d, v, "player_id", b[..]), tg_s(d, v, "key", c[..])) { return -1; }
     return seatw_start_line(g[..], tg_s(d, v, "origin", a[..]), out);
+  }
+  if writer == "action" {
+    // each value is the member's text: a number as it is typed ("-90", "4.5")
+    w: [1] SeatwAction;
+    w[0].op_n = seatw_set(w[0].op[..], tg_s(d, v, "op", a[..])); w[0].token_n = seatw_set(w[0].token[..], tg_s(d, v, "token", a[..]));
+    w[0].turn_n = seatw_set(w[0].turn[..], tg_s(d, v, "turn", a[..])); w[0].pitch_n = seatw_set(w[0].pitch[..], tg_s(d, v, "pitch", a[..]));
+    w[0].x_n = seatw_set(w[0].x[..], tg_s(d, v, "x", a[..])); w[0].z_n = seatw_set(w[0].z[..], tg_s(d, v, "z", a[..]));
+    w[0].max_n = seatw_set(w[0].max[..], tg_s(d, v, "max", a[..])); w[0].to_n = seatw_set(w[0].to[..], tg_s(d, v, "to", a[..]));
+    w[0].words_n = seatw_set(w[0].words[..], tg_s(d, v, "words", a[..])); w[0].tool_n = seatw_set(w[0].tool[..], tg_s(d, v, "tool", a[..]));
+    w[0].thing_n = seatw_set(w[0].thing[..], tg_s(d, v, "thing", a[..])); w[0].out_n = seatw_set(w[0].out[..], tg_s(d, v, "out", a[..]));
+    w[0].shot_n = seatw_set(w[0].shot[..], tg_s(d, v, "shot", a[..]));
+    return seatw_action_json(w[..], out);
+  }
+  if writer == "observation" {
+    // an observation is a seat's state at one moment, as a seat in a running realm printed it:
+    // its values are the line itself, read by the codec and written from what was read
+    ob: [1] SeatwObs;
+    if !seatw_read_obs(tg_s(d, v, "line", a[..]), ob[..]) { return -1; }
+    return seatw_obs_json(ob[..], out);
   }
   return -1;
 }
@@ -144,6 +164,16 @@ tg_rewrite :: (kind: string, body: string, nodes: [] JvNode, out: [] u8) -> int 
     if !seatw_read_start(body, s[..]) || s[0].phone { return -1; }
     if !seatw_grant_of(g[..], 1, seatw_start_slug(s[..]), 0, true, seatw_start_pid(s[..]), seatw_start_key(s[..])) { return -1; }
     return seatw_start_line(g[..], seatw_start_origin(s[..]), out);
+  }
+  if kind == "action" {
+    w: [1] SeatwAction;
+    if !seatw_read_action(body, w[..]) { return -1; }
+    return seatw_action_json(w[..], out);
+  }
+  if kind == "observation" {
+    b: [1] SeatwObs;
+    if !seatw_read_obs(body, b[..]) { return -1; }
+    return seatw_obs_json(b[..], out);
   }
   return -1;
 }

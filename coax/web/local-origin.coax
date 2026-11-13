@@ -24,6 +24,7 @@
 #import "Basic";
 #load "../lib/net/http.coax";
 #load "../lib/json/json.coax";
+#load "../lib/media/realm_seat_wire.coax";   // a seat's action and observation (seat.proto): one codec
 #load "../lib/sys/tool.coax";
 #load "../lib/sys/fs.coax";
 #load "../lib/sys/args.coax";
@@ -220,13 +221,21 @@ lo_runner :: (path: string, body: string, out: [] u8) -> string {
   if path == "/seat/open" { lo_put(o[..], "{\"open\":true}"); }
   else if path == "/seat/close" { lo_put(o[..], "{\"closed\":true}"); }
   else if path == "/seat/act" {
-    nodes: [64] JvNode; d: [1] Jv; ob: [16] u8;
-    on := ifx jv_parse(d[..], body, nodes[..]) then jv_str(d[0], jv_get(d[0], jv_get(d[0], 0, "action"), "op"), ob[..]) else -1;
-    op := ifx on > 0 then cast(string) ob[0..<on] else "?";
-    lo_put(o[..], "{\"op\":\""); lo_put(o[..], op); lo_put(o[..], "\",\"ok\":true,\"result\":\"");
-    lo_put(o[..], ifx op == "look" || op == "see" then "looked" else "done");
-    lo_put(o[..], "\",\"realm\":\"stand-in\",\"at\":[2.5,-1.0],\"facing\":90.0,\"camera\":\"third\",\"tools\":[\"jump\",\"talk\"],\"talking\":null,\"answer\":null,\"others\":0,\"agents\":0,");
-    lo_put(o[..], "\"near\":[{\"kind\":\"tree\",\"id\":\"entity:3\",\"d\":2.2,\"bearing\":10.0},{\"kind\":\"house\",\"id\":\"entity:1\",\"d\":6.0,\"bearing\":-40.0}]}");
+    // the action read and the observation written by their one codec (realm_seat_wire.coax)
+    act: [4096] u8; an := seatw_read_runner_action(body, act[..]);
+    w: [1] SeatwAction; b: [1] SeatwObs;
+    read := an > 0 && seatw_read_action(cast(string) act[0..<an], w[..]) && w[0].op_n > 0;
+    op := ifx read then seatw_action_op(w[..]) else "?";
+    b[0].op_n = seatw_set(b[0].op[..], op); b[0].ok = true;
+    b[0].result_n = seatw_set(b[0].result[..], ifx op == "look" || op == "see" then "looked" else "done");
+    b[0].realm_n = seatw_set(b[0].realm[..], "stand-in");
+    b[0].x = 2.5; b[0].z = -1.0; b[0].facing = 90.0; b[0].camera = 0; b[0].tools = (1 << 2) | (1 << 4);
+    b[0].near_n = 2;
+    b[0].near[0].kind = 0; b[0].near[0].index = 3; b[0].near[0].d = 2.2; b[0].near[0].bearing = 10.0;
+    b[0].near[1].kind = 4; b[0].near[1].index = 1; b[0].near[1].d = 6.0; b[0].near[1].bearing = -40.0;
+    m := seatw_obs_json(b[..], o[0].b[..]);
+    if m < 0 { return ""; }
+    o[0].n = m;
   } else { return ""; }
   for i: 0..<o[0].n { out[i] = o[0].b[i]; }
   return cast(string) out[0..<o[0].n];

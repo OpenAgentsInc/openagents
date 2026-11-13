@@ -28,6 +28,17 @@
 #load "route-policy.coax";
 #load "availability.coax";
 
+// router.json (~/.openagents/coder/router.json, coder.router.v1), one writer and reader: agr_route
+// below reads it, and this is the file a local setup writes when there is none (the Metaverse
+// Engine's chat, apps/metaverse-engine-desktop/chat.coax): this computer's Psionic, never a remote one.
+AGR_ROUTER_LOCAL :: "{\"schema\":\"coder.router.v1\",\"url\":\"http://127.0.0.1:8793/v1/systemone\",\"remote\":false}\n";
+agr_router_local :: () -> string #effects(all) { return AGR_ROUTER_LOCAL; }
+#test "router.json: the local default is a file the reader takes" {
+  t := AGR_ROUTER_LOCAL[0..<AGR_ROUTER_LOCAL.count - 1];
+  ab: [512] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+  #assert json_valid(t) && cl_raw(t, "schema") == "\"coder.router.v1\"" && cl_raw(t, "remote") == "false" && cl_str(ar[..], t, "url") == "http://127.0.0.1:8793/v1/systemone";
+}
+
 AGR_ENGINES :: [4] string.["claude", "codex", "micro", "psionic"];
 AGR_ENGINE_LABELS :: [4] string.[
   "Claude Code, Anthropic's coding agent CLI: for work that spans files or needs understanding first: refactors, restructuring, new features, debugging, reviews, design, and explaining a codebase",

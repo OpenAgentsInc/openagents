@@ -93,9 +93,13 @@ message RunnerClose {
   optional int64 id = 1 [json_name = "id"];
 }
 
-// One action for a seat (coax/lib/media/realm_seat.coax, which reads it): `op`
-// is see, look, go, say, use, bye, jump, shot or leave, and the other members
-// are the ones that op takes.
+// One action for a seat: the body of POST /api/playtest/seats/<id>/act, and a
+// line to a seat's own process. coax/lib/media/realm_seat_wire.coax writes it
+// (seatw_action_json: the CLI and the realm's page) and reads it
+// (seatw_read_action: coax/lib/media/realm_seat.coax). `op` is see, look, go,
+// say, use, bye, jump, shot or leave, and the other members are the ones that
+// op takes. A writer puts token first, then op, turn, pitch, x, z, to, max,
+// words, tool, thing, out, shot; the server passes it on as jsonb's text.
 message Action {
   optional string op = 1 [json_name = "op"];
   // look: degrees to turn right (negative: left), -180 to 180.
@@ -119,6 +123,46 @@ message Action {
   // The CLI's token for a seat it holds itself, on this computer; it sends
   // the member empty for a hosted seat, and the seat does not read it.
   optional string token = 13 [json_name = "token"];
+}
+
+// One thing near a seat: a character (`kind` "character", `id` "character:0",
+// with its name and role when the realm's spec names it) or an entity (`kind`
+// tree, rock, prop, building, house, dwelling, lantern, placed or centre, `id`
+// "entity:12"). `d` is metres away and `bearing` degrees off the seat's
+// facing (negative: left), each to one decimal place.
+message Near {
+  optional string kind = 1 [json_name = "kind"];
+  optional string id = 2 [json_name = "id"];
+  optional string name = 3 [json_name = "name", (openagents.options.v1alpha1.max_bytes) = 32];
+  optional string role = 4 [json_name = "role", (openagents.options.v1alpha1.max_bytes) = 48];
+  optional double d = 5 [json_name = "d"];
+  optional double bearing = 6 [json_name = "bearing"];
+}
+
+// What a seat answers an action with (200 from .../act, and each line a seat
+// prints): one JSON line, compact, its members in this order, every number to
+// one decimal place. `ok` false: the action was refused or failed and `result`
+// says why. `at` is x and z in metres and `facing` degrees; `pitch` is there
+// only in a first-person camera. `camera` is third, first, top, side or
+// unknown; `tools` are the realm's, of build, fly, jump, map, talk and voice.
+// `talking` is the character the seat talks to and `answer` what it last said,
+// each null when there is none. `others` and `agents` count who else is in
+// the realm's room. `near` is nearest first, at most 16.
+message Observation {
+  optional string op = 1 [json_name = "op"];
+  optional bool ok = 2 [json_name = "ok"];
+  optional string result = 3 [json_name = "result", (openagents.options.v1alpha1.max_bytes) = 200];
+  optional string realm = 4 [json_name = "realm", (openagents.options.v1alpha1.max_bytes) = 80];
+  repeated double at = 5 [json_name = "at"];
+  optional double facing = 6 [json_name = "facing"];
+  optional double pitch = 7 [json_name = "pitch"];
+  optional string camera = 8 [json_name = "camera"];
+  repeated string tools = 9 [json_name = "tools"];
+  optional string talking = 10 [json_name = "talking"];
+  optional string answer = 11 [json_name = "answer", (openagents.options.v1alpha1.max_bytes) = 1200];
+  optional int64 others = 12 [json_name = "others"];
+  optional int64 agents = 13 [json_name = "agents"];
+  repeated Near near = 14 [json_name = "near"];
 }
 
 // The API to the runner, POST /seat/act: the seat and one action, as SQL

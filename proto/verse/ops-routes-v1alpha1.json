@@ -1,5 +1,5 @@
 {
- "about": "Golden bodies of the email and jobs routes (Protocol E11, GitHub #13250): what coax/web/api/email.c answers on POST /api/admin/email and coax/web/api/jobs.c on POST /api/jobs/<job>, with the status each came with. `from` says where a body's bytes came from. api: a running API answered them in coax/web/api/test.sh (test_email.py and test_jobs.py with OPS_CAPTURE, on a build host, 2026-11-12), at the commit before the codecs, on a throwaway database with a fake mail service and a fake token check. caller: a request test_email.py sends. The same tests hand every body of every run to this check (--read-all). The refusals of /api/admin/email's sign-in gate (Log in first., Admins only.) are api.c's, answered before email.c is reached. A day that ran before answers its stored result as jsonb's text. No run answered an auth-sweep result: the job fails on the suite's database, so its result is held by jobs-wire.coax's own checks only. coax/web/api/ops-wire-goldens.coax holds each body's keys to its message and reads it through email-wire.coax or jobs-wire.coax and writes it back for the same bytes.",
+ "about": "Golden bodies of the email and jobs routes (Protocol E11, GitHub #13250): what coax/web/api/email.c answers on POST /api/admin/email and coax/web/api/jobs.c on POST /api/jobs/<job>, with the status each came with. `from` says where a body's bytes came from. api: a running API answered them in coax/web/api/test.sh (test_email.py and test_jobs.py with OPS_CAPTURE, on a build host, 2026-11-12), at the commit before the codecs, on a throwaway database with a fake mail service and a fake token check. caller: a request test_email.py sends. The same tests hand every body of every run to this check (--read-all). The refusals of /api/admin/email's sign-in gate (Log in first., Admins only.) are api.c's, answered before email.c is reached. A day that ran before answers its stored result as jsonb's text. coax/web/api/ops-wire-goldens.coax holds each body's keys to its message and reads it through email-wire.coax or jobs-wire.coax and writes it back for the same bytes. The two auth-sweep bodies are a running API's of 2026-11-13, the first runs of the job that did not fail (its two deletes were WITH items inside sub-selects; #13250): the day it ran, with one spent signature swept, and the same day again, the stored result as jsonb's text.",
  "messages": {
   "error": "openagents.api.v1alpha1.ErrorReply",
   "email-reply": "openagents.ops.email.v1alpha1.SendReply",
@@ -196,6 +196,22 @@
    "from": "caller",
    "route": "POST /api/admin/email",
    "body": "{\"to\": [\"owner@example.com\", \"stranger@example.org\"], \"subject\": \"Mail test, private subject\", \"text\": \"A private plain body\", \"html\": \"<p>A private html body</p>\", \"idempotency_key\": \"mail-test-0006\", \"attachments\": [{\"filename\": \"standup.pdf\", \"content\": \"JVBERi0xLjQKMSAwIG9iajw8L1R5cGUvQ2F0YWxvZz4+ZW5kb2JqCnRyYWlsZXI8PC9Sb290IDEgMCBSPj4KJSVFT0YK\"}]}"
+  },
+  {
+   "name": "job-auth-sweep-ran",
+   "kind": "job-run",
+   "from": "api",
+   "route": "POST /api/jobs/auth-sweep",
+   "status": 200,
+   "body": "{\"job\":\"auth-sweep\",\"day\":\"2026-11-13\",\"state\":\"ran\",\"result\":{\"day\":\"2026-11-13\",\"limits\":0,\"audit_aged\":0,\"pending\":0,\"signatures\":1,\"purged\":0,\"merge_asks\":0}}"
+  },
+  {
+   "name": "job-auth-sweep-already-ran",
+   "kind": "job-run",
+   "from": "api",
+   "route": "POST /api/jobs/auth-sweep",
+   "status": 200,
+   "body": "{\"job\":\"auth-sweep\",\"day\":\"2026-11-13\",\"state\":\"already ran\",\"result\":{\"day\": \"2026-11-13\", \"limits\": 0, \"purged\": 0, \"pending\": 0, \"audit_aged\": 0, \"merge_asks\": 0, \"signatures\": 1}}"
   }
  ]
 }

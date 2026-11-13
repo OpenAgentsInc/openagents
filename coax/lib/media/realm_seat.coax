@@ -21,6 +21,7 @@
 // tools on, who you're talking to and their answer, and what's near, nearest first.
 // It needs Basic (sqrt, abs, print): the program that loads it imports it.
 #load "../net/cdp.coax";
+#load "realm_seat_wire.coax";   // the action a seat reads and the observation it writes (seat.proto): one codec
 #load "../../../metaverse-engine/editor/spec.coax";   // the realm spec's one reader (contexts.txt: realm-seat may load realm-authoring)
 
 SEAT_SHOT :: 25165824;
@@ -30,9 +31,6 @@ SEAT_REACH :: 2.0;
 SEAT_TURN_DEG_S :: 108.86;   // myrealm.coax TURN, 1.9 rad/s
 SEAT_WALK_M_S :: 3.4;        // myrealm.coax WALK
 SEAT_CAM_THIRD :: 0; SEAT_CAM_FIRST :: 1; SEAT_CAM_TOP :: 2; SEAT_CAM_SIDE :: 3;
-SEAT_CAM_NAMES :: [4] string.["third", "first", "top", "side"];
-SEAT_KIND_NAMES :: [9] string.["tree", "rock", "prop", "building", "house", "dwelling", "lantern", "placed", "centre"];
-SEAT_TOOL_NAMES :: [6] string.["build", "fly", "jump", "map", "talk", "voice"];
 SEAT_TOOL_BUILD :: 0; SEAT_TOOL_JUMP :: 2; SEAT_TOOL_MAP :: 3; SEAT_TOOL_TALK :: 4;
 // myrealm.coax THING_NAMES, in its order: the build pane's cells
 SEAT_THINGS :: [8] string.["crate", "barrel", "tree", "rock", "plant", "lantern", "fence", "chest"];
@@ -79,24 +77,8 @@ seat_same :: (a: string, b: string) -> bool {
   for i: 0..<a.count { if seat_lower(a[i]) != seat_lower(b[i]) { return false; } }
   return true;
 }
-// A decimal number's text ("-4.5", "12"; "3e1" is refused): its value, ok false when it isn't one.
-SeatDec :: struct { v: f32; ok: bool; }
-seat_dec_of :: (s: string) -> SeatDec {
-  if s.count == 0 || s.count > 24 { return SeatDec.{}; }
-  i := 0; neg := false;
-  if s[0] == '-' { neg = true; i = 1; }
-  if i >= s.count { return SeatDec.{}; }
-  v: f32 = 0; digits := 0;
-  while i < s.count && s[i] >= '0' && s[i] <= '9' { v = v * 10 + cast(f32) (s[i] - '0'); i += 1; digits += 1; }
-  if i < s.count && s[i] == '.' {
-    i += 1; k: f32 = 0.1;
-    while i < s.count && s[i] >= '0' && s[i] <= '9' { v += k * cast(f32) (s[i] - '0'); k /= 10; i += 1; digits += 1; }
-  }
-  if i != s.count || digits == 0 { return SeatDec.{}; }
-  return SeatDec.{v = ifx neg then -v else v, ok = true};
-}
 // A JSON node's decimal number: ok false unless the node is a number ("4" in quotes is a string).
-seat_num :: (d: Jv, at: int) -> SeatDec { return ifx jv_kind(d, at) == JV_NUMBER then seat_dec_of(jv_raw(d, at)) else SeatDec.{}; }
+seat_num :: (d: Jv, at: int) -> SeatwDec { return ifx jv_kind(d, at) == JV_NUMBER then seatw_dec_of(jv_raw(d, at)) else SeatwDec.{}; }
 #test "an action's numbers are JSON numbers, never quoted" {
   nodes: [16] JvNode; d: [1] Jv;
   #assert jv_parse(d[..], "{\"turn\":-90.5,\"max\":\"20\",\"x\":\"4.5\"}", nodes[..]);
@@ -130,7 +112,7 @@ seat_pitch_px :: (deg: f32, height: int) -> f32 { return -deg * 0.0174532925 * c
 
 #test "a seat's pieces" {
   #assert seat_origin_of("https://staging.openagents.com/realms/x") == "https://staging.openagents.com" && seat_slug_ok("moonlit-marsh") && !seat_slug_ok("a'b");
-  #assert seat_dec_of("-4.5").ok && seat_dec_of("-4.5").v == -4.5 && seat_dec_of("12").v == 12 && !seat_dec_of("1e3").ok && !seat_dec_of("-").ok && !seat_dec_of("").ok;
+  #assert seatw_dec_of("-4.5").ok && seatw_dec_of("-4.5").v == -4.5 && seatw_dec_of("12").v == 12 && !seatw_dec_of("1e3").ok && !seatw_dec_of("-").ok && !seatw_dec_of("").ok;
   #assert seat_same("Old Mott", "old mott") && !seat_same("Mott", "Mott ");
   b: [1] SeatBuf; seat_dec(b[..], 3.14); seat_put(b[..], " "); seat_dec(b[..], -2.25); seat_put(b[..], " "); seat_dec(b[..], 0.04);
   #assert seat_text(b[..]) == "3.1 -2.3 0.0";
@@ -312,15 +294,15 @@ seat_heading :: (s: [] Seat, x: f32, z: f32) -> f32 { return seat_atan2(x - s[0]
 seat_bearing :: (s: [] Seat, x: f32, z: f32) -> f32 { return seat_wrap(seat_heading(s, x, z) - s[0].yaw); }
 
 // A go target: a character by name, "character:N", "entity:N", a kind (nearest), or x and z.
-seat_target :: (s: [] Seat, to: string, x: SeatDec, z: SeatDec) -> SeatSpot {
+seat_target :: (s: [] Seat, to: string, x: SeatwDec, z: SeatwDec) -> SeatSpot {
   if to.count == 0 { return ifx x.ok && z.ok then SeatSpot.{x = x.v, z = z.v, ok = true} else SeatSpot.{}; }
   for p: 0..<s[0].people { if p < s[0].spec_people && seat_same(seat_name(s, p), to) { return SeatSpot.{x = s[0].px[p], z = s[0].pz[p], ok = true}; } }
-  if seat_starts(to, "character:") { n := seat_dec_of(to[10..<to.count]); i := cast(int) n.v; if n.ok && i >= 0 && i < s[0].people { return SeatSpot.{x = s[0].px[i], z = s[0].pz[i], ok = true}; } return SeatSpot.{}; }
-  if seat_starts(to, "entity:") { n := seat_dec_of(to[7..<to.count]); i := cast(int) n.v; if n.ok && i >= 0 && i < s[0].ent_n && s[0].ent_kind[i] >= 0 { return SeatSpot.{x = s[0].ent_x[i], z = s[0].ent_z[i], ok = true}; } return SeatSpot.{}; }
+  if seat_starts(to, "character:") { n := seatw_dec_of(to[10..<to.count]); i := cast(int) n.v; if n.ok && i >= 0 && i < s[0].people { return SeatSpot.{x = s[0].px[i], z = s[0].pz[i], ok = true}; } return SeatSpot.{}; }
+  if seat_starts(to, "entity:") { n := seatw_dec_of(to[7..<to.count]); i := cast(int) n.v; if n.ok && i >= 0 && i < s[0].ent_n && s[0].ent_kind[i] >= 0 { return SeatSpot.{x = s[0].ent_x[i], z = s[0].ent_z[i], ok = true}; } return SeatSpot.{}; }
   best := SeatSpot.{}; bd: f32 = 1000000;
   if seat_same(to, "character") { for p: 0..<s[0].people { d := seat_dist(s, s[0].px[p], s[0].pz[p]); if d < bd { bd = d; best = SeatSpot.{x = s[0].px[p], z = s[0].pz[p], ok = true}; } } return best; }
-  for k: 0..<SEAT_KIND_NAMES.count {
-    if !seat_same(to, SEAT_KIND_NAMES[k]) { continue; }
+  for k: 0..<SEATW_KIND_NAMES.count {
+    if !seat_same(to, SEATW_KIND_NAMES[k]) { continue; }
     for e: 0..<s[0].ent_n { if s[0].ent_kind[e] == k { d := seat_dist(s, s[0].ent_x[e], s[0].ent_z[e]); if d < bd { bd = d; best = SeatSpot.{x = s[0].ent_x[e], z = s[0].ent_z[e], ok = true}; } } }
   }
   return best;
@@ -334,14 +316,14 @@ seat_target :: (s: [] Seat, to: string, x: SeatDec, z: SeatDec) -> SeatSpot {
   #assert s[0].spec_people == 2 && seat_name(s[..], 0) == "Maple" && seat_role(s[..], 1) == "well keeper";
   s[0].people = 2; s[0].px[0] = 3; s[0].pz[0] = 3; s[0].px[1] = -5; s[0].pz[1] = 0;
   s[0].ent_n = 3; s[0].ent_kind[0] = 4; s[0].ent_x[0] = 10; s[0].ent_z[0] = 0; s[0].ent_kind[1] = 4; s[0].ent_x[1] = 2; s[0].ent_z[1] = -2; s[0].ent_kind[2] = -1;
-  t := seat_target(s[..], "maple", SeatDec.{}, SeatDec.{});
+  t := seat_target(s[..], "maple", SeatwDec.{}, SeatwDec.{});
   #assert t.ok && t.x == 3 && t.z == 3;
-  t = seat_target(s[..], "house", SeatDec.{}, SeatDec.{}); #assert t.ok && t.x == 2;
-  t = seat_target(s[..], "character", SeatDec.{}, SeatDec.{}); #assert t.ok && t.x == 3;
-  t = seat_target(s[..], "character:1", SeatDec.{}, SeatDec.{}); #assert t.ok && t.x == -5;
-  #assert !seat_target(s[..], "character:2", SeatDec.{}, SeatDec.{}).ok && !seat_target(s[..], "entity:2", SeatDec.{}, SeatDec.{}).ok && !seat_target(s[..], "well", SeatDec.{}, SeatDec.{}).ok;
-  t = seat_target(s[..], "", seat_dec_of("4.5"), seat_dec_of("-2")); #assert t.ok && t.x == 4.5 && t.z == -2;
-  #assert !seat_target(s[..], "", seat_dec_of("4.5"), SeatDec.{}).ok;
+  t = seat_target(s[..], "house", SeatwDec.{}, SeatwDec.{}); #assert t.ok && t.x == 2;
+  t = seat_target(s[..], "character", SeatwDec.{}, SeatwDec.{}); #assert t.ok && t.x == 3;
+  t = seat_target(s[..], "character:1", SeatwDec.{}, SeatwDec.{}); #assert t.ok && t.x == -5;
+  #assert !seat_target(s[..], "character:2", SeatwDec.{}, SeatwDec.{}).ok && !seat_target(s[..], "entity:2", SeatwDec.{}, SeatwDec.{}).ok && !seat_target(s[..], "well", SeatwDec.{}, SeatwDec.{}).ok;
+  t = seat_target(s[..], "", seatw_dec_of("4.5"), seatw_dec_of("-2")); #assert t.ok && t.x == 4.5 && t.z == -2;
+  #assert !seat_target(s[..], "", seatw_dec_of("4.5"), SeatwDec.{}).ok;
   // bearings: facing north (yaw 0), east is to the right
   #assert seat_near_deg(seat_bearing(s[..], 1, 0), 90) && seat_near_deg(seat_bearing(s[..], 0, -1), 0);
   s[0].yaw = 90; #assert seat_near_deg(seat_bearing(s[..], 0, 1), 90);
@@ -365,7 +347,7 @@ seat_drag_turn :: (s: [] Seat, c: [] Cdp, deg: f32, pitch: f32) -> bool {
   if seat_read(s, c) && talking < 0 && s[0].talk >= 0 { e := seat_press(c, "Escape", "Escape", 27); proc_sleep(120); _ := seat_read(s, c); }
   return true;
 }
-seat_look :: (s: [] Seat, c: [] Cdp, turn: SeatDec, pitch: SeatDec) -> bool {
+seat_look :: (s: [] Seat, c: [] Cdp, turn: SeatwDec, pitch: SeatwDec) -> bool {
   if !turn.ok && !pitch.ok { seat_note(s, "looked"); return true; }
   if turn.ok && (turn.v < -180 || turn.v > 180) { return seat_refuse(s, "turn is -180 to 180 degrees"); }
   if pitch.ok && (pitch.v < -60 || pitch.v > 60) { return seat_refuse(s, "pitch is -60 to 60 degrees"); }
@@ -483,48 +465,53 @@ seat_use :: (s: [] Seat, c: [] Cdp, tool: string, thing: string) -> bool {
 
 // ---- one observation, a JSON line
 
+// The seat's state as an observation, through the one codec (realm_seat_wire.coax seatw_obs_json).
 seat_observation :: (s: [] Seat, op: string, ok: bool, out: [] SeatBuf) {
   o := out; o[0].n = 0; o[0].bad = false;
-  seat_put(o, "{\"op\":"); seat_q(o, op); seat_put(o, ",\"ok\":"); seat_put(o, ifx ok then "true" else "false");
-  seat_put(o, ",\"result\":"); seat_q(o, cast(string) s[0].result[0..<s[0].result_n]);
-  seat_put(o, ",\"realm\":"); seat_q(o, seat_slug(s));
-  seat_put(o, ",\"at\":["); seat_dec(o, s[0].x); seat_put(o, ","); seat_dec(o, s[0].z); seat_put(o, "],\"facing\":"); seat_dec(o, s[0].yaw);
-  if s[0].cam == SEAT_CAM_FIRST { seat_put(o, ",\"pitch\":"); seat_dec(o, s[0].pitch); }
-  seat_put(o, ",\"camera\":\""); seat_put(o, ifx s[0].cam >= 0 && s[0].cam < 4 then SEAT_CAM_NAMES[s[0].cam] else "unknown"); seat_put(o, "\"");
-  seat_put(o, ",\"tools\":["); first := true;
-  for t: 0..<6 { if (s[0].tools & (1 << t)) != 0 { if !first { seat_put(o, ","); } seat_put(o, "\""); seat_put(o, SEAT_TOOL_NAMES[t]); seat_put(o, "\""); first = false; } }
-  seat_put(o, "],\"talking\":");
-  if s[0].talk >= 0 && s[0].talk < s[0].spec_people { seat_q(o, seat_name(s, s[0].talk)); } else if s[0].talk >= 0 { seat_put(o, "\"character:"); seat_int(o, s[0].talk); seat_put(o, "\""); } else { seat_put(o, "null"); }
+  b: [1] SeatwObs;
+  b[0].op_n = seatw_set(b[0].op[..], op); b[0].ok = ok;
+  b[0].result_n = seatw_set(b[0].result[..], cast(string) s[0].result[0..<s[0].result_n]);
+  b[0].realm_n = seatw_set(b[0].realm[..], seat_slug(s));
+  b[0].x = s[0].x; b[0].z = s[0].z; b[0].facing = s[0].yaw;
+  b[0].has_pitch = s[0].cam == SEAT_CAM_FIRST; b[0].pitch = s[0].pitch;
+  b[0].camera = ifx s[0].cam >= 0 && s[0].cam < 4 then s[0].cam else -1;
+  b[0].tools = s[0].tools & 63;
+  if s[0].talk >= 0 && s[0].talk < s[0].spec_people { b[0].talking_n = seatw_set(b[0].talking[..], seat_name(s, s[0].talk)); }
+  else if s[0].talk >= 0 { t: [1] SeatBuf; seat_put(t[..], "character:"); seat_int(t[..], s[0].talk); b[0].talking_n = seatw_set(b[0].talking[..], seat_text(t[..])); }
   // the answer while you talk (a bye ends it)
-  seat_put(o, ",\"answer\":"); if s[0].talk >= 0 && s[0].answer_n > 0 { seat_q(o, cast(string) s[0].answer[0..<s[0].answer_n]); } else { seat_put(o, "null"); }
+  if s[0].talk >= 0 && s[0].answer_n > 0 { b[0].answer_n = seatw_set(b[0].answer[..], cast(string) s[0].answer[0..<s[0].answer_n]); }
   // who else is here (the realm's room, myrealm-room.coax), and how many of them are agents
-  seat_put(o, ",\"others\":"); seat_int(o, s[0].others); seat_put(o, ",\"agents\":"); seat_int(o, s[0].agents);
+  b[0].others = s[0].others; b[0].agents = s[0].agents;
   // what's near, nearest first: characters, then every entity but trees and lanterns past 12 m
   ids: [SEAT_PEOPLE + SEAT_ENTS] int; ds: [SEAT_PEOPLE + SEAT_ENTS] f32; n := 0;
   for p: 0..<s[0].people { ids[n] = -1 - p; ds[n] = seat_dist(s, s[0].px[p], s[0].pz[p]); n += 1; }
   for e: 0..<s[0].ent_n {
-    k := s[0].ent_kind[e]; if k < 0 || k >= SEAT_KIND_NAMES.count { continue; }
+    k := s[0].ent_kind[e]; if k < 0 || k >= SEATW_KIND_NAMES.count { continue; }
     d := seat_dist(s, s[0].ent_x[e], s[0].ent_z[e]);
     if (k == 0 || k == 6) && d > 12 { continue; }
     ids[n] = e; ds[n] = d; n += 1;
   }
   for i: 1..<n { j := i; while j > 0 && ds[j] < ds[j - 1] { ti := ids[j]; td := ds[j]; ids[j] = ids[j - 1]; ds[j] = ds[j - 1]; ids[j - 1] = ti; ds[j - 1] = td; j -= 1; } }
-  seat_put(o, ",\"near\":[");
   for i: 0..<n {
-    if i >= SEAT_NEAR { break; }
-    if i > 0 { seat_put(o, ","); }
+    if i >= SEATW_NEAR { break; }
     id := ids[i]; x: f32 = 0; z: f32 = 0;
     if id < 0 {
       p := -1 - id; x = s[0].px[p]; z = s[0].pz[p];
-      seat_put(o, "{\"kind\":\"character\",\"id\":\"character:"); seat_int(o, p); seat_put(o, "\"");
-      if p < s[0].spec_people { seat_put(o, ",\"name\":"); seat_q(o, seat_name(s, p)); seat_put(o, ",\"role\":"); seat_q(o, seat_role(s, p)); }
+      b[0].near[i].kind = SEATW_PERSON; b[0].near[i].index = p;
+      if p < s[0].spec_people {
+        b[0].near[i].named = true;
+        b[0].near[i].name_n = seatw_set(b[0].near[i].name[..], seat_name(s, p)); b[0].near[i].role_n = seatw_set(b[0].near[i].role[..], seat_role(s, p));
+      }
     } else {
       x = s[0].ent_x[id]; z = s[0].ent_z[id];
-      seat_put(o, "{\"kind\":\""); seat_put(o, SEAT_KIND_NAMES[s[0].ent_kind[id]]); seat_put(o, "\",\"id\":\"entity:"); seat_int(o, id); seat_put(o, "\"");
+      b[0].near[i].kind = s[0].ent_kind[id]; b[0].near[i].index = id;
     }
-    seat_put(o, ",\"d\":"); seat_dec(o, ds[i]); seat_put(o, ",\"bearing\":"); seat_dec(o, seat_bearing(s, x, z)); seat_put(o, "}");
+    b[0].near[i].d = ds[i]; b[0].near[i].bearing = seat_bearing(s, x, z);
+    b[0].near_n = i + 1;
   }
-  seat_put(o, "]}");
+  m := seatw_obs_json(b[..], o[0].b[..]);
+  if m < 0 { o[0].bad = true; return; }
+  o[0].n = m;
 }
 // ---- the seat's presence (docs/metaverse/realm-seat.md slice 4; migrations/0108): the holder posts it,
 // signed with the CLI's key, so others in the realm see an agent with its account's name
@@ -653,40 +640,34 @@ seat_open :: (s: [] Seat, c: [] Cdp, player: string) -> bool {
 
 // One action line: runs it and writes its observation into out. False when it was refused or failed.
 seat_act :: (s: [] Seat, c: [] Cdp, line: string, png: [] u8, out: [] SeatBuf) -> bool {
-  nodes: [64] JvNode; d: [1] Jv;
+  a: [1] SeatwAction;
   s[0].result_n = 0;
-  if !jv_parse(d[..], line, nodes[..]) || jv_kind(d[0], 0) != JV_OBJECT { seat_note(s, "not a JSON object"); seat_observation(s, "?", false, out); return false; }
-  j := d[0];
-  opb: [16] u8; opn := jv_str(j, jv_get(j, 0, "op"), opb[..]); op := ifx opn > 0 then cast(string) opb[0..<opn] else "";
+  if !seatw_read_action(line, a[..]) { seat_note(s, "not a JSON object"); seat_observation(s, "?", false, out); return false; }
+  op := seatw_action_op(a[..]);
   if !seat_read(s, c) { seat_note(s, "the realm isn't laid out"); seat_observation(s, op, false, out); return false; }
   ok := false;
   if op == "see" { ok = true; seat_note(s, "seen"); }
-  else if op == "look" { ok = seat_look(s, c, seat_num(j, jv_get(j, 0, "turn")), seat_num(j, jv_get(j, 0, "pitch"))); }
+  else if op == "look" { ok = seat_look(s, c, seatw_action_turn(a[..]), seatw_action_pitch(a[..])); }
   else if op == "go" {
-    tb: [64] u8; tn := jv_str(j, jv_get(j, 0, "to"), tb[..]); to := ifx tn > 0 then cast(string) tb[0..<tn] else "";
-    mx := seat_num(j, jv_get(j, 0, "max")); secs := ifx mx.ok then cast(int) mx.v else 10;
+    mx := seatw_action_max(a[..]); secs := ifx mx.ok then cast(int) mx.v else 10;
     if secs < 1 || secs > 30 { seat_note(s, "max is 1 to 30 seconds"); }
-    else { ok = seat_go(s, c, seat_target(s, to, seat_num(j, jv_get(j, 0, "x")), seat_num(j, jv_get(j, 0, "z"))), secs); }
+    else { ok = seat_go(s, c, seat_target(s, seatw_action_to(a[..]), seatw_action_x(a[..]), seatw_action_z(a[..])), secs); }
   }
-  else if op == "say" { wb: [1600] u8; wn := jv_str(j, jv_get(j, 0, "words"), wb[..]); ok = seat_say(s, c, ifx wn > 0 then cast(string) wb[0..<wn] else ""); }
+  else if op == "say" { ok = seat_say(s, c, seatw_action_words(a[..])); }
   else if op == "bye" { ok = seat_bye(s, c); }
-  else if op == "use" || op == "jump" {
-    tb: [16] u8; tn := jv_str(j, jv_get(j, 0, "tool"), tb[..]);
-    hb: [16] u8; hn := jv_str(j, jv_get(j, 0, "thing"), hb[..]);
-    ok = seat_use(s, c, ifx op == "jump" then "jump" else ifx tn > 0 then cast(string) tb[0..<tn] else "", ifx hn > 0 then cast(string) hb[0..<hn] else "");
-  }
+  else if op == "use" || op == "jump" { ok = seat_use(s, c, ifx op == "jump" then "jump" else seatw_action_tool(a[..]), seatw_action_thing(a[..])); }
   else if op == "shot" {
-    ob: [256] u8; on := jv_str(j, jv_get(j, 0, "out"), ob[..]);
-    if on <= 0 || !seat_ends(cast(string) ob[0..<on], ".png") { seat_note(s, "out names a .png file"); }
-    else { n := cdp_screenshot(c, png); ok = n > 0 && fs_write(cast(string) ob[0..<on], cast(string) png[0..<n]); seat_note(s, ifx ok then "shot" else "the shot wasn't written"); }
+    to := seatw_action_out(a[..]);
+    if to.count == 0 || !seat_ends(to, ".png") { seat_note(s, "out names a .png file"); }
+    else { n := cdp_screenshot(c, png); ok = n > 0 && fs_write(to, cast(string) png[0..<n]); seat_note(s, ifx ok then "shot" else "the shot wasn't written"); }
   }
   else { seat_note(s, "op is see, look, go, say, use, bye, jump or shot"); }
   // any action may keep a picture of the view after it: "shot": "/abs/path.png"
   if op != "shot" {
-    sb: [1100] u8; sn := jv_str(j, jv_get(j, 0, "shot"), sb[..]);
-    if sn > 0 {
-      n := ifx seat_ends(cast(string) sb[0..<sn], ".png") then cdp_screenshot(c, png) else -1;
-      if n <= 0 || !fs_write(cast(string) sb[0..<sn], cast(string) png[0..<n]) { ok = false; seat_note(s, "the shot wasn't written"); }
+    shot := seatw_action_shot(a[..]);
+    if shot.count > 0 {
+      n := ifx seat_ends(shot, ".png") then cdp_screenshot(c, png) else -1;
+      if n <= 0 || !fs_write(shot, cast(string) png[0..<n]) { ok = false; seat_note(s, "the shot wasn't written"); }
     }
   }
   _ := seat_read(s, c);

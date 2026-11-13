@@ -433,6 +433,18 @@ csr_show :: (g: [] CsrGraph, sid: string, path: string, max_turns: int, before: 
 csr_context_show :: (g: [] CsrGraph, sid: string, path: string, max_turns: int, before: int, max_tool: int, out: [] u8) -> string {
   return csr_show_mode(g, sid, path, max_turns, before, max_tool, true, out);
 }
+// The envelope's other openings (coder.session-reader.v1; this file is its one writer). The
+// terminal's reader (coder/tui/session-reader.coax) calls these for a refusal, the list of
+// sessions and an ambiguous reference, and adds the rows.
+csr_error :: (code: string, message: string, out: [] u8) -> string {
+  n := json_raw(out, 0, "{\"schema\":\"coder.session-reader.v1\",\"source\":\"claude\",\"inert\":true,\"error\":");
+  n = json_write_string(out, n, code); n = json_raw(out, n, ",\"message\":"); n = json_write_string(out, n, message); n = json_raw(out, n, "}");
+  return ifx n < 0 then "{\"error\":\"output_buffer\"}" else cast(string) out[0..<n];
+}
+// {"schema":"coder.session-reader.v1","source":"claude","inert":true,"sessions":[ : the list's start.
+csr_sessions_open :: (out: [] u8) -> int { return json_raw(out, 0, "{\"schema\":\"coder.session-reader.v1\",\"source\":\"claude\",\"inert\":true,\"sessions\":["); }
+// {"schema":"coder.session-reader.v1","inert":true,"error":"ambiguous_reference","matches":[ : more than one session matched.
+csr_ambiguous_open :: (out: [] u8) -> int { return json_raw(out, 0, "{\"schema\":\"coder.session-reader.v1\",\"inert\":true,\"error\":\"ambiguous_reference\",\"matches\":["); }
 csr_show_mode :: (g: [] CsrGraph, sid: string, path: string, max_turns: int, before: int, max_tool: int, context: bool, out: [] u8) -> string {
   eligible: [CSR_NODES] int; chunks: [CSR_NODES] int; total := 0; turn: [CSR_TURN_MAX] u8; available := false;
   last_user: [512] u8; nu := 0; last_action: [512] u8; na := 0;

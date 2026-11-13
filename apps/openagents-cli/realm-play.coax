@@ -147,27 +147,23 @@ seat_tell :: (a: [] Args, profile: string, id: int, op: string) -> bool {
 
 // The action line for a seat verb, with the seat's token, into out; "" when it doesn't fit.
 seat_action :: (a: [] Args, verb: string, token: string, shot: string, out: [] u8) -> string {
-  o: [1] Jo; jo_start(o[..], out); jo_obj(o[..]);
-  jo_key(o[..], "token"); jo_str(o[..], token);
-  op := ifx verb == "play" then "see" else verb;
-  jo_key(o[..], "op"); jo_str(o[..], op);
+  w: [1] SeatwAction;   // seat.proto's Action, through its one codec (realm_seat_wire.coax)
+  w[0].token_n = seatw_set(w[0].token[..], token);
+  w[0].op_n = seatw_set(w[0].op[..], ifx verb == "play" then "see" else verb);
   if verb == "look" {
-    if rc_has(a, verb, "--turn") { jo_key(o[..], "turn"); jo_raw(o[..], rc_option(a, verb, "--turn", "0")); }
-    if rc_has(a, verb, "--pitch") { jo_key(o[..], "pitch"); jo_raw(o[..], rc_option(a, verb, "--pitch", "0")); }
-    if shot != "" { jo_key(o[..], "shot"); jo_str(o[..], shot); }
+    if rc_has(a, verb, "--turn") { w[0].turn_n = seatw_set(w[0].turn[..], rc_option(a, verb, "--turn", "0")); }
+    if rc_has(a, verb, "--pitch") { w[0].pitch_n = seatw_set(w[0].pitch[..], rc_option(a, verb, "--pitch", "0")); }
+    w[0].shot_n = seatw_set(w[0].shot[..], shot);
   }
   if verb == "go" {
-    if rc_has(a, verb, "--x") { jo_key(o[..], "x"); jo_raw(o[..], rc_option(a, verb, "--x", "0")); jo_key(o[..], "z"); jo_raw(o[..], rc_option(a, verb, "--z", "0")); }
-    else { jo_key(o[..], "to"); jo_str(o[..], rc_pos(a, verb, 3)); }
-    if rc_has(a, verb, "--max") { jo_key(o[..], "max"); jo_raw(o[..], rc_option(a, verb, "--max", "10")); }
+    if rc_has(a, verb, "--x") { w[0].x_n = seatw_set(w[0].x[..], rc_option(a, verb, "--x", "0")); w[0].z_n = seatw_set(w[0].z[..], rc_option(a, verb, "--z", "0")); }
+    else { w[0].to_n = seatw_set(w[0].to[..], rc_pos(a, verb, 3)); }
+    if rc_has(a, verb, "--max") { w[0].max_n = seatw_set(w[0].max[..], rc_option(a, verb, "--max", "10")); }
   }
-  if verb == "say" { jo_key(o[..], "words"); jo_str(o[..], rc_pos(a, verb, 3)); }
-  if verb == "use" {
-    jo_key(o[..], "tool"); jo_str(o[..], rc_pos(a, verb, 3));
-    if rc_pos(a, verb, 4) != "" { jo_key(o[..], "thing"); jo_str(o[..], rc_pos(a, verb, 4)); }
-  }
-  jo_end(o[..]);
-  return ifx o[0].bad then "" else jo_text(o[..]);
+  if verb == "say" { w[0].words_n = seatw_set(w[0].words[..], rc_pos(a, verb, 3)); }
+  if verb == "use" { w[0].tool_n = seatw_set(w[0].tool[..], rc_pos(a, verb, 3)); w[0].thing_n = seatw_set(w[0].thing[..], rc_pos(a, verb, 4)); }
+  n := seatw_action_json(w[..], out);
+  return ifx n < 0 then "" else cast(string) out[0..<n];
 }
 #test "each seat verb sends its own action" {
   out: [4096] u8; t := "0123456789abcdef0123456789abcdef";
@@ -197,37 +193,32 @@ seat_side :: (b: f32, out: [] SeatBuf) {
 }
 // The observation's JSON as a few lines a person reads; "" when it doesn't parse.
 seat_obs_text :: (obs: string, o: [] SeatBuf) -> string {
-  nodes: [1024] JvNode; dd: [1] Jv;
+  w: [1] SeatwObs; num: [1600] u8; j: [1] Jo;
   o[0].n = 0; o[0].bad = false;
-  if !jv_parse(dd[..], obs, nodes[..]) || jv_kind(dd[0], 0) != JV_OBJECT { return ""; }
-  d := dd[0]; b: [1600] u8;
-  n := jv_str(d, jv_get(d, 0, "realm"), b[..]); if n > 0 { seat_put(o, cast(string) b[0..<n]); seat_put(o, ": "); }
-  n = jv_str(d, jv_get(d, 0, "result"), b[..]); if n > 0 { seat_put(o, cast(string) b[0..<n]); }
-  seat_put(o, "\nat "); at := jv_get(d, 0, "at");
-  seat_put(o, jv_raw(d, jv_at(d, at, 0))); seat_put(o, " "); seat_put(o, jv_raw(d, jv_at(d, at, 1)));
-  seat_put(o, ", facing "); seat_put(o, jv_raw(d, jv_get(d, 0, "facing")));
-  seat_put(o, ", "); seat_put(o, jv_raw(d, jv_get(d, 0, "camera"))); seat_put(o, " camera; tools ");
-  tools := jv_get(d, 0, "tools");
-  if jv_len(d, tools) == 0 { seat_put(o, "none"); }
-  for i: 0..<jv_len(d, tools) { if i > 0 { seat_put(o, ", "); } seat_put(o, jv_raw(d, jv_at(d, tools, i))); }
-  if jv_kind(d, jv_get(d, 0, "talking")) == JV_STRING {
-    seat_put(o, "\ntalking to "); seat_put(o, jv_raw(d, jv_get(d, 0, "talking")));
-    n = jv_str(d, jv_get(d, 0, "answer"), b[..]); if n > 0 { seat_put(o, ": "); seat_put(o, cast(string) b[0..<n]); }
+  if !seatw_read_obs(obs, w[..]) { return ""; }
+  if w[0].realm_n > 0 { seat_put(o, seatw_obs_realm(w[..])); seat_put(o, ": "); }
+  seat_put(o, seatw_obs_result(w[..]));
+  seat_put(o, "\nat "); seat_dec(o, w[0].x); seat_put(o, " "); seat_dec(o, w[0].z);
+  seat_put(o, ", facing "); seat_dec(o, w[0].facing);
+  seat_put(o, ", "); seat_put(o, seatw_obs_camera(w[..])); seat_put(o, " camera; tools ");
+  if w[0].tools == 0 { seat_put(o, "none"); }
+  first := true;
+  for t: 0..<SEATW_TOOL_NAMES.count { if (w[0].tools & (1 << t)) != 0 { if !first { seat_put(o, ", "); } seat_put(o, SEATW_TOOL_NAMES[t]); first = false; } }
+  if w[0].talking_n > 0 {
+    seat_put(o, "\ntalking to "); seat_put(o, seatw_obs_talking(w[..]));
+    if w[0].answer_n > 0 { seat_put(o, ": "); seat_put(o, seatw_obs_answer(w[..])); }
   }
-  near := jv_get(d, 0, "near");
   seat_put(o, "\nnear:");
-  if jv_len(d, near) == 0 { seat_put(o, " nothing"); }
-  for i: 0..<jv_len(d, near) {
-    e := jv_at(d, near, i);
+  if w[0].near_n == 0 { seat_put(o, " nothing"); }
+  for i: 0..<w[0].near_n {
     seat_put(o, ifx i == 0 then " " else "; ");
-    if jv_kind(d, jv_get(d, e, "name")) == JV_STRING {
-      n = jv_str(d, jv_get(d, e, "name"), b[..]); if n > 0 { seat_put(o, cast(string) b[0..<n]); }
+    if w[0].near[i].named {
+      seat_put(o, seatw_near_name(w[..], i));
       seat_put(o, " (");
-      n = jv_str(d, jv_get(d, e, "role"), b[..]); seat_put(o, ifx n > 0 then cast(string) b[0..<n] else "character"); seat_put(o, ")");
-    } else { seat_put(o, jv_raw(d, jv_get(d, e, "kind"))); seat_put(o, " "); seat_put(o, jv_raw(d, jv_get(d, e, "id"))); }
-    seat_put(o, " "); seat_put(o, jv_raw(d, jv_get(d, e, "d"))); seat_put(o, " m ");
-    bv := seat_num(d, jv_get(d, e, "bearing"));
-    seat_side(ifx bv.ok then bv.v else 0, o);
+      seat_put(o, ifx w[0].near[i].role_n > 0 then seatw_near_role(w[..], i) else "character"); seat_put(o, ")");
+    } else { seat_put(o, seatw_near_kind(w[..], i)); seat_put(o, " "); seat_put(o, seatw_near_id(w[..], i, num[..])); }
+    seat_put(o, " "); seat_dec(o, w[0].near[i].d); seat_put(o, " m ");
+    seat_side(w[0].near[i].bearing, o);
   }
   seat_put(o, "\n");
   return ifx o[0].bad then "" else seat_text(o);

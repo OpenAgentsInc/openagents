@@ -12,8 +12,6 @@
 
 # Area 1: Coder, Microcoder, Golemancy
 shape coder.session-reader.v1  # C10, wave 2: the session-reader envelope (#13250)
-id coder.session-reader.v1 coder/tui/session-reader.coax  # a second writer file; C10, wave 2 (#13250)
-id coder.router.v1 apps/metaverse-engine-desktop/chat.coax  # Aethyrforge writes router.json's default; wave 2, with the spec's name clash (#13250)
 shape coder-json-output  # C8, wave 2: --json and --stream-json output (#13250)
 shape chat-page-lines  # C9, wave 2: the /chat page lines Z C S U T (#13250)
 shape microcoder-worker-lines  # C11, wave 2: ready, reply, attempt, command, view, ask, ended, embedding, journal, task, answer (#13250)
@@ -26,16 +24,13 @@ shape systemone-request-json  # the System One request JSON in coax/lib/systemon
 route coax/web/api/chat.c  # C9, wave 2: the /chat routes, after C5 (#13250)
 
 # Area 2: Everglade
-shape seat-ticket  # v2 and v3: written by C snprintf in player.c and by tk_sign in room-ticket.coax; E5 (#13248). v5 is not here: one codec, metaverse-engine/session/seat-ticket.coax (registry row seat-ticket-v5, #13260)
 room coax/web/room/room-relay.coax  # the rooms list JSON (rm_rooms), which the API builds in SQL too (verse.room_list); E8, wave 2, with rooms.c. Its frames are relay-wire.coax's since E2 (#13250)
-room coax/web/room/room-ticket.coax  # parses and signs seat tickets v2 and v3; E5 (#13248); v5 it reads through metaverse-engine/session/seat-ticket.coax (#13260)
 room coax/web/room/room-vitals.coax  # the vitals report and its receipt; E8, wave 2 (#13250)
 room coax/web/room/room-directory.coax  # the directory report; E8, wave 2 (#13250)
 room coax/web/room/room-control.coax  # the control poll and its reply; E8, wave 2 (#13250)
 room coax/web/room/room-checkpoint.coax  # the checkpoint post and its receipt JSON; E7, wave 2 (#13250)
 room coax/web/room/room-dev.coax  # the local API stand-in hand-builds player, ticket, rooms and realm JSON; E11, wave 2 (#13250)
 route coax/web/api/player.c  # player, progress, tickets, room reports; E5 (#13248) for the ticket, then E7, E8 and E11, wave 2 (#13250). Its items route (room_items) is everglade.item-op.v1: the answer through the codec, the request still read with SQL jsonb (#13291)
-route coax/web/api/seats.c  # E11: its own bytes, the grant and the list are realm-seat-v1alpha1; left: .../act's action (the CLI and the page each build it, realm_seat.coax reads it) and the observation it answers (realm_seat.coax writes it; the CLI and the page each parse it) (#13250)
 route coax/web/api/rooms.c  # E8, wave 2: the room reports (#13250)
 route coax/web/api/room.c  # wave 2: presence and room chat JSON; decide with the room servers' reach (#13250)
 route coax/web/api/worldbuilder.c  # E12, wave 2, after #13226 (#13250)

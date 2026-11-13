@@ -98,9 +98,11 @@ static char *job_heartbeat(PGconn *db, const char *day) {
 // Our own login's housekeeping (auth.c, #13202, #13203): old rate-limit windows, ended
 // sessions and spent logins go; audit rows older than two years lose their account.
 static char *job_auth_sweep(PGconn *db, const char *day) {
-  PGresult *r = PQexec(db, "SELECT auth.limit_sweep(), auth.audit_age(), "
-                           "(WITH d AS (DELETE FROM auth.pending WHERE expires_at < now() - interval '1 day' RETURNING 1) SELECT count(*) FROM d), "
-                           "(WITH d AS (DELETE FROM auth.nip98_seen WHERE expires_at < now() RETURNING 1) SELECT count(*) FROM d), "
+  // The two deletes are WITH items of the statement itself: Postgres refuses a data-modifying WITH
+  // inside a sub-select ("must be at the top level"), which made every run of this job fail (#13250).
+  PGresult *r = PQexec(db, "WITH p AS (DELETE FROM auth.pending WHERE expires_at < now() - interval '1 day' RETURNING 1), "
+                           "s AS (DELETE FROM auth.nip98_seen WHERE expires_at < now() RETURNING 1) "
+                           "SELECT auth.limit_sweep(), auth.audit_age(), (SELECT count(*) FROM p), (SELECT count(*) FROM s), "
                            // Accounts whose 30 days are up are purged to tombstones; ended merge asks go (#13214).
                            "coalesce(cardinality(auth.purge_due()), 0), auth.life_sweep()");
   char *out = NULL;

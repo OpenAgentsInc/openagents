@@ -264,7 +264,16 @@ sql("DELETE FROM verse.capacity_records")
 # the API's ErrorReply) and the codec reads it and writes it back for the same bytes
 # (ops-wire-goldens.coax --read-all). OPS_CAPTURE=FILE keeps what the routes answered.
 if "ops_seen" in globals():
-    job("/api/jobs/auth-sweep", "good.token")
+    # The auth-sweep job runs and sweeps (it answered 500 on every database until #13250: its two
+    # deletes were WITH items inside sub-selects, which Postgres refuses). A spent NIP-98 event past
+    # its time is one of the rows it takes.
+    sql("INSERT INTO auth.nip98_seen (event_id, expires_at) VALUES (repeat('a', 64), now() - interval '1 hour')")
+    s, b = job("/api/jobs/auth-sweep", "good.token")
+    check("jobs: auth-sweep runs, and a spent signature past its time is gone", s == 200 and b.get("state") == "ran"
+          and b.get("result", {}).get("signatures", 0) >= 1 and sql("SELECT count(*) FROM auth.nip98_seen WHERE event_id = repeat('a', 64)") == "0",
+          (s, b, [l for l in open(os.environ["API_LOG"]) if "auth-sweep" in l][-3:]))
+    s, b = job("/api/jobs/auth-sweep", "good.token")
+    check("jobs: the same day again is already ran, with the day's result", s == 200 and b.get("state") == "already ran" and b.get("result", {}).get("signatures", 0) >= 1, (s, b))
     if os.environ.get("OPS_CAPTURE"):
         json.dump(ops_seen, open(os.environ["OPS_CAPTURE"], "w"), indent=1)
     if os.path.exists(os.path.join(SV_REPO, "coax", "web", "api", "ops-wire-goldens.coax")):

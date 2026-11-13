@@ -4,7 +4,7 @@
     "openagents.verse.seat.v1alpha1",
     "openagents.api.v1alpha1"
   ],
-  "description": "Golden bodies of a seat in a running realm (E11, #13250; the feature is #12655): what coax/web/api/seats.c reads and answers on /api/playtest/seats, what it sends the runner that holds a hosted seat's page, and what the runner (coax/web/agent/seat-runner.c) answers and hands the seat's own process. `from` says where a body's bytes came from. api: a running API wrote them in coax/web/api/test.sh (test_room.py with SEAT_CAPTURE), on a throwaway database whose players and keys ended with the run. runner: a running runner wrote them in the same test, for a seat the test made up (its key is the test's seatkey-0001-0123456789). The same test gets each of these again on every run and requires these bytes, but for the values a run decides (ids, times, the player and its key, the API's port). caller: the request the CLI and the realm's page send. source: a refusal or a failure the suite does not reach, as seats.c or seat-runner.c names it. The grant, the list and the act handed to the runner are SQL's (migration 0110 and seats.c), written as jsonb's text: keys by length, then by bytes, with ', ' and ': ' between items. What seats.c and the runner write themselves is compact.",
+  "description": "Golden bodies of a seat in a running realm (E11, #13250; the feature is #12655): what coax/web/api/seats.c reads and answers on /api/playtest/seats, what it sends the runner that holds a hosted seat's page, and what the runner (coax/web/agent/seat-runner.c) answers and hands the seat's own process. `from` says where a body's bytes came from. api: a running API wrote them in coax/web/api/test.sh (test_room.py with SEAT_CAPTURE), on a throwaway database whose players and keys ended with the run. runner: a running runner wrote them in the same test, for a seat the test made up (its key is the test's seatkey-0001-0123456789). The same test gets each of these again on every run and requires these bytes, but for the values a run decides (ids, times, the player and its key, the API's port). caller: the request the CLI and the realm's page send. source: a refusal or a failure the suite does not reach, as seats.c or seat-runner.c names it. The grant, the list and the act handed to the runner are SQL's (migration 0110 and seats.c), written as jsonb's text: keys by length, then by bytes, with ', ' and ': ' between items. What seats.c and the runner write themselves is compact. seat: an observation, one line as a seat in a running realm printed it (coax/web/realm-seat.coax in headless Chrome, 2026-11-13, against this checkout's page on a local origin and a throwaway API and database; the made realm seat-green has trees, rocks, a house and Maple, a baker, with jump and talk on). The lines were printed by the seat before its writer moved to the codec; the codec reads each and writes the same bytes, and a second run through the codec printed the first three lines byte for byte (the later ones differ by where a walk of a few seconds stopped). An action's values are its members' text, a number as it is typed.",
   "check": "coax/web/tool.sh coax/web/api/seat-wire-goldens.coax proto/verse/realm-seat-v1alpha1.json",
   "messages": {
     "error": "openagents.api.v1alpha1.ErrorReply",
@@ -17,7 +17,9 @@
     "runner-open": "openagents.verse.seat.v1alpha1.RunnerOpen",
     "runner-close": "openagents.verse.seat.v1alpha1.RunnerClose",
     "runner-act": "openagents.verse.seat.v1alpha1.RunnerAct",
-    "start": "openagents.verse.seat.v1alpha1.SeatStart"
+    "start": "openagents.verse.seat.v1alpha1.SeatStart",
+    "action": "openagents.verse.seat.v1alpha1.Action (the caller's spelling: what the CLI and the realm's page send .../act, and a line to a seat's own process)",
+    "observation": "openagents.verse.seat.v1alpha1.Observation, with its Near things"
   },
   "goldens": [
     {
@@ -418,6 +420,227 @@
         "text": "busy"
       },
       "body": "{\"error\":\"busy\"}"
+    },
+    {
+      "name": "action-see",
+      "writer": "action",
+      "from": "page",
+      "values": {
+        "op": "see"
+      },
+      "body": "{\"op\":\"see\"}"
+    },
+    {
+      "name": "action-look-turn",
+      "writer": "action",
+      "from": "page",
+      "values": {
+        "op": "look",
+        "turn": "-90"
+      },
+      "body": "{\"op\":\"look\",\"turn\":-90}"
+    },
+    {
+      "name": "action-look-pitch",
+      "writer": "action",
+      "from": "page",
+      "values": {
+        "op": "look",
+        "pitch": "20"
+      },
+      "body": "{\"op\":\"look\",\"pitch\":20}"
+    },
+    {
+      "name": "action-go-to",
+      "writer": "action",
+      "from": "page",
+      "values": {
+        "op": "go",
+        "to": "Maple"
+      },
+      "body": "{\"op\":\"go\",\"to\":\"Maple\"}"
+    },
+    {
+      "name": "action-go-xz",
+      "writer": "action",
+      "from": "page",
+      "values": {
+        "op": "go",
+        "x": "4.5",
+        "z": "-2"
+      },
+      "body": "{\"op\":\"go\",\"x\":4.5,\"z\":-2}"
+    },
+    {
+      "name": "action-say",
+      "writer": "action",
+      "from": "page",
+      "values": {
+        "op": "say",
+        "words": "where's \"the\" well?"
+      },
+      "body": "{\"op\":\"say\",\"words\":\"where's \\\"the\\\" well?\"}"
+    },
+    {
+      "name": "action-use",
+      "writer": "action",
+      "from": "page",
+      "values": {
+        "op": "use",
+        "tool": "build",
+        "thing": "barrel"
+      },
+      "body": "{\"op\":\"use\",\"tool\":\"build\",\"thing\":\"barrel\"}"
+    },
+    {
+      "name": "action-bye",
+      "writer": "action",
+      "from": "page",
+      "values": {
+        "op": "bye"
+      },
+      "body": "{\"op\":\"bye\"}"
+    },
+    {
+      "name": "action-cli-look",
+      "writer": "action",
+      "from": "cli",
+      "values": {
+        "token": "0123456789abcdef0123456789abcdef",
+        "op": "look",
+        "turn": "-45.5",
+        "shot": "/tmp/v.png"
+      },
+      "body": "{\"token\":\"0123456789abcdef0123456789abcdef\",\"op\":\"look\",\"turn\":-45.5,\"shot\":\"/tmp/v.png\"}"
+    },
+    {
+      "name": "action-cli-go",
+      "writer": "action",
+      "from": "cli",
+      "values": {
+        "token": "0123456789abcdef0123456789abcdef",
+        "op": "go",
+        "to": "Old Mott",
+        "max": "20"
+      },
+      "body": "{\"token\":\"0123456789abcdef0123456789abcdef\",\"op\":\"go\",\"to\":\"Old Mott\",\"max\":20}"
+    },
+    {
+      "name": "observation-open",
+      "writer": "observation",
+      "from": "seat",
+      "values": {
+        "line": "{\"op\":\"open\",\"ok\":true,\"result\":\"seated\",\"realm\":\"seat-green\",\"at\":[0.0,6.0],\"facing\":0.0,\"camera\":\"third\",\"tools\":[\"jump\",\"talk\"],\"talking\":null,\"answer\":null,\"others\":0,\"agents\":0,\"near\":[{\"kind\":\"character\",\"id\":\"character:0\",\"name\":\"Maple\",\"role\":\"baker\",\"d\":5.0,\"bearing\":43.0},{\"kind\":\"rock\",\"id\":\"entity:21\",\"d\":6.8,\"bearing\":66.2},{\"kind\":\"rock\",\"id\":\"entity:22\",\"d\":6.8,\"bearing\":155.5},{\"kind\":\"tree\",\"id\":\"entity:8\",\"d\":8.4,\"bearing\":164.7},{\"kind\":\"house\",\"id\":\"entity:20\",\"d\":9.8,\"bearing\":14.7},{\"kind\":\"rock\",\"id\":\"entity:25\",\"d\":18.8,\"bearing\":-20.6},{\"kind\":\"rock\",\"id\":\"entity:26\",\"d\":20.1,\"bearing\":-39.9},{\"kind\":\"rock\",\"id\":\"entity:23\",\"d\":22.1,\"bearing\":-62.2},{\"kind\":\"rock\",\"id\":\"entity:24\",\"d\":24.5,\"bearing\":-48.5}]}"
+      },
+      "body": "{\"op\":\"open\",\"ok\":true,\"result\":\"seated\",\"realm\":\"seat-green\",\"at\":[0.0,6.0],\"facing\":0.0,\"camera\":\"third\",\"tools\":[\"jump\",\"talk\"],\"talking\":null,\"answer\":null,\"others\":0,\"agents\":0,\"near\":[{\"kind\":\"character\",\"id\":\"character:0\",\"name\":\"Maple\",\"role\":\"baker\",\"d\":5.0,\"bearing\":43.0},{\"kind\":\"rock\",\"id\":\"entity:21\",\"d\":6.8,\"bearing\":66.2},{\"kind\":\"rock\",\"id\":\"entity:22\",\"d\":6.8,\"bearing\":155.5},{\"kind\":\"tree\",\"id\":\"entity:8\",\"d\":8.4,\"bearing\":164.7},{\"kind\":\"house\",\"id\":\"entity:20\",\"d\":9.8,\"bearing\":14.7},{\"kind\":\"rock\",\"id\":\"entity:25\",\"d\":18.8,\"bearing\":-20.6},{\"kind\":\"rock\",\"id\":\"entity:26\",\"d\":20.1,\"bearing\":-39.9},{\"kind\":\"rock\",\"id\":\"entity:23\",\"d\":22.1,\"bearing\":-62.2},{\"kind\":\"rock\",\"id\":\"entity:24\",\"d\":24.5,\"bearing\":-48.5}]}"
+    },
+    {
+      "name": "observation-see",
+      "writer": "observation",
+      "from": "seat",
+      "values": {
+        "line": "{\"op\":\"see\",\"ok\":true,\"result\":\"seen\",\"realm\":\"seat-green\",\"at\":[0.0,6.0],\"facing\":0.0,\"camera\":\"third\",\"tools\":[\"jump\",\"talk\"],\"talking\":null,\"answer\":null,\"others\":0,\"agents\":0,\"near\":[{\"kind\":\"character\",\"id\":\"character:0\",\"name\":\"Maple\",\"role\":\"baker\",\"d\":5.0,\"bearing\":43.0},{\"kind\":\"rock\",\"id\":\"entity:21\",\"d\":6.8,\"bearing\":66.2},{\"kind\":\"rock\",\"id\":\"entity:22\",\"d\":6.8,\"bearing\":155.5},{\"kind\":\"tree\",\"id\":\"entity:8\",\"d\":8.4,\"bearing\":164.7},{\"kind\":\"house\",\"id\":\"entity:20\",\"d\":9.8,\"bearing\":14.7},{\"kind\":\"rock\",\"id\":\"entity:25\",\"d\":18.8,\"bearing\":-20.6},{\"kind\":\"rock\",\"id\":\"entity:26\",\"d\":20.1,\"bearing\":-39.9},{\"kind\":\"rock\",\"id\":\"entity:23\",\"d\":22.1,\"bearing\":-62.2},{\"kind\":\"rock\",\"id\":\"entity:24\",\"d\":24.5,\"bearing\":-48.5}]}"
+      },
+      "body": "{\"op\":\"see\",\"ok\":true,\"result\":\"seen\",\"realm\":\"seat-green\",\"at\":[0.0,6.0],\"facing\":0.0,\"camera\":\"third\",\"tools\":[\"jump\",\"talk\"],\"talking\":null,\"answer\":null,\"others\":0,\"agents\":0,\"near\":[{\"kind\":\"character\",\"id\":\"character:0\",\"name\":\"Maple\",\"role\":\"baker\",\"d\":5.0,\"bearing\":43.0},{\"kind\":\"rock\",\"id\":\"entity:21\",\"d\":6.8,\"bearing\":66.2},{\"kind\":\"rock\",\"id\":\"entity:22\",\"d\":6.8,\"bearing\":155.5},{\"kind\":\"tree\",\"id\":\"entity:8\",\"d\":8.4,\"bearing\":164.7},{\"kind\":\"house\",\"id\":\"entity:20\",\"d\":9.8,\"bearing\":14.7},{\"kind\":\"rock\",\"id\":\"entity:25\",\"d\":18.8,\"bearing\":-20.6},{\"kind\":\"rock\",\"id\":\"entity:26\",\"d\":20.1,\"bearing\":-39.9},{\"kind\":\"rock\",\"id\":\"entity:23\",\"d\":22.1,\"bearing\":-62.2},{\"kind\":\"rock\",\"id\":\"entity:24\",\"d\":24.5,\"bearing\":-48.5}]}"
+    },
+    {
+      "name": "observation-look-turn",
+      "writer": "observation",
+      "from": "seat",
+      "values": {
+        "line": "{\"op\":\"look\",\"ok\":true,\"result\":\"looked\",\"realm\":\"seat-green\",\"at\":[0.0,6.0],\"facing\":90.0,\"camera\":\"third\",\"tools\":[\"jump\",\"talk\"],\"talking\":null,\"answer\":null,\"others\":0,\"agents\":0,\"near\":[{\"kind\":\"character\",\"id\":\"character:0\",\"name\":\"Maple\",\"role\":\"baker\",\"d\":5.0,\"bearing\":-47.0},{\"kind\":\"rock\",\"id\":\"entity:21\",\"d\":6.8,\"bearing\":-23.8},{\"kind\":\"rock\",\"id\":\"entity:22\",\"d\":6.8,\"bearing\":65.5},{\"kind\":\"tree\",\"id\":\"entity:8\",\"d\":8.4,\"bearing\":74.7},{\"kind\":\"house\",\"id\":\"entity:20\",\"d\":9.8,\"bearing\":-75.3},{\"kind\":\"rock\",\"id\":\"entity:25\",\"d\":18.8,\"bearing\":-110.6},{\"kind\":\"rock\",\"id\":\"entity:26\",\"d\":20.1,\"bearing\":-129.9},{\"kind\":\"rock\",\"id\":\"entity:23\",\"d\":22.1,\"bearing\":-152.2},{\"kind\":\"rock\",\"id\":\"entity:24\",\"d\":24.5,\"bearing\":-138.5}]}"
+      },
+      "body": "{\"op\":\"look\",\"ok\":true,\"result\":\"looked\",\"realm\":\"seat-green\",\"at\":[0.0,6.0],\"facing\":90.0,\"camera\":\"third\",\"tools\":[\"jump\",\"talk\"],\"talking\":null,\"answer\":null,\"others\":0,\"agents\":0,\"near\":[{\"kind\":\"character\",\"id\":\"character:0\",\"name\":\"Maple\",\"role\":\"baker\",\"d\":5.0,\"bearing\":-47.0},{\"kind\":\"rock\",\"id\":\"entity:21\",\"d\":6.8,\"bearing\":-23.8},{\"kind\":\"rock\",\"id\":\"entity:22\",\"d\":6.8,\"bearing\":65.5},{\"kind\":\"tree\",\"id\":\"entity:8\",\"d\":8.4,\"bearing\":74.7},{\"kind\":\"house\",\"id\":\"entity:20\",\"d\":9.8,\"bearing\":-75.3},{\"kind\":\"rock\",\"id\":\"entity:25\",\"d\":18.8,\"bearing\":-110.6},{\"kind\":\"rock\",\"id\":\"entity:26\",\"d\":20.1,\"bearing\":-129.9},{\"kind\":\"rock\",\"id\":\"entity:23\",\"d\":22.1,\"bearing\":-152.2},{\"kind\":\"rock\",\"id\":\"entity:24\",\"d\":24.5,\"bearing\":-138.5}]}"
+    },
+    {
+      "name": "observation-go-xz",
+      "writer": "observation",
+      "from": "seat",
+      "values": {
+        "line": "{\"op\":\"go\",\"ok\":true,\"result\":\"reached\",\"realm\":\"seat-green\",\"at\":[2.4,2.8],\"facing\":37.3,\"camera\":\"third\",\"tools\":[\"jump\",\"talk\"],\"talking\":null,\"answer\":null,\"others\":0,\"agents\":0,\"near\":[{\"kind\":\"character\",\"id\":\"character:0\",\"name\":\"Maple\",\"role\":\"baker\",\"d\":1.1,\"bearing\":27.8},{\"kind\":\"rock\",\"id\":\"entity:21\",\"d\":3.8,\"bearing\":59.8},{\"kind\":\"house\",\"id\":\"entity:20\",\"d\":6.3,\"bearing\":-36.7},{\"kind\":\"rock\",\"id\":\"entity:22\",\"d\":9.4,\"bearing\":140.3},{\"kind\":\"tree\",\"id\":\"entity:1\",\"d\":10.5,\"bearing\":51.9},{\"kind\":\"tree\",\"id\":\"entity:8\",\"d\":11.3,\"bearing\":143.8},{\"kind\":\"rock\",\"id\":\"entity:25\",\"d\":17.0,\"bearing\":-69.5},{\"kind\":\"rock\",\"id\":\"entity:26\",\"d\":19.6,\"bearing\":-88.8},{\"kind\":\"rock\",\"id\":\"entity:23\",\"d\":23.1,\"bearing\":-109.4},{\"kind\":\"rock\",\"id\":\"entity:24\",\"d\":24.5,\"bearing\":-95.2}]}"
+      },
+      "body": "{\"op\":\"go\",\"ok\":true,\"result\":\"reached\",\"realm\":\"seat-green\",\"at\":[2.4,2.8],\"facing\":37.3,\"camera\":\"third\",\"tools\":[\"jump\",\"talk\"],\"talking\":null,\"answer\":null,\"others\":0,\"agents\":0,\"near\":[{\"kind\":\"character\",\"id\":\"character:0\",\"name\":\"Maple\",\"role\":\"baker\",\"d\":1.1,\"bearing\":27.8},{\"kind\":\"rock\",\"id\":\"entity:21\",\"d\":3.8,\"bearing\":59.8},{\"kind\":\"house\",\"id\":\"entity:20\",\"d\":6.3,\"bearing\":-36.7},{\"kind\":\"rock\",\"id\":\"entity:22\",\"d\":9.4,\"bearing\":140.3},{\"kind\":\"tree\",\"id\":\"entity:1\",\"d\":10.5,\"bearing\":51.9},{\"kind\":\"tree\",\"id\":\"entity:8\",\"d\":11.3,\"bearing\":143.8},{\"kind\":\"rock\",\"id\":\"entity:25\",\"d\":17.0,\"bearing\":-69.5},{\"kind\":\"rock\",\"id\":\"entity:26\",\"d\":19.6,\"bearing\":-88.8},{\"kind\":\"rock\",\"id\":\"entity:23\",\"d\":23.1,\"bearing\":-109.4},{\"kind\":\"rock\",\"id\":\"entity:24\",\"d\":24.5,\"bearing\":-95.2}]}"
+    },
+    {
+      "name": "observation-go-to",
+      "writer": "observation",
+      "from": "seat",
+      "values": {
+        "line": "{\"op\":\"go\",\"ok\":true,\"result\":\"reached\",\"realm\":\"seat-green\",\"at\":[2.4,2.8],\"facing\":37.3,\"camera\":\"third\",\"tools\":[\"jump\",\"talk\"],\"talking\":null,\"answer\":null,\"others\":0,\"agents\":0,\"near\":[{\"kind\":\"character\",\"id\":\"character:0\",\"name\":\"Maple\",\"role\":\"baker\",\"d\":1.1,\"bearing\":27.8},{\"kind\":\"rock\",\"id\":\"entity:21\",\"d\":3.8,\"bearing\":59.8},{\"kind\":\"house\",\"id\":\"entity:20\",\"d\":6.3,\"bearing\":-36.7},{\"kind\":\"rock\",\"id\":\"entity:22\",\"d\":9.4,\"bearing\":140.3},{\"kind\":\"tree\",\"id\":\"entity:1\",\"d\":10.5,\"bearing\":51.9},{\"kind\":\"tree\",\"id\":\"entity:8\",\"d\":11.3,\"bearing\":143.8},{\"kind\":\"rock\",\"id\":\"entity:25\",\"d\":17.0,\"bearing\":-69.5},{\"kind\":\"rock\",\"id\":\"entity:26\",\"d\":19.6,\"bearing\":-88.8},{\"kind\":\"rock\",\"id\":\"entity:23\",\"d\":23.1,\"bearing\":-109.4},{\"kind\":\"rock\",\"id\":\"entity:24\",\"d\":24.5,\"bearing\":-95.2}]}"
+      },
+      "body": "{\"op\":\"go\",\"ok\":true,\"result\":\"reached\",\"realm\":\"seat-green\",\"at\":[2.4,2.8],\"facing\":37.3,\"camera\":\"third\",\"tools\":[\"jump\",\"talk\"],\"talking\":null,\"answer\":null,\"others\":0,\"agents\":0,\"near\":[{\"kind\":\"character\",\"id\":\"character:0\",\"name\":\"Maple\",\"role\":\"baker\",\"d\":1.1,\"bearing\":27.8},{\"kind\":\"rock\",\"id\":\"entity:21\",\"d\":3.8,\"bearing\":59.8},{\"kind\":\"house\",\"id\":\"entity:20\",\"d\":6.3,\"bearing\":-36.7},{\"kind\":\"rock\",\"id\":\"entity:22\",\"d\":9.4,\"bearing\":140.3},{\"kind\":\"tree\",\"id\":\"entity:1\",\"d\":10.5,\"bearing\":51.9},{\"kind\":\"tree\",\"id\":\"entity:8\",\"d\":11.3,\"bearing\":143.8},{\"kind\":\"rock\",\"id\":\"entity:25\",\"d\":17.0,\"bearing\":-69.5},{\"kind\":\"rock\",\"id\":\"entity:26\",\"d\":19.6,\"bearing\":-88.8},{\"kind\":\"rock\",\"id\":\"entity:23\",\"d\":23.1,\"bearing\":-109.4},{\"kind\":\"rock\",\"id\":\"entity:24\",\"d\":24.5,\"bearing\":-95.2}]}"
+    },
+    {
+      "name": "observation-say-unanswered",
+      "writer": "observation",
+      "from": "seat",
+      "values": {
+        "line": "{\"op\":\"say\",\"ok\":false,\"result\":\"no answer in 45 s\",\"realm\":\"seat-green\",\"at\":[2.4,2.8],\"facing\":37.3,\"camera\":\"third\",\"tools\":[\"jump\",\"talk\"],\"talking\":\"Maple\",\"answer\":null,\"others\":0,\"agents\":0,\"near\":[{\"kind\":\"character\",\"id\":\"character:0\",\"name\":\"Maple\",\"role\":\"baker\",\"d\":1.1,\"bearing\":27.8},{\"kind\":\"rock\",\"id\":\"entity:21\",\"d\":3.8,\"bearing\":59.8},{\"kind\":\"house\",\"id\":\"entity:20\",\"d\":6.3,\"bearing\":-36.7},{\"kind\":\"rock\",\"id\":\"entity:22\",\"d\":9.4,\"bearing\":140.3},{\"kind\":\"tree\",\"id\":\"entity:1\",\"d\":10.5,\"bearing\":51.9},{\"kind\":\"tree\",\"id\":\"entity:8\",\"d\":11.3,\"bearing\":143.8},{\"kind\":\"rock\",\"id\":\"entity:25\",\"d\":17.0,\"bearing\":-69.5},{\"kind\":\"rock\",\"id\":\"entity:26\",\"d\":19.6,\"bearing\":-88.8},{\"kind\":\"rock\",\"id\":\"entity:23\",\"d\":23.1,\"bearing\":-109.4},{\"kind\":\"rock\",\"id\":\"entity:24\",\"d\":24.5,\"bearing\":-95.2}]}"
+      },
+      "body": "{\"op\":\"say\",\"ok\":false,\"result\":\"no answer in 45 s\",\"realm\":\"seat-green\",\"at\":[2.4,2.8],\"facing\":37.3,\"camera\":\"third\",\"tools\":[\"jump\",\"talk\"],\"talking\":\"Maple\",\"answer\":null,\"others\":0,\"agents\":0,\"near\":[{\"kind\":\"character\",\"id\":\"character:0\",\"name\":\"Maple\",\"role\":\"baker\",\"d\":1.1,\"bearing\":27.8},{\"kind\":\"rock\",\"id\":\"entity:21\",\"d\":3.8,\"bearing\":59.8},{\"kind\":\"house\",\"id\":\"entity:20\",\"d\":6.3,\"bearing\":-36.7},{\"kind\":\"rock\",\"id\":\"entity:22\",\"d\":9.4,\"bearing\":140.3},{\"kind\":\"tree\",\"id\":\"entity:1\",\"d\":10.5,\"bearing\":51.9},{\"kind\":\"tree\",\"id\":\"entity:8\",\"d\":11.3,\"bearing\":143.8},{\"kind\":\"rock\",\"id\":\"entity:25\",\"d\":17.0,\"bearing\":-69.5},{\"kind\":\"rock\",\"id\":\"entity:26\",\"d\":19.6,\"bearing\":-88.8},{\"kind\":\"rock\",\"id\":\"entity:23\",\"d\":23.1,\"bearing\":-109.4},{\"kind\":\"rock\",\"id\":\"entity:24\",\"d\":24.5,\"bearing\":-95.2}]}"
+    },
+    {
+      "name": "observation-bye",
+      "writer": "observation",
+      "from": "seat",
+      "values": {
+        "line": "{\"op\":\"bye\",\"ok\":true,\"result\":\"said goodbye\",\"realm\":\"seat-green\",\"at\":[2.4,2.8],\"facing\":37.3,\"camera\":\"third\",\"tools\":[\"jump\",\"talk\"],\"talking\":null,\"answer\":null,\"others\":0,\"agents\":0,\"near\":[{\"kind\":\"character\",\"id\":\"character:0\",\"name\":\"Maple\",\"role\":\"baker\",\"d\":1.1,\"bearing\":27.8},{\"kind\":\"rock\",\"id\":\"entity:21\",\"d\":3.8,\"bearing\":59.8},{\"kind\":\"house\",\"id\":\"entity:20\",\"d\":6.3,\"bearing\":-36.7},{\"kind\":\"rock\",\"id\":\"entity:22\",\"d\":9.4,\"bearing\":140.3},{\"kind\":\"tree\",\"id\":\"entity:1\",\"d\":10.5,\"bearing\":51.9},{\"kind\":\"tree\",\"id\":\"entity:8\",\"d\":11.3,\"bearing\":143.8},{\"kind\":\"rock\",\"id\":\"entity:25\",\"d\":17.0,\"bearing\":-69.5},{\"kind\":\"rock\",\"id\":\"entity:26\",\"d\":19.6,\"bearing\":-88.8},{\"kind\":\"rock\",\"id\":\"entity:23\",\"d\":23.1,\"bearing\":-109.4},{\"kind\":\"rock\",\"id\":\"entity:24\",\"d\":24.5,\"bearing\":-95.2}]}"
+      },
+      "body": "{\"op\":\"bye\",\"ok\":true,\"result\":\"said goodbye\",\"realm\":\"seat-green\",\"at\":[2.4,2.8],\"facing\":37.3,\"camera\":\"third\",\"tools\":[\"jump\",\"talk\"],\"talking\":null,\"answer\":null,\"others\":0,\"agents\":0,\"near\":[{\"kind\":\"character\",\"id\":\"character:0\",\"name\":\"Maple\",\"role\":\"baker\",\"d\":1.1,\"bearing\":27.8},{\"kind\":\"rock\",\"id\":\"entity:21\",\"d\":3.8,\"bearing\":59.8},{\"kind\":\"house\",\"id\":\"entity:20\",\"d\":6.3,\"bearing\":-36.7},{\"kind\":\"rock\",\"id\":\"entity:22\",\"d\":9.4,\"bearing\":140.3},{\"kind\":\"tree\",\"id\":\"entity:1\",\"d\":10.5,\"bearing\":51.9},{\"kind\":\"tree\",\"id\":\"entity:8\",\"d\":11.3,\"bearing\":143.8},{\"kind\":\"rock\",\"id\":\"entity:25\",\"d\":17.0,\"bearing\":-69.5},{\"kind\":\"rock\",\"id\":\"entity:26\",\"d\":19.6,\"bearing\":-88.8},{\"kind\":\"rock\",\"id\":\"entity:23\",\"d\":23.1,\"bearing\":-109.4},{\"kind\":\"rock\",\"id\":\"entity:24\",\"d\":24.5,\"bearing\":-95.2}]}"
+    },
+    {
+      "name": "observation-use-jump",
+      "writer": "observation",
+      "from": "seat",
+      "values": {
+        "line": "{\"op\":\"use\",\"ok\":true,\"result\":\"jumped\",\"realm\":\"seat-green\",\"at\":[2.4,2.8],\"facing\":37.3,\"camera\":\"third\",\"tools\":[\"jump\",\"talk\"],\"talking\":null,\"answer\":null,\"others\":0,\"agents\":0,\"near\":[{\"kind\":\"character\",\"id\":\"character:0\",\"name\":\"Maple\",\"role\":\"baker\",\"d\":1.1,\"bearing\":27.8},{\"kind\":\"rock\",\"id\":\"entity:21\",\"d\":3.8,\"bearing\":59.8},{\"kind\":\"house\",\"id\":\"entity:20\",\"d\":6.3,\"bearing\":-36.7},{\"kind\":\"rock\",\"id\":\"entity:22\",\"d\":9.4,\"bearing\":140.3},{\"kind\":\"tree\",\"id\":\"entity:1\",\"d\":10.5,\"bearing\":51.9},{\"kind\":\"tree\",\"id\":\"entity:8\",\"d\":11.3,\"bearing\":143.8},{\"kind\":\"rock\",\"id\":\"entity:25\",\"d\":17.0,\"bearing\":-69.5},{\"kind\":\"rock\",\"id\":\"entity:26\",\"d\":19.6,\"bearing\":-88.8},{\"kind\":\"rock\",\"id\":\"entity:23\",\"d\":23.1,\"bearing\":-109.4},{\"kind\":\"rock\",\"id\":\"entity:24\",\"d\":24.5,\"bearing\":-95.2}]}"
+      },
+      "body": "{\"op\":\"use\",\"ok\":true,\"result\":\"jumped\",\"realm\":\"seat-green\",\"at\":[2.4,2.8],\"facing\":37.3,\"camera\":\"third\",\"tools\":[\"jump\",\"talk\"],\"talking\":null,\"answer\":null,\"others\":0,\"agents\":0,\"near\":[{\"kind\":\"character\",\"id\":\"character:0\",\"name\":\"Maple\",\"role\":\"baker\",\"d\":1.1,\"bearing\":27.8},{\"kind\":\"rock\",\"id\":\"entity:21\",\"d\":3.8,\"bearing\":59.8},{\"kind\":\"house\",\"id\":\"entity:20\",\"d\":6.3,\"bearing\":-36.7},{\"kind\":\"rock\",\"id\":\"entity:22\",\"d\":9.4,\"bearing\":140.3},{\"kind\":\"tree\",\"id\":\"entity:1\",\"d\":10.5,\"bearing\":51.9},{\"kind\":\"tree\",\"id\":\"entity:8\",\"d\":11.3,\"bearing\":143.8},{\"kind\":\"rock\",\"id\":\"entity:25\",\"d\":17.0,\"bearing\":-69.5},{\"kind\":\"rock\",\"id\":\"entity:26\",\"d\":19.6,\"bearing\":-88.8},{\"kind\":\"rock\",\"id\":\"entity:23\",\"d\":23.1,\"bearing\":-109.4},{\"kind\":\"rock\",\"id\":\"entity:24\",\"d\":24.5,\"bearing\":-95.2}]}"
+    },
+    {
+      "name": "observation-use-build-off",
+      "writer": "observation",
+      "from": "seat",
+      "values": {
+        "line": "{\"op\":\"use\",\"ok\":false,\"result\":\"this realm has build off\",\"realm\":\"seat-green\",\"at\":[2.4,2.8],\"facing\":37.3,\"camera\":\"third\",\"tools\":[\"jump\",\"talk\"],\"talking\":null,\"answer\":null,\"others\":0,\"agents\":0,\"near\":[{\"kind\":\"character\",\"id\":\"character:0\",\"name\":\"Maple\",\"role\":\"baker\",\"d\":1.1,\"bearing\":27.8},{\"kind\":\"rock\",\"id\":\"entity:21\",\"d\":3.8,\"bearing\":59.8},{\"kind\":\"house\",\"id\":\"entity:20\",\"d\":6.3,\"bearing\":-36.7},{\"kind\":\"rock\",\"id\":\"entity:22\",\"d\":9.4,\"bearing\":140.3},{\"kind\":\"tree\",\"id\":\"entity:1\",\"d\":10.5,\"bearing\":51.9},{\"kind\":\"tree\",\"id\":\"entity:8\",\"d\":11.3,\"bearing\":143.8},{\"kind\":\"rock\",\"id\":\"entity:25\",\"d\":17.0,\"bearing\":-69.5},{\"kind\":\"rock\",\"id\":\"entity:26\",\"d\":19.6,\"bearing\":-88.8},{\"kind\":\"rock\",\"id\":\"entity:23\",\"d\":23.1,\"bearing\":-109.4},{\"kind\":\"rock\",\"id\":\"entity:24\",\"d\":24.5,\"bearing\":-95.2}]}"
+      },
+      "body": "{\"op\":\"use\",\"ok\":false,\"result\":\"this realm has build off\",\"realm\":\"seat-green\",\"at\":[2.4,2.8],\"facing\":37.3,\"camera\":\"third\",\"tools\":[\"jump\",\"talk\"],\"talking\":null,\"answer\":null,\"others\":0,\"agents\":0,\"near\":[{\"kind\":\"character\",\"id\":\"character:0\",\"name\":\"Maple\",\"role\":\"baker\",\"d\":1.1,\"bearing\":27.8},{\"kind\":\"rock\",\"id\":\"entity:21\",\"d\":3.8,\"bearing\":59.8},{\"kind\":\"house\",\"id\":\"entity:20\",\"d\":6.3,\"bearing\":-36.7},{\"kind\":\"rock\",\"id\":\"entity:22\",\"d\":9.4,\"bearing\":140.3},{\"kind\":\"tree\",\"id\":\"entity:1\",\"d\":10.5,\"bearing\":51.9},{\"kind\":\"tree\",\"id\":\"entity:8\",\"d\":11.3,\"bearing\":143.8},{\"kind\":\"rock\",\"id\":\"entity:25\",\"d\":17.0,\"bearing\":-69.5},{\"kind\":\"rock\",\"id\":\"entity:26\",\"d\":19.6,\"bearing\":-88.8},{\"kind\":\"rock\",\"id\":\"entity:23\",\"d\":23.1,\"bearing\":-109.4},{\"kind\":\"rock\",\"id\":\"entity:24\",\"d\":24.5,\"bearing\":-95.2}]}"
+    },
+    {
+      "name": "observation-look-pitch-refused",
+      "writer": "observation",
+      "from": "seat",
+      "values": {
+        "line": "{\"op\":\"look\",\"ok\":false,\"result\":\"pitch is -60 to 60 degrees\",\"realm\":\"seat-green\",\"at\":[2.4,2.8],\"facing\":37.3,\"camera\":\"third\",\"tools\":[\"jump\",\"talk\"],\"talking\":null,\"answer\":null,\"others\":0,\"agents\":0,\"near\":[{\"kind\":\"character\",\"id\":\"character:0\",\"name\":\"Maple\",\"role\":\"baker\",\"d\":1.1,\"bearing\":27.8},{\"kind\":\"rock\",\"id\":\"entity:21\",\"d\":3.8,\"bearing\":59.8},{\"kind\":\"house\",\"id\":\"entity:20\",\"d\":6.3,\"bearing\":-36.7},{\"kind\":\"rock\",\"id\":\"entity:22\",\"d\":9.4,\"bearing\":140.3},{\"kind\":\"tree\",\"id\":\"entity:1\",\"d\":10.5,\"bearing\":51.9},{\"kind\":\"tree\",\"id\":\"entity:8\",\"d\":11.3,\"bearing\":143.8},{\"kind\":\"rock\",\"id\":\"entity:25\",\"d\":17.0,\"bearing\":-69.5},{\"kind\":\"rock\",\"id\":\"entity:26\",\"d\":19.6,\"bearing\":-88.8},{\"kind\":\"rock\",\"id\":\"entity:23\",\"d\":23.1,\"bearing\":-109.4},{\"kind\":\"rock\",\"id\":\"entity:24\",\"d\":24.5,\"bearing\":-95.2}]}"
+      },
+      "body": "{\"op\":\"look\",\"ok\":false,\"result\":\"pitch is -60 to 60 degrees\",\"realm\":\"seat-green\",\"at\":[2.4,2.8],\"facing\":37.3,\"camera\":\"third\",\"tools\":[\"jump\",\"talk\"],\"talking\":null,\"answer\":null,\"others\":0,\"agents\":0,\"near\":[{\"kind\":\"character\",\"id\":\"character:0\",\"name\":\"Maple\",\"role\":\"baker\",\"d\":1.1,\"bearing\":27.8},{\"kind\":\"rock\",\"id\":\"entity:21\",\"d\":3.8,\"bearing\":59.8},{\"kind\":\"house\",\"id\":\"entity:20\",\"d\":6.3,\"bearing\":-36.7},{\"kind\":\"rock\",\"id\":\"entity:22\",\"d\":9.4,\"bearing\":140.3},{\"kind\":\"tree\",\"id\":\"entity:1\",\"d\":10.5,\"bearing\":51.9},{\"kind\":\"tree\",\"id\":\"entity:8\",\"d\":11.3,\"bearing\":143.8},{\"kind\":\"rock\",\"id\":\"entity:25\",\"d\":17.0,\"bearing\":-69.5},{\"kind\":\"rock\",\"id\":\"entity:26\",\"d\":19.6,\"bearing\":-88.8},{\"kind\":\"rock\",\"id\":\"entity:23\",\"d\":23.1,\"bearing\":-109.4},{\"kind\":\"rock\",\"id\":\"entity:24\",\"d\":24.5,\"bearing\":-95.2}]}"
+    },
+    {
+      "name": "observation-go-nowhere",
+      "writer": "observation",
+      "from": "seat",
+      "values": {
+        "line": "{\"op\":\"go\",\"ok\":false,\"result\":\"no such place: a character's name, character:N, entity:N, a kind, or x and z\",\"realm\":\"seat-green\",\"at\":[2.4,2.8],\"facing\":37.3,\"camera\":\"third\",\"tools\":[\"jump\",\"talk\"],\"talking\":null,\"answer\":null,\"others\":0,\"agents\":0,\"near\":[{\"kind\":\"character\",\"id\":\"character:0\",\"name\":\"Maple\",\"role\":\"baker\",\"d\":1.1,\"bearing\":27.8},{\"kind\":\"rock\",\"id\":\"entity:21\",\"d\":3.8,\"bearing\":59.8},{\"kind\":\"house\",\"id\":\"entity:20\",\"d\":6.3,\"bearing\":-36.7},{\"kind\":\"rock\",\"id\":\"entity:22\",\"d\":9.4,\"bearing\":140.3},{\"kind\":\"tree\",\"id\":\"entity:1\",\"d\":10.5,\"bearing\":51.9},{\"kind\":\"tree\",\"id\":\"entity:8\",\"d\":11.3,\"bearing\":143.8},{\"kind\":\"rock\",\"id\":\"entity:25\",\"d\":17.0,\"bearing\":-69.5},{\"kind\":\"rock\",\"id\":\"entity:26\",\"d\":19.6,\"bearing\":-88.8},{\"kind\":\"rock\",\"id\":\"entity:23\",\"d\":23.1,\"bearing\":-109.4},{\"kind\":\"rock\",\"id\":\"entity:24\",\"d\":24.5,\"bearing\":-95.2}]}"
+      },
+      "body": "{\"op\":\"go\",\"ok\":false,\"result\":\"no such place: a character's name, character:N, entity:N, a kind, or x and z\",\"realm\":\"seat-green\",\"at\":[2.4,2.8],\"facing\":37.3,\"camera\":\"third\",\"tools\":[\"jump\",\"talk\"],\"talking\":null,\"answer\":null,\"others\":0,\"agents\":0,\"near\":[{\"kind\":\"character\",\"id\":\"character:0\",\"name\":\"Maple\",\"role\":\"baker\",\"d\":1.1,\"bearing\":27.8},{\"kind\":\"rock\",\"id\":\"entity:21\",\"d\":3.8,\"bearing\":59.8},{\"kind\":\"house\",\"id\":\"entity:20\",\"d\":6.3,\"bearing\":-36.7},{\"kind\":\"rock\",\"id\":\"entity:22\",\"d\":9.4,\"bearing\":140.3},{\"kind\":\"tree\",\"id\":\"entity:1\",\"d\":10.5,\"bearing\":51.9},{\"kind\":\"tree\",\"id\":\"entity:8\",\"d\":11.3,\"bearing\":143.8},{\"kind\":\"rock\",\"id\":\"entity:25\",\"d\":17.0,\"bearing\":-69.5},{\"kind\":\"rock\",\"id\":\"entity:26\",\"d\":19.6,\"bearing\":-88.8},{\"kind\":\"rock\",\"id\":\"entity:23\",\"d\":23.1,\"bearing\":-109.4},{\"kind\":\"rock\",\"id\":\"entity:24\",\"d\":24.5,\"bearing\":-95.2}]}"
+    },
+    {
+      "name": "observation-op-unknown",
+      "writer": "observation",
+      "from": "seat",
+      "values": {
+        "line": "{\"op\":\"dance\",\"ok\":false,\"result\":\"op is see, look, go, say, use, bye, jump or shot\",\"realm\":\"seat-green\",\"at\":[2.4,2.8],\"facing\":37.3,\"camera\":\"third\",\"tools\":[\"jump\",\"talk\"],\"talking\":null,\"answer\":null,\"others\":0,\"agents\":0,\"near\":[{\"kind\":\"character\",\"id\":\"character:0\",\"name\":\"Maple\",\"role\":\"baker\",\"d\":1.1,\"bearing\":27.8},{\"kind\":\"rock\",\"id\":\"entity:21\",\"d\":3.8,\"bearing\":59.8},{\"kind\":\"house\",\"id\":\"entity:20\",\"d\":6.3,\"bearing\":-36.7},{\"kind\":\"rock\",\"id\":\"entity:22\",\"d\":9.4,\"bearing\":140.3},{\"kind\":\"tree\",\"id\":\"entity:1\",\"d\":10.5,\"bearing\":51.9},{\"kind\":\"tree\",\"id\":\"entity:8\",\"d\":11.3,\"bearing\":143.8},{\"kind\":\"rock\",\"id\":\"entity:25\",\"d\":17.0,\"bearing\":-69.5},{\"kind\":\"rock\",\"id\":\"entity:26\",\"d\":19.6,\"bearing\":-88.8},{\"kind\":\"rock\",\"id\":\"entity:23\",\"d\":23.1,\"bearing\":-109.4},{\"kind\":\"rock\",\"id\":\"entity:24\",\"d\":24.5,\"bearing\":-95.2}]}"
+      },
+      "body": "{\"op\":\"dance\",\"ok\":false,\"result\":\"op is see, look, go, say, use, bye, jump or shot\",\"realm\":\"seat-green\",\"at\":[2.4,2.8],\"facing\":37.3,\"camera\":\"third\",\"tools\":[\"jump\",\"talk\"],\"talking\":null,\"answer\":null,\"others\":0,\"agents\":0,\"near\":[{\"kind\":\"character\",\"id\":\"character:0\",\"name\":\"Maple\",\"role\":\"baker\",\"d\":1.1,\"bearing\":27.8},{\"kind\":\"rock\",\"id\":\"entity:21\",\"d\":3.8,\"bearing\":59.8},{\"kind\":\"house\",\"id\":\"entity:20\",\"d\":6.3,\"bearing\":-36.7},{\"kind\":\"rock\",\"id\":\"entity:22\",\"d\":9.4,\"bearing\":140.3},{\"kind\":\"tree\",\"id\":\"entity:1\",\"d\":10.5,\"bearing\":51.9},{\"kind\":\"tree\",\"id\":\"entity:8\",\"d\":11.3,\"bearing\":143.8},{\"kind\":\"rock\",\"id\":\"entity:25\",\"d\":17.0,\"bearing\":-69.5},{\"kind\":\"rock\",\"id\":\"entity:26\",\"d\":19.6,\"bearing\":-88.8},{\"kind\":\"rock\",\"id\":\"entity:23\",\"d\":23.1,\"bearing\":-109.4},{\"kind\":\"rock\",\"id\":\"entity:24\",\"d\":24.5,\"bearing\":-95.2}]}"
+    },
+    {
+      "name": "observation-not-json",
+      "writer": "observation",
+      "from": "seat",
+      "values": {
+        "line": "{\"op\":\"?\",\"ok\":false,\"result\":\"not a JSON object\",\"realm\":\"seat-green\",\"at\":[2.4,2.8],\"facing\":37.3,\"camera\":\"third\",\"tools\":[\"jump\",\"talk\"],\"talking\":null,\"answer\":null,\"others\":0,\"agents\":0,\"near\":[{\"kind\":\"character\",\"id\":\"character:0\",\"name\":\"Maple\",\"role\":\"baker\",\"d\":1.1,\"bearing\":27.8},{\"kind\":\"rock\",\"id\":\"entity:21\",\"d\":3.8,\"bearing\":59.8},{\"kind\":\"house\",\"id\":\"entity:20\",\"d\":6.3,\"bearing\":-36.7},{\"kind\":\"rock\",\"id\":\"entity:22\",\"d\":9.4,\"bearing\":140.3},{\"kind\":\"tree\",\"id\":\"entity:1\",\"d\":10.5,\"bearing\":51.9},{\"kind\":\"tree\",\"id\":\"entity:8\",\"d\":11.3,\"bearing\":143.8},{\"kind\":\"rock\",\"id\":\"entity:25\",\"d\":17.0,\"bearing\":-69.5},{\"kind\":\"rock\",\"id\":\"entity:26\",\"d\":19.6,\"bearing\":-88.8},{\"kind\":\"rock\",\"id\":\"entity:23\",\"d\":23.1,\"bearing\":-109.4},{\"kind\":\"rock\",\"id\":\"entity:24\",\"d\":24.5,\"bearing\":-95.2}]}"
+      },
+      "body": "{\"op\":\"?\",\"ok\":false,\"result\":\"not a JSON object\",\"realm\":\"seat-green\",\"at\":[2.4,2.8],\"facing\":37.3,\"camera\":\"third\",\"tools\":[\"jump\",\"talk\"],\"talking\":null,\"answer\":null,\"others\":0,\"agents\":0,\"near\":[{\"kind\":\"character\",\"id\":\"character:0\",\"name\":\"Maple\",\"role\":\"baker\",\"d\":1.1,\"bearing\":27.8},{\"kind\":\"rock\",\"id\":\"entity:21\",\"d\":3.8,\"bearing\":59.8},{\"kind\":\"house\",\"id\":\"entity:20\",\"d\":6.3,\"bearing\":-36.7},{\"kind\":\"rock\",\"id\":\"entity:22\",\"d\":9.4,\"bearing\":140.3},{\"kind\":\"tree\",\"id\":\"entity:1\",\"d\":10.5,\"bearing\":51.9},{\"kind\":\"tree\",\"id\":\"entity:8\",\"d\":11.3,\"bearing\":143.8},{\"kind\":\"rock\",\"id\":\"entity:25\",\"d\":17.0,\"bearing\":-69.5},{\"kind\":\"rock\",\"id\":\"entity:26\",\"d\":19.6,\"bearing\":-88.8},{\"kind\":\"rock\",\"id\":\"entity:23\",\"d\":23.1,\"bearing\":-109.4},{\"kind\":\"rock\",\"id\":\"entity:24\",\"d\":24.5,\"bearing\":-95.2}]}"
     }
   ]
 }

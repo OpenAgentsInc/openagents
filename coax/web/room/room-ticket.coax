@@ -242,7 +242,8 @@ tk_add :: (b: [] u8, n: int, s: string) -> int {
   for i: 0..<s.count { b[n + i] = s[i]; }
   return n + s.count;
 }
-// A ticket as the API signs it (for tests and the deploy checks): its count in out, 0 if it did not fit.
+// A ticket as the API signs it (for tests and the deploy checks): its count in out, 0 if it did not fit
+// or a value is out of the format. All of these go through tk_sign_acct, below.
 tk_sign :: (key: string, pid: string, account: bool, name: string, room: string, expires: int, hp: int, out: [] u8) -> int {
   return tk_sign_on(key, pid, account, name, room, 0, expires, hp, out);
 }
@@ -261,16 +262,7 @@ tk_sign_admin_on :: (key: string, pid: string, name: string, room: string, shard
 }
 // The same bringing back WANTED `wanted` (1 to 5; 0 none): a player who left WANTED (#12872).
 tk_sign_admin_wanted :: (key: string, pid: string, name: string, room: string, shard: int, expires: int, wanted: int, out: [] u8) -> int {
-  n := tk_sign_wanted(key, pid, true, name, room, shard, expires, -1, -1, wanted, out);
-  if n < 65 { return 0; }
-  b: [TICKET_TEXT] u8;
-  for i: 0..<n - 65 { b[i] = out[i]; }
-  b[3 + pid.count + 1] = '2';
-  mac: [64] u8;
-  if !tk_mac(key, cast(string) b[0..<n - 65], mac[..]) { return 0; }
-  for i: 0..<n - 65 { out[i] = b[i]; }
-  for j: 0..<64 { out[n - 64 + j] = mac[j]; }
-  return n;
+  return tk_sign_acct(key, pid, 2, name, room, shard, expires, -1, -1, wanted, 0, out);
 }
 // The same with the XP it brings back (xp < 0: none, as the API signs for a player with none).
 tk_sign_xp :: (key: string, pid: string, account: bool, name: string, room: string, shard: int, expires: int, hp: int, xp: int, out: [] u8) -> int {
@@ -282,59 +274,15 @@ tk_sign_wanted :: (key: string, pid: string, account: bool, name: string, room: 
 }
 // The same with the character's owner generation (#12834; 0 none), as the API signs with OA_ROOM_OWNER_GEN=1.
 tk_sign_owner :: (key: string, pid: string, account: bool, name: string, room: string, shard: int, expires: int, hp: int, xp: int, wanted: int, owner: int, out: [] u8) -> int {
-  a := "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
-  b: [TICKET_TEXT] u8; n := 0;
-  if shard < 0 || shard > 99 { return 0; }
-  n = tk_add(b[..], n, ifx shard > 0 then "v3." else "v2."); n = tk_add(b[..], n, pid); n = tk_add(b[..], n, ifx account then ".1." else ".0.");
-  if name.count == 0 { n = tk_add(b[..], n, "-"); }
-  i := 0;
-  while i < name.count && n + 4 < b.count {
-    v := cast(int) name[i] * 65536;
-    if i + 1 < name.count { v += cast(int) name[i + 1] * 256; }
-    if i + 2 < name.count { v += cast(int) name[i + 2]; }
-    b[n] = a[(v >> 18) & 63]; b[n + 1] = a[(v >> 12) & 63]; n += 2;
-    if i + 1 < name.count { b[n] = a[(v >> 6) & 63]; n += 1; }
-    if i + 2 < name.count { b[n] = a[v & 63]; n += 1; }
-    i += 3;
-  }
-  n = tk_add(b[..], n, "."); n = tk_add(b[..], n, room); n = tk_add(b[..], n, ".");
-  d: [20] u8; dn := 0; e := shard;
-  if shard > 0 {
-    while e > 0 { d[dn] = cast(u8) ('0' + e % 10); dn += 1; e = e / 10; }
-    for j: 0..<dn { if n < b.count { b[n] = d[dn - 1 - j]; n += 1; } }
-    n = tk_add(b[..], n, ".");
-  }
-  dn = 0; e = expires;
-  if e <= 0 { return 0; }
-  while e > 0 { d[dn] = cast(u8) ('0' + e % 10); dn += 1; e = e / 10; }
-  for j: 0..<dn { if n < b.count { b[n] = d[dn - 1 - j]; n += 1; } }
-  n = tk_add(b[..], n, ".");
-  if hp < 0 { n = tk_add(b[..], n, "-"); }
-  else {
-    dn = 0; e = hp;
-    while e > 0 || dn == 0 { d[dn] = cast(u8) ('0' + e % 10); dn += 1; e = e / 10; }
-    for j: 0..<dn { if n < b.count { b[n] = d[dn - 1 - j]; n += 1; } }
-  }
-  if xp >= 0 {
-    n = tk_add(b[..], n, "x");
-    dn = 0; e = xp;
-    while e > 0 || dn == 0 { d[dn] = cast(u8) ('0' + e % 10); dn += 1; e = e / 10; }
-    for j: 0..<dn { if n < b.count { b[n] = d[dn - 1 - j]; n += 1; } }
-  }
-  if wanted >= 1 && wanted <= 5 { n = tk_add(b[..], n, "w"); if n < b.count { b[n] = cast(u8) ('0' + wanted); n += 1; } }
-  if owner > 0 {
-    n = tk_add(b[..], n, "g");
-    dn = 0; e = owner;
-    while e > 0 { d[dn] = cast(u8) ('0' + e % 10); dn += 1; e = e / 10; }
-    for j: 0..<dn { if n < b.count { b[n] = d[dn - 1 - j]; n += 1; } }
-  }
-  if n + 65 > b.count || n + 65 > out.count { return 0; }
-  mac: [64] u8;
-  if !tk_mac(key, cast(string) b[0..<n], mac[..]) { return 0; }
-  for j: 0..<n { out[j] = b[j]; }
-  out[n] = '.';
-  for j: 0..<64 { out[n + 1 + j] = mac[j]; }
-  return n + 65;
+  return tk_sign_acct(key, pid, ifx account then 1 else 0, name, room, shard, expires, hp, xp, wanted, owner, out);
+}
+// Every signer above ends here, and this file writes no ticket bytes of its own (Protocol E5, #13250):
+// the one v2 and v3 writer is metaverse-engine/session/seat-ticket.coax seat_ticket_hmac_write, the
+// one the API signs with, so a dev room's and a check's ticket has the API's bytes and the API's
+// bounds (a pid and a room of a-z, 0-9 and "-", a name tk_name_ok takes, a key of 32 bytes or more,
+// XP 0 and none written the same). The ticket's count in out, 0 when a value is out of the format.
+tk_sign_acct :: (key: string, pid: string, acct: int, name: string, room: string, shard: int, expires: int, hp: int, xp: int, wanted: int, owner: int, out: [] u8) -> int {
+  return seat_ticket_hmac_write(key, pid, acct, name, room, shard, expires, hp, xp, wanted, owner, 0, "-", out).count;
 }
 
 #test "ticket: a signed ticket checks, and every forged field is refused" {
