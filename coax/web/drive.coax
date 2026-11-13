@@ -572,6 +572,7 @@ dv_within :: (op: string, w: int, otherwise: int) -> int {
   #assert dv_within("clock settle within", 2, 10000) == -1 && dv_within("clock settle within 5 6", 2, 10000) == -1 && dv_within("clock until a > 3 within 250", 5, 9) == 250;
 }
 DV_CLOCK_HELP :: "clock takes +MS, settle [within MS] or until PATH [OP VALUE] [within MS] (OP: == != < > <= >=)";
+DV_LIVE_STEP_MS :: 25;  // real time a step of `clock until` takes against the dev server (--live): a quarter of the step
 DV_APPEAR_MS :: 4000;   // real time a tap, a type or a swap waits for one of the page's own elements to be there
 // The words of a row named PREFIX=WORDS in an operation: what follows the "=" to the operation's end for a tap,
 // and to the next word for a type (whose text follows).
@@ -654,6 +655,9 @@ dv_clock :: (s: [] DvS, op: string, out: [] Dv) -> bool {
     if now - start >= within { break; }
     now = dv_advance(s, AGENT_POLL_MS);
     if now < 0 { dv_s(out, "the clock didn't step"); return false; }
+    // against the dev server what is waited for comes over the network, in real time: the clock does not run
+    // away from it, or a page's own patience (a request given up after ten of its seconds) ends before the answer
+    if s[0].live { proc_sleep(DV_LIVE_STEP_MS); }
   }
   dv_s(out, "not within "); dv_i(out, within); dv_s(out, " ms: "); dv_s(out, dv_text(got[..]));
   return false;

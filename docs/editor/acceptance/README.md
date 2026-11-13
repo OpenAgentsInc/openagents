@@ -102,10 +102,11 @@ The swaps are timed in real time. On the build this was written against, on
 a Mac that was busy with other builds, the engine swapped 950 to 1,040 ms
 after Save and the shaders 180 to 550 ms after Save, in two runs.
 
-Each other wait is at most 6,000 ms of the agent's clock. The agent's clock runs
-ahead of the wall clock while it waits for an answer, so a step that passes
-took less than that in real time. On the build this was written against, each
-edit showed after 2,300 to 2,800 ms of the agent's clock.
+Each other wait is at most 6,000 ms of the agent's clock. Against the dev
+server a step of a wait also takes 25 ms of real time, so the clock does not
+run away from the world's routes, which answer in real time. On the build
+this was written against, each world edit showed after 300 to 400 ms of the
+agent's clock.
 
 ## What it does not check
 
