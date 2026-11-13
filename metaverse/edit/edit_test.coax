@@ -91,36 +91,36 @@ ANCHOR :: RBox.{x0 = 1300, y0 = 16, x1 = 1380, y1 = 54};
   #assert e[0].row_shown[0] && e[0].row_shown[1] && e[0].shown[RB_TYPE] && !e[0].shown[RB_ACCEPT] && !e[0].shown[RB_TALK];
   #assert e[0].plate_n <= REDIT_PLATES;
   for b: 0..<RB_N { if e[0].shown[b] { #assert e[0].boxes[b].x1 <= 1440 && e[0].boxes[b].y1 <= 900 && e[0].boxes[b].x0 >= 0; } }
-  // SETTINGS replaces the board
-  #assert tap(e[..], e[0].boxes[RB_TAB + 1]) && e[0].pane == REDIT_SETTINGS;
-  n = redit_hud(e[..], out[..], 0, ANCHOR);
-  #assert e[0].row_shown[0] && e[0].row_shown[1] && !e[0].row_shown[2] && !e[0].shown[RB_TYPE];
+  // no SETTINGS tab: the visitors' tools are the editor's (#13506); and a page that does not know its path offers no OPEN THE EDITOR
+  #assert !e[0].shown[RB_TAB + 1] && e[0].shown[RB_TAB + 2] && !e[0].shown[RB_OPEN];
   // Esc closes it
   #assert redit_key(e[..], REDIT_KEY_ESCAPE, true) == 1 && e[0].pane == REDIT_SHUT;
   #assert redit_key(e[..], 'w', true) == 0;
 }
 
-#test "a tap on a row switches it for everyone: the request, then the spec again" {
+#test "a tap on a row switches nothing: switching is the editor's, and OPEN THE EDITOR goes to this page with ?edit" {
   e: [1] RealmEdit;
-  out: [20000 * VERTEX_FLOATS] f32;
+  out: [20000 * VERTEX_FLOATS] f32; o: [REDIT_OUT] u8;
   opened(e[..], "the-grid", HAND);
   _ := answer(e[..], -1, "");   // the cards' read refused: nothing in flight
   e[0].cards_due = false; e[0].req_ready = false; e[0].req_id = -1;
+  #assert !redit_message(e[..], REDIT_FACTS, "url=https://openagents.com/realms/the-grid?x=1#top\n");
+  #assert cast(string) e[0].page[0..<e[0].page_n] == "/realms/the-grid";
   redit_toggle(e[..]);
   _n := redit_hud(e[..], out[..], 0, ANCHOR);
   _ = redit_changed(e[..]);
-  #assert tap(e[..], e[0].rows[0]) && !redit_row_on(e[..], "robots") && redit_changed(e[..]);
+  #assert tap(e[..], e[0].rows[0]) && redit_row_on(e[..], "robots") && !redit_changed(e[..]);
   redit_step(e[..], 2, 1440, 900, 1);
-  #assert url_is(e[..], "/api/playtest/realms/the-grid/switch") && body_is(e[..], "{\"row\":\"robots\",\"on\":false}") && (e[0].req_flags & HTTP_POST) != 0;
-  #assert answer(e[..], 1, "200\n{\"row\":\"robots\",\"on\":false}") && e[0].spec_due;
-  redit_step(e[..], 2.1, 1440, 900, 1);
-  #assert url_is(e[..], "/api/playtest/realms/the-grid");
-  // settings: a tool this realm honours, the whole set sent
-  _ = answer(e[..], 2, HAND);
-  redit_pane(e[..], REDIT_SETTINGS);
-  redit_set_tool(e[..], redit_settings_tool(e[..], 0));
-  redit_step(e[..], 3, 1440, 900, 1);
-  #assert url_is(e[..], "/api/playtest/realms/the-grid/settings") && body_is(e[..], "{\"tools\":{\"jump\":true,\"map\":true}}");
+  #assert !e[0].req_ready || !url_is(e[..], "/api/playtest/realms/the-grid/switch");
+  #assert e[0].shown[RB_OPEN] && tap(e[..], e[0].boxes[RB_OPEN]);
+  a := redit_take_action(e[..], o[..]);
+  #assert a.kind == REDIT_ACT_GO && cast(string) o[0..<a.n] == "/realms/the-grid?edit" && redit_take_action(e[..], o[..]).kind == 0;
+  // the page's path from its url fact
+  #assert redit_page_of("http://127.0.0.1:9000/fairy") == "/fairy" && redit_page_of("https://openagents.com") == "" && redit_page_of("") == "";
+  // a visitor gets no OPEN THE EDITOR
+  v: [1] RealmEdit; opened(v[..], "the-grid", VISITOR);
+  _ = redit_message(v[..], REDIT_FACTS, "url=https://openagents.com/realms/the-grid\n");
+  redit_open_editor(v[..]); #assert redit_take_action(v[..], o[..]).kind == 0;
 }
 
 #test "talking or typing revises the board through the model; a refusal says why" {
@@ -239,15 +239,6 @@ ANCHOR :: RBox.{x0 = 1300, y0 = 16, x1 = 1380, y1 = 54};
   _ = answer(e[..], 2, "200\n{\"accepted\":true}");
   // accepted: the realm is told what and where, once
   #assert redit_took(e[..]) && cast(string) e[0].decided_thing[0..<e[0].decided_thing_n] == "crate" && e[0].decided_x == 2.5 && e[0].decided_z == -3 && !redit_took(e[..]);
-}
-
-#test "a thing the realm places goes to the server as the owner's or a visitor's card" {
-  e: [1] RealmEdit;
-  opened(e[..], "everglade", VISITOR);
-  redit_place(e[..], "barrel", 3.25, -12.5, 1.5);
-  redit_step(e[..], 2, 1440, 900, 1);
-  #assert url_is(e[..], "/api/playtest/realms/everglade/place") && body_is(e[..], "{\"thing\":\"barrel\",\"x\":3.25,\"z\":-12.50,\"yaw\":1.50}");
-  #assert answer(e[..], 2, "200\n{\"proposed\":4}") && e[0].note_n > 0;
 }
 
 #test "by a character, EDIT brings up its lore; the quest form's save makes the quest; everyone reads both" {
@@ -376,8 +367,8 @@ reads :: (out: [] u8, n: int, text: string) -> bool {
   #assert reads(out[..], n, "This world has no such switch.");
   _ := redit_heard(e[..], "show", "", false, "edit", out[..]);
   #assert e[0].pane == REDIT_BOARD;
-  _ = redit_heard(e[..], "show", "", false, "settings", out[..]);
-  #assert e[0].pane == REDIT_SETTINGS;
+  n = redit_heard(e[..], "show", "", false, "settings", out[..]);
+  #assert e[0].pane == REDIT_BOARD && reads(out[..], n, "The settings are in the editor: opening it.");
   _ = redit_heard(e[..], "show", "", false, "close", out[..]);
   #assert e[0].pane == REDIT_SHUT;
   v: [1] RealmEdit;
@@ -473,7 +464,7 @@ heard_trip :: (e: [] RealmEdit, t: f32, url: string, p_body: string, reply: stri
   #assert redit_key(e[..], REDIT_KEY_ENTER, true) == 1 && !redit_typing(e[..]);
   #assert e[0].hear_due == REQ_E_HEAR && e[0].revise_n == 0;
   #assert heard_trip(e[..], 3, "/api/playtest/realm/moonlit-marsh/edit", "{\"sentence\":\"open the settings\"}", "200\n{\"edit\": \"show\", \"panel\": \"settings\"}");
-  #assert e[0].pane == REDIT_SETTINGS;
+  #assert redit_reply_of(e[..]) == "The settings are in the editor: opening it.";
 }
 
 // The realm's world for the editor shell (realm-page.coax, #13478), stepped as a face that opts in steps it
@@ -498,14 +489,20 @@ wmsg :: (e: [] RealmEdit, kind: int, text: string) -> bool { return redit_world_
   wstep(e[..], 0.032);
   #assert redit_world_wants(e[..]) && redit_world_url(e[..]) == "/api/worlds/moonlit-marsh/content?lane=dev";
   redit_world_sent(e[..], 7);
-  #assert wmsg(e[..], HTTP_KIND + 7, "200\naethyr.content.v1 realm 1\nreach 1\ntable rows id key:text on:int label:text\n1|water|1|Large pond\n2|props:wagon|0|A wagon\ntable tools id name:text on:int\n1|build|0\n2|fly|1\n");
-  #assert redit_edit_model(e[..]) == "editor.model.v1 moonlit-marsh dev 2 1 0 0\ncols\natonce\nlist rows on Features\nsw 1 1 Large pond\nsw 2 0 A wagon\nlist tools on Tools visitors get\nsw 1 0 build\nsw 2 1 fly\n";
+  #assert wmsg(e[..], HTTP_KIND + 7, "200\naethyr.content.v1 realm 1\nreach 40000\ntable kinds id name:text\n1|crate\n2|barrel\ntable rows id key:text on:int label:text\n1|water|1|Large pond\n2|props:wagon|0|A wagon\ntable things id kind:ref.kinds x:cm z:cm turn:int size:int\n1|2|250|-300|0|100\ntable tools id name:text on:int\n1|build|0\n2|fly|1\n");
+  #assert redit_edit_model(e[..]) == "editor.model.v1 moonlit-marsh dev 2 1 0 0\ncols\nk 1 crate\nk 2 barrel\ne 1 2 250 0 -300 0 100\natonce\nlist rows on Features\nsw 1 1 Large pond\nsw 2 0 A wagon\nlist tools on Tools visitors get\nsw 1 0 build\nsw 2 1 fly\n";
   rev := redit_edit_rev(e[..]); #assert rev > 0 && redit_edit_rev(e[..]) == rev;   // it moves only when the model does
   // the shell's batch (message 520) is the page's own write
   batch := "{\"schema\":\"world.edit.v1\",\"rev\":2,\"do\":\"apply\",\"edits\":[{\"op\":\"cell\",\"table\":\"rows\",\"row\":2,\"col\":\"on\",\"v\":\"1\"}]}";
   #assert wmsg(e[..], REDIT_MSG_BATCH, batch);
   wstep(e[..], 0.048);
   #assert redit_world_wants(e[..]) && redit_world_url(e[..]) == "/api/worlds/moonlit-marsh" && redit_world_body(e[..]) == batch && (redit_world_flags(e[..]) & HTTP_POST) != 0;
+  // the shell's selection (521) and, from where the player stands (redit_here), its Add (523): the world's too
+  #assert wmsg(e[..], 521, "1") && ct_part(redit_edit_model(e[..]), '\n', 0) == "editor.model.v1 moonlit-marsh dev 2 1 0 1";
+  redit_here(e[..], 4.2, 7.9);
+  #assert redit_has(redit_edit_model(e[..]), "\nhere 400 800\n");
+  #assert wmsg(e[..], 523, "add 2 1");   // the batch above is still on its way: the Add says so, and sends nothing
+  #assert redit_has(redit_edit_model(e[..]), "\nno The last change is still on its way. Try again.\n");
   // a visitor's page, and an owner's without ?edit, ask the world for nothing and take no batch
   v: [1] RealmEdit;
   redit_start(v[..], "the-grid");

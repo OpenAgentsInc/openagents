@@ -164,14 +164,16 @@ one (The Grid is `/api/worlds/the-grid`). Its owner, its own admins and the
 site's admins write it; a player of the game is known by `X-Verse-Player`, as
 on the realm routes. A realm hidden from the caller is no world to them.
 
-- Its document is empty: it places nothing. `GET /api/worlds/ID/content` is
-  its board and its settings as three content tables, `rows` (`id key:text
-  on:int label:text`, in the board's order), `scripts` (`id name:text
-  hash:text for:text`, the scripts it runs) and `tools` (`id name:text
-  on:int`).
-- A batch is `cell` edits of `on`, `0` or `1`, and of a script row whole
+- Its document is empty. `GET /api/worlds/ID/content` (`reach 40000`) is
+  its board, its settings and its places as five content tables: `kinds`
+  (`id name:text`, the things the realm places, in its own order), `rows`
+  (`id key:text on:int label:text`, in the board's order), `scripts` (`id
+  name:text hash:text for:text`, the scripts it runs), `things` (`id
+  kind:ref.kinds x:cm z:cm turn:int size:int`, each placed thing that
+  stands) and `tools` (`id name:text on:int`).
+- A batch is `cell` edits of `on`, `0` or `1`, of a script row whole
   (the cell `*` of a row of `scripts`: `NAME|HASH|FOR`, or empty to take it
-  away).
+  away), and `spawn` and `despawn` of placed things (#13506, below).
   The realm's own SQL (`verse.edit_switch`, `verse.edit_settings`) carries out
   each switch, so its refusals are the ones the realm's page meets. The
   script rows are kept with the world (`verse.world_docs.dev_tables`) under
@@ -182,9 +184,44 @@ on the realm routes. A realm hidden from the caller is no world to them.
 - The realm's page follows its world (`metaverse/edit/realm-page.coax`): it
   reads the tables, takes each saved edit from the events, and runs the
   scripts the rows name on its characters. Splice's page does the same.
-- Undo and redo take a batch back as switches. It has one lane: a read of
-  live is answered with dev, and a publish is refused, since a switch reaches
-  everyone at once.
+- Undo and redo take a batch back as switches, spawns and despawns. It has
+  one lane: a read of live is answered with dev, and a publish is refused,
+  since a switch reaches everyone at once.
+
+### Placed things (#13506)
+
+A realm keeps its placed things as one list (`verse.made_realms.placed` for a
+made realm, `verse.realm_edit.placed` for a hand-built one), and the spec says
+it as `placed THING X Z YAW` lines in that order. The world numbers them by it:
+
+- A thing's ID is its place in the list, from 1. A made realm's `placed:N`
+  (migration 0109) is the world's thing N+1. The list only grows, so an ID
+  never shifts and never names another thing.
+- A thing taken away stays in the list, marked gone: on a made realm a
+  `shaped placed:N` entry with `gone` (0109's, so its turn and size are kept);
+  on a hand-built realm `"gone": true` on the entry (migration 0190). The spec
+  says both as `shaped placed:N YAW SCALE 1`, and the `things` table leaves
+  them out.
+- `spawn` with ID 0 adds a thing at the end of the list: the batch as taken
+  names its new ID. `spawn` with ID N brings back gone thing N where it was,
+  so it is the exact inverse of `despawn N` and the redo of a spawn. Its kind
+  must be the thing's own.
+- `despawn N` marks thing N gone.
+- A kind is the thing's name's place in the realm's thing list, from 1:
+  `verse.builder_things()` for a made realm, `verse.realm_rights.things` for a
+  hand-built one. A thing stands on the ground at its own size, so `y` must be
+  0 and `scale` 100.
+- The realm's own SQL carries each out (`verse.realm_spawn`,
+  `verse.realm_despawn`, migration 0190) and keeps the realm's rules: 200
+  things at most, within 40 m of the middle on a made realm and 400 m on a
+  hand-built one, and only its owner and admins. Its refusals come back in
+  words at the edit.
+
+One undo log: a world edit sets `verse.world_edit` for its transaction, so a
+made realm's own undo (`made_realms_undo`, 0111) records no step for it. The
+world's steps (`verse.world_steps`) are the history of every world edit. A made
+realm's page's own UNDO still takes back that page's own saves and placings;
+0111's slot check refuses one a world edit has changed since.
 
 A realm's page follows this world when someone who may edit it opens the page with `?edit`
 (`metaverse/edit/realm-page.coax`, #13478), and the editor shell shows the board and the tools as lists of

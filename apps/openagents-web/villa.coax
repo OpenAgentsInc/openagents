@@ -603,6 +603,7 @@ villa_step_in :: (s: [] Villa, dt: f32, fx: f32, fy: f32, fz: f32, face: f32, ac
   s[0].time += f64(t);
   redit_start(s[0].ed[..], "hecates-cemetery");
   redit_step(s[0].ed[..], f32(s[0].time), s[0].width, s[0].height, s[0].dpr);
+  redit_here(s[0].ed[..], s[0].feet.x, s[0].feet.z);   // where the editor shell's Add places things (#13506)
   // the layer's push to talk goes out through the pet panel's outbox, which the face hands the host
   if s[0].pet[0].action == 0 { ea := redit_take_action(s[0].ed[..], s[0].pet[0].outbox[..]); if ea.kind != 0 { s[0].pet[0].action = ea.kind; s[0].pet[0].out_n = ea.n; } }
   // the board's flight switched off: a visit starts at the gate

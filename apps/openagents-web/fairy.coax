@@ -2222,6 +2222,7 @@ fairy_frame :: (s: [] Fairy, out: [] f32, u: [] f32, width: f32, height: f32, dp
   s[0].width = width; s[0].height = height; s[0].dpr = hi(dpr, 0.5);
   redit_start(s[0].ed[..], "fairy-forest");
   redit_step(s[0].ed[..], f32(s[0].time), width, height, dpr);
+  redit_here(s[0].ed[..], fx, fz);   // where the editor shell's Add places things (#13506)
   feet := v3(fx, fy, fz);
   if !finite3(feet) { feet = s[0].feet; }
   s[0].face = face; s[0].act = act;

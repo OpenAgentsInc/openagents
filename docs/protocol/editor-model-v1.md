@@ -95,8 +95,10 @@ second (`apps/openagents-web/worldbuilder/worldbuilder-world.coax`, `wbe_model`)
 
 A made realm (`apps/openagents-web/myrealm.coax`) and the realm pages that load the edit layer
 (`metaverse/edit/edit.coax`, #13478) are the third. Both follow the realm's world with
-`metaverse/edit/realm-page.coax` (`rp_model`): `atonce`, the scripts table, and the board and the
-tools as lists of switches. They export `coaxial_edit_own(state)` (below), which answers 1 once the
+`metaverse/edit/realm-page.coax` (`rp_model`): the realm's kinds (`k`) and each placed thing that
+stands (`e`, its ID the thing's place in the realm's list), `atonce`, the scripts table, the board and
+the tools as lists of switches, and `here`, where the player stands in whole metres. The page takes
+520, 521 and 523 (`rp_message`); its Add plans from `here` (#13506). They export `coaxial_edit_own(state)` (below), which answers 1 once the
 realm's server has said this visitor is its owner or an admin; the host asks again every frame until
 it does.
 

@@ -209,6 +209,24 @@ to the site's bucket. A made realm opens at `/worlds/built#SLUG` there. The app
 shell's frame drops the `#SLUG`, so the run holds that address in a frame of
 its own, as the shell holds `/worlds/SLUG?edit` on openagents.com.
 
+## Places in your own realm
+
+Placing as world edits (#13506), as a maker who is no admin. Like the scripts
+run, it logs a new Nostr key in through the page (`realm-places-run.ts`).
+
+```sh
+coax/web/serve.sh apps/openagents-web --listen 127.0.0.1:9645 --fresh
+ORIGIN=http://127.0.0.1:9645 SIGN=WORK/sign bun docs/editor/acceptance/realm-places-run.ts
+```
+
+The run makes a realm with nothing placed and opens it with the editor. It
+presses Add and the crate, and checks that Things lists No. 1 and the realm's
+spec has `placed crate`. It selects No. 1 and presses Remove, and checks that
+the spec keeps the crate and marks it `shaped placed:0 0 100 1` (gone). Undo
+brings it back exactly, Redo takes it away again, and a second crate is No. 2,
+so no ID shifts. It leaves `realm-places-added.png` and
+`realm-places-removed.png` in `apps/openagents-web/build/`.
+
 ## What it checks
 
 | Step | What must hold |

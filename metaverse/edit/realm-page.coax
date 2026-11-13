@@ -8,24 +8,35 @@
 // no copy of its own that an event would have to change.
 //
 // What it makes of them:
-//   - the editor shell's model (editor.model.v1, metaverse-engine/editor/shell-model.coax): `atonce`, the
-//     scripts table with the kind a script drives here (kind 1: the realm's characters) and its rows, and the
-//     board and the tools as lists of switches;
+//   - the editor shell's model (editor.model.v1, metaverse-engine/editor/shell-model.coax): what the realm
+//     places as kinds and each placed thing that stands as an entity (#13506: the tables `kinds` and
+//     `things`; an entity's ID is the thing's world ID, its place in the realm's list), `atonce`, the
+//     scripts table with the kind a script drives here (kind 1: the realm's characters) and its rows, the
+//     board and the tools as lists of switches, and `here`, the player's spot (rp_here, in whole metres);
 //   - the scripts the tables name, as the page's script loader reads them (metaverse-engine/script/loader.coax):
 //     the world's script list, then "SLOT HASH" a row;
 //   - which loaded script drives a character (srw_pick: a row for that one wins over a row for the kind).
 // A batch the shell sends (inbox 520) goes to the world as the page's one write at a time; the server
-// carries it out (coax/web/api/worlds.c realm_post) and its refusal comes back to the shell in words.
+// carries it out (coax/web/api/worlds.c realm_post) and its refusal comes back to the shell in words. The
+// shell's selection (521) is kept for the model, and its Add (523, "add KIND COUNT") is planned from `here`
+// with the placement planner (metaverse-engine/editor/place.coax) and sent as one batch of spawns: rp_message
+// takes all three.
 // This file decides what to ask and what an answer is; the page's face sends it (rp_wants, rp_url, rp_body,
 // rp_flags, rp_sent, rp_answer). It reads nothing of the realm's own spec.
 //   coax/bin/coax test metaverse/edit/realm-page.coax
 #load "../../metaverse-engine/editor/world-follow.coax";
 #load "../../metaverse-engine/editor/shell-model.coax";
 #load "../../metaverse-engine/script/rows.coax";
+#load "../../metaverse-engine/editor/place.coax";   // the placement planner: where the shell's Add puts things (#13506)
 
 RP_KIND_CHARACTERS :: 1;   // "kind 1": the realm's characters; "who N": the Nth of them (1 and up)
 RP_CHARACTERS_NAME :: "Characters";
-RP_MODEL :: 12288;         // bytes of the shell's model (a board of 64 rows and 16 tools, and 8 scripts, fit)
+RP_MODEL :: 24576;         // bytes of the shell's model (a board of 64 rows and 16 tools, 8 scripts and 200 things fit)
+RP_KINDS :: 16;            // kinds a realm places (realm-world.coax RW_KINDS)
+RP_THINGS :: 256;          // placed things the model lists (editor-model-v1 EM_ENTS)
+RP_SELECT :: 521;          // the editor shell's: select an entity, 0 for none
+RP_ADD :: 523;             // the editor shell's: "add KIND COUNT"
+RP_REACH :: 0.6f32;        // metres a placed thing's footprint reaches, for the planner
 RP_PART :: 10240;          // bytes of its lines the tables give: the scripts and the lists
 RP_WANTS :: 640;
 RP_STATE :: 4096;          // bytes of the lane's state answer the page reads (a realm's document is empty)
@@ -43,6 +54,11 @@ RealmPage :: struct {
   wants: [RP_WANTS] u8; wants_n: int;
   no: [EM_WORDS] u8; no_n: int;               // the last refusal, in words, for the shell
   sdoc: [RP_STATE] u8; sdid: [RP_DID] u8; sscratch: [RP_STATE + RP_DID] u8;
+  // what the realm places, and its things that stand: the tables `kinds` and `things` (#13506)
+  kinds: int; kind: [RP_KINDS] [EM_NAME] u8; kind_n: [RP_KINDS] int;
+  things: int; t_id: [RP_THINGS] int; t_kind: [RP_THINGS] int; t_x: [RP_THINGS] int; t_z: [RP_THINGS] int; t_yaw: [RP_THINGS] int; t_size: [RP_THINGS] int;
+  sel: int;                                   // the thing the shell selected (0: none)
+  here: bool; here_x: int; here_z: int;       // the player's spot, centimetres in whole metres
   batch: [RP_BATCH] u8;                       // the follower's room for a batch on its way (world-follow.coax wf_post)
 }
 
@@ -53,7 +69,7 @@ rp_open :: (p: [] RealmPage, slug: string) -> bool {
   none: WorldPins;
   if !wf_open(p[0].f[..], slug, WL_DEV, none) { return false; }
   p[0].f[0].tables = true;
-  p[0].on = true; p[0].tabled = false; p[0].rows_n = 0; p[0].part_n = 0; p[0].no_n = 0; p[0].wants_n = 0;
+  p[0].on = true; p[0].tabled = false; p[0].rows_n = 0; p[0].part_n = 0; p[0].no_n = 0; p[0].wants_n = 0; p[0].kinds = 0; p[0].things = 0; p[0].sel = 0;
   rp_remodel(p);
   return true;
 }
@@ -65,12 +81,28 @@ rp_flags :: (p: [] RealmPage) -> int { return wf_flags(p[0].f[..]); }
 rp_sent :: (p: [] RealmPage, host_id: int) { wf_sent(p[0].f[..], host_id); }
 rp_engine_started :: (p: [] RealmPage) { if p[0].on { wf_engine_started(p[0].f[..]); } }
 
-// The tables read: their script rows, and the model's lines they give (the page keeps no copy of them).
-// Tables that do not read name no script and no switch.
+// The tables read: their script rows, what the realm places and its things, and the model's lines they give
+// (the page keeps no other copy of them). Tables that do not read name no script, no switch and no thing.
 rp_tables :: (p: [] RealmPage, text: string) {
   d: [1] ContentDoc; bad: [2] int;
-  p[0].tabled = true; p[0].rows_n = 0; p[0].part_n = 0;
+  p[0].tabled = true; p[0].rows_n = 0; p[0].part_n = 0; p[0].kinds = 0; p[0].things = 0;
   if !ct_read(d[..], text) { return; }
+  tk := ct_table(d[..], "kinds"); nm := ct_col(d[..], tk, "name");
+  for r: 0..<ct_rows(d[..], tk) {
+    line: [EM_NAME] u8; k := rp_line(line[..], ct_str(d[..], tk, r, nm));
+    if nm < 0 || p[0].kinds >= RP_KINDS || ct_get(d[..], tk, r, 0) != p[0].kinds + 1 || k == 0 { break; }
+    p[0].kind_n[p[0].kinds] = ct_copy(p[0].kind[p[0].kinds][..], cast(string) line[0..<k]); p[0].kinds += 1;
+  }
+  tt := ct_table(d[..], "things");
+  cols := [5] int.[ct_col(d[..], tt, "kind"), ct_col(d[..], tt, "x"), ct_col(d[..], tt, "z"), ct_col(d[..], tt, "turn"), ct_col(d[..], tt, "size")];
+  for r: 0..<ct_rows(d[..], tt) {
+    if p[0].things >= RP_THINGS || cols[0] < 0 || cols[1] < 0 || cols[2] < 0 || cols[3] < 0 || cols[4] < 0 { break; }
+    i := p[0].things;
+    p[0].t_id[i] = ct_get(d[..], tt, r, 0); p[0].t_kind[i] = ct_get(d[..], tt, r, cols[0]);
+    p[0].t_x[i] = ct_get(d[..], tt, r, cols[1]); p[0].t_z[i] = ct_get(d[..], tt, r, cols[2]);
+    p[0].t_yaw[i] = editor_turn(ct_get(d[..], tt, r, cols[3])); p[0].t_size[i] = ct_get(d[..], tt, r, cols[4]);
+    p[0].things += 1;
+  }
   n := srw_scan(d[..], p[0].rows[..], bad[..]);
   p[0].rows_n = ifx n < 0 then 0 else n;
   k := rp_part_write(p, d[..], p[0].part[..]);
@@ -100,6 +132,45 @@ rp_answer :: (p: [] RealmPage, host_id: int, text: string) -> bool {
       p[0].no_n = rp_line(p[0].no[..], ifx words.count > 0 then words else "The realm's server did not take that. Try again.");
     }
   }
+  rp_remodel(p);
+  return true;
+}
+// The player's spot, in metres: the shell's Add places things there. Kept in whole metres, so walking changes
+// the model a step at a time, not every frame.
+rp_here :: (p: [] RealmPage, x: f32, z: f32) {
+  cx := we_cm(floor(x + 0.5)); cz := we_cm(floor(z + 0.5));
+  if cx < -WE_REACH || cx > WE_REACH || cz < -WE_REACH || cz > WE_REACH { return; }
+  if p[0].here && p[0].here_x == cx && p[0].here_z == cz { return; }
+  p[0].here = true; p[0].here_x = cx; p[0].here_z = cz;
+  if p[0].on { rp_remodel(p); }
+}
+// "add KIND COUNT": COUNT things of a kind planned from `here`, clear of what stands and of each other, sent as
+// one batch of spawns (one step: one undo takes them all back). False, with words for the shell, when there
+// is no spot yet, no such kind, or the batch did not go.
+rp_add :: (p: [] RealmPage, text: string) -> bool {
+  kind := ct_num(ct_part(text, ' ', 1)); count := ct_num(ct_part(text, ' ', 2));
+  if ct_part(text, ' ', 0) != "add" || ct_parts(text, ' ') != 3 || !kind.ok || !count.ok || kind.v < 1 || kind.v > p[0].kinds || count.v < 1 || count.v > WE_BATCH {
+    p[0].no_n = rp_line(p[0].no[..], "Pick a kind of thing this realm places."); rp_remodel(p); return false;
+  }
+  if !p[0].here { p[0].no_n = rp_line(p[0].no[..], "Walk to where it goes first."); rp_remodel(p); return false; }
+  stood: [RP_THINGS] PlaceSpot;
+  for i: 0..<p[0].things { stood[i] = PlaceSpot.{x = we_m(p[0].t_x[i]), z = we_m(p[0].t_z[i]), r = RP_REACH, ok = true}; }
+  at := PlaceSpot.{x = we_m(p[0].here_x), z = we_m(p[0].here_z), ok = true};
+  v := PlaceView.{has_here = true, here_x = at.x, here_z = at.z, view_x = at.x, view_z = at.z};
+  out: [WE_BATCH] PlaceOut;
+  m := pl_plan(PlaceKind.{radius = RP_REACH}, at, v, PlaceAsk.{count = count.v, nudge = true, clear = true, seed = p[0].f[0].rev * 7919 + kind.v}, stood[0..<p[0].things], out[..]);
+  edits: [WE_BATCH] WorldEdit;
+  for i: 0..<m { edits[i] = WorldEdit.{ok = true, op = WE_SPAWN, id = 0, kind = kind.v, x = we_cm(out[i].x), z = we_cm(out[i].z), yaw = we_deg(out[i].yaw)}; }
+  body: [WE_BATCH_BODY] u8;
+  return m > 0 && rp_batch(p, we_batch_write(ifx p[0].f[0].rev < 0 then 0 else p[0].f[0].rev, WB_APPLY, edits[..], m, body[..]));
+}
+// A message from the editor shell: a batch (520), a selection (521) or an Add (523). Whether it was one.
+rp_message :: (p: [] RealmPage, kind: int, text: string) -> bool {
+  if !p[0].on || (kind != RP_BATCH_KIND && kind != RP_SELECT && kind != RP_ADD) { return false; }
+  if kind == RP_BATCH_KIND { _ := rp_batch(p, text); return true; }
+  if kind == RP_ADD { _ := rp_add(p, text); return true; }
+  id := ct_num(text);
+  p[0].sel = ifx id.ok && id.v > 0 then id.v else 0;
   rp_remodel(p);
   return true;
 }
@@ -154,12 +225,21 @@ rp_part_write :: (p: [] RealmPage, d: [] ContentDoc, out: [] u8) -> int {
   n = rp_list(d, out, n, "tools", "name", "Tools visitors get");
   return n;
 }
+// Thing `id`'s place in the things the page holds, or -1.
+rp_thing_at :: (p: [] RealmPage, id: int) -> int { for i: 0..<p[0].things { if p[0].t_id[i] == id { return i; } } return -1; }
 rp_model_write :: (p: [] RealmPage, out: [] u8) -> int {
   f := p[0].f[0]; none: [WE_COLS] bool;
-  n := em_begin(out, rp_world_id(p), WL_DEV, ifx f.rev < 0 then 0 else f.rev, f.undo, f.redo, 0);
+  sel := ifx rp_thing_at(p, p[0].sel) >= 0 then p[0].sel else 0;
+  n := em_begin(out, rp_world_id(p), WL_DEV, ifx f.rev < 0 then 0 else f.rev, f.undo, f.redo, sel);
   n = em_cols(out, n, none[..]);
+  for k: 0..<p[0].kinds { n = em_kind(out, n, k + 1, cast(string) p[0].kind[k][0..<p[0].kind_n[k]]); }
+  for i: 0..<p[0].things {
+    size := ifx p[0].t_size[i] < EDITOR_SCALE_MIN || p[0].t_size[i] > EDITOR_SCALE_MAX then 100 else p[0].t_size[i];
+    n = em_entity(out, n, p[0].t_id[i], p[0].t_kind[i], p[0].t_x[i], 0, p[0].t_z[i], p[0].t_yaw[i], size);
+  }
   n = em_at_once(out, n);
   n = ct_put(out, n, cast(string) p[0].part[0..<p[0].part_n]);
+  if p[0].here { n = em_here(out, n, p[0].here_x, p[0].here_z); }
   if p[0].no_n > 0 { n = em_no(out, n, cast(string) p[0].no[0..<p[0].no_n]); }
   return n;
 }
@@ -186,8 +266,10 @@ rp_script :: (p: [] RealmPage, who: int) -> int { return srw_pick(p[0].rows[0..<
 
 RP_TEST_HASH :: "528d7a3c9a6d5c5fd9e0f0b0d6f2b1c3a4e5f60718293a4b5c6d7e8f90a1b2c3";
 rp_test_tables :: (scripts: string, out: [] u8) -> string {
-  n := ct_put(out, 0, "aethyr.content.v1 realm 1\nreach 1\ntable rows id key:text on:int label:text\n1|glow|1|Glowing mushrooms\n2|bridge|0|A bridge over the stream\n");
+  n := ct_put(out, 0, "aethyr.content.v1 realm 1\nreach 40000\ntable kinds id name:text\n1|crate\n2|barrel\n");
+  n = ct_put(out, n, "table rows id key:text on:int label:text\n1|glow|1|Glowing mushrooms\n2|bridge|0|A bridge over the stream\n");
   n = ct_put(out, n, SRW_TABLE); n = ct_put(out, n, "\n"); n = ct_put(out, n, scripts);
+  n = ct_put(out, n, "table things id kind:ref.kinds x:cm z:cm turn:int size:int\n1|1|100|200|0|100\n3|2|-150|0|270|150\n");
   n = ct_put(out, n, "table tools id name:text on:int\n1|build|1\n2|jump|0\n");
   return cast(string) out[0..<n];
 }
@@ -209,9 +291,10 @@ rp_test_state :: (rev: int, out: [] u8) -> string {
   k = ct_put(b[..], 0, "200\n"); k = ct_put(b[..], k, rp_test_tables(row, t[..]));
   rev := rp_rev(p[..]);
   #assert rp_answer(p[..], 1, cast(string) b[0..<k]) && p[0].rows_n == 1 && rp_rev(p[..]) == rev + 1;
-  #assert rp_model(p[..]) == "editor.model.v1 fairy-forest dev 4 1 0 0\ncols\natonce\nscripts scripts\nsk 1 Characters\ns 1 my-greeter 528d7a3c9a6d5c5fd9e0f0b0d6f2b1c3a4e5f60718293a4b5c6d7e8f90a1b2c3 kind 1\nlist rows on Features\nsw 1 1 Glowing mushrooms\nsw 2 0 A bridge over the stream\nlist tools on Tools visitors get\nsw 1 1 build\nsw 2 0 jump\n";
+  #assert rp_model(p[..]) == "editor.model.v1 fairy-forest dev 4 1 0 0\ncols\nk 1 crate\nk 2 barrel\ne 1 1 100 0 200 0 100\ne 3 2 -150 0 0 -90 150\natonce\nscripts scripts\nsk 1 Characters\ns 1 my-greeter 528d7a3c9a6d5c5fd9e0f0b0d6f2b1c3a4e5f60718293a4b5c6d7e8f90a1b2c3 kind 1\nlist rows on Features\nsw 1 1 Glowing mushrooms\nsw 2 0 A bridge over the stream\nlist tools on Tools visitors get\nsw 1 1 build\nsw 2 0 jump\n";
   m: [1] EdModel; sc: [EM_BYTES] u8;
   #assert em_read(m[..], rp_model(p[..]), sc[..]) && m[0].at_once && m[0].ns == 1 && m[0].nl == 2 && m[0].nw == 4;
+  #assert p[0].kinds == 2 && p[0].things == 2 && p[0].t_id[1] == 3 && p[0].t_yaw[1] == -90;
   #assert rp_script_wants(p[..]) == "/api/worlds/fairy-forest/scripts\n0 528d7a3c9a6d5c5fd9e0f0b0d6f2b1c3a4e5f60718293a4b5c6d7e8f90a1b2c3\n";
   #assert rp_script(p[..], 1) == 0 && rp_script(p[..], 3) == 0;
   // the same tables again: the model did not change, so neither does its revision
@@ -239,4 +322,35 @@ rp_test_state :: (rev: int, out: [] u8) -> string {
   #assert rp_line(o[0..<12], "  a\nb   c  d e f") == 11 && cast(string) o[0..<11] == "a b c d e f";
   // tables with no scripts table name none, and a page with none loads no script module
   #assert rp_script(p[..], 1) == -1 && rp_script_wants(p[..]) == "";
+}
+#test "a realm's page keeps the shell's selection and plans its Add from where the player stands, as one batch of spawns" {
+  p: [1] RealmPage; o: [4096] u8; t: [2048] u8; b: [2048] u8;
+  #assert rp_open(p[..], "fairy-forest");
+  rp_step(p[..], 0.016); rp_sent(p[..], 0);
+  k := ct_put(b[..], 0, "200\n"); k = ct_put(b[..], k, rp_test_state(4, o[..]));
+  #assert rp_answer(p[..], 0, cast(string) b[0..<k]);
+  rp_step(p[..], 0.016); rp_sent(p[..], 1);
+  k = ct_put(b[..], 0, "200\n"); k = ct_put(b[..], k, rp_test_tables("", t[..]));
+  #assert rp_answer(p[..], 1, cast(string) b[0..<k]) && p[0].things == 2;
+  // a selection: the model names it; one that names no thing names none
+  #assert rp_message(p[..], RP_SELECT, "3") && ct_part(rp_model(p[..]), '\n', 0) == "editor.model.v1 fairy-forest dev 4 1 0 3";
+  #assert rp_message(p[..], RP_SELECT, "9") && ct_part(rp_model(p[..]), '\n', 0) == "editor.model.v1 fairy-forest dev 4 1 0 0";
+  #assert !rp_message(p[..], 7, "3");
+  // no spot yet: words, not a batch
+  #assert rp_message(p[..], RP_ADD, "add 1 2") && !rp_wants(p[..]) && ct_part(rp_model(p[..]), '\n', ct_parts(rp_model(p[..]), '\n') - 2) == "no Walk to where it goes first.";
+  // the spot, in whole metres; walking within a metre changes nothing
+  rp_here(p[..], 2.3, -4.6); rev := rp_rev(p[..]); rp_here(p[..], 2.4, -4.8);
+  #assert p[0].here_x == 200 && p[0].here_z == -500 && rp_rev(p[..]) == rev;
+  #assert ct_part(rp_model(p[..]), '\n', ct_parts(rp_model(p[..]), '\n') - 3) == "here 200 -500";
+  // a kind it does not place, or a count of none: words
+  #assert rp_message(p[..], RP_ADD, "add 3 1") && !rp_wants(p[..]);
+  #assert rp_message(p[..], RP_ADD, "add 1 0") && !rp_wants(p[..]);
+  // Add: two crates near the spot, in one batch on the world's revision, as new things (ID 0)
+  #assert rp_message(p[..], RP_ADD, "add 1 2");
+  rp_step(p[..], 0.016); #assert rp_url(p[..]) == "/api/worlds/fairy-forest";
+  es: [WE_BATCH] WorldEdit; wb := we_batch_read(rp_body(p[..]), es[..]); #assert wb.ok && wb.rev == 4 && wb.n == 2;
+  for i: 0..<2 {
+    e := es[i];
+    #assert e.op == WE_SPAWN && e.id == 0 && e.kind == 1 && e.x > -300 && e.x < 700 && e.z > -1000 && e.z < 0;
+  }
 }

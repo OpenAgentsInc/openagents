@@ -327,7 +327,7 @@ realm_reset :: (s: [] MyRealm) {
   s[0].started = true; s[0].press = -1; s[0].hover = -1; s[0].stick_id = -1; s[0].turn_id = -1;
   s[0].row_press = -1; s[0].cell_press = -1; s[0].req_id = -1; s[0].z = 6; s[0].talk_p = -1;
   // the edit layer's request and presses are none until it starts (a realm with no slug never starts it)
-  s[0].ed[0].req_id = -1; s[0].ed[0].press = -1; s[0].ed[0].row_press = -1; s[0].ed[0].finger = -1; s[0].ed[0].switch_row = -1;
+  s[0].ed[0].req_id = -1; s[0].ed[0].press = -1; s[0].ed[0].finger = -1; s[0].ed[0].switch_row = -1;
   s[0].moving = -1; s[0].listed = true; s[0].room_req = -1;
 }
 begin :: (s: [] MyRealm) { if !s[0].started { realm_reset(s); } }
@@ -636,7 +636,8 @@ realm_message :: (s: [] MyRealm, t: [] Track, kind: int, text: string) #export_c
   }
   if kind == MSG_VOICE && (s[0].voice_held || s[0].heard_due) { talk_heard(s, t, text); return; }
   if s[0].room_req >= 0 && kind == HTTP_ANSWER_KIND + s[0].room_req { room_answered(s, text); return; }
-  if kind == RP_BATCH_KIND { _ := rp_batch(s[0].world[..], text); return; }
+  // the editor shell's batch (520), selection (521) and Add (523, planned from rp_here) are the world's (#13506)
+  if rp_message(s[0].world[..], kind, text) { return; }
   if kind >= HTTP_ANSWER_KIND && kind < HTTP_ANSWER_KIND + 8 && kind - HTTP_ANSWER_KIND == s[0].req_id { take_answer(s, t, text); return; }
   // the realm's world (realm-page.coax): its state, its tables, its events, the shell's batch
   if kind >= HTTP_ANSWER_KIND && kind < HTTP_ANSWER_KIND + 8 { _ := rp_answer(s[0].world[..], kind - HTTP_ANSWER_KIND, text); }
@@ -2784,6 +2785,7 @@ realm_frame :: (s: [] MyRealm, t: [] Track, out: [] f32, uniforms: [] f32, width
   if s[0].req_id >= 0 && s[0].time - s[0].req_at > WAIT { s[0].req_id = -1; s[0].req_what = REQ_NONE; if !s[0].spec_ready { s[0].spec_failed = true; } }
   if s[0].spec_ready && s[0].slug_n > 0 { _ := rp_open(s[0].world[..], slug_text(s)); }
   rp_step(s[0].world[..], dt);
+  rp_here(s[0].world[..], s[0].x, s[0].z);   // where the shell's Add places things
   walk_x0 := s[0].x; walk_z0 := s[0].z;
   realm_step(s, dt);
   if s[0].laid && !still { people_step(s, dt); }

@@ -1,7 +1,8 @@
 # Every realm edits the same way
 
 Build your own realm ([realm-builder.md](realm-builder.md)) gave a made realm a board, its owner's
-SETTINGS and the ACCEPT/DECLINE cards. Every realm now has them: Everglade, Hecate's Cemetery, the
+settings and the ACCEPT/DECLINE cards. Every realm now has them (the settings, the board's switches and
+placing now in the editor shell, #13506): Everglade, Hecate's Cemetery, the
 Grid, Fairy Forest, Dead Gears, Ice Cream Man, the Haunted House and every made realm. If you can
 edit a realm, EDIT opens the same layer in each one.
 
@@ -101,12 +102,27 @@ Cream Man, The Grid (`newland`), Haunted House (`realm`), Hecate's Cemetery (`vi
 Watchtower have it. A made realm (`myrealm`) follows its world itself, with the same module.
 Everglade's page does not: its board belongs with its own world (#13477).
 
-The layer's own FEATURES and SETTINGS panes, and the routes they post to, are still there. They
-go when placing a thing is an edit too (#13506).
+Placing is an edit too (#13506). The world's `kinds` and `things` tables are what the realm places
+and what stands; the shell lists them, selects one (521), takes it away (a `despawn` batch) and adds
+some (523, `add KIND COUNT`), planned with `metaverse-engine/editor/place.coax` from where the player
+stands. Each realm hands that spot over every frame with `redit_here(ed, x, z)` (Dead Gears, Fairy
+Forest and Hecate's Cemetery do; a made realm calls `rp_here` itself). See
+[world-edit-v1.md](../protocol/world-edit-v1.md), "Placed things", for the IDs and the one undo log.
+
+So the layer's own SETTINGS pane is gone, and a tap on a FEATURES row switches nothing: the rows and
+the visitors' tools are switched in the shell. FEATURES shows OPEN THE EDITOR, which opens this page
+again with `?edit`, and a spoken "open the settings" does the same. The layer's own placing
+(`redit_place`, which posted to `/place`) is gone; no realm called it.
+
+What has no world edit stays in the layer's EDIT: the asks (ADD, revise, DELETE, a document), a
+visitor's proposals, lore and quests, the realm's voice, YOUR COMPUTER and YOUR AGENT. The routes
+`/switch`, `/settings` and `/place` stay for their other callers (the realm CLI, the voice's switch,
+a made realm's own placing) until those move onto the world (#13514). Which of the rest become turns of
+the shell's agent strip is #13515.
 
 Spoken and typed commands about the editing screen go to `redit_heard(ed, word, row, on, pane,
 out)` (migration 0104's `switch` and `show` edits): it switches one of the realm's rows by its id,
-or opens EDIT's board, SETTINGS or the cards, or closes them, and writes the sentence to show and
+or opens EDIT's board or the cards (SETTINGS opens the editor), or closes them, and writes the sentence to show and
 speak. Every realm with the layer gets it by handing the selector's answer there. The server's
 selector lists the realm's own rows from `verse.realm_rights`, so a new row is switchable by voice
 with no new migration.
@@ -159,8 +175,8 @@ Wired today:
 | A made realm (myrealm.coax) | V, HOLD TO TALK under EDIT, or Enter, outside a character talk (`redit_hears`) |
 
 EDIT opens one pane at a time (the panes rule, metaverse/fairy-forest/README.md "Making the world:
-panes"): FEATURES (the list below; HOLD TO TALK on a page with a voice, typing everywhere),
-SETTINGS (what visitors get; a realm whose code honours no visitor tool says so), and N WAITING
+panes"): FEATURES (the list below; HOLD TO TALK on a page with a voice, typing everywhere, and
+OPEN THE EDITOR), and N WAITING
 (the first card: who, what, where, the count before and after, ACCEPT and DECLINE).
 A realm whose face carries the wire also gets COMPUTER (below, "Your computer").
 
@@ -205,7 +221,7 @@ admin does; theirs are paced and counted under their key's hash.
 ## What you asked for: the feature list
 
 FEATURES, the first pane EDIT opens in every realm, is a bulleted list: first the board's rows (what
-the realm's code switches; a tap on one switches it), then every ask its owner and admins made,
+the realm's code switches; the editor shell switches it, #13506), then every ask its owner and admins made,
 newest first. Each says APPLIED or NOT APPLIED (REMOVING while its code comes out), with DELETE
 (tapped once it reads SURE?; a second tap within 4 s sends it). ADD (HOLD TO TALK, or typing) asks
 for a new feature or a change. A phone gets the same list a page at a time (MORE).
