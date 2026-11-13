@@ -1,0 +1,212 @@
+// What a write does to a world's attachments and its project's (GitHub #13468): one code for the dev
+// server's store (metaverse-engine/tools/files-local.coax) and the API (coax/web/api/worlds.c,
+// through world-policy.coax), so every list and every refusal is the same bytes on both.
+//
+// Each scope keeps its attachments as a world.files.v1 list (file-wire.coax): the world's as a list
+// of its world-scope attachments, the project's as a list with no world. Where the bytes live is
+// the caller's: it stores a file by its SHA-256, checks the bytes against the hash and the scan
+// before it asks, and removes a stored file that fl_detach says nothing names any more.
+//   coax/bin/coax test metaverse-engine/editor/file-store.coax
+#load "file-wire.coax";
+
+FL_SCRATCH :: FW_BYTES;
+FlWork :: struct {
+  m: [1] FwList;                 // this world's attachments, then its project's
+  other: int; other_bytes: int;  // what the project's other worlds hold
+  status: int; words: [FW_WORDS + FW_NAME] u8; words_n: int;
+  freed: bool; freed_hash: [64] u8;   // after a detach: a stored file nothing names now
+  out: [FW_BYTES] u8; scratch: [FL_SCRATCH] u8;
+}
+fl_words_of :: (w: [] FlWork) -> string { return cast(string) w[0].words[0..<w[0].words_n]; }
+fl_say :: (w: [] FlWork, status: int, words: string) -> int {
+  w[0].status = status; w[0].words_n = fw_copy(w[0].words[..], words);
+  return status;
+}
+fl_refuse :: (w: [] FlWork, verdict: int, name: string, bytes: int) -> int {
+  b: [FW_WORDS + FW_NAME] u8;
+  return fl_say(w, 422, fw_words(verdict, name, bytes, fl_held_bytes(w), b[..]));
+}
+fl_held :: (w: [] FlWork) -> int { return w[0].m[0].n + w[0].other; }
+fl_held_bytes :: (w: [] FlWork) -> int {
+  n := w[0].other_bytes;
+  for i: 0..<w[0].m[0].n { n += w[0].m[0].f[i].bytes; }
+  return n;
+}
+
+// The two stored lists read into one. `world` is "" for a project's own list; `project` is "" for
+// a world with no project. A missing list is an empty one. False when a stored list does not read.
+fl_load :: (w: [] FlWork, world: string, project: string, world_text: string, project_text: string, other: int, other_bytes: int) -> bool {
+  w[0].status = 0; w[0].words_n = 0; w[0].freed = false; w[0].other = other; w[0].other_bytes = other_bytes;
+  m := w[0].m[..];
+  one: [1] FwList;
+  m[0] = FwList.{};
+  m[0].world_n = fw_copy(m[0].world[..], world); m[0].project_n = fw_copy(m[0].project[..], project);
+  m[0].file = FW_FILE_MAX; m[0].files = FW_FILES_MAX; m[0].total = FW_TOTAL_MAX;
+  if (world.count > 0 && !fw_world_ok(world)) || (project.count > 0 && !fw_project_ok(project)) || (world.count == 0 && project.count == 0) { return false; }
+  texts := [2] string.[ifx world.count > 0 then world_text else "", ifx project.count > 0 then project_text else ""];
+  for t, k: texts {
+    if t.count == 0 { continue; }
+    if !fw_read(one[..], t, w[0].scratch[..]) || one[0].did != 0 { return false; }
+    // a stored list is its own scope's only, and names the world and project it belongs to
+    if (k == 0 && (fw_world_of(one[..]) != world || fw_project_of(one[..]) != project)) || (k == 1 && (one[0].world_n != 0 || fw_project_of(one[..]) != project)) { return false; }
+    for i: 0..<one[0].n {
+      if one[0].f[i].scope != k || m[0].n >= FW_FILES { return false; }
+      m[0].f[m[0].n] = one[0].f[i]; m[0].n += 1;
+    }
+  }
+  fw_sort(m);
+  return true;
+}
+// The stored list of one scope (FW_SCOPE_WORLD or FW_SCOPE_PROJECT) as its bytes, into out.
+fl_stored :: (w: [] FlWork, scope: int, out: [] u8) -> string {
+  one: [1] FwList; m := w[0].m[..];
+  one[0] = FwList.{};
+  if scope == FW_SCOPE_WORLD { one[0].world_n = fw_copy(one[0].world[..], fw_world_of(m)); if one[0].world_n == 0 { return ""; } }
+  one[0].project_n = fw_copy(one[0].project[..], fw_project_of(m));
+  if scope == FW_SCOPE_PROJECT && one[0].project_n == 0 { return ""; }
+  for i: 0..<m[0].n { if m[0].f[i].scope == scope { one[0].f[one[0].n] = m[0].f[i]; one[0].n += 1; } }
+  return fw_write(one[..], out);
+}
+// The list as the routes answer it: what the project holds and what the last write did.
+fl_answer :: (w: [] FlWork) -> string {
+  m := w[0].m[..];
+  m[0].count = fl_held(w); m[0].bytes = fl_held_bytes(w);
+  return fw_write(m, w[0].out[..]);
+}
+
+// A new attachment's fields from a request, at the list's end; its ID is made from what it is.
+fl_add :: (w: [] FlWork, scope: int, kind: int, bytes: int, hash: string, now: int, by: string, name: string, url: string, note: string, tags: string) -> int {
+  m := w[0].m[..];
+  if m[0].n >= FW_FILES { return fl_refuse(w, FW_FULL, name, bytes); }
+  f := FwFile.{};
+  seed: [600] u8; n := fw_put(seed[..], 0, fw_world_of(m)); n = fw_put(seed[..], n, "/"); n = fw_put(seed[..], n, fw_project_of(m)); n = fw_put(seed[..], n, "/");
+  n = fw_put_int(seed[..], n, now); n = fw_put(seed[..], n, "/"); n = fw_put(seed[..], n, hash); n = fw_put(seed[..], n, "/"); n = fw_put(seed[..], n, url); n = fw_put(seed[..], n, "/"); n = fw_put(seed[..], n, name);
+  if n < 0 || !fw_id_make(cast(string) seed[0..<n], f.id[..]) { return fl_say(w, 500, "not made"); }
+  // two attachments made in one millisecond from the same file are still two
+  while fw_find(m, cast(string) f.id[..]) >= 0 { if !fw_id_make(cast(string) f.id[..], f.id[..]) { return fl_say(w, 500, "not made"); } }
+  f.scope = scope; f.kind = kind; f.bytes = bytes; f.at = now;
+  f.hashed = hash.count == 64; if f.hashed { for c, k: hash { f.hash[k] = c; } }
+  f.by_n = fw_copy(f.by[..], by); f.name_n = fw_copy(f.name[..], name); f.url_n = fw_copy(f.url[..], url);
+  f.note_n = fw_copy(f.note[..], note); f.tags_n = fw_copy(f.tags[..], tags);
+  if !fw_file_ok(f) { return fl_say(w, 422, "That attachment is not one we keep."); }
+  m[0].f[m[0].n] = f; m[0].n += 1;
+  m[0].did = ifx kind == FW_LINK_KIND then FW_DID_LINKED else FW_DID_ATTACHED;
+  for k: 0..<FW_ID { m[0].did_id[k] = f.id[k]; }
+  fw_sort(m);
+  return fl_say(w, 200, "");
+}
+fl_scope_ok :: (w: [] FlWork, scope: int) -> bool {
+  return (scope == FW_SCOPE_WORLD && w[0].m[0].world_n > 0) || (scope == FW_SCOPE_PROJECT && w[0].m[0].project_n > 0);
+}
+// Whether a file of this name and size may be attached now: before its bytes are taken or stored.
+fl_admit :: (w: [] FlWork, scope: int, name: string, bytes: int) -> int {
+  if !fl_scope_ok(w, scope) { return ifx scope == FW_SCOPE_PROJECT then fl_refuse(w, FW_NO_PROJECT, name, bytes) else fl_say(w, 422, "A project's own list has no world to attach to."); }
+  v := fw_admit(name, bytes, fl_held(w), fl_held_bytes(w));
+  return ifx v != FW_OK then fl_refuse(w, v, name, bytes) else fl_say(w, 200, "");
+}
+// A file the caller has stored whole: its SHA-256 checked against its bytes, and its first bytes
+// (`head`, 16 or fewer) scanned here.
+fl_attach :: (w: [] FlWork, ask: [] FwAsk, hash: string, head: string, now: int, by: string) -> int {
+  name := cast(string) ask[0].name[0..<ask[0].name_n];
+  if fl_admit(w, ask[0].scope, name, ask[0].bytes) != 200 { return w[0].status; }
+  v := fw_sniff(name, head);
+  if v != FW_OK { return fl_refuse(w, v, name, ask[0].bytes); }
+  return fl_add(w, ask[0].scope, fw_kind_of(name), ask[0].bytes, hash, now, by, name, "", cast(string) ask[0].note[0..<ask[0].note_n], cast(string) ask[0].tags[0..<ask[0].tags_n]);
+}
+fl_link :: (w: [] FlWork, ask: [] FwAsk, now: int, by: string) -> int {
+  name := cast(string) ask[0].name[0..<ask[0].name_n];
+  if !fl_scope_ok(w, ask[0].scope) { return fl_refuse(w, FW_NO_PROJECT, name, 0); }
+  v := fw_admit_link(fl_held(w));
+  if v != FW_OK { return fl_refuse(w, v, name, 0); }
+  return fl_add(w, ask[0].scope, FW_LINK_KIND, 0, "", now, by, name, cast(string) ask[0].url[0..<ask[0].url_n], cast(string) ask[0].note[0..<ask[0].note_n], cast(string) ask[0].tags[0..<ask[0].tags_n]);
+}
+fl_edit :: (w: [] FlWork, ask: [] FwAsk) -> int {
+  m := w[0].m[..]; id := cast(string) ask[0].id[..];
+  i := fw_find(m, id);
+  if i < 0 { return fl_say(w, 404, "That attachment is not here."); }
+  name := cast(string) ask[0].name[0..<ask[0].name_n];
+  if !fw_rename_ok(m[0].f[i].kind, fw_name_of(m, i), name) { return fl_say(w, 422, "A file keeps its extension: name it with the one it has."); }
+  if !fl_scope_ok(w, ask[0].scope) { return fl_refuse(w, FW_NO_PROJECT, name, 0); }
+  f := m[0].f[i];
+  f.scope = ask[0].scope; f.name_n = fw_copy(f.name[..], name);
+  f.note_n = fw_copy(f.note[..], cast(string) ask[0].note[0..<ask[0].note_n]); f.tags_n = fw_copy(f.tags[..], cast(string) ask[0].tags[0..<ask[0].tags_n]);
+  m[0].f[i] = f;
+  m[0].did = FW_DID_CHANGED; for k: 0..<FW_ID { m[0].did_id[k] = ask[0].id[k]; }
+  fw_sort(m);
+  return fl_say(w, 200, "");
+}
+// Removes the attachment. w.freed says its stored file is named by no attachment here now; the
+// caller still asks the project's other worlds before removing it.
+fl_detach :: (w: [] FlWork, ask: [] FwAsk) -> int {
+  m := w[0].m[..]; id := cast(string) ask[0].id[..];
+  i := fw_find(m, id);
+  if i < 0 { return fl_say(w, 404, "That attachment is not here."); }
+  gone := m[0].f[i];
+  for k: i..<m[0].n - 1 { m[0].f[k] = m[0].f[k + 1]; }
+  m[0].n -= 1;
+  w[0].freed = gone.hashed;
+  for k: 0..<m[0].n { if m[0].f[k].hashed && cast(string) m[0].f[k].hash[..] == cast(string) gone.hash[..] { w[0].freed = false; } }
+  if gone.hashed { w[0].freed_hash = gone.hash; }
+  m[0].did = FW_DID_DETACHED; for k: 0..<FW_ID { m[0].did_id[k] = ask[0].id[k]; }
+  return fl_say(w, 200, "");
+}
+// A write's head applied, for one that carries no bytes (link, edit, detach). An attach is the
+// caller's to store first, then fl_attach.
+fl_apply :: (w: [] FlWork, ask: [] FwAsk, now: int, by: string) -> int {
+  if ask[0].what == FW_Q_LINK { return fl_link(w, ask, now, by); }
+  if ask[0].what == FW_Q_EDIT { return fl_edit(w, ask); }
+  if ask[0].what == FW_Q_DETACH { return fl_detach(w, ask); }
+  return fl_say(w, 400, "send a world.file.link.v1, world.file.edit.v1 or world.file.detach.v1 head");
+}
+// The attachment of this ID whose bytes a route answers: its place, or -1 (none, or a link).
+fl_file_at :: (w: [] FlWork, id: string) -> int {
+  i := fw_find(w[0].m[..], id);
+  return ifx i >= 0 && w[0].m[0].f[i].hashed then i else -1;
+}
+
+// ---------------------------------------------------------------- checks
+
+FlTest :: struct { w: [1] FlWork; a: [1] FwAsk; b: [FW_HEAD] u8; s1: [FW_BYTES] u8; s2: [FW_BYTES] u8; }
+FL_T_HASH :: "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08";
+fl_t_png :: (b: [] u8) -> string { x := [8] int.[0x89, 80, 78, 71, 13, 10, 26, 10]; for v, k: x { b[k] = cast,trunc(u8) v; } return cast(string) b[0..<8]; }
+
+#test "an attach, a link, an edit and a detach, stored and read back as the same lists" {
+  t: [1] FlTest; w := t[0].w[..]; a := t[0].a[..]; png: [8] u8;
+  #assert fl_load(w, "splice", "verse", "", "", 0, 0) && w[0].m[0].n == 0;
+  #assert fw_ask_read(a, fw_attach_head(t[0].b[..], FW_SCOPE_WORLD, 2000, 0, "RaiderGarage.png", "The garage", "garage", FL_T_HASH));
+  #assert fl_attach(w, a, FL_T_HASH, fl_t_png(png[..]), 1763000000000, "local") == 200 && w[0].m[0].did == FW_DID_ATTACHED;
+  #assert fw_ask_read(a, fw_link_head(t[0].b[..], FW_SCOPE_PROJECT, "https://docs.google.com/x", "The design doc", "", "design"));
+  #assert fl_apply(w, a, 1763000000001, "local") == 200 && w[0].m[0].n == 2 && w[0].m[0].f[1].scope == FW_SCOPE_PROJECT;
+  answer := fl_answer(w);
+  #assert answer.count > 0 && fw_part(answer, '\n', 0) == "world.files.v1 splice verse 2 2000 26214400 200 1073741824";
+  wl := fl_stored(w, FW_SCOPE_WORLD, t[0].s1[..]); pl := fl_stored(w, FW_SCOPE_PROJECT, t[0].s2[..]);
+  #assert fw_part(wl, '\n', 0) == "world.files.v1 splice verse 0 0 26214400 200 1073741824" && fw_part(pl, '\n', 0) == "world.files.v1 - verse 0 0 26214400 200 1073741824";
+  #assert fl_load(w, "splice", "verse", wl, pl, 0, 0) && w[0].m[0].n == 2 && fl_file_at(w, fw_id_of(w[0].m[..], 0)) == 0 && fl_file_at(w, fw_id_of(w[0].m[..], 1)) == -1;
+  id: [FW_ID] u8; for c, k: fw_id_of(w[0].m[..], 0) { id[k] = c; }
+  #assert fw_ask_read(a, fw_edit_head(t[0].b[..], cast(string) id[..], FW_SCOPE_PROJECT, "Garage.png", "", "garage,raiders"));
+  #assert fl_apply(w, a, 0, "local") == 200 && w[0].m[0].f[0].scope == FW_SCOPE_PROJECT && fw_name_of(w[0].m[..], fw_find(w[0].m[..], cast(string) id[..])) == "Garage.png";
+  #assert fw_ask_read(a, fw_edit_head(t[0].b[..], cast(string) id[..], FW_SCOPE_PROJECT, "Garage.md", "", "")) && fl_apply(w, a, 0, "local") == 422;
+  #assert fw_ask_read(a, fw_detach_head(t[0].b[..], cast(string) id[..])) && fl_apply(w, a, 0, "local") == 200 && w[0].freed && cast(string) w[0].freed_hash[..] == FL_T_HASH && w[0].m[0].n == 1;
+  #assert fl_apply(w, a, 0, "local") == 404;
+}
+#test "a file past a limit, of a kind we don't take, or not what its name says, is refused in words" {
+  t: [1] FlTest; w := t[0].w[..]; a := t[0].a[..]; png: [8] u8;
+  #assert fl_load(w, "splice", "verse", "", "", 199, FW_TOTAL_MAX - 3000);
+  #assert fw_ask_read(a, fw_attach_head(t[0].b[..], FW_SCOPE_WORLD, 4000, 0, "City.png", "", "", FL_T_HASH));
+  #assert fl_attach(w, a, FL_T_HASH, fl_t_png(png[..]), 1, "local") == 422 && fl_words_of(w) == "City.png would take the project's attachments to 1025 MB. A project holds 1024 MB at most.";
+  #assert fw_ask_read(a, fw_attach_head(t[0].b[..], FW_SCOPE_WORLD, 2000, 0, "City.png", "", "", FL_T_HASH)) && fl_attach(w, a, FL_T_HASH, fl_t_png(png[..]), 1, "local") == 200;
+  #assert fw_ask_read(a, fw_attach_head(t[0].b[..], FW_SCOPE_WORLD, 10, 0, "Two.png", "", "", FL_T_HASH)) && fl_attach(w, a, FL_T_HASH, fl_t_png(png[..]), 2, "local") == 422 && fl_words_of(w) == "The project has 200 attachments, the most it holds. Remove one first.";
+  #assert fl_load(w, "splice", "verse", "", "", 0, 0);
+  #assert fw_ask_read(a, fw_attach_head(t[0].b[..], FW_SCOPE_WORLD, 10, 0, "Fake.png", "", "", FL_T_HASH)) && fl_attach(w, a, FL_T_HASH, "GIF89a", 1, "local") == 422 && fl_words_of(w) == "Fake.png is not what its name says: it is not a PNG.";
+  #assert fl_load(w, "splice", "", "", "", 0, 0) && fw_ask_read(a, fw_attach_head(t[0].b[..], FW_SCOPE_PROJECT, 10, 0, "a.png", "", "", FL_T_HASH)) && fl_attach(w, a, FL_T_HASH, fl_t_png(png[..]), 1, "local") == 422;
+  #assert !fl_load(w, "splice", "verse", "world.files.v1 other verse 0 0 26214400 200 1073741824\n", "", 0, 0);
+}
+#test "a stored file still named by another attachment is not freed" {
+  t: [1] FlTest; w := t[0].w[..]; a := t[0].a[..]; png: [8] u8;
+  #assert fl_load(w, "splice", "verse", "", "", 0, 0);
+  #assert fw_ask_read(a, fw_attach_head(t[0].b[..], FW_SCOPE_WORLD, 20, 0, "a.png", "", "", FL_T_HASH)) && fl_attach(w, a, FL_T_HASH, fl_t_png(png[..]), 1, "local") == 200;
+  #assert fw_ask_read(a, fw_attach_head(t[0].b[..], FW_SCOPE_PROJECT, 20, 0, "b.png", "", "", FL_T_HASH)) && fl_attach(w, a, FL_T_HASH, fl_t_png(png[..]), 1, "local") == 200;
+  #assert w[0].m[0].n == 2 && fw_id_of(w[0].m[..], 0) != fw_id_of(w[0].m[..], 1);
+  id: [FW_ID] u8; for c, k: fw_id_of(w[0].m[..], 0) { id[k] = c; }
+  #assert fw_ask_read(a, fw_detach_head(t[0].b[..], cast(string) id[..])) && fl_apply(w, a, 0, "local") == 200 && !w[0].freed;
+}

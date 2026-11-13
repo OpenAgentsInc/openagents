@@ -625,6 +625,89 @@ static void assets_local(client *c, const char *method, const char *url) {
   free(out);
   drop(c);
 }
+// Attachments on the dev server (#13468): GET .../files lists a world's and its project's
+// (world.files.v1), GET .../files/FID answers one's bytes, POST .../files takes a world.file.*
+// request (a file whole, a part of one, a link, an edit or a detach), and GET
+// /api/projects/SLUG/files lists a project's own. The attachments tool answers
+// ("STATUS TYPE\n" then the body). A body longer than a request this server keeps is read here,
+// into the body's file, up to FILES_BODY_MAX. Nothing about a file is logged. A write a browser
+// sends must come from this server's own page (Sec-Fetch-Site).
+#define FILES_BODY_MAX ((25u << 20) + 2048)
+static bool files_route(const char *url) {
+  char id[48], fid[20]; int end = 0;
+  if (sscanf(url, "/api/projects/%47[a-z0-9-]/files%n", id, &end) == 1 && end > 0) return !url[end] || url[end] == '?';
+  end = 0;
+  if (sscanf(url, "/api/worlds/%39[a-z0-9-]/files%n", id, &end) != 1 || end == 0) return false;
+  const char *rest = url + end;
+  return !*rest || *rest == '?' || (sscanf(rest, "/%16[0-9a-f]", fid) == 1 && strlen(fid) == 16 && (!rest[17] || rest[17] == '?'));
+}
+static void files_local(client *c, const char *method, const char *url) {
+  char dir[PATH_MAX + 32], body_file[PATH_MAX + 64], cmd[PATH_MAX * 3 + 2200], path[1024];
+  snprintf(dir, sizeof dir, "%s/build/.worlds", app_dir);
+  for (const char *p = url; *p; p++)   // the URL goes into a shell command: only what a route's URL holds
+    if (!((*p >= 'a' && *p <= 'z') || (*p >= '0' && *p <= '9') || strchr("/?&=-_.", *p))) { respond(c->fd, 404, "Not Found", "application/json", "{\"error\":\"not found\"}", 21); drop(c); return; }
+  bool post = !strcmp(method, "POST");
+  if (!post && strcmp(method, "GET")) { respond(c->fd, 405, "Method Not Allowed", "application/json", "{\"error\":\"not found\"}", 21); drop(c); return; }
+  size_t plen = strcspn(url, "?");
+  if (plen >= sizeof path) plen = sizeof path - 1;
+  memcpy(path, url, plen); path[plen] = 0;
+  body_file[0] = 0;
+  if (post) {
+    bool told = false;
+    for (const char *p = c->buf; (p = strstr(p, "\r\n")) && p[2] && p[2] != '\r'; p += 2) if (!strncasecmp(p + 2, "Sec-Fetch-Site:", 15)) told = true;
+    if (told && !header_is(c->buf, "Sec-Fetch-Site", "same-origin")) {
+      const char *no = "{\"error\":\"Only this computer's own page may attach files.\"}";
+      respond(c->fd, 403, "Forbidden", "application/json", no, strlen(no)); drop(c); return;
+    }
+    const char *end = strstr(c->buf, "\r\n\r\n");
+    size_t head = end ? (size_t)(end - c->buf) + 4 : c->n, want = 0;
+    for (const char *p = c->buf; end && p < end; p++)
+      if ((p == c->buf || p[-1] == '\n') && !strncasecmp(p, "Content-Length:", 15)) want = (size_t)strtoul(p + 15, NULL, 10);
+    if (want > FILES_BODY_MAX) {
+      char no[160];
+      int k = snprintf(no, sizeof no, "{\"error\":\"That file is %zu MB. A file can be 25 MB at most.\"}", (want + (1u << 20) - 1) >> 20);
+      respond(c->fd, 422, "Refused", "application/json", no, (size_t)k); drop(c); return;
+    }
+    mkdir(dir, 0755);
+    snprintf(body_file, sizeof body_file, "%s/.files-%d", dir, (int)getpid());
+    FILE *f = fopen(body_file, "wb");
+    size_t got = c->n > head ? c->n - head : 0;
+    if (got > want) got = want;
+    bool ok = f && fwrite(c->buf + head, 1, got, f) == got;
+    double until = monotonic_ms() + 60000;
+    while (ok && got < want) {
+      char part[65536];
+      struct pollfd pf = {c->fd, POLLIN, 0};
+      double left = until - monotonic_ms();
+      if (left <= 0 || poll(&pf, 1, (int)left) <= 0) { ok = false; break; }
+      ssize_t k = recv(c->fd, part, want - got < sizeof part ? want - got : sizeof part, 0);
+      if (k < 0 && (errno == EAGAIN || errno == EINTR)) continue;
+      if (k <= 0 || fwrite(part, 1, (size_t)k, f) != (size_t)k) { ok = false; break; }
+      got += (size_t)k;
+    }
+    if (f) fclose(f);
+    if (!ok) { unlink(body_file); respond(c->fd, 400, "Bad Request", "application/json", "{\"error\":\"the file did not arrive whole\"}", 39); drop(c); return; }
+  }
+  snprintf(cmd, sizeof cmd, "'%s/tool.sh' '%s/../../metaverse-engine/tools/files-local.coax' '%s' %s '%s' %s%s%s 2>/dev/null", host_dir, host_dir, dir, post ? "POST" : "GET", path,
+           post ? "'" : "", body_file, post ? "'" : "");
+  FILE *run = popen(cmd, "r");
+  size_t cap = (26u << 20) + 4096, n = 0; char *out = malloc(cap); size_t k;
+  while (run && out && n < cap && (k = fread(out + n, 1, cap - n, run)) > 0) n += k;
+  int ended = run ? pclose(run) : -1;
+  if (post) unlink(body_file);
+  char *nl = out ? memchr(out, '\n', n < 200 ? n : 200) : NULL;
+  int status = nl ? atoi(out) : 0;
+  char type[96] = "text/plain; charset=utf-8";
+  const char *sp = nl ? memchr(out, ' ', (size_t)(nl - out)) : NULL;
+  if (sp && (size_t)(nl - sp - 1) < sizeof type) { memcpy(type, sp + 1, (size_t)(nl - sp - 1)); type[nl - sp - 1] = 0; }
+  if (ended != 0 || status < 100) respond(c->fd, 502, "Bad Gateway", "application/json", "{\"error\":\"the attachments tool did not answer\"}", 46);
+  else {
+    size_t at = (size_t)(nl - out) + 1;
+    respond(c->fd, status, status == 200 ? "OK" : "Refused", type, out + at, n - at);
+  }
+  free(out);
+  drop(c);
+}
 // Whether the request's body (Content-Length) is all in.
 static bool body_in(const client *c) {
   const char *end = strstr(c->buf, "\r\n\r\n");
@@ -663,6 +746,7 @@ static void handle_request(client *c) {
     }
   }
   if (!static_mode && !realm_request && sscanf(c->buf, "%7s %1023s", method, url) == 2 && assets_route(url)) { assets_local(c, method, url); return; }
+  if (!static_mode && !realm_request && sscanf(c->buf, "%7s %1023s", method, url) == 2 && files_route(url)) { files_local(c, method, url); return; }
   if (!static_mode && !realm_request && sscanf(c->buf, "%7s %1023s", method, url) == 2 && !strncmp(url, "/api/worlds/", 12)) { worlds_local(c, method, url); return; }
   if (!static_mode && !realm_request && !strcmp(method, "POST") && !strcmp(url, "/coaxial/code")) { code_local(c); return; }
   if (api_port && sscanf(c->buf, "%7s %1023s", method, url) == 2 && !strncmp(url, "/api/", 5)) { proxy_api(c); return; }

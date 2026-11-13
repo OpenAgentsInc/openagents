@@ -1,0 +1,155 @@
+// Attachments on this computer (GitHub #13468): what `coax serve` answers for /api/worlds/ID/files...
+// and /api/projects/SLUG/files on the dev server, so the editor's Files pane, the realm commands and
+// the agent work before anything is deployed. The lists are the shared code's
+// (metaverse-engine/editor/file-store.coax, which the API runs too); the bytes are files under DIR,
+// named by their SHA-256. Everyone on this computer is the admin: the dev server listens on
+// 127.0.0.1 only. Nothing about a file is logged.
+//   DIR/ID.files                a world's own attachments (world.files.v1)
+//   DIR/project.SLUG.files      a project's own attachments
+//   DIR/files/HASH              a file's bytes
+//   DIR/files/part.HASH         a file arriving in parts
+//
+//   coax/web/tool.sh metaverse-engine/tools/files-local.coax DIR METHOD URL [BODY_FILE]
+//   GET  /api/worlds/ID/files          the world's attachments, then its project's
+//   POST /api/worlds/ID/files          a world.file.* request
+//   GET  /api/worlds/ID/files/FID      an attachment's bytes
+//   GET  /api/projects/SLUG/files      the project's own attachments
+// It prints "STATUS CONTENT-TYPE", a newline, and the answer's bytes, and exits 0 when it answered.
+// tool.sh: stack-gib 1
+#import "Basic";
+#load "../editor/file-store.coax";
+#load "../../coax/lib/json/json.coax";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/args.coax";
+#load "../../coax/lib/sys/fs.coax";
+
+FL_BODY :: FW_FILE_MAX + FW_HEAD + 16;
+FlLocal :: struct {
+  body: [FL_BODY] u8; file: [FW_FILE_MAX + 1] u8;
+  w: [1] FlWork; a: [1] FwAsk;
+  wl: [FW_BYTES] u8; pl: [FW_BYTES] u8; json: [FW_WORDS * 2 + 64] u8;
+}
+FL_TEXT :: "text/plain; charset=utf-8";
+FL_PATH :: 900;
+fl_local_say :: (status: int, type: string, body: string) -> int { print("% %\n%", status, type, body); return 0; }
+fl_local_refuse :: (x: [] FlLocal, status: int, words: string) -> int {
+  o: [1] Jo; jo_start(o[..], x[0].json[..]);
+  jo_obj(o[..]); jo_key(o[..], "error"); jo_str(o[..], words); jo_end(o[..]);
+  return fl_local_say(status, "application/json", ifx o[0].bad then "{\"error\":\"refused\"}" else jo_text(o[..]));
+}
+fl_path :: (out: [] u8, a: string, b: string, c: string, d: string) -> string {
+  n := 0;
+  for piece: [4] string.[a, b, c, d] { if n + piece.count > out.count { return ""; } for ch, k: piece { out[n + k] = ch; } n += piece.count; }
+  return cast(string) out[0..<n];
+}
+// The two stored lists of a world (or a project's own, world ""), read.
+fl_local_load :: (x: [] FlLocal, dir: string, world: string, project: string) -> bool {
+  pb: [FL_PATH] u8; wn := 0; pn := 0;
+  if world.count > 0 { wn = fs_read(fl_path(pb[..], dir, "/", world, ".files"), x[0].wl[..]); }
+  if project.count > 0 { pn = fs_read(fl_path(pb[..], dir, "/project.", project, ".files"), x[0].pl[..]); }
+  return fl_load(x[0].w[..], world, project, cast(string) x[0].wl[0..<ifx wn < 0 then 0 else wn], cast(string) x[0].pl[0..<ifx pn < 0 then 0 else pn], 0, 0);
+}
+fl_local_save :: (x: [] FlLocal, dir: string) -> bool {
+  pb: [FL_PATH] u8; w := x[0].w[..];
+  world := fw_world_of(w[0].m[..]); project := fw_project_of(w[0].m[..]);
+  if world.count > 0 && !fs_write(fl_path(pb[..], dir, "/", world, ".files"), fl_stored(w, FW_SCOPE_WORLD, x[0].wl[..])) { return false; }
+  if project.count > 0 && !fs_write(fl_path(pb[..], dir, "/project.", project, ".files"), fl_stored(w, FW_SCOPE_PROJECT, x[0].pl[..])) { return false; }
+  return true;
+}
+// The time, in ms since 1970: what a file just written says of when it was written (a tool has no
+// wall clock of its own here).
+fl_local_now :: (dir: string) -> int {
+  pb: [FL_PATH] u8; path := fl_path(pb[..], dir, "/.now", "", "");
+  return ifx fs_write(path, "now\n") then fs_mtime_ns(path) / 1000000 else 0;
+}
+fl_local_list :: (x: [] FlLocal) -> int {
+  answer := fl_answer(x[0].w[..]);
+  return ifx answer.count == 0 then fl_local_refuse(x, 500, "not read") else fl_local_say(200, FL_TEXT, answer);
+}
+// A request's file, whole or a part: stored, and attached when it is whole.
+fl_local_attach :: (x: [] FlLocal, dir: string, body: string) -> int {
+  w := x[0].w[..]; a := x[0].a[..]; pb: [FL_PATH] u8; hb: [64] u8;
+  name := cast(string) a[0].name[0..<a[0].name_n];
+  if fl_admit(w, a[0].scope, name, a[0].bytes) != 200 { return fl_local_refuse(x, w[0].status, fl_words_of(w)); }
+  bytes := body[a[0].at..<body.count];
+  if a[0].from + bytes.count > a[0].bytes { return fl_local_refuse(x, 400, "More bytes came than the file has."); }
+  _ = fs_mkdir(fl_path(pb[..], dir, "/files", "", ""));
+  whole := bytes;
+  hash := "";
+  if a[0].from == 0 && bytes.count == a[0].bytes {
+    if !asset_hex(asset_id(bytes), hb[..]) { return fl_local_refuse(x, 500, "not read"); }
+    hash = cast(string) hb[..];
+    if a[0].hashed && cast(string) a[0].hash[..] != hash { return fl_local_refuse(x, 422, "The file's bytes are not the ones its SHA-256 names. Send it again."); }
+  } else {
+    // a part: it goes on the end of what has arrived, and the last one makes the file whole
+    want := cast(string) a[0].hash[..];
+    part := fl_path(pb[..], dir, "/files/part.", want, "");
+    got := ifx a[0].from == 0 then 0 else fs_size(part);
+    if a[0].from == 0 { _ = fs_remove(part); }
+    if got != a[0].from { o: [120] u8; n := fw_put(o[..], 0, "The file arrives in order: send it again from byte "); n = fw_put_int(o[..], n, ifx got < 0 then 0 else got); n = fw_put(o[..], n, "."); return fl_local_refuse(x, 409, cast(string) o[0..<n]); }
+    if a[0].from == 0 { v := fw_sniff(name, bytes[0..<ifx bytes.count < 16 then bytes.count else 16]); if v != FW_OK { return fl_local_refuse(x, 422, fw_words(v, name, a[0].bytes, 0, x[0].json[..])); } }
+    if !fs_append(part, bytes) { return fl_local_refuse(x, 500, "not saved"); }
+    got += bytes.count;
+    if got < a[0].bytes { return fl_local_say(200, FL_TEXT, fw_part_answer(x[0].json[..], want, got)); }
+    n := fs_read(part, x[0].file[..]);
+    _ = fs_remove(part);
+    if n != a[0].bytes || !asset_hex(asset_id(cast(string) x[0].file[0..<n]), hb[..]) || cast(string) hb[..] != want { return fl_local_refuse(x, 422, "The file's bytes are not the ones its SHA-256 names. Send it again."); }
+    whole = cast(string) x[0].file[0..<n]; hash = want;
+  }
+  if fl_attach(w, a, hash, whole[0..<ifx whole.count < 16 then whole.count else 16], fl_local_now(dir), "local") != 200 { return fl_local_refuse(x, w[0].status, fl_words_of(w)); }
+  path := fl_path(pb[..], dir, "/files/", hash, "");
+  if (!fs_exists(path) && !fs_write(path, whole)) || !fl_local_save(x, dir) { return fl_local_refuse(x, 500, "not saved"); }
+  return fl_local_list(x);
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  args: [1] Args;
+  if !args_load(args[..]) || args_count(args[..]) < 3 || args_count(args[..]) > 4 { tool_errln("usage: files-local DIR METHOD URL [BODY_FILE]"); return 2; }
+  xs := [1] FlLocal.[FlLocal.{}]; x := xs[..];
+  dir := args_at(args[..], 0); method := args_at(args[..], 1); url := fw_part(args_at(args[..], 2), '?', 0);
+  pb: [FL_PATH] u8;
+  _ = fs_mkdir(dir);
+  // /api/projects/SLUG/files: the project's own attachments
+  pr := "/api/projects/";
+  if url.count > pr.count && url[0..<pr.count] == pr {
+    slug := fw_part(url[pr.count..<url.count], '/', 0);
+    if method != "GET" || url != fl_path(pb[..], pr, slug, "/files", "") || !fw_project_ok(slug) { return fl_local_refuse(x, 404, "not found"); }
+    if !fl_local_load(x, dir, "", slug) { return fl_local_refuse(x, 500, "not read"); }
+    return fl_local_list(x);
+  }
+  root := "/api/worlds/";
+  if url.count <= root.count || url[0..<root.count] != root { return fl_local_refuse(x, 404, "not found"); }
+  rest := url[root.count..<url.count];
+  id := fw_part(rest, '/', 0); tail := rest[id.count..<rest.count];
+  fid := ifx tail.count == 6 + FW_ID + 1 && tail[0..<7] == "/files/" then tail[7..<tail.count] else "";
+  if !fw_world_ok(id) || (tail != "/files" && !fw_id_ok(fid)) { return fl_local_refuse(x, 404, "not found"); }
+  if !fl_local_load(x, dir, id, fw_project_for(id)) { return fl_local_refuse(x, 500, "not read"); }
+  w := x[0].w[..];
+  if method == "GET" && fid.count > 0 {
+    i := fl_file_at(w, fid);
+    if i < 0 { return fl_local_refuse(x, 404, "That attachment has no file here."); }
+    n := fs_read(fl_path(pb[..], dir, "/files/", fw_hash_of(w[0].m[..], i), ""), x[0].file[..]);
+    if n < 0 || n != w[0].m[0].f[i].bytes { return fl_local_refuse(x, 404, "That attachment's file is not here."); }
+    return fl_local_say(200, fw_type(fw_name_of(w[0].m[..], i)), cast(string) x[0].file[0..<n]);
+  }
+  if method == "GET" { return fl_local_list(x); }
+  if method != "POST" || fid.count > 0 { return fl_local_refuse(x, 404, "not found"); }
+  sent := ifx args_count(args[..]) == 4 then fs_size(args_at(args[..], 3)) else 0;
+  if sent > FL_BODY {
+    o: [200] u8; n := fw_put(o[..], 0, "That file is "); n = fw_put_int(o[..], n, fw_mb(sent)); n = fw_put(o[..], n, " MB. A file can be 25 MB at most.");
+    return fl_local_refuse(x, 422, cast(string) o[0..<n]);
+  }
+  n := ifx args_count(args[..]) == 4 then fs_read(args_at(args[..], 3), x[0].body[..]) else 0;
+  body := cast(string) x[0].body[0..<ifx n < 0 then 0 else n];
+  a := x[0].a[..];
+  if !fw_ask_read(a, body) { return fl_local_refuse(x, 400, "send a world.file.* request: a head, then a file's bytes for an attach"); }
+  if a[0].what == FW_Q_UPLOAD { return fl_local_refuse(x, 400, "This server takes a file in the request: send world.file.attach.v1."); }
+  if a[0].what == FW_Q_ATTACH { return fl_local_attach(x, dir, body); }
+  if fl_apply(w, a, fl_local_now(dir), "local") != 200 { return fl_local_refuse(x, w[0].status, fl_words_of(w)); }
+  if w[0].freed {
+    // the stored file goes with the last attachment that names it (the dev server has one world a project)
+    _ = fs_remove(fl_path(pb[..], dir, "/files/", cast(string) w[0].freed_hash[..], ""));
+  }
+  if !fl_local_save(x, dir) { return fl_local_refuse(x, 500, "not saved"); }
+  return fl_local_list(x);
+}
