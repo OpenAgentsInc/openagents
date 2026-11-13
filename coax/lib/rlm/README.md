@@ -176,6 +176,11 @@ each `sh` as a run (the store looks at its files again first, so a file the comm
 | `open_items()` | what stops `FINAL` now |
 | `recall(path, a=0, b=0)` | lines a to b of a file, numbered, from the store, under a line `[from memory, the file was not read: PATH A-B]`; the whole file when a and b are 0. No file is read. When the store does not have every one of those lines at the file's current content, a line that starts `recall:` says so and names the `lines` call to make |
 
+After 12 turns with no change in the memory, the root's next turn note ends with one note to make
+the first edit (`WM_NUDGE` in `coax/lib/agent/workmem/view.coax`, the same note Microcoder gets).
+On #13435 the first edit came at the next turn; the run still hit its cost limit
+(docs/research/2026-11-13-compiler-aware-runs.md).
+
 - **`recall` (#13444).** `known()` lists ranges, not text, so a run on a memory opened again used
   to read the files again. `recall` returns the text of a range the store has. It counts against
   the 512 reads a run and is counted in the report, but it is not a read of the file: no read row

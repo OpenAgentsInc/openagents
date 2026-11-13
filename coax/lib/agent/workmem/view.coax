@@ -57,6 +57,21 @@ wv_t_fill :: (t: [] WmT) {
   _ = wm_put_read(s, "c.coax", c, 5, 6, out);           // R5
 }
 
+// A run that has read for WM_NUDGE_STEPS steps (or turns) and changed nothing is told once to
+// make its first edit. On #13435 both of Microcoder's arms without it read for 45 to 52 steps and
+// edited nothing; with it the first edit came at the next step and both runs finished
+// (docs/research/2026-11-13-compiler-aware-runs.md).
+WM_NUDGE_STEPS :: 12;
+WM_NUDGE :: "You have taken 12 steps and changed nothing. What you have read is in memory and stays there. Make your first edit in the next step: the smallest change toward the task (one field, one row, one check), then run the task's check. Read more only for a line you must change. If something truly blocks an edit, say what blocks it.";
+wm_nudge_due :: (s: [] WmStore, steps: int) -> bool { return steps >= WM_NUDGE_STEPS && s[0].nchanges == 0; }
+
+#test "the note to edit is due from step 12 while nothing has changed" {
+  s: [1] WmStore; s[0].nchanges = 0;
+  #assert !wm_nudge_due(s[..], 11) && wm_nudge_due(s[..], 12) && wm_nudge_due(s[..], 40);
+  s[0].nchanges = 1;
+  #assert !wm_nudge_due(s[..], 12);
+}
+
 #test "known: findings, then reads, oldest first; the same bytes each time" #steps 100000000 {
   w: [1] WvT; t := w[0].t[..]; s := t[0].s[..];
   wv_t_fill(t);

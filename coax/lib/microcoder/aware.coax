@@ -30,13 +30,8 @@ MC_AW_ANS :: 11000;              // bytes of one compiler answer, at most: under
 MC_AW_CHECK :: 2400;             // bytes of the check an applied edit returns
 MC_AW_VIEW_MORE :: 200;          // bytes a view gains here: the line of a repeat read and the hash's line
 MC_AW_DECLS :: 80; MC_AW_USES :: 40; MC_AW_DIAGS :: 20; MC_AW_FX :: 24;   // records one answer shows at most
-MC_AW_SHOWN :: MC_AW_ANS + 1024;
-// Steps a run with the memory may take with no change in the store before it is told, once, to
-// make its first edit. On #13435 both modes read for 45 to 52 steps and edited nothing
-// (docs/research/2026-11-13-compiler-aware-runs.md).
-MC_AW_NUDGE_STEPS :: 12;
+MC_AW_SHOWN :: MC_AW_ANS + 1024;    // an edit's result (its lines, the hash, the check), or a declaration show reads
 MC_AW_ACT :: 16;                 // files one action's edits are tied to the action's start for, at most
-MC_AW_NUDGE :: "You have taken 12 steps and changed nothing. What you have read is in memory and stays there. Make your first edit in the next step: the smallest change toward the task (one field, one row, one check), then run the task's check. Read more only for a line you must change. If something truly blocks an edit, say what in reply and ask.";    // an edit's result (its lines, the hash, the check), or a declaration show reads
 
 McAware :: struct {
   intel: bool; memory: bool;
@@ -550,12 +545,12 @@ mc_aw_render :: (aw: [] McAware, l: [] McLoop) {
   mc_memory_set(l[0].st[..], wm_view_findings(s, MC_MEM_FINDINGS, aw[0].v1[..]), wm_view_changed(s, MC_MEM_CHANGED, aw[0].v2[..]), wmf_view_open(aw[0].wm[..], MC_MEM_OPEN, aw[0].v3[..]));
 }
 
-// Once, after MC_AW_NUDGE_STEPS steps with no change in the store: a note to make the first
-// edit. True when it was given now.
+// Once, after WM_NUDGE_STEPS steps with no change in the store (workmem/view.coax): a note to
+// make the first edit. True when it was given now.
 mc_aw_nudge :: (aw: [] McAware, l: [] McLoop) -> bool {
-  if !aw[0].memory || aw[0].nudged || l[0].steps < MC_AW_NUDGE_STEPS || aw[0].wm[0].s[0].nchanges > 0 { return false; }
+  if !aw[0].memory || aw[0].nudged || !wm_nudge_due(aw[0].wm[0].s[..], l[0].steps) { return false; }
   aw[0].nudged = true;
-  mc_note(l[0].st[..], MC_AW_NUDGE);
+  mc_note(l[0].st[..], WM_NUDGE);
   return true;
 }
 

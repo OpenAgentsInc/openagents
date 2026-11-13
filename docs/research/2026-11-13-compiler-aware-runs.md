@@ -31,7 +31,26 @@ Repeats are views of a path and range already viewed in the run. Edits count
 each edit an action asked for. The memory's own count of repeat reads
 (lines it already held, unchanged) was 28 of 65 in C and 24 of 47 in D.
 
-Total spend: $22.24.
+Total spend for these four: $22.24.
+
+### The RLM coder on the same task
+
+`coax/lib/rlm/code.coax run --intel --memory`, Carbon at low for every call
+(root and sub-calls), `--max-usd 5`, the same task file and tree.
+
+| Run | Build | Ending | Turns | Cost | Wall | Edits | Cached input | Compiler questions | `recall` |
+| --- | --- | --- | ---: | ---: | ---: | ---: | --- | ---: | ---: |
+| E | 34d87d0ca6 | cost limit | 34 | $5.02 | 469 s | 0 | 1.06M of 2.20M (48%) | 4 | 54 |
+| F | E + the note at turn 12 | cost limit | 34 | $4.74 | 717 s | 1 | 0.84M of 1.92M (44%) | 6 | 7 |
+
+E is the RLM coder's fourth failure on this issue, the first with both
+flags. In F the note came at turn 12 and the first edit (two fields on
+`CliCommand`) at turn 13, as in Microcoder; then it read for 20 more turns
+and edited nothing else. The note starts an edit in this loop too, but did
+not get the run finished. Unlike the earlier RLM runs (#13444), these got
+cache hits: 44 to 48% of input was cached.
+
+Spend for E and F: $9.76. All six runs: $32.00.
 
 ### What the traces showed
 
@@ -74,7 +93,7 @@ onto `effect == "read"`, which the issue implies but does not ask for.
 | Change | Commit | Kept because |
 | --- | --- | --- |
 | The two modes in the JSON-action loop, and the worker's `"intel"`, `"memory"` | 6d88d1bd64 (restored in c046166119 after 0f2d65714d reverted it) | They are what C and D ran on; off by default, so a run without them is unchanged |
-| The note at step 12 with no change (memory mode) | e3a3d20afc | No edit in 45 to 52 calls without it (A, B); first edit at call 13 with it (C, D) |
+| The note at step 12 with no change (memory mode) | e3a3d20afc; moved to `workmem/view.coax` and given to the RLM coder in the next commit | No edit in 45 to 52 calls without it (A, B); first edit at call 13 with it (C, D). In the RLM coder: first edit at turn 13 (F) against none (E), but no finish |
 | An edit's `seen` may be the hash at the action's start | e3a3d20afc | 12 of 13 refusals in C were this; 0 in D |
 
 ## Measured, and still a guess
@@ -85,6 +104,7 @@ runs that had it.
 
 Still a guess:
 
+- **That the note helps the RLM coder pass.** F edited once and stalled.
 - **That the note is what made the difference.** C and D are one issue and
   two runs; A and B are one run each. The note only exists in the memory
   mode, so there is no arm with the note and no modes.

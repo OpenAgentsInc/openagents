@@ -83,7 +83,7 @@ RcEnv :: struct {
   read_turn: [WM_READS] int;
   mem_reads: int; repeats: int; turn_reads: int; turn_repeats: int; notes: int; finish_refused: int;
   task: [1] WmTask;              // the task's backtick spans (workmem/task.coax)
-  view: [RC_VIEW] u8; notel: [160] u8; unproven: [RC_VIEW] u8; nunproven: int;
+  view: [RC_VIEW] u8; notel: [160] u8; nudged: bool; nudge_turn: int; unproven: [RC_VIEW] u8; nunproven: int;
 }
 RC_DECLS :: 80; RC_USES :: 40; RC_DIAGS :: 20; RC_FX :: 24; RC_CHECKS :: 40;   // records one compiler answer shows at most
 
@@ -420,6 +420,10 @@ rc_step :: (env: [] RcEnv, r: [] Rs, st: [] RlmState) {
   was := v[0].phase; depth := v[0].depth;
   if was == L_CALL { env[0].turn_reads = 0; env[0].turn_repeats = 0; }
   st[0].note_line = ifx was == L_BLOCK then rc_note_line(env) else "";
+  // once, at the root, after WM_NUDGE_STEPS turns with no change: the note to make the first edit (workmem/view.coax)
+  // (a block's steps repeat while it waits on effects, so the note stays with its turn)
+  if was == L_BLOCK && depth == 0 && !env[0].nudged && wm_nudge_due(env[0].wm[0].s[..], v[0].turn) { env[0].nudged = true; env[0].nudge_turn = v[0].turn; }
+  if was == L_BLOCK && depth == 0 && env[0].nudged && v[0].turn == env[0].nudge_turn { st[0].note_line = rc_nudge_line(env, r); }
   rlm_step(r, st);
   if st[0].nlev == t + 1 && depth == 0 && (was == L_PASS || was == L_CALL) && v[0].phase == L_END && v[0].answer.count > 0 && st[0].stop == RLM_OK { rc_finish(env, r, st, v, was); }
 }
@@ -833,6 +837,9 @@ rc_note_line :: (env: [] RcEnv) -> string {
   return cast(string) b[0..<n];
 }
 
+// The note line with WM_NUDGE after it, in the run's strings.
+rc_nudge_line :: (env: [] RcEnv, r: [] Rs) -> string { return rs_cat(r, rs_cat(r, rc_note_line(env), "\n"), WM_NUDGE); }
+
 // The root gave FINAL (the level v is at L_END with an answer; was: its phase before). With a
 // check of the task still open, it is refused: the answer goes, the model is told what is open,
 // and its next turn comes. After RC_REFUSALS refusals it stands, and the run's report says what
@@ -950,7 +957,7 @@ rc_init :: (m: [] RcMem, limits: RlmLimits, cwd: string, profile: string, manage
   m[0].r[0].env_more = m[0].none[0..<0];
   e[0].intel = false; e[0].memory = false; e[0].coax = ""; e[0].ix_state = 0;
   e[0].asked = 0; e[0].unanswered = 0; e[0].stale_edits = 0;
-  e[0].mem_reads = 0; e[0].repeats = 0; e[0].turn_reads = 0; e[0].turn_repeats = 0; e[0].notes = 0; e[0].finish_refused = 0; e[0].task[0].n = 0; e[0].nunproven = 0;
+  e[0].mem_reads = 0; e[0].repeats = 0; e[0].turn_reads = 0; e[0].turn_repeats = 0; e[0].notes = 0; e[0].nudged = false; e[0].finish_refused = 0; e[0].task[0].n = 0; e[0].nunproven = 0;
   for i: 0..<RC_XOPS.count { e[0].xops[i] = 0; }
   for i: 0..<WM_READS { e[0].read_turn[i] = 0; }
 }
@@ -1167,7 +1174,7 @@ rc_names :: (text: string, name: string) -> bool {
   #assert rs_count_sub(RC_INTEL_NOTE, "{") == 0 && rs_count_sub(RC_MEMORY_NOTE, "{") == 0 && rs_count_sub(RC_SYSTEM, "{WORKER}") == 1;
 }
 
-#test "a check's record: four fields, and no byte that would part them" {
+#test "a check's record: four fields, and no byte that would part them" #steps 40000000 {
   b: [64] u8; msg := [3] u8.['a', 31, 'b'];
   n := rc_record(b[..], 0, "E1", 12, "in f: ", cast(string) msg[..], "fix");
   #assert n == 20 && b[2] == 31 && cast(string) b[3..<5] == "12" && b[5] == 31 && cast(string) b[6..<15] == "in f: a b" && b[15] == 31 && cast(string) b[16..<19] == "fix" && b[19] == 30;
@@ -1506,6 +1513,16 @@ rc_selftest_more :: (profile: string, coax: string) -> int {
   line = rc_report(m, ln[..], lbuf[..], 1000);
   rc_expect_true(c[..], "the report line: finishes refused and the unproven check", rc_has(line, "\"finishes_refused\":2,") && rc_has(line, "\"unproven\":[\"check sh test.sh: check passed before the tree changed; run it again: sh test.sh\"]}") && !rc_has(line, "\"intel\""), line);
   print("%\n", line);
+  // twelve turns that read and change nothing: one note to make the first edit (workmem/view.coax WM_NUDGE)
+  roots6: [14] string;
+  for i: 0..<13 { roots6[i] = "```repl\nprint(lines('main.coax', 1, 1))\n```"; }
+  roots6[13] = "FINAL(read)";
+  m6b: [FS_PATH_MAX] u8; mem6 := fs_join(outside, "mem6", m6b[..]);
+  why = rc_scripted_more(m, RC_LIMITS, cwd, profile, roots6[..], false, "", mem6);
+  rc_drive(m[0].env[..], m[0].r[..], m[0].st[..], "Read main.coax.", false);
+  st = m[0].st[..]; env = m[0].env[..];
+  tr = cast(string) st[0].trace[0..<st[0].ntr];
+  rc_expect_true(c[..], "twelve turns with no change bring one note to make the first edit", why == "" && st[0].answer == "read" && env[0].nudged && env[0].nudge_turn == 12 && rc_said(st, WM_NUDGE), tr);
   // recall: a new run on the first memory's folder gets lines the earlier run read, and no file is read
   roots5 := [2] string.["```repl\nprint(recall('main.coax', 2, 3))\nprint(recall('./main.coax', 4, 9))\nprint(recall('main.coax'))\nprint(recall('shapes.coax', 1, 1))\nprint(recall('clock.coax', 1, 2))\nprint(recall('main.coax', 9, 12))\n```", "FINAL(recalled)"];
   why = rc_scripted_more(m, RC_LIMITS, cwd, profile, roots5[..], false, "", mem1);
