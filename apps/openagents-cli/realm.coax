@@ -8,7 +8,8 @@
 #load "../../metaverse-engine/editor/made.coax";   // a made or forked realm's answer and a fork's body (made.proto): one codec
 #load "../../metaverse-engine/editor/record.coax";   // mine, visibility, publish and the publish record (record.proto): one codec
 #load "../../coax/lib/text/base64.coax";
-#load "realm-world.coax";   // the rows that edit a world with an ID, and the one result every operation answers
+#load "realm-world.coax";
+#load "realm-files.coax";   // the rows for a world's attachments and its project's (#13468)   // the rows that edit a world with an ID, and the one result every operation answers
 
 REALM_DOC_MAX :: 368640;
 REALM_DOC_BODY :: 524288;
@@ -625,6 +626,7 @@ realm_main :: (a: [] Args, r: [] Rep, profile: string, verb: string) -> int {
     if again >= 0 { return again; }
   }
   if c.route == "world" { return rw_main(a, r, profile, verb); }
+  if c.route == "files" { return rf_main(a, r, profile, verb); }
   code := realm_run(a, r, profile, verb);
   if keyed {
     w := [1] RwWork.[RwWork.{}];

@@ -420,7 +420,7 @@ cli_edit_read_moves :: (spec: string, d: [] ForgeDoc) -> bool #effects(all) {
 #load "../../coax/lib/sys/args.coax";
 
 #test "the realm catalogue covers reads and revisioned writes with unique verbs" {
-  #assert REALM_COMMANDS.count == 54;
+  #assert REALM_COMMANDS.count == 59;
   for i: 0..<REALM_COMMANDS.count {
     c := REALM_COMMANDS[i];
     #assert c.domain == "realm" && c.verb.count > 0 && c.help.count > 0;
@@ -500,14 +500,14 @@ cli_edit_read_moves :: (spec: string, d: [] ForgeDoc) -> bool #effects(all) {
 }
 
 #test "realm routes and methods match the published command contract" {
-  routes := [54] string.["/mine","","/plan","/visibility","/publish","/fork","shot","/doc","/asks","/proposals","/panes","/switch","/revise","/asks","/asks/:id/delete","/asks/:id/done","/rows/:row/delete","/save","/save","/save","/save","/place","/settings","/lore","/quest","/proposals/:id/accept","/proposals/:id/decline","/undo","/redo","batch","seat","seat","seat","seat","seat","seat","seat","world","world","world","world","world","world","world","world","world","world","world","world","world","world","world","world","world"];
+  routes := [59] string.["/mine","","/plan","/visibility","/publish","/fork","shot","/doc","/asks","/proposals","/panes","/switch","/revise","/asks","/asks/:id/delete","/asks/:id/done","/rows/:row/delete","/save","/save","/save","/save","/place","/settings","/lore","/quest","/proposals/:id/accept","/proposals/:id/decline","/undo","/redo","batch","seat","seat","seat","seat","seat","seat","seat","world","world","world","world","world","world","world","world","world","world","world","world","world","world","world","world","world","files","files","files","files","files"];
   for i: 0..<REALM_COMMANDS.count {
     #assert REALM_COMMANDS[i].route == routes[i];
     method := ifx i == 6 || i >= 29 then "LOCAL" else ifx i == 0 || i == 1 || (i >= 7 && i <= 10) then "GET" else "POST";
     #assert REALM_COMMANDS[i].method == method;
   }
   #assert REALM_COMMANDS[rc_find("new")].arguments == "newwords";
-  for c: REALM_COMMANDS { #assert c.optional == ifx c.verb == "shot" || c.verb == "use" then 1 else 0; }
+  for c: REALM_COMMANDS { #assert c.optional == ifx c.verb == "shot" || c.verb == "use" || c.verb == "file-read" then 1 else 0; }
 }
 
 #test "text fields and yaw use their full boundary profiles" {
@@ -698,7 +698,7 @@ rc_effect_note :: (c: CliCommand, out: [] u8) -> string #effects(all) {
 CliCommand :: struct { domain: string = "realm"; verb: string; effect: string; approval: string; method: string; route: string; arguments: string; optional: int; flags: string; usage: string; help: string; }
 // The seat rows (route "seat") drive one realm open in headless Chrome on this computer, as a
 // visitor (apps/openagents-cli/realm-play.coax, docs/metaverse/realm-seat.md).
-REALM_COMMANDS :: [54] CliCommand.[
+REALM_COMMANDS :: [59] CliCommand.[
   CliCommand.{verb="list",effect="read",approval="none",method="GET",route="/mine",help="your realms"},
   CliCommand.{verb="show",effect="read",approval="none",method="GET",route="",arguments="slug",usage="SLUG",help="the realm's spec and page"},
   CliCommand.{verb="new",effect="spend",approval="owner",method="POST",route="/plan",arguments="newwords",flags="--from:id|--style:style|--time:time|--camera:camera|--ground:ground",usage="\"WORDS\" [--style S] [--time T] [--camera C] [--ground G] | --from PLAN",help="plan words and make a private realm; --from PLAN makes an existing plan"},
@@ -752,7 +752,13 @@ REALM_COMMANDS :: [54] CliCommand.[
   CliCommand.{verb="world-foes",effect="read",approval="none",method="LOCAL",route="world",arguments="slug",flags="--lane:lane",usage="ID [--lane dev|live]",help="the world's actors by number and name, each one's plan at dawn, day, dusk and night (what it does, its route, speed, notice range and what it does on noticing), the editor's time of day, and the places a route may name"},
   CliCommand.{verb="world-plan",effect="write",approval="owner",method="LOCAL",route="world",arguments="slug|foe|daytime|act",flags="--route:route|--speed:speed|--notice:notice|--on:onnotice|--rev:id|--shot:shotfile",usage="ID FOE WHEN DO [--route \"X Z, X Z\"] [--speed CM/S] [--notice CM] [--on chase|call|flee|ignore] [--rev N] [--dry-run] [--key K] [--shot OUT.png]",help="set what actor FOE does at WHEN (dawn, day, dusk, night): stand, dance, sleep, guard, patrol, wander or follow; without --route its route is cut or grown to fit; one edit, one undo step"},
   CliCommand.{verb="world-route",effect="write",approval="owner",method="LOCAL",route="world",arguments="slug|foe|daytime|route",flags="--rev:id|--shot:shotfile",usage="ID FOE WHEN \"X Z, X Z\" [--rev N] [--dry-run] [--key K] [--shot OUT.png]",help="set actor FOE's route at WHEN: X Z points in centimetres joined by commas (patrol 2 to 8, a loop ends where it starts; guard the post then where it looks; wander \"X Z R\"; follow \"foe N\")"},
-  CliCommand.{verb="world-time",effect="write",approval="owner",method="LOCAL",route="world",arguments="slug|clock",flags="--rev:id|--shot:shotfile",usage="ID story|dawn|day|dusk|night [--rev N] [--dry-run] [--key K] [--shot OUT.png]",help="the editor's time of day: the actors keep it and the light is it (story: the run's own clock); play is not changed"}
+  CliCommand.{verb="world-time",effect="write",approval="owner",method="LOCAL",route="world",arguments="slug|clock",flags="--rev:id|--shot:shotfile",usage="ID story|dawn|day|dusk|night [--rev N] [--dry-run] [--key K] [--shot OUT.png]",help="the editor's time of day: the actors keep it and the light is it (story: the run's own clock); play is not changed"},
+  // a world's attachments and its project's (realm-files.coax, #13468): reference files, never in a pack
+  CliCommand.{verb="files",effect="read",approval="none",method="LOCAL",route="files",arguments="slug",usage="ID",help="the world's attachments, then its project's: each one's FID, scope, kind, name, size, note and tags, and the limits (25 MB a file, 200 files and 1 GB a project)"},
+  CliCommand.{verb="file-read",effect="read",approval="none",method="LOCAL",route="files",arguments="slug|fileid|file",optional=1,usage="ID FID [OUT]",help="an attachment: a Markdown or text document is printed; an image or PDF is saved to OUT (default: its name) for you to open"},
+  CliCommand.{verb="attach",effect="write",approval="owner",method="LOCAL",route="files",arguments="slug|file",flags="--scope:scope|--name:fname|--note:note|--tags:tags",usage="ID FILE|URL [--scope world|project] [--name NAME] [--note \"WORDS\"] [--tags a,b]",help="attach a PNG, JPEG, WebP or GIF image, a Markdown, text or PDF document, or a link, to the world (default) or its project, with a note and tags the agent reads first"},
+  CliCommand.{verb="file-note",effect="write",approval="owner",method="LOCAL",route="files",arguments="slug|fileid",flags="--scope:scope|--name:fname|--note:note|--tags:tags",usage="ID FID [--note \"WORDS\"] [--tags a,b] [--name NAME] [--scope world|project]",help="change an attachment's note, tags, name (a file keeps its extension) or scope; what you leave out stays"},
+  CliCommand.{verb="detach",effect="destructive",approval="confirm",method="LOCAL",route="files",arguments="slug|fileid",flags="--yes:bool",usage="ID FID [--yes]",help="remove an attachment and its stored file"}
 ];
 
 rc_find :: (verb: string) -> int #effects(all) { for i: 0..<REALM_COMMANDS.count { if REALM_COMMANDS[i].verb == verb { return i; } } return -1; }
@@ -807,6 +813,12 @@ rc_bound :: (kind: string) -> CliBound #effects(all) {
   if kind == "route" { return CliBound.{min=3,max=160}; }
   if kind == "speed" { return CliBound.{min=0,max=800}; }
   if kind == "notice" { return CliBound.{min=0,max=3000}; }
+  // a world's attachments (realm-files.coax; metaverse-engine/editor/file-wire.coax)
+  if kind == "fileid" { return CliBound.{min=16,max=16}; }
+  if kind == "scope" { return CliBound.{min=5,max=7}; }
+  if kind == "fname" { return CliBound.{min=1,max=100}; }
+  if kind == "note" { return CliBound.{min=0,max=600}; }
+  if kind == "tags" { return CliBound.{min=0,max=400}; }
   return CliBound.{};
 }
 rc_value :: (kind: string, value: string) -> bool #effects(all) {
@@ -863,6 +875,9 @@ rc_value :: (kind: string, value: string) -> bool #effects(all) {
   if kind == "act" { for w: CLI_PLAN_DO { if w == value { return true; } } return false; }
   if kind == "onnotice" { for w: CLI_PLAN_ON { if w == value { return true; } } return false; }
   if kind == "route" { for c: value { if c < 32 || c == 127 || c == '|' { return false; } } }
+  if kind == "fileid" { if value.count != 16 { return false; } for c: value { if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) { return false; } } }
+  if kind == "scope" { return value == "world" || value == "project"; }
+  if kind == "fname" { for c: value { if c < 32 || c == 127 || c == '/' { return false; } } }
   b := rc_bound(kind);
   return b.max > 0 && value.count >= b.min && value.count <= b.max;
 }
@@ -1147,6 +1162,11 @@ rc_why :: (kind: string) -> string #effects(all) {
   if kind == "route" { return "a route is 3 to 160 bytes: \"X Z\" points in whole centimetres joined by commas, \"X Z R\" for wander, \"foe N\" for follow"; }
   if kind == "speed" { return "--speed is whole centimetres a second from 0 to 800"; }
   if kind == "notice" { return "--notice is whole centimetres from 0 to 3000 (0: it never notices)"; }
+  if kind == "fileid" { return "FID is an attachment's 16 hex digits (realm files ID lists them)"; }
+  if kind == "scope" { return "--scope is world or project"; }
+  if kind == "fname" { return "--name is 1 to 100 bytes on one line, with no slash"; }
+  if kind == "note" { return "--note is at most 600 bytes; we keep the first 200, on one line"; }
+  if kind == "tags" { return "--tags is at most 400 bytes: words joined by commas; we keep 8, as a-z, 0-9 and -"; }
   return "an argument is outside its bounds (openagents help)";
 }
 

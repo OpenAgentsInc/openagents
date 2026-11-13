@@ -1,0 +1,214 @@
+// The realm commands for a world's attachments and its project's (GitHub #13468;
+// docs/protocol/world-files-v1.md). They are rows of REALM_COMMANDS (route "files"), so the CLI, the
+// realm_* MCP tools and `coax drive` take them from one table. A local agent reads attachments this
+// way; a hosted turn opens them through its plan.
+//   realm files ID                       the world's attachments, then its project's
+//   realm file-read ID FID [OUT]         a document's text, or the file saved to OUT (default: its name)
+//   realm attach ID FILE|URL [--scope world|project] [--name NAME] [--note N] [--tags a,b]
+//   realm file-note ID FID [--note N] [--tags a,b] [--name NAME] [--scope world|project]
+//   realm detach ID FID --yes            removes it, and its stored file
+// A file goes in parts of 384 KB, each a world.file.attach.v1 request that names the whole file's
+// SHA-256, so a 25 MB file needs no request larger than one part. --origin http://127.0.0.1:PORT
+// sends them to `coax serve`, which answers the same routes on this computer.
+#load "../../metaverse-engine/editor/file-wire.coax";
+#load "../../coax/lib/crypto/sha256-memory.coax";
+
+RF_PART :: 393216;       // a part of a file sent
+RF_READ :: FW_READ_PART; // a part of a file read (?at=N answers this many at most)
+RfWork :: struct {
+  l: [1] FwList; scratch: [FW_BYTES] u8; out: [RF_READ + 4096] u8;
+  body: [RF_PART + FW_HEAD] u8; head: [FW_HEAD] u8; path: [400] u8; words: [600] u8; tags: [FW_TAGS] u8; note: [FW_NOTE + 8] u8;
+}
+rf_path :: (slug: string, tail: string, extra: string, out: [] u8) -> string {
+  n := forge_put(out,0,"/api/worlds/"); n = forge_put(out,n,slug); n = forge_put(out,n,"/files"); n = forge_put(out,n,tail); n = forge_put(out,n,extra);
+  return ifx n < 0 then "" else cast(string) out[0..<n];
+}
+// The world's list, read into w.l.
+rf_list :: (a: [] Args, r: [] Rep, profile: string, slug: string, w: [] RfWork) -> int {
+  res := api_call(a, profile, "GET", rf_path(slug, "", "", w[0].path[..]), "", w[0].out[..]);
+  if !api_ok(res) { return api_fail(r, res, cast(string) w[0].out[0..<res.n]); }
+  if !fw_read(w[0].l[..], cast(string) w[0].out[0..<res.n], w[0].scratch[..]) { return fail(r, EXIT_FAIL, "the answer is not a world.files.v1 list"); }
+  return EXIT_OK;
+}
+// A list answered, printed: with --json the list's own bytes as "files"; else a line an attachment.
+rf_print :: (r: [] Rep, w: [] RfWork) -> int {
+  l := w[0].l[..];
+  if r[0].json {
+    rep_str(r, "world", fw_world_of(l)); rep_str(r, "project", fw_project_of(l));
+    rep_int(r, "count", l[0].count); rep_int(r, "bytes", l[0].bytes);
+    if l[0].did > 0 { rep_str(r, "did", FW_DID[l[0].did]); rep_str(r, "id", cast(string) l[0].did_id[..]); }
+    rep_str(r, "files", fw_write(l, w[0].scratch[..]));
+    return rep_done(r, EXIT_OK);
+  }
+  if l[0].did > 0 { print("% %\n", FW_DID[l[0].did], cast(string) l[0].did_id[..]); }
+  if l[0].bytes < 1048576 { print("% attachment(s) in the project, % KB", l[0].count, (l[0].bytes + 1023) / 1024); } else { print("% attachment(s) in the project, % MB", l[0].count, fw_mb(l[0].bytes)); }
+  print(" of % MB; % files at most, % MB a file\n", fw_mb(FW_TOTAL_MAX), FW_FILES_MAX, fw_mb(FW_FILE_MAX));
+  for i: 0..<l[0].n {
+    f := l[0].f[i];
+    print("% % % %", fw_id_of(l, i), FW_SCOPES[f.scope], FW_KINDS[f.kind], fw_name_of(l, i));
+    if f.kind == FW_LINK_KIND { print(" <%>", fw_url_of(l, i)); } else { print(" (% KB)", (f.bytes + 1023) / 1024); }
+    if f.note_n > 0 { print(" -- %", fw_note_of(l, i)); }
+    if f.tags_n > 0 { print(" [%]", fw_tags_of(l, i)); }
+    print("\n");
+  }
+  return EXIT_OK;
+}
+rf_scope :: (a: [] Args, verb: string, fallback: int) -> int {
+  s := rc_option(a, verb, "--scope", "");
+  return ifx s == "project" then FW_SCOPE_PROJECT else ifx s == "world" then FW_SCOPE_WORLD else fallback;
+}
+// A local file's SHA-256 and size, read in parts.
+RfHash :: struct { ok: bool; bytes: int; hex: [64] u8; }
+rf_hash :: (path: string, w: [] RfWork) -> RfHash {
+  h: RfHash; state: [SHA_STATE_BYTES] u8; digest: [32] u8;
+  if sha256_init(state[..]) != SHA_OK { return h; }
+  at := 0;
+  while true {
+    n := fs_read_at(path, at, w[0].body[0..<RF_PART]);
+    if n < 0 { return h; }
+    if n == 0 { break; }
+    if sha256_update(state[..], w[0].body[0..<n]) != SHA_OK { return h; }
+    at += n;
+    if at > FW_FILE_MAX { h.bytes = at; return h; }
+  }
+  if sha256_final(state[..], digest[..]) != SHA_OK { return h; }
+  hexd := "0123456789abcdef";
+  for k: 0..<32 { h.hex[k * 2] = hexd[cast(int) digest[k] >> 4]; h.hex[k * 2 + 1] = hexd[cast(int) digest[k] & 15]; }
+  h.bytes = at; h.ok = true;
+  return h;
+}
+rf_attach :: (a: [] Args, r: [] Rep, profile: string, slug: string, w: [] RfWork) -> int {
+  verb := "attach";
+  source := positional(a, 3);
+  scope := rf_scope(a, verb, FW_SCOPE_WORLD);
+  note := fw_note_clean(rc_option(a, verb, "--note", ""), w[0].note[..]);
+  tags := fw_tags_clean(rc_option(a, verb, "--tags", ""), w[0].tags[..]);
+  name := rc_option(a, verb, "--name", "");
+  if fw_url_ok(source) {
+    title := ifx name.count > 0 then name else source[0..<ifx source.count > FW_NAME then FW_NAME else source.count];
+    body := fw_link_head(w[0].head[..], scope, source, title, note, tags);
+    if body.count == 0 || !fw_line_ok(title, FW_NAME) { return fail(r, EXIT_USAGE, "--name is the link's title: 1 to 100 bytes on one line"); }
+    res := api_call(a, profile, "POST", rf_path(slug, "", "", w[0].path[..]), body, w[0].out[..]);
+    if !api_ok(res) { return api_fail(r, res, cast(string) w[0].out[0..<res.n]); }
+    if !fw_read(w[0].l[..], cast(string) w[0].out[0..<res.n], w[0].scratch[..]) { return fail(r, EXIT_FAIL, "the answer is not a world.files.v1 list"); }
+    return rf_print(r, w);
+  }
+  if name.count == 0 { name = fs_base(source); }
+  // what the server would refuse, said before anything is sent
+  size := fs_size(source);
+  if size < 0 { return fail(r, EXIT_NOT_FOUND, "FILE is not a file this computer has (or URL is not an http or https address)"); }
+  if !fw_name_ok(name) { return fail(r, EXIT_USAGE, "--name is 1 to 100 bytes on one line, with no slash"); }
+  v := fw_admit(name, size, 0, 0);
+  if v != FW_OK { return fail(r, EXIT_USAGE, fw_words(v, name, size, 0, w[0].words[..])); }
+  h := rf_hash(source, w);
+  if !h.ok || h.bytes != size { return fail(r, EXIT_FAIL, "FILE could not be read whole"); }
+  hash := cast(string) h.hex[..];
+  at := 0;
+  while true {
+    n := ifx size - at < RF_PART then size - at else RF_PART;
+    head := fw_attach_head(w[0].head[..], scope, size, at, name, note, tags, hash);
+    if head.count == 0 { return fail(r, EXIT_USAGE, "the name, note or tags do not fit a request's head"); }
+    k := forge_put(w[0].body[..], 0, head);
+    got := fs_read_at(source, at, w[0].body[k..<k + n]);
+    if got != n { return fail(r, EXIT_FAIL, "FILE changed while it was sent"); }
+    res := api_call(a, profile, "POST", rf_path(slug, "", "", w[0].path[..]), cast(string) w[0].body[0..<k + n], w[0].out[..]);
+    if !api_ok(res) { return api_fail(r, res, cast(string) w[0].out[0..<res.n]); }
+    answer := cast(string) w[0].out[0..<res.n];
+    at += n;
+    p := fw_part_read(answer);
+    if p.ok {
+      if p.got != at || at >= size { return fail(r, EXIT_FAIL, "the server holds another part of the file than was sent"); }
+      continue;
+    }
+    if !fw_read(w[0].l[..], answer, w[0].scratch[..]) { return fail(r, EXIT_FAIL, "the answer is not a world.files.v1 list"); }
+    return rf_print(r, w);
+  }
+  return EXIT_FAIL;
+}
+// An attachment's bytes, read in parts: printed (a text document, with no OUT) or saved to OUT.
+rf_read :: (a: [] Args, r: [] Rep, profile: string, slug: string, w: [] RfWork) -> int {
+  fid := positional(a, 3);
+  code := rf_list(a, r, profile, slug, w);
+  if code != EXIT_OK { return code; }
+  l := w[0].l[..]; i := fw_find(l, fid);
+  if i < 0 { return fail(r, EXIT_NOT_FOUND, "FID is not one of the world's attachments (realm files ID lists them)"); }
+  f := l[0].f[i];
+  if f.kind == FW_LINK_KIND {
+    if r[0].json { rep_str(r, "name", fw_name_of(l, i)); rep_str(r, "url", fw_url_of(l, i)); return rep_done(r, EXIT_OK); }
+    print("% is a link: %\n", fw_name_of(l, i), fw_url_of(l, i)); return EXIT_OK;
+  }
+  name := fw_name_of(l, i);
+  out := positional(a, 4);
+  text := out.count == 0 && fw_is_text(name);
+  if !text && out.count == 0 { out = name; }
+  if !text && fs_exists(out) && !fs_remove(out) { return fail(r, EXIT_FAIL, "OUT is there and can't be replaced"); }
+  at := 0;
+  while at < f.bytes {
+    q: [40] u8; qn := forge_put(q[..], 0, "?at="); qn = fw_put_int(q[..], qn, at);
+    res := api_call(a, profile, "GET", rf_path(slug, "/", rf_with(fid, cast(string) q[0..<qn], w[0].words[..]), w[0].path[..]), "", w[0].out[..]);
+    if !api_ok(res) { return api_fail(r, res, cast(string) w[0].out[0..<res.n]); }
+    if res.n == 0 || at + res.n > f.bytes { return fail(r, EXIT_FAIL, "the file came back another size than the list says"); }
+    part := cast(string) w[0].out[0..<res.n];
+    if text { print("%", part); } else if !fs_append(out, part) { return fail(r, EXIT_FAIL, "OUT could not be written"); }
+    at += res.n;
+  }
+  if text { if f.bytes > 0 { print("\n"); } return EXIT_OK; }
+  if r[0].json { rep_str(r, "name", name); rep_str(r, "kind", FW_KINDS[f.kind]); rep_str(r, "saved", out); rep_int(r, "bytes", f.bytes); return rep_done(r, EXIT_OK); }
+  print("saved % (% KB) to %\n", name, (f.bytes + 1023) / 1024, out);
+  return EXIT_OK;
+}
+rf_with :: (a: string, b: string, out: [] u8) -> string {
+  n := forge_put(out, 0, a); n = forge_put(out, n, b);
+  return ifx n < 0 then "" else cast(string) out[0..<n];
+}
+// A note, tags, name or scope changed; what is not given is kept as it is.
+rf_note :: (a: [] Args, r: [] Rep, profile: string, slug: string, w: [] RfWork) -> int {
+  verb := "file-note"; fid := positional(a, 3);
+  code := rf_list(a, r, profile, slug, w);
+  if code != EXIT_OK { return code; }
+  l := w[0].l[..]; i := fw_find(l, fid);
+  if i < 0 { return fail(r, EXIT_NOT_FOUND, "FID is not one of the world's attachments (realm files ID lists them)"); }
+  name := ifx rc_has(a, verb, "--name") then rc_option(a, verb, "--name", "") else fw_name_of(l, i);
+  note := ifx rc_has(a, verb, "--note") then fw_note_clean(rc_option(a, verb, "--note", ""), w[0].note[..]) else fw_note_of(l, i);
+  tags := ifx rc_has(a, verb, "--tags") then fw_tags_clean(rc_option(a, verb, "--tags", ""), w[0].tags[..]) else fw_tags_of(l, i);
+  body := fw_edit_head(w[0].head[..], fid, rf_scope(a, verb, l[0].f[i].scope), name, note, tags);
+  if body.count == 0 { return fail(r, EXIT_USAGE, "the name, note or tags do not fit"); }
+  res := api_call(a, profile, "POST", rf_path(slug, "", "", w[0].path[..]), body, w[0].out[..]);
+  if !api_ok(res) { return api_fail(r, res, cast(string) w[0].out[0..<res.n]); }
+  if !fw_read(w[0].l[..], cast(string) w[0].out[0..<res.n], w[0].scratch[..]) { return fail(r, EXIT_FAIL, "the answer is not a world.files.v1 list"); }
+  return rf_print(r, w);
+}
+rf_detach :: (a: [] Args, r: [] Rep, profile: string, slug: string, w: [] RfWork) -> int {
+  body := fw_detach_head(w[0].head[..], positional(a, 3));
+  res := api_call(a, profile, "POST", rf_path(slug, "", "", w[0].path[..]), body, w[0].out[..]);
+  if !api_ok(res) { return api_fail(r, res, cast(string) w[0].out[0..<res.n]); }
+  if !fw_read(w[0].l[..], cast(string) w[0].out[0..<res.n], w[0].scratch[..]) { return fail(r, EXIT_FAIL, "the answer is not a world.files.v1 list"); }
+  return rf_print(r, w);
+}
+rf_main :: (a: [] Args, r: [] Rep, profile: string, verb: string) -> int {
+  slug := positional(a, 2);
+  if !fw_world_ok(slug) { return fail(r, EXIT_USAGE, "ID is a world's: a lowercase letter, then a-z, 0-9 and -, 32 at most"); }
+  w := [1] RfWork.[RfWork.{}];
+  if verb == "files" {
+    code := rf_list(a, r, profile, slug, w[..]);
+    return ifx code != EXIT_OK then code else rf_print(r, w[..]);
+  }
+  if verb == "file-read" { return rf_read(a, r, profile, slug, w[..]); }
+  if verb == "attach" { return rf_attach(a, r, profile, slug, w[..]); }
+  if verb == "file-note" { return rf_note(a, r, profile, slug, w[..]); }
+  if verb == "detach" { return rf_detach(a, r, profile, slug, w[..]); }
+  return fail(r, EXIT_USAGE, "not an attachments command");
+}
+#test "the attachment rows are one route, read or written by a world's ID, and detach is two-step" {
+  n := 0;
+  for c: REALM_COMMANDS {
+    if c.route != "files" { continue; }
+    n += 1;
+    #assert c.method == "LOCAL" && cli_field(c.arguments, 0) == "slug";
+    #assert (c.effect == "read") == (c.verb == "files" || c.verb == "file-read");
+  }
+  d := REALM_COMMANDS[rc_find("detach")];
+  #assert n == 5 && d.effect == "destructive" && d.approval == "confirm" && rc_needs_yes(d) && REALM_COMMANDS[rc_find("attach")].approval == "owner";
+  #assert rc_value("fileid", "00112233445566aa") && !rc_value("fileid", "00112233445566AA") && !rc_value("fileid", "0011") && rc_value("scope", "project") && !rc_value("scope", "both");
+  #assert RF_PART + FW_HEAD < API_REQUEST_MAX && RF_READ + 4096 < HTTP_BODY_MAX;
+}
