@@ -30,13 +30,49 @@ E2_CELL_X0 :: -200.0; E2_CELL_Z0 :: 80.0;   // the first cell's west and north..
 E2_ITEMS :: 170000;      // the most kit pieces planted
 E2_ITEM_FLOATS :: 8;     // x y z yaw, vertical scale, horizontal scale, red*65280+green*255 (bytes), blue (+2: grass)
 
-#test "the woods are planted, dense beside the path, none on it or in the clearing" #steps 4000000000 {
+// Rows j0 to j1 of the woods planted alone, for the checks below: the pieces, the trees, the trees
+// close beside the path, and the pieces out of place (on the path; a tree on the road or in the
+// clearing). The whole planting is 71,384 pieces and takes a native check 6 s on an idle host, 30 to
+// 40 s on a busy one, of the 120 s one check may run, so each check plants a band of rows (#13392).
+e2_plant_tally :: (j0:int,j1:int)->[4]int {
  f:[E2_ITEMS*E2_ITEM_FLOATS]f32;k:[E2_ITEMS]u8;first:[E2_CELLS_X*E2_CELLS_Z+1]int;
- n:=e2_plant(f[..],k[..],first[..]);#assert n>20000 && n<E2_ITEMS && first[E2_CELLS_X*E2_CELLS_Z]==n;
- trees:=0;near:=0;
- for i:0..<n {x:=f[i*8];z:=f[i*8+2];#assert e2_path(x,z)<=0.35;
-  if int(k[i])<E2_TREES {trees+=1;#assert (e2_road_dist(x,z)>2.5 || z>9) && e2_clearing(x,z)<0.5;if e2_road_dist(x,z)<9 && z< -60 && z>E2_CLEAR_Z+E2_CLEAR_R {near+=1;}}}
- #assert trees>8000;#assert near>200;
+ n:=e2_plant_rows(f[..],k[..],first[..],e2_rows(j0,j1));t:=[4]int.[n,0,0,0];
+ if first[E2_CELLS_X*E2_CELLS_Z]!=n || first[j0*E2_CELLS_X]!=0 {t[3]+=1;}
+ for i:0..<n {x:=f[i*8];z:=f[i*8+2];if e2_path(x,z)>0.35 {t[3]+=1;}
+  if int(k[i])<E2_TREES {t[1]+=1;if !((e2_road_dist(x,z)>2.5 || z>9) && e2_clearing(x,z)<0.5) {t[3]+=1;}
+   if e2_road_dist(x,z)<9 && z< -60 && z>E2_CLEAR_Z+E2_CLEAR_R {t[2]+=1;}}}
+ return t;
+}
+// Six bands hold the whole land's claim: more than 6 x 3,400 = 20,400 pieces and 6 x 1,400 = 8,400
+// trees, more than 200 trees close beside the path (rows 16 to 31), and fewer pieces than fit
+// (6 x 28,000 < E2_ITEMS).
+#test "the woods are planted, dense beside the path, none on it or in the clearing" #steps 4000000000 {
+ t:=e2_plant_tally(16,24);#assert t[0]>3400 && t[0]<28000 && t[1]>1400 && t[2]>100 && t[3]==0;
+ #assert 6*28000<E2_ITEMS;
+}
+#test "the woods are planted: rows 24 to 31, dense beside the path" #steps 4000000000 {
+ t:=e2_plant_tally(24,32);#assert t[0]>3400 && t[0]<28000 && t[1]>1400 && t[2]>100 && t[3]==0;
+}
+#test "the woods are planted: rows 0 to 7" #steps 4000000000 {
+ t:=e2_plant_tally(0,8);#assert t[0]>3400 && t[0]<28000 && t[1]>1400 && t[3]==0;
+}
+#test "the woods are planted: rows 8 to 15" #steps 4000000000 {
+ t:=e2_plant_tally(8,16);#assert t[0]>3400 && t[0]<28000 && t[1]>1400 && t[3]==0;
+}
+#test "the woods are planted: rows 32 to 39" #steps 4000000000 {
+ t:=e2_plant_tally(32,40);#assert t[0]>3400 && t[0]<28000 && t[1]>1400 && t[3]==0;
+}
+#test "the woods are planted: rows 40 to 45" #steps 4000000000 {
+ t:=e2_plant_tally(40,E2_CELLS_Z);#assert t[0]>3400 && t[0]<28000 && t[1]>1400 && t[3]==0;
+}
+#test "rows planted alone are the whole planting's rows, and every row is the whole planting" {
+ // one cell's pieces by e2_plant_cell are what a band holds for it, and the mask of every row is e2_plant's
+ #assert e2_rows(0,E2_CELLS_Z)==E2_ROWS_ALL && e2_rows(4,6)==48 && e2_rows(7,7)==0;
+ f:[2000*E2_ITEM_FLOATS]f32;k:[2000]u8;first:[E2_CELLS_X*E2_CELLS_Z+1]int;
+ n:=e2_plant_rows(f[..],k[..],first[..],e2_rows(23,24));#assert n>1000 && first[23*E2_CELLS_X]==0 && first[24*E2_CELLS_X]==n && first[E2_CELLS_X*E2_CELLS_Z]==n;
+ a:[157*E2_ITEM_FLOATS]f32;ak:[157]u8;m:=e2_plant_cell(a[..],ak[..],0,13,23);c:=23*E2_CELLS_X+13;
+ #assert m>0 && first[c+1]-first[c]==m;
+ for q:0..<m {#assert ak[q]==k[first[c]+q];for w:0..<E2_ITEM_FLOATS {#assert f32_bits(a[q*E2_ITEM_FLOATS+w])==f32_bits(f[(first[c]+q)*E2_ITEM_FLOATS+w]);}}
 }
 e2_tint :: (out:[]f32,o:int,r:f32,g:f32,b:f32) {out[o+6]=floor(r*255+0.5)*256+floor(g*255+0.5);out[o+7]=b;}
 e2_put :: (out:[]f32,kinds:[]u8,n:int,kit:int,x:f32,y:f32,z:f32,yaw:f32,sv:f32,sh:f32,c:[3]f32)->int {
@@ -47,9 +83,14 @@ e2_put :: (out:[]f32,kinds:[]u8,n:int,kit:int,x:f32,y:f32,z:f32,yaw:f32,sv:f32,s
 e2_cell_x :: (i:int)->f32 {return f32(E2_CELL_X0)+f32(i)*f32(E2_CELL);}
 e2_cell_z :: (j:int)->f32 {return f32(E2_CELL_Z0)-f32(j)*f32(E2_CELL);}
 // Every cell's pieces, cell by cell (first[c] the first of cell c = j * E2_CELLS_X + i); the count.
-e2_plant :: (out:[]f32,kinds:[]u8,first:[]int)->int {
+e2_plant :: (out:[]f32,kinds:[]u8,first:[]int)->int {return e2_plant_rows(out,kinds,first,E2_ROWS_ALL);}
+// The same with only the rows of cells in `rows` planted (bit j: row j); every other cell is empty.
+// A check plants the rows it stands in (#13392).
+E2_ROWS_ALL :: 0x3FFFFFFFFFFF;           // E2_CELLS_Z rows
+e2_rows :: (j0:int,j1:int)->u64 {m:u64=0;for j:j0..<j1 {m=m|(cast(u64)1<<cast(u64)j);}return m;}
+e2_plant_rows :: (out:[]f32,kinds:[]u8,first:[]int,rows:u64)->int {
  n:=0;
- for j:0..<E2_CELLS_Z {for i:0..<E2_CELLS_X {c:=j*E2_CELLS_X+i;first[c]=n;n=e2_plant_cell(out,kinds,n,i,j);}}
+ for j:0..<E2_CELLS_Z {for i:0..<E2_CELLS_X {c:=j*E2_CELLS_X+i;first[c]=n;if ((rows>>cast(u64)j)&1)!=0 {n=e2_plant_cell(out,kinds,n,i,j);}}}
  first[E2_CELLS_X*E2_CELLS_Z]=n;return n;
 }
 // ---- the planting baked into the pack (docs/verse/fast-loads.md, #13150)
@@ -164,8 +205,11 @@ E2PCheck :: struct {
  lines:[8000000]u8;
 }
 #test "the planting baked into P lines reads back as e2_plant plants it, byte for byte" #steps 8000000000 {
- t:[1]E2PCheck;
- n:=e2_plant(t[0].a[..],t[0].ak[..],t[0].af[..]);
+ // the six rows the spot check reads (E2P_SPOT), 9,500 pieces: the record's layout, its lines and the
+ // spot check are the same for any planting, and the whole one is 6 s of a busy host's 120 (#13392).
+ // The build writes the whole planting (verse/tools/assets/everglade2_plant.coax) and a page holds it to e2p_agrees.
+ t:[1]E2PCheck;rows:u64=0;for spot:E2P_SPOT {rows=rows|e2_rows(spot[1],spot[1]+1);}
+ n:=e2_plant_rows(t[0].a[..],t[0].ak[..],t[0].af[..],rows);#assert n>8000;
  // the lines among a catalog's others
  text:="C glade/environment 9 12 250 100 8 0\nG AAAA\n";o:=text.count;for i:0..<o {t[0].lines[i]=text[i];}
  ln:=e2p_lines(t[0].a[..],t[0].ak[..],t[0].af[..],n,t[0].lines[o..<t[0].lines.count]);#assert ln>e2p_size(n);

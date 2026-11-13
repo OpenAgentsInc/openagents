@@ -375,7 +375,11 @@ e2mg_spawn_face :: () -> f32 #export_c #effects(all) { return f32(E2_SPAWN_FACE)
   #assert abs(e2_pace(true) * f32(E2_BASE_RUN) - 4.25) < 0.001 && abs(e2_pace(false) * f32(E2_BASE_WALK) - 1.5) < 0.001;
 }
 #test "the room's ground holds the trunks the page walks round, never more than fit" #steps 4000000000 {
-  g: [1] E2MoveGround; e2mg_plant(g[..]); #assert g[0].done && g[0].planted > 20000;
+  // the rows of cells round the two places it asks at (the path at z -150 and the glade): a world reads
+  // the nine cells round a point, and the whole planting is 6 s of a busy host's 120 (#13392). The
+  // whole land through e2mg_plant is the next check's.
+  g: [1] E2MoveGround; g[0].planted = e2_plant_rows(g[0].items[..], g[0].kinds[..], g[0].first[..], e2_rows(4, 7) | e2_rows(13, 16)); e2_still(g[0].still[..]); g[0].done = true;
+  #assert g[0].planted > 8000;
   z := -150.0f32; x := e2_road_x(z) + 3;
   w := e2mg_move_world(g[..], x, z, true);
   #assert w.bodies > 0 && w.bodies <= E2_NEAR_BODIES && w.deck && abs(w.pace * f32(E2_BASE_RUN) - 4.25) < 0.001;
@@ -387,10 +391,10 @@ e2mg_spawn_face :: () -> f32 #export_c #effects(all) { return f32(E2_SPAWN_FACE)
   for i: 0..<w.hulls { #assert hulls[i] == g[0].hulls[i]; }
   // the glade's rocks are hulls round them
   gw := e2mg_move_world(g[..], 1.1, -1.4, false); #assert gw.hulls > 0;
-  e2mg_plant(g[..]); #assert g[0].done;   // once
+  planted := g[0].planted; e2mg_plant(g[..]); #assert g[0].done && g[0].planted == planted;   // once
 }
 #test "the land's standing things kept are the same bits as worked out on the spot, everywhere a seat walks (#13384)" #steps 12000000000 {
-  g: [1] E2MoveGround; e2mg_plant(g[..]); #assert g[0].still[0].done;
+  g: [1] E2MoveGround; e2mg_plant(g[..]); #assert g[0].still[0].done && g[0].done && g[0].planted > 20000;
   out: [E2_NEAR_BODIES * 7] f32; hulls: [E2_HULL_ROOM] f32;
   rocks := 0; trunks := 0; kept_rocks := 0;
   // twice over the same ground, so the second pass reads every planted rock from the table; then a
