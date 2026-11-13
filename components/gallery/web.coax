@@ -145,6 +145,7 @@ wg_build :: (s: [] WebPage) {
   p1 := k_place(t, u, "side.chats", IC_CHATS, "Chats", "/components", true);
   p2 := k_place(t, u, "side.projects", IC_FOLDER, "Projects", "/components", false);
   p3 := k_place(t, u, "side.worlds", IC_GLOBE, "Worlds", "/components", false);
+  p4 := k_sub_place(t, u, "side.splice", "Splice", "/components");
   gl := k_side_list(t, "side");
   gm := k_side_mark(t, "side.recent", "Recent", 3);
   for k: 0..<3 { r := k_row(t, u, tr_join(buf[..], "side.row.", k), titles[k], "", k == 0); }

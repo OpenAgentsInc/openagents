@@ -455,7 +455,7 @@ k_row_busy :: (t: [] Tree, u: [] Ui, id: string, title: string, meta: string, cu
   return i;
 }
 // Place: a row of a page's own navigation: an icon and a name, a link to where it goes. The one you are on
-// has the underline.
+// is raised.
 k_place :: (t: [] Tree, u: [] Ui, id: string, icon: int, title: string, href: string, current: bool) -> int {
   ida: [UI_ID] u8; idb: [UI_ID] u8; idc: [UI_ID] u8;
   i := tr_open(t, id, TG_A, "row row-i");
@@ -466,6 +466,15 @@ k_place :: (t: [] Tree, u: [] Ui, id: string, icon: int, title: string, href: st
   }
   g := k_icon(t, tr_cat(idb[..], id, ".ic"), icon);
   a := tr_leaf(t, tr_cat(idc[..], id, ".t"), TG_SPAN, "row-t", title);
+  tr_close(t);
+  return i;
+}
+// A place within a place: a name under the place's, in line with it, a link to where it goes (a world under Worlds).
+k_sub_place :: (t: [] Tree, u: [] Ui, id: string, title: string, href: string) -> int {
+  ida: [UI_ID] u8;
+  i := tr_open(t, id, TG_A, "row row-i row-s");
+  tr_attr(t, i, AT_HREF, href);
+  a := tr_leaf(t, tr_cat(ida[..], id, ".t"), TG_SPAN, "row-t", title);
   tr_close(t);
   return i;
 }
@@ -777,6 +786,7 @@ DkDropTest :: struct { t: [1] Tree; u: [1] Ui; }
   p := k_side_places(t, "side");
   a := k_place(t, u, "place.a", IC_CHATS, "Chats", "/chat", true);
   b := k_place(t, u, "place.b", IC_FOLDER, "Projects", "/projects", false);
+  c := k_sub_place(t, u, "place.b.one", "One", "/projects/one");
   l := k_side_list(t, "side");
   m := k_side_mark(t, "side.run", "Running", 2);
   r := k_row(t, u, "row.1", "A chat", "", false);
@@ -790,6 +800,7 @@ DkDropTest :: struct { t: [1] Tree; u: [1] Ui; }
   home := tr_find(t, "side.h.home");
   #assert tr_attr_of(t, home, AT_HREF) == "/" && tr_text_of(t, tr_find(t, "side.h.name")) == "OpenAgents" && tr_attr_of(t, tr_find(t, "side.h.mark.use"), AT_HREF) == MONO_MARK;
   #assert tr_class(t, p) == "side-p" && t[0].nodes[p].parent == s && t[0].nodes[a].parent == p && t[0].nodes[b].parent == p;
+  #assert t[0].nodes[c].parent == p && t[0].nodes[c].tag == TG_A && tr_class(t, c) == "row row-i row-s" && tr_attr_of(t, c, AT_HREF) == "/projects/one" && tr_text_of(t, tr_find(t, "place.b.one.t")) == "One";
   #assert tr_class(t, l) == "side-l" && t[0].nodes[l].parent == s && t[0].nodes[r].parent == l && t[0].nodes[m].parent == l;
   #assert tr_text_of(t, tr_find(t, "side.run.t")) == "Running" && tr_text_of(t, tr_find(t, "side.run.n")) == "2";
   #assert tr_class(t, w) == "side-f" && t[0].nodes[w].parent == s;

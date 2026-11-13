@@ -3,7 +3,8 @@
 **Since 2026-11-13** (GitHub #13471). Someone logged in sees one side down the
 left of the site: a head with the mark, the name and New chat, and a button that
 puts the side away; the places, Chats (`/chat`), Projects (`/projects`) and
-Worlds (`/worlds`); the page's own list (on the chat, its sessions under section
+Worlds (`/worlds`), with the worlds they may edit under Worlds, Splice first, each
+opening its editor (`/worlds/splice?edit`); the page's own list (on the chat, its sessions under section
 heads); and at the foot who is logged in, a link to Settings and
 Log out. It is 300 px wide. Below 760 px it is hidden, as the chat's sidebar was.
 
@@ -11,11 +12,16 @@ Log out. It is 300 px wide. Below 760 px it is hidden, as the chat's sidebar was
 
 - **Drawing:** the kit's side pieces in `components/kit/frames.coax`: `k_side`,
   `k_side_head`, `k_side_places`, `k_side_list`, `k_side_mark`,
-  `k_who`, `k_side_open`, styled by `mono_css` (`components/skin/mono.coax`).
+  `k_sub_place`, `k_who`, `k_side_open`, styled by `mono_css` (`components/skin/mono.coax`).
   `/components` shows them.
 - **Rules:** `apps/openagents-web/site-side.coax`: which place an address is,
   which addresses the shell draws itself, the name at the foot (the first email
-  from `/api/auth/account?as=lines`, else a short npub) and the sections. Plain functions with their checks.
+  from `/api/auth/account?as=lines`, else a short npub), the worlds under
+  Worlds and the sections. Plain functions with their checks.
+- **Worlds:** `GET /api/worlds` (`coax/web/api/worlds.c`) lists the worlds the
+  asker may edit, one line each, `world ID NAME`, Splice first. Who may is the
+  rule a write to the world is held to (`wr_may`: a site admin, or a realm's
+  owner and admins). Someone logged out gets an empty list.
 - **The shell:** `apps/openagents-web/chat-web.coax`. It draws the side and,
   beside it, either the chat or, at `/`, nothing.
 

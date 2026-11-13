@@ -111,6 +111,7 @@ CF_CARD :: 16;          // a world's card, read from the world's own route
 CF_AGENTS :: 17;        // which agents on this machine are ready (Coder's /agents, #13465)
 CF_WHO :: 18;           // who is logged in, for the side's foot (/api/auth/account?as=lines)
 CF_OUT :: 19;           // Log out, from the side's foot
+CF_WORLDS :: 20;        // the worlds the person may edit, under Worlds in the side (/api/worlds)
 CW_PLAN_ASK :: 24576;   // bytes of the conversation sent with a turn in the editor (the world goes with it)
 CW_CL :: 8;            // Claude Code conversations listed beside the chat
 CW_CL_EVERY :: 5.0;    // seconds between reads of them
@@ -212,6 +213,7 @@ ChatWeb :: struct {
   page: int;                         // what the shell shows beside its side: SS_CHATS (the chat) or SS_HOME (nothing)
   side_closed: bool;                 // the side is put away (kept in this browser)
   me: [SS_WHO] u8; me_n: int; me_asked: bool;   // who is logged in, as the side's foot names them
+  worlds: [SS_WORLDS_MAX] SsWorld; worlds_n: int; worlds_asked: bool;   // the worlds they may edit, under Worlds
   out_due: bool;                     // Log out was pressed: it goes when no other request is out
   go: [96] u8; go_n: int; go_push: bool;   // an address for the host: pushed (the shell stays) or gone to
   marking: bool;                     // Copy shows its check: build again when it gives way
@@ -323,6 +325,7 @@ cw_claude_row :: (s: [] ChatWeb, k: int) {
 }
 cw_side :: (s: [] ChatWeb) {
   t := s[0].tree[..]; u := s[0].ui[..];
+  if s[0].page == SS_FOOT { return; }   // in a page that draws the side itself
   if s[0].side_closed { o := k_side_open(t, "side.show", "Show the side"); return; }
   side := k_side(t, "side", "Places");
   hd := k_side_head(t, "side.h", "OpenAgents", "/");
@@ -331,7 +334,16 @@ cw_side :: (s: [] ChatWeb) {
   tr_close(t);
   pl := k_side_places(t, "side");
   names := SS_NAMES; hrefs := SS_HREFS; icons := [3] int.[IC_CHATS, IC_FOLDER, IC_GLOBE]; ids := [3] string.["place.chats", "place.projects", "place.worlds"];
-  for k: 0..<SS_PLACES { p := k_place(t, u, ids[k], icons[k], names[k], hrefs[k], k == SS_CHATS && s[0].page == SS_CHATS); }
+  for k: 0..<SS_PLACES {
+    p := k_place(t, u, ids[k], icons[k], names[k], hrefs[k], k == SS_CHATS && s[0].page == SS_CHATS);
+    if k != SS_WORLDS { continue; }
+    for w: 0..<s[0].worlds_n {   // each world they may edit, opening its editor
+      wid := cast(string) s[0].worlds[w].id[0..<s[0].worlds[w].id_n];
+      href: [80] u8; hn := ss_world_href(wid, href[..]);
+      idb: [UI_ID] u8;
+      r := k_sub_place(t, u, tr_cat(idb[..], "world.", wid), cast(string) s[0].worlds[w].name[0..<s[0].worlds[w].name_n], cast(string) href[0..<hn]);
+    }
+  }
   list := k_side_list(t, "side");
   if s[0].local == 1 && !s[0].local_off && s[0].ns + s[0].nc > 0 {
     // the sections, top to bottom, each with what the search keeps of it
@@ -372,7 +384,10 @@ cw_side_keeps :: (s: [] ChatWeb, k: int, claude: bool, sec: int) -> bool {
 // The address for the host: pushed, the shell stays and draws it; else the browser goes there.
 cw_go_to :: (s: [] ChatWeb, url: string, push: bool) { s[0].go_n = cw_put(s[0].go[..], 0, url); s[0].go_push = push; }
 // The shell shows the chat, at its own address.
-cw_to_chat :: (s: [] ChatWeb) { if s[0].page != SS_CHATS { s[0].page = SS_CHATS; } cw_go_to(s, "/chat", true); }
+cw_to_chat :: (s: [] ChatWeb) {
+  if s[0].page == SS_SIDE { cw_go_to(s, "/chat", false); return; }   // the side alone, in another page: the chat is a page away
+  s[0].page = SS_CHATS; cw_go_to(s, "/chat", true);
+}
 // What this browser keeps for the page: whether the agents on this machine are off, whether the side is put away,
 // and each local agent's chosen model ("lm1=3": Claude Code's fourth).
 cw_keep :: (s: [] ChatWeb) {
@@ -547,9 +562,9 @@ cw_build :: (s: [] ChatWeb) {
   t := s[0].tree[..]; u := s[0].ui[..];
   tr_begin(t);
   s[0].marking = false;
-  page := tr_open(t, "chat", TG_MAIN, ifx s[0].page == SS_HOME then "home" else "chat");
+  page := tr_open(t, "chat", TG_MAIN, ifx s[0].page == SS_HOME || s[0].page == SS_SIDE then "home" else "chat");
   cw_side(s);
-  if s[0].page == SS_HOME { tr_close(t); return; }   // the home page: the side, and nothing beside it
+  if s[0].page == SS_HOME || s[0].page == SS_SIDE { tr_close(t); return; }   // the home page, or the editor's left: the side, and nothing beside it
   if s[0].view == CW_SETTINGS { cw_settings_card(s); }
   else if s[0].count > 0 || s[0].lrun || s[0].error_n > 0 { cw_transcript(s); }   // an error shows in a new chat too
   if s[0].wwire_n > 0 && s[0].view == CW_CHAT {
@@ -596,7 +611,7 @@ cw_build :: (s: [] ChatWeb) {
   stoppable := s[0].live && !s[0].stopping;
   // a session on this machine that is running: Stop, unless something is typed (it becomes its next turn)
   if s[0].lrun && !s[0].live { k_composer_end(t, u, "composer", ifx cw_has_words(s) then "Send" else "Stop", true); }
-  else { k_composer_end(t, u, "composer", ifx s[0].live then "Stop" else "Send", stoppable || (!s[0].live && cw_has_words(s) && (s[0].flight == CF_NONE || s[0].flight == CF_LIST || s[0].flight == CF_LOG || s[0].flight == CF_CLAUDE || s[0].flight == CF_IMPORT || s[0].flight == CF_AGENTS || s[0].flight == CF_WHO))); }
+  else { k_composer_end(t, u, "composer", ifx s[0].live then "Stop" else "Send", stoppable || (!s[0].live && cw_has_words(s) && (s[0].flight == CF_NONE || s[0].flight == CF_LIST || s[0].flight == CF_LOG || s[0].flight == CF_CLAUDE || s[0].flight == CF_IMPORT || s[0].flight == CF_AGENTS || s[0].flight == CF_WHO || s[0].flight == CF_WORLDS))); }
   tr_close(t);
 }
 
@@ -890,7 +905,7 @@ cw_turn_send :: (s: [] ChatWeb, model: int, text: string) -> bool {
 // and the chosen model is asked. Nothing is taken while an answer is coming or another request is out.
 cw_send :: (s: [] ChatWeb) {
   if s[0].live || !cw_has_words(s) { return; }
-  if s[0].flight == CF_LIST || s[0].flight == CF_LOG || s[0].flight == CF_CLAUDE || s[0].flight == CF_IMPORT || s[0].flight == CF_ACCOUNT || s[0].flight == CF_AGENTS || s[0].flight == CF_WHO { s[0].send_due = true; return; }   // a background read is out (the account's, as the page opens, is one): the message goes when it is back
+  if s[0].flight == CF_LIST || s[0].flight == CF_LOG || s[0].flight == CF_CLAUDE || s[0].flight == CF_IMPORT || s[0].flight == CF_ACCOUNT || s[0].flight == CF_AGENTS || s[0].flight == CF_WHO || s[0].flight == CF_WORLDS { s[0].send_due = true; return; }   // a background read is out (the account's, as the page opens, is one): the message goes when it is back
   if s[0].flight != CF_NONE { return; }
   s[0].send_due = false;
   lo := 0; hi := s[0].draft_n;
@@ -1103,8 +1118,10 @@ cw_end :: (s: [] ChatWeb, status: int) {
   body := cast(string) s[0].resp[0..<s[0].resp_n];
   if kind == CF_WHO {
     s[0].me_n = ifx status == 200 then ss_who_read(body, s[0].me[..]) else 0;
+  } else if kind == CF_WORLDS {
+    s[0].worlds_n = ifx status == 200 then ss_worlds_read(body, s[0].worlds[..]) else 0;
   } else if kind == CF_OUT {
-    if status == 200 || status == 204 { s[0].me_n = 0; cw_go_to(s, "/", false); }   // logged out: the public home page
+    if status == 200 || status == 204 { s[0].me_n = 0; s[0].worlds_n = 0; cw_go_to(s, "/", false); }   // logged out: the public home page
   } else if kind == CF_ACCOUNT {
     s[0].known = status == 200; s[0].known_asked = true;
     if status == 200 { cw_account(s, body, "claude."); }
@@ -1202,6 +1219,7 @@ cw_tick :: (s: [] ChatWeb) {
   if s[0].flight != CF_NONE { return; }
   if s[0].out_due { if cw_go(s, CF_OUT, "/api/auth/logout?as=lines", "{}") { s[0].out_due = false; } return; }
   if !s[0].me_asked && s[0].known_asked { if cw_go(s, CF_WHO, "/api/auth/account?as=lines", "") { s[0].me_asked = true; } return; }
+  if !s[0].worlds_asked && s[0].me_n > 0 { if cw_go(s, CF_WORLDS, "/api/worlds", "") { s[0].worlds_asked = true; } return; }
   if s[0].card_due_n > 0 && !s[0].live {
     url: [96] u8;
     n := cw_put(url[..], 0, "/api/worlds/"); n = cw_put(url[..], n, cast(string) s[0].card_due[0..<s[0].card_due_n]); n = cw_put(url[..], n, "/card");
@@ -1314,7 +1332,7 @@ coaxial_chatweb_event :: (s: [] ChatWeb, kind: int, slot: int, length: int) #exp
   }
   if kind == CW_PATH {
     n := ifx length < 0 || length > CW_INBOX then 0 else length;
-    s[0].page = ifx ss_place_of(cast(string) s[0].inbox[0..<n]) == SS_HOME then SS_HOME else SS_CHATS;
+    s[0].page = ss_page_of(cast(string) s[0].inbox[0..<n]);
     s[0].dirty = true; return;
   }
   if kind == CW_WORLD {
@@ -1484,8 +1502,11 @@ cw_test_open :: (s: [] ChatWeb, account: string) {
   n = coaxial_chatweb_frame(s, 0.016, true);
   // then who is logged in, for the side's foot
   if coaxial_chatweb_asking(s) && cw_test_door(s) == "/api/auth/account?as=lines" { cw_test_answer(s, 200, CW_TEST_WHO); n = coaxial_chatweb_frame(s, 0.016, true); }
+  // then the worlds they may edit, under Worlds
+  if coaxial_chatweb_asking(s) && cw_test_door(s) == "/api/worlds" { cw_test_answer(s, 200, CW_TEST_WORLDS); n = coaxial_chatweb_frame(s, 0.016, true); }
 }
 CW_TEST_WHO :: "logged_in 1\naccount acct_1\nkind email\nemail a•••@example.com\n";
+CW_TEST_WORLDS :: "world splice Splice\n";
 cw_test_door :: (s: [] ChatWeb) -> string { return cast(string) s[0].door[0..<s[0].door_n]; }
 cw_test_body :: (s: [] ChatWeb) -> string { return cast(string) s[0].request[0..<s[0].request_n]; }
 cw_test_press :: (s: [] ChatWeb, id: string) { coaxial_chatweb_event(s, CW_CLICK, dm_find(s[0].dom[..], id), 0); }
@@ -2239,7 +2260,9 @@ cw_test_go :: (s: [] ChatWeb) -> string { return cast(string) s[0].go[0..<s[0].g
   #assert tr_text_of(t, tr_find(t, "place.chats.t")) == "Chats" && tr_attr_of(t, tr_find(t, "place.chats"), AT_CURRENT) == "true";
   #assert tr_attr_of(t, tr_find(t, "place.projects"), AT_HREF) == "/projects" && tr_attr_of(t, tr_find(t, "place.worlds"), AT_HREF) == "/worlds" && !tr_has(t, tr_find(t, "place.worlds"), AT_CURRENT);
   #assert tr_text_of(t, tr_find(t, "who.go.t")) == "a•••@example.com" && tr_attr_of(t, tr_find(t, "who.go"), AT_HREF) == "/settings" && tr_find(t, "who.out") >= 0;
-  // nobody logged in: Log in instead
+  // the worlds they may edit are under Worlds, each opening its editor
+  #assert tr_text_of(t, tr_find(t, "world.splice.t")) == "Splice" && tr_attr_of(t, tr_find(t, "world.splice"), AT_HREF) == "/worlds/splice?edit" && t[0].nodes[tr_find(t, "world.splice")].parent == t[0].nodes[tr_find(t, "place.worlds")].parent;
+  // nobody logged in: Log in instead, and no worlds are asked for
   ts2: [1] CwTest; o := ts2[0].s[..];
   n := coaxial_chatweb_frame(o, 0.016, true);
   cw_test_answer(o, 401, "");
@@ -2247,6 +2270,8 @@ cw_test_go :: (s: [] ChatWeb) -> string { return cast(string) s[0].go[0..<s[0].g
   #assert cw_test_door(o) == "/api/auth/account?as=lines";
   cw_test_answer(o, 200, "logged_in 0\n");
   n = coaxial_chatweb_frame(o, 0.016, true);
+  n = coaxial_chatweb_frame(o, 0.016, true);
+  #assert !coaxial_chatweb_asking(o) && tr_find(o[0].tree[..], "world.splice") < 0;
   #assert tr_text_of(o[0].tree[..], tr_find(o[0].tree[..], "who.go.t")) == "Log in" && tr_attr_of(o[0].tree[..], tr_find(o[0].tree[..], "who.go"), AT_HREF) == "/login" && tr_find(o[0].tree[..], "who.out") < 0;
 }
 
@@ -2268,9 +2293,14 @@ cw_test_go :: (s: [] ChatWeb) -> string { return cast(string) s[0].go[0..<s[0].g
   coaxial_chatweb_go_done(s);
   cw_test_press(s, "place.projects");
   #assert coaxial_chatweb_go_len(s) == 0 && s[0].page == SS_CHATS;
-  // in the editor's foot the address is the world's: the chat
-  cw_test_path(s, "/worlds/splice");
-  #assert s[0].page == SS_CHATS;
+  // in the editor's foot the address is the world's: the chat alone, as the editor draws the side itself
+  cw_test_path(s, "/worlds/splice"); n = coaxial_chatweb_frame(s, 0.016, true);
+  #assert s[0].page == SS_FOOT && tr_class(t, 0) == "chat" && tr_find(t, "composer") >= 0 && tr_find(t, "side") < 0 && tr_find(t, "side.show") < 0;
+  // the editor's left: the side alone, and Chats and New chat go to the chat's own page
+  cw_test_path(s, "/side"); n = coaxial_chatweb_frame(s, 0.016, true);
+  #assert s[0].page == SS_SIDE && tr_class(t, 0) == "home" && tr_find(t, "side") >= 0 && tr_find(t, "composer") < 0;
+  cw_test_press(s, "side.new");
+  #assert s[0].page == SS_SIDE && cw_test_go(s) == "/chat" && !coaxial_chatweb_go_push(s);
 }
 
 #test "the side can be put away and brought back, and this browser keeps that; Log out logs out and goes home" {

@@ -216,7 +216,7 @@ mono_css :: (out: [] u8) -> int {
   n = mc(out, n, ".side-l{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;display:flex;flex-direction:column;gap:2px;scrollbar-width:thin;scrollbar-color:var(--line-dim) transparent}");
   n = mc(out, n, ".side-m{display:flex;justify-content:space-between;gap:8px;margin:0;padding:12px 10px 4px;font:500 11px/1.4 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--ink-faint)}.side-c{letter-spacing:0}");
   n = mc(out, n, ".side-f{display:flex;align-items:center;gap:2px;padding-top:8px;border-top:1px solid var(--line-dim)}.side-f>.row{flex:1;min-width:0;width:auto}");
-  n = mc(out, n, ".side .row{padding:7px 10px}.side .row-t{font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.side .row .meta{text-transform:none;letter-spacing:0;font:11px/1.4 var(--mono)}");
+  n = mc(out, n, ".side .row{padding:7px 10px}.side .row-s{padding-left:36px}.side .row-t{font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.side .row .meta{text-transform:none;letter-spacing:0;font:11px/1.4 var(--mono)}");
   // the current place or row in the side: bright on the raised surface, with no frame under it
   n = mc(out, n, ".side .row[aria-current=true]{color:#fff;background:var(--raised);--frame-bg:transparent;--frame-line:transparent;--frame-deco:transparent}");
   n = mc(out, n, ".sec>.side{position:relative;z-index:auto;height:460px;border:1px solid var(--line-dim);view-transition-name:none}");
@@ -367,6 +367,9 @@ mono_dock_css :: (out: [] u8, at: int) -> int {
   n = mc(out, n, ".pane-l{grid-column:1;grid-row:2}.pane-r{grid-column:3;grid-row:2}.pane-l,.pane-r{align-self:start;max-height:100%}");
   // a wide right pane (a file of code): the dock's right column is as wide as it needs
   n = mc(out, n, ".dock:has(.pane-w){grid-template-columns:minmax(0,220px) minmax(0,1fr) minmax(0,min(720px,54vw))}");
+  // the site's side down the left (k_dock_side): the window's height, flush with its edge; the strip and the foot beside it
+  n = mc(out, n, ".dock:has(>.dock-s){--side-w:292px;grid-template-columns:var(--side-w) minmax(0,1fr) minmax(0,300px)}.dock:has(>.dock-s .ib[data-state=side]){--side-w:36px}.dock-s{grid-column:1;grid-row:1/-1;margin:-8px 0 -8px -8px;min-height:0}.dock:has(>.dock-s)>.pane-t,.dock:has(>.dock-s)>.pane-bm{grid-column:2/-1}.dock:has(>.dock-s):has(.pane-w){grid-template-columns:var(--side-w) minmax(0,1fr) minmax(0,min(720px,54vw))}");
+  n = mc(out, n, ".dock-s>.slot,.dock-s .home{height:100%;min-height:0}.dock-s .home{position:static;clip-path:none;width:auto;margin:0;overflow:visible}.dock-s>.slot .ib[data-state=side]{display:inline-flex}.dock-s>.slot .side{display:flex;position:static;height:100%;view-transition-name:none}");
   n = mc(out, n, ".pane .list{width:100%}.pane .card{padding:12px;gap:10px}.pane .notice{padding:10px 12px}.pane-t .meta{margin-left:auto}");
   // the foot: a pane across the bottom, as tall as the skin says; put away, it takes no room. What fills its slot
   // (the chat's conversation) is as tall as the pane, with its own list of sessions left out; a page that hides its

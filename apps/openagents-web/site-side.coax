@@ -23,6 +23,16 @@ ss_place_of :: (path: string) -> int {
 }
 // Whether the app shell draws this address itself (the home page and the chat) or the browser goes to it.
 ss_in_shell :: (path: string) -> bool { p := ss_place_of(path); return p == SS_HOME || p == SS_CHATS; }
+// What the shell draws at an address: the home page (the side alone), the chat beside the side, or, on a page
+// it is only part of, the chat alone (the world editor's foot) or the side alone (the editor's left, which the
+// editor opens at "/side"; from there every place is another page).
+SS_FOOT :: -3; SS_SIDE :: -4;
+ss_page_of :: (path: string) -> int {
+  if path == "/side" { return SS_SIDE; }
+  p := ss_place_of(path);
+  if p == SS_HOME || p == SS_CHATS { return p; }
+  return SS_FOOT;
+}
 
 ss_put :: (out: [] u8, at: int, text: string) -> int {
   n := at;
@@ -79,12 +89,45 @@ ss_section :: (busy: bool, claude: bool) -> int {
   return SS_RECENT;
 }
 
+// The worlds someone may edit, as GET /api/worlds lists them ("world ID NAME" a line, Splice first), each
+// opening its editor. A line whose ID is not a world's ID form (a lowercase letter or digit, then those and
+// '-', 48 bytes at most) is skipped.
+SS_WORLDS_MAX :: 8;
+SsWorld :: struct { id: [48] u8; id_n: int; name: [48] u8; name_n: int; }
+ss_world_id_ok :: (id: string) -> bool {
+  if id.count == 0 || id.count > 48 || id[0] == '-' { return false; }
+  for c: id { if !((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-') { return false; } }
+  return true;
+}
+ss_worlds_read :: (body: string, out: [] SsWorld) -> int {
+  at := 0; n := 0;
+  while at < body.count && n < out.count {
+    e := at;
+    while e < body.count && body[e] != '\n' { e += 1; }
+    line := cast(string) body[at..<e];
+    at = e + 1;
+    if line.count < 7 || cast(string) line[0..<6] != "world " { continue; }
+    i := 6;
+    while i < line.count && line[i] != ' ' { i += 1; }
+    id := cast(string) line[6..<i];
+    if !ss_world_id_ok(id) { continue; }
+    name := ifx i + 1 < line.count then cast(string) line[i + 1..<line.count] else id;
+    out[n].id_n = ss_put(out[n].id[..], 0, id);
+    out[n].name_n = ss_put(out[n].name[..], 0, name);
+    n += 1;
+  }
+  return n;
+}
+// A world's editor: /worlds/ID?edit. Its length in out.
+ss_world_href :: (id: string, out: [] u8) -> int { n := ss_put(out, 0, "/worlds/"); n = ss_put(out, n, id); return ss_put(out, n, "?edit"); }
+
 #test "an address is its place: the home page, a place or anything under it, or none" {
   #assert ss_place_of("/") == SS_HOME && ss_place_of("") == SS_HOME;
   #assert ss_place_of("/chat") == SS_CHATS && ss_place_of("/chat/") == SS_CHATS && ss_place_of("/chat?x=1") == SS_CHATS;
   #assert ss_place_of("/projects") == SS_PROJECTS && ss_place_of("/projects/coax") == SS_PROJECTS && ss_place_of("/worlds/new") == SS_WORLDS;
   #assert ss_place_of("/chatter") == -2 && ss_place_of("/chat-gpu") == -2 && ss_place_of("/settings") == -2;
   #assert ss_in_shell("/") && ss_in_shell("/chat") && !ss_in_shell("/projects") && !ss_in_shell("/worlds") && !ss_in_shell("/login");
+  #assert ss_page_of("/") == SS_HOME && ss_page_of("/chat/x") == SS_CHATS && ss_page_of("/worlds/splice") == SS_FOOT && ss_page_of("/projects") == SS_FOOT && ss_page_of("/side") == SS_SIDE;
 }
 #test "the name at the foot is the first email, else a short npub of the key, and nothing for nobody" {
   out: [SS_WHO] u8;
@@ -100,4 +143,12 @@ ss_section :: (busy: bool, claude: bool) -> int {
   #assert ss_section(true, false) == SS_RUNNING && ss_section(true, true) == SS_RUNNING;
   #assert ss_section(false, true) == SS_CLAUDE && ss_section(false, false) == SS_RECENT;
   names := SS_SECTION_NAMES; #assert names[SS_RECENT] == "Recent" && SS_SECTIONS == 3;
+}
+#test "the worlds someone may edit are read from the list's lines, Splice first as it is sent, and each opens its editor" {
+  w: [SS_WORLDS_MAX] SsWorld;
+  n := ss_worlds_read("world splice Splice\nworld my-realm The Harbour\nworld Bad Name\nnoise\nworld -x X\nworld lone\n", w[..]);
+  #assert n == 3 && cast(string) w[0].id[0..<w[0].id_n] == "splice" && cast(string) w[0].name[0..<w[0].name_n] == "Splice";
+  #assert cast(string) w[1].name[0..<w[1].name_n] == "The Harbour" && cast(string) w[2].name[0..<w[2].name_n] == "lone";
+  #assert ss_worlds_read("", w[..]) == 0;
+  h: [80] u8; k := ss_world_href("splice", h[..]); #assert cast(string) h[0..<k] == "/worlds/splice?edit";
 }

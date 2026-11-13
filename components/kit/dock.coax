@@ -36,6 +36,15 @@ k_pane_shut :: (t: [] Tree, pane: int, shut: bool) { if shut { tr_attr(t, pane, 
 // Slot: an empty place in a pane that another surface fills (the chat's conversation in the editor's foot).
 // The dock never puts anything in it.
 k_slot :: (t: [] Tree, id: string) -> int { return tr_leaf(t, id, TG_DIV, "slot", ""); }
+// Side: the dock's left column, from the window's top to its foot, with a slot the site's side fills (the world
+// editor's left; docs/app-shell.md). The strip and the foot stand beside it. Answers the slot (its id is `id`.slot).
+k_dock_side :: (t: [] Tree, id: string) -> int {
+  ida: [UI_ID] u8;
+  c := tr_open(t, id, TG_DIV, "dock-s");
+  sl := k_slot(t, tr_cat(ida[..], id, ".slot"));
+  tr_close(t);
+  return sl;
+}
 // Prop: a one-line field with its name before it. Answers the field's node (its id is `id`).
 k_prop :: (t: [] Tree, u: [] Ui, id: string, name: string, placeholder: string) -> int {
   ida: [UI_ID] u8; idb: [UI_ID] u8;
@@ -153,4 +162,10 @@ DkTest :: struct { t: [1] Tree; u: [1] Ui; }
   k_pane_end(t);
   tr_close(t);
   #assert tr_class(t, d) == "dock" && tr_class(t, w) == "pane pane-r pane-w" && tr_class(t, x) == "pane pane-t" && t[0].depth == 0;
+  // the side's column: a slot in it, for the site's side
+  tr_begin(t);
+  d = k_dock(t, "dock", true);
+  ps := k_dock_side(t, "places");
+  tr_close(t);
+  #assert tr_class(t, tr_find(t, "places")) == "dock-s" && ps == tr_find(t, "places.slot") && tr_class(t, ps) == "slot" && t[0].nodes[ps].parent == tr_find(t, "places") && t[0].depth == 0;
 }

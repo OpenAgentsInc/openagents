@@ -25,10 +25,14 @@
 // the address in the bar (the module drew what is there); otherwise the browser goes to it. A press on a link
 // in the module is reported as a press (event 1): when the module pushes in answer, the browser doesn't follow
 // the link, so the shell stays; when it doesn't, the link is followed as usual.
+// A page that holds a shell as one of its parts names the address the shell draws in the import's address
+// (&path=/side, the world editor's left): the shell is told that address once and is not the page's, so every
+// address it goes to is another page. &as=NAME names the copy in coaxialDoms when a page holds two of one module.
 const named = new URL(import.meta.url).searchParams;
 const script = named.has("app") ? null : document.querySelector("script[data-app]");
 const app = named.get("app") || script.dataset.app;
 const root = document.getElementById(named.get("root") || script?.dataset.root || "coaxial-root");
+const fixed = named.get("path");
 const NONE = 0xffff, SVG = "http://www.w3.org/2000/svg", LAYERS = ["fr-bg", "fr-line", "fr-deco"];
 const text = new TextDecoder(), bytes = new TextEncoder();
 const reduced = matchMedia("(prefers-reduced-motion: reduce)");
@@ -310,7 +314,7 @@ async function start() {
   const go = (at, len, push) => {
     const url = text.decode(new Uint8Array(memory.buffer, at, len));
     if (!url.startsWith("/") || url.startsWith("//")) return;
-    if (!push) { location.assign(url); return; }
+    if (!push || fixed) { location.assign(url); return; }
     pushed = true;
     if (url !== location.pathname + location.search) history.pushState(null, "", url);
   };
@@ -337,7 +341,8 @@ async function start() {
     let kept = ""; try { kept = localStorage.getItem(keptKey) || ""; } catch { /* refused */ }
     send(12, 0, kept);
   }
-  const shell = WebAssembly.Module.imports(module).some((i) => i.name === "dom_go");
+  const going = WebAssembly.Module.imports(module).some((i) => i.name === "dom_go"), shell = going && !fixed;
+  if (going && fixed) send(13, 0, fixed);
   if (shell) { send(13, 0, location.pathname); addEventListener("popstate", () => send(13, 0, location.pathname)); }
   root.addEventListener("click", (e) => {
     const drop = e.target.closest?.('button[data-drop]:not([data-drop=""])');
@@ -366,7 +371,7 @@ async function start() {
   });
   reduced.addEventListener("change", ask);
   globalThis.coaxialDom ||= own;
-  (globalThis.coaxialDoms ||= {})[app] = own;
+  (globalThis.coaxialDoms ||= {})[named.get("as") || app] = own;
   if (clipping) {
     // the first nodes and the stylesheet, then every face it names, so no text is measured in a fallback face
     clipFrame(0); clipSizes(); clipFrame(0);

@@ -1040,7 +1040,45 @@ int world_files_turn(const request *q, PGconn *db, char **out, char *words, size
   return 200;
 }
 
+// GET /api/worlds: the worlds the asker may edit, Splice first, one line each: "world ID NAME". Who may is the
+// rule a write is held to (wr_may: a site admin, or a realm's owner and admins); someone logged out gets none.
+// The site's side lists them under Worlds, each opening its editor.
+static void world_list(const request *q, PGconn *db) {
+  world_asker a;
+  if (!who_asks(q, db, &a)) { refuse(q->fd, 500, cs("not read"), -1); return; }
+  char out[4096]; size_t n = 0;
+  if (a.signed_in) {
+    const char *v[2] = {a.key, a.admin ? "true" : "false"};
+    PGresult *r = PQexecParams(db,
+      "SELECT d.id, d.kind, coalesce(verse.edit_role(d.id, $1, $2::boolean), ''), coalesce(m.name, '') FROM verse.world_docs d "
+      "LEFT JOIN verse.made_realms m ON m.slug = d.id WHERE NOT verse.realm_hidden(d.id, $1, $2::boolean) "
+      "ORDER BY d.id <> 'splice', d.id LIMIT 64", 2, NULL, v, NULL, NULL, 0);
+    if (PQresultStatus(r) != PGRES_TUPLES_OK) { api_log("worlds: %s", PQerrorMessage(db)); PQclear(r); refuse(q->fd, 500, cs("not read"), -1); return; }
+    for (int k = 0; k < PQntuples(r) && k < 24; k++) {
+      const char *id = PQgetvalue(r, k, 0), *kind = PQgetvalue(r, k, 1), *role = PQgetvalue(r, k, 2);
+      if (!kind_known(kind) || !wr_loads(cs(id), cs(kind)) || !wr_may(cs(id), cs(kind), a.admin, cs(role))) continue;
+      char name[64];
+      coax_string sn = splice_world_name();
+      if (!strcmp(kind, "splice")) snprintf(name, sizeof name, "%.*s", (int)sn.count, sn.data);
+      else snprintf(name, sizeof name, "%s", PQgetvalue(r, k, 3)[0] ? PQgetvalue(r, k, 3) : id);
+      for (char *c = name; *c; c++) if ((unsigned char)*c < 32) *c = ' ';
+      int w = snprintf(out + n, sizeof out - n, "world %s %s\n", id, name);
+      if (w < 0 || (size_t)w >= sizeof out - n) break;
+      n += (size_t)w;
+    }
+    PQclear(r);
+  }
+  api_respond(q->fd, 200, "text/plain; charset=utf-8", "Cache-Control: no-store\r\n", out, n);
+}
+
 bool worlds_route(const request *q) {
+  if (!strcmp(q->path, "/api/worlds")) {
+    if (strcmp(q->method, "GET")) { refuse(q->fd, 404, cs("not found"), -1); return true; }
+    PGconn *db = api_db();
+    if (!db) { refuse(q->fd, 503, cs("no database"), -1); return true; }
+    world_list(q, db);
+    return true;
+  }
   static const char root[] = "/api/worlds/";
   size_t rl = sizeof root - 1;
   if (strncmp(q->path, root, rl)) return false;

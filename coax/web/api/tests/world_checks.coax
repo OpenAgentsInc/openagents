@@ -119,6 +119,13 @@ wc_checks :: (t: [] Ap, w: [] Wc, other: string) {
   ap_check(t, "world: a dry run carries the batch out in a copy, answers it as it would be taken, and saves nothing", st == 200 && w[0].st.ok && w[0].st.rev == 2 && ap_has(wc_did(w), "{\"op\":\"despawn\",\"id\":1}") && ap_sql(t, "SELECT dev_rev || ' ' || steps FROM verse.world_docs WHERE id = 'splice'", q[..]) == "2 1", ap_body(t));
   st = ap_call(t, "GET", "/api/worlds/splice/card", "", t[0].no[0..<0]);
   ap_check(t, "world: the card names the world, the dev revision and how many things it holds; a world with no card, and a write to one, are refused", st == 200 && ap_starts(ap_body(t), "world.card.v1 splice ") && ap_has(ap_body(t), "\nname Splice\n") && ap_call(t, "GET", "/api/worlds/nowhere/card", "", t[0].no[0..<0]) == 404 && ap_call(t, "POST", "/api/worlds/splice/card", "{}", t[0].no[0..<0]) == 404, "");
+  lu: [1] Sb; sb(lu[..], t[0].api); sb(lu[..], "/api/worlds");
+  lsig: [4096] u8; ls := ap_nostr(t, t[0].admin_key, "GET", sb_text(lu[..]), "", false, lsig[..]);
+  la: [1] Sb; sb(la[..], "Authorization: Nostr "); sb(la[..], ls);
+  lh := [1] string.[sb_text(la[..])];
+  st = ap_call(t, "GET", "/api/worlds", "", lh[..]);
+  admin_list := ap_starts(ap_body(t), "world splice Splice\n");
+  ap_check(t, "world: an admin's worlds start with Splice; someone logged out has none", st == 200 && admin_list && ap_call(t, "GET", "/api/worlds", "", t[0].no[0..<0]) == 200 && ap_body(t) == "" && ap_call(t, "POST", "/api/worlds", "{}", t[0].no[0..<0]) == 404, ap_body(t));
   st = ap_call(t, "GET", "/api/worlds/splice/content", "", t[0].no[0..<0]);
   ap_check(t, "world: the content tables are read to aim an edit: pieces, landmarks and kept-clear zones", st == 200 && ap_starts(ap_body(t), "aethyr.content.v1 splice ") && ap_has(ap_body(t), "\ntable pieces ") && ap_has(ap_body(t), "\ntable landmarks ") && ap_has(ap_body(t), "\ntable kept_clear ") && ap_call(t, "GET", "/api/worlds/nope/content", "", t[0].no[0..<0]) == 404, "");
   // ---- the undo log
