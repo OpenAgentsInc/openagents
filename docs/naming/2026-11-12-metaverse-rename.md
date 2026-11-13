@@ -248,8 +248,10 @@ Pages the project tool writes (`projects/verse/index.html`, `projects/index.md`,
 they still say `/projects/verse`. They work through the redirect. They change
 when the project is republished under the new slug.
 
-`/forge` answers 404 in production today (checked 2026-11-12). Its redirect to
-the realm creation page is not part of stage 5.
+`/forge` and everything under it move for good to `/worlds/new`, the realm
+creation page, with the query kept and the rest of the path dropped. The rule
+is in `site-routes.coax` and in `lb.sh` (step 1 adds it). `/forge` answered
+404 in production on 2026-11-12, before the rule.
 
 Deploy order, each step safe on its own:
 

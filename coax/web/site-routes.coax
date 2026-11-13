@@ -9,6 +9,8 @@
 //                                       projects/verse/ (the slug is the project's name on the
 //                                       relay and in the bucket; only the address changed)
 //   /verse/galaxy, /metaverse/galaxy    the retired galaxy: moved for good to /worlds, query dropped
+//   /forge, /forge/*                    the realm editor's old address: moved for good to /worlds/new,
+//                                       the rest of the path dropped (query kept)
 //
 // A route says what to do with a path (the address without its query):
 //   status 0    serve the file at `to` followed by the path after its first `skip` bytes
@@ -25,6 +27,7 @@ site_under :: (path:string,root:string)->bool #effects(all) {
 
 site_route :: (path:string)->SiteRoute #export_c #effects(all) {
   if site_under(path,"/verse/galaxy") || site_under(path,"/metaverse/galaxy") {return SiteRoute.{status=301,to="/worlds",skip=path.count,query=false};}
+  if site_under(path,"/forge") {return SiteRoute.{status=301,to="/worlds/new",skip=path.count,query=true};}
   if site_under(path,"/verse") {return SiteRoute.{status=301,to="/metaverse",skip=6,query=true};}
   if site_under(path,"/projects/verse") {return SiteRoute.{status=301,to="/projects/metaverse",skip=15,query=true};}
   if site_under(path,"/projects/metaverse") {return SiteRoute.{status=0,to="/projects/verse",skip=19,query=false};}
@@ -62,13 +65,19 @@ site_goes :: (path:string,out:[]u8)->string #effects(all) {
   paths:=[6]string.["/verse/galaxy","/verse/galaxy/","/verse/galaxy/index.md","/metaverse/galaxy","/metaverse/galaxy/","/metaverse/galaxy/index.md"];
   for p:paths {r:=site_route(p);#assert r.status==301 && !r.query && site_goes(p,b[..])=="/worlds";}
 }
+#test "the realm editor's old address moves for good to /worlds/new, its query kept" {
+  b:[256]u8;
+  paths:=[4]string.["/forge","/forge/","/forge/my-realm","/forge/my-realm/index.md"];
+  for p:paths {r:=site_route(p);#assert r.status==301 && r.query && site_goes(p,b[..])=="/worlds/new";}
+  #assert site_route("/forged").status==0 && site_route("/worlds/new").status==0;
+}
 #test "every other path is served as it is" {
   b:[256]u8;
-  same:=[12]string.["/","/metaverse","/metaverse/","/metaverse/index.md","/metaverse/og-verse.jpg","/verse-os/","/verses","/projects","/projects/verses","/projects/metaverse-x","/worlds/haunted-house","/forge"];
+  same:=[12]string.["/","/metaverse","/metaverse/","/metaverse/index.md","/metaverse/og-verse.jpg","/verse-os/","/verses","/projects","/projects/verses","/projects/metaverse-x","/worlds/haunted-house","/forged"];
   for p:same {r:=site_route(p);#assert r.status==0 && r.skip==0 && r.to.count==0 && site_goes(p,b[..])==p;}
 }
 #test "a moved address never leads to another moved address" {
   b:[256]u8;c:[256]u8;
-  old:=[8]string.["/verse","/verse/","/verse/index.md","/verse/galaxy","/metaverse/galaxy","/projects/verse","/projects/verse/","/projects/verse/index.md"];
+  old:=[10]string.["/verse","/verse/","/verse/index.md","/verse/galaxy","/metaverse/galaxy","/projects/verse","/projects/verse/","/projects/verse/index.md","/forge","/forge/my-realm"];
   for p:old {to:=site_goes(p,b[..]);#assert site_route(p).status==301 && site_route(to).status==0;}
 }

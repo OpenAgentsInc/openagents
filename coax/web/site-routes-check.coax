@@ -88,6 +88,9 @@ tool_main :: ()->int #export_c #effects(all) {
     failed+=src_moved(port,"/verse/galaxy?realms=all","/worlds",b);
     failed+=src_moved(port,"/verse/galaxy/index.md","/worlds",b);
     failed+=src_moved(port,"/metaverse/galaxy","/worlds",b);
+    // the realm editor's old address, the rest of its path dropped and its query kept
+    failed+=src_moved(port,"/forge","/worlds/new",b);
+    failed+=src_moved(port,"/forge/my-realm?from=old","/worlds/new?from=old",b);
     // the new addresses answer, and the landing names itself by its new address
     at:=src_page(port,"/metaverse",b,n[..]);
     page:=ifx at>0 then cast(string)b[at..<n[0]] else "";

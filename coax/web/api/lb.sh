@@ -298,6 +298,8 @@ for pm in m["pathMatchers"]:
 #                                                on the relay and in the bucket, stays "verse")
 #   /projects/verse, /projects/verse/*           move for good to /projects/metaverse..., query kept
 #   /metaverse/galaxy and under it               move for good to /worlds, as /verse/galaxy does
+#   /forge and under it                          the realm editor's old address: moves for good to
+#                                                /worlds/new, the rest of the path dropped, query kept
 #   /verse, /verse/*                             move for good to /metaverse..., query kept: only once
 #                                                the host's /metaverse answers, after /verse/galaxy's
 #                                                rule and ahead of any rule that sends /verse to the site
@@ -346,6 +348,8 @@ for pm in m["pathMatchers"]:
     if galaxy is None: raise SystemExit(f"lb.sh: {pm['name']} has no /verse/galaxy rule")
     changed = want([{"fullPathMatch": "/metaverse/galaxy"}, {"prefixMatch": "/metaverse/galaxy/"}],
                    {"urlRedirect": {"pathRedirect": "/worlds", "stripQuery": True, **moved}}) or changed
+    changed = want([{"fullPathMatch": "/forge"}, {"prefixMatch": "/forge/"}],
+                   {"urlRedirect": {"pathRedirect": "/worlds/new", **moved}}) or changed
     have = any(r.get("urlRedirect", {}).get("pathRedirect") == "/metaverse" for r in rules)
     if have or answers(pm["name"], host, "/metaverse"):
         for match, action in (([{"fullPathMatch": "/verse"}], {"urlRedirect": {"pathRedirect": "/metaverse", **moved}}),
