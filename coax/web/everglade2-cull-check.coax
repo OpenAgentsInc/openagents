@@ -19,14 +19,14 @@
 #load "../lib/media/media.coax";      // MEDIA_READY_JS, media_ready_step; it loads cdp.coax
 #load "../lib/image/png.coax";
 #load "../lib/sys/fs.coax";
-#load "../../verse/everglade2/points.coax";   // the views' places down the path, by name (#13078)
+#load "../../everglade/world/points.coax";   // the views' places down the path, by name (#13078)
 #load "map-points.coax";
 
 EC_VIEWS :: 3;
 EC_ROUNDS :: 6;
 EC_NAMES :: [3] string.["glade", "woods", "clearing"];
 // Each view's place: the glade where you arrive (the spawn: no ?at=), and down the path the map's
-// woods and clearing (verse/everglade2/points.coax: ?at=200 and ?at=470 on 11-09).
+// woods and clearing (everglade/world/points.coax: ?at=200 and ?at=470 on 11-09).
 EC_AT :: [3] string.["spawn", "woods", "clearing"];
 // View v's query: ?golden, and &at= the metres down the path of its point (none for the spawn).
 ec_query :: (o: [] EcBuf, v: int) -> bool {

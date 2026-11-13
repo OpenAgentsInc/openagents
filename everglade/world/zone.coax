@@ -15,7 +15,7 @@
 E2Z_SIMULATE :: 160.0; E2Z_LOAD :: 256.0;
 e2z_room_rings :: () -> CellRings #effects(all) { return CellRings.{draw = 96, simulate = E2Z_SIMULATE, load = E2Z_LOAD, hysteresis = 8, resident = CELL_RESIDENT, loads = CELL_LOADS}; }
 // A page's rings (everglade/client/cells.coax). A cell draws within E2Z_PAGE_DRAW of you: past the
-// farthest a planted piece shows (240 m, verse/everglade2/plant.coax E2_KIT_FAR) with room for the
+// farthest a planted piece shows (240 m, everglade/world/plant.coax E2_KIT_FAR) with room for the
 // eye behind you and a piece's place in its planting cell, so the controller never cuts off what you
 // can see. You may stand where a cell draws. A cell is asked for a cell's width sooner.
 E2Z_PAGE_DRAW :: 272.0; E2Z_PAGE_LOAD :: 336.0;

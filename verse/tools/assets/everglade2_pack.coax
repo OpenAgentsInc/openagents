@@ -1,9 +1,9 @@
 // Everglade v2's pack (docs/verse/everglade2.md): the Character Create people pack, the glade's own
 // composition on Everglade v2's land, the ground of the path and the clearing, and the Stylized
-// Nature kit pieces the page plants in the woods (verse/everglade2/plant.coax), each at the origin.
+// Nature kit pieces the page plants in the woods (everglade/world/plant.coax), each at the origin.
 // With MONSTERS (verse/tools/assets/animal_bake.py and bestiary_bake.py e2's frames) and the Bestiary
 // Dungeon source it also holds Everglade II's monsters (everglade/server/creatures.coax): the wolf's
-// and the goblin's frames at the origin, the goblin camp's props where verse/everglade2/camp.coax stands
+// and the goblin's frames at the origin, the goblin camp's props where everglade/world/camp.coax stands
 // them, and the Sword the path's guard holds.
 // Run: coax/web/tool.sh verse/tools/assets/everglade2_pack.coax SOURCE_ROOT BASE.pack OUTPUT.pack [MONSTERS BESTIARY]
 // tool.sh: release
@@ -15,8 +15,8 @@
 #load "../humans/ph_outfits.coax";
 #load "familiar_pack.coax";
 
-#load "../../everglade2/ground.coax";   // the admitted tiles (it loads plant.coax)
-#load "../../everglade2/camp.coax";     // the goblin camp's props
+#load "../../../everglade/world/ground.coax";   // the admitted tiles (it loads plant.coax)
+#load "../../../everglade/world/camp.coax";     // the goblin camp's props
 
 E2_PACK_BUDGET :: 67108864;
 #test "everglade2 static vertices retain positions beyond the people quantization box" {
@@ -143,7 +143,7 @@ gp_e2_catalog :: (c:[]Sb,w:[]Gp,index_base:int,vertex_word:int) {
   sb_int(c,index_base+w[0].mfirst[k]);sb_byte(c,' ');sb_int(c,w[0].mcount[k]);sb_put(c,ifx k<GP_E2_WOLVES || k==GP_E2_FRAMES-1 then " 253 " else " 254 ");sb_int(c,vertex_word);sb_put(c," 0 0\n");
  }
 }
-// The ground (#13059): the admitted tiles' own samples (verse/everglade2/ground.coax), each drawn
+// The ground (#13059): the admitted tiles' own samples (everglade/world/ground.coax), each drawn
 // E2G_DRAW_DROP below the admitted surface, every solid cell split on its south-west / north-east
 // diagonal as the tiles are; then coarse 4 m ground out to the valley's edges under them, a little
 // lower. The ground's colour is the material table's, per pixel (everglade/client/gpu/everglade2.coax

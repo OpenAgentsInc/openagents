@@ -318,7 +318,7 @@ sorted by the 8 m cell they stand in (`verse/experimental-grass-grid.coax`,
 draws only the cells in view, nearest first
 (`charactercreator.coax` `grass_cull`). A cell draws fewer of its seeds the
 farther it is, by the same law as every grass field in the engine
-(`verse/everglade2/meadow-grid.coax` `e2_meadow_density`): all of them to 16 m,
+(`everglade/world/meadow-grid.coax` `e2_meadow_density`): all of them to 16 m,
 a quarter fewer every 12 m past that, none past 140 m, each distance scaled by
 the quality's grass reach. The builder sorts the seeds it writes.
 After any bake that changes the grass, write where each cell's seeds start and

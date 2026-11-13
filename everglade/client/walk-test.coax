@@ -114,7 +114,7 @@ e2t_side :: (h: [] f32, p: walk.Player) -> f32 {
 // Walks the path from the glade to the clearing, `off` metres to the side of its middle, among every
 // collider the page builds (planted trees and rocks, the glade's own) and inside where you may stand:
 // from 2 m down the path past the spawn to the clearing, both Everglade II's named points
-// (verse/everglade2/points.coax, #13078: z -2 and -470 on 11-09). The longest you were held up
+// (everglade/world/points.coax, #13078: z -2 and -470 on 11-09). The longest you were held up
 // (seconds), and whether you reached the clearing (1000 when not, or when the map lacks either).
 E2T_PATH_FROM :: 2.0;   // m down the path past the spawn the walk starts
 e2t_path_walk :: (s: [] E2, off: f32) -> f32 {

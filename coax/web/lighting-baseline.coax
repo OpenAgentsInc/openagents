@@ -40,7 +40,7 @@
 #load "../lib/image/jpeg_enc.coax";
 #load "../../aethyr/render/environment-frame.coax" as envf;   // the glade's noon, as a page writes it (#13066)
 #load "../../verse/style-preset.coax";   // painterly's compatibility night, for e2-night (#13067)
-#load "../../verse/everglade2/points.coax";   // where down Everglade II's path each capture stands, by name (#13078)
+#load "../../everglade/world/points.coax";   // where down Everglade II's path each capture stands, by name (#13078)
 #load "map-points.coax";
 
 // ---- the bounds of the identity check (declared before any later step runs it) --------------
@@ -87,7 +87,7 @@ LB_FRESH :: 7;   // loads from here on are new captures
 LB_NAMES :: [13] string.["cc", "cc-phone", "handover", "e2-arrival", "e2-sunlit-path", "e2-deep-canopy", "exp-combat", "made-glade",
   "e2-night", "e2-view-ambient", "e2-view-direct", "e2-view-pregrade", "e2-view-regions"];
 // A load's address: LB_PATHS, then for an Everglade II load ?at= the metres down the path of its
-// named point (LB_AT, verse/everglade2/points.coax, #13078) and LB_AT_PAST more, then LB_AFTER:
+// named point (LB_AT, everglade/world/points.coax, #13078) and LB_AT_PAST more, then LB_AFTER:
 // at=1 (a metre past the spawn), 60 (sunlit-path) and 300 (deep-canopy) on 11-09 (lb_path).
 LB_PATHS :: [13] string.["/worlds/character-creator", "/worlds/character-creator", "/worlds/character-creator",
   "/worlds/everglade2", "/worlds/everglade2", "/worlds/everglade2", "/worlds/everglade-experimental", "/worlds/built#quiet-glade",
@@ -480,7 +480,7 @@ lb_gpu_probes :: (c: [] Cdp, s: [] Lb, name: string) -> bool {
 // distinct light records, the largest change of any light word (4 on) between two frames, the
 // largest change since the first frame, and the day. Across the hand-over no frame may change a light
 // word by more than LB_ENV_JUMP: the walk out of the glade enters the sunlit path's band
-// (verse/everglade2/environment.coax, 44 m), whose ramp moves a word at most about 0.01 a frame at a
+// (everglade/world/environment.coax, 44 m), whose ramp moves a word at most about 0.01 a frame at a
 // run; a seam would move it by the whole delta at once.
 LB_ENV_JUMP :: 0.02;
 LB_ENV :: "(()=>{const L=__lbEnv;return L.frames+' '+L.distinct+' '+L.step+' '+L.span+' '+L.t0+' '+L.t1+' '+(L.last?Array.from(L.last,x=>x.toPrecision(9)).join(' '):'')})()";

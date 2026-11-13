@@ -1,6 +1,6 @@
 // The Metaverse Engine's grid cull (GitHub #13147): the cells of a square grid round the eye that a view can
 // see, as runs of cells along each row. A realm that lets the GPU place one instance a cell (a
-// meadow's grass and understory: verse/everglade2/meadow.coax) draws each run instead of the whole
+// meadow's grass and understory: everglade/world/meadow.coax) draws each run instead of the whole
 // grid, so the GPU never runs the vertices of a cell behind the camera, beside the view or out of
 // its kit's ring. The cull only ever keeps too much: a cell is dropped when its whole square, and
 // whatever stands on it out to `pad` metres past it and the view's `rise` metres above or below the

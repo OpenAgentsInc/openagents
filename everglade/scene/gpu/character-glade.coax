@@ -2,7 +2,7 @@
 // Loaded after aethyr/gpu/wgsl.coax and verse/style.coax by fivelab.coax.
 #load "../../../verse/character-glade.coax";
 #load "character-glade-light.coax";
-#load "../../../verse/everglade2/meadow.coax";      // the open meadow scattered to the horizon (cg_meadow_vs)
+#load "../../world/meadow.coax";      // the open meadow scattered to the horizon (cg_meadow_vs)
 #load "../../../verse/experimental-ground.coax";   // the ground it stands on (exp_height_gpu); not experimental-terrain.coax, whose dungeon and visibility WGSL does not take (#13132)
 // The sky, the soil seams and the cloud shadows are the shared painterly default's
 // (aethyr/render/painterly.coax, #13060), with their checks; these names delegate to it. The cloud
@@ -82,7 +82,7 @@ cg_instanced_vs :: (id:u32,instance:u32,m:FivelabObj,u:[]f32,vertices:[]u32)->Fi
  bottom:=mix3(v3(base.x,base.y,base.z),v3(0.56f32,0.17f32,0.025f32),rust);top:=mix3(v3(0.65f32+0.28f32*autumn,0.88f32-0.20f32*autumn,0.07f32),v3(0.95f32,0.41f32,0.035f32),rust);o.tint=mix3(bottom,top,height);
  o.dye=v4(0,0,0,12);o.local=v3(2,height,1);o.who=(instance>>16)-1;return o;
 }
-// ---- The open meadow (verse/everglade2/meadow.coax), placed here: a record of kind 20 draws one kit
+// ---- The open meadow (everglade/world/meadow.coax), placed here: a record of kind 20 draws one kit
 // (a.x, its mesh at the record's b.w) over a grid of a.z by a.z cells round the eye, one instance a
 // cell. Kit 33 is the grass, by field.coax's nested tier a.y; the rest are the understory, one grid
 // a kit. Each piece's place, turn, size and tint are its cell's hash alone; distance only shrinks it.
@@ -197,7 +197,7 @@ cg_environment_fs :: (s:FivelabS,tex:V4,front:bool,u:[]f32,shadow:f32)->V4 {
  sun:=cg_sun_dir(u);eye:=wg_at3(u,16);view:=normalize3(sub3(eye,s.world));
  albedo:=mul3(v3(tex.x,tex.y,tex.z),cg_decode(s.tint));
  if (foliage || ground) {albedo=cg_decode(s.tint);}
- field:=s.dye.x>0.5f32;   // the open meadow (verse/everglade2/meadow.coax): no glade trail, its own gold already in its tint
+ field:=s.dye.x>0.5f32;   // the open meadow (everglade/world/meadow.coax): no glade trail, its own gold already in its tint
  if (ground) {trail:=ifx field then 0.0f32 else cg_path(s.world.x,s.world.z);// the gold is a sunlit hilltop's: steep banks keep more of their olive, and broad patches vary
   steep:=0.55f32+0.45f32*smoothstep(0.80f32,0.95f32,n.y);
   // inside the ridge cut on the walk to Everglade (past the main shot's view) the banks stay a grassy olive

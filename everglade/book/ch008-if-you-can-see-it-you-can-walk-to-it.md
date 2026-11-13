@@ -3,7 +3,7 @@
 > **Status: partly implemented.** Everglade II's colliders are built in
 > [`everglade/shared/move.coax`](../shared/move.coax)
 > from the same item list as the drawn pieces. Rock hulls are baked into
-> [`verse/everglade2/rock-hulls.coax`](../../verse/everglade2/rock-hulls.coax),
+> [`everglade/world/rock-hulls.coax`](../../everglade/world/rock-hulls.coax),
 > and the OpenAgents Metaverse Engine's [`aethyr/physics/query.coax`](../../aethyr/physics/query.coax) and
 > [`aethyr/physics/collide.coax`](../../aethyr/physics/collide.coax) resolve them. The page
 > and the room server step you on the same code. This chapter names functions
@@ -48,7 +48,7 @@ Pebbles, a few centimetres high, don't stop you.
 Every collider comes from the same item list and the same transform as the
 piece that the GPU draws. If a piece is left out of the pack, it is left out
 of the colliders by the same test. `e2_glade_kept` in
-[`verse/everglade2/forest.coax`](../../verse/everglade2/forest.coax) is that
+[`everglade/world/forest.coax`](../../everglade/world/forest.coax) is that
 test for the glade's own pieces. Both the pack tool and the colliders call it.
 
 ### A rock is its hull
@@ -125,7 +125,7 @@ In `everglade/shared/move.coax`:
 - `#test "every tree kind has a trunk sized to it"`.
 - `#test "a step past the edge slides along it, or stays where it started"`.
 
-In `verse/everglade2/forest.coax` and `everglade/client/client.coax`:
+In `everglade/world/forest.coax` and `everglade/client/client.coax`:
 
 - `#test "nothing of the glade's stands on the path out"`.
 - `#test "wherever you may not go on, thick woods stand: no edge on open

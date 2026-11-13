@@ -64,7 +64,7 @@
 // frame_z: terrain_tile_ground), and the queries, the bake and the shader's store all read those.
 // Everglade II runs at frame origin 0.
 //
-//   coax/bin/coax test verse/everglade2/ground.coax --library
+//   coax/bin/coax test everglade/world/ground.coax --library
 #load "plant.coax";
 #load "../../aethyr/world/terrain-tile.coax" as e2tt;
 #load "../../aethyr/render/bake.coax" as e2bk;

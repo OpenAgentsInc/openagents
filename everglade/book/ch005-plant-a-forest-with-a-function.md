@@ -1,8 +1,8 @@
 # 5. Plant a forest with a function
 
 > **Status: partly implemented.** The planting is
-> [`verse/everglade2/plant.coax`](../../verse/everglade2/plant.coax) and the
-> grass is [`verse/everglade2/field.coax`](../../verse/everglade2/field.coax).
+> [`everglade/world/plant.coax`](../../everglade/world/plant.coax) and the
+> grass is [`everglade/world/field.coax`](../../everglade/world/field.coax).
 > The code moves into `everglade/world/` later, so this chapter names functions
 > and has no source listings yet.
 
@@ -33,7 +33,7 @@ pieces (`E2_KIT_NAME`): 15 trees (oaks, birches and pines), bushes, ferns,
 rocks, flowers, mushrooms, clover and pebbles.
 
 The planting reads only the land functions in
-[`verse/everglade2/forest.coax`](../../verse/everglade2/forest.coax):
+[`everglade/world/forest.coax`](../../everglade/world/forest.coax):
 
 | Function | What it says |
 | --- | --- |
@@ -102,7 +102,7 @@ cells that have woods, the total comes to about 100,000. The planting stops at
 
 ## The checks
 
-In `verse/everglade2/plant.coax`:
+In `everglade/world/plant.coax`:
 
 - `#test "the woods are planted, dense beside the path, none on it or in the
   clearing"`. It asserts that the planting makes more than 20,000 pieces and
@@ -111,21 +111,21 @@ In `verse/everglade2/plant.coax`:
   are more than 8,000 trees, and that more than 200 trees stand within 9 m of
   the path.
 
-In `verse/everglade2/forest.coax`:
+In `everglade/world/forest.coax`:
 
 - `#test "the woods close round the glade and leave its open ground alone"`.
 - `#test "nothing of the glade's stands on the path out"`: the glade's own
   composition, which isn't planted by this function, is filtered by
   `e2_glade_kept` ([chapter 8](ch008-if-you-can-see-it-you-can-walk-to-it.md)).
 
-In `verse/everglade2/field.coax`:
+In `everglade/world/field.coax`:
 
 - `#test "the grass covers the land, leaves the path bare and thins in the
   woods"`.
 
 ```sh
-coax/bin/coax test --library verse/everglade2/plant.coax
-coax/bin/coax test --library verse/everglade2/field.coax
+coax/bin/coax test --library everglade/world/plant.coax
+coax/bin/coax test --library everglade/world/field.coax
 ```
 
 ## Mistakes

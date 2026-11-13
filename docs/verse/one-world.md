@@ -20,7 +20,7 @@ is built for each cell, is on [its own page](navigation.md).
   (`cell_complete`). Today the digest is the navigation page's, and a room keeps a page only at
   that digest.
 - **Ground** is already terrain tiles (`aethyr/world/terrain-tile.coax`,
-  `verse/everglade2/ground.coax`): the glade's tile and the path's 65 m tiles share a lattice and
+  `everglade/world/ground.coax`): the glade's tile and the path's 65 m tiles share a lattice and
   their edges, with a stitched seam where a fine row meets a coarse one.
 
 ## The room
@@ -48,7 +48,7 @@ The page holds the same manifest and steps the same controller
   (240 m) with room for the eye behind you. You may stand where a cell draws. A cell is asked for
   at 336 m, a cell's width sooner. So the controller never cuts off something you can see: a
   piece's own dither does the fading, and a cell changing level changes no pixel.
-- **Content.** A planting cell (16 m, `verse/everglade2/plant.coax`) whose middle is in a world
+- **Content.** A planting cell (16 m, `everglade/world/plant.coax`) whose middle is in a world
   cell is that cell's, and its pieces and the grass field's blocks draw only while the cell
   draws. Land off the manifest is the zone's backdrop: nobody walks it, and it draws by distance.
 - **Loads.** The controller asks for a cell and something answers. The seam is three calls

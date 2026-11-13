@@ -1,7 +1,7 @@
 # 3. A realm with no editor
 
 > **Status: partly implemented.** Everglade II builds and runs from text today.
-> Its files are spread across `apps/openagents-web/`, `verse/everglade2/` and
+> Its files are spread across `apps/openagents-web/`, `everglade/` and
 > `verse/tools/assets/`. They move into `everglade/` after the work in progress
 > lands, one directory per commit. Until then this chapter names files and has
 > no source listings.
@@ -27,10 +27,10 @@ change one?"
 | Movement | [`everglade/shared/move.coax`](../shared/move.coax) | Where you may stand, the pace, trunks and rock hulls |
 | Character Create | [`everglade/client/create.coax`](../client/create.coax) | The studio, the arrival and the run into the world |
 | The GPU passes | [`everglade/client/gpu/everglade2.coax`](../client/gpu/everglade2.coax) | The ground, kit pieces, grass and characters, in Coax compiled to WGSL |
-| The land | [`verse/everglade2/forest.coax`](../../verse/everglade2/forest.coax) | Height, path, woods, clearing and colour, as pure functions |
-| The planting | [`verse/everglade2/plant.coax`](../../verse/everglade2/plant.coax) | Which kit piece stands where |
-| The ground tiles | [`verse/everglade2/ground.coax`](../../verse/everglade2/ground.coax) | The admitted terrain tiles and their baked light |
-| The light | [`verse/everglade2/environment.coax`](../../verse/everglade2/environment.coax) | The places' light as an environment set |
+| The land | [`everglade/world/forest.coax`](../../everglade/world/forest.coax) | Height, path, woods, clearing and colour, as pure functions |
+| The planting | [`everglade/world/plant.coax`](../../everglade/world/plant.coax) | Which kit piece stands where |
+| The ground tiles | [`everglade/world/ground.coax`](../../everglade/world/ground.coax) | The admitted terrain tiles and their baked light |
+| The light | [`everglade/world/environment.coax`](../../everglade/world/environment.coax) | The places' light as an environment set |
 | The pack tool | [`verse/tools/assets/everglade2_pack.coax`](../../verse/tools/assets/everglade2_pack.coax) | The asset pack the page loads |
 
 The land functions are the centre of the design. The pack tool, the planting,
@@ -81,8 +81,8 @@ the path on your own.
 Tests sit next to the code that they check. Run one file's tests:
 
 ```sh
-coax/bin/coax test --library verse/everglade2/forest.coax
-coax/bin/coax test --library verse/everglade2/plant.coax
+coax/bin/coax test --library everglade/world/forest.coax
+coax/bin/coax test --library everglade/world/plant.coax
 coax/bin/coax test --library everglade/shared/move.coax
 coax/bin/coax test --library everglade/client/walk-test.coax
 ```

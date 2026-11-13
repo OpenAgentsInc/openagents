@@ -5,7 +5,7 @@
 // replay envelope, and so the Input module, which a page may reach from one unit only
 // (INVARIANTS.md, "Walking profiles"). So the client's unit loads this file and no more.
 //   coax/bin/coax test --library everglade/client/cells.coax
-#load "../../verse/everglade2/plant.coax";
+#load "../world/plant.coax";
 
 E2CV_CELLS :: 256;      // aethyr/world/cells.coax CELL_MAX (cells.coax checks it)
 E2CV_DRAW :: 4;         // CELL_DRAW_LEVEL

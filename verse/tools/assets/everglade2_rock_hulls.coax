@@ -4,8 +4,8 @@
 // vertex along each of a fixed set of directions round it (every 22.5 degrees round, from under it to
 // over it), so the hull sits inside the drawn rock and touches it all round. Glade Rock_Medium_4s west
 // of x -10 are drawn with their tops capped (verse/character-glade.coax cg_cliff_cap_y), so that one
-// has its own capped hull. It prints verse/everglade2/rock-hulls.coax:
-//   coax/web/tool.sh verse/tools/assets/everglade2_rock_hulls.coax SOURCE_ROOT > verse/everglade2/rock-hulls.coax
+// has its own capped hull. It prints everglade/world/rock-hulls.coax:
+//   coax/web/tool.sh verse/tools/assets/everglade2_rock_hulls.coax SOURCE_ROOT > everglade/world/rock-hulls.coax
 // SOURCE_ROOT is the Stylized Nature original in the asset registry (the folder holding glTF/).
 // tool.sh: release
 // tool.sh: stack-gib 8

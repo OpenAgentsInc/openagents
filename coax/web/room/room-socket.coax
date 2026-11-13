@@ -144,7 +144,7 @@ rs_atan2 :: (y: f32, x: f32) -> f32 {
 // The classes a bot can say in its hello (fivebar.coax FB_CL_KIND, in order): bot K plays the K-th round.
 RS_CL_N :: 12;
 RS_CL_KIND :: [12] string.["srd-barbarian", "srd-bard", "srd-cleric", "srd-druid", "srd-fighter", "srd-monk", "srd-paladin", "srd-ranger", "srd-rogue", "srd-sorcerer", "srd-warlock", "srd-wizard"];
-// The path's middle at z (verse/everglade2/forest.coax e2_road_x and verse/character-glade.coax
+// The path's middle at z (everglade/world/forest.coax e2_road_x and verse/character-glade.coax
 // cg_road_x, cg_path_x, cg_ramp, copied: the tools link no world), so a tool's players run along it (e2-restart-check.coax,
 // bots.coax).
 rs_ramp :: (a: f32, b: f32, x: f32) -> f32 { t := (x - a) / (b - a); t = ifx t < 0 then 0.0f32 else ifx t > 1 then 1.0f32 else t; return t * t * (3 - 2 * t); }

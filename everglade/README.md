@@ -17,8 +17,8 @@ room server's `EG_SEATS` matches.
 - For system specs that aren't book chapters yet, see [Everglade design docs](docs/README.md),
   such as [Golemancy](docs/golemancy-profession-spec.md), the profession for commanding golems.
 
-Everglade's code is moving into this folder from `verse/everglade2/` and
-`apps/openagents-web/`. For what moves and when, see
+Everglade's code is moving into this folder from `apps/openagents-web/`. The
+land, planting, ground and light are in [world/](world/). For what moves and when, see
 [Where Everglade's code lives](book/README.md#where-everglades-code-lives).
 
 Zones only wire shared features. [features.coax](features.coax) lists each

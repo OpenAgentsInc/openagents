@@ -125,7 +125,7 @@ coax/web/tool.sh everglade/model/tools/zone-cells.coax --write everglade/world/z
 
 It builds every cell's page and refuses the zone when any of these holds:
 
-- A named point (`verse/everglade2/points.coax`) can't be walked to from the spawn.
+- A named point (`everglade/world/points.coax`) can't be walked to from the spawn.
 - A content point (`everglade/content/everglade.content`) has no reachable ground within its
   radius, or a spawn names no point.
 - A creature walked by `nav_cells_go` from the spawn to each named point in turn, and back,

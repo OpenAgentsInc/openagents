@@ -1,7 +1,7 @@
 // Everglade's zone manifest and its pack-time navigation check (GitHub #13280, #13281; docs/verse/navigation.md).
 // Builds every cell's navigation page from the colliders the players' step uses
 // (everglade/shared/nav.coax), then:
-//   - refuses the zone unless every named point (verse/everglade2/points.coax), every content
+//   - refuses the zone unless every named point (everglade/world/points.coax), every content
 //     point and every spawn's point (everglade/content/everglade.content) can be walked to from
 //     the spawn: a named point at its own place, a content point somewhere within its radius;
 //   - walks a creature on the pages, by the steering service the room's creatures use

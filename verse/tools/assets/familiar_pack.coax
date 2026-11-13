@@ -1,6 +1,6 @@
 // Shared model writer for the Experimental glade and Everglade II packs.
 // Loaded by the two builders with their existing packed vertex writer.
-#load "../../everglade2/familiar-mesh.coax";
+#load "../../../everglade/world/familiar-mesh.coax";
 
 GP_FAMILIAR_SOURCE :: 248;
 GP_FAMILIAR_KIND :: 8;

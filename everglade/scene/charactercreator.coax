@@ -8,7 +8,7 @@
 #load "../../verse/experimental-grass-grid.coax" as ggrid;    // the glade's grass seeds by cell (meadow_cull)
 #load "../../verse/experimental-grass-baked.coax" as gbaked;  // where each cell's seeds start in the committed glade pack
 #load "../../aethyr/render/grid-cull.coax" as gcull;   // the open field draws only the cells its view can see (meadow_cull)
-#load "../../verse/everglade2/meadow-grid.coax" as grid;   // the open field's scatter grids (verse/everglade2/meadow.coax)
+#load "../world/meadow-grid.coax" as grid;   // the open field's scatter grids (everglade/world/meadow.coax)
 #load "../../verse/experimental-village.coax" as village;
 #load "../../aethyr/cam/follow.coax" as follow;
 #load "../../aethyr/physics/query.coax" as query;
@@ -967,7 +967,7 @@ meadow_cull :: (s:[]Creator,b:[]figs.Bodies,out:[]f32,n0:int,cap:int)->int {
     kit:=cast(int)out[r*24];t:=cast(int)out[r*24+1];side:=cast(int)out[r*24+2];c:=grid.e2_meadow_grid_cell(kit,t);
     if side<=0 || c<=0 || cast(int)b[0].draws[i*4+3]!=side*side {continue;}
     gx:=floor((v.ex-origin)/c)-f32(side/2);gz:=floor((v.ez-origin)/c)-f32(side/2);
-    // the ring at the quality's reach (verse/everglade2/field.coax e2_field_start_r, e2_field_out_r; meadow.coax e2_meadow_fade)
+    // the ring at the quality's reach (everglade/world/field.coax e2_field_start_r, e2_field_out_r; meadow.coax e2_meadow_fade)
     g:=ifx out[r*24+5]>0 then out[r*24+5] else 1.0f32;inner:=grid.e2_meadow_grid_inner(kit,t)*g;outer:=grid.e2_meadow_grid_outer(kit,t)*g;
     if kit==grid.E2_MEADOW_GRASS && out[r*24+6]>0 && out[r*24+6]<=0.2501 {if t==0 {outer=0;}if t==1 {inner=0;}}
     if outer<=inner {b[0].draws[i*4+3]=0;continue;}

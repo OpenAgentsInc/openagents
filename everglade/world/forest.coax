@@ -1,12 +1,12 @@
 // Everglade v2, piece 1 (GitHub #13023, docs/verse/everglade2.md): the land round Character
 // Create's glade and the long path out of it. Every function here is a pure function of position,
 // so the pack's ground (verse/tools/assets/everglade2_pack.coax), the planting
-// (verse/everglade2/plant.coax), the walk (everglade/client/client.coax) and the shader
+// (everglade/world/plant.coax), the walk (everglade/client/client.coax) and the shader
 // (everglade/client/gpu/everglade2.coax) all read the same land. Inside the glade it is the
 // glade's own (verse/character-glade.coax): the same hills, path and autumn.
-#load "../character-glade.coax";
+#load "../../verse/character-glade.coax";
 #load "points.coax";   // E2_CLEAR_Z, the spawn and the named points the scripted checks read (#13078)
-#load "../everglade/clearing.coax";   // Everglade's clearings and streams (#13093): this file only places them
+#load "../../verse/everglade/clearing.coax";   // Everglade's clearings and streams (#13093): this file only places them
 
 E2_CLEAR_R :: 34.0;    // its radius: open meadow inside, the woods' edge round it
 E2_FAR :: -640.0;      // where the land stops (behind the wooded rise past the clearing)
@@ -161,7 +161,7 @@ e2_gold :: (x:f32,z:f32)->f32 {
  o:=e2_woods_share(x,z);patch:=e2_smooth(0.40,0.62,e2_noise(x/60+3.1,z/60-1.7));
  return cg_autumn(x,z)*(1-o)+patch*o*0.3;
 }
-// The ground's layers in the order they cover each other (verse/everglade2/ground.coax e2g_weights,
+// The ground's layers in the order they cover each other (everglade/world/ground.coax e2g_weights,
 // everglade/client/gpu/everglade2.coax e2_ground_albedo): 0 the autumn over the meadow, 1 the forest litter over
 // both, 2 the path's dirt over all.
 e2_ground_layer :: (x:f32,z:f32,l:int)->f32 {

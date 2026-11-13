@@ -1,4 +1,4 @@
-// The druid's field at /druid: Everglade II's open meadow (verse/everglade2/meadow.coax) for
+// The druid's field at /druid: Everglade II's open meadow (everglade/world/meadow.coax) for
 // Experimental's glade pack, appended the way the dragon is (dragon_pack.coax), so nothing else in
 // the pack is rebuilt. The pack holds each meadow mesh once; the GPU scatters their instances over the
 // field from a seeded hash, so the pack's size doesn't depend on the field's.
@@ -36,7 +36,7 @@
 //
 // It reuses the pack's L 250 (Quaternius Stylized Nature MegaKit Source, CC0) and its texture
 // layers: each mesh's texture is found among the pack's layers by its encoded bytes.
-#load "../../everglade2/plant.coax";
+#load "../../../everglade/world/plant.coax";
 #load "../../experimental-terrain.coax" as xterrain;
 
 GP_MEADOW_KITS :: [11]int.[20,21,22,25,26,27,28,29,30,31,33];

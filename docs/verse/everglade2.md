@@ -37,7 +37,7 @@ follow the SRD 5.2.1 classes (CC-BY-4.0, attributed in the source).
 
 ## The land
 
-`verse/everglade2/forest.coax` holds the land as plain functions that the CPU and the shaders
+`everglade/world/forest.coax` holds the land as plain functions that the CPU and the shaders
 share:
 
 - Inside the glade (within 14 m of the middle and north of z = -14), the ground is exactly the
@@ -68,7 +68,7 @@ share:
 
 ### The admitted ground and its baked light (#12995, #13059)
 
-`verse/everglade2/ground.coax` holds Everglade II's land as a set of Metaverse Engine terrain tiles
+`everglade/world/ground.coax` holds Everglade II's land as a set of Metaverse Engine terrain tiles
 (`aethyr/world/terrain-tile.coax`) against Everglade II's ground material table (meadow, autumn meadow,
 forest litter, path dirt), with four weights a sample from `e2_gold`, `e2_forest` and `e2_path`.
 All tiles lie on one lattice, the glade's 0.65 m samples from (-32.5, -60), each worked out once
@@ -133,7 +133,7 @@ the darkest spots under the crowns, within 2% elsewhere, unchanged off the tile.
 
 ## The planting
 
-`verse/everglade2/plant.coax` places every kit piece as a pure function of the land, cell by
+`everglade/world/plant.coax` places every kit piece as a pure function of the land, cell by
 16 m cell. The page plants all of them at load, in a fraction of a second:
 
 - Trees stand on a jittered 2.6 m grid where the woods are thick, never on the path or in the
@@ -179,7 +179,7 @@ The two bakes write the monsters' frames (the Wolf's Idle, Gallop, Attack and De
 Puglin's Idle, Jog, Sword, Shoot and Death, eight frames each), the goblin camp's props (the Dungeon
 Woodfire and the Fantasy Props stall, crates, barrel and bench) and the guard's Sword. The pack holds
 them as `glade/monster0..31`, `glade/gremlin0..39` and `glade/weapon1`; the camp stands in the glade's
-environment where `verse/everglade2/camp.coax` puts it.
+environment where `everglade/world/camp.coax` puts it.
 
 The path's guard is the SRD Fighter at level 10 (`rs_path_guard` in `rules/srd/npcs.coax`):
 AC 19 (Chain Mail, a Shield and the Defense style), 84 Hit Points, Str 18, Proficiency +4, and two
@@ -249,7 +249,7 @@ coax/web/tool.sh clip "http://127.0.0.1:8871/worlds/everglade2?stage=cat" cat.mp
   stand on, its sides stop you where you see them. You step onto a rock lower than 0.55 m, jump
   onto a taller one and stand on its top, walk up a gentle face and slide off a steep one. The
   hulls are baked from the Stylized Nature meshes by
-  `verse/tools/assets/everglade2_rock_hulls.coax` into `verse/everglade2/rock-hulls.coax`, whose
+  `verse/tools/assets/everglade2_rock_hulls.coax` into `everglade/world/rock-hulls.coax`, whose
   check compares each hull to its mesh's bounds. Both are scaled and turned with the placed
   piece, the glade's own trees and rocks included; the page and the room step you on the same
   hulls. Pebbles, a few centimetres high, don't stop you. `everglade/client/walk-test.coax` walks into
@@ -275,7 +275,7 @@ coax/web/tool.sh clip "http://127.0.0.1:8871/worlds/everglade2?stage=cat" cat.mp
   (`e2_piece_shown`, `e2_piece_looks`).
 - Character Create's glade grass isn't drawn. At about 35 million vertices a frame it cost
   about 10 ms of GPU time; the blade grass covers the glade instead.
-- Blade grass covers all of the ground except the bare path (`verse/everglade2/field.coax`). The
+- Blade grass covers all of the ground except the bare path (`everglade/world/field.coax`). The
   GPU places one tuft in each cell of a grid fixed to the land, seeded by the cell, in four
   nested tiers round the eye: 0.5 m cells to 28 m, 1 m to 40 m, 2 m to 52 m, and 4 m to 140 m.
   Each coarse tuft stands exactly where one of the four finer tufts under it stood, with the same

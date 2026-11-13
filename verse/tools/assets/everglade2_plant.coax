@@ -1,5 +1,5 @@
 // Everglade II's planting into its pack (docs/verse/fast-loads.md, #13150): IN.pack's catalog with
-// the woods e2_plant plants (verse/everglade2/plant.coax) as P lines, written to OUT.pack. The page
+// the woods e2_plant plants (everglade/world/plant.coax) as P lines, written to OUT.pack. The page
 // takes the woods from them instead of planting for 1.8 s on its first frame. apps/openagents-web/
 // build.sh runs it on the tracked everglade2.pack before page-pack writes the .vpk3, so the lines
 // are always this tree's planting. Any P lines IN already holds are replaced. The rest of the pack
@@ -11,7 +11,7 @@
 #load "../../../coax/lib/sys/tool.coax";
 #load "../../../coax/lib/sys/fs.coax";
 #load "../../../coax/lib/sys/args.coax";
-#load "../../everglade2/plant.coax";
+#load "../../../everglade/world/plant.coax";
 
 E2PP_MAX :: 67108864;
 E2PP_VPK1 :: 0x314b5056;

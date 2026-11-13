@@ -3,7 +3,7 @@
 > **Status: partly implemented.** The light is one shared profile in
 > [`aethyr/world/environment.coax`](../../aethyr/world/environment.coax)
 > (`env_glade_profile`) and Everglade II's places in
-> [`verse/everglade2/environment.coax`](../../verse/everglade2/environment.coax)
+> [`everglade/world/environment.coax`](../../everglade/world/environment.coax)
 > (`e2_environment_set`). Phase 1 of the
 > [lighting plan](../../docs/verse/lighting/README.md) is done for the
 > browser. The code moves into `everglade/world/` later, so this chapter names
@@ -30,8 +30,8 @@ the glade.
 | --- | --- |
 | The glade profile: sun, sky, ground bounce, haze, film | `env_glade_profile` and `ENV_GLADE_*` in `aethyr/world/environment.coax` |
 | Places as regions, admitted whole and resolved by position | [`aethyr/world/environment-region.coax`](../../aethyr/world/environment-region.coax) (`env_region_index_replace`, `env_resolve_camera`) |
-| Everglade II's places | `e2_environment_set`, `e2_env_sunlit_profile`, `e2_env_canopy_profile` in `verse/everglade2/environment.coax` |
-| The canopy's baked occlusion | `e2g_bake`, `e2g_occluded`, `e2g_ao_of` in [`verse/everglade2/ground.coax`](../../verse/everglade2/ground.coax), on [`aethyr/render/bake.coax`](../../aethyr/render/bake.coax) |
+| Everglade II's places | `e2_environment_set`, `e2_env_sunlit_profile`, `e2_env_canopy_profile` in `everglade/world/environment.coax` |
+| The canopy's baked occlusion | `e2g_bake`, `e2g_occluded`, `e2g_ao_of` in [`everglade/world/ground.coax`](../../everglade/world/ground.coax), on [`aethyr/render/bake.coax`](../../aethyr/render/bake.coax) |
 | Shadow cascades | [`aethyr/render/cascades.coax`](../../aethyr/render/cascades.coax) |
 
 ## The method
@@ -120,7 +120,7 @@ woods darken over a minute of walking, never in one step.
 
 ## The checks
 
-In `verse/everglade2/environment.coax`:
+In `everglade/world/environment.coax`:
 
 - `#test "Everglade II's set is admitted whole: the glade the default, the
   path's two deltas"`.
@@ -131,7 +131,7 @@ In `verse/everglade2/environment.coax`:
 - `#test "walking the whole path, the light changes continuously: nothing
   steps"`.
 
-In `verse/everglade2/ground.coax`:
+In `everglade/world/ground.coax`:
 
 - `#test "the canopy AO matches an independent sampling of the sky, and the bake
   publishes onto its key and state only"`.

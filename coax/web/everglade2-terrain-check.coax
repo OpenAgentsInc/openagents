@@ -18,13 +18,13 @@
 #import "Basic";
 #load "../lib/media/media.coax";      // MEDIA_READY_JS; it loads cdp.coax
 #load "../lib/sys/fs.coax";
-#load "../../verse/everglade2/points.coax";   // where each walk starts down the path, by name (#13078)
+#load "../../everglade/world/points.coax";   // where each walk starts down the path, by name (#13078)
 #load "map-points.coax";
 
 ET_WALKS :: 3;
 ET_NAMES :: [3] string.["glade", "path", "seam"];
 // Where each walk starts: the glade (the spawn: no ?at=), and down the path the map's tiles-path and
-// ground-seam (verse/everglade2/points.coax: ?at=120 and ?at=360 on 11-09).
+// ground-seam (everglade/world/points.coax: ?at=120 and ?at=360 on 11-09).
 ET_AT :: [3] string.["spawn", "tiles-path", "ground-seam"];
 // Walk v's query: ?at= the metres down the path of its point (none for the spawn), then walk.
 et_query :: (o: [] EtBuf, v: int) -> bool {

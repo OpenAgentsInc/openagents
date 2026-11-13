@@ -129,7 +129,7 @@ nostr-lab-walk 3630000
 # about 5% headroom.
 # The room (everglade/client/net.coax: its socket, the jitter buffer, the re-run, the others' bodies and their
 # names, #13054): 399,063; Character Create's NAME and the names kept clear of each other (#13056): 407,698 measured; about 3% headroom.
-# The shared terrain set (verse/everglade2/ground.coax, #13059: 21 admitted tiles, the seam checks and the
+# The shared terrain set (everglade/world/ground.coax, #13059: 21 admitted tiles, the seam checks and the
 # catalog record reader): 425,803 measured; about 5% headroom.
 # The class bar and everyone's casts through the room (everglade/client/cast.coax, #13058): the twelve classes'
 # kits at level 1 on the SRD engine's spell and feature tables (class-kit.coax, fivebar.coax), their
@@ -140,7 +140,7 @@ nostr-lab-walk 3630000
 # cast's fades, on top of the shared world profile (#13045): 660,903 measured; about 3% headroom.
 # The light through the resolved environment (aethyr/render/environment-frame.coax, #13066: the region
 # set and its index admitted whole, the day from the room's clock, the camera's resolution and the GPU
-# record each frame, and Everglade II's places from verse/everglade2/environment.coax): 687,298
+# record each frame, and Everglade II's places from everglade/world/environment.coax): 687,298
 # measured; about 4% headroom.
 # Devotion Protection adds the hotbar and effect handling, measured at 720,314 bytes (#13030).
 # Zone of Truth hotbar and shared saves, measured at 721,014 bytes (#13030).

@@ -1,9 +1,9 @@
 // Everglade v2's passes (docs/verse/everglade2.md): Character Create's glade light and materials on
-// Everglade v2's land (verse/everglade2/forest.coax), the woods' kit pieces drawn instanced from the
+// Everglade v2's land (everglade/world/forest.coax), the woods' kit pieces drawn instanced from the
 // page's visible-piece store (everglade/client/client.coax), and a key-light shadow map that
 // follows the player.
 #load "../../scene/gpu/fivelab.coax";
-#load "../../../verse/everglade2/field.coax";
+#load "../../world/field.coax";
 #load "../../scene/gpu/portal.coax";   // Everglade's portal's light: Character Create's arrival from the homepage
 #load "../../../aethyr/render/terrain-shade.coax";   // the ground's material table and baked AO (#13052)
 #load "../../../aethyr/render/character-material.coax";   // the characters' material record's shading (#13012)
@@ -61,7 +61,7 @@ e2_kit_place :: (id:u32,a:V4,c:V4,u:[]f32,vertices:[]u32)->FivelabS {
  }
  return o;
 }
-// ---- the grass field (verse/everglade2/field.coax): a tuft a cell, placed here from the draw's block
+// ---- the grass field (everglade/world/field.coax): a tuft a cell, placed here from the draw's block
 // code and the cell's own hash, so the CPU only picks the blocks in view.
 e2_field_vs :: (id:u32,instance:u32,u:[]f32,vertices:[]u32)->FivelabS {
  o:FivelabS;o.pos=v4(0,0,-2,1);
@@ -237,7 +237,7 @@ e2_shadow_visibility :: (p:V3,n:V3,u:[]f32,map:TexDepth,cmp:SamplerCompare)->f32
  return 1;
 }
 // ---- the ground: drawn from the admitted material table and the canopy's bake (#13052)
-// The page's ground store (verse/everglade2/ground.coax e2g_gpu): vec4 0 the bake grid (cells, spacing,
+// The page's ground store (everglade/world/ground.coax e2g_gpu): vec4 0 the bake grid (cells, spacing,
 // west, south), vec4 1 (rise, edge ease, live, the ground's share of the AO), then E2_GROUND_MATERIAL vec4s a material
 // in the table's order, then the AO four to a vec4 from E2_GROUND_AO.
 E2_GROUND_HEAD :: 2; E2_GROUND_MATERIAL :: 5; E2_GROUND_AO :: 22;   // ground.coax E2G_GPU_HEAD, E2G_GPU_MATERIAL, E2G_GPU_AO / 4
@@ -331,7 +331,7 @@ e2_environment_fs :: (s:FivelabS,tex:V4,front:bool,u:[]f32,shadow:f32,table:[]V4
   // The reference trail is packed olive earth, darker than sand.
   albedo=mix3(albedo,cg_decode(v3(0.50f32,0.46f32,0.24f32)),trail*0.80f32);
   // where the grass field thins out with distance its colour carries on in the ground, by the same
-  // cover (verse/everglade2/field.coax e2_field_cover), so the field never ends in a line
+  // cover (everglade/world/field.coax e2_field_cover), so the field never ends in a line
   au:=e2_gold(s.world.x,s.world.z);dk:=1.0f32-0.38f32*woods;
   lawn:=mul3(cg_decode(scale3(v3(0.47f32+0.27f32*au,0.66f32-0.10f32*au,0.06f32),dk)),mix3(v3(0.88f32,0.80f32,0.08f32),v3(0.60f32,0.86f32,0.10f32),0.6f32));
   away:=smoothstep(24.0f32,120.0f32,wg_length3(sub3(s.world,wg_at3(u,16))));
@@ -404,7 +404,7 @@ cc_player_fs :: (s:FivelabS,tex:V4,front:bool,u:[]f32,objects:[]FivelabObj,visib
   albedo=mix3(albedo,scale3(cg_decode(v3(m.f.x,m.f.y,m.f.z)),shade),iris);
  }
  g:=normalize3(add3(s.normal,v3(0,0.00001f32,0)));if (!front) {g=scale3(g,-1);}
- // the canopy's baked AO where you stand (u[62], verse/everglade2/ground.coax) shades the indirect terms only
+ // the canopy's baked AO where you stand (u[62], everglade/world/ground.coax) shades the indirect terms only
  maps:=u[61]<0.5f32;rough:=mb.x;metal:=mb.y;ao:f32=clampf(u[62],0.0f32,1.0f32);n:=g;flags:=cast(int)(mc.w+0.5f32);
  if (maps && mb.z>-0.5f32) {nt:=render_sample_layer8_grad(data,sheet,s.uv,cast(s32)(mb.z+0.5f32),d.ux,d.uy,0);n=cm_normal(nt,mc.x,g,d.px,d.py,d.ux,d.uy);}
  if (maps && mb.w>-0.5f32) {o:=render_sample_layer8_grad(data,sheet,s.uv,cast(s32)(mb.w+0.5f32),d.ux,d.uy,0);rough=o.y;if ((flags&2)!=0) {metal=o.z;}if ((flags&1)!=0) {ao=ao*o.x;}}

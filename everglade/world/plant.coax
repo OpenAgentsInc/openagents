@@ -1,6 +1,6 @@
 // Everglade v2's planting (docs/verse/everglade2.md): which Stylized Nature kit pieces stand where
 // in the woods round the path and the clearing, as a pure function of the land
-// (verse/everglade2/forest.coax). The pack tool (verse/tools/assets/everglade2_pack.coax) packs
+// (everglade/world/forest.coax). The pack tool (verse/tools/assets/everglade2_pack.coax) packs
 // the pieces named here; the page (everglade/client/client.coax) plants them at load and
 // draws the ones in view. The glade's own composition stays in the glade's pack mesh.
 #load "forest.coax";
@@ -255,7 +255,7 @@ e2_plant_cell :: (out:[]f32,kinds:[]u8,n0:int,i:int,j:int)->int {
   else if r<0.90 {s:=0.3+sz*0.3;n=e2_put(out,kinds,n,31,x,y,z,yaw,s,s,green);}
   else {s:=0.3+sz*0.25;n=e2_put(out,kinds,n,29+int(cg_hash(h,20)*1.999),x,y,z,yaw,s,s,ifx au>0.4 then orange else green);}
  }
- // (the grass is the field's: verse/everglade2/field.coax, placed on the GPU)
+ // (the grass is the field's: everglade/world/field.coax, placed on the GPU)
  // now and then a boulder in the woods
  bh:=seed*0.71+0.3;
  if cg_hash(bh,21)<0.3 {x:=x0+cg_hash(bh,22)*cs;z:=z0-cg_hash(bh,23)*cs;

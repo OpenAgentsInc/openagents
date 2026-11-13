@@ -3,8 +3,8 @@
 // constants until #13066 routes it through the resolver; ld_* below are the same arithmetic reading
 // a ResolvedEnvironment, and the first check holds them to paint_* on the glade, so a table here is
 // what the shared functions give with each delta.
-//   coax/bin/coax test verse/everglade2/environment-probe.coax
-//   coax/bin/coax run verse/everglade2/environment-probe.coax > probes.tsv
+//   coax/bin/coax test everglade/world/environment-probe.coax
+//   coax/bin/coax run everglade/world/environment-probe.coax > probes.tsv
 // The table: for each variant (the open glade, the sunlit path, the deep canopy, and painterly's
 // compatibility keys night, dawn, noon and dusk) at each of the P1.1 baseline's Everglade II cameras
 // (?at=1, 60 and 300 m down the path), the camera's resolved profile and weights, the key, the
@@ -12,7 +12,7 @@
 // output; then a walk down the whole path every 10 m (each region's weight and the key).
 #import "Basic";
 #load "../../aethyr/render/painterly.coax";
-#load "../style-preset.coax";
+#load "../../verse/style-preset.coax";
 #load "environment.coax";
 
 ld_v :: (c: EnvRgb) -> V3 { return v3(c.r, c.g, c.b); }

@@ -1,7 +1,7 @@
 # 9. A path through dense woods
 
 > **Status: partly implemented.** The path is a set of pure functions in
-> [`verse/everglade2/forest.coax`](../../verse/everglade2/forest.coax)
+> [`everglade/world/forest.coax`](../../everglade/world/forest.coax)
 > (`e2_road_x`, `e2_road_dist`, `e2_level`, `e2_path`). The walk along it is in
 > [`everglade/client/client.coax`](../client/client.coax).
 > The code moves into `everglade/world/` later, so this chapter names functions
@@ -113,7 +113,7 @@ So the dirt is about 2.3 m wide.
 
 ## The checks
 
-In `verse/everglade2/forest.coax`:
+In `everglade/world/forest.coax`:
 
 - `#test "the land is the glade's inside the glade and the path leaves it to the
   north"`.

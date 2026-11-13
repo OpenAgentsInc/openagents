@@ -267,7 +267,7 @@ Everglade's code is currently spread across the repository:
 
 | What | Where it is now |
 | --- | --- |
-| The land, planting, ground and light | `verse/everglade2/` |
+| The land, planting, ground and light | `everglade/world/` |
 | The client: the page's units, casting, the room's client and Character Create in the world | `everglade/client/` |
 | What the client and the room both load: movement, the class kits, the casts' rules, the wire | `everglade/shared/` |
 | The room's rules | `everglade/server/` |
@@ -285,7 +285,7 @@ together:
 everglade/
   README.md     what Everglade is and how to run it
   book/         this book
-  world/        the land, planting, ground and light (from verse/everglade2/)
+  world/        the land, planting, ground and light
   game/         the page and its units (from apps/openagents-web/everglade2*.coax)
   tools/        the asset pack and capture tools
   docs/         design notes (from docs/verse/everglade*.md)

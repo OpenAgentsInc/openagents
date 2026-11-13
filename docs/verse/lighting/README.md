@@ -25,7 +25,7 @@ realm** as the **default** lighting. A painterly realm that authors nothing gets
 the glade; authored profiles are deltas from it, never a fresh start.
 
 "Everglade" in this plan means **Everglade II** (`/worlds/everglade2`,
-`apps/openagents-web/everglade2*.coax`, `verse/everglade2/`), which is becoming
+`everglade/client/`, `everglade/world/`), which is becoming
 Everglade. Version one (`verse/everglade/gpu.coax`) is frozen: it gets the
 painterly default through a compatibility adapter at the end, not new work.
 
@@ -52,7 +52,7 @@ response in `aethyr/render/filmic.coax`. The `cg_*` names in the app files are t
 Since #13065, `verse_style_compat_profile` turns a preset's four clock keys into a profile:
 painterly's noon knot is the glade's (it resolves bit-equal to `env_glade_profile()`), and its
 dawn, dusk and night are deltas on the glade; lowpoly keeps its own. Everglade II's places are in
-`verse/everglade2/environment.coax` (`e2_environment_set()`): the open glade as the map default,
+`everglade/world/environment.coax` (`e2_environment_set()`): the open glade as the map default,
 a subtle sunlit-path delta and a deeper, cooler canopy delta, as prisms along the path. Town,
 interior and river deltas wait until Everglade II has those places. Receipts:
 `docs/verification/aethyr-lighting-p1-5-2026-11-08/`.

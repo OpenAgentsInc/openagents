@@ -28,7 +28,7 @@ IMPORT("coaxial_now_ms") int64_t coaxial_now_ms(void);
 static uint8_t inbox[4096];
 static uint8_t catalog[8388608];   /* the pack's catalog, with the ground's record in its G lines (#13059) and the woods in its P lines (#13150) */
 static uint8_t ground_record[1048576], catalog_rest[65536];   /* that record decoded, and the catalog without it */
-static coax_t_E2Tiles ground_tiles[2];   /* the ground's tile sets, published and staged (verse/everglade2/ground.coax) */
+static coax_t_E2Tiles ground_tiles[2];   /* the ground's tile sets, published and staged (everglade/world/ground.coax) */
 static coax_t_E2Cells world_cells;   /* the world's cell controller (everglade/client/cells.coax, #13280); the frame reads its levels from the state's view */
 static coax_t_People rig;
 static uint32_t baked;
@@ -279,7 +279,7 @@ EXPORT("coaxial_shadow_atlas_v1") uint32_t coaxial_shadow_atlas_v1(cx_face_addr 
 EXPORT("coaxial_shadow_v1") int32_t coaxial_shadow_v1(cx_face_addr state, int32_t field) { return (int32_t)e2_shadow_field(at(state), field); }
 EXPORT("coaxial_shadow_event_v1") void coaxial_shadow_event_v1(cx_face_addr state, int32_t kind, int32_t arg) { e2_shadow_event(at(state), kind, arg); }
 EXPORT("coaxial_layers_side_v1") uint32_t coaxial_layers_side_v1(cx_face_addr state) { return (uint32_t)e2_layers_side(at(state)); }
-/* store 4: the ground's material table and baked AO (verse/everglade2/ground.coax e2g_gpu, #13052) */
+/* store 4: the ground's material table and baked AO (everglade/world/ground.coax e2g_gpu, #13052) */
 EXPORT("coaxial_stores") uint32_t coaxial_stores(void) { return 5; }
 /* the pack's data layers (normal and ORM maps) bound after the colour layers' sampler (host.js) */
 EXPORT("coaxial_data_layers_v1") uint32_t coaxial_data_layers_v1(void) { return 1; }

@@ -4,7 +4,7 @@
 // place. Every profile here is the glade's (env_glade_profile, the painterly default) or a small
 // delta on it: the film, exposure, saturation, sky, clouds and the haze's shape stay the glade's.
 //
-// The places, from the land (verse/everglade2/forest.coax) and the route (e2_road_x):
+// The places, from the land (everglade/world/forest.coax) and the route (e2_road_x):
 //   the open glade   the map default, the glade profile itself, so Character Create's glade and the
 //                    arrival are one light and the hand-over has no seam. It holds wherever no
 //                    region reaches: the glade's open ground (17 m round its middle, the woods
@@ -27,7 +27,7 @@
 // along the path (the steepest change a region makes is 1.5 / band per metre, about 2.5% of the
 // delta per metre walked), and the canopy outranks the sunlit path where the two overlap.
 // Town, interior and river deltas wait until Everglade II has those places.
-//   coax/bin/coax test verse/everglade2/environment.coax
+//   coax/bin/coax test everglade/world/environment.coax
 #load "forest.coax";
 #load "../../aethyr/world/environment-region.coax";
 

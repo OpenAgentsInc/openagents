@@ -1,5 +1,5 @@
 // Everglade II's monsters: three packs of Wolves in the woods along the middle of the path and a camp of
-// four Goblin Warriors at the clearing's near edge (verse/everglade2/camp.coax), each a creature of the
+// four Goblin Warriors at the clearing's near edge (everglade/world/camp.coax), each a creature of the
 // room's battle with its SRD 5.2.1 stat block (rules/srd/monsters.coax MON_WOLF, MON_GOBLIN_WARRIOR).
 // The room moves them on its own tick, so every page sees the same monsters; their blows are the shared
 // rules' strikes (stat-attack.coax rs_stat_strike: the Wolf's Bite with Pack Tactics and its Prone rider,

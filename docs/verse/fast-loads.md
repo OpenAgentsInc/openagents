@@ -72,7 +72,7 @@ layer. The page made two layers at a time, but both on its own thread, so the
 same thread changed nothing: 2, 4, 8 and 16 all took 2.2 to 2.4 s.
 
 **Everglade II waited behind its own first frame.** Its first frame plants the
-woods (`verse/everglade2/plant.coax`: 194,000 samples of the land) and takes
+woods (`everglade/world/plant.coax`: 194,000 samples of the land) and takes
 1.8 to 1.9 s on the page's thread. The pack's 297 pages were fetched and
 inflated on the same thread, so they waited for it, and then took 1 s more.
 

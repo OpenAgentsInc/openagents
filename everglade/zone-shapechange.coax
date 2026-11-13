@@ -1,4 +1,4 @@
-// The druid's field (openagents.com/druid, unlisted): Everglade II's open meadow (verse/everglade2/meadow.coax) with a level 17
+// The druid's field (openagents.com/druid, unlisted): Everglade II's open meadow (everglade/world/meadow.coax) with a level 17
 // Druid whose bar has Wild Shape and Shapechange (Dragon). Only the zone lives here: where the
 // druid stands, what its bar holds, and which inputs reach the shared layers. The rules are the
 // engine's (rules/srd/shapechange.coax, dragon-actions.coax), the body's change, flight and

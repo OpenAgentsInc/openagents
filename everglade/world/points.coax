@@ -33,7 +33,7 @@ E2_POINT_AT :: [E2_POINTS * MAP_POINT_FLOATS] f32.[
   0, 0, -120, 3.14159265,    0, 0, -360, 3.14159265,
   14, 0, -450, 0,            0, 0, E2_CLEAR_Z, 3.14159265
 ];
-E2_POINTS_ZONE :: "Everglade II (verse/everglade2/points.coax)";
+E2_POINTS_ZONE :: "Everglade II (everglade/world/points.coax)";
 
 // The point called name, or one not found.
 e2_point :: (name: string) -> MapPoint {

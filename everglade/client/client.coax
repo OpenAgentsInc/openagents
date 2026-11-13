@@ -3,7 +3,7 @@
 // character (the one Character Create saved) on Everglade's controller and follow camera. Nothing
 // else: no town, gate, people or HUD.
 //
-// The land is verse/everglade2/forest.coax, the planting verse/everglade2/plant.coax, the pack
+// The land is everglade/world/forest.coax, the planting everglade/world/plant.coax, the pack
 // verse/tools/assets/everglade2_pack.coax, and the passes everglade/client/gpu/everglade2.coax. everglade2-face.c steps
 // the controller (everglade-step.coax) as fivelab-face.c does; this unit says what is round you,
 // where you may stand, and what is drawn.
@@ -28,9 +28,9 @@
 #load "npc.coax";    // Pansopher, the Golemancy trainer, and his talk (everglade/world/pansopher.coax)
 #load "bench.coax";  // the Golemancer's Workbench beside him and its window (everglade/world/golem-bench.coax)
 #load "bag.coax";    // your coin, quests and bag as the room holds them, worded from the content tables (#13381)
-#load "../../verse/everglade2/plant.coax";
-#load "../../verse/everglade2/field.coax";
-#load "../../verse/everglade2/ground.coax";   // the ground's admitted tiles, from the pack's record, and the canopy bake (#12995, #13059)
+#load "../world/plant.coax";
+#load "../world/field.coax";
+#load "../world/ground.coax";   // the ground's admitted tiles, from the pack's record, and the canopy bake (#12995, #13059)
 #load "../../aethyr/core/quality.coax";
 #load "../../aethyr/render/cascades.coax";   // the key light's shadow tiles (#13016), as Everglade's
 #load "create.coax";   // Character Create, in this world: /worlds/character-creator
@@ -38,7 +38,7 @@
 #load "cull.coax";   // what the host's instance cull reads each frame (#13050)
 #load "cell-view.coax";  // the world's cells as the frame reads them; the controller is everglade/client/cells.coax, in the step's unit (#13280)
 #load "../../aethyr/render/environment-frame.coax" as envf;   // the camera's resolved environment, a frame (#13066)
-#load "../../verse/everglade2/environment.coax";   // the world's places and their light (#13065)
+#load "../world/environment.coax";   // the world's places and their light (#13065)
 #load "../../aethyr/render/environment-debug.coax" as envd;   // ?light=VIEW: the developer's light views (#13067)
 #load "../../aethyr/cam/mouselook.coax" as mlook;   // the mouse looks round with no button held, as Neverwinter's
 #load "../../aethyr/cam/reticle.coax" as reticle;   // and its reticle, the one bow aim shares
@@ -85,7 +85,7 @@ E2 :: struct {
   bodies: [1] figs.Bodies;
   items: [E2_ITEMS * E2_ITEM_FLOATS] f32; kinds: [E2_ITEMS] u8; first: [E2_CELLS_X * E2_CELLS_Z + 1] int; planted: int; plant_done: bool;
   plant_due: bool; plant_route: int;   // plant here on the next frame; 1 the pack's P lines, 2 planted here (e2_take_planting)
-  eg: [1] E2Ground;                                   // the ground's tiles and the glade's baked AO (verse/everglade2/ground.coax)
+  eg: [1] E2Ground;                                   // the ground's tiles and the glade's baked AO (everglade/world/ground.coax)
   cl: [1] E2CellView;                                 // the world's cells round you: each one's level, written by the cell controller once a frame (everglade/client/cells.coax)
   catalog_in: bool; ground_code: int = -1; ground_done: bool;   // the catalog came; its ground record's status (-1 none); the ground settled and baked
   kit_first: [E2_BUCKETS] int; kit_count: [E2_BUCKETS] int; kits: bool;
@@ -171,7 +171,7 @@ e2_ground_store :: (s: [] E2, sets: [] E2Tiles) #export_c #effects(all) { e2g_st
 e2_cell_view :: (s: [] E2) -> [] E2CellView #export_c #effects(all) { return s[0].cl[..]; }
 e2_cells_due :: (s: [] E2) -> bool #export_c #effects(all) { return s[0].plant_done; }
 e2_catalog :: (s: [] E2, whole: string, rec: [] u8, rest: [] u8) #export_c #effects(all) {
-  // the ground's record rides in the catalog as G lines (verse/everglade2/ground.coax): read and
+  // the ground's record rides in the catalog as G lines (everglade/world/ground.coax): read and
   // published now, whole or not at all; the rest is the catalog the others read
   n := e2g_record_from_catalog(whole, rec);
   s[0].ground_code = ifx n > 0 then e2g_record_read(s[0].eg[..], rec[0..<n]) else -1;
@@ -194,7 +194,7 @@ e2_catalog :: (s: [] E2, whole: string, rec: [] u8, rest: [] u8) #export_c #effe
   }
   s[0].kits = any;
 }
-// The woods from the catalog's P lines (verse/everglade2/plant.coax e2p_from_catalog, written by
+// The woods from the catalog's P lines (everglade/world/plant.coax e2p_from_catalog, written by
 // build.sh), when they read back whole and the spot check finds this tree's planting in them; else
 // the next frame plants them here, as every frame-one did before (docs/verse/fast-loads.md).
 e2_take_planting :: (s: [] E2, whole: string) {
@@ -257,7 +257,7 @@ e2_material_facts :: (s: [] E2, t: string) { s[0].film = e2c_fact_has(t, "film")
   u: [E2_UNIFORM_FLOATS] f32; s[0].film = true; e2_material_uniforms(s[..], u[..]); #assert u[60] == 1 && u[61] == 0;
 }
 // u[60] the film quality, u[61] the maps off (everglade/client/gpu/everglade2.coax cc_player_fs).
-// u[62] the canopy's baked AO at your middle (verse/everglade2/ground.coax): it shades only your indirect light.
+// u[62] the canopy's baked AO at your middle (everglade/world/ground.coax): it shades only your indirect light.
 e2_material_uniforms :: (s: [] E2, u: [] f32) { u[60] = ifx s[0].film then 1.0f32 else 0.0f32; u[61] = ifx s[0].maps_off then 1.0f32 else 0.0f32; u[62] = e2g_ao(s[0].eg[..], s[0].you_x, s[0].you_z, 1.0); }
 E2_HOST_DRIVE :: 700;   // a driver's command (coax/web/host.js coaxial.drive)
 e2_message :: (s: [] E2, kind: int, t: string) #export_c #effects(all) {
@@ -1217,7 +1217,7 @@ e2_overlay :: (s: [] E2, out: [] f32, dt: f32) -> int {
 // painterly default) with the sunlit path's and the deep canopy's deltas; its day is the room's (W: the room's ms into its day at a tick,
 // aethyr/world/day.coax day_from_room), or the glade's fixed noon before a room is heard and in a
 // shot or Character Create, which open none. The key's shadow tiles look along the same direction.
-// The world's set (verse/everglade2/environment.coax), admitted whole once.
+// The world's set (everglade/world/environment.coax), admitted whole once.
 e2_env_route :: (e: [] envf.EnvFrame) { next: [1] EnvironmentSet; next[0] = e2_environment_set(); _ := envf.env_frame_admit(e, next[..]); }
 e2_light :: (s: [] E2, u: [] f32) {
   e := s[0].env[..];
@@ -1411,7 +1411,7 @@ e2_in_view :: (s: [] E2, x: f32, y: f32, z: f32, r: f32) -> bool {
   reach := (d + r) / s[0].focal;
   return sx <= reach * s[0].width * 0.5 + r * 1.2 && sy <= reach * s[0].height * 0.5 + r * 1.2;
 }
-// The grass field's blocks in view (verse/everglade2/field.coax): for each tier, the blocks whose
+// The grass field's blocks in view (everglade/world/field.coax): for each tier, the blocks whose
 // ground lies in its ring round the eye and in view, one draw of 256 tufts each (two near, one
 // mesh each keeping half; one further). The GPU places every tuft.
 e2_field :: (s: [] E2, d: [] u32, n0: int) -> int {
@@ -1623,7 +1623,7 @@ e2_scene :: (s: [] E2) -> int #export_c #effects(all) {
   if tile && near_glade { sn = e2_draw(s[0].shadow[..], sn, c.glade_first, c.glade_count, 0, 1); }
   rec := 1;
   // the glade's own grass (Character Create's, about 27 000 tufts of up to 1 482 vertices: 35 million
-  // vertices a frame) is not drawn: the grass field (verse/everglade2/field.coax) covers the glade too.
+  // vertices a frame) is not drawn: the grass field (everglade/world/field.coax) covers the glade too.
   // Its records stay, so the character's parts keep their places.
   glade_near := false;
   for gi: 0..<c.grass_groups {
@@ -2319,7 +2319,7 @@ e2_test_vitals :: (s: [] E2, hp: int, max: int, cond: int, word: int) {
   k := s[0].casts[..];
   en := -1; for i: 0..<k[0].bar_n { if k[0].bar[i].kind == FB_SPELL && k[0].bar[i].sp == SP_ENTANGLE { en = i; } }
   #assert en >= 0 && en < 9;
-  // looking up over the hill ahead (the glade's 11 m rise 24 m down the path, verse/everglade2/forest.coax
+  // looking up over the hill ahead (the glade's 11 m rise 24 m down the path, everglade/world/forest.coax
   // e2_height): the crosshair meets no ground, so the square stops at 90 feet along the line
   s[0].eye = [3] f32.[0, s[0].you_y + 2, -10]; l := sqrt(1.25f32); s[0].fwd = [3] f32.[0, 0.5f32 / l, -1.0f32 / l]; s[0].up = [3] f32.[0, 1, 0];
   sent := s[0].net[0].cast_sent;

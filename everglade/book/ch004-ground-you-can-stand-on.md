@@ -1,7 +1,7 @@
 # 4. Ground you can stand on
 
 > **Status: partly implemented.** Everglade II's ground is a set of Metaverse Engine
-> terrain tiles in [`verse/everglade2/ground.coax`](../../verse/everglade2/ground.coax),
+> terrain tiles in [`everglade/world/ground.coax`](../../everglade/world/ground.coax),
 > built on [`aethyr/world/terrain-tile.coax`](../../aethyr/world/terrain-tile.coax)
 > (#12995, #13059). The code moves into `everglade/world/` later, so this
 > chapter names functions and has no source listings yet.
@@ -24,9 +24,9 @@ looking solid.
 
 | Piece | Where |
 | --- | --- |
-| The land's height as a pure function | `e2_height` in [`verse/everglade2/forest.coax`](../../verse/everglade2/forest.coax) |
+| The land's height as a pure function | `e2_height` in [`everglade/world/forest.coax`](../../everglade/world/forest.coax) |
 | A tile's format, admission and sampler | `aethyr/world/terrain-tile.coax` (`terrain_tile_sample`) |
-| Everglade II's tiles, record and queries | `verse/everglade2/ground.coax` (`e2g_convert`, `e2g_seams`, `e2g_record_read`, `e2g_y`) |
+| Everglade II's tiles, record and queries | `everglade/world/ground.coax` (`e2g_convert`, `e2g_seams`, `e2g_record_read`, `e2g_y`) |
 | The ground's colour at a pixel | `e2_ground_albedo` in [`everglade/client/gpu/everglade2.coax`](../client/gpu/everglade2.coax) |
 
 Inside the glade, the land is exactly Character Create's own (`cg_height` in
@@ -111,7 +111,7 @@ That is why the walk reads `e2g_y` on the tiles, not `e2_height`.
 
 ## The checks
 
-In `verse/everglade2/ground.coax`:
+In `everglade/world/ground.coax`:
 
 - `#test "the glade's tile is the pack's old grid: admitted, its samples the
   land, its weights the layers"`.
@@ -136,7 +136,7 @@ walks the glade, the path and the fine-to-coarse seam. It passes only on the
 pack route with no refusal and no memory growth.
 
 ```sh
-coax/bin/coax test verse/everglade2/ground.coax --library
+coax/bin/coax test everglade/world/ground.coax --library
 coax/bin/coax test --library aethyr/world/terrain-tile.coax
 ```
 

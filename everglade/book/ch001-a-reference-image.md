@@ -4,7 +4,7 @@
 > reference image are in the OpenAgents Metaverse Engine's shared glade profile
 > ([`aethyr/world/environment.coax`](../../aethyr/world/environment.coax),
 > `env_glade_profile`) and Everglade II's land
-> ([`verse/everglade2/forest.coax`](../../verse/everglade2/forest.coax)). The
+> ([`everglade/world/forest.coax`](../../everglade/world/forest.coax)). The
 > code still lives outside `everglade/`, so this chapter names functions and
 > has no source listings yet.
 
@@ -35,8 +35,8 @@ The numbers taken from the picture live in three places:
 | What | Where | Names |
 | --- | --- | --- |
 | Light and air | `aethyr/world/environment.coax` | `ENV_GLADE_*`, `env_glade_profile` |
-| Ground colour and autumn | `verse/everglade2/forest.coax` | `e2_autumn`, `e2_gold` |
-| Density and scale | `verse/everglade2/plant.coax`, `verse/everglade2/forest.coax` | `E2_TREE_STEP`, `e2_forest`, `E2_CLEAR_R` |
+| Ground colour and autumn | `everglade/world/forest.coax` | `e2_autumn`, `e2_gold` |
+| Density and scale | `everglade/world/plant.coax`, `everglade/world/forest.coax` | `E2_TREE_STEP`, `e2_forest`, `E2_CLEAR_R` |
 
 The [lighting plan](../../docs/verse/lighting/README.md) records the owner's
 direction: the Character Create glade is the look, and every realm in the art
@@ -110,13 +110,13 @@ feel like a journey and short enough to repeat while testing.
 The picture itself isn't a test. These checks hold the numbers that came from
 it:
 
-- `verse/everglade2/environment.coax`, `#test "the arrival is Character
+- `everglade/world/environment.coax`, `#test "the arrival is Character
   Create's glade exactly, and so is the clearing"`: the glade and the clearing
   resolve to the glade profile.
-- `verse/everglade2/environment.coax`, `#test "the deltas are the glade's look:
+- `everglade/world/environment.coax`, `#test "the deltas are the glade's look:
   only the key's strength, the ambient and the haze change"`: a place on the
   path may change only those values.
-- `verse/everglade2/forest.coax`, `#test "the ground keeps the glade's gold and
+- `everglade/world/forest.coax`, `#test "the ground keeps the glade's gold and
   stays mostly green outside it"`: outside the glade, the ground's gold stays at
   0.31 or less.
 - The lighting plan's identity rule: after each lighting change, Character
@@ -126,8 +126,8 @@ Run the land and light checks:
 
 ```sh
 coax/build.sh
-coax/bin/coax test --library verse/everglade2/forest.coax
-coax/bin/coax test verse/everglade2/environment.coax
+coax/bin/coax test --library everglade/world/forest.coax
+coax/bin/coax test everglade/world/environment.coax
 ```
 
 ## Mistakes

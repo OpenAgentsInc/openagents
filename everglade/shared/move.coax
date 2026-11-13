@@ -5,10 +5,10 @@
 // so the page's prediction and the room's word on you agree. Plain numbers only: no drawing.
 //   coax/bin/coax test --library everglade/shared/move.coax
 #load "everglade-move-types.coax";
-#load "../../verse/everglade2/plant.coax";
-#load "../../verse/everglade2/rock-hulls.coax";
-#load "../../verse/everglade2/camp.coax";   // the goblin camp's props (everglade/server/creatures.coax)
-#load "../../verse/everglade2/points.coax";   // the spawn (#13078)
+#load "../world/plant.coax";
+#load "../world/rock-hulls.coax";
+#load "../world/camp.coax";   // the goblin camp's props (everglade/server/creatures.coax)
+#load "../world/points.coax";   // the spawn (#13078)
 
 E2_NEAR_BODIES :: 48;         // trunks the controller walks round
 // Everglade II's own pace: a jog and a stroll. The shared controller's speeds (aethyr/move/locomotion.coax:
@@ -18,7 +18,7 @@ E2_BASE_RUN :: 7.5; E2_BASE_WALK :: 3.5;      // aethyr/move/locomotion.coax Loc
 e2_pace :: (running: bool) -> f32 #export_c #effects(all) { return ifx running then f32(E2_RUN_SPEED) / f32(E2_BASE_RUN) else f32(E2_WALK_SPEED) / f32(E2_BASE_WALK); }
 
 // Where a new seat stands: the glade's middle, facing the studio's camera (everglade/client/client.coax e2_start):
-// E2_SPAWN_X, E2_SPAWN_Z and E2_SPAWN_FACE are the map's named spawn (verse/everglade2/points.coax, #13078).
+// E2_SPAWN_X, E2_SPAWN_Z and E2_SPAWN_FACE are the map's named spawn (everglade/world/points.coax, #13078).
 
 // ---- where you may stand: the glade, the path's corridor, the clearings and the brook's banks
 e2_may_stand :: (x: f32, z: f32) -> bool #export_c #effects(all) {
@@ -38,7 +38,7 @@ e2m_keep :: (x: f32, z: f32, fx: f32, fz: f32) -> E2Spot #export_c #effects(all)
   return E2Spot.{x = fx, z = fz};
 }
 
-// ---- the rocks round you, each its own mesh's convex hull (verse/everglade2/rock-hulls.coax, baked by
+// ---- the rocks round you, each its own mesh's convex hull (everglade/world/rock-hulls.coax, baked by
 // verse/tools/assets/everglade2_rock_hulls.coax): aethyr/physics/query.coax's hulls, so you stand on a rock's
 // real top, step onto a low one, slide off a steep face and stop at its side where you see it. The
 // controller walks a level plane over the land (the land lifts you onto the ground), so a placed rock's
@@ -267,7 +267,7 @@ e2m_world_still :: (still: [] E2Still, items: [] f32, kinds: [] u8, first: [] in
     if kept { next = e2_rock_hull_prep(hulls, at, still[0].stone[i], still[0].stone_prep[i], x, z); } else { next = e2_rock_hull(hulls, at, e2_glade_stone(i), x, z); }
     if next > at { rocks += 1; } at = next;
   } }
-  // the goblin camp's props (verse/everglade2/camp.coax): a round one an upright body, the rest a box
+  // the goblin camp's props (everglade/world/camp.coax): a round one an upright body, the rest a box
   for i: 0..<E2_CAMP_PROPS {
     p := E2_CAMP[i]; h := E2_CAMP_HALF[p.kit]; px := e2_camp_px(p); pz := e2_camp_pz(p);
     if abs(px - x) > 6 || abs(pz - z) > 6 { continue; }

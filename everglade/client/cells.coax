@@ -9,7 +9,7 @@
 //     (e2z_page_rings). The draw ring is past the farthest a planted piece shows, so the controller
 //     never cuts off something you can see; the piece's own fade does that (client.coax
 //     e2_piece_shown).
-//   - Its content: the planted pieces whose planting cell (verse/everglade2/plant.coax, 16 m) has
+//   - Its content: the planted pieces whose planting cell (everglade/world/plant.coax, 16 m) has
 //     its middle in the cell. A planting cell off the manifest is the zone's backdrop: land nobody
 //     walks, resident with the zone and drawn by distance alone.
 //   - Where you may be: you stand only on the manifest's cells (walk-test.coax checks that every

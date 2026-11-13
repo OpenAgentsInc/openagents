@@ -6729,9 +6729,9 @@ glade, the woods and the clearing, the same pixels with the cull on and off).
 ## Everglade II's ground draws from its admitted material table and bake (#13052)
 
 The drawn ground's albedo in `/worlds/everglade2` is the admitted material
-table's (`verse/everglade2/ground.coax` `e2g_table`), evaluated per pixel by
+table's (`everglade/world/ground.coax` `e2g_table`), evaluated per pixel by
 `aethyr/render/terrain-shade.coax`'s equations with the weights the tile's
-converter uses (`verse/everglade2/forest.coax` `e2_ground_layer`). The ground's
+converter uses (`everglade/world/forest.coax` `e2_ground_layer`). The ground's
 indirect light takes `E2G_GROUND_AO_SHARE` of the published canopy bake, and
 AO 1 before the bake publishes and off the tile. The pack's ground vertices
 carry no colour (#13059). A material table entry may take part of its blend from a
@@ -6741,7 +6741,7 @@ makes the table's identity "ATM2". A table without shares keeps its "ATM1"
 identity unchanged.
 Checks: `aethyr/world/terrain-tile.coax` "a layer share names two other known
 materials ...", `aethyr/render/terrain-shade.coax` "a layer share is one weight
-against the other ...", `verse/everglade2/ground.coax` "the table draws the
+against the other ...", `everglade/world/ground.coax` "the table draws the
 pack's ground colours ...", `everglade/client/gpu/everglade2.coax` "the
 ground reads its table's material, the litter's share of the layers under it,
 and the bake's AO".
@@ -6749,7 +6749,7 @@ and the bake's AO".
 ## Everglade II's ground is one admitted tile set, published whole (#13059)
 
 The walkable land in `/worlds/everglade2` is a set of Metaverse Engine terrain tiles
-(`verse/everglade2/ground.coax`): the glade and the path's tiles on one f64
+(`everglade/world/ground.coax`): the glade and the path's tiles on one f64
 lattice, so a sample two tiles share is bit-identical in both. Neighbours of
 one spacing repeat their shared edge exactly, and a fine edge meeting a coarse
 one is stitched (LOD profile v1), so no edge cracks; every tile draws at its
@@ -6765,7 +6765,7 @@ origin, never raw world coordinates. The canopy bake is keyed by the glade
 tile's revision, the crowns' digest and one world-state axis (the realm's
 variant); a bake for another key refuses and the live bake stays. The pack's
 ground vertices carry no colour.
-Checks: `verse/everglade2/ground.coax` (the path's tiles and seams, the
+Checks: `everglade/world/ground.coax` (the path's tiles and seams, the
 record's round trip and its six damage refusals, far origin, the canopy bake's
 state axis), and `coax/web/everglade2-terrain-check.coax` (route 1, no refusal
 and no memory growth across the glade, the path and the seam walks).
@@ -7680,7 +7680,7 @@ haze, sky, cloud-shadow flag, exposure and saturation only from it (`aethyr/rend
 `paint_env_*`, through the `cg_*` delegates, which take the block). No lit path in those pages
 holds its own key direction, ambient or fog numbers; Everglade II's shadow tiles look along the
 record's key. A refused resolution writes the last record held, or the glade's noon, never a
-partial one. Everglade II's set is `verse/everglade2/environment.coax` `e2_environment_set`, its
+partial one. Everglade II's set is `everglade/world/environment.coax` `e2_environment_set`, its
 day the room's (`day_from_room`); a page with no room is the glade's fixed noon. A painterly made
 realm (`myrealm`) that authors no time of day and no mist writes its style block under the glade
 (`verse/style-preset.coax` `verse_style_glade_env`). Character Create stays inside the P1.1

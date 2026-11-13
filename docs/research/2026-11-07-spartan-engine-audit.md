@@ -186,9 +186,9 @@ This is the part that matters most for Everglade II.
 | --- | --- | --- |
 | Shaders | Coax lowered to WGSL (`coax wgsl`) for the browser, and to SPIR-V and Metal for native hosts. Shared functions run on the CPU in `#test` blocks. | `coax/web/wgsl-module.coax`, `aethyr/gpu/wgsl.coax`, `verse/gpu/spirv.coax`, `verse/gpu/metal-pass.coax` |
 | Draws | The CPU picks visible pieces and sorts them into one instanced draw per kit piece and LOD: about 75 draws per frame. No compute pass and no indirect draws in the web pages. | `apps/openagents-web/everglade2.coax:626-670` |
-| Grass | Placed by the vertex shader from the cell hash, in four nested tiers fixed to the land (0.5/1/2/4 m cells out to 28/40/52/140 m). Each coarser tuft is one of the four finer tufts it covers. Past 16 m, tufts drop out by rank and the survivors widen. | `verse/everglade2/field.coax`, `apps/openagents-web/gpu/everglade2.coax:52-74` |
-| Trees | Three LODs at hard distances: whole to 36 m, crown cards to 70 m. Past 70 m only items with `q % 3 == 0` remain, scaled 1.3x. Past 160 m only `q % 6 == 0`, scaled 1.5x. | `verse/everglade2/plant.coax:21-23`, `apps/openagents-web/everglade2.coax:648-663` |
-| Understory | Each kit has a hard cutoff distance: pebbles and mushrooms 26 m, flowers 45 m, ferns 80 m, bushes 95 m. | `verse/everglade2/plant.coax:21-22` |
+| Grass | Placed by the vertex shader from the cell hash, in four nested tiers fixed to the land (0.5/1/2/4 m cells out to 28/40/52/140 m). Each coarser tuft is one of the four finer tufts it covers. Past 16 m, tufts drop out by rank and the survivors widen. | `everglade/world/field.coax`, `apps/openagents-web/gpu/everglade2.coax:52-74` |
+| Trees | Three LODs at hard distances: whole to 36 m, crown cards to 70 m. Past 70 m only items with `q % 3 == 0` remain, scaled 1.3x. Past 160 m only `q % 6 == 0`, scaled 1.5x. | `everglade/world/plant.coax:21-23`, `apps/openagents-web/everglade2.coax:648-663` |
+| Understory | Each kit has a hard cutoff distance: pebbles and mushrooms 26 m, flowers 45 m, ferns 80 m, bushes 95 m. | `everglade/world/plant.coax:21-22` |
 | Shadows | One map 68 m across, centred on the player and snapped in world xz to 2 m steps. Its y follows the terrain height. Only pieces within 40 m cast, all at LOD 1. The OpenAgents Metaverse Engine has light-space texel-snapped cascades (`aethyr/render/cascades.coax`), but Everglade II doesn't use them. | `apps/openagents-web/everglade2.coax:28,562-564,648-652`, `apps/openagents-web/gpu/everglade2.coax:90-116` |
 | AA | No temporal AA. DPR 2. | |
 | Quality | A governor steps the resolution and costs down and up with hysteresis. | `aethyr/core/quality.coax` |
@@ -220,7 +220,7 @@ runs on our browser host as it stands.
   - add a shrink band like `e2_field_grow`, so a dropped tree shrinks over a few metres instead of
     vanishing.
 
-  Put the function in `verse/everglade2/plant.coax` with a `#test` that keep is monotonic in
+  Put the function in `everglade/world/plant.coax` with a `#test` that keep is monotonic in
   distance and that coverage (count x scale²) stays constant.
 - **Effort.** S. **WebGPU.** Yes. It is CPU code today, and it could move to the vertex shader.
 
@@ -246,7 +246,7 @@ runs on our browser host as it stands.
 - **Spartan.** `grass_far_cover` (`data/shaders/g_buffer.hlsl:229-300`). The terrain uses the same
   gates as placement. It takes 45% of the carpet colour under the rings and 100% past them, and
   patch outlines relax to their mean once they are a few pixels wide.
-- **Why.** Our grass ends at 140 m (`verse/everglade2/field.coax:22`) on ground that is shaded
+- **Why.** Our grass ends at 140 m (`everglade/world/field.coax:22`) on ground that is shaded
   separately (gold, litter, noise). In the clearing and along the open path, the grass edge reads as
   a line where the colour and texture change.
 - **Map.** In the `ground` branch of `e2_environment_fs` (`apps/openagents-web/gpu/everglade2.coax:125`),
@@ -261,7 +261,7 @@ runs on our browser host as it stands.
 - **Spartan.** Overlapping fades, each edge warped by its own noise amplitude, and a survival test
   on a stable per-instance hash (`data/shaders/grass_populate.hlsl:403-505`).
 - **Why.** Our understory pops in at fixed circles: pebbles and mushrooms at 26 m, flowers at 45 m,
-  ferns at 80 m (`verse/everglade2/plant.coax:21-22`). The grass's last tier fades along a perfect
+  ferns at 80 m (`everglade/world/plant.coax:21-22`). The grass's last tier fades along a perfect
   circle at 140 m. While you walk, a ring of pieces appears ahead of you.
 - **Map.** Turn `E2_KIT_FAR[kit]` into a fade band (say from 0.7 to 1.0 of the reach). Keep a piece
   when `rank(x, z) < fade(d + warp(x, z))`, and shrink it over the last share, as `e2_field_grow`
@@ -317,7 +317,7 @@ runs on our browser host as it stands.
 
 - **Spartan.** The CPU prop scorer is a line-for-line twin of the surface shader's layer function,
   with constants that "must move together" (`source/world/components/TerrainProps.cpp:793-830`).
-- **Why.** We already do this, and better: `verse/everglade2/forest.coax` is one Coax function run
+- **Why.** We already do this, and better: `everglade/world/forest.coax` is one Coax function run
   by both the CPU and the GPU. Keep it that way. Every new placement or colour rule from lessons
   1, 3 and 4 goes into `forest.coax` or `field.coax`, never into the shader alone.
 - **Effort.** None. This is a rule to keep.

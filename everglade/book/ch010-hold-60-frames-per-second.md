@@ -36,7 +36,7 @@ It does this without any piece moving, growing or popping in front of you.
   never a line.
 - **Grass.** The GPU places one tuft per cell of a grid fixed to the land, in
   four nested tiers: 0.5 m cells to 28 m, 1 m to 40 m, 2 m to 52 m and 4 m to
-  140 m ([`verse/everglade2/field.coax`](../../verse/everglade2/field.coax)).
+  140 m ([`everglade/world/field.coax`](../../everglade/world/field.coax)).
   Each coarse tuft stands exactly where one of the four finer tufts under it
   stood.
 - **GPU culling (#13050).** `everglade/client/gpu/everglade2-cull.coax` tests each picked
@@ -151,7 +151,7 @@ In `everglade/client/client.coax`:
 - `#test "e2 quality: the GFX control beside the frame rate, a finger's size; a
   tap picks the next and the host keeps it"`.
 
-In `verse/everglade2/field.coax`:
+In `everglade/world/field.coax`:
 
 - `#test "a tier's tuft is one of the nearer tier's, in the same spot"`.
 - `#test "the grass thins smoothly past the near ground, and tiers hand over
