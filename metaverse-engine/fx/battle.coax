@@ -116,7 +116,7 @@ fxe_event :: (p: [] FxPuffs, b: [] RsBattle, g: FxeGrid, e: RsEvent, seed: f32, 
   if e.kind == RS_EV_DAMAGE && e.spell == SP_SPIRIT_GUARDIANS { fxe_cause(p, b, FXR_COLUMN, seed, t0, hand, fxe_spot(b, g, e.to, 1.1), fxl_spell_rgb(SP_SPIRIT_GUARDIANS), 0.6, 1); return; }
   if e.kind == RS_EV_DEATH && b[0].c[e.to].klass == RS_MONSTER { fxe_cause(p, b, FXR_BONES, seed, t0, hand, fxe_spot(b, g, e.to, 0), fxp_v(0.86, 0.83, 0.74), 1, 1); return; }
   if e.kind == RS_EV_DOWN || e.kind == RS_EV_DEATH { fxe_cause(p, b, FXR_DUST, seed, t0, hand, fxe_spot(b, g, e.to, 0), fxp_v(0.5, 0.45, 0.36), 1, 1); return; }
-  if e.kind == RS_EV_CONDITION && e.to == e.by && b[0].c[e.by].klass == RS_BARBARIAN && b[0].c[e.by].raging {
+  if e.kind == RS_EV_CONDITION && e.to == e.by && b[0].c[e.by].klass == RS_BARBARIAN && rs_effect(b[0].c[e.by], EF_RAGE) {
     fxe_cause(p, b, FXR_EMBERS, seed, t0, hand, fxe_spot(b, g, e.by, 0), fxp_v(1.0, 0.18, 0.08), 1, 1);
   }
 }
@@ -222,7 +222,7 @@ fxe_npc :: (p: [] FxPuffs, b: [] RsBattle, g: FxeGrid, e: RsEvent, seed: f32, t0
 
 // The battle's lasting areas (Entangle, Spirit Guardians, a Cloud): motes over each, at `now`.
 fxe_zones :: (p: [] FxPuffs, b: [] RsBattle, g: FxeGrid, now: f32) {
-  for z: 0..<RS_ZONES {
+  for z: 0..<b[0].zone.count {   // the battle's own, or the table its world gave (rs_use_zones)
     zo := b[0].zone[z..<z + 1];   // in place, not a copy
     if !zo[0].on { continue; }
     fxp_zone(p, g.x0 + f32(zo[0].x0) * g.sq, g.z0 + f32(zo[0].y0) * g.sq, g.x0 + f32(zo[0].x1 + 1) * g.sq, g.z0 + f32(zo[0].y1 + 1) * g.sq,

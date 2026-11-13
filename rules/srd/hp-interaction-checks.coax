@@ -83,7 +83,7 @@ hx_field :: (b: [] RsBattle, c: [] RsCreature) #effects(all) {
   // no stacking: Necrotic Resistance and Resistance to all halve Necrotic once; Rage and Petrified add nothing more
   c[1].vulnerable=0; c[1].resist=(1<<RS_NECROTIC)|32767;
   #assert rs_resisted(b[..],1,21,RS_NECROTIC)==10;
-  c[1].resist=1<<RS_SLASHING; c[1].raging=true; c[1].cond=RS_PETRIFIED;
+  c[1].resist=1<<RS_SLASHING; c[1].eff = rs_state_put(c[1].eff, EF_RAGE, true); c[1].cond=RS_PETRIFIED;
   #assert rs_resisted(b[..],1,21,RS_SLASHING)==10;
   // Immunity means no damage, whatever else applies
   c[1].immune=1<<RS_SLASHING; c[1].vulnerable=1<<RS_SLASHING;
@@ -97,11 +97,11 @@ hx_field :: (b: [] RsBattle, c: [] RsCreature) #effects(all) {
   #assert c.hp==1 && rs_knocked_out(c) && !rs_death_eligible(c) && c.death_fail==0 && c.rest.phase==1;
 }
 #test "p.97 Healer's Kit and p.18 first aid both stabilize without healing; only the kit needs no check" {
-  b: [1] RsBattle; c: [2] RsCreature; sa_field(b[..],c[..]); c[0].score[RS_WIS]=1; c[0].healer_kit=1;
+  b: [1] RsBattle; c: [2] RsCreature; sa_field(b[..],c[..]); c[0].score[RS_WIS]=1; c[0].uses[RS_USE_KIT]=1;
   r:=rs_first_aid(b[..],0,1,RsFirstAidContext.{contact=true});
   #assert r.accepted && !r.passed && !c[1].stable;
   b[0].turn.action=false;
-  #assert rs_healers_kit(b[..],0,1,true) && c[1].stable && c[1].hp==0 && c[0].healer_kit==0;
+  #assert rs_healers_kit(b[..],0,1,true) && c[1].stable && c[1].hp==0 && c[0].uses[RS_USE_KIT]==0;
 }
 
 // Who owns each condition in the levels 1-6 slice (docs/verification/srd-knockout-conditions-2026-11-08/README.md).

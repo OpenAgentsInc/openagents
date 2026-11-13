@@ -541,7 +541,7 @@ e2gt_at :: (v: [] RmServer, k: int, x: f32, z: f32) { v[0].eg[k].seat[0].pose.x 
   c := rs_path_guard("Guard", 1);
   #assert c.hp_max == 84 && c.ac >= 18 && c.level == 10 && rs_proficiency(c.level) == 4 && c.score[RS_STR] == 18 && rs_mod(c.score[RS_CON]) == 2;
   #assert rs_weapon_attack(c, c.weapon) == 8 && rs_weapon(c.weapon).dice == 1 && rs_weapon(c.weapon).sides == 8 && rs_mod(c.score[RS_STR]) == 4;
-  #assert c.extra_attack == 1 && c.uses[RS_USE_WIND] > 0 && c.uses[RS_USE_SURGE] == 1;
+  #assert c.rank[RS_RK_EXTRA_ATTACK] == 1 && c.uses[RS_USE_WIND] > 0 && c.uses[RS_USE_SURGE] == 1;
   v: [1] RmServer; rm_init(v[..]); rm_clock(v[..], 0, 1762190000000);
   #assert rm_join(v[..], 0, "GET /api/room/relay/everglade/pair-e2-guard-fighter HTTP/1.1\r\n\r\n") == 0;
   k := eg_room_at(v[..], v[0].conns[0].relay);

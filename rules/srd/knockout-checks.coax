@@ -93,7 +93,7 @@
   }
 }
 #test "failed first aid leaves a knockout, and an independent Unconscious owner outlasts it" {
-  b: [1] RsBattle; ko_field(b[..]); b[0].c[0].score[RS_WIS]=6; b[0].c[0].tactical=false;
+  b: [1] RsBattle; ko_field(b[..]); b[0].c[0].score[RS_WIS]=6; b[0].c[0].feats = rs_feature_put(b[0].c[0].feats, RS_FT_TACTICAL_MIND, false);
   b[0].c[1].hp=3;
   #assert rs_attack(b[..],0,1,false,-1);
   b[0].turn.action=false;

@@ -64,7 +64,7 @@ oc_joined :: (text: string, out: [] u8) -> string {
 }
 #test "Eldritch Blast's beams each roll at the object, Agonizing Blast adding to each, and stop once it breaks" #steps 200000000 {
   b: [1] RsBattle; a := oc_caster(b[..], rs_warlock("Kel", 0, 5, SP_ELDRITCH_BLAST), SP_ELDRITCH_BLAST, -1);
-  b[0].c[a].agonizing = SP_ELDRITCH_BLAST;
+  b[0].c[a].rank[RS_RK_AGONIZING] = SP_ELDRITCH_BLAST;
   cha := rs_mod(b[0].c[a].score[RS_CHA]);
   chest := [1] RsObject.[rs_object("chest", 3, 1, RS_OBJ_WOOD, RS_SMALL, true)];
   chest[0].hp = 100;

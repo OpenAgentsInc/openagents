@@ -64,12 +64,12 @@ rs_shape_take :: (b: [] RsBattle, i: int, m: int) #effects(all) {
   for ab: 0..<6 { if c.save_prof[ab] { saves |= 1 << ab; } }
   b[0].shape_keeps[e] = RsShapeKeep.{who = i + 1,
     wild = RsWildKeep.{str = c.score[RS_STR], dex = c.score[RS_DEX], con = c.score[RS_CON], ac = c.ac, speed = c.speed, climb = c.climb,
-                       form = c.form, weapon = c.weapon, ranged = c.ranged, jumper = c.jumper},
+                       form = c.form, weapon = c.weapon, ranged = c.ranged, jumper = rs_has_feature(c, RS_FT_JUMPER)},
     swim = c.swim, fly = c.fly, resist = c.resist, immune = c.immune, immune_cond = c.immune_cond, saves = saves};
   body := rs_monster(m, "", c.team);
   b[0].c[i].score[RS_STR] = k.score[RS_STR]; b[0].c[i].score[RS_DEX] = k.score[RS_DEX]; b[0].c[i].score[RS_CON] = k.score[RS_CON];
   b[0].c[i].ac = k.ac; b[0].c[i].speed = k.speed; b[0].c[i].climb = k.climb; b[0].c[i].swim = k.swim; b[0].c[i].fly = k.fly;
-  b[0].c[i].jumper = k.jumper; b[0].c[i].form = body.form;
+  b[0].c[i].feats = rs_feature_put(b[0].c[i].feats, RS_FT_JUMPER, k.jumper); b[0].c[i].form = body.form;
   b[0].c[i].resist = k.resist; b[0].c[i].immune = k.immune; b[0].c[i].immune_cond = k.immune_cond;
   // its own proficiencies stay; the form's saving throws are proficient too
   for ab: 0..<6 { b[0].c[i].save_prof[ab] = c.save_prof[ab] || (k.saves & (1 << ab)) != 0; }
@@ -85,7 +85,7 @@ rs_shape_end :: (b: [] RsBattle, i: int, why: string) #effects(all) {
   k := b[0].shape_keeps[e]; w := k.wild; b[0].shape_keeps[e].who = 0;
   b[0].c[i].score[RS_STR] = w.str; b[0].c[i].score[RS_DEX] = w.dex; b[0].c[i].score[RS_CON] = w.con;
   b[0].c[i].ac = w.ac; b[0].c[i].speed = w.speed; b[0].c[i].climb = w.climb; b[0].c[i].form = w.form;
-  b[0].c[i].jumper = w.jumper; b[0].c[i].weapon = w.weapon; b[0].c[i].ranged = w.ranged;
+  b[0].c[i].feats = rs_feature_put(b[0].c[i].feats, RS_FT_JUMPER, w.jumper); b[0].c[i].weapon = w.weapon; b[0].c[i].ranged = w.ranged;
   b[0].c[i].swim = k.swim; b[0].c[i].fly = k.fly;
   b[0].c[i].resist = k.resist; b[0].c[i].immune = k.immune; b[0].c[i].immune_cond = k.immune_cond;
   for ab: 0..<6 { b[0].c[i].save_prof[ab] = (k.saves & (1 << ab)) != 0; }

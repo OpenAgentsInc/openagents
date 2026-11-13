@@ -83,7 +83,7 @@ rs_familiar_publish :: (b:[]RsBattle,i:int,j:int,m:int,x:int,y:int,spirit:int,un
     b[0].c[j].speed=fresh.speed;
     b[0].c[j].climb=fresh.climb;
     b[0].c[j].swim=fresh.swim;
-    b[0].c[j].jumper=fresh.jumper;
+    b[0].c[j].feats = rs_feature_put(b[0].c[j].feats, RS_FT_JUMPER, rs_has_feature(fresh, RS_FT_JUMPER));
     b[0].c[j].form=fresh.form;
   }
   if b[0].c[j].familiar_form==0 { rs_familiar_schedule(b,j); }
@@ -104,7 +104,7 @@ rs_familiar_schedule :: (b:[]RsBattle,j:int) #effects(all) {
 rs_wild_companion :: (b:[]RsBattle,i:int,slot:int,m:int,x:int,y:int)->bool #effects(all) {
   if i<0 || i>=b[0].n || b[0].reaction_frame.on || !rs_action_free(b,i) { return false; }
   me:=b[0].c[i];
-  if !me.companion || rs_casting_barred(me) || b[0].turn.quickened || me.speech_blocked || !me.gesture_hand { return false; }
+  if !rs_has_feature(me, RS_FT_WILD_COMPANION) || rs_casting_barred(me) || b[0].turn.quickened || me.speech_blocked || !me.gesture_hand { return false; }
   if slot<0 || slot>=me.slots.count { return false; }
   if slot==0 {
     if me.uses[RS_USE_WILD]<=0 { return false; }
@@ -157,7 +157,7 @@ rs_wild_companion :: (b:[]RsBattle,i:int,slot:int,m:int,x:int,y:int)->bool #effe
   #assert b[0].c[j].x==2 && b[0].c[j].y==1 && b[0].c[0].slots[1]==slots-1 && b[0].turn.slot_spent;
   rat:=b[0].c[j];
   #assert rat.hp==1 && rat.hp_max==1 && rat.ac==10 && rat.score[RS_STR]==2 && rat.score[RS_DEX]==11;
-  #assert !rat.save_prof[RS_DEX] && rat.speed==20 && rat.climb==20 && !rat.jumper && rs_size(rat)==RS_TINY;
+  #assert !rat.save_prof[RS_DEX] && rat.speed==20 && rat.climb==20 && !rs_has_feature(rat, RS_FT_JUMPER) && rs_size(rat)==RS_TINY;
   #assert rat.turn_at==4218750 && rat.initiative==12;
   rs_damage(b[..],1,j,5,RS_FORCE,false,-1);
   #assert b[0].c[j].dead && b[0].c[j].hp==0 && b[0].c[j].x==-1 && b[0].c[j].y==-1 && rs_at(b[..],2,1)==-1;
@@ -184,7 +184,7 @@ rs_wild_companion :: (b:[]RsBattle,i:int,slot:int,m:int,x:int,y:int)->bool #effe
     if mode==2 { b[0].reaction_frame.on=true; }
     if mode==3 { b[0].who=-1; }
     if mode==4 { b[0].turn.action=true; }
-    if mode==5 { b[0].c[0].companion=false; }
+    if mode==5 { b[0].c[0].feats = rs_feature_put(b[0].c[0].feats, RS_FT_WILD_COMPANION, false); }
     if mode==6 { b[0].c[0].wild_form=MON_WOLF; }
     if mode==7 { b[0].turn.quickened=true; }
     if mode==8 { b[0].c[0].speech_blocked=true; }
@@ -203,7 +203,7 @@ rs_wild_companion :: (b:[]RsBattle,i:int,slot:int,m:int,x:int,y:int)->bool #effe
     if mode==21 { y=2; }
     if mode==22 { b[0].c=storage[0..<1]; }
     if mode==23 { b[0].c[0].hp=0; }
-    if mode==24 { b[0].c[0].raging=true; }
+    if mode==24 { b[0].c[0].eff = rs_state_put(b[0].c[0].eff, EF_RAGE, true); }
     wild:=b[0].c[0].uses[RS_USE_WILD]; slots:=b[0].c[0].slots[1]; action:=b[0].turn.action;
     #assert !rs_wild_companion(b[..],i,slot,m,x,y);
     #assert b[0].c[0].uses[RS_USE_WILD]==wild && b[0].c[0].slots[1]==slots && b[0].turn.action==action;
@@ -349,7 +349,7 @@ rs_familiar_finish :: (b:[]RsBattle,i:int,m:int,spirit:int,x:int,y:int)->bool #e
     if mode==2 { b[0].reaction_frame.on=true; }
     if mode==3 { b[0].turn.action=true; }
     if mode==4 { b[0].turn.quickened=true; }
-    if mode==5 { c[0].raging=true; }
+    if mode==5 { c[0].eff = rs_state_put(c[0].eff, EF_RAGE, true); }
     if mode==6 { c[0].rite=SP_PRODUCE_FLAME; }
     if mode==7 { slot=0; }
     if mode==8 { slot=10; }
@@ -376,7 +376,7 @@ rs_familiar_finish :: (b:[]RsBattle,i:int,m:int,spirit:int,x:int,y:int)->bool #e
     if mode==2 { b[0].reaction_frame.on=true; }
     if mode==3 { b[0].turn.action=true; }
     if mode==4 { b[0].turn.quickened=true; }
-    if mode==5 { c[0].raging=true; }
+    if mode==5 { c[0].eff = rs_state_put(c[0].eff, EF_RAGE, true); }
     if mode==6 { c[0].conc=-1; }
     if mode==7 { c[0].spells.selected=[6]u64.[0,0,0,0,0,0]; }
     if mode==8 { c[0].materials[0].count=0; }

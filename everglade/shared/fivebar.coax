@@ -233,7 +233,7 @@ fb_warlock_bar :: (out: [] FbAb) -> int {
 // and Repelling Blast on Eldritch Blast, Armor of Shadows (AC 13 + Dex), and Hellish Rebuke prepared
 // (its Reaction to damage, rs_hellish_rebuke).
 FB_WL_LEVEL :: 17;
-fb_warlock_hero :: (name: string, team: int) -> RsCreature { c := rs_warlock(name, team, FB_WL_LEVEL, SP_ELDRITCH_BLAST); c.rebuke = true; return c; }
+fb_warlock_hero :: (name: string, team: int) -> RsCreature { c := rs_warlock(name, team, FB_WL_LEVEL, SP_ELDRITCH_BLAST); c.feats = rs_feature_put(c.feats, RS_FT_REBUKE, true); return c; }
 
 // ---- Character Create's classes (#13024): the twelve SRD 5.2.1 classes at level 1
 
@@ -357,7 +357,7 @@ fb_everglade_hero :: (name: string, team: int) -> RsCreature {
   c[0].ac = 11 + rs_mod(c[0].score[RS_DEX]) + 2;
   c[0].spell_ability = RS_WIS;
   for l: 0..<10 { c[0].slots_max[l] = FB_EG_SLOTS_MAX[l]; c[0].slots[l] = FB_EG_SLOTS_MAX[l]; }
-  c[0].companion = true; c[0].resurgence = true; c[0].lands_aid = true;
+  c[0].feats = rs_feature_put(c[0].feats, RS_FT_WILD_COMPANION, true); c[0].feats = rs_feature_put(c[0].feats, RS_FT_WILD_RESURGENCE, true); c[0].feats = rs_feature_put(c[0].feats, RS_FT_LANDS_AID, true);
   rs_use_set(c[..], RS_USE_WILD, 3);
   // The declared Everglade world profile grants exactly its shared bar's
   // spells, including extra-list and house entries; ordinary Druids do not.
@@ -379,7 +379,7 @@ fb_folk :: (name: string, team: int, ac: int, hp: int, score: [6] int) -> RsCrea
   c[0].team = team; c[0].level = 1; c[0].klass = RS_MONSTER; c[0].humanoid = true;
   c[0].score = score; c[0].ac = ac; c[0].hp_max = rs_max(hp, 1); c[0].hp = c[0].hp_max; c[0].speed = 30;
   c[0].spell_ability = -1; c[0].ranged = -1; c[0].weapon = W_UNARMED;
-  c[0].conc = -1; c[0].restrained_by = -1; c[0].free_spell = -1; c[0].agonizing = -1; c[0].repelling = -1;
+  c[0].conc = -1; c[0].restrained_by = -1; c[0].free_spell = -1; c[0].rank[RS_RK_AGONIZING] = -1; c[0].rank[RS_RK_REPELLING] = -1;
   return c[0];
 }
 
@@ -401,9 +401,9 @@ fb_ready :: (b: [] RsBattle, i: int, a: FbAb) -> bool {
   }
   // a feature's cost is its Ability record's (rs_ability_paid); what else it needs follows
   if !rs_ability_paid(c, rs_ability(a.kind, a.sp)) && a.kind != FB_WILD && a.kind != FB_RESURGE && a.kind != FB_SHAPECHANGE && a.kind != FB_RITUAL { return false; }
-  if a.kind == FB_RAGE { return !c.raging; }
+  if a.kind == FB_RAGE { return !rs_effect(c, EF_RAGE); }
   if a.kind == FB_WILD { return c.wild_form != 0 || (c.uses[RS_USE_WILD] > 0 && rs_wild_knows(c, fb_wild_form(c,a.opt))); }
-  if a.kind == FB_RESURGE { return c.resurgence && (c.uses[RS_USE_WILD] > 0 || fb_free_slot(b, i, 1) > 0); }
+  if a.kind == FB_RESURGE { return rs_has_feature(c, RS_FT_WILD_RESURGENCE) && (c.uses[RS_USE_WILD] > 0 || fb_free_slot(b, i, 1) > 0); }
   if a.kind == FB_RITUAL { return !rs_casting_barred(c) && rs_cast_components_ready(c, a.sp); }
   if a.kind == FB_SHAPECHANGE { return c.shape_form != 0 || (c.slots[9] > 0 && rs_shape_eligible(c, a.opt) && rs_cast_components_ready(c, SP_SHAPECHANGE)); }
   if a.kind == FB_BREATH { return rs_breath_ready(c); }
@@ -506,7 +506,7 @@ FB_RITUAL_SPELLS :: [3] int.[SP_SPEAK_WITH_ANIMALS, SP_WATER_WALK, SP_WATER_BREA
 fb_ritual_spell :: (c: RsCreature) -> int {
   for sp: FB_RITUAL_SPELLS {
     book := c.klass == RS_WIZARD && rs_spell_access(c, sp) && rs_rite_book_has(c.spells.known, RS_EXEC_SOURCE[sp]);
-    if rs_rite_admits(rs_spell(sp).ritual, rs_spell_ready(c, sp), book, c.ritual, false, false) { return sp; }
+    if rs_rite_admits(rs_spell(sp).ritual, rs_spell_ready(c, sp), book, rs_has_feature(c, RS_FT_RITUAL_ADEPT), false, false) { return sp; }
   }
   return -1;
 }
@@ -656,7 +656,7 @@ fb_cast_at_nothing :: (b: [] RsBattle, i: int, sp: int, sl: int) -> bool {
   if s.level > 0 {
     b[0].turn.leveled = true;
     if sl>0 { b[0].c[i].slots[sl] -= 1; b[0].turn.slot_spent = true; }
-    else if !(sp==SP_FALSE_LIFE && b[0].c[i].vigor) { b[0].c[i].uses[RS_USE_FREE] -= 1; }
+    else if !(sp==SP_FALSE_LIFE && rs_has_feature(b[0].c[i], RS_FT_FIENDISH_VIGOR)) { b[0].c[i].uses[RS_USE_FREE] -= 1; }
   }
   if s.concentration { rs_end_concentration(b, i, ""); b[0].c[i].conc = sp; b[0].c[i].conc_until = b[0].clock + rs_secs(s.duration_s); }
   l: [1] RsLine;

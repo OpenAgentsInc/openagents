@@ -176,7 +176,14 @@ EF_SACRED :: 28; EF_INNATE :: 29; EF_GLOW :: 30;
 // half Speed (p. 51) on the one struck; Faerie Fire's outline (p. 132) on each creature it holds;
 // Produce Flame's flame (p. 158) in its caster's hand
 EF_RECKLESS :: 31; EF_SLOWED :: 32; EF_HALVED :: 33; EF_OUTLINED :: 34; EF_FLAME :: 35;
-RS_EF_KINDS :: 36;   // one past the last EF_* kind
+// State Auras (#13285): a record with no clock of its own (RS_NO_END), ended by an event. Rage
+// (p. 29: its record's cond holds RS_RAGE_* bits), Dodge (p. 10: until its next turn starts), Shield
+// (p. 161: until its next turn starts) and the Open Hand's Addle (no Opportunity Attacks until its
+// next turn starts).
+EF_RAGE :: 36; EF_DODGE :: 37; EF_SHIELD :: 38; EF_ADDLED :: 39;
+EF_INSPIRED :: 40;   // a Bardic Inspiration die held (p. 32): its record's cond is the die's sides
+RS_RAGE_KEPT :: 1; RS_RAGE_STRUCK :: 2;   // Rage was kept up this round (entered, or extended); it attacked or forced a save this round
+RS_EF_KINDS :: 41;   // one past the last EF_* kind
 
 // The classes a creature can be built as (-1 for a stat block).
 RS_DRUID :: 0; RS_WIZARD :: 1; RS_WARLOCK :: 2; RS_BARBARIAN :: 3; RS_MONK :: 4; RS_MONSTER :: 5;
@@ -195,7 +202,20 @@ RS_USE_SORCERY :: 5; RS_USE_INNATE :: 6; RS_USE_WILD :: 7; RS_USE_LAY :: 8; RS_U
 // Divine Order (Cleric p. 37) and Primal Order (Druid p. 42): the armor and weapon training chosen
 RS_ORDER_PROTECTOR :: 1; RS_ORDER_WARDEN :: 2;
 RS_USE_METABOLISM :: 11; RS_USE_CUNNING :: 12; RS_USE_STEED :: 13;
-RS_USES :: 14;
+// Rages (p. 29), Focus Points (p. 49) and a Healer's Kit's uses (stabilization.coax) are pools like
+// the rest (#13285); a character checkpoint carries the first RS_USES_KEPT (room-checkpoint.coax).
+RS_USE_RAGE :: 14; RS_USE_FOCUS :: 15; RS_USE_KIT :: 16;
+RS_USES :: 17; RS_USES_KEPT :: 14;
+// A feature's number (RsCreature.rank): the cantrips Agonizing Blast and Repelling Blast were
+// chosen for (-1 none), Rage's damage bonus, the Martial Arts die, the Bardic Inspiration die it
+// gives, Improved Critical (a Critical Hit on 20 - it or higher), Extra Attack's more attacks,
+// Expertise's display count, Sneak Attack's d6s, Elemental Affinity's damage type, and the two
+// Magical Discoveries.
+RS_RK_AGONIZING :: 0; RS_RK_REPELLING :: 1; RS_RK_RAGE_BONUS :: 2; RS_RK_MARTIAL_DIE :: 3; RS_RK_INSPIRATION_DIE :: 4;
+RS_RK_CRIT_RANGE :: 5; RS_RK_EXTRA_ATTACK :: 6; RS_RK_EXPERTISE :: 7; RS_RK_SNEAK_DICE :: 8; RS_RK_AFFINITY :: 9;
+RS_RK_DISCOVERY :: 10;   // and 11
+RS_RANKS :: 12;
+RS_FEATURE_WORDS :: 2;   // 128 features
 
 // Weapons a creature attacks with: the SRD's weapon table (p. 90) and Unarmed Strike. A Monk's
 // Unarmed Strike rolls its Martial Arts die in place of the 1 + Strength of anyone else's.
@@ -267,11 +287,12 @@ RsCreature :: struct {
   rite: int = -1;           // the spell it is casting as a Ritual (ritual.coax), -1 none
   rite_until: int; rite_owed: bool;   // when its extra minutes end; this turn's Magic action still owed
   restrained_by: int;       // the zone that restrains it (-1 none)
-  // Warlock features: the cantrips Agonizing Blast and Repelling Blast were chosen for (-1 none),
-  // the Fiend's Dark One's Blessing, and Hex ready to move to a new creature after its target
-  // dropped (on the caster's turn after `hex_free_after`)
-  agonizing: int; repelling: int;
-  dark_blessing: bool;
+  // What its class, its subclass or its stat block knows (#13285): one bit a feature (RS_FT_*),
+  // read through rs_has_feature and set with rs_feature_put; and a feature's number (RS_RK_*: its
+  // die, its dice, its bonus, the cantrip an invocation was chosen for). No class has a field here.
+  feats: [RS_FEATURE_WORDS] u64;
+  rank: [RS_RANKS] int;
+  // Hex ready to move to a new creature after its target dropped (on the caster's turn after `hex_free_after`)
   hex_free: bool; hex_free_after: int;
   klass: int;
   humanoid: bool;           // its creature type is Humanoid (Hold Person)
@@ -280,21 +301,14 @@ RsCreature :: struct {
   floor: int;               // Hit Points damage can't take it below (0: none): a story's foe who can't be killed
   knockout: bool;           // its melee attacks knock out rather than drop to 0 HP (knockout.coax)
   ko_rest_due: bool;        // knocked out inside a Reaction: its Short Rest starts when the Reaction ends
-  healer_kit: int;          // Healer's Kit uses left (stabilization.coax)
   weapon: int;              // what it attacks with (W_*)
   ranged: int;              // a ranged weapon it can shoot instead (-1 none)
   masteries: int;           // the weapon mastery properties it can use, bits of 1 << M_*
   mastery_n: int;           // Weapon Mastery: how many kinds of weapon it has chosen (two kinds can share a property)
   reacted: bool;            // its Reaction is spent until its next turn starts
-  opportunity_blocked: bool; // Addle: until actual next turn start
-  dodging: bool;            // Dodge until actual next turn start, or lost to incapacity/Speed zero
-  // Barbarian: Rage, Danger Sense, the Berserker's Frenzy (Reckless Attack is the Aura EF_RECKLESS)
-  rages: int; rages_max: int; rage_bonus: int; raging: bool; rage_kept: bool; struck_round: bool;
-  danger_sense: bool; frenzy: bool;
-  // Monk: the Martial Arts die, Focus Points, Deflect Attacks, the Open Hand's techniques
-  martial_die: int; focus: int; focus_max: int;
-  deflect: bool; open_hand: bool;
-  // the other classes' limited uses (RS_USE_*), and the spell that RS_USE_FREE casts without a slot
+  // every limited use (RS_USE_*: Rages, Focus Points and a Healer's Kit's among them), and the
+  // spell that RS_USE_FREE casts without a slot; uses_back: when the next spent one comes back
+  // under the action timing profile
   uses: [RS_USES] int; uses_max: [RS_USES] int; uses_back: [RS_USES] int;
   free_spell: int;
   undead: bool;             // its creature type is Undead (Turn Undead, Divine Smite)
@@ -303,31 +317,9 @@ RsCreature :: struct {
   aberration: bool; elemental: bool; fey: bool;
   order: int;               // its Divine Order or Primal Order (RS_ORDER_*, 0 none)
   construct: bool;          // its creature type is Construct (Shatter's save Disadvantage)
-  // Bard: the Bardic Inspiration die it gives, the one it holds (0 none), the College of Lore's Cutting Words
-  insp_die: int; inspired: int; cutting: bool;
-  // Cleric: Life Domain's Turn Undead (Channel Divinity), Preserve Life and Disciple of Life
-  turn_undead: bool; preserve_life: bool; disciple: bool;
-  // Fighter: the Champion's Improved Critical (crit_range: a Critical Hit on 20 - crit_range or
-  // higher) and Remarkable Athlete; the Archery fighting style (+2 to ranged weapon attack rolls)
-  crit_range: int; athlete: bool; archery: bool;
-  extra_attack: int;               // Extra Attack: more attacks with the Attack action
-  tactical: bool; shift: bool;     // Tactical Mind, Tactical Shift (Fighter)
-  primal: bool; mindless: bool;    // Primal Knowledge (skills only), Mindless Rage (Berserker)
-  // Expertise selections live in checks; expertise below retains the display count.
-  // Thieves' Cant, Fast Hands and Second-Story Work (a climb Speed), Cunning Strike's planned effect
-  // (CS_*, the deciding routine sets it) and a Poisoner's Kit for its Poison; Uncanny Dodge
-  expertise: int; cant: bool; fast_hands: bool; climb: int;
-  cunning_strike: bool; strike_plan: int; poison_kit: bool; uncanny: bool;
-  // the Monk's: Uncanny Metabolism (on Initiative: all Focus back, and Martial Arts die + level Hit
-  // Points; a battle here starts fresh, so it changes nothing), Slow Fall (falls only), Stunning
-  // Strike (stun_ready: the deciding routine wants it on its next hit), Empowered Strikes; a Stunning
-  // Strike saved against halves Speed (the Aura EF_HALVED)
-  explorer: bool; lore: bool; swim: int;   // the Ranger's Deft Explorer, Hunter's Lore (record), a swim Speed
-  ritual: bool; arcane_recovery: bool; natural_recovery:bool; scholar: bool; savant: bool; memorize: bool; // Scholar's selected Expertise is in checks
-  sculpt: bool;                    // Sculpt Spells (Evoker)
-  cunning_rite: bool; own_luck: bool;   // Magical Cunning (a 1-minute rite, not in a battle), Dark One's Own Luck
-  jack: bool; font: bool; discoveries: [2] int;   // Jack of All Trades (checks only), Font of Inspiration, Magical Discoveries
-  companion: bool; resurgence: bool; resurged_slot: bool;
+  climb: int; swim: int;    // a climb Speed and a swim Speed, feet
+  strike_plan: int;         // Cunning Strike's planned effect (CS_*, the deciding routine sets it)
+  resurged_slot: bool;
   familiar_sensing:bool;     // owner borrows senses until the start of its next turn
   familiar_slot:int;        // reserved choice for the ongoing timed cast, paid on success
   familiar_owner:int;       // owner actor + 1, zero for other creatures
@@ -335,22 +327,11 @@ RsCreature :: struct {
   familiar_spirit:int;
   truth_failed:int; truth_entered:int; truth_enter_turn:int;
   familiar_until_rest:bool;
-  sear: bool; blessed_healer: bool;   // Sear Undead (Cleric), Blessed Healer (Life Domain)
-  restoration: bool; affinity: int;   // Sorcerous Restoration (a rest), Elemental Affinity's damage type (Draconic)
   guard_slot: int; guard_turn: int = -1;   // Spirit Guardians: the slot it was cast with; the turn this creature last saved against one (-1 none yet)
-  aura: bool; steed: bool;          // Aura of Protection; Faithful Steed (Find Steed, a summoning this engine doesn't model)
-  metabolism: bool; slow_fall: bool; stunning: bool; stun_ready: bool; empowered: bool;
-  // Ranger: the Hunter's Colossus Slayer (the Paladin's Sacred Weapon is the Aura EF_SACRED)
-  colossus: bool;
-  // Rogue: Sneak Attack dice (d6s), Cunning Action, Steady Aim
-  sneak_dice: int; cunning: bool; steady_aim: bool;
-  // Sorcerer: the Metamagic it knows (Innate Sorcery is the Aura EF_INNATE); Wizard and Sorcerer: Shield; the
-  // Evoker's Potent Cantrip; the Circle of the Land's Land's Aid
-  quickened: bool; seeking: bool; shield_spell: bool; shield_active: bool;
-  potent: bool; lands_aid: bool;
-  // the declared action timing profile: when the next spent slot of each level, Rage or
-  // Focus Point comes back, and when its next 6-second round begins
-  slot_back: [10] int; rage_back: int; focus_back: int;
+  stun_ready: bool;         // Stunning Strike: the deciding routine wants it on its next hit
+  // the declared action timing profile: when the next spent slot of each level comes back, and
+  // when its next 6-second round begins
+  slot_back: [10] int;
   round_at: int;
   // dropping to 0
   death_ok: int; death_fail: int; stable: bool; dead: bool;
@@ -363,12 +344,7 @@ RsCreature :: struct {
   // Finger of Death (p. 131): a Humanoid it killed rises as a Zombie at the start of its caster's
   // next turn (rise_by the caster, -1 none; rise_at that turn's start). The world raises it.
   rise_by: int = -1; rise_at: int;
-  fortitude: bool;          // Undead Fortitude (the Zombie's): a Con save to drop to 1 Hit Point instead of 0
   npc: int;                 // the stat block it was built from (npcs.coax RS_NPC_*; 0: a class or another monster)
-  parry: bool;              // Parry (the Knight's and the Warrior Veteran's Reaction): +2 AC against a melee hit
-  rebuke: bool;             // it knows Hellish Rebuke (a Warlock's Reaction to damage)
-  vigor: bool;              // Fiendish Vigor (a Warlock's invocation, level 2+): False Life on itself with no slot, its die at its highest
-  eldritch_mind: bool;      // Eldritch Mind (a Warlock's invocation): Advantage on Constitution saves to keep Concentration
   wild_known: int;           // zero uses the recommended preset (wild-known.coax)
   wild_swap: bool;           // one replacement after a completed Long Rest
   wild_form: int;           // Wild Shape: the Beast form it is in (monsters.coax MON_*, 0 none), wild-shape.coax
@@ -384,7 +360,64 @@ RsCreature :: struct {
   // Pack Tactics, Magic Resistance, Nimble Escape), monster-traits.coax
   form: int = RS_MEDIUM;
   grappling: int = -1;      // the creature it holds with an Unarmed Strike's Grapple (grapple.coax), -1 none
-  jumper: bool;             // Jumper (Second-Story Work): its jump distance from Dexterity rather than Strength
+}
+// A state Aura on an effect list: with on, one record of `kind` that no clock ends (kept if it is
+// there, added in the last free place, and not added to a full list: what takes the state asks
+// rs_effect_free first); without, every record of the kind gone. `c.eff = rs_state_put(c.eff, kind, on)`.
+rs_state_put :: (eff: [RS_EFFECTS] RsEffect, kind: int, on: bool) -> [RS_EFFECTS] RsEffect {
+  out := eff; at := -1; free := -1;
+  for k: 0..<RS_EFFECTS {
+    if out[k].kind == kind && at < 0 { at = k; }
+    if out[k].kind == EF_NONE { free = k; }   // the last free place: a state stays clear of the records spells add from the front
+  }
+  if !on { for k: 0..<RS_EFFECTS { if out[k].kind == kind { out[k] = RsEffect.{}; } } return out; }
+  if at < 0 && free >= 0 { out[free] = RsEffect.{kind = kind, by = -1, spell = -1, until = RS_NO_END, save = -1}; }
+  return out;
+}
+// A bit of a state Aura's record (its cond): set or cleared on the first record of the kind; a list
+// without one is unchanged.
+rs_state_bit :: (eff: [RS_EFFECTS] RsEffect, kind: int, bit: int, on: bool) -> [RS_EFFECTS] RsEffect {
+  out := eff;
+  for k: 0..<RS_EFFECTS {
+    if out[k].kind != kind { continue; }
+    if on { out[k].cond |= bit; } else { out[k].cond -= out[k].cond & bit; }
+    return out;
+  }
+  return out;
+}
+// A state Aura that holds a number (a held Bardic Inspiration die's sides): its record's cond, 0
+// with no record. Putting 0 or less takes the record away.
+rs_state_value :: (c: RsCreature, kind: int) -> int {
+  for k: 0..<RS_EFFECTS { if c.eff[k].kind == kind { return c.eff[k].cond; } }
+  return 0;
+}
+rs_state_value_put :: (eff: [RS_EFFECTS] RsEffect, kind: int, v: int) -> [RS_EFFECTS] RsEffect {
+  out := rs_state_put(eff, kind, v > 0);
+  for k: 0..<RS_EFFECTS { if out[k].kind == kind { out[k].cond = v; } }
+  return out;
+}
+// Whether a creature's list has room for state Aura `kind`: it bears one already, or a place is
+// free. What takes a state (Rage, Dodge, Shield) asks this before it pays anything.
+rs_state_room :: (c: RsCreature, kind: int) -> bool {
+  for k: 0..<RS_EFFECTS { if c.eff[k].kind == kind || c.eff[k].kind == EF_NONE { return true; } }
+  return false;
+}
+rs_state_has :: (c: RsCreature, kind: int, bit: int) -> bool {
+  for k: 0..<RS_EFFECTS { if c.eff[k].kind == kind { return (c.eff[k].cond & bit) != 0; } }
+  return false;
+}
+// Whether a creature knows feature f (RS_FT_*): its class's, its subclass's or its stat block's.
+rs_has_feature :: (c: RsCreature, f: int) -> bool {
+  if f < 0 || f >= RS_FEATURES { return false; }
+  return (c.feats[f / 64] & (cast(u64) 1 << (f % 64))) != 0;
+}
+// A feature set with feature f known (on) or not: `c.feats = rs_feature_put(c.feats, f, on)`.
+rs_feature_put :: (feats: [RS_FEATURE_WORDS] u64, f: int, on: bool) -> [RS_FEATURE_WORDS] u64 {
+  out := feats;
+  if f < 0 || f >= RS_FEATURES { return out; }
+  bit := cast(u64) 1 << (f % 64);
+  if on { out[f / 64] |= bit; } else { out[f / 64] -= out[f / 64] & bit; }
+  return out;
 }
 rs_name :: (c: [] RsCreature) -> string { return cast(string) c[0].name[0..<c[0].name_n]; }
 rs_set_name :: (c: [] RsCreature, name: string) {
@@ -443,17 +476,17 @@ rs_druid :: (name: string, team: int, level: int) -> RsCreature {
     if level >= 19 { c[0].slots_max[6] = 2; } if level >= 20 { c[0].slots_max[7] = 2; }
   }
   for i: 0..<10 { c[0].slots[i] = c[0].slots_max[i]; }
-  c[0].conc = -1; c[0].restrained_by = -1; c[0].free_spell = -1; c[0].agonizing = -1; c[0].repelling = -1;
+  c[0].conc = -1; c[0].restrained_by = -1; c[0].free_spell = -1; c[0].rank[RS_RK_AGONIZING] = -1; c[0].rank[RS_RK_REPELLING] = -1;
   // Primal Order: Warden (p. 42). Wild Companion at 2 (p. 43), Wild Resurgence at 5 (p. 43), Call
   // Lightning with its 3rd-level slots; Natural Recovery at 6 (p. 46): one circle spell (Hold Person)
   // without a slot.
   c[0].order = RS_ORDER_WARDEN;
-  c[0].companion = level >= 2; c[0].resurgence = level >= 5;
-  if level >= 6 { c[0].free_spell = SP_HOLD_PERSON; c[0].natural_recovery=true; rs_use_set(c[..], RS_USE_FREE, 1); }
+  c[0].feats = rs_feature_put(c[0].feats, RS_FT_WILD_COMPANION, level >= 2); c[0].feats = rs_feature_put(c[0].feats, RS_FT_WILD_RESURGENCE, level >= 5);
+  if level >= 6 { c[0].free_spell = SP_HOLD_PERSON; c[0].feats = rs_feature_put(c[0].feats, RS_FT_NATURAL_RECOVERY, true); rs_use_set(c[..], RS_USE_FREE, 1); }
   // Wild Shape's two uses from level 2 (p. 42), spent here on the Circle of the Land's Land's Aid at 3
   // (p. 46); polar land, so Hold Person is among its circle spells
   if level >= 2 { rs_use_set(c[..], RS_USE_WILD, ifx level >= 17 then 4 else ifx level >= 6 then 3 else 2); }
-  c[0].lands_aid = level >= 3;
+  c[0].feats = rs_feature_put(c[0].feats, RS_FT_LANDS_AID, level >= 3);
   rs_preset_spell_grants(c[..]);
   return c[0];
 }
@@ -494,15 +527,15 @@ rs_wizard :: (name: string, team: int, level: int) -> RsCreature {
   }
   for i: 0..<10 { c[0].slots[i] = c[0].slots_max[i]; }
   c[0].slots[1] -= 1;   // Mage Armor
-  c[0].conc = -1; c[0].restrained_by = -1; c[0].free_spell = -1; c[0].agonizing = -1; c[0].repelling = -1;
+  c[0].conc = -1; c[0].restrained_by = -1; c[0].free_spell = -1; c[0].rank[RS_RK_AGONIZING] = -1; c[0].rank[RS_RK_REPELLING] = -1;
   // Shield's reaction is available only when selected (p.161); the Evoker's
   // Potent Cantrip begins at level 3 (p.82).
-  c[0].shield_spell = true; c[0].potent = level >= 3; c[0].weapon = W_DAGGER;
+  c[0].feats = rs_feature_put(c[0].feats, RS_FT_SHIELD_SPELL, true); c[0].feats = rs_feature_put(c[0].feats, RS_FT_POTENT_CANTRIP, level >= 3); c[0].weapon = W_DAGGER;
   // Ritual Adept and Arcane Recovery at 1, Scholar at 2, Evocation Savant at 3, Memorize Spell at 5
   // (p. 79-82: rituals, rests and spellbook copying); Scholar's skill choice is in checks. Sculpt
   // Spells at 6 (p. 82); Fireball prepared from 5
-  c[0].ritual = true; c[0].arcane_recovery = true; c[0].scholar = level >= 2; c[0].savant = level >= 3; c[0].memorize = level >= 5;
-  c[0].sculpt = level >= 6;
+  c[0].feats = rs_feature_put(c[0].feats, RS_FT_RITUAL_ADEPT, true); c[0].feats = rs_feature_put(c[0].feats, RS_FT_ARCANE_RECOVERY, true); c[0].feats = rs_feature_put(c[0].feats, RS_FT_SCHOLAR, level >= 2); c[0].feats = rs_feature_put(c[0].feats, RS_FT_SAVANT, level >= 3); c[0].feats = rs_feature_put(c[0].feats, RS_FT_MEMORIZE, level >= 5);
+  c[0].feats = rs_feature_put(c[0].feats, RS_FT_SCULPT, level >= 6);
   rs_preset_spell_grants(c[..]);
   return c[0];
 }
@@ -551,17 +584,17 @@ rs_warlock :: (name: string, team: int, level: int, blast: int) -> RsCreature {
   }
   for i: 0..<10 { c[0].slots[i] = c[0].slots_max[i]; }
   c[0].conc = -1; c[0].restrained_by = -1; c[0].free_spell = -1;
-  c[0].agonizing = -1; c[0].repelling = -1;
-  if level >= 2 { c[0].agonizing = blast; c[0].repelling = blast; }
-  c[0].dark_blessing = level >= 3;
+  c[0].rank[RS_RK_AGONIZING] = -1; c[0].rank[RS_RK_REPELLING] = -1;
+  if level >= 2 { c[0].rank[RS_RK_AGONIZING] = blast; c[0].rank[RS_RK_REPELLING] = blast; }
+  c[0].feats = rs_feature_put(c[0].feats, RS_FT_DARK_BLESSING, level >= 3);
   // Magical Cunning at 2 (p. 72) is a 1-minute rite, longer than a fight here; the Fiend Spells at 5
   // (p. 75) bring Fireball (Stinking Cloud isn't a record yet); Dark One's Own Luck at 6 (p. 75):
   // 1d10 on a failed save or check, Cha modifier uses.
-  c[0].cunning_rite = level >= 2; c[0].own_luck = level >= 6;
+  c[0].feats = rs_feature_put(c[0].feats, RS_FT_MAGICAL_CUNNING, level >= 2); c[0].feats = rs_feature_put(c[0].feats, RS_FT_OWN_LUCK, level >= 6);
   // Magical Cunning's once-a-Long-Rest use; the fourth and fifth invocations at 5 (p. 70): Fiendish
   // Vigor and Eldritch Mind
   if level >= 2 { rs_use_set(c[..], RS_USE_CUNNING, 1); }
-  c[0].vigor = level >= 5; c[0].eldritch_mind = level >= 5;
+  c[0].feats = rs_feature_put(c[0].feats, RS_FT_FIENDISH_VIGOR, level >= 5); c[0].feats = rs_feature_put(c[0].feats, RS_FT_ELDRITCH_MIND, level >= 5);
   rs_preset_spell_grants(c[..]);
   if level >= 6 { rs_use_set(c[..], RS_USE_LUCK, rs_max(rs_mod(c[0].score[RS_CHA]), 1)); }
   return c[0];
@@ -590,16 +623,16 @@ rs_barbarian :: (name: string, team: int, level: int) -> RsCreature {
   c[0].weapon = W_GREATAXE; c[0].masteries = (1 << M_CLEAVE) | (1 << M_VEX); c[0].mastery_n = 2;
   if level >= 4 { c[0].masteries |= 1 << M_GRAZE; c[0].mastery_n = 3; }
   rages := [21] int.[0, 2, 2, 3, 3, 3, 4, 4, 4, 4, 4, 4, 5, 5, 5, 5, 5, 6, 6, 6, 6];
-  c[0].rages = rages[rs_min(rs_max(level, 1), 20)]; c[0].rages_max = c[0].rages;
-  c[0].rage_bonus = ifx level >= 16 then 4 else ifx level >= 9 then 3 else 2;
-  c[0].danger_sense = level >= 2; c[0].frenzy = level >= 3;
+  c[0].uses[RS_USE_RAGE] = rages[rs_min(rs_max(level, 1), 20)]; c[0].uses_max[RS_USE_RAGE] = c[0].uses[RS_USE_RAGE];
+  c[0].rank[RS_RK_RAGE_BONUS] = ifx level >= 16 then 4 else ifx level >= 9 then 3 else 2;
+  c[0].feats = rs_feature_put(c[0].feats, RS_FT_DANGER_SENSE, level >= 2); c[0].feats = rs_feature_put(c[0].feats, RS_FT_FRENZY, level >= 3);
   // Primal Knowledge at 3 (p. 29; the shared check API), an Ability Score Improvement
   // at 4 (the feat, p. 87: Strength +2), Extra Attack and Fast Movement (+10 feet without Heavy
   // armor) at 5, the Berserker's Mindless Rage at 6 (p. 30)
-  c[0].primal = level >= 3; c[0].mindless = level >= 6;
+  c[0].feats = rs_feature_put(c[0].feats, RS_FT_PRIMAL_KNOWLEDGE, level >= 3); c[0].feats = rs_feature_put(c[0].feats, RS_FT_MINDLESS_RAGE, level >= 6);
   if level >= 4 { c[0].score[RS_STR] = rs_min(c[0].score[RS_STR] + 2, 20); }
-  if level >= 5 { c[0].extra_attack = 1; c[0].speed += 10; }
-  c[0].conc = -1; c[0].restrained_by = -1; c[0].free_spell = -1; c[0].agonizing = -1; c[0].repelling = -1;
+  if level >= 5 { c[0].rank[RS_RK_EXTRA_ATTACK] = 1; c[0].speed += 10; }
+  c[0].conc = -1; c[0].restrained_by = -1; c[0].free_spell = -1; c[0].rank[RS_RK_AGONIZING] = -1; c[0].rank[RS_RK_REPELLING] = -1;
   return c[0];
 }
 
@@ -625,16 +658,16 @@ rs_monk :: (name: string, team: int, level: int) -> RsCreature {
   c[0].speed = 30 + ifx level >= 6 then 15 else ifx level >= 2 then 10 else 0;
   c[0].spell_ability = -1;
   c[0].weapon = W_UNARMED;
-  c[0].martial_die = ifx level >= 17 then 12 else ifx level >= 11 then 10 else ifx level >= 5 then 8 else 6;
-  c[0].focus_max = ifx level >= 2 then level else 0; c[0].focus = c[0].focus_max;
-  c[0].deflect = level >= 3; c[0].open_hand = level >= 3;
+  c[0].rank[RS_RK_MARTIAL_DIE] = ifx level >= 17 then 12 else ifx level >= 11 then 10 else ifx level >= 5 then 8 else 6;
+  c[0].uses_max[RS_USE_FOCUS] = ifx level >= 2 then level else 0; c[0].uses[RS_USE_FOCUS] = c[0].uses_max[RS_USE_FOCUS];
+  c[0].feats = rs_feature_put(c[0].feats, RS_FT_DEFLECT, level >= 3); c[0].feats = rs_feature_put(c[0].feats, RS_FT_OPEN_HAND, level >= 3);
   // Uncanny Metabolism at 2, Slow Fall at 4, Extra Attack and Stunning Strike at 5, Empowered
   // Strikes at 6 (p. 51); the Open Hand's Wholeness of Body at 6 (p. 52): Wisdom modifier uses
-  c[0].metabolism = level >= 2; c[0].slow_fall = level >= 4; c[0].stunning = level >= 5; c[0].empowered = level >= 6;
-  if level >= 5 { c[0].extra_attack = 1; }
+  c[0].feats = rs_feature_put(c[0].feats, RS_FT_METABOLISM, level >= 2); c[0].feats = rs_feature_put(c[0].feats, RS_FT_SLOW_FALL, level >= 4); c[0].feats = rs_feature_put(c[0].feats, RS_FT_STUNNING_STRIKE, level >= 5); c[0].feats = rs_feature_put(c[0].feats, RS_FT_EMPOWERED_STRIKES, level >= 6);
+  if level >= 5 { c[0].rank[RS_RK_EXTRA_ATTACK] = 1; }
   if level >= 6 { rs_use_set(c[..], RS_USE_WHOLE, rs_max(rs_mod(c[0].score[RS_WIS]), 1)); }
   if level >= 2 { rs_use_set(c[..], RS_USE_METABOLISM, 1); }
-  c[0].conc = -1; c[0].restrained_by = -1; c[0].free_spell = -1; c[0].agonizing = -1; c[0].repelling = -1;
+  c[0].conc = -1; c[0].restrained_by = -1; c[0].free_spell = -1; c[0].rank[RS_RK_AGONIZING] = -1; c[0].rank[RS_RK_REPELLING] = -1;
   return c[0];
 }
 
@@ -653,7 +686,7 @@ rs_skeleton :: (name: string, team: int) -> RsCreature {
   c[0].weapon = W_SHORTSWORD; c[0].ranged = W_SHORTBOW;
   c[0].undead = true;
   c[0].vulnerable = 1 << RS_BLUDGEONING; c[0].immune = 1 << RS_POISON; c[0].immune_cond = RS_POISONED | RS_EXHAUSTION;
-  c[0].conc = -1; c[0].restrained_by = -1; c[0].free_spell = -1; c[0].agonizing = -1; c[0].repelling = -1;
+  c[0].conc = -1; c[0].restrained_by = -1; c[0].free_spell = -1; c[0].rank[RS_RK_AGONIZING] = -1; c[0].rank[RS_RK_REPELLING] = -1;
   return c[0];
 }
 
@@ -670,9 +703,9 @@ rs_zombie :: (name: string, team: int) -> RsCreature {
   c[0].hp_max = 15; c[0].hp = 15; c[0].ac = 8; c[0].speed = 20;
   c[0].spell_ability = -1;
   c[0].weapon = W_SLAM; c[0].ranged = -1;
-  c[0].undead = true; c[0].fortitude = true;
+  c[0].undead = true; c[0].feats = rs_feature_put(c[0].feats, RS_FT_UNDEAD_FORTITUDE, true);
   c[0].immune = 1 << RS_POISON; c[0].immune_cond = RS_POISONED | RS_EXHAUSTION;
-  c[0].conc = -1; c[0].restrained_by = -1; c[0].free_spell = -1; c[0].agonizing = -1; c[0].repelling = -1;
+  c[0].conc = -1; c[0].restrained_by = -1; c[0].free_spell = -1; c[0].rank[RS_RK_AGONIZING] = -1; c[0].rank[RS_RK_REPELLING] = -1;
   return c[0];
 }
 
@@ -701,7 +734,7 @@ rs_attack_ability :: (c: RsCreature, w: int) -> int {
 }
 // The Archery fighting style (p. 88): +2 to attack rolls with Ranged weapons.
 rs_weapon_attack :: (c: RsCreature, w: int) -> int {
-  far := ifx c.archery && rs_weapon(w).range_ft > 5 then 2 else 0;
+  far := ifx rs_has_feature(c, RS_FT_ARCHERY) && rs_weapon(w).range_ft > 5 then 2 else 0;
   return rs_proficiency(c.level) + rs_mod(c.score[rs_attack_ability(c, w)]) + far;
 }
 // A limited use: its count now and its most.
@@ -721,7 +754,7 @@ rs_hero :: (name: string, team: int, level: int, klass: int, score: [6] int, sav
   c[0].hp = c[0].hp_max;
   c[0].speed = 30;
   c[0].spell_ability = -1;
-  c[0].conc = -1; c[0].restrained_by = -1; c[0].free_spell = -1; c[0].agonizing = -1; c[0].repelling = -1;
+  c[0].conc = -1; c[0].restrained_by = -1; c[0].free_spell = -1; c[0].rank[RS_RK_AGONIZING] = -1; c[0].rank[RS_RK_REPELLING] = -1;
   return c[0];
 }
 // Full casters' slots by level (Bard, Cleric, Sorcerer: 2, 3, then 4 1st and 2 2nd at 3); half
@@ -765,16 +798,16 @@ rs_bard :: (name: string, team: int, level: int) -> RsCreature {
   c[0].spell_ability = RS_CHA; c[0].weapon = W_DAGGER;
   rs_full_slots(c[..], level);
   rs_use_set(c[..], RS_USE_INSPIRE, rs_max(rs_mod(c[0].score[RS_CHA]), 1));
-  c[0].insp_die = ifx level >= 15 then 12 else ifx level >= 10 then 10 else ifx level >= 5 then 8 else 6;
-  c[0].cutting = level >= 3;
+  c[0].rank[RS_RK_INSPIRATION_DIE] = ifx level >= 15 then 12 else ifx level >= 10 then 10 else ifx level >= 5 then 8 else 6;
+  c[0].feats = rs_feature_put(c[0].feats, RS_FT_CUTTING_WORDS, level >= 3);
   // Expertise and Jack of All Trades at 2 (p. 32) use the shared check selections/resolver.
   // Font of Inspiration at 5 (p. 32): a slot for a use, no action; the College of
   // Lore's Magical Discoveries at 6 (p. 35): Fireball (Wizard) and Spirit Guardians (Cleric).
-  c[0].expertise = ifx level >= 9 then 4 else ifx level >= 2 then 2 else 0; c[0].jack = level >= 2;
-  c[0].font = level >= 5;
-  c[0].discoveries[0] = -1; c[0].discoveries[1] = -1;
+  c[0].rank[RS_RK_EXPERTISE] = ifx level >= 9 then 4 else ifx level >= 2 then 2 else 0; c[0].feats = rs_feature_put(c[0].feats, RS_FT_JACK, level >= 2);
+  c[0].feats = rs_feature_put(c[0].feats, RS_FT_FONT, level >= 5);
+  c[0].rank[RS_RK_DISCOVERY + 0] = -1; c[0].rank[RS_RK_DISCOVERY + 1] = -1;
   if level >= 6 {
-    c[0].discoveries[0] = SP_FIREBALL; c[0].discoveries[1] = SP_SPIRIT_GUARDIANS;
+    c[0].rank[RS_RK_DISCOVERY + 0] = SP_FIREBALL; c[0].rank[RS_RK_DISCOVERY + 1] = SP_SPIRIT_GUARDIANS;
   }
   rs_preset_spell_grants(c[..]);
   return c[0];
@@ -791,10 +824,10 @@ rs_cleric :: (name: string, team: int, level: int) -> RsCreature {
   c[0].spell_ability = RS_WIS; c[0].weapon = W_MACE;
   rs_full_slots(c[..], level);
   if level >= 2 { rs_use_set(c[..], RS_USE_CHANNEL, ifx level >= 18 then 4 else ifx level >= 6 then 3 else 2); }
-  c[0].turn_undead = level >= 2; c[0].disciple = level >= 3; c[0].preserve_life = level >= 3;
+  c[0].feats = rs_feature_put(c[0].feats, RS_FT_TURN_UNDEAD, level >= 2); c[0].feats = rs_feature_put(c[0].feats, RS_FT_DISCIPLE, level >= 3); c[0].feats = rs_feature_put(c[0].feats, RS_FT_PRESERVE_LIFE, level >= 3);
   // Sear Undead at 5 (p. 37), Spirit Guardians with its 3rd-level slots; the Life Domain's Blessed
   // Healer at 6 (p. 40). Of its level 5 domain spells Revivify isn't a record yet.
-  c[0].sear = level >= 5; c[0].blessed_healer = level >= 6;
+  c[0].feats = rs_feature_put(c[0].feats, RS_FT_SEAR_UNDEAD, level >= 5); c[0].feats = rs_feature_put(c[0].feats, RS_FT_BLESSED_HEALER, level >= 6);
   // Divine Order (p. 37): Protector, Martial weapons and Heavy armor training
   c[0].order = RS_ORDER_PROTECTOR;
   rs_preset_spell_grants(c[..]);
@@ -816,10 +849,10 @@ rs_fighter :: (name: string, team: int, level: int) -> RsCreature {
   c[0].weapon = W_GREATSWORD; c[0].masteries = (1 << M_GRAZE) | (1 << M_SAP) | (1 << M_SLOW); c[0].mastery_n = ifx level >= 4 then 4 else 3;
   rs_use_set(c[..], RS_USE_WIND, ifx level >= 10 then 4 else ifx level >= 4 then 3 else 2);
   if level >= 2 { rs_use_set(c[..], RS_USE_SURGE, ifx level >= 17 then 2 else 1); }
-  c[0].crit_range = ifx level >= 15 then 2 else ifx level >= 3 then 1 else 0;
-  c[0].athlete = level >= 3;
-  c[0].tactical = level >= 2; c[0].shift = level >= 5;
-  c[0].extra_attack = ifx level >= 20 then 3 else ifx level >= 11 then 2 else ifx level >= 5 then 1 else 0;
+  c[0].rank[RS_RK_CRIT_RANGE] = ifx level >= 15 then 2 else ifx level >= 3 then 1 else 0;
+  c[0].feats = rs_feature_put(c[0].feats, RS_FT_ATHLETE, level >= 3);
+  c[0].feats = rs_feature_put(c[0].feats, RS_FT_TACTICAL_MIND, level >= 2); c[0].feats = rs_feature_put(c[0].feats, RS_FT_TACTICAL_SHIFT, level >= 5);
+  c[0].rank[RS_RK_EXTRA_ATTACK] = ifx level >= 20 then 3 else ifx level >= 11 then 2 else ifx level >= 5 then 1 else 0;
   if level >= 4 { c[0].score[RS_STR] = rs_min(c[0].score[RS_STR] + 2, 20); }
   if level >= 6 { c[0].score[RS_STR] = rs_min(c[0].score[RS_STR] + 2, 20); }
   return c[0];
@@ -834,8 +867,8 @@ rs_paladin :: (name: string, team: int, level: int) -> RsCreature {
   // an Ability Score Improvement at 4 (the feat, p. 87): Strength +2; Extra Attack and Faithful Steed
   // at 5, Aura of Protection at 6 (p. 55)
   if level >= 4 { c[0].score[RS_STR] = rs_min(c[0].score[RS_STR] + 2, 20); }
-  if level >= 5 { c[0].extra_attack = 1; c[0].steed = true; }
-  c[0].aura = level >= 6;
+  if level >= 5 { c[0].rank[RS_RK_EXTRA_ATTACK] = 1; c[0].feats = rs_feature_put(c[0].feats, RS_FT_FAITHFUL_STEED, true); }
+  c[0].feats = rs_feature_put(c[0].feats, RS_FT_AURA_OF_PROTECTION, level >= 6);
   c[0].ac = 16 + 2;
   c[0].spell_ability = RS_CHA; c[0].weapon = W_LONGSWORD;
   c[0].masteries = (1 << M_SAP) | (1 << M_SLOW); c[0].mastery_n = 2;   // Weapon Mastery (p. 54): Longsword and Javelins
@@ -863,11 +896,11 @@ rs_ranger :: (name: string, team: int, level: int) -> RsCreature {
   rs_half_slots(c[..], level);
   c[0].free_spell = SP_HUNTERS_MARK;
   rs_use_set(c[..], RS_USE_FREE, ifx level >= 17 then 6 else ifx level >= 13 then 5 else ifx level >= 9 then 4 else ifx level >= 5 then 3 else 2);
-  c[0].archery = level >= 2; c[0].colossus = level >= 3;
+  c[0].feats = rs_feature_put(c[0].feats, RS_FT_ARCHERY, level >= 2); c[0].feats = rs_feature_put(c[0].feats, RS_FT_COLOSSUS, level >= 3);
   // Deft Explorer at 2 chooses Survival Expertise in checks; languages and Hunter's Lore
   // retain their separate behavior (p.59,61). Extra Attack at 5; Roving at 6: +10 feet, climb/swim
-  c[0].explorer = level >= 2; c[0].lore = level >= 3;
-  if level >= 5 { c[0].extra_attack = 1; }
+  c[0].feats = rs_feature_put(c[0].feats, RS_FT_DEFT_EXPLORER, level >= 2); c[0].feats = rs_feature_put(c[0].feats, RS_FT_HUNTERS_LORE, level >= 3);
+  if level >= 5 { c[0].rank[RS_RK_EXTRA_ATTACK] = 1; }
   if level >= 6 { c[0].speed += 10; c[0].climb = c[0].speed; c[0].swim = c[0].speed; }
   rs_preset_spell_grants(c[..]);
   return c[0];
@@ -883,14 +916,14 @@ rs_rogue :: (name: string, team: int, level: int) -> RsCreature {
   c[0].ac = 11 + rs_mod(c[0].score[RS_DEX]);
   c[0].weapon = W_SHORTSWORD; c[0].ranged = W_SHORTBOW;
   c[0].masteries = (1 << M_VEX) | (1 << M_NICK); c[0].mastery_n = 2;   // Weapon Mastery (p. 62): Shortsword and Daggers
-  c[0].sneak_dice = (level + 1) / 2;
-  c[0].cunning = level >= 2; c[0].steady_aim = level >= 3;
+  c[0].rank[RS_RK_SNEAK_DICE] = (level + 1) / 2;
+  c[0].feats = rs_feature_put(c[0].feats, RS_FT_CUNNING_ACTION, level >= 2); c[0].feats = rs_feature_put(c[0].feats, RS_FT_STEADY_AIM, level >= 3);
   // Expertise in two skills at 1 and two more at 6, Thieves' Cant (p. 61-62); the Thief's Fast Hands
   // and Second-Story Work at 3 (p. 64); Cunning Strike and Uncanny Dodge at 5 (p. 63). Its starting
   // gear has Thieves' Tools, not a Poisoner's Kit, so no Poison effect.
-  c[0].expertise = ifx level >= 6 then 4 else 2; c[0].cant = true;
-  c[0].fast_hands = level >= 3; c[0].climb = ifx level >= 3 then c[0].speed else 0; c[0].jumper = level >= 3;
-  c[0].cunning_strike = level >= 5; c[0].uncanny = level >= 5;
+  c[0].rank[RS_RK_EXPERTISE] = ifx level >= 6 then 4 else 2; c[0].feats = rs_feature_put(c[0].feats, RS_FT_THIEVES_CANT, true);
+  c[0].feats = rs_feature_put(c[0].feats, RS_FT_FAST_HANDS, level >= 3); c[0].climb = ifx level >= 3 then c[0].speed else 0; c[0].feats = rs_feature_put(c[0].feats, RS_FT_JUMPER, level >= 3);
+  c[0].feats = rs_feature_put(c[0].feats, RS_FT_CUNNING_STRIKE, level >= 5); c[0].feats = rs_feature_put(c[0].feats, RS_FT_UNCANNY_DODGE, level >= 5);
   return c[0];
 }
 // The SRD 5.2.1 Sorcerer (p. 64-70): Charisma casting, Constitution and Charisma saves, a d6 hit
@@ -912,13 +945,13 @@ rs_sorcerer :: (name: string, team: int, level: int) -> RsCreature {
   c[0].spell_ability = RS_CHA; c[0].weapon = W_DAGGER;
   rs_full_slots(c[..], level);
   rs_use_set(c[..], RS_USE_INNATE, 2);
-  if level >= 2 { rs_use_set(c[..], RS_USE_SORCERY, level); c[0].quickened = true; c[0].seeking = true; }
-  c[0].shield_spell = true;
+  if level >= 2 { rs_use_set(c[..], RS_USE_SORCERY, level); c[0].feats = rs_feature_put(c[0].feats, RS_FT_QUICKENED, true); c[0].feats = rs_feature_put(c[0].feats, RS_FT_SEEKING, true); }
+  c[0].feats = rs_feature_put(c[0].feats, RS_FT_SHIELD_SPELL, true);
   rs_preset_spell_grants(c[..]);
   // Sorcerous Restoration at 5 (a Short Rest, p. 66); Elemental Affinity at 6 (p. 70): Fire, its
   // Resistance and the Charisma modifier on one damage roll of a Fire spell; Fireball from 5
-  c[0].restoration = level >= 5;
-  if level >= 6 { c[0].affinity = RS_FIRE; c[0].resist = c[0].resist | (1 << RS_FIRE); }
+  c[0].feats = rs_feature_put(c[0].feats, RS_FT_RESTORATION, level >= 5);
+  if level >= 6 { c[0].rank[RS_RK_AFFINITY] = RS_FIRE; c[0].resist = c[0].resist | (1 << RS_FIRE); }
   return c[0];
 }
 // A creature's Wisdom-based Monk save DC (8 + Wis + Proficiency).
@@ -952,6 +985,17 @@ RS_FT_WHOLENESS :: 10; RS_FT_LAY_ON_HANDS :: 11; RS_FT_SACRED_WEAPON :: 12; RS_F
 RS_FT_LANDS_AID :: 15; RS_FT_INSPIRATION :: 16; RS_FT_FONT :: 17; RS_FT_CUTTING_WORDS :: 18; RS_FT_INNATE_SORCERY :: 19;
 RS_FT_DARK_BLESSING :: 20; RS_FT_OWN_LUCK :: 21; RS_FT_WILD_RESURGENCE :: 22; RS_FT_METABOLISM :: 23; RS_FT_DIVINE_SENSE :: 24;
 RS_FT_DIVINE_SPARK :: 25; RS_FT_BLESSED_HEALER :: 26; RS_FT_MEMORIZE :: 27; RS_FT_MAGICAL_CUNNING :: 28; RS_FT_FONT_OF_MAGIC :: 29; RS_FT_WILD_SHAPE :: 30;
+// Features a creature only knows (RsCreature.feats, #13285): no event tells of these by number yet.
+RS_FT_DANGER_SENSE :: 31; RS_FT_FRENZY :: 32; RS_FT_DEFLECT :: 33; RS_FT_OPEN_HAND :: 34; RS_FT_DISCIPLE :: 35;
+RS_FT_ATHLETE :: 36; RS_FT_ARCHERY :: 37; RS_FT_TACTICAL_MIND :: 38; RS_FT_TACTICAL_SHIFT :: 39; RS_FT_PRIMAL_KNOWLEDGE :: 40;
+RS_FT_MINDLESS_RAGE :: 41; RS_FT_THIEVES_CANT :: 42; RS_FT_FAST_HANDS :: 43; RS_FT_CUNNING_STRIKE :: 44; RS_FT_POISON_KIT :: 45;
+RS_FT_UNCANNY_DODGE :: 46; RS_FT_DEFT_EXPLORER :: 47; RS_FT_HUNTERS_LORE :: 48; RS_FT_RITUAL_ADEPT :: 49; RS_FT_ARCANE_RECOVERY :: 50;
+RS_FT_NATURAL_RECOVERY :: 51; RS_FT_SCHOLAR :: 52; RS_FT_SAVANT :: 53; RS_FT_SCULPT :: 54; RS_FT_JACK :: 55;
+RS_FT_WILD_COMPANION :: 56; RS_FT_SEAR_UNDEAD :: 57; RS_FT_RESTORATION :: 58; RS_FT_AURA_OF_PROTECTION :: 59; RS_FT_FAITHFUL_STEED :: 60;
+RS_FT_SLOW_FALL :: 61; RS_FT_EMPOWERED_STRIKES :: 62; RS_FT_COLOSSUS :: 63; RS_FT_CUNNING_ACTION :: 64; RS_FT_QUICKENED :: 65;
+RS_FT_SEEKING :: 66; RS_FT_SHIELD_SPELL :: 67; RS_FT_POTENT_CANTRIP :: 68; RS_FT_PARRY :: 69; RS_FT_REBUKE :: 70;
+RS_FT_FIENDISH_VIGOR :: 71; RS_FT_ELDRITCH_MIND :: 72; RS_FT_JUMPER :: 73; RS_FT_UNDEAD_FORTITUDE :: 74;
+RS_FEATURES :: 75;   // one more than the last RS_FT_*; never renumber one
 RsEvent :: struct {
   kind: int; spell: int; by: int; to: int;
   feat: int;                  // the class feature it tells of (RS_FT_*, 0 none)
@@ -1017,37 +1061,37 @@ rs_recent_at :: (book: [] RsLog, i: int) -> RsEvent {
   c := rs_warlock("Vesk", 1, 3, SP_ELDRITCH_BLAST);
   #assert c.hp_max == 8 + 1 + 2 * (5 + 1) && c.ac == 15 && rs_spell_attack(c) == 5 && rs_spell_dc(c) == 13;
   #assert c.slots[1] == 0 && c.slots[2] == 2 && c.save_prof[RS_WIS] && c.save_prof[RS_CHA] && !c.save_prof[RS_INT];
-  #assert c.agonizing == SP_ELDRITCH_BLAST && c.repelling == SP_ELDRITCH_BLAST && c.dark_blessing;
-  one := rs_warlock("Vesk", 1, 1, SP_ELDRITCH_BLAST); #assert one.slots[1] == 1 && one.agonizing < 0 && !one.dark_blessing;
+  #assert c.rank[RS_RK_AGONIZING] == SP_ELDRITCH_BLAST && c.rank[RS_RK_REPELLING] == SP_ELDRITCH_BLAST && rs_has_feature(c, RS_FT_DARK_BLESSING);
+  one := rs_warlock("Vesk", 1, 1, SP_ELDRITCH_BLAST); #assert one.slots[1] == 1 && one.rank[RS_RK_AGONIZING] < 0 && !rs_has_feature(one, RS_FT_DARK_BLESSING);
   five := rs_warlock("Vesk", 1, 5, SP_ELDRITCH_BLAST); #assert five.slots[3] == 2 && five.slots[2] == 0;
 }
 #test "a level 3 Berserker Barbarian: 32 HP, AC 13 unarmored, Greataxe +5, three Rages at +2" {
   c := rs_barbarian("Thorn", 0, 3);
-  #assert c.hp_max == 12 + 2 + 2 * (7 + 2) && c.ac == 13 && rs_weapon_attack(c, c.weapon) == 5 && c.rages == 3 && c.rage_bonus == 2;
-  #assert c.frenzy && c.danger_sense && c.save_prof[RS_STR] && c.save_prof[RS_CON] && (c.masteries & (1 << M_CLEAVE)) != 0;
+  #assert c.hp_max == 12 + 2 + 2 * (7 + 2) && c.ac == 13 && rs_weapon_attack(c, c.weapon) == 5 && c.uses[RS_USE_RAGE] == 3 && c.rank[RS_RK_RAGE_BONUS] == 2;
+  #assert rs_has_feature(c, RS_FT_FRENZY) && rs_has_feature(c, RS_FT_DANGER_SENSE) && c.save_prof[RS_STR] && c.save_prof[RS_CON] && (c.masteries & (1 << M_CLEAVE)) != 0;
 }
 #test "a level 3 Open Hand Monk: 21 HP, AC 15 unarmored, Unarmed Strike +5 (Dex) for 1d6, 3 Focus Points, Speed 40" {
   c := rs_monk("Sen", 1, 3);
-  #assert c.hp_max == 21 && c.ac == 15 && rs_weapon_attack(c, W_UNARMED) == 5 && c.martial_die == 6 && c.focus == 3 && c.speed == 40;
-  #assert rs_focus_dc(c) == 12 && c.deflect && c.open_hand;
+  #assert c.hp_max == 21 && c.ac == 15 && rs_weapon_attack(c, W_UNARMED) == 5 && c.rank[RS_RK_MARTIAL_DIE] == 6 && c.uses[RS_USE_FOCUS] == 3 && c.speed == 40;
+  #assert rs_focus_dc(c) == 12 && rs_has_feature(c, RS_FT_DEFLECT) && rs_has_feature(c, RS_FT_OPEN_HAND);
 }
 #test "the new classes at level 3 follow their class tables" {
   bd := rs_bard("Lark", 0, 3);
-  #assert bd.hp_max == 21 && bd.ac == 13 && rs_spell_dc(bd) == 13 && bd.slots[1] == 4 && bd.slots[2] == 2 && bd.uses[RS_USE_INSPIRE] == 3 && bd.insp_die == 6 && bd.cutting;
+  #assert bd.hp_max == 21 && bd.ac == 13 && rs_spell_dc(bd) == 13 && bd.slots[1] == 4 && bd.slots[2] == 2 && bd.uses[RS_USE_INSPIRE] == 3 && bd.rank[RS_RK_INSPIRATION_DIE] == 6 && rs_has_feature(bd, RS_FT_CUTTING_WORDS);
   cl := rs_cleric("Aster", 0, 3);
-  #assert cl.hp_max == 21 && cl.ac == 16 && rs_spell_dc(cl) == 13 && cl.uses[RS_USE_CHANNEL] == 2 && cl.turn_undead && cl.disciple && cl.preserve_life && rs_weapon(cl.weapon).name == "Mace";
+  #assert cl.hp_max == 21 && cl.ac == 16 && rs_spell_dc(cl) == 13 && cl.uses[RS_USE_CHANNEL] == 2 && rs_has_feature(cl, RS_FT_TURN_UNDEAD) && rs_has_feature(cl, RS_FT_DISCIPLE) && rs_has_feature(cl, RS_FT_PRESERVE_LIFE) && rs_weapon(cl.weapon).name == "Mace";
   fi := rs_fighter("Garr", 0, 3);
-  #assert fi.hp_max == 10 + 2 + 2 * (6 + 2) && fi.ac == 17 && rs_weapon_attack(fi, W_GREATSWORD) == 5 && fi.uses[RS_USE_WIND] == 2 && fi.uses[RS_USE_SURGE] == 1 && fi.crit_range == 1;
+  #assert fi.hp_max == 10 + 2 + 2 * (6 + 2) && fi.ac == 17 && rs_weapon_attack(fi, W_GREATSWORD) == 5 && fi.uses[RS_USE_WIND] == 2 && fi.uses[RS_USE_SURGE] == 1 && fi.rank[RS_RK_CRIT_RANGE] == 1;
   pa := rs_paladin("Oriel", 0, 3);
   #assert pa.hp_max == 10 + 1 + 2 * (6 + 1) && pa.ac == 18 && pa.slots[1] == 3 && pa.uses[RS_USE_LAY] == 15 && pa.uses[RS_USE_CHANNEL] == 2 && pa.free_spell == SP_DIVINE_SMITE && rs_spell_dc(pa) == 12;
   ra := rs_ranger("Wren", 0, 3);
-  #assert ra.hp_max == 25 && ra.ac == 15 && ra.slots[1] == 3 && rs_weapon_attack(ra, W_LONGBOW) == 7 && rs_weapon_attack(ra, W_SHORTSWORD) == 5 && ra.uses[RS_USE_FREE] == 2 && ra.colossus;
+  #assert ra.hp_max == 25 && ra.ac == 15 && ra.slots[1] == 3 && rs_weapon_attack(ra, W_LONGBOW) == 7 && rs_weapon_attack(ra, W_SHORTSWORD) == 5 && ra.uses[RS_USE_FREE] == 2 && rs_has_feature(ra, RS_FT_COLOSSUS);
   ro := rs_rogue("Nim", 0, 3);
-  #assert ro.hp_max == 8 + 2 + 2 * (5 + 2) && ro.ac == 14 && ro.sneak_dice == 2 && rs_weapon_attack(ro, W_SHORTSWORD) == 5 && ro.save_prof[RS_INT];
+  #assert ro.hp_max == 8 + 2 + 2 * (5 + 2) && ro.ac == 14 && ro.rank[RS_RK_SNEAK_DICE] == 2 && rs_weapon_attack(ro, W_SHORTSWORD) == 5 && ro.save_prof[RS_INT];
   so := rs_sorcerer("Ember", 0, 3);
-  #assert so.hp_max == 6 + 1 + 2 * (4 + 1) + 3 && so.ac == 15 && so.uses[RS_USE_SORCERY] == 3 && so.uses[RS_USE_INNATE] == 2 && so.quickened && so.seeking && so.save_prof[RS_CON];
-  dr := rs_druid("Rowan", 0, 3); #assert dr.lands_aid && dr.uses[RS_USE_WILD] == 2;
-  wzd := rs_wizard("Mordra", 1, 3); #assert wzd.potent && wzd.shield_spell;
+  #assert so.hp_max == 6 + 1 + 2 * (4 + 1) + 3 && so.ac == 15 && so.uses[RS_USE_SORCERY] == 3 && so.uses[RS_USE_INNATE] == 2 && rs_has_feature(so, RS_FT_QUICKENED) && rs_has_feature(so, RS_FT_SEEKING) && so.save_prof[RS_CON];
+  dr := rs_druid("Rowan", 0, 3); #assert rs_has_feature(dr, RS_FT_LANDS_AID) && dr.uses[RS_USE_WILD] == 2;
+  wzd := rs_wizard("Mordra", 1, 3); #assert rs_has_feature(wzd, RS_FT_POTENT_CANTRIP) && rs_has_feature(wzd, RS_FT_SHIELD_SPELL);
   #assert rs_weapon(W_GREATSWORD).mastery == M_GRAZE && rs_weapon(W_LONGBOW).long_ft == 600 && rs_weapon(W_SHORTSWORD).mastery == M_VEX;
 }
 #test "the Skeleton's stat block: AC 14, 13 HP, Shortsword and Shortbow at +5, Bludgeoning vulnerable, Poison immune" {
@@ -1095,4 +1139,78 @@ rs_recent_at :: (book: [] RsLog, i: int) -> RsEvent {
   e: [1] RsCreature; e[0] = rs_druid("Ash", 1, 3); e[0].conc = 2;
   #assert rs_hurt(e[..], 4, false).conc_dc == 10 && rs_hurt(e[..], 14, false).conc_dc == 10;
   e[0].hp = 24; #assert rs_hurt(e[..], 22, false).conc_dc == 11;
+}
+
+#test "a feature set: one bit a feature, known or not, and nothing outside the table" {
+  c: RsCreature;
+  for f: 0..<RS_FEATURES { #assert !rs_has_feature(c, f); }
+  for f: 0..<RS_FEATURES {
+    c.feats = rs_feature_put(c.feats, f, true);
+    for g: 0..<RS_FEATURES { #assert rs_has_feature(c, g) == (g <= f); }
+  }
+  for f: 0..<RS_FEATURES {
+    c.feats = rs_feature_put(c.feats, f, false);
+    for g: 0..<RS_FEATURES { #assert rs_has_feature(c, g) == (g > f); }
+  }
+  // putting one twice, or taking one that is not there, changes nothing else
+  c.feats = rs_feature_put(c.feats, RS_FT_SCULPT, true); c.feats = rs_feature_put(c.feats, RS_FT_SCULPT, true); c.feats = rs_feature_put(c.feats, RS_FT_PARRY, false);
+  #assert rs_has_feature(c, RS_FT_SCULPT) && !rs_has_feature(c, RS_FT_PARRY) && c.feats[0] == cast(u64) 1 << RS_FT_SCULPT && c.feats[1] == 0;
+  // a number outside the table is no feature
+  c.feats = rs_feature_put(c.feats, -1, true); c.feats = rs_feature_put(c.feats, RS_FEATURES, true); c.feats = rs_feature_put(c.feats, 200, true);
+  #assert !rs_has_feature(c, -1) && !rs_has_feature(c, RS_FEATURES) && !rs_has_feature(c, 200) && c.feats[0] == cast(u64) 1 << RS_FT_SCULPT && c.feats[1] == 0;
+  // the numbers events and saves know never move
+  #assert RS_FT_SECOND_WIND == 1 && RS_FT_WILD_SHAPE == 30 && RS_FT_DANGER_SENSE == 31 && RS_FT_UNDEAD_FORTITUDE == 74 && RS_FEATURES == 75 && RS_FEATURE_WORDS * 64 >= RS_FEATURES;
+  #assert RS_FT_UNDEAD_FORTITUDE / 64 == 1 && RS_FT_SCULPT / 64 == 0;   // both words are in use
+}
+#test "a class's features are in its feature set, and its numbers in its ranks" {
+  ro := rs_rogue("Nim", 0, 5);
+  #assert rs_has_feature(ro, RS_FT_CUNNING_ACTION) && rs_has_feature(ro, RS_FT_STEADY_AIM) && rs_has_feature(ro, RS_FT_UNCANNY_DODGE) && ro.rank[RS_RK_SNEAK_DICE] == 3 && !rs_has_feature(ro, RS_FT_FRENZY);
+  #assert !rs_has_feature(rs_rogue("Nim", 0, 2), RS_FT_STEADY_AIM) && rs_has_feature(rs_rogue("Nim", 0, 2), RS_FT_CUNNING_ACTION);
+  ba := rs_barbarian("Thorn", 0, 3);
+  #assert rs_has_feature(ba, RS_FT_FRENZY) && rs_has_feature(ba, RS_FT_DANGER_SENSE) && ba.rank[RS_RK_RAGE_BONUS] == 2 && ba.uses[RS_USE_RAGE] == 3 && ba.uses_max[RS_USE_RAGE] == 3;
+  mo := rs_monk("Ash", 0, 5);
+  #assert rs_has_feature(mo, RS_FT_STUNNING_STRIKE) && mo.rank[RS_RK_MARTIAL_DIE] == 8 && mo.uses[RS_USE_FOCUS] == 5 && mo.uses_max[RS_USE_FOCUS] == 5 && mo.rank[RS_RK_EXTRA_ATTACK] == 1;
+  wa := rs_warlock("Vex", 0, 5, SP_ELDRITCH_BLAST);
+  #assert wa.rank[RS_RK_AGONIZING] == SP_ELDRITCH_BLAST && wa.rank[RS_RK_REPELLING] == SP_ELDRITCH_BLAST && rs_has_feature(wa, RS_FT_FIENDISH_VIGOR) && rs_has_feature(wa, RS_FT_ELDRITCH_MIND) && !rs_has_feature(rs_warlock("Vex", 0, 4, SP_ELDRITCH_BLAST), RS_FT_FIENDISH_VIGOR);
+  #assert RS_USE_RAGE == 14 && RS_USE_FOCUS == 15 && RS_USE_KIT == 16 && RS_USES == 17 && RS_USES_KEPT == 14 && RS_RANKS == 12 && RS_RK_DISCOVERY == 10;
+}
+#test "a state Aura: one record no clock ends, in the last free place; its bits and its number; room asked before it is taken" {
+  c: [1] RsCreature;
+  #assert !rs_effect(c[0], EF_RAGE) && rs_state_room(c[0], EF_RAGE) && !rs_state_has(c[0], EF_RAGE, RS_RAGE_KEPT) && rs_state_value(c[0], EF_INSPIRED) == 0;
+  c[0].eff = rs_state_put(c[0].eff, EF_RAGE, true);
+  e := c[0].eff[RS_EFFECTS - 1];
+  #assert e.kind == EF_RAGE && e.by == -1 && e.spell == -1 && e.until == RS_NO_END && e.save == -1 && e.cond == 0 && e.turn_end == 0 && e.dc == 0;
+  for k: 0..<RS_EFFECTS - 1 { #assert c[0].eff[k].kind == EF_NONE; }
+  // again keeps the one record, bits and all
+  c[0].eff = rs_state_bit(c[0].eff, EF_RAGE, RS_RAGE_KEPT, true); c[0].eff = rs_state_put(c[0].eff, EF_RAGE, true);
+  #assert c[0].eff[RS_EFFECTS - 1].cond == RS_RAGE_KEPT && c[0].eff[RS_EFFECTS - 2].kind == EF_NONE && rs_state_has(c[0], EF_RAGE, RS_RAGE_KEPT) && !rs_state_has(c[0], EF_RAGE, RS_RAGE_STRUCK);
+  c[0].eff = rs_state_bit(c[0].eff, EF_RAGE, RS_RAGE_STRUCK, true);
+  #assert c[0].eff[RS_EFFECTS - 1].cond == 3 && rs_state_has(c[0], EF_RAGE, RS_RAGE_STRUCK);
+  c[0].eff = rs_state_bit(c[0].eff, EF_RAGE, RS_RAGE_KEPT, false); c[0].eff = rs_state_bit(c[0].eff, EF_RAGE, RS_RAGE_KEPT, false);
+  #assert c[0].eff[RS_EFFECTS - 1].cond == RS_RAGE_STRUCK && !rs_state_has(c[0], EF_RAGE, RS_RAGE_KEPT);
+  // a bit on a state it does not bear is nothing; another state takes the next place down
+  c[0].eff = rs_state_bit(c[0].eff, EF_DODGE, 1, true);
+  #assert !rs_effect(c[0], EF_DODGE) && !rs_state_has(c[0], EF_DODGE, 1);
+  c[0].eff = rs_state_put(c[0].eff, EF_DODGE, true);
+  #assert c[0].eff[RS_EFFECTS - 2].kind == EF_DODGE && c[0].eff[RS_EFFECTS - 1].kind == EF_RAGE && c[0].eff[RS_EFFECTS - 2].cond == 0;
+  // a number: put, read, changed in place, and gone at 0
+  c[0].eff = rs_state_value_put(c[0].eff, EF_INSPIRED, 8);
+  #assert rs_state_value(c[0], EF_INSPIRED) == 8 && c[0].eff[RS_EFFECTS - 3].kind == EF_INSPIRED && rs_state_value(c[0], EF_DODGE) == 0;
+  c[0].eff = rs_state_value_put(c[0].eff, EF_INSPIRED, 6);
+  #assert rs_state_value(c[0], EF_INSPIRED) == 6 && c[0].eff[RS_EFFECTS - 4].kind == EF_NONE;
+  c[0].eff = rs_state_value_put(c[0].eff, EF_INSPIRED, 0);
+  #assert rs_state_value(c[0], EF_INSPIRED) == 0 && !rs_effect(c[0], EF_INSPIRED) && rs_effect(c[0], EF_DODGE);
+  c[0].eff = rs_state_value_put(c[0].eff, EF_INSPIRED, -4); #assert !rs_effect(c[0], EF_INSPIRED);
+  // taking a state away takes every record of it and no other
+  c[0].eff[0] = RsEffect.{kind = EF_RAGE, until = 5};
+  c[0].eff = rs_state_put(c[0].eff, EF_RAGE, false);
+  #assert !rs_effect(c[0], EF_RAGE) && c[0].eff[0].kind == EF_NONE && c[0].eff[RS_EFFECTS - 1].kind == EF_NONE && rs_effect(c[0], EF_DODGE);
+  // a full list: no room, and nothing is added; the state it already bears still has its room
+  for k: 0..<RS_EFFECTS { c[0].eff[k] = RsEffect.{kind = EF_HEX, by = k, until = 5}; }
+  #assert !rs_state_room(c[0], EF_RAGE);
+  c[0].eff = rs_state_put(c[0].eff, EF_RAGE, true); #assert !rs_effect(c[0], EF_RAGE);
+  for k: 0..<RS_EFFECTS { #assert c[0].eff[k].kind == EF_HEX && c[0].eff[k].by == k; }
+  c[0].eff[RS_EFFECTS - 1] = RsEffect.{kind = EF_RAGE, until = RS_NO_END}; #assert rs_state_room(c[0], EF_RAGE) && !rs_state_room(c[0], EF_DODGE);
+  c[0].eff[RS_EFFECTS - 1] = RsEffect.{}; #assert rs_state_room(c[0], EF_DODGE);
+  #assert EF_RAGE == 36 && EF_DODGE == 37 && EF_SHIELD == 38 && EF_ADDLED == 39 && EF_INSPIRED == 40 && RS_RAGE_KEPT == 1 && RS_RAGE_STRUCK == 2;
 }

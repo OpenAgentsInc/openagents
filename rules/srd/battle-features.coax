@@ -6,7 +6,7 @@
 
 // Who i has turned (Turn Undead) is let go: i dropped, or is Incapacitated.
 rs_release_turned :: (b: [] RsBattle, i: int) {
-  if !b[0].c[i].turn_undead { return; }   // only Turn Undead turns (rs_turn_undead)
+  if !rs_has_feature(b[0].c[i], RS_FT_TURN_UNDEAD) { return; }   // only Turn Undead turns (rs_turn_undead)
   for j: 0..<b[0].n {
     for k: 0..<RS_EFFECTS { if b[0].c[j].eff[k].kind == EF_TURNED && b[0].c[j].eff[k].by == i { rs_drop_effect(b, j, k); } }
   }
@@ -41,7 +41,7 @@ rs_feature_heal :: (b: [] RsBattle, i: int, j: int, amount: int, what: string, f
 
 // Font of Inspiration (p. 32): no action, its lowest spell slot for one Bardic Inspiration use.
 rs_font :: (b: [] RsBattle, i: int) -> bool {
-  if b[0].who != i || !b[0].c[i].font || b[0].c[i].uses[RS_USE_INSPIRE] >= b[0].c[i].uses_max[RS_USE_INSPIRE] { return false; }
+  if b[0].who != i || !rs_has_feature(b[0].c[i], RS_FT_FONT) || b[0].c[i].uses[RS_USE_INSPIRE] >= b[0].c[i].uses_max[RS_USE_INSPIRE] { return false; }
   for l: 1..<10 {
     if b[0].c[i].slots[l] > 0 {
       b[0].c[i].slots[l] -= 1; b[0].c[i].uses[RS_USE_INSPIRE] += 1;
@@ -54,11 +54,11 @@ rs_font :: (b: [] RsBattle, i: int) -> bool {
 // Bardic Inspiration (p. 31-32): a Bonus Action and one use; another creature within 60 feet gains
 // the Bard's die, and adds it to a D20 Test it fails (one die at a time).
 rs_inspire :: (b: [] RsBattle, i: int, j: int) -> bool {
-  if !rs_bonus_free(b, i) || b[0].c[i].insp_die <= 0 || b[0].c[i].uses[RS_USE_INSPIRE] <= 0 { return false; }
-  if j < 0 || j >= b[0].n || j == i || !rs_up(b[0].c[j]) || b[0].c[j].inspired > 0 || rs_feet_to(b, i, j) > 60 { return false; }
+  if !rs_bonus_free(b, i) || b[0].c[i].rank[RS_RK_INSPIRATION_DIE] <= 0 || b[0].c[i].uses[RS_USE_INSPIRE] <= 0 { return false; }
+  if j < 0 || j >= b[0].n || j == i || !rs_up(b[0].c[j]) || rs_state_value(b[0].c[j], EF_INSPIRED) > 0 || !rs_state_room(b[0].c[j], EF_INSPIRED) || rs_feet_to(b, i, j) > 60 { return false; }
   b[0].turn.bonus = true; b[0].c[i].uses[RS_USE_INSPIRE] -= 1;
-  b[0].c[j].inspired = b[0].c[i].insp_die;
-  l: [1] RsLine; rs_add_name(l[..], b, i); rs_add_text(l[..], " inspires "); rs_add_name(l[..], b, j); rs_add_text(l[..], ": a Bardic Inspiration d"); rs_add_int(l[..], b[0].c[i].insp_die);
+  b[0].c[j].eff = rs_state_value_put(b[0].c[j].eff, EF_INSPIRED, b[0].c[i].rank[RS_RK_INSPIRATION_DIE]);
+  l: [1] RsLine; rs_add_name(l[..], b, i); rs_add_text(l[..], " inspires "); rs_add_name(l[..], b, j); rs_add_text(l[..], ": a Bardic Inspiration d"); rs_add_int(l[..], b[0].c[i].rank[RS_RK_INSPIRATION_DIE]);
   rs_tell_ft(b, RS_EV_CONDITION, -1, i, j, 0, 0, RS_FT_INSPIRATION, l[..]);
   return true;
 }
@@ -67,7 +67,7 @@ rs_inspire :: (b: [] RsBattle, i: int, j: int) -> bool {
 // Wisdom save or is Frightened and Incapacitated for 1 minute, moving away; it ends early if the
 // creature takes damage, or the Cleric is Incapacitated or dies.
 rs_turn_undead :: (b: [] RsBattle, i: int) -> bool {
-  if !rs_action_free(b, i) || !b[0].c[i].turn_undead || b[0].c[i].uses[RS_USE_CHANNEL] <= 0 { return false; }
+  if !rs_action_free(b, i) || !rs_has_feature(b[0].c[i], RS_FT_TURN_UNDEAD) || b[0].c[i].uses[RS_USE_CHANNEL] <= 0 { return false; }
   for j: 0..<b[0].n {
     c := b[0].c[j];
     if c.undead && rs_up(c) && c.team != b[0].c[i].team && rs_feet_to(b,i,j) <= 30 && rs_effect_condition_mask(c,RS_FRIGHTENED|RS_INCAPACITATED) != 0 && rs_effect_room(c,false,0,-1) < 1 { return false; }
@@ -76,7 +76,7 @@ rs_turn_undead :: (b: [] RsBattle, i: int) -> bool {
   rs_say_ft(b, RS_EV_CAST, i, -1, 0, RS_FT_TURN_UNDEAD, " presents a holy symbol: Turn Undead");
   dc := rs_dc(b, i);
   // Sear Undead: Wisdom-modifier d8s (at least one), rolled once, Radiant on each that fails
-  sear := ifx b[0].c[i].sear then rs_sum(b[0].dice[..], rs_max(rs_mod(b[0].c[i].score[RS_WIS]), 1), 8) else 0;
+  sear := ifx rs_has_feature(b[0].c[i], RS_FT_SEAR_UNDEAD) then rs_sum(b[0].dice[..], rs_max(rs_mod(b[0].c[i].score[RS_WIS]), 1), 8) else 0;
   for j: 0..<b[0].n {
     if !b[0].c[j].undead || rs_feet_to(b, i, j) > 30 { continue; }
     c := b[0].c[j];
@@ -103,7 +103,7 @@ rs_turn_undead :: (b: [] RsBattle, i: int) -> bool {
 // Cleric's level in Hit Points, divided among Bloodied creatures within 30 feet (its side, itself
 // too), none above half its Hit Point maximum. The most hurt first.
 rs_preserve_life :: (b: [] RsBattle, i: int) -> bool {
-  if !rs_action_free(b, i) || !b[0].c[i].preserve_life || b[0].c[i].uses[RS_USE_CHANNEL] <= 0 { return false; }
+  if !rs_action_free(b, i) || !rs_has_feature(b[0].c[i], RS_FT_PRESERVE_LIFE) || b[0].c[i].uses[RS_USE_CHANNEL] <= 0 { return false; }
   any := false;
   for j: 0..<b[0].n {
     c := b[0].c[j];
@@ -136,7 +136,7 @@ rs_second_wind :: (b: [] RsBattle, i: int) -> bool {
   rs_say_ft(b, RS_EV_CAST, i, i, 0, RS_FT_SECOND_WIND, " takes a Second Wind");
   got := rs_feature_heal(b, i, i, rs_roll(b[0].dice[..], 10) + b[0].c[i].level, "Second Wind", RS_FT_SECOND_WIND);
   // Tactical Shift (p. 48): half its Speed more (no Opportunity Attacks in this engine to avoid)
-  if b[0].c[i].shift && !b[0].turn.anchored { b[0].turn.move_left += b[0].c[i].speed / RS_SQUARE / 2; }
+  if rs_has_feature(b[0].c[i], RS_FT_TACTICAL_SHIFT) && !b[0].turn.anchored { b[0].turn.move_left += b[0].c[i].speed / RS_SQUARE / 2; }
   return true;
 }
 // Action Surge (p. 48): one more action this turn, once.
@@ -176,7 +176,7 @@ rs_cunning_dash :: (b: [] RsBattle, i: int) -> bool {
 // Steady Aim (p. 62): a Bonus Action, only if it hasn't moved this turn; Advantage on its next
 // attack roll this turn, and its Speed is 0 until the turn ends.
 rs_steady_aim :: (b: [] RsBattle, i: int) -> bool {
-  if !rs_bonus_free(b, i) || !b[0].c[i].steady_aim || b[0].turn.moved { return false; }
+  if !rs_bonus_free(b, i) || !rs_has_feature(b[0].c[i], RS_FT_STEADY_AIM) || b[0].turn.moved { return false; }
   b[0].turn.bonus = true; b[0].turn.aimed = true; b[0].turn.anchored = true; b[0].turn.move_left = 0; b[0].turn.move_feet = 0;
   _ := rs_dodge_live(b,i);
   rs_say_ft(b, RS_EV_CONDITION, i, i, 0, RS_FT_STEADY_AIM, " takes Steady Aim");
@@ -195,7 +195,7 @@ rs_innate_sorcery :: (b: [] RsBattle, i: int) -> bool {
 // Wild Resurgence (p. 43): once a turn, with no Wild Shape use left, its lowest slot for one (no
 // action); and once a Long Rest, a Wild Shape use for a 1st-level slot (rs_resurge_slot).
 rs_wild_resurgence :: (b: [] RsBattle, i: int) -> bool {
-  if b[0].who != i || !b[0].c[i].resurgence || b[0].turn.resurged || b[0].c[i].uses[RS_USE_WILD] > 0 { return false; }
+  if b[0].who != i || !rs_has_feature(b[0].c[i], RS_FT_WILD_RESURGENCE) || b[0].turn.resurged || b[0].c[i].uses[RS_USE_WILD] > 0 { return false; }
   for l: 1..<10 {
     if b[0].c[i].slots[l] > 0 {
       b[0].c[i].slots[l] -= 1; b[0].c[i].uses[RS_USE_WILD] = 1; b[0].turn.resurged = true;
@@ -206,7 +206,7 @@ rs_wild_resurgence :: (b: [] RsBattle, i: int) -> bool {
   return false;
 }
 rs_resurge_slot :: (b: [] RsBattle, i: int) -> bool {
-  if b[0].who != i || !b[0].c[i].resurgence || b[0].c[i].resurged_slot || b[0].c[i].uses[RS_USE_WILD] <= 0 { return false; }
+  if b[0].who != i || !rs_has_feature(b[0].c[i], RS_FT_WILD_RESURGENCE) || b[0].c[i].resurged_slot || b[0].c[i].uses[RS_USE_WILD] <= 0 { return false; }
   b[0].c[i].uses[RS_USE_WILD] -= 1; b[0].c[i].slots[1] += 1; b[0].c[i].resurged_slot = true;
   rs_say(b, RS_EV_CONDITION, i, i, 0, ": Wild Resurgence, a Wild Shape use for a 1st-level slot");
   return true;
@@ -215,7 +215,7 @@ rs_resurge_slot :: (b: [] RsBattle, i: int) -> bool {
 // feet: each foe in the 10-foot-radius Sphere makes a Con save, 2d6 Necrotic or half; one creature
 // there (`heal`, -1 none) regains 2d6 Hit Points.
 rs_lands_aid :: (b: [] RsBattle, i: int, tx: int, ty: int, heal: int) -> bool {
-  if !rs_action_free(b, i) || !b[0].c[i].lands_aid || b[0].c[i].uses[RS_USE_WILD] <= 0 { return false; }
+  if !rs_action_free(b, i) || !rs_has_feature(b[0].c[i], RS_FT_LANDS_AID) || b[0].c[i].uses[RS_USE_WILD] <= 0 { return false; }
   if rs_range_ft(b, b[0].c[i].x, b[0].c[i].y, tx, ty) > 60 { return false; }
   b[0].turn.action = true; b[0].c[i].uses[RS_USE_WILD] -= 1;
   n6 := ifx b[0].c[i].level >= 14 then 4 else ifx b[0].c[i].level >= 10 then 3 else 2;

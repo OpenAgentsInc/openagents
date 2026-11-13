@@ -415,11 +415,11 @@ fx_marks :: (s: [] Lab, i: int) -> int {
   now := b[0].clock;
   f := cd_icons(b[0].c[i].cond);
   if b[0].c[i].conc >= 0 { f = f | FXS_CONCENTRATING; }
-  if b[0].c[i].raging { f = f | FXS_RAGING; }
+  if rs_effect(b[0].c[i], EF_RAGE) { f = f | FXS_RAGING; }
   if rs_aura_on(b[0].c[i], EF_SACRED, now) { f = f | FXS_SACRED; }
   if rs_aura_on(b[0].c[i], EF_INNATE, now) { f = f | FXS_INNATE; }
   if rs_aura_on(b[0].c[i], EF_FLAME, now) { f = f | FXS_FLAME; }
-  if b[0].c[i].dark_blessing && b[0].c[i].temp > 0 { f = f | FXS_FIEND; }
+  if rs_has_feature(b[0].c[i], RS_FT_DARK_BLESSING) && b[0].c[i].temp > 0 { f = f | FXS_FIEND; }
   return f;
 }
 
@@ -969,7 +969,7 @@ barbarian_turn :: (s: [] Lab, i: int) {
     if d <= 60 && d < bd { bd = d; foe = j; }
   }
   // Rage once a foe is within a dash (Fast Movement makes it 40 feet a move from level 5)
-  if !b[0].c[i].raging && rs_feet_to(b, i, foe) <= 2 * b[0].c[i].speed { ok := rs_rage(b, i); }
+  if !rs_effect(b[0].c[i], EF_RAGE) && rs_feet_to(b, i, foe) <= 2 * b[0].c[i].speed { ok := rs_rage(b, i); }
   if foe_at_hand(s, i, -1) < 0 && !rs_has(b[0].c[i], RS_RESTRAINED) {
     walk(s, i, foe, 0, 5);
     if rs_feet_to(b, i, foe) > 5 && !b[0].turn.action { ok := rs_dash(b, i); walk(s, i, foe, 0, 5); }
@@ -1014,7 +1014,7 @@ monk_turn :: (s: [] Lab, i: int) {
   if j < 0 { return; }
   // from level 5, a Stunning Strike on its hits while it has Focus to spare; from 6, Wholeness of
   // Body when badly hurt
-  b[0].c[i].stun_ready = b[0].c[i].focus > 2;
+  b[0].c[i].stun_ready = b[0].c[i].uses[RS_USE_FOCUS] > 2;
   ok := rs_attack(b, i, j, false, -1);
   if b[0].c[i].hp * 5 < b[0].c[i].hp_max * 2 { ok = rs_wholeness(b, i); }
   brute := false;
@@ -1024,10 +1024,10 @@ monk_turn :: (s: [] Lab, i: int) {
     c := b[0].c[k];
     if c.team != b[0].c[i].team && rs_can_act(c) && c.klass == RS_BARBARIAN && rs_feet_to(b, i, k) <= 5 { brute = true; }
   }
-  if (brute || b[0].c[i].hp * 3 < b[0].c[i].hp_max) && b[0].c[i].focus > 0 { ok = rs_patient_defense(b, i); return; }
+  if (brute || b[0].c[i].hp * 3 < b[0].c[i].hp_max) && b[0].c[i].uses[RS_USE_FOCUS] > 0 { ok = rs_patient_defense(b, i); return; }
   j = foe_at_hand(s, i, -1);
   if j < 0 { return; }
-  if b[0].c[i].focus > 1 { ok = rs_flurry(b, i, j, ifx rs_has(b[0].c[j], RS_PRONE) then OH_PUSH else OH_TOPPLE); }
+  if b[0].c[i].uses[RS_USE_FOCUS] > 1 { ok = rs_flurry(b, i, j, ifx rs_has(b[0].c[j], RS_PRONE) then OH_PUSH else OH_TOPPLE); }
   else { ok = rs_bonus_strike(b, i, j); }
 }
 
@@ -1287,7 +1287,7 @@ bard_turn :: (s: [] Lab, i: int) {
   for q: 0..<m {
     j := ids[q];
     c := b[0].c[j];
-    if j == i || c.team != b[0].c[i].team || !rs_up(c) || c.inspired > 0 || c.klass == RS_MONSTER { continue; }
+    if j == i || c.team != b[0].c[i].team || !rs_up(c) || rs_state_value(c, EF_INSPIRED) > 0 || c.klass == RS_MONSTER { continue; }
     d := rs_feet_to(b, i, j);
     if d <= 60 && d < pd && foes_near(s, i, c.x, c.y, 10) > 0 { pd = d; pick = j; }
   }
@@ -1304,7 +1304,7 @@ bard_turn :: (s: [] Lab, i: int) {
   if !b[0].turn.action && !b[0].turn.slot_spent && b[0].c[i].slots[3] > 0 {
     hp := ifx b[0].c[i].conc < 0 then burst_at(s, i, 120, 15, false, 4) else -1;
     if hp >= 0 { ok := rs_cast(b, i, SP_HYPNOTIC_PATTERN, 3, b[0].c[hp].x, b[0].c[hp].y, -1); }
-    else if b[0].c[i].discoveries[0] == SP_FIREBALL {
+    else if b[0].c[i].rank[RS_RK_DISCOVERY + 0] == SP_FIREBALL {
       fb := burst_at(s, i, 150, 20, false, 3);
       if fb >= 0 { ok := rs_cast(b, i, SP_FIREBALL, 3, b[0].c[fb].x, b[0].c[fb].y, -1); }
     }
@@ -1350,7 +1350,7 @@ wizard_turn :: (s: [] Lab, i: int) {
   if foe < 0 { return; }
   // Fireball (from level 5) where it catches three foes or more
   if !b[0].turn.action && !b[0].turn.slot_spent && b[0].c[i].slots[3] > 0 {
-    fb := burst_at(s, i, 150, 20, b[0].c[i].sculpt, 3);
+    fb := burst_at(s, i, 150, 20, rs_has_feature(b[0].c[i], RS_FT_SCULPT), 3);
     if fb >= 0 { ok := rs_cast(b, i, SP_FIREBALL, 3, b[0].c[fb].x, b[0].c[fb].y, -1); }
   }
   hold_one(s, i, foe, 0.25);
@@ -1564,8 +1564,8 @@ hero_abilities :: (s: [] Lab, i: int, out: [] Ab) -> int {
 ab_ready :: (s: [] Lab, i: int, a: Ab) -> bool {
   c := s[0].battle[0].c[i];
   if a.kind == AB_SPELL { return a.lvl == 0 || free_slot(s, i, a.lvl) > 0; }
-  if a.kind == AB_RAGE { return c.rages > 0 && !c.raging; }
-  if a.kind == AB_FLURRY || a.kind == AB_PATIENT || a.kind == AB_WIND { return c.focus > 0; }
+  if a.kind == AB_RAGE { return c.uses[RS_USE_RAGE] > 0 && !rs_effect(c, EF_RAGE); }
+  if a.kind == AB_FLURRY || a.kind == AB_PATIENT || a.kind == AB_WIND { return c.uses[RS_USE_FOCUS] > 0; }
   if a.kind == AB_WHOLE { return c.uses[RS_USE_WHOLE] > 0; }
   if a.kind == AB_SECOND { return c.uses[RS_USE_WIND] > 0; }
   if a.kind == AB_SURGE { return c.uses[RS_USE_SURGE] > 0; }
@@ -1580,8 +1580,8 @@ ab_ready :: (s: [] Lab, i: int, a: Ab) -> bool {
 ab_left :: (s: [] Lab, i: int, a: Ab) -> int {
   c := s[0].battle[0].c[i];
   if a.kind == AB_SPELL { if a.lvl == 0 { return -1; } sl := free_slot(s, i, a.lvl); return ifx sl > 0 then c.slots[sl] else 0; }
-  if a.kind == AB_RAGE { return c.rages; }
-  if a.kind == AB_FLURRY || a.kind == AB_PATIENT || a.kind == AB_WIND { return c.focus; }
+  if a.kind == AB_RAGE { return c.uses[RS_USE_RAGE]; }
+  if a.kind == AB_FLURRY || a.kind == AB_PATIENT || a.kind == AB_WIND { return c.uses[RS_USE_FOCUS]; }
   if a.kind == AB_WHOLE { return c.uses[RS_USE_WHOLE]; }
   if a.kind == AB_SECOND { return c.uses[RS_USE_WIND]; }
   if a.kind == AB_SURGE { return c.uses[RS_USE_SURGE]; }
@@ -1666,11 +1666,11 @@ lab_prepare_bar :: (c: [] RsCreature) {
     for q: 0..<m { if keys[q] == key { seen = true; } }
     if !seen { keys[m] = key; m += 1; }
   }
-  if c[0].shield_spell { keys[m] = RS_EXEC_SOURCE[SP_SHIELD]; m += 1; }   // its Reaction
+  if rs_has_feature(c[0], RS_FT_SHIELD_SPELL) { keys[m] = RS_EXEC_SOURCE[SP_SHIELD]; m += 1; }   // its Reaction
   if m == 0 || !rs_set_spells(c, keys[0..<m]) { return; }
   if c[0].klass == RS_WIZARD { _ := rs_select_spell(c, RS_KEY_MAGE_ARMOR); }
   for sp: rs_profile_spells(c[0].klass) {
-    if !rs_spell_grant_has(c[0].klass,c[0].level,c[0].vigor,c[0].spell_grants,sp) { _ := rs_select_spell(c, RS_EXEC_SOURCE[sp]); }
+    if !rs_spell_grant_has(c[0].klass,c[0].level,rs_has_feature(c[0], RS_FT_FIENDISH_VIGOR),c[0].spell_grants,sp) { _ := rs_select_spell(c, RS_EXEC_SOURCE[sp]); }
   }
 }
 // The hero you play: the first of the Living's heroes of the picked class still up, or -1.
@@ -2367,13 +2367,13 @@ lab_panel_view :: (s: [] Lab, out: [] f32, at: int, k: f32) -> int {
     if cr.temp > 0 { m = put(l[..], m, " +"); m = put_int(l[..], m, cr.temp); }
     m = put(l[..], m, "  AC "); m = put_int(l[..], m, cr.ac);
     kl := cr.klass;
-    if kl == RS_BARBARIAN { m = put(l[..], m, "  RAGES "); m = put_int(l[..], m, cr.rages); }
-    else if kl == RS_MONK { m = put(l[..], m, "  FOCUS "); m = put_int(l[..], m, cr.focus); }
+    if kl == RS_BARBARIAN { m = put(l[..], m, "  RAGES "); m = put_int(l[..], m, cr.uses[RS_USE_RAGE]); }
+    else if kl == RS_MONK { m = put(l[..], m, "  FOCUS "); m = put_int(l[..], m, cr.uses[RS_USE_FOCUS]); }
     else if kl == RS_FIGHTER {
       m = put(l[..], m, "  SECOND WIND "); m = put_int(l[..], m, cr.uses[RS_USE_WIND]);
       m = put(l[..], m, "  SURGE "); m = put_int(l[..], m, cr.uses[RS_USE_SURGE]);
     }
-    else if kl == RS_ROGUE { m = put(l[..], m, "  SNEAK "); m = put_int(l[..], m, cr.sneak_dice); m = put(l[..], m, "D6"); }
+    else if kl == RS_ROGUE { m = put(l[..], m, "  SNEAK "); m = put_int(l[..], m, cr.rank[RS_RK_SNEAK_DICE]); m = put(l[..], m, "D6"); }
     else {
       // the slots it has, lowest level first: 4+3+3 (Pact Magic's are all of one level)
       first := true;
@@ -2404,13 +2404,13 @@ lab_panel_view :: (s: [] Lab, out: [] f32, at: int, k: f32) -> int {
       if rs_effect(cr, EF_MARK) { m = put(l[..], m, "  MARKED"); }
       if rs_effect(cr, EF_EXPOSED) { m = put(l[..], m, "  LIT"); }
       if rs_aura_on(cr, EF_SLOWED, b[0].clock) { m = put(l[..], m, "  SLOWED"); }
-      if cr.inspired > 0 { m = put(l[..], m, "  INSPIRED"); }
+      if rs_state_value(cr, EF_INSPIRED) > 0 { m = put(l[..], m, "  INSPIRED"); }
       if rs_aura_on(cr, EF_INNATE, b[0].clock) { m = put(l[..], m, "  INNATE SORCERY"); }
-      if cr.shield_active { m = put(l[..], m, "  SHIELD"); }
+      if rs_effect(cr, EF_SHIELD) { m = put(l[..], m, "  SHIELD"); }
       if rs_aura_on(cr, EF_SACRED, b[0].clock) { m = put(l[..], m, "  SACRED WEAPON"); }
-      if cr.raging { m = put(l[..], m, "  RAGING"); }
+      if rs_effect(cr, EF_RAGE) { m = put(l[..], m, "  RAGING"); }
       if rs_aura_on(cr, EF_RECKLESS, b[0].clock) { m = put(l[..], m, "  RECKLESS"); }
-      if cr.dodging { m = put(l[..], m, "  DODGING"); }
+      if rs_effect(cr, EF_DODGE) { m = put(l[..], m, "  DODGING"); }
       if cr.conc >= 0 { m = put(l[..], m, "  CONC: "); m = put(l[..], m, rs_spell(cr.conc).name); }
     }
     // after the name, fitted to its column (a siege's "Cultist Fanatic 10" is long)
@@ -3462,7 +3462,7 @@ frame_into :: (s: [] Lab, out: [] f32, w: f32, h: f32, dpr: f32, dt: f32) -> int
     if i % 30 == 0 {
       for h: 0..<s[0].heroes {
         c := s[0].battle[0].c[h..<h + 1];
-        any := c[0].slots[1] < c[0].slots_max[1] || c[0].slots[2] < c[0].slots_max[2] || c[0].slots[3] < c[0].slots_max[3] || c[0].rages < c[0].rages_max || c[0].focus < c[0].focus_max;
+        any := c[0].slots[1] < c[0].slots_max[1] || c[0].slots[2] < c[0].slots_max[2] || c[0].slots[3] < c[0].slots_max[3] || c[0].uses[RS_USE_RAGE] < c[0].uses_max[RS_USE_RAGE] || c[0].uses[RS_USE_FOCUS] < c[0].uses_max[RS_USE_FOCUS];
         for u: 0..<RS_USES { if c[0].uses[u] < c[0].uses_max[u] { any = true; } }
         if c[0].klass == RS_ROGUE && s[0].acted[h] > 0 { any = true; }
         if any { spent = spent | (1 << c[0].klass); }
@@ -3488,7 +3488,7 @@ frame_into :: (s: [] Lab, out: [] f32, w: f32, h: f32, dpr: f32, dt: f32) -> int
     if i % 30 == 0 {
       for h: 0..<s[0].heroes {
         c := s[0].battle[0].c[h..<h + 1];
-        any := c[0].slots[1] < c[0].slots_max[1] || c[0].slots[2] < c[0].slots_max[2] || c[0].slots[3] < c[0].slots_max[3] || c[0].rages < c[0].rages_max || c[0].focus < c[0].focus_max;
+        any := c[0].slots[1] < c[0].slots_max[1] || c[0].slots[2] < c[0].slots_max[2] || c[0].slots[3] < c[0].slots_max[3] || c[0].uses[RS_USE_RAGE] < c[0].uses_max[RS_USE_RAGE] || c[0].uses[RS_USE_FOCUS] < c[0].uses_max[RS_USE_FOCUS];
         for u: 0..<RS_USES { if c[0].uses[u] < c[0].uses_max[u] { any = true; } }
         if c[0].klass == RS_ROGUE && s[0].acted[h] > 0 { any = true; }
         if any { spent = spent | (1 << c[0].klass); }

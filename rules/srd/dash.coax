@@ -16,8 +16,8 @@ rs_dash_use :: (b: [] RsBattle, i: int, mode: int) -> bool #effects(all) {
     b[0].turn.action=true;
   } else {
     if b[0].turn.bonus { return false; }
-    if mode==RS_DASH_CUNNING { if !b[0].c[i].cunning { return false; } }
-    else if mode==RS_DASH_WIND { if b[0].c[i].focus_max<=0 { return false; } }
+    if mode==RS_DASH_CUNNING { if !rs_has_feature(b[0].c[i], RS_FT_CUNNING_ACTION) { return false; } }
+    else if mode==RS_DASH_WIND { if b[0].c[i].uses_max[RS_USE_FOCUS]<=0 { return false; } }
     else { return false; }
     b[0].turn.bonus=true;
   }

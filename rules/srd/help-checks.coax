@@ -106,7 +106,7 @@
     if choice==0 { h.skill=SK_ATHLETICS; } else { h.tool=TO_WEAVER; }
     #assert rs_help_ability(b[..],0,1,h);
     q:=RsAbilityRequest.{ability=RS_STR,skill=SK_ATHLETICS,tool=TO_WEAVER,dc=100,disadvantage=mode!=0};
-    if mode==2 { c[1].raging=true; }
+    if mode==2 { c[1].eff = rs_state_put(c[1].eff, EF_RAGE, true); }
     r:=rs_ability_check(b[..],1,q);
     #assert r.accepted && !r.passed && r.edge==(ifx mode==0 then 1 else 0);
     #assert c[1].eff[0].kind==EF_NONE && b[0].dice[0].rolled==(ifx mode==0 then 2 else 1);
@@ -132,10 +132,10 @@
 #test "an accepted automatically failed check consumes matching Help without dice or optional rescue spending" {
   b: [1] RsBattle; c: [3] RsCreature; hl_field(b[..],c[..]);
   #assert rs_help_ability(b[..],0,1,RsHelpRequest.{skill=SK_ATHLETICS,possible=true});
-  c[1].cond=RS_BLINDED; c[1].inspired=6; c[1].tactical=true; c[1].uses[RS_USE_WIND]=1;
+  c[1].cond=RS_BLINDED; c[1].eff = rs_state_value_put(c[1].eff, EF_INSPIRED, 6); c[1].feats = rs_feature_put(c[1].feats, RS_FT_TACTICAL_MIND, true); c[1].uses[RS_USE_WIND]=1;
   r:=rs_ability_check(b[..],1,RsAbilityRequest.{ability=RS_STR,skill=SK_ATHLETICS,dc=10,sight=true});
   #assert r.accepted && r.automatic && !r.passed && c[1].eff[0].kind==EF_NONE;
-  #assert b[0].dice[0].rolled==0 && c[1].inspired==6 && c[1].uses[RS_USE_WIND]==1;
+  #assert b[0].dice[0].rolled==0 && rs_state_value(c[1], EF_INSPIRED)==6 && c[1].uses[RS_USE_WIND]==1;
 }
 
 #test "all matching Help owners are consumed by one check while another skill remains pending" {

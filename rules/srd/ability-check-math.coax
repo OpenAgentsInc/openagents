@@ -13,7 +13,7 @@ RsCheckPlan :: struct { accepted: bool; automatic: bool; ability: int; bonus: in
 rs_check_plan :: (c: RsCreature, q: RsAbilityRequest) -> RsCheckPlan #effects(all) {
   r: RsCheckPlan;
   if q.ability < 0 || q.ability >= 6 || q.skill < -1 || q.skill >= RS_SKILLS || q.tool < -1 || q.tool >= RS_TOOLS { return r; }
-  if q.primal && (!c.primal || !c.raging || !(q.skill == SK_ACROBATICS || q.skill == SK_INTIMIDATION || q.skill == SK_PERCEPTION || q.skill == SK_STEALTH || q.skill == SK_SURVIVAL)) { return r; }
+  if q.primal && (!rs_has_feature(c, RS_FT_PRIMAL_KNOWLEDGE) || !rs_effect(c, EF_RAGE) || !(q.skill == SK_ACROBATICS || q.skill == SK_INTIMIDATION || q.skill == SK_PERCEPTION || q.skill == SK_STEALTH || q.skill == SK_SURVIVAL)) { return r; }
   r.accepted = true;
   r.ability = ifx q.primal then RS_STR else q.ability;
   r.automatic = (q.sight && rs_has(c,RS_BLINDED)) || (q.hearing && rs_has(c,RS_DEAFENED));
@@ -24,10 +24,10 @@ rs_check_plan :: (c: RsCreature, q: RsAbilityRequest) -> RsCheckPlan #effects(al
   trained := 0;
   if skill || tool { trained = pb; }
   if skill && (c.checks.expert & (1<<q.skill)) != 0 { trained = 2*pb; }
-  if c.jack && q.skill >= 0 && !skill && !tool { trained = pb/2; }
+  if rs_has_feature(c, RS_FT_JACK) && q.skill >= 0 && !skill && !tool { trained = pb/2; }
   r.bonus = rs_mod(c.score[r.ability]) + trained;
   r.penalty = rs_exhaustion_penalty(c);
-  up := q.advantage || (skill && tool) || (r.ability == RS_STR && c.raging) || (r.ability == RS_STR && q.skill == SK_ATHLETICS && c.athlete);
+  up := q.advantage || (skill && tool) || (r.ability == RS_STR && rs_effect(c, EF_RAGE)) || (r.ability == RS_STR && q.skill == SK_ATHLETICS && rs_has_feature(c, RS_FT_ATHLETE));
   down := q.disadvantage || rs_has(c,RS_POISONED) || (rs_has(c,RS_FRIGHTENED) && q.fear_visible) || (r.ability == RS_STR && rs_effect(c,EF_ENFEEBLED));
   for e: c.eff { if e.kind == EF_HEX && e.cond == r.ability { down = true; } }
   r.edge = ifx up && !down then 1 else ifx down && !up then -1 else 0;

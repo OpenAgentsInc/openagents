@@ -101,6 +101,34 @@ its riders can leave (`rules/srd/strike-admission.coax`): one for Slow, two for
 a Stunning Strike. Faerie Fire's outline is a record a caster, so two casters'
 outlines on one creature end separately.
 
+**No class has a field of its own on a creature** (#13285). What a class used
+to keep there is in four shared places on `RsCreature`
+(`rules/srd/engine.coax`):
+
+| What | Where | Read with |
+| --- | --- | --- |
+| What a class, a subclass or a stat block knows (58 features: Cunning Action, Sculpt Spells, Parry) | `feats`, one bit a feature by `RS_FT_*` | `rs_has_feature(c, RS_FT_SCULPT)`; set with `rs_feature_put` |
+| A feature's number (the Martial Arts die, Sneak Attack's dice, Rage's damage bonus, the cantrip an invocation was chosen for) | `rank[RS_RK_*]` | the array |
+| Every counted resource. Rages, Focus Points and a Healer's Kit's uses are pools 14 to 16 beside the 14 there were | `uses[RS_USE_*]`, `uses_max`, `uses_back` | An Ability's cost names its pool, so `RS_COST_USE` is the only counted cost besides a spell slot |
+| State that an event ends: Rage (with its "kept up this round" and "struck this round" bits), Dodge, Shield, the Open Hand's Addle, a Bardic Inspiration die held | A state Aura: one record no clock ends (`EF_RAGE`, `EF_DODGE`, `EF_SHIELD`, `EF_ADDLED`, `EF_INSPIRED`) | `rs_effect(c, EF_RAGE)`, `rs_state_has`, `rs_state_value`; set with `rs_state_put` |
+
+A state Aura takes a place in the creature's list of 16, so what takes one
+asks for room first (`rs_state_room`): Rage, Dodge, Patient Defense, Shield
+and Bardic Inspiration are refused before any cost when the list is full. A
+state takes the last free place, and a spell's records fill from the front.
+
+A Short Rest gives a Barbarian one Rage and a Monk every Focus Point through
+the same table as Channel Divinity and Second Wind (`rs_short_rest_mode`). The
+action timing profile brings them back through the one loop over every pool.
+A character checkpoint carries pools 0 to 13 as before (`RS_USES_KEPT`);
+Rages and Focus come back full on a restore, as they did as fields.
+
+Still fields, and why: `strike_plan` and `stun_ready` (what the deciding
+routine wants of its next hit: a request, not state), `hex_free` and
+`hex_free_after` (Hex and Hunter's Mark ready to move), `resurged_slot`,
+`guard_slot` and `guard_turn` (Spirit Guardians), `free_spell`, and the Wild
+Shape, familiar and Zone of Truth groups.
+
 Everglade's content table `ability` (`everglade/content/everglade.content`)
 has 83 rows since revision 2, one for each ability the bars hold by content
 ID. The tables' revision is a session's content pin (#13381). A room on

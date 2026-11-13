@@ -93,7 +93,7 @@ rs_end_concentration :: (b: [] RsBattle, i: int, why: string) #effects(all) {
   if !rs_executable_spell(sp) { return; }
   if b[0].c[i].rite==sp { rs_rite_fail(b,i,why); return; }   // a Ritual's casting owns no effect yet
   b[0].c[i].conc=-1; b[0].c[i].conc_until=0;
-  for k: 0..<RS_ZONES {
+  for k: 0..<b[0].zone.count {
     if b[0].zone[k].by==i && b[0].zone[k].spell==sp { _ := rs_release_zone(b,k); }
   }
   for j: 0..<b[0].n {

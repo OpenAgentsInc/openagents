@@ -74,7 +74,7 @@ rt_kept :: (b: [] RsBattle, a: int, was: RsCreature) -> bool {
   }
   b: [1] RsBattle; a := rt_druid(b[..]);
   #assert rs_ritual_begin(b[..],a,SP_WATER_WALK); rt_turn(b[..],a);
-  b[0].c[a].rages = 1; b[0].c[a].rages_max = 1;
+  b[0].c[a].uses[RS_USE_RAGE] = 1; b[0].c[a].uses_max[RS_USE_RAGE] = 1;
   #assert rs_rage(b[..],a) && b[0].c[a].rite == -1 && b[0].c[a].conc == -1;
 }
 #test "beginning a Ritual ends earlier Concentration and interrupts no Concentration-free state when refused" #steps 400000000 {
@@ -97,7 +97,7 @@ rt_kept :: (b: [] RsBattle, a: int, was: RsCreature) -> bool {
     if why == 1 { sp = SP_WATER_BREATHING; }
     if why == 2 { c[0].turn.action = true; }
     if why == 3 { c[0].turn.quickened = true; }
-    if why == 4 { c[0].c[d].raging = true; }
+    if why == 4 { c[0].c[d].eff = rs_state_put(c[0].c[d].eff, EF_RAGE, true); }
     if why == 5 { c[0].who = 1; }
     seq := c[0].book[0].seq;
     #assert !rs_ritual_begin(c[..],d,sp);
@@ -112,7 +112,7 @@ rt_kept :: (b: [] RsBattle, a: int, was: RsCreature) -> bool {
     a := rs_add(b[..],rs_wizard("Wizard",0,5),1,1);
     keys := [1] int.[RS_EXEC_SOURCE[SP_FIRE_BOLT]]; #assert rs_set_spells(b[0].c[a..<a+1],keys[..]);
     if book == 1 { #assert rs_spellbook_add(b[0].c[a..<a+1],RS_EXEC_SOURCE[SP_WATER_BREATHING]); }
-    b[0].c[a].ritual = adept == 1;
+    b[0].c[a].feats = rs_feature_put(b[0].c[a].feats, RS_FT_RITUAL_ADEPT, adept == 1);
     rs_start_turn(b[..],a); was := b[0].c[a];
     #assert !rs_spell_ready(b[0].c[a],SP_WATER_BREATHING);
     #assert rs_ritual_begin(b[..],a,SP_WATER_BREATHING) == (adept == 1 && book == 1);
@@ -136,7 +136,7 @@ rt_kept :: (b: [] RsBattle, a: int, was: RsCreature) -> bool {
   b: [1] RsBattle; a := rt_druid(b[..]); was := b[0].c[a];
   #assert rs_ritual_begin(b[..],a,SP_WATER_WALK);
   for turn: 0..<100 { rt_turn(b[..],a); if turn < 99 { #assert rs_ritual_continue(b[..],a); } }
-  b[0].c[a].quickened = true; b[0].c[a].uses[RS_USE_SORCERY] = 4;
+  b[0].c[a].feats = rs_feature_put(b[0].c[a].feats, RS_FT_QUICKENED, true); b[0].c[a].uses[RS_USE_SORCERY] = 4;
   #assert !rs_cast_quick(b[..],a,SP_WATER_WALK,0,0,0,1) && b[0].c[a].uses[RS_USE_SORCERY] == 4;
   #assert !rs_cast(b[..],a,SP_ENTANGLE,0,5,1,-1) && !rs_cast(b[..],a,SP_WATER_BREATHING,0,0,0,1);
   #assert b[0].c[a].rite == SP_WATER_WALK && !b[0].turn.action && rt_kept(b[..],a,was);
@@ -242,7 +242,7 @@ rc_same :: (b: [] RsBattle, a: int, was: RsCreature, rolled: int, seq: int) -> b
   for blind: 0..<2 {
     b: [1] RsBattle; rebuke := [1] int.[SP_HELLISH_REBUKE];
     a := rc_sight(b[..],rs_warlock("Warlock",0,3,SP_ELDRITCH_BLAST),rebuke[..]);
-    b[0].c[a].rebuke = true;
+    b[0].c[a].feats = rs_feature_put(b[0].c[a].feats, RS_FT_REBUKE, true);
     if blind == 1 { b[0].c[a].cond = RS_BLINDED; }
     b[0].who = 1;
     slots := b[0].c[a].slots[2];

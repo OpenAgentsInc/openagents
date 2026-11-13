@@ -43,12 +43,12 @@
 #test "Fiendish Vigor grants only its spell to a level two or higher Warlock who chose it" {
   for level: 1..<4 {
     for chosen: 0..<2 {
-      c := rs_warlock("Warlock", 0, level, SP_ELDRITCH_BLAST); c.vigor = chosen == 1;
+      c := rs_warlock("Warlock", 0, level, SP_ELDRITCH_BLAST); c.feats = rs_feature_put(c.feats, RS_FT_FIENDISH_VIGOR, chosen == 1);
       #assert rs_spell_access(c, SP_FALSE_LIFE) == (level >= 2 && chosen == 1);
       #assert !rs_spell_access(c, SP_CURE_WOUNDS);
     }
   }
-  c := rs_druid("Druid", 0, 3); c.vigor = true;
+  c := rs_druid("Druid", 0, 3); c.feats = rs_feature_put(c.feats, RS_FT_FIENDISH_VIGOR, true);
   #assert !rs_spell_access(c, SP_FALSE_LIFE) && !rs_spell_access(c, SP_GUIDING_BOLT);
 }
 #test "preset extra-list spell grants appear at their source feature levels" {
@@ -102,7 +102,7 @@
   #assert rs_grant_class_spell(c[..],64) && rs_class_spell_granted(c[0],64) && !rs_class_spell_granted(c[0],65);
   #assert !rs_class_spell_granted(c[0],-1) && !rs_class_spell_granted(c[0],RS_MORE_END);
   for level: 1..<3 { for klass: [2] int.[RS_DRUID,RS_WARLOCK] {
-    v: RsCreature; v.klass=klass; v.level=level; v.vigor=true;
+    v: RsCreature; v.klass=klass; v.level=level; v.feats = rs_feature_put(v.feats, RS_FT_FIENDISH_VIGOR, true);
     #assert rs_class_spell_granted(v,SP_FALSE_LIFE)==(level==2 && klass==RS_WARLOCK);
   } }
   edge: [1] RsCreature;
@@ -196,10 +196,10 @@ rs_grant_class_spell :: (c: [] RsCreature, sp: int) -> bool #effects(all) {
 rs_class_spell_granted :: (c: RsCreature, sp: int) -> bool #effects(all) {
   if !rs_executable_spell(sp) { return false; }
   parent := rs_spell_root(sp);
-  return (c.class_spell_grants[parent/64] & (cast(u64) 1 << (parent%64)))!=0 || (parent==SP_FALSE_LIFE && c.klass==RS_WARLOCK && c.level>=2 && c.vigor);
+  return (c.class_spell_grants[parent/64] & (cast(u64) 1 << (parent%64)))!=0 || (parent==SP_FALSE_LIFE && c.klass==RS_WARLOCK && c.level>=2 && rs_has_feature(c, RS_FT_FIENDISH_VIGOR));
 }
 rs_spell_granted :: (c: RsCreature, sp: int) -> bool #effects(all) {
-  return rs_spell_grant_has(c.klass,c.level,c.vigor,c.spell_grants,sp);
+  return rs_spell_grant_has(c.klass,c.level,rs_has_feature(c, RS_FT_FIENDISH_VIGOR),c.spell_grants,sp);
 }
 rs_spell_root :: (sp: int) -> int #effects(all) {
   helper := rs_spell(sp).part_of;

@@ -112,7 +112,7 @@ e2r_dispatch_at :: (b:[] RsBattle,i:int,a:FbAb,foe:int,point:E2rPoint?)->bool #e
   // shared rules refuse a swing at no one (below).
   if (a.kind==FB_ATTACK || a.kind==FB_SHOOT || a.kind==FB_RECKLESS) && !b[0].turn.action { b[0].turn.action=true; return true; }
   // Flurry of Blows at the air: its Focus Point and Bonus Action, no strike (SRD 5.2.1 p. 49)
-  if a.kind==FB_FLURRY && !b[0].turn.bonus && b[0].c[i].focus>0 && rs_can_act(b[0].c[i]) { b[0].c[i].focus-=1; b[0].turn.bonus=true; return true; }
+  if a.kind==FB_FLURRY && !b[0].turn.bonus && b[0].c[i].uses[RS_USE_FOCUS]>0 && rs_can_act(b[0].c[i]) { b[0].c[i].uses[RS_USE_FOCUS]-=1; b[0].turn.bonus=true; return true; }
   // A feature of the caster's own that picks no creature (#13046: Action Surge, Dash, Cunning Action,
   // Patient Defense, Step of the Wind, Steady Aim, Wild Shape, Turn Undead, Preserve Life, Land's Aid
   // round the caster, its heal its own): the shared rules' own entry. Land's Aid harms only another
@@ -129,7 +129,7 @@ e2r_dispatch_at :: (b:[] RsBattle,i:int,a:FbAb,foe:int,point:E2rPoint?)->bool #e
   _:=rs_add(b[..],fb_cl_hero(FB_CL_BARBARIAN,"Barbarian",0,1),2,2);
   seats:[1] FbSeat; seats[0].me=0;
   #assert e2r_use(b[..],seats[..],FB_CL_BARBARIAN,xk_slot(FB_CL_BARBARIAN,0));
-  #assert b[0].c[0].raging && seats[0].turn.bonus;
+  #assert rs_effect(b[0].c[0], EF_RAGE) && seats[0].turn.bonus;
 }
 
 #test "Everglade II Aid's self control spends one slot and affects only the selected seat" {

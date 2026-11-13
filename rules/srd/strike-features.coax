@@ -3,17 +3,17 @@
 
 #test "Frenzy requires the actual own turn and Stunning Strike requires an unused Focus choice" {
   for mode:0..<7 {
-    c:RsCreature; c.frenzy=true; c.raging=true; c.eff[RS_EFFECTS-1]=RsEffect.{kind=EF_RECKLESS,until=10};
+    c:RsCreature; c.feats = rs_feature_put(c.feats, RS_FT_FRENZY, true); c.eff[RS_EFFECTS-1]=RsEffect.{kind=EF_RECKLESS,until=10}; c.eff = rs_state_put(c.eff, EF_RAGE, true);
     own:=true; strength:=true; used:=false; clock:int=0;
-    if mode==1 { c.frenzy=false; } else if mode==2 { c.raging=false; }
+    if mode==1 { c.feats = rs_feature_put(c.feats, RS_FT_FRENZY, false); } else if mode==2 { c.eff = rs_state_put(c.eff, EF_RAGE, false); }
     else if mode==3 { strength=false; } else if mode==4 { clock=10; }
     else if mode==5 { own=false; } else if mode==6 { used=true; }
     #assert rs_frenzy_turn(c,strength,clock,own,used)==(mode==0);
   }
   for mode:0..<6 {
-    c:RsCreature; c.stunning=true; c.stun_ready=true; c.focus=1; used:=false;
-    if mode==1 { c.stunning=false; } else if mode==2 { c.stun_ready=false; }
-    else if mode==3 { c.focus=0; } else if mode==4 { c.focus = -1; } else if mode==5 { used=true; }
+    c:RsCreature; c.feats = rs_feature_put(c.feats, RS_FT_STUNNING_STRIKE, true); c.stun_ready=true; c.uses[RS_USE_FOCUS]=1; used:=false;
+    if mode==1 { c.feats = rs_feature_put(c.feats, RS_FT_STUNNING_STRIKE, false); } else if mode==2 { c.stun_ready=false; }
+    else if mode==3 { c.uses[RS_USE_FOCUS]=0; } else if mode==4 { c.uses[RS_USE_FOCUS] = -1; } else if mode==5 { used=true; }
     #assert rs_stun_ready(c,used)==(mode==0);
   }
 }
@@ -24,10 +24,10 @@
 }
 
 rs_frenzy_turn :: (c:RsCreature,strength:bool,clock:int,own:bool,used:bool)->bool #effects(all) {
-  return own && c.frenzy && c.raging && strength && rs_aura_on(c, EF_RECKLESS, clock) && !used;
+  return own && rs_has_feature(c, RS_FT_FRENZY) && rs_effect(c, EF_RAGE) && strength && rs_aura_on(c, EF_RECKLESS, clock) && !used;
 }
 rs_stun_ready :: (c:RsCreature,used:bool)->bool #effects(all) {
-  return c.stunning && c.stun_ready && c.focus>0 && !used;
+  return rs_has_feature(c, RS_FT_STUNNING_STRIKE) && c.stun_ready && c.uses[RS_USE_FOCUS]>0 && !used;
 }
 // Current declared identities: Unarmed, Shortsword, Mace, Dagger, Spear,
 // Ritual Sickle and Priest's Mace. Spell/natural proxies and an unspecified

@@ -4,7 +4,7 @@ tool_main :: ()->int #export_c #effects(all) {
   for klass:0..<RS_CLASSES { if klass==RS_MONSTER { continue; } for level:1..<7 {
     b:[1]RsBattle; c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].who = -1;
     c[0]=rt_class(klass,level); c[0].hp=3; c[0].temp=1; c[0].reacted=true;
-    c[0].rages=0; c[0].focus=0;
+    c[0].uses[RS_USE_RAGE]=0; c[0].uses[RS_USE_FOCUS]=0;
     for u:0..<RS_USES { c[0].uses[u]=0; }
     for slot:1..<10 { c[0].slots[slot]=0; }
     if !rs_rest_schedule_enable(b[..]) || !rs_long_rest_start_owned(b[..],0,1,true) { return 1; }
@@ -12,8 +12,8 @@ tool_main :: ()->int #export_c #effects(all) {
     rs_damage(b[..],-1,0,1,RS_FIRE,false,-1);
     if c[0].hp!=3 || c[0].temp!=0 || rs_sleeping(c[0]) || c[0].long_rest.phase!=2 || c[0].rest.phase!=0 || !c[0].reacted { return 2; }
     if c[0].rest.dice!=level || c[0].long_rest.interruptions!=1 { return 3; }
-    if klass==RS_BARBARIAN && c[0].rages!=1 { return 4; }
-    if klass==RS_MONK && c[0].focus!=c[0].focus_max { return 5; }
+    if klass==RS_BARBARIAN && c[0].uses[RS_USE_RAGE]!=1 { return 4; }
+    if klass==RS_MONK && c[0].uses[RS_USE_FOCUS]!=c[0].uses_max[RS_USE_FOCUS] { return 5; }
     if klass==RS_WARLOCK { for slot:1..<6 { if c[0].slots[slot]!=c[0].slots_max[slot] { return 6; } } }
     if (klass==RS_CLERIC || klass==RS_PALADIN) && c[0].uses[RS_USE_CHANNEL]!=(ifx c[0].uses_max[RS_USE_CHANNEL]>0 then 1 else 0) { return 7; }
     rs_damage(b[..],-1,0,1,RS_FIRE,false,-1);
@@ -27,7 +27,7 @@ tool_main :: ()->int #export_c #effects(all) {
     b:[1]RsBattle; c:[2]RsCreature; b[0].c=c[..]; b[0].n=2; b[0].who = -1; b[0].w=8; b[0].h=8;
     c[0]=rs_warlock("Sleeper",0,3,SP_ELDRITCH_BLAST); c[1]=rs_fighter("Reactor",1,3);
     c[0].x=2; c[0].y=2; c[1].x=3; c[1].y=2;
-    c[0].rebuke=true; c[0].slots[2]=0; c[0].temp=1;
+    c[0].feats = rs_feature_put(c[0].feats, RS_FT_REBUKE, true); c[0].slots[2]=0; c[0].temp=1;
     if !rs_rest_schedule_enable(b[..]) || !rs_long_rest_start_owned(b[..],0,1,true) { return 11; }
     rs_tick(b[..],3600);
     if !rs_long_rest_activity_owned(b[..],0,2).admitted { return 12; }
@@ -45,11 +45,11 @@ tool_main :: ()->int #export_c #effects(all) {
   if !rs_put_effect(b[..],0,RsEffect.{kind=EF_TURNED,cond=RS_FRIGHTENED|RS_INCAPACITATED,by=-1,spell=-1,until=3660,save=-1}) { return 17; }
   rs_damage(b[..],-1,0,1,RS_BLUDGEONING,false,-1);
   if c[0].hp!=1 || c[0].dead || c[0].long_rest.phase!=2 || rs_has(c[0],RS_FRIGHTENED|RS_INCAPACITATED) || rs_sleeping(c[0]) { return 18; }
-  rs_reset(b[..]); c[0]=rs_barbarian("Capacity sleeper",0,3); c[0].hp=5; c[0].temp=1; c[0].rages=0; b[0].n=1; b[0].who = -1;
+  rs_reset(b[..]); c[0]=rs_barbarian("Capacity sleeper",0,3); c[0].hp=5; c[0].temp=1; c[0].uses[RS_USE_RAGE]=0; b[0].n=1; b[0].who = -1;
   if !rs_rest_schedule_enable(b[..]) || !rs_long_rest_start_owned(b[..],0,1,true) { return 19; }
   rs_tick(b[..],3600); c[0].long_rest.interruptions=9223372036854775807;
   rs_damage(b[..],-1,0,1,RS_FIRE,false,-1); rs_tick(b[..],1);
-  if c[0].long_rest.phase!=0 || c[0].rages!=1 || c[0].hp!=5 || b[0].rest_clock.ticks!=3601000000 { return 20; }
+  if c[0].long_rest.phase!=0 || c[0].uses[RS_USE_RAGE]!=1 || c[0].hp!=5 || b[0].rest_clock.ticks!=3601000000 { return 20; }
   c[0]=rs_zombie("Concentrating defender",0); c[0].hp=1; c[0].score[RS_CON]=2; c[0].conc=SP_BLESS; c[0].conc_until=b[0].clock+rs_secs(60);
   b[0].dice[0].fixed=true; b[0].dice[0].rolled=0;
   rs_damage(b[..],-1,0,1,RS_FIRE,false,-1);

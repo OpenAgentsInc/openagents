@@ -10,7 +10,7 @@
 // turn, including against the triggering attack; its lowest free slot.
 rs_shield :: (b: [] RsBattle, j: int) -> bool {
   c := b[0].c[j];
-  if !c.shield_spell || c.reacted || !rs_capable(c) || rs_casting_barred(c) || !rs_spell_ready(c, SP_SHIELD) { return false; }
+  if !rs_has_feature(c, RS_FT_SHIELD_SPELL) || c.reacted || !rs_capable(c) || rs_casting_barred(c) || !rs_spell_ready(c, SP_SHIELD) || !rs_state_room(c, EF_SHIELD) { return false; }
   slot := 0;
   for k: 1..<10 { if slot == 0 && c.slots[k] > 0 { slot = k; } }
   // a stat block casts it with Protective Magic's own uses (npcs.coax: its 1st-level slots), never a Fireball's
@@ -29,12 +29,12 @@ rs_shield :: (b: [] RsBattle, j: int) -> bool {
 // only when the die could turn the hit (by `margin`, the roll over the AC). The amount taken off.
 rs_cutting_words :: (b: [] RsBattle, i: int, margin: int) -> int {
   for k: 0..<b[0].n {
-    if !b[0].c[k].cutting { continue; }
+    if !rs_has_feature(b[0].c[k], RS_FT_CUTTING_WORDS) { continue; }
     c := b[0].c[k];
-    if !c.cutting || c.team == b[0].c[i].team || c.reacted || !rs_capable(c) || c.uses[RS_USE_INSPIRE] <= 0 { continue; }
-    if margin >= c.insp_die || rs_feet_to(b, k, i) > 60 { continue; }
+    if !rs_has_feature(c, RS_FT_CUTTING_WORDS) || c.team == b[0].c[i].team || c.reacted || !rs_capable(c) || c.uses[RS_USE_INSPIRE] <= 0 { continue; }
+    if margin >= c.rank[RS_RK_INSPIRATION_DIE] || rs_feet_to(b, k, i) > 60 { continue; }
     b[0].c[k].reacted = true; b[0].c[k].uses[RS_USE_INSPIRE] -= 1;
-    cut := rs_roll(b[0].dice[..], c.insp_die);
+    cut := rs_roll(b[0].dice[..], c.rank[RS_RK_INSPIRATION_DIE]);
     l: [1] RsLine;
     rs_add_name(l[..], b, k); rs_add_text(l[..], " mocks "); rs_add_name(l[..], b, i); rs_add_text(l[..], " with Cutting Words: -"); rs_add_int(l[..], cut);
     rs_tell_ft(b, RS_EV_CONDITION, -1, k, i, cut, 0, RS_FT_CUTTING_WORDS, l[..]);
@@ -45,7 +45,7 @@ rs_cutting_words :: (b: [] RsBattle, i: int, margin: int) -> int {
 // Dark One's Own Luck (p. 75): a Fiend Warlock adds 1d10 to a save or check it sees fail, when the
 // die can make it; once a roll, a use each time.
 rs_own_luck :: (b: [] RsBattle, j: int, total: int, need: int) -> int {
-  if !b[0].c[j].own_luck || total >= need || total + 10 < need || b[0].c[j].uses[RS_USE_LUCK] <= 0 { return 0; }
+  if !rs_has_feature(b[0].c[j], RS_FT_OWN_LUCK) || total >= need || total + 10 < need || b[0].c[j].uses[RS_USE_LUCK] <= 0 { return 0; }
   b[0].c[j].uses[RS_USE_LUCK] -= 1;
   luck := rs_roll(b[0].dice[..], 10);
   l: [1] RsLine; rs_add_name(l[..], b, j); rs_add_text(l[..], ": Dark One's Own Luck, +"); rs_add_int(l[..], luck);
@@ -55,9 +55,9 @@ rs_own_luck :: (b: [] RsBattle, j: int, total: int, need: int) -> int {
 // A Bardic Inspiration die a creature holds, rolled on a failed D20 Test of `total` against `need`:
 // the number it adds (0 when it holds none or did not fail).
 rs_inspired_roll :: (b: [] RsBattle, j: int, total: int, need: int) -> int {
-  if b[0].c[j].inspired <= 0 || total >= need { return 0; }
-  die := rs_roll(b[0].dice[..], b[0].c[j].inspired);
-  b[0].c[j].inspired = 0;
+  if rs_state_value(b[0].c[j], EF_INSPIRED) <= 0 || total >= need { return 0; }
+  die := rs_roll(b[0].dice[..], rs_state_value(b[0].c[j], EF_INSPIRED));
+  b[0].c[j].eff = rs_state_value_put(b[0].c[j].eff, EF_INSPIRED, 0);
   return die;
 }
 // One attack roll by i at j: the d20 with `edge`, `bonus`, a Critical Hit from `crit_min` up. A
@@ -73,7 +73,7 @@ rs_roll_attack_from :: (b: [] RsBattle, i: int, j: int, edge: int, bonus: int, c
   r.roll = d.roll; r.edge = d.edge;
   r.ac = rs_ac(b, j) + rs_cover_bonus(rs_cover(b, origin, j));   // Half and Three-Quarters Cover (p.15)
   r.exhaustion = rs_exhaustion_penalty(b[0].c[i]);
-  if spell && b[0].c[i].seeking && b[0].c[i].uses[RS_USE_SORCERY] > 0 && r.roll < crit_min && (r.roll == 1 || r.roll + bonus - r.exhaustion < r.ac) {
+  if spell && rs_has_feature(b[0].c[i], RS_FT_SEEKING) && b[0].c[i].uses[RS_USE_SORCERY] > 0 && r.roll < crit_min && (r.roll == 1 || r.roll + bonus - r.exhaustion < r.ac) {
     b[0].c[i].uses[RS_USE_SORCERY] -= 1; r.seek = true;
     r.roll = rs_roll(b[0].dice[..], 20);
   }
@@ -146,7 +146,7 @@ rs_save_edge_with :: (b: [] RsBattle, j: int, ability: int, extra: int) -> int {
 rs_save_edge_from :: (b: [] RsBattle, j: int, ability: int, more: int, extra: int) -> int {
   c := b[0].c[j];
   down := extra > 0 || (ability == RS_DEX && rs_has(c, RS_RESTRAINED)) || (ability == RS_STR && rs_effect(c, EF_ENFEEBLED));
-  up := more > 0 || (ability == RS_STR && c.raging) || (ability == RS_DEX && c.danger_sense && !rs_has(c, RS_INCAPACITATED) && rs_capable(c)) || (ability == RS_DEX && rs_dodge_live(b,j));
+  up := more > 0 || (ability == RS_STR && rs_effect(c, EF_RAGE)) || (ability == RS_DEX && rs_has_feature(c, RS_FT_DANGER_SENSE) && !rs_has(c, RS_INCAPACITATED) && rs_capable(c)) || (ability == RS_DEX && rs_dodge_live(b,j));
   return rs_edge_of(up, down);
 }
 

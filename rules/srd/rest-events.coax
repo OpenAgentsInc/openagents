@@ -14,7 +14,7 @@
 }
 #test "Initiative admission interrupts only the admitted body while preserving sleep and prior-turn budgets" {
   b:[1]RsBattle; b[0].w=8; b[0].h=8;
-  a:=rs_add(b[..],rs_barbarian("Sleeper",0,3),1,1); b[0].c[a].rages=0; b[0].who = -1;
+  a:=rs_add(b[..],rs_barbarian("Sleeper",0,3),1,1); b[0].c[a].uses[RS_USE_RAGE]=0; b[0].who = -1;
   #assert rs_rest_schedule_enable(b[..]) && rs_long_rest_start_owned(b[..],a,1,true);
   rs_tick(b[..],3600); b[0].c[a].reacted=true;
   b[0].turn.action=true; b[0].turn.bonus=true; b[0].dice[0].fixed=true;
@@ -22,9 +22,9 @@
   // A same-epoch copy exercises actor admission; this is not foreign-clock rejoin.
   j:=rs_add(b[..],b[0].c[a],3,1);
   #assert j==1 && b[0].n==2 && b[0].c[j].long_rest.phase==2 && b[0].c[j].long_rest.interruptions==1;
-  #assert b[0].c[j].rages==1 && b[0].c[j].rest.phase==0 && rs_sleeping(b[0].c[j]) && rs_has(b[0].c[j],RS_UNCONSCIOUS);
+  #assert b[0].c[j].uses[RS_USE_RAGE]==1 && b[0].c[j].rest.phase==0 && rs_sleeping(b[0].c[j]) && rs_has(b[0].c[j],RS_UNCONSCIOUS);
   #assert b[0].dice[0].rolled==rolls+2;
-  #assert b[0].c[a].long_rest.phase==1 && b[0].c[a].rages==0 && rs_sleeping(b[0].c[a]);
+  #assert b[0].c[a].long_rest.phase==1 && b[0].c[a].uses[RS_USE_RAGE]==0 && rs_sleeping(b[0].c[a]);
   #assert b[0].who == -1 && b[0].turn.action && b[0].turn.bonus && b[0].c[j].reacted;
 }
 

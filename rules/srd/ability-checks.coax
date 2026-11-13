@@ -27,7 +27,7 @@ rs_ability_check :: (b: [] RsBattle, j: int, q: RsAbilityRequest) -> RsAbilityRe
   if guided>=0 && guided==q.skill { r.total+=rs_roll(b[0].dice[..],4); }
   r.inspiration = rs_inspired_roll(b,j,r.total,q.dc); r.total += r.inspiration;
   r.luck = rs_own_luck(b,j,r.total,q.dc); r.total += r.luck;
-  if r.total < q.dc && b[0].c[j].tactical && b[0].c[j].uses[RS_USE_WIND] > 0 {
+  if r.total < q.dc && rs_has_feature(b[0].c[j], RS_FT_TACTICAL_MIND) && b[0].c[j].uses[RS_USE_WIND] > 0 {
     r.mind = rs_roll(b[0].dice[..],10); r.total += r.mind;
     if r.total >= q.dc { b[0].c[j].uses[RS_USE_WIND] -= 1; r.mind_spent = true; }
   }

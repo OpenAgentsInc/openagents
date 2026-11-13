@@ -9,7 +9,7 @@
   for q:0..<3 { eg_test_tick(v[..],k); }
   r:=v[0].eg[k].rules[..]; b:=r[0].b[..];
   f:=rs_familiar_of(b,0); #assert f>=EGB_BEAST0+EGB_BEASTS && b[0].c[f].dead;
-  #assert b[0].c[0].companion && v[0].eg[k].seat[0].placed;
+  #assert rs_has_feature(b[0].c[0], RS_FT_WILD_COMPANION) && v[0].eg[k].seat[0].placed;
   egb_step(r,b[0].c[0].turn_at+100000);
 
   #assert r[0].seat[0].open;
@@ -184,7 +184,7 @@ e2_familiar_sights :: (v:[]RmServer,k:int,first:int)->int {
       }
       st[0].familiar=req; continue;
     }
-    place:=ifx req.order>0 then req.order==2 else ifx req.wizard then req.active>0 && rs_rite_due_now(b,actor,SP_FIND_FAMILIAR) else b[0].c[actor].companion;
+    place:=ifx req.order>0 then req.order==2 else ifx req.wizard then req.active>0 && rs_rite_due_now(b,actor,SP_FIND_FAMILIAR) else rs_has_feature(b[0].c[actor], RS_FT_WILD_COMPANION);
     if st[0].live && st[0].placed && room[0].rules[0].live[s] && place {
       familiar:=room[0].rules[0].familiar[s].me;
       if req.wizard && b[0].c[familiar].hp>0 { req.clear=true; st[0].familiar=req; continue; }
@@ -675,7 +675,7 @@ e2_familiars_rows :: (v:[]RmServer,k:int) {
     rm_heard(v[..],0,"E 3000001 15 1"); #assert room[0].seat[0].aid.last==0;
     rm_heard(v[..],0,ifx wire==7 then "E 3000001 15 0" else "U1 3000001"); #assert room[0].seat[0].aid.pending==3000001;
     rc_test_tick(v[..],k,true);
-    #assert b[0].c[patient].stable && b[0].c[actor].healer_kit==9;
+    #assert b[0].c[patient].stable && b[0].c[actor].uses[RS_USE_KIT]==9;
     eg_test_drain(v[..],hd[..]);
     got:=eg_test_of(hd[..],0); peer:=eg_test_of(hd[..],1);
     #assert eg_test_has(got,"e kit 3000001 9")==(wire==7) && eg_test_has(got,"u1 3000001 9")==(wire==6);
@@ -683,6 +683,6 @@ e2_familiars_rows :: (v:[]RmServer,k:int) {
     // refused the same way in either: nobody dying is near
     rm_heard(v[..],0,ifx wire==7 then "E 3000002 15 0" else "U1 3000002");
     rc_test_tick(v[..],k,true);
-    #assert eg_test_has(e2rt_heard(v[..],0,box[..]),"r 3000002 kit") && b[0].c[actor].healer_kit==9;
+    #assert eg_test_has(e2rt_heard(v[..],0,box[..]),"r 3000002 kit") && b[0].c[actor].uses[RS_USE_KIT]==9;
   }
 }

@@ -65,7 +65,7 @@ e5r_start :: (r: [] E5r, seed: int) #export_c #effects(reads, writes, traps) {
   b := r[0].b[..];
   b[0].n = 0; b[0].clock = 0; b[0].who = -1; b[0].w = E5R_SIDE; b[0].h = E5R_SIDE;
   world_selected := rs_set_world(b,RS_ACTION_WORLD);   // every declared deviation: world-profile.coax
-  for k: 0..<RS_ZONES { b[0].zone[k].on = false; }
+  rs_room(b); for k: 0..<b[0].zone.count { b[0].zone[k].on = false; }
   b[0].truth_zones=0;
   b[0].dice[0].state = cast(u64) seed * 7919 + 3;
   _ := rs_add(b, fb_everglade_hero("Your druid", 0), 72, 72);
@@ -216,7 +216,7 @@ e5r_describe :: (r: [] E5r, k: int, out: [] u8) -> int #export_c #effects(reads,
       if s.level == 0 && q > 0 && s.steps[0].kind == RS_S_REPEAT { dice = st.a; }
       n = rs_put(out, n, " · "); n = rs_put_int(out, n, dice); n = rs_put(out, n, "d"); n = rs_put_int(out, n, st.b);
       if s.plus > 0 { n = rs_put(out, n, " + "); n = rs_put_int(out, n, s.plus); }
-      if s.level == 0 && r[0].b[0].c[E5R_ME].agonizing == a.sp { n = rs_put(out, n, " + "); n = rs_put_int(out, n, rs_mod(r[0].b[0].c[E5R_ME].score[RS_CHA])); n = rs_put(out, n, " (Agonizing Blast)"); }
+      if s.level == 0 && r[0].b[0].c[E5R_ME].rank[RS_RK_AGONIZING] == a.sp { n = rs_put(out, n, " + "); n = rs_put_int(out, n, rs_mod(r[0].b[0].c[E5R_ME].score[RS_CHA])); n = rs_put(out, n, " (Agonizing Blast)"); }
     }
     if st.kind == RS_S_REPEAT { n = rs_put(out, n, " · "); n = rs_put_int(out, n, ifx st.c == 1 then st.a * rs_cantrip_tier(r[0].b[0].c[E5R_ME].level) else st.a); n = rs_put(out, n, " beams"); }
     if st.kind == RS_S_RISE { n = rs_put(out, n, " · a Humanoid it kills rises as your Zombie"); }
@@ -232,12 +232,12 @@ e5r_describe :: (r: [] E5r, k: int, out: [] u8) -> int #export_c #effects(reads,
 e5r_feature_line :: (r: [] E5r, a: FbAb, out: [] u8) -> int {
   me := r[0].b[0].c[E5R_ME];
   n := rs_put(out, 0, a.name);
-  if a.kind == FB_RAGE { n = rs_put(out, n, " · Bonus Action · +"); n = rs_put_int(out, n, me.rage_bonus); n = rs_put(out, n, " damage, Resistance to Bludgeoning, Piercing and Slashing"); }
+  if a.kind == FB_RAGE { n = rs_put(out, n, " · Bonus Action · +"); n = rs_put_int(out, n, me.rank[RS_RK_RAGE_BONUS]); n = rs_put(out, n, " damage, Resistance to Bludgeoning, Piercing and Slashing"); }
   if a.kind == FB_SECOND { n = rs_put(out, n, " · Bonus Action · heals 1d10 + "); n = rs_put_int(out, n, me.level); }
   if a.kind == FB_LAY { n = rs_put(out, n, " · Bonus Action · up to "); n = rs_put_int(out, n, me.uses_max[RS_USE_LAY]); n = rs_put(out, n, " Hit Points from the pool"); }
   if a.kind == FB_ATTACK {
     n = rs_put(out, n, " · melee attack +"); n = rs_put_int(out, n, rs_weapon_attack(me, me.weapon));
-    if me.sneak_dice > 0 { n = rs_put(out, n, " · Sneak Attack "); n = rs_put_int(out, n, me.sneak_dice); n = rs_put(out, n, "d6"); }
+    if me.rank[RS_RK_SNEAK_DICE] > 0 { n = rs_put(out, n, " · Sneak Attack "); n = rs_put_int(out, n, me.rank[RS_RK_SNEAK_DICE]); n = rs_put(out, n, "d6"); }
   }
   return n;
 }

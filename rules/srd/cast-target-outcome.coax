@@ -44,7 +44,7 @@
   #assert b[0].dice[0].rolled > rolls && rs_has(b[0].c[t], RS_PARALYZED);
   rs_end_turn(b[..], a); rs_start_turn(b[..], a);
   b[0].c[t].humanoid = false; b[0].c[t].cond = 0;
-  b[0].c[a].quickened = true; b[0].c[a].uses[RS_USE_SORCERY] = 3;
+  b[0].c[a].feats = rs_feature_put(b[0].c[a].feats, RS_FT_QUICKENED, true); b[0].c[a].uses[RS_USE_SORCERY] = 3;
   rolls = b[0].dice[0].rolled; slots := b[0].c[a].slots[2];
   #assert rs_cast_quick(b[..], a, SP_HOLD_PERSON, 2, 0, 0, t);
   #assert b[0].c[a].uses[RS_USE_SORCERY] == 1 && b[0].c[a].slots[2] == slots - 1;

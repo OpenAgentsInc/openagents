@@ -15,11 +15,11 @@ eg_resource_of :: (hero: RsCreature, bar: [] FbAb, n: int, left: [] int, on: [] 
   for i: 0..<n {
     if i >= left.count || i >= on.count { break; }
     a := bar[i];
-    if a.kind == FB_RAGE && hero.rages_max > 0 && left[i] >= 0 {
-      return EgResource.{name = "RAGE", left = ifx left[i] > hero.rages_max then hero.rages_max else left[i], max = hero.rages_max, on = on[i]};
+    if a.kind == FB_RAGE && hero.uses_max[RS_USE_RAGE] > 0 && left[i] >= 0 {
+      return EgResource.{name = "RAGE", left = ifx left[i] > hero.uses_max[RS_USE_RAGE] then hero.uses_max[RS_USE_RAGE] else left[i], max = hero.uses_max[RS_USE_RAGE], on = on[i]};
     }
-    if (a.kind == FB_FLURRY || a.kind == FB_PATIENT || a.kind == FB_WIND) && hero.focus_max > 0 && left[i] >= 0 {
-      return EgResource.{name = "FOCUS", left = ifx left[i] > hero.focus_max then hero.focus_max else left[i], max = hero.focus_max, on = on[i]};
+    if (a.kind == FB_FLURRY || a.kind == FB_PATIENT || a.kind == FB_WIND) && hero.uses_max[RS_USE_FOCUS] > 0 && left[i] >= 0 {
+      return EgResource.{name = "FOCUS", left = ifx left[i] > hero.uses_max[RS_USE_FOCUS] then hero.uses_max[RS_USE_FOCUS] else left[i], max = hero.uses_max[RS_USE_FOCUS], on = on[i]};
     }
   }
   return EgResource.{};
@@ -43,13 +43,13 @@ eg_resource_draw :: (ui: [] cc.UitTrace, out: [] f32, at: int, r: EgResource, cx
   bar: [24] FbAb; n := 0; bar[0] = fb_feature(FB_RAGE, "Rage", "rage"); n = 1;
   left := [1] int.[2]; on := [1] bool.[true];
   r := eg_resource_of(hero, bar[..], n, left[..], on[..]);
-  #assert r.name == "RAGE" && r.left == 2 && r.max == hero.rages_max && r.on;
+  #assert r.name == "RAGE" && r.left == 2 && r.max == hero.uses_max[RS_USE_RAGE] && r.on;
   left[0] = -1;
   #assert eg_resource_of(hero, bar[..], n, left[..], on[..]).name == "";   // the room has not said
   mk := fb_cl_hero(FB_CL_MONK, "You", 0, 5);
   bar[0] = fb_feature(FB_FLURRY, "Flurry", "flurry-of-blows"); left[0] = 3; on[0] = false;
   f := eg_resource_of(mk, bar[..], n, left[..], on[..]);
-  #assert f.name == "FOCUS" && f.left == (ifx 3 > mk.focus_max then mk.focus_max else 3) && !f.on;
+  #assert f.name == "FOCUS" && f.left == (ifx 3 > mk.uses_max[RS_USE_FOCUS] then mk.uses_max[RS_USE_FOCUS] else 3) && !f.on;
   out: [4000 * 16] f32; nt: [] cc.UitTrace;
   #assert eg_resource_draw(nt, out[..], 0, EgResource.{}, 100, 600, 120, 1) == 0;
   #assert eg_resource_draw(nt, out[..], 0, r, 100, 600, 120, 1) > 0;

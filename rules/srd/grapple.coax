@@ -66,7 +66,7 @@ rs_attack_unarmed :: (b: [] RsBattle, i: int, j: int, opt: int) -> bool #effects
   if !rs_action_free(b, i) || !rs_unarmed_fits(b, i, j, opt) { return false; }
   b[0].turn.action = true;
   rs_unarmed_resolve(b, i, j, opt);
-  for e: 0..<b[0].c[i].extra_attack {
+  for e: 0..<b[0].c[i].rank[RS_RK_EXTRA_ATTACK] {
     t := ifx rs_up(b[0].c[j]) then j else rs_beside(b, i);
     if t < 0 { break; }
     again := rs_strike(b, i, t, b[0].c[i].weapon, false);
@@ -197,7 +197,7 @@ rs_drag_follow :: (b: [] RsBattle, i: int, ox: int, oy: int) #effects(all) {
 }
 #test "Extra Attack's other attacks follow the Grapple with the weapon" {
   b: [1] RsBattle; grapple_field(b[..]); b[0].c[1].hp = 200; b[0].c[1].hp_max = 200; b[0].c[1].ac = 5;
-  #assert b[0].c[0].extra_attack == 1 && rs_attack_unarmed(b[..], 0, 1, UO_GRAPPLE) && b[0].c[1].hp < 200 && rs_has(b[0].c[1], RS_GRAPPLED);
+  #assert b[0].c[0].rank[RS_RK_EXTRA_ATTACK] == 1 && rs_attack_unarmed(b[..], 0, 1, UO_GRAPPLE) && b[0].c[1].hp < 200 && rs_has(b[0].c[1], RS_GRAPPLED);
   for bare: 0..<2 {   // the same blow as the weapon's own, ability modifier and all
     w: [1] RsBattle; grapple_field(w[..]); w[0].c[1].hp = 200; w[0].c[1].hp_max = 200; w[0].c[1].ac = 5; grapple_hold(w[..], 0, 1, 14);
     _ := rs_strike(w[..], 0, 1, w[0].c[0].weapon, bare == 1);
@@ -363,7 +363,7 @@ rs_drag_follow :: (b: [] RsBattle, i: int, ox: int, oy: int) #effects(all) {
   t[0].c[0].grappling = 7; t[0].c[1].eff[0] = RsEffect.{kind = EF_COND, cond = RS_GRAPPLED, by = 0, spell = RS_GRAPPLE_SPELL, until = RS_NO_END, save = -1, dc = 1};
   r = rs_grapple_escape(t[..], 1); #assert r.passed && t[0].c[0].grappling == 7;
   // a tie between Strength and Dexterity is Strength: a raging creature rolls with Advantage
-  g: [1] RsBattle; grapple_field(g[..]); rs_fresh(g[..], 1); grapple_hold(g[..], 0, 1, 30); g[0].c[1].raging = true; g[0].c[1].score[RS_DEX] = 10;
+  g: [1] RsBattle; grapple_field(g[..]); rs_fresh(g[..], 1); grapple_hold(g[..], 0, 1, 30); g[0].c[1].eff = rs_state_put(g[0].c[1].eff, EF_RAGE, true); g[0].c[1].score[RS_DEX] = 10;
   rolled := g[0].dice[0].rolled; r = rs_grapple_escape(g[..], 1); #assert g[0].dice[0].rolled == rolled + 2;
 }
 #test "dragging reads only creatures in the battle, creature 0 among them, and never into an occupied square" {

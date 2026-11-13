@@ -5,7 +5,7 @@ tool_main :: ()->int #export_c #effects(all) {
   total_frames:=0;
   for pattern:0..<6 {
     b:[1]RsBattle; c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].who = -1;
-    c[0]=rs_monk("Patient",0,3); c[0].focus=0;
+    c[0]=rs_monk("Patient",0,3); c[0].uses[RS_USE_FOCUS]=0;
     b[0].clock=ifx pattern==0 then 0 else 16777216;
     b[0].rest_clock.ticks=12345000000;
     if !rs_short_rest_begin(b[..],0) { return 1; }
@@ -18,18 +18,18 @@ tool_main :: ()->int #export_c #effects(all) {
       elapsed+=f64(dt); frames+=1;
       if !rs_rest_tick(b[..],dt) { return 2; }
       if elapsed<3600 {
-        if c[0].rest.phase!=1 || c[0].focus!=0 { return 3; }
+        if c[0].rest.phase!=1 || c[0].uses[RS_USE_FOCUS]!=0 { return 3; }
       } else {
-        if c[0].rest.phase!=2 || c[0].focus!=3 || b[0].rest_clock.ticks<15945000000 { return 4; }
+        if c[0].rest.phase!=2 || c[0].uses[RS_USE_FOCUS]!=3 || b[0].rest_clock.ticks<15945000000 { return 4; }
       }
     }
     total_frames+=frames;
-    c[0].focus=0;
-    if !rs_rest_tick(b[..],1) || c[0].focus!=0 || rs_short_rest_finish(b[..],0) { return 5; }
+    c[0].uses[RS_USE_FOCUS]=0;
+    if !rs_rest_tick(b[..],1) || c[0].uses[RS_USE_FOCUS]!=0 || rs_short_rest_finish(b[..],0) { return 5; }
   }
   for klass:0..<RS_CLASSES { if klass==RS_MONSTER { continue; } for level:1..<7 {
     b:[1]RsBattle; c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].who = -1;
-    c[0]=rt_class(klass,level); c[0].hp=1; c[0].temp=3; c[0].reacted=true; c[0].focus=0; c[0].rages=0;
+    c[0]=rt_class(klass,level); c[0].hp=1; c[0].temp=3; c[0].reacted=true; c[0].uses[RS_USE_FOCUS]=0; c[0].uses[RS_USE_RAGE]=0;
     for u:0..<RS_USES { c[0].uses[u]=0; }
     for sl:1..<10 { c[0].slots[sl]=0; }
     if !rs_rest_schedule_enable(b[..]) || !rs_short_rest_begin(b[..],0) { return 6; }
@@ -37,8 +37,8 @@ tool_main :: ()->int #export_c #effects(all) {
     rs_tick(b[..],1);
     if c[0].rest.phase!=2 || c[0].rest.dice!=level || c[0].hp!=1 || c[0].temp!=3 || !c[0].reacted { return 8; }
     if klass==RS_WARLOCK { for sl:1..<6 { if c[0].slots[sl]!=c[0].slots_max[sl] { return 9; } } }
-    if klass==RS_MONK && c[0].focus!=c[0].focus_max { return 10; }
-    if klass==RS_BARBARIAN && c[0].rages!=1 { return 11; }
+    if klass==RS_MONK && c[0].uses[RS_USE_FOCUS]!=c[0].uses_max[RS_USE_FOCUS] { return 10; }
+    if klass==RS_BARBARIAN && c[0].uses[RS_USE_RAGE]!=1 { return 11; }
     b[0].dice[0].fixed=true;
     if !rs_short_rest_hit_die(b[..],0).admitted || c[0].hp<=1 || c[0].rest.dice!=level-1 { return 12; }
   } }

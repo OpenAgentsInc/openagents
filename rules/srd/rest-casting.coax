@@ -34,7 +34,7 @@ rs_rest_cast_before :: (b:[]RsBattle,i:int,level:int) #effects(all) {
 #test "accepted leveled Reaction recovers Pact slots before payment and preserves another actor turn" {
   b:[1]RsBattle; c:[2]RsCreature; b[0].c=c[..]; b[0].n=2; b[0].who = -1;
   c[0]=rs_warlock("Watcher",0,3,SP_ELDRITCH_BLAST); c[1]=rs_fighter("Striker",1,3); c[1].x=3;
-  c[0].slots[2]=1; c[0].rebuke=true;
+  c[0].slots[2]=1; c[0].feats = rs_feature_put(c[0].feats, RS_FT_REBUKE, true);
   #assert rs_rest_schedule_enable(b[..]) && rs_long_rest_start_owned(b[..],0,2,true);
   rs_tick(b[..],3600); b[0].who=1; b[0].turn.action=true; b[0].turn.bonus=true;
   #assert rs_hellish_rebuke(b[..],0,1);
@@ -59,7 +59,7 @@ rs_rest_cast_before :: (b:[]RsBattle,i:int,level:int) #effects(all) {
   for reaction:0..<2 { for blocked:0..<2 {
     b:[1]RsBattle; c:[2]RsCreature; b[0].c=c[..]; b[0].n=2; b[0].who = -1;
     c[0]=rs_warlock("Watcher",0,3,SP_ELDRITCH_BLAST); c[1]=rs_fighter("Striker",1,3); c[1].x=3;
-    c[0].slots[2]=1; c[0].rebuke=true;
+    c[0].slots[2]=1; c[0].feats = rs_feature_put(c[0].feats, RS_FT_REBUKE, true);
     #assert rs_rest_schedule_enable(b[..]) && rs_long_rest_start_owned(b[..],0,2,true);
     rs_tick(b[..],3600); b[0].who=0;
     if blocked==0 { c[0].speech_blocked=true; } else { c[0].gesture_hand=false; c[0].material_hand=false; c[0].focus_held=false; }

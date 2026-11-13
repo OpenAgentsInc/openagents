@@ -275,7 +275,7 @@ barbarian_turn :: (s: [] Mb, i: int) {
     if d <= 60 && d < bd { bd = d; foe = j; }
   }
   // Rage once a foe is within a dash (Fast Movement makes it 40 feet a move from level 5)
-  if !b[0].c[i].raging && rs_feet_to(b, i, foe) <= 2 * b[0].c[i].speed { ok := rs_rage(b, i); }
+  if !rs_effect(b[0].c[i], EF_RAGE) && rs_feet_to(b, i, foe) <= 2 * b[0].c[i].speed { ok := rs_rage(b, i); }
   if foe_at_hand(s, i, -1) < 0 && !rs_has(b[0].c[i], RS_RESTRAINED) {
     walk(s, i, foe, 0, 5);
     if rs_feet_to(b, i, foe) > 5 && !b[0].turn.action { ok := rs_dash(b, i); walk(s, i, foe, 0, 5); }
@@ -316,7 +316,7 @@ monk_turn :: (s: [] Mb, i: int) {
   if j < 0 { return; }
   // from level 5, a Stunning Strike on its hits while it has Focus to spare; from 6, Wholeness of
   // Body when badly hurt
-  b[0].c[i].stun_ready = b[0].c[i].focus > 2;
+  b[0].c[i].stun_ready = b[0].c[i].uses[RS_USE_FOCUS] > 2;
   ok := rs_attack(b, i, j, false, -1);
   if b[0].c[i].hp * 5 < b[0].c[i].hp_max * 2 { ok = rs_wholeness(b, i); }
   brute := false;
@@ -324,10 +324,10 @@ monk_turn :: (s: [] Mb, i: int) {
     c := b[0].c[k];
     if c.team != b[0].c[i].team && rs_can_act(c) && c.klass == RS_BARBARIAN && rs_feet_to(b, i, k) <= 5 { brute = true; }
   }
-  if (brute || b[0].c[i].hp * 3 < b[0].c[i].hp_max) && b[0].c[i].focus > 0 { ok = rs_patient_defense(b, i); return; }
+  if (brute || b[0].c[i].hp * 3 < b[0].c[i].hp_max) && b[0].c[i].uses[RS_USE_FOCUS] > 0 { ok = rs_patient_defense(b, i); return; }
   j = foe_at_hand(s, i, -1);
   if j < 0 { return; }
-  if b[0].c[i].focus > 1 { ok = rs_flurry(b, i, j, ifx rs_has(b[0].c[j], RS_PRONE) then OH_PUSH else OH_TOPPLE); }
+  if b[0].c[i].uses[RS_USE_FOCUS] > 1 { ok = rs_flurry(b, i, j, ifx rs_has(b[0].c[j], RS_PRONE) then OH_PUSH else OH_TOPPLE); }
   else { ok = rs_bonus_strike(b, i, j); }
 }
 
@@ -572,7 +572,7 @@ bard_turn :: (s: [] Mb, i: int) {
   pick := -1; pd := 100000;
   for j: 0..<b[0].n {
     c := b[0].c[j];
-    if j == i || c.team != b[0].c[i].team || !rs_up(c) || c.inspired > 0 || c.klass == RS_MONSTER { continue; }
+    if j == i || c.team != b[0].c[i].team || !rs_up(c) || rs_state_value(c, EF_INSPIRED) > 0 || c.klass == RS_MONSTER { continue; }
     d := rs_feet_to(b, i, j);
     if d <= 60 && d < pd && foes_near(s, i, c.x, c.y, 10) > 0 { pd = d; pick = j; }
   }
@@ -589,7 +589,7 @@ bard_turn :: (s: [] Mb, i: int) {
   if !b[0].turn.action && !b[0].turn.slot_spent && b[0].c[i].slots[3] > 0 {
     hp := ifx b[0].c[i].conc < 0 then burst_at(s, i, 120, 15, false, 4) else -1;
     if hp >= 0 { ok := rs_cast(b, i, SP_HYPNOTIC_PATTERN, 3, b[0].c[hp].x, b[0].c[hp].y, -1); }
-    else if b[0].c[i].discoveries[0] == SP_FIREBALL {
+    else if b[0].c[i].rank[RS_RK_DISCOVERY + 0] == SP_FIREBALL {
       fb := burst_at(s, i, 150, 20, false, 3);
       if fb >= 0 { ok := rs_cast(b, i, SP_FIREBALL, 3, b[0].c[fb].x, b[0].c[fb].y, -1); }
     }
@@ -635,7 +635,7 @@ wizard_turn :: (s: [] Mb, i: int) {
   if foe < 0 { return; }
   // Fireball (from level 5) where it catches three foes or more
   if !b[0].turn.action && !b[0].turn.slot_spent && b[0].c[i].slots[3] > 0 {
-    fb := burst_at(s, i, 150, 20, b[0].c[i].sculpt, 3);
+    fb := burst_at(s, i, 150, 20, rs_has_feature(b[0].c[i], RS_FT_SCULPT), 3);
     if fb >= 0 { ok := rs_cast(b, i, SP_FIREBALL, 3, b[0].c[fb].x, b[0].c[fb].y, -1); }
   }
   hold_one(s, i, foe, 0.25);

@@ -36,7 +36,7 @@
 }
 
 #test "Metamagic p.66: from level 2, Quickened Spell and Seeking Spell" {
-  #assert !rs_sorcerer("S", 0, 1).quickened && !rs_sorcerer("S", 0, 1).seeking && rs_sorcerer("S", 0, 2).quickened && rs_sorcerer("S", 0, 2).seeking;
+  #assert !rs_has_feature(rs_sorcerer("S", 0, 1), RS_FT_QUICKENED) && !rs_has_feature(rs_sorcerer("S", 0, 1), RS_FT_SEEKING) && rs_has_feature(rs_sorcerer("S", 0, 2), RS_FT_QUICKENED) && rs_has_feature(rs_sorcerer("S", 0, 2), RS_FT_SEEKING);
 }
 
 #test "Draconic Resilience p.69: from level 3, 3 more Hit Points and 1 a level after, AC 10 + Dexterity + Charisma unarmored" {

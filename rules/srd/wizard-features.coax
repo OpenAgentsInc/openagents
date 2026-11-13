@@ -9,7 +9,7 @@ rs_wizard_key_bit :: (c: RsCreature, words: [6] u64, key: int) -> bool #effects(
 }
 // Can c, finishing a Short Rest, trade prepared `drop` for spellbook `add` (spell keys)?
 rs_memorize_admits :: (c: RsCreature, drop: int, add: int) -> bool #effects(all) {
-  if c.klass != RS_WIZARD || !c.memorize || drop == add { return false; }
+  if c.klass != RS_WIZARD || !rs_has_feature(c, RS_FT_MEMORIZE) || drop == add { return false; }
   if !rs_wizard_key_bit(c, c.spells.selected, drop) || !rs_wizard_key_bit(c, c.spells.known, drop) || RS_SPELL_KEYS[drop].level == 0 { return false; }
   return rs_wizard_key_bit(c, c.spells.known, add) && !rs_wizard_key_bit(c, c.spells.selected, add) && RS_SPELL_KEYS[add].level > 0 && rs_key_eligible(c, add);
 }
@@ -35,7 +35,7 @@ rs_finish_short_rest_memorizing :: (b: [] RsBattle, i: int, drop: int, add: int)
     if mode != 9 { #assert rs_short_rest_begin(b[..], 0); }
     b[0].clock = 3607; b[0].rest_clock.ticks = 3607000000;
     d := drop; a := add;
-    if mode == 1 { b[0].c[0].memorize = false; } else if mode == 2 { b[0].c[0].klass = RS_SORCERER; } else if mode == 3 { a = d; }
+    if mode == 1 { b[0].c[0].feats = rs_feature_put(b[0].c[0].feats, RS_FT_MEMORIZE, false); } else if mode == 2 { b[0].c[0].klass = RS_SORCERER; } else if mode == 3 { a = d; }
     else if mode == 4 { d = cantrip; } else if mode == 5 { a = cantrip; } else if mode == 6 { a = unknown; } else if mode == 7 { a = RS_EXEC_SOURCE[SP_CHILL_TOUCH]; d = add; }
     else if mode == 8 { d = -1; } else if mode == 10 { b[0].c[0].spells.known[1] -= cast(u64) 1 << 50; }   // prepared, yet out of the book
     else if mode == 11 { b[0].c[0].spells.known[splash / 64] |= cast(u64) 1 << (splash % 64); a = splash; }   // a cantrip in the book

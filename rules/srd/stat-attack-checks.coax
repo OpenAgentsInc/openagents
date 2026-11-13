@@ -16,7 +16,7 @@
     b: [1] RsBattle; sa_field(b[..]);
     if mode==0 { b[0].c[1].resist=1<<RS_PIERCING; }
     if mode==1 { b[0].c[1].immune=1<<RS_PIERCING; }
-    if mode==2 { b[0].c[1].uncanny=true; }
+    if mode==2 { b[0].c[1].feats = rs_feature_put(b[0].c[1].feats, RS_FT_UNCANNY_DODGE, true); }
     #assert rs_stat_attack(b[..],0,1,sa_record());
     #assert b[0].c[1].hp==(ifx mode==1 then 100 else 96);
     #assert b[0].c[1].reacted==(mode==2);
@@ -113,7 +113,7 @@ sa_field :: (b: [] RsBattle) {
 }
 
 #test "typed attack continuation retains the shared critical movement feature" {
-  b: [1] RsBattle; sa_field(b[..]); b[0].c[0].athlete=true; b[0].c[1].cond=RS_PARALYZED;
+  b: [1] RsBattle; sa_field(b[..]); b[0].c[0].feats = rs_feature_put(b[0].c[0].feats, RS_FT_ATHLETE, true); b[0].c[1].cond=RS_PARALYZED;
   #assert rs_stat_attack(b[..],0,1,sa_record());
   #assert b[0].turn.move_left==9 && !b[0].turn.last_crit;
 }
@@ -149,7 +149,7 @@ sa_native :: () -> bool {
   #assert rs_stat_attack(b[..],0,1,sa_record());
   #assert b[0].c[1].hp==100 && b[0].c[1].reacted && b[0].c[1].slots[1]==slots-1 && b[0].dice[0].rolled==1;
   rs_start_turn(b[..],0); b[0].c[1]=rs_monk("Deflect",1,3);
-  rs_place(b[..],1,2,1); b[0].c[1].hp=100; b[0].c[1].hp_max=100; b[0].c[1].ac=12; b[0].c[1].focus=0;
+  rs_place(b[..],1,2,1); b[0].c[1].hp=100; b[0].c[1].hp_max=100; b[0].c[1].ac=12; b[0].c[1].uses[RS_USE_FOCUS]=0;
   #assert rs_stat_attack(b[..],0,1,sa_record());
   #assert b[0].c[1].hp==100 && b[0].c[1].reacted;
 }

@@ -104,7 +104,7 @@ e2_kit :: (v: [] RmServer, k: int, s: int) -> WireKit {
   w.n = ifx n > WIRE_KIT then WIRE_KIT else n;
   for q: 0..<w.n {
     a := bar[q];
-    on := (a.kind == FB_RAGE && c.raging) || (a.kind == FB_WILD && c.wild_form != 0);
+    on := (a.kind == FB_RAGE && rs_effect(c, EF_RAGE)) || (a.kind == FB_WILD && c.wild_form != 0);
     w.v[q] = wire_kit_v(fb_left(b, i, a), on);
   }
   return w;
@@ -353,26 +353,26 @@ e2rt_land :: (v: [] RmServer, k: int) { for q: 0..<90 { eg_test_tick(v, k); } }
   room:=v[0].eg[k..<k+1];
   rules:=room[0].rules[..]; b:=rules[0].b[..];
   actor:=EGB_SEAT; patient:=actor+1;
-  #assert b[0].c[actor].healer_kit==10;
+  #assert b[0].c[actor].uses[RS_USE_KIT]==10;
   rs_damage(b,actor,patient,b[0].c[patient].hp,RS_FORCE,false,-1);
   #assert rs_death_eligible(b[0].c[patient]);
   room[0].seat[1].pose=room[0].seat[0].pose;
   room[0].seat[1].pose.x+=2;
   rm_heard(v[..],0,"U1 3000001");
   rc_test_tick(v[..],k,true);
-  #assert !b[0].c[patient].stable && b[0].c[actor].healer_kit==10;
+  #assert !b[0].c[patient].stable && b[0].c[actor].uses[RS_USE_KIT]==10;
   room[0].seat[1].pose.x-=1;
   rm_heard(v[..],0,"U1 3000001");
   #assert !b[0].c[patient].stable;
   rm_heard(v[..],0,"U1 3000002");
   rc_test_tick(v[..],k,false);
-  #assert !b[0].c[patient].stable && b[0].c[actor].healer_kit==10;
+  #assert !b[0].c[patient].stable && b[0].c[actor].uses[RS_USE_KIT]==10;
   rm_heard(v[..],0,"U1 3000003");
   rc_test_tick(v[..],k,true);
-  #assert b[0].c[patient].stable && b[0].c[patient].hp==0 && b[0].c[actor].healer_kit==9;
+  #assert b[0].c[patient].stable && b[0].c[patient].hp==0 && b[0].c[actor].uses[RS_USE_KIT]==9;
   #assert rules[0].seat[0].turn.action;
   box:[16384] u8;
   #assert eg_test_has(e2rt_heard(v[..],0,box[..]),"u1 3000003 9");
   rm_heard(v[..],0,"U1 3000002");
-  #assert b[0].c[actor].healer_kit==9;
+  #assert b[0].c[actor].uses[RS_USE_KIT]==9;
 }

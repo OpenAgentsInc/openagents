@@ -205,13 +205,13 @@ rs_monster :: (m: int, name: string, team: int) -> RsCreature {
   c[0].team = team; c[0].level = rs_pb_level(k.pb); c[0].klass = RS_MONSTER;
   c[0].score = k.score;
   for ab: 0..<6 { c[0].save_prof[ab] = (k.saves & (1 << ab)) != 0; }
-  c[0].ac = k.ac; c[0].hp_max = k.hp; c[0].hp = k.hp; c[0].speed = k.speed; c[0].climb=k.climb; c[0].swim=k.swim; c[0].fly=k.fly; c[0].jumper=k.jumper;
+  c[0].ac = k.ac; c[0].hp_max = k.hp; c[0].hp = k.hp; c[0].speed = k.speed; c[0].climb=k.climb; c[0].swim=k.swim; c[0].fly=k.fly; c[0].feats = rs_feature_put(c[0].feats, RS_FT_JUMPER, k.jumper);
   c[0].form = rs_form(k.size, (ifx k.pack then RS_TRAIT_PACK else 0) | (ifx k.magic then RS_TRAIT_MAGIC else 0) | (ifx k.nimble then RS_TRAIT_NIMBLE else 0));
   c[0].resist = k.resist; c[0].immune = k.immune; c[0].immune_cond = k.immune_cond;
-  c[0].undead = k.undead; c[0].fiend = k.fiend; c[0].fortitude = k.fortitude;
+  c[0].undead = k.undead; c[0].fiend = k.fiend; c[0].feats = rs_feature_put(c[0].feats, RS_FT_UNDEAD_FORTITUDE, k.fortitude);
   c[0].spell_ability = -1; c[0].weapon = W_UNARMED; c[0].ranged = -1;
   c[0].dragon = m == MON_ADULT_RED_DRAGON;
-  c[0].conc = -1; c[0].restrained_by = -1; c[0].free_spell = -1; c[0].agonizing = -1; c[0].repelling = -1;
+  c[0].conc = -1; c[0].restrained_by = -1; c[0].free_spell = -1; c[0].rank[RS_RK_AGONIZING] = -1; c[0].rank[RS_RK_REPELLING] = -1;
   return c[0];
 }
 

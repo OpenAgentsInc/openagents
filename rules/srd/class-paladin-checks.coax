@@ -86,9 +86,9 @@
 }
 
 #test "Faithful Steed p.55: from level 5, Find Steed once a Long Rest without a slot" {
-  #assert rs_paladin("U", 0, 4).uses_max[RS_USE_STEED] == 0 && !rs_paladin("U", 0, 4).steed;
+  #assert rs_paladin("U", 0, 4).uses_max[RS_USE_STEED] == 0 && !rs_has_feature(rs_paladin("U", 0, 4), RS_FT_FAITHFUL_STEED);
   c: [1] RsCreature; c[0] = rs_paladin("U", 0, 5);
-  #assert c[0].steed && c[0].uses[RS_USE_STEED] == 1;
+  #assert rs_has_feature(c[0], RS_FT_FAITHFUL_STEED) && c[0].uses[RS_USE_STEED] == 1;
   c[0].uses[RS_USE_STEED] = 0; #assert rs_long_rest_resources(c[..]) && c[0].uses[RS_USE_STEED] == 1;
 }
 

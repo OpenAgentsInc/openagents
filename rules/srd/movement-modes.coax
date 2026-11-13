@@ -17,7 +17,7 @@ rs_step_cost :: (b: [] RsBattle, i: int, x: int, y: int) -> int #effects(all) {
 }
 // The score a jump's distance counts from: Strength, or Dexterity for a Jumper if that is more.
 rs_jump_score :: (c: RsCreature) -> int #effects(all) {
-  return ifx c.jumper then rs_max(c.score[RS_STR], c.score[RS_DEX]) else c.score[RS_STR];
+  return ifx rs_has_feature(c, RS_FT_JUMPER) then rs_max(c.score[RS_STR], c.score[RS_DEX]) else c.score[RS_STR];
 }
 // Whether i can jump now: its own turn, able to move, on its feet, not anchored, Speed above 0.
 rs_jump_ready :: (b: [] RsBattle, i: int) -> bool #effects(all) {
@@ -100,8 +100,8 @@ rs_run_up :: (b: [] RsBattle, i: int, feet: int) #effects(all) {
   for mode: 0..<8 {
     b: [1] RsBattle; jump_field(b[..]);
     if mode >= 1 { #assert rs_step_to(b[..], 0, 2, 1) && rs_step_to(b[..], 0, 3, 1); }   // 10 feet on foot
-    if mode == 2 || mode == 6 { b[0].c[0].jumper = true; } else if mode == 3 { b[0].turn.jumps_doubled = true; }
-    else if mode == 4 { b[0].c[0].score[RS_STR] = 9; } else if mode == 7 { b[0].c[0].score[RS_DEX] = 8; b[0].c[0].jumper = true; }
+    if mode == 2 || mode == 6 { b[0].c[0].feats = rs_feature_put(b[0].c[0].feats, RS_FT_JUMPER, true); } else if mode == 3 { b[0].turn.jumps_doubled = true; }
+    else if mode == 4 { b[0].c[0].score[RS_STR] = 9; } else if mode == 7 { b[0].c[0].score[RS_DEX] = 8; b[0].c[0].feats = rs_feature_put(b[0].c[0].feats, RS_FT_JUMPER, true); }
     to := ifx mode == 0 then 2 else ifx mode == 2 || mode == 3 then 6 else ifx mode == 6 then 7 else 5;
     from := ifx mode == 0 then 1 else 3;
     ok := mode != 4 && mode != 5 && mode != 6;

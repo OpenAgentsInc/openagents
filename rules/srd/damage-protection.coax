@@ -14,11 +14,11 @@
   #assert rs_damage_floor(c,9223372036854775807)==9223372036854775807;
 }
 #test "Fortitude eligibility observes exact HP and temporary HP thresholds and exclusions" {
-  c:RsCreature; c.fortitude=true; c.hp=2; c.temp=3;
+  c:RsCreature; c.feats = rs_feature_put(c.feats, RS_FT_UNDEAD_FORTITUDE, true); c.hp=2; c.temp=3;
   #assert !rs_fortitude_needed(c,4,false,false) && rs_fortitude_needed(c,5,false,false);
   #assert !rs_fortitude_needed(c,5,true,false) && !rs_fortitude_needed(c,5,false,true);
-  c.fortitude=false; #assert !rs_fortitude_needed(c,5,false,false);
-  c.fortitude=true; c.dead=true; #assert !rs_fortitude_needed(c,5,false,false);
+  c.feats = rs_feature_put(c.feats, RS_FT_UNDEAD_FORTITUDE, false); #assert !rs_fortitude_needed(c,5,false,false);
+  c.feats = rs_feature_put(c.feats, RS_FT_UNDEAD_FORTITUDE, true); c.dead=true; #assert !rs_fortitude_needed(c,5,false,false);
   c.dead=false; c.hp=0; #assert !rs_fortitude_needed(c,5,false,false);
   c.hp=1; c.temp=0; #assert !rs_fortitude_needed(c,-1,false,false);
   c.hp=9223372036854775807; c.temp=9223372036854775807;
@@ -58,7 +58,7 @@ rs_damage_floor :: (c:RsCreature,amount:int)->int #effects(all) {
   return rs_max(rs_min(amount,add_sat(c.hp-c.floor,c.temp)),0);
 }
 rs_fortitude_needed :: (c:RsCreature,amount:int,radiant:bool,crit:bool)->bool #effects(all) {
-  return c.fortitude && !c.dead && c.hp>0 && !radiant && !crit && rs_max(amount,0)-c.temp>=c.hp;
+  return rs_has_feature(c, RS_FT_UNDEAD_FORTITUDE) && !c.dead && c.hp>0 && !radiant && !crit && rs_max(amount,0)-c.temp>=c.hp;
 }
 rs_fortitude_dc :: (amount:int)->int #effects(all) { return rs_min(amount,9223372036854775802)+5; }
 rs_damage_protection :: (b:[]RsBattle,by:int,j:int,amount:int,radiant:bool,crit:bool)->int #effects(all) {

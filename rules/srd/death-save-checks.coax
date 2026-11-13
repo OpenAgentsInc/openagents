@@ -19,7 +19,7 @@
     b: [1] RsBattle; ds_field(b[..]); b[0].dice[0].state = hp_seed(9);
     b[0].c[0].score = [6] int.[30,30,30,30,30,30];
     b[0].c[0].save_prof = [6] bool.[true,true,true,true,true,true];
-    b[0].c[0].aura = true;
+    b[0].c[0].feats = rs_feature_put(b[0].c[0].feats, RS_FT_AURA_OF_PROTECTION, true);
     b[0].c[1] = rs_paladin("Paladin",0,6); rs_place(b[..],1,3,1);
     if mode == 1 { rs_place(b[..],1,4,1); }
     else if mode == 2 { b[0].c[1].team = 1; }
@@ -33,10 +33,10 @@
 #test "a failed death save can use held Inspiration or Own Luck without the later creature write restoring it" {
   for rescue: 0..<2 {
     b: [1] RsBattle; ds_field(b[..]); b[0].dice[0].state = hp_seed(9);
-    b[0].c[0].own_luck = true; b[0].c[0].uses[RS_USE_LUCK] = 1;
-    if rescue == 0 { b[0].c[0].inspired = 6; }
+    b[0].c[0].feats = rs_feature_put(b[0].c[0].feats, RS_FT_OWN_LUCK, true); b[0].c[0].uses[RS_USE_LUCK] = 1;
+    if rescue == 0 { b[0].c[0].eff = rs_state_value_put(b[0].c[0].eff, EF_INSPIRED, 6); }
     rs_start_turn(b[..],0);
-    #assert b[0].c[0].death_ok == 1 && b[0].c[0].death_fail == 0 && b[0].c[0].inspired == 0;
+    #assert b[0].c[0].death_ok == 1 && b[0].c[0].death_fail == 0 && rs_state_value(b[0].c[0], EF_INSPIRED) == 0;
     #assert b[0].c[0].uses[RS_USE_LUCK] == (ifx rescue == 0 then 1 else 0) && b[0].dice[0].rolled == 2;
     #assert b[0].c[0].hp == 0 && rs_has(b[0].c[0],RS_UNCONSCIOUS);
   }
@@ -55,22 +55,22 @@
   for face: [2] int.[1,20] {
     b: [1] RsBattle; ds_field(b[..]);
     b[0].dice[0].state = hp_seed(face);
-    b[0].c[0].inspired = 12; b[0].c[0].own_luck = true; b[0].c[0].uses[RS_USE_LUCK] = 1;
+    b[0].c[0].eff = rs_state_value_put(b[0].c[0].eff, EF_INSPIRED, 12); b[0].c[0].feats = rs_feature_put(b[0].c[0].feats, RS_FT_OWN_LUCK, true); b[0].c[0].uses[RS_USE_LUCK] = 1;
     #assert rs_put_effect(b[..],0,RsEffect.{kind=ifx face == 1 then EF_BLESS else EF_BANE,by=1,spell=-1,until=60,save=-1});
     b[0].c[1] = rs_paladin("Paladin",0,6); rs_place(b[..],1,3,1); b[0].c[1].score[RS_CHA] = 30;
     rs_start_turn(b[..],0);
-    #assert b[0].dice[0].rolled == 2 && b[0].c[0].inspired == 12 && b[0].c[0].uses[RS_USE_LUCK] == 1;
+    #assert b[0].dice[0].rolled == 2 && rs_state_value(b[0].c[0], EF_INSPIRED) == 12 && b[0].c[0].uses[RS_USE_LUCK] == 1;
     #assert b[0].c[0].death_fail == (ifx face == 1 then 2 else 0) && b[0].c[0].hp == (ifx face == 20 then 1 else 0);
   }
 }
 
 #test "a natural one with a low modified total cannot spend rescue dice to evade its two failures" {
   b: [1] RsBattle; ds_field(b[..]); b[0].dice[0].state = hp_seed(1);
-  b[0].c[0].inspired = 12; b[0].c[0].own_luck = true; b[0].c[0].uses[RS_USE_LUCK] = 1;
+  b[0].c[0].eff = rs_state_value_put(b[0].c[0].eff, EF_INSPIRED, 12); b[0].c[0].feats = rs_feature_put(b[0].c[0].feats, RS_FT_OWN_LUCK, true); b[0].c[0].uses[RS_USE_LUCK] = 1;
   #assert rs_put_effect(b[..],0,RsEffect.{kind=EF_BANE,by=1,spell=-1,until=60,save=-1});
   #assert rs_battle_death_save(b[..],0) == RS_DS_FAIL;
   #assert b[0].c[0].death_fail == 2 && b[0].c[0].death_ok == 0 && b[0].dice[0].rolled == 2;
-  #assert b[0].c[0].inspired == 12 && b[0].c[0].uses[RS_USE_LUCK] == 1;
+  #assert rs_state_value(b[0].c[0], EF_INSPIRED) == 12 && b[0].c[0].uses[RS_USE_LUCK] == 1;
 }
 
 #test "ineligible battle death saves preserve dice resources events and counters" {
@@ -79,25 +79,25 @@
     if mode == 0 { b[0].c[0].dead = true; }
     else if mode == 1 { b[0].c[0].hp = 1; }
     else { b[0].c[0].stable = true; }
-    b[0].c[0].inspired = 6; b[0].c[0].own_luck = true; b[0].c[0].uses[RS_USE_LUCK] = 1;
+    b[0].c[0].eff = rs_state_value_put(b[0].c[0].eff, EF_INSPIRED, 6); b[0].c[0].feats = rs_feature_put(b[0].c[0].feats, RS_FT_OWN_LUCK, true); b[0].c[0].uses[RS_USE_LUCK] = 1;
     #assert rs_put_effect(b[..],0,RsEffect.{kind=EF_BLESS,by=1,spell=-1,until=60,save=-1});
     before := b[0].dice[0]; seq := b[0].book[0].seq;
     #assert rs_battle_death_save(b[..],0) == RS_DS_NONE;
     #assert b[0].dice[0].state == before.state && b[0].dice[0].rolled == before.rolled && b[0].book[0].seq == seq;
-    #assert b[0].c[0].inspired == 6 && b[0].c[0].uses[RS_USE_LUCK] == 1 && b[0].c[0].death_ok == 0 && b[0].c[0].death_fail == 0;
+    #assert rs_state_value(b[0].c[0], EF_INSPIRED) == 6 && b[0].c[0].uses[RS_USE_LUCK] == 1 && b[0].c[0].death_ok == 0 && b[0].c[0].death_fail == 0;
   }
 }
 
 #test "death saving throw boons precede rescue spending and an exact ten succeeds" {
   for mode: 0..<4 {
     b: [1] RsBattle; ds_field(b[..]); b[0].dice[0].fixed = true;
-    b[0].c[0].inspired = 6; b[0].c[0].own_luck = true; b[0].c[0].uses[RS_USE_LUCK] = 1;
+    b[0].c[0].eff = rs_state_value_put(b[0].c[0].eff, EF_INSPIRED, 6); b[0].c[0].feats = rs_feature_put(b[0].c[0].feats, RS_FT_OWN_LUCK, true); b[0].c[0].uses[RS_USE_LUCK] = 1;
     if mode == 1 || mode == 3 { #assert rs_put_effect(b[..],0,RsEffect.{kind=EF_BLESS,by=1,spell=-1,until=60,save=-1}); }
     if mode == 2 || mode == 3 { #assert rs_put_effect(b[..],0,RsEffect.{kind=EF_BANE,by=1,spell=-1,until=60,save=-1}); }
     #assert rs_battle_death_save(b[..],0) == RS_DS_OK;
     draws := [4] int.[1,2,3,3];
     #assert b[0].dice[0].rolled == draws[mode] && b[0].c[0].death_ok == 1 && b[0].c[0].death_fail == 0;
-    #assert b[0].c[0].inspired == (ifx mode == 2 then 0 else 6) && b[0].c[0].uses[RS_USE_LUCK] == 1;
+    #assert rs_state_value(b[0].c[0], EF_INSPIRED) == (ifx mode == 2 then 0 else 6) && b[0].c[0].uses[RS_USE_LUCK] == 1;
   }
 }
 

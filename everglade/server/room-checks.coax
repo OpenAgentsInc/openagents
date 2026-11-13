@@ -675,7 +675,7 @@ eg_test_input_on :: (v: [] RmServer, c: int, seq: int, heard: int) {
   #assert r[0].klass[0] == EGB_CL0 + FB_CL_FIGHTER;
   #assert cast(string) v[0].eg[k].seat[0].klass[0..<v[0].eg[k].seat[0].klass_n] == "srd-fighter-5";
   #assert r[0].b[0].c[EGB_SEAT].level == 5;
-  #assert r[0].b[0].c[EGB_SEAT].extra_attack > 0 && r[0].b[0].c[EGB_SEAT + 1].level == 1;
+  #assert r[0].b[0].c[EGB_SEAT].rank[RS_RK_EXTRA_ATTACK] > 0 && r[0].b[0].c[EGB_SEAT + 1].level == 1;
   // each seat heard its own bar: the level 5 Fighter's is longer
   eg_test_drain(v[..], box[..]);
   five: [XC_SLOTS] FbAb; fn := xk_bar_at(FB_CL_FIGHTER, 5, five[..]); one: [XC_SLOTS] FbAb; on := xk_bar(FB_CL_FIGHTER, one[..]);

@@ -4,15 +4,15 @@
 // and the turn's parts on each press (RS_UNLIMITED_PRESS) is gone.
 #authority;
 RsPressBudget :: struct {
-  slots:[10] int; uses:[RS_USES] int; focus:int; rages:int;
+  slots:[10] int; uses:[RS_USES] int;   // uses: every pool, Focus and Rages among them
   action:bool; bonus:bool; slot_spent:bool;
 }
 rs_press_budget :: (c:RsCreature,t:RsTurn)->RsPressBudget #effects(all) {
-  return RsPressBudget.{slots=c.slots,uses=c.uses,focus=c.focus,rages=c.rages,
+  return RsPressBudget.{slots=c.slots,uses=c.uses,
     action=t.action,bonus=t.bonus,slot_spent=t.slot_spent};
 }
 rs_press_restore :: (c:[] RsCreature,t:[] RsTurn,v:RsPressBudget) #effects(all) {
-  c[0].slots=v.slots; c[0].uses=v.uses; c[0].focus=v.focus; c[0].rages=v.rages;
+  c[0].slots=v.slots; c[0].uses=v.uses;
   t[0].action=v.action; t[0].bonus=v.bonus; t[0].slot_spent=v.slot_spent;
 }
 
@@ -20,20 +20,20 @@ rs_press_restore :: (c:[] RsCreature,t:[] RsTurn,v:RsPressBudget) #effects(all) 
   c:[1] RsCreature; t:[1] RsTurn;
   for l:0..<10 { c[0].slots[l]=l+1; }
   for u:0..<RS_USES { c[0].uses[u]=20+u; }
-  c[0].focus=4; c[0].rages=3; t[0].action=true; t[0].slot_spent=true;
+  t[0].action=true; t[0].slot_spent=true;
   before:=rs_press_budget(c[0],t[0]);
   for l:0..<10 { #assert before.slots[l]==l+1; }
   for u:0..<RS_USES { #assert before.uses[u]==20+u; }
-  #assert before.focus==4 && before.rages==3 && before.action && !before.bonus && before.slot_spent;
+  #assert before.uses[RS_USE_FOCUS]==20+RS_USE_FOCUS && before.uses[RS_USE_RAGE]==20+RS_USE_RAGE && before.action && !before.bonus && before.slot_spent;
   for l:0..<10 { c[0].slots[l]=0; }
   for u:0..<RS_USES { c[0].uses[u]=0; }
-  c[0].focus=0; c[0].rages=0; t[0].action=false; t[0].bonus=true; t[0].slot_spent=false; t[0].move_left=5;
+  t[0].action=false; t[0].bonus=true; t[0].slot_spent=false; t[0].move_left=5;
   rs_press_restore(c[..],t[..],before);
   for l:0..<10 { #assert c[0].slots[l]==l+1; }
   for u:0..<RS_USES { #assert c[0].uses[u]==20+u; }
-  #assert c[0].focus==4 && c[0].rages==3 && t[0].action && !t[0].bonus && t[0].slot_spent && t[0].move_left==5;
+  #assert c[0].uses[RS_USE_FOCUS]==20+RS_USE_FOCUS && c[0].uses[RS_USE_RAGE]==20+RS_USE_RAGE && t[0].action && !t[0].bonus && t[0].slot_spent && t[0].move_left==5;
   // each part of the turn on its own
   other:=RsPressBudget.{bonus=true};
   rs_press_restore(c[..],t[..],other);
-  #assert !t[0].action && t[0].bonus && !t[0].slot_spent && c[0].focus==0 && c[0].rages==0 && c[0].slots[9]==0 && c[0].uses[RS_USES-1]==0;
+  #assert !t[0].action && t[0].bonus && !t[0].slot_spent && c[0].uses[RS_USE_FOCUS]==0 && c[0].uses[RS_USE_RAGE]==0 && c[0].slots[9]==0 && c[0].uses[RS_USES-1]==0;
 }

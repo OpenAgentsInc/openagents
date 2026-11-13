@@ -5,12 +5,12 @@
 #test "Dodge takes one Action and actual turn retirement clears its benefit" {
   b: [1] RsBattle; c: [1] RsCreature; b[0].c = c[..]; b[0].n = 1;
   c[0].hp = 1; c[0].hp_max = 1; c[0].speed = 30;
-  #assert rs_dodge(b[..],0) && b[0].turn.action && c[0].dodging;
+  #assert rs_dodge(b[..],0) && b[0].turn.action && rs_effect(c[0], EF_DODGE);
   #assert !rs_dodge(b[..],0);
   rs_dodge_end(c[..]); #assert !rs_dodge_live(b[..],0);
 }
 
-rs_dodge_end :: (c: [] RsCreature) #effects(all) { c[0].dodging = false; }
+rs_dodge_end :: (c: [] RsCreature) #effects(all) { c[0].eff = rs_state_put(c[0].eff, EF_DODGE, false); }
 
 // Dodge's attack-roll benefit requires the defender to see that attacker.
 // The current flag model has no alternate-sense override; world sight facts
@@ -20,7 +20,7 @@ rs_dodge_sight :: (defender: RsCreature, attacker: RsCreature) -> bool #effects(
 }
 
 rs_dodge_live :: (b: [] RsBattle, i: int) -> bool #effects(all) {
-  if !b[0].c[i].dodging { return false; }
+  if !rs_effect(b[0].c[i], EF_DODGE) { return false; }
   if !rs_capable(b[0].c[i]) || rs_has(b[0].c[i],RS_GRAPPLED|RS_RESTRAINED) || rs_walk_speed(b,i) <= 0 || (b[0].who == i && b[0].turn.anchored) {
     rs_dodge_end(b[0].c[i..<i+1]); return false;
   }
@@ -33,12 +33,12 @@ rs_dodge_live :: (b: [] RsBattle, i: int) -> bool #effects(all) {
 }
 
 rs_dodge_begin :: (b: [] RsBattle, i: int) #effects(all) {
-  b[0].c[i].dodging = true;
+  b[0].c[i].eff = rs_state_put(b[0].c[i].eff, EF_DODGE, true);
   _ := rs_dodge_live(b,i);
 }
 
 rs_dodge :: (b: [] RsBattle, i: int) -> bool #effects(all) {
-  if !rs_action_free(b,i) { return false; }
+  if !rs_action_free(b,i) || !rs_state_room(b[0].c[i],EF_DODGE) { return false; }
   b[0].turn.action = true;
   rs_dodge_begin(b,i);
   rs_say(b,RS_EV_CONDITION,i,i,0," takes the Dodge action");

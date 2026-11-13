@@ -18,10 +18,10 @@ cb_field :: (b: [] RsBattle, level: int) {
 
 #test "Bardic Inspiration p.31: Charisma-modifier uses of a d6; a Bonus Action gives another creature within 60 feet a die for a failed D20 Test" {
   b: [1] RsBattle; cb_field(b[..], 1);
-  #assert b[0].c[0].uses_max[RS_USE_INSPIRE] == 3 && b[0].c[0].insp_die == 6;
-  #assert !rs_inspire(b[..], 0, 0) && rs_inspire(b[..], 0, 1) && b[0].turn.bonus && b[0].c[0].uses[RS_USE_INSPIRE] == 2 && b[0].c[1].inspired == 6;
-  #assert rs_inspired_roll(b[..], 1, 12, 12) == 0 && b[0].c[1].inspired == 6;   // a success keeps it
-  #assert rs_inspired_roll(b[..], 1, 10, 12) == 3 && b[0].c[1].inspired == 0;   // a failure spends it
+  #assert b[0].c[0].uses_max[RS_USE_INSPIRE] == 3 && b[0].c[0].rank[RS_RK_INSPIRATION_DIE] == 6;
+  #assert !rs_inspire(b[..], 0, 0) && rs_inspire(b[..], 0, 1) && b[0].turn.bonus && b[0].c[0].uses[RS_USE_INSPIRE] == 2 && rs_state_value(b[0].c[1], EF_INSPIRED) == 6;
+  #assert rs_inspired_roll(b[..], 1, 12, 12) == 0 && rs_state_value(b[0].c[1], EF_INSPIRED) == 6;   // a success keeps it
+  #assert rs_inspired_roll(b[..], 1, 10, 12) == 3 && rs_state_value(b[0].c[1], EF_INSPIRED) == 0;   // a failure spends it
   b[0].c[0].uses[RS_USE_INSPIRE] = 0; #assert rs_long_rest_resources(b[0].c[0..<1]) && b[0].c[0].uses[RS_USE_INSPIRE] == 3;
 }
 
@@ -80,11 +80,11 @@ cb_field :: (b: [] RsBattle, level: int) {
 }
 
 #test "Bardic Inspiration p.31: a d8 from level 5" {
-  #assert rs_bard("L", 0, 4).insp_die == 6 && rs_bard("L", 0, 5).insp_die == 8 && rs_bard("L", 0, 6).insp_die == 8;
+  #assert rs_bard("L", 0, 4).rank[RS_RK_INSPIRATION_DIE] == 6 && rs_bard("L", 0, 5).rank[RS_RK_INSPIRATION_DIE] == 8 && rs_bard("L", 0, 6).rank[RS_RK_INSPIRATION_DIE] == 8;
 }
 
 #test "Magical Discoveries p.35: from level 6, two spells of any class always prepared, Fireball and Spirit Guardians" {
-  #assert !rs_class_spell_granted(rs_bard("L", 0, 5), SP_FIREBALL) && rs_bard("L", 0, 5).discoveries[0] == -1;
+  #assert !rs_class_spell_granted(rs_bard("L", 0, 5), SP_FIREBALL) && rs_bard("L", 0, 5).rank[RS_RK_DISCOVERY + 0] == -1;
   c := rs_bard("L", 0, 6);
-  #assert c.discoveries[0] == SP_FIREBALL && c.discoveries[1] == SP_SPIRIT_GUARDIANS && rs_class_spell_granted(c, SP_FIREBALL) && rs_class_spell_granted(c, SP_SPIRIT_GUARDIANS);
+  #assert c.rank[RS_RK_DISCOVERY + 0] == SP_FIREBALL && c.rank[RS_RK_DISCOVERY + 1] == SP_SPIRIT_GUARDIANS && rs_class_spell_granted(c, SP_FIREBALL) && rs_class_spell_granted(c, SP_SPIRIT_GUARDIANS);
 }

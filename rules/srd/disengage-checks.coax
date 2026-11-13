@@ -16,10 +16,10 @@
     b:[1] RsBattle; b[0].w=12; b[0].h=12;
     c:=ifx mode==1 then rs_rogue("Rogue",0,2) else rs_monk("Monk",0,2);
     _:=rs_add(b[..],c,3,3); rs_start_turn(b[..],0);
-    b[0].c[0].focus=ifx mode==3 then 1 else 0;
+    b[0].c[0].uses[RS_USE_FOCUS]=ifx mode==3 then 1 else 0;
     #assert rs_disengage_use(b[..],0,mode) && b[0].turn.disengaged && b[0].turn.bonus && !b[0].turn.action;
-    #assert b[0].c[0].focus==0;
-    #assert b[0].c[0].dodging==(mode==3);
+    #assert b[0].c[0].uses[RS_USE_FOCUS]==0;
+    #assert rs_effect(b[0].c[0], EF_DODGE)==(mode==3);
     #assert !rs_disengage_use(b[..],0,mode);
   }
 }
@@ -32,7 +32,7 @@
   #assert !b[0].turn.disengaged && !b[0].turn.action && !b[0].turn.bonus;
   b[0].c[0]=rs_monk("Novice",0,1);
   #assert !rs_disengage_use(b[..],0,RS_DISENGAGE_PATIENT) && !rs_patient_defense(b[..],0);
-  b[0].c[0]=rs_monk("Monk",0,2); b[0].c[0].focus=0;
+  b[0].c[0]=rs_monk("Monk",0,2); b[0].c[0].uses[RS_USE_FOCUS]=0;
   #assert !rs_patient_defense(b[..],0) && !b[0].turn.disengaged;
 }
 
@@ -51,9 +51,9 @@
 #test "paid Patient Defense grants Disengage only this turn while Dodge lasts until the next turn" {
   b:[1] RsBattle; b[0].w=8; b[0].h=8;
   _:=rs_add(b[..],rs_monk("Monk",0,3),2,2); rs_start_turn(b[..],0);
-  #assert rs_patient_defense(b[..],0) && b[0].turn.disengaged && b[0].c[0].dodging && b[0].c[0].focus==2;
-  rs_end_turn(b[..],0); #assert !b[0].turn.disengaged && b[0].c[0].dodging;
-  rs_start_turn(b[..],0); #assert !b[0].turn.disengaged && !b[0].c[0].dodging;
+  #assert rs_patient_defense(b[..],0) && b[0].turn.disengaged && rs_effect(b[0].c[0], EF_DODGE) && b[0].c[0].uses[RS_USE_FOCUS]==2;
+  rs_end_turn(b[..],0); #assert !b[0].turn.disengaged && rs_effect(b[0].c[0], EF_DODGE);
+  rs_start_turn(b[..],0); #assert !b[0].turn.disengaged && !rs_effect(b[0].c[0], EF_DODGE);
 }
 
 #test "Nimble Escape is a Bonus Action Disengage for a creature with the trait alone" {

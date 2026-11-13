@@ -133,7 +133,7 @@ rs_resisted :: (b: [] RsBattle, j: int, amount: int, kind: int) -> int #effects(
   bit := 1 << kind;
   if (c.immune & bit) != 0 { return 0; }
   a := amount;
-  if (c.resist & bit) != 0 || rs_has(c,RS_PETRIFIED) || (c.raging && (kind == RS_BLUDGEONING || kind == RS_PIERCING || kind == RS_SLASHING)) { a = a/2; }
+  if (c.resist & bit) != 0 || rs_has(c,RS_PETRIFIED) || (rs_effect(c, EF_RAGE) && (kind == RS_BLUDGEONING || kind == RS_PIERCING || kind == RS_SLASHING)) { a = a/2; }
   if (c.vulnerable & bit) != 0 { a = a*2; }
   return a;
 }

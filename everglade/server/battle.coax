@@ -107,7 +107,7 @@ egb_klass_of :: (kind: string) -> int #effects(all) {
 egb_hero_of :: (klass: int, level: int) -> RsCreature #effects(all) {
   if klass >= EGB_CL0 { return fb_cl_hero(klass - EGB_CL0, "Player", 0, level); }
   if level <= 0 { return ifx klass == EGB_WARLOCK then fb_warlock_hero("Player", 0) else fb_everglade_hero("Player", 0); }
-  if klass == EGB_WARLOCK { c := rs_warlock("Player", 0, level, SP_ELDRITCH_BLAST); c.rebuke = true; return c; }
+  if klass == EGB_WARLOCK { c := rs_warlock("Player", 0, level, SP_ELDRITCH_BLAST); c.feats = rs_feature_put(c.feats, RS_FT_REBUKE, true); return c; }
   return rs_druid("Player", 0, level);
 }
 // Whether bar slot k has an entry: the druid's bar (0 to FB_EG_SLOTS - 1), the Warlock's (FB_WL0 on),
@@ -131,7 +131,7 @@ egb_start :: (r: [] EgBattle, seed: int) #effects(all) {
   b[0].n = 0; b[0].clock = 0; b[0].w = EGB_SIDE;   // who's turn: none (rs_begin)
   b[0].h = EGB_SIDE + EGB_Z_SHIFT;
   _ := rs_set_world(b, RS_EVERGLADE_WORLD);   // every declared deviation: world-profile.coax
-  for k: 0..<RS_ZONES { b[0].zone[k].on = false; }
+  rs_room(b); for k: 0..<b[0].zone.count { b[0].zone[k].on = false; }
   b[0].truth_zones = 0;
   b[0].dice[0].state = cast(u64) seed * 7919 + 3;
   for s: 0..<r[0].seats {
@@ -440,11 +440,11 @@ egb_events :: (r: [] EgBattle, out: [] f32) -> int #effects(all) {
   d := egb_hero_of(EGB_DRUID, 0); w := egb_hero_of(EGB_WARLOCK, 0);
   #assert d.hp_max == fb_everglade_hero("Player", 0).hp_max && w.hp_max == fb_warlock_hero("Player", 0).hp_max && w.level == 17;
   w5 := egb_hero_of(EGB_WARLOCK, 5); d5 := egb_hero_of(EGB_DRUID, 5);
-  #assert w5.level == 5 && w5.rebuke && d5.level == 5 && !d5.rebuke && d5.hp_max == rs_druid("Player", 0, 5).hp_max;
+  #assert w5.level == 5 && rs_has_feature(w5, RS_FT_REBUKE) && d5.level == 5 && !rs_has_feature(d5, RS_FT_REBUKE) && d5.hp_max == rs_druid("Player", 0, 5).hp_max;
   #assert egb_hero_of(EGB_DRUID, 1).level == 1 && egb_hero_of(EGB_DRUID, 1).hp_max == rs_druid("Player", 0, 1).hp_max && egb_hero_of(EGB_WARLOCK, 1).level == 1;
   bb := egb_hero_of(EGB_CL0, 2);
   #assert bb.klass == RS_BARBARIAN && bb.level == 2 && bb.team == 0 && d.team == 0 && w.team == 0 && w5.team == 0 && d5.team == 0;
-  #assert w5.agonizing == SP_ELDRITCH_BLAST && egb_hero_of(EGB_CL0 + FB_CL_FIGHTER, 2).team == 0;
+  #assert w5.rank[RS_RK_AGONIZING] == SP_ELDRITCH_BLAST && egb_hero_of(EGB_CL0 + FB_CL_FIGHTER, 2).team == 0;
   f := egb_hero_of(EGB_CL0 + FB_CL_FIGHTER, 2);
   #assert f.level == 2 && f.hp_max == fb_cl_hero(FB_CL_FIGHTER, "Player", 0, 2).hp_max;
   #assert egb_has(0) && egb_has(FB_EG_SLOTS - 1) && !egb_has(FB_EG_SLOTS) && !egb_has(-1);

@@ -141,7 +141,7 @@ eg_join :: (v: [] RmServer, r: int, conn: int, seat_id: SeatId) { seat := seat_i
   v[0].eg[k].tk[seat] = v[0].conns[conn].ticket;
   v[0].eg[k].wanted[seat] = 0;
   egb_join(v[0].eg[k].rules[..], seat, 0, 0, 0, 0);
-  v[0].eg[k].rules[0].b[0].c[EGB_SEAT + seat].healer_kit = 10;
+  v[0].eg[k].rules[0].b[0].c[EGB_SEAT + seat].uses[RS_USE_KIT] = 10;
   rv_join(v, k, seat_id);   // the HP its player left with (room-vitals.coax, #12715)
   rv_back(v, k, seat_id);   // and where they stood in this room, if lately
   ev_join(v, k, seat_id);   // its XP and its character's level (room-events.coax, #12739)
@@ -326,7 +326,7 @@ eg_test_v5_join :: (v: [] RmServer, conn: int, pid: string, acct: int, room: str
   rm_heard(v[..], 1, "H 6 ranger.0.0.0 srd-wizard-6 0 -");   // no class signed: the hello's Wizard, at the ticket's 1
   for q: 0..<3 { eg_test_tick(v[..], k); }
   r := v[0].eg[k].rules[..]; b := r[0].b[..]; me := EGB_SEAT;
-  #assert r[0].klass[0] == EGB_CL0 + FB_CL_FIGHTER && b[0].c[me].level == 5 && b[0].c[me].extra_attack > 0;
+  #assert r[0].klass[0] == EGB_CL0 + FB_CL_FIGHTER && b[0].c[me].level == 5 && b[0].c[me].rank[RS_RK_EXTRA_ATTACK] > 0;
   #assert r[0].klass[1] == EGB_CL0 + FB_CL_WIZARD && b[0].c[me + 1].level == 1;
   #assert cast(string) v[0].eg[k].seat[0].klass[0..<v[0].eg[k].seat[0].klass_n] == "srd-fighter-5";
   #assert !v[0].eg[k].seat[0].class_report && v[0].eg[k].seat[1].class_report;

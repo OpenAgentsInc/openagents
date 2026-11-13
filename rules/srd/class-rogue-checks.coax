@@ -32,7 +32,7 @@ cr_ally :: (b: [] RsBattle) -> int { k := rs_add(b, rs_fighter("Ally", 0, 1), 3,
 }
 
 #test "Thieves' Cant p.62 and Weapon Mastery p.62: the Cant from level 1; a Vex hit gives Advantage on its next attack at that foe" {
-  #assert rs_rogue("N", 0, 1).cant && rs_rogue("N", 0, 1).mastery_n == 2;
+  #assert rs_has_feature(rs_rogue("N", 0, 1), RS_FT_THIEVES_CANT) && rs_rogue("N", 0, 1).mastery_n == 2;
   b: [1] RsBattle; cf_field(b[..], rs_rogue("Nim", 0, 1), 10);
   #assert rs_attack(b[..], 0, 1, false, -1) && rs_attack_edge(b[..], 0, 1, true, false) == 1;
 }
@@ -72,7 +72,7 @@ cr_ally :: (b: [] RsBattle) -> int { k := rs_add(b, rs_fighter("Ally", 0, 1), 3,
   #assert rs_steady_aim(b[..], 0) && b[0].turn.move_left == 0 && rs_attack_edge(b[..], 0, 1, true, false) == 1;
   m: [1] RsBattle; cf_field(m[..], rs_rogue("Nim", 0, 3), 10); m[0].turn.moved = true;
   #assert !rs_steady_aim(m[..], 0);
-  #assert !rs_rogue("N", 0, 2).steady_aim;
+  #assert !rs_has_feature(rs_rogue("N", 0, 2), RS_FT_STEADY_AIM);
 }
 
 #test "Fast Hands p.64: from level 3, a Sleight of Hand check as a Bonus Action, with Thieves' Tools for a lock" {

@@ -56,8 +56,8 @@ xk_enabled :: (c: int, level: int, seen: [] bool) {
   bar: [XC_SLOTS] FbAb; n := xc_bar_level(c, level, bar[..]);
   for i: 0..<n { if bar[i].kind == FB_SPELL { seen[bar[i].sp] = true; } }
   hero := fb_cl_hero(c, "You", 0, level);
-  if hero.shield_spell && rs_spell_ready(hero, SP_SHIELD) { seen[SP_SHIELD] = true; }
-  if hero.rebuke && rs_spell_ready(hero, SP_HELLISH_REBUKE) { seen[SP_HELLISH_REBUKE] = true; }
+  if rs_has_feature(hero, RS_FT_SHIELD_SPELL) && rs_spell_ready(hero, SP_SHIELD) { seen[SP_SHIELD] = true; }
+  if rs_has_feature(hero, RS_FT_REBUKE) && rs_spell_ready(hero, SP_HELLISH_REBUKE) { seen[SP_HELLISH_REBUKE] = true; }
 }
 
 #test "the manifest is exactly the spells the twelve class kits enable at levels 1-6" #steps 2000000000 {

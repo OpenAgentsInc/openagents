@@ -4,13 +4,13 @@
 #test "Undead Fortitude uses boon and rescue dice without restoring spent resources from an old creature copy" {
   for rescue: 0..<2 {
     b: [1] RsBattle; sv_field(b[..]);
-    b[0].c[1].fortitude = true; b[0].c[1].hp = 10;
+    b[0].c[1].feats = rs_feature_put(b[0].c[1].feats, RS_FT_UNDEAD_FORTITUDE, true); b[0].c[1].hp = 10;
     sv_bless(b[..],1);
-    if rescue == 0 { b[0].c[1].inspired = 6; }
-    else { b[0].c[1].own_luck = true; b[0].c[1].uses[RS_USE_LUCK] = 1; }
+    if rescue == 0 { b[0].c[1].eff = rs_state_value_put(b[0].c[1].eff, EF_INSPIRED, 6); }
+    else { b[0].c[1].feats = rs_feature_put(b[0].c[1].feats, RS_FT_OWN_LUCK, true); b[0].c[1].uses[RS_USE_LUCK] = 1; }
     rs_damage(b[..],0,1,10,RS_FIRE,false,-1);
     #assert b[0].c[1].hp == 1 && !b[0].c[1].dead && b[0].dice[0].rolled == 3;
-    #assert b[0].c[1].inspired == 0 && b[0].c[1].uses[RS_USE_LUCK] == 0;
+    #assert rs_state_value(b[0].c[1], EF_INSPIRED) == 0 && b[0].c[1].uses[RS_USE_LUCK] == 0;
     #assert rs_effect(b[0].c[1],EF_BLESS);
   }
 }
@@ -19,11 +19,11 @@
   for rescue: 0..<2 {
     b: [1] RsBattle; sv_field(b[..]); sv_bless(b[..],1);
     b[0].c[1].conc = SP_BLESS; b[0].c[1].conc_until = 60;
-    if rescue == 0 { b[0].c[1].inspired = 6; }
-    else { b[0].c[1].own_luck = true; b[0].c[1].uses[RS_USE_LUCK] = 1; }
+    if rescue == 0 { b[0].c[1].eff = rs_state_value_put(b[0].c[1].eff, EF_INSPIRED, 6); }
+    else { b[0].c[1].feats = rs_feature_put(b[0].c[1].feats, RS_FT_OWN_LUCK, true); b[0].c[1].uses[RS_USE_LUCK] = 1; }
     rs_damage(b[..],0,1,30,RS_FIRE,false,-1);
     #assert b[0].c[1].hp == 70 && b[0].c[1].conc == SP_BLESS;
-    #assert b[0].dice[0].rolled == 3 && b[0].c[1].inspired == 0 && b[0].c[1].uses[RS_USE_LUCK] == 0;
+    #assert b[0].dice[0].rolled == 3 && rs_state_value(b[0].c[1], EF_INSPIRED) == 0 && b[0].c[1].uses[RS_USE_LUCK] == 0;
   }
 }
 
@@ -32,10 +32,10 @@
     b: [1] RsBattle; sv_field(b[..]);
     b[0].c[0] = rs_siege_attacker(2,0,SP_ELDRITCH_BLAST); rs_place(b[..],0,1,1);
     b[0].c[1].cond = condition; b[0].c[1].score[RS_DEX] = 30;
-    b[0].c[1].inspired = 6; b[0].c[1].own_luck = true; b[0].c[1].uses[RS_USE_LUCK] = 1; sv_bless(b[..],1);
+    b[0].c[1].eff = rs_state_value_put(b[0].c[1].eff, EF_INSPIRED, 6); b[0].c[1].feats = rs_feature_put(b[0].c[1].feats, RS_FT_OWN_LUCK, true); b[0].c[1].uses[RS_USE_LUCK] = 1; sv_bless(b[..],1);
     #assert rs_hellish_rebuke(b[..],0,1);
     #assert b[0].dice[0].rolled == 2 && b[0].c[1].hp == (ifx condition == RS_PETRIFIED then 95 else 90);
-    #assert b[0].c[1].inspired == 6 && b[0].c[1].uses[RS_USE_LUCK] == 1;
+    #assert rs_state_value(b[0].c[1], EF_INSPIRED) == 6 && b[0].c[1].uses[RS_USE_LUCK] == 1;
     #assert b[0].c[0].reacted && b[0].c[0].slots[1] == 0;
   }
 }
@@ -57,7 +57,7 @@
       rs_guardians(b[..],1);
       #assert b[0].c[1].hp == 94 && b[0].dice[0].rolled == 5;
     } else {
-      b[0].c[0].lands_aid = true; b[0].c[0].uses[RS_USE_WILD] = 1;
+      b[0].c[0].feats = rs_feature_put(b[0].c[0].feats, RS_FT_LANDS_AID, true); b[0].c[0].uses[RS_USE_WILD] = 1;
       #assert rs_lands_aid(b[..],0,2,1,-1);
       #assert b[0].c[1].hp == 97 && b[0].dice[0].rolled == 4;
       #assert b[0].turn.action && b[0].c[0].uses[RS_USE_WILD] == 0;
@@ -68,7 +68,7 @@
 #test "end turn repeat saves use Strength Advantage and Dexterity Disadvantage instead of a flat d20" {
   for ability: 0..<2 {
     b: [1] RsBattle; sv_field(b[..]); b[0].turn.new_round = true;
-    if ability == RS_STR { b[0].c[1].raging = true; b[0].c[1].rage_kept = true; }
+    if ability == RS_STR { b[0].c[1].eff = rs_state_put(b[0].c[1].eff, EF_RAGE, true); b[0].c[1].eff = rs_state_bit(b[0].c[1].eff, EF_RAGE, RS_RAGE_KEPT, true); }
     else { b[0].c[1].cond = RS_RESTRAINED; }
     #assert rs_put_effect(b[..],1,RsEffect.{kind=EF_NOHEAL,by=-1,spell=-1,until=60,save=ability,dc=11});
     rs_end_turn(b[..],1);
@@ -79,42 +79,42 @@
 #test "end turn automatic save failures neither escape their record nor consume dice or rescue resources" {
   b: [1] RsBattle; sv_field(b[..]); b[0].turn.new_round = true;
   b[0].c[1].cond = RS_PARALYZED; b[0].c[1].score[RS_DEX] = 30;
-  b[0].c[1].inspired = 6; b[0].c[1].own_luck = true; b[0].c[1].uses[RS_USE_LUCK] = 1; sv_bless(b[..],1);
+  b[0].c[1].eff = rs_state_value_put(b[0].c[1].eff, EF_INSPIRED, 6); b[0].c[1].feats = rs_feature_put(b[0].c[1].feats, RS_FT_OWN_LUCK, true); b[0].c[1].uses[RS_USE_LUCK] = 1; sv_bless(b[..],1);
   #assert rs_put_effect(b[..],1,RsEffect.{kind=EF_NOHEAL,by=-1,spell=-1,until=60,save=RS_DEX,dc=10});
   rs_end_turn(b[..],1);
   #assert rs_effect(b[0].c[1],EF_NOHEAL) && b[0].dice[0].rolled == 0;
-  #assert b[0].c[1].inspired == 6 && b[0].c[1].uses[RS_USE_LUCK] == 1;
+  #assert rs_state_value(b[0].c[1], EF_INSPIRED) == 6 && b[0].c[1].uses[RS_USE_LUCK] == 1;
 }
 
 #test "Stunning Strike and Open Hand use the same normal boon and rescue ordering" {
   for feature: 0..<2 {
     b: [1] RsBattle; sv_field(b[..]);
     b[0].c[0] = rs_monk("Monk",0,5); rs_place(b[..],0,1,1);
-    b[0].c[1].inspired = 6; sv_bless(b[..],1);
+    b[0].c[1].eff = rs_state_value_put(b[0].c[1].eff, EF_INSPIRED, 6); sv_bless(b[..],1);
     if feature == 0 {
       b[0].c[0].stun_ready = true;
       rs_stunning_strike(b[..],0,1);
-      #assert !rs_has(b[0].c[1],RS_STUNNED) && rs_aura_on(b[0].c[1], EF_HALVED, 0) && b[0].c[0].focus == 4;
+      #assert !rs_has(b[0].c[1],RS_STUNNED) && rs_aura_on(b[0].c[1], EF_HALVED, 0) && b[0].c[0].uses[RS_USE_FOCUS] == 4;
     } else {
       rs_open_hand(b[..],0,1,OH_TOPPLE);
       #assert !rs_has(b[0].c[1],RS_PRONE);
     }
-    #assert b[0].dice[0].rolled == 3 && b[0].c[1].inspired == 0;
+    #assert b[0].dice[0].rolled == 3 && rs_state_value(b[0].c[1], EF_INSPIRED) == 0;
   }
 }
 
 #test "Open Hand automatic Strength and Dexterity failures do not roll or spend a rescue die" {
   for how: [2] int.[OH_PUSH,OH_TOPPLE] {
-    b: [1] RsBattle; sv_field(b[..]); b[0].c[0].open_hand = true;
-    b[0].c[1].cond = RS_PETRIFIED; b[0].c[1].inspired = 6;
+    b: [1] RsBattle; sv_field(b[..]); b[0].c[0].feats = rs_feature_put(b[0].c[0].feats, RS_FT_OPEN_HAND, true);
+    b[0].c[1].cond = RS_PETRIFIED; b[0].c[1].eff = rs_state_value_put(b[0].c[1].eff, EF_INSPIRED, 6);
     rs_open_hand(b[..],0,1,how);
-    #assert b[0].dice[0].rolled == 0 && b[0].c[1].inspired == 6;
+    #assert b[0].dice[0].rolled == 0 && rs_state_value(b[0].c[1], EF_INSPIRED) == 6;
     #assert (how == OH_PUSH && b[0].c[1].x == 5) || (how == OH_TOPPLE && rs_has(b[0].c[1],RS_PRONE));
   }
 }
 
 #test "Turn Undead includes held saving throw bonuses before applying its conditions" {
-  b: [1] RsBattle; sv_field(b[..]); b[0].c[0].turn_undead = true;
+  b: [1] RsBattle; sv_field(b[..]); b[0].c[0].feats = rs_feature_put(b[0].c[0].feats, RS_FT_TURN_UNDEAD, true);
   b[0].c[0].uses[RS_USE_CHANNEL] = 1; b[0].c[1].undead = true; sv_bless(b[..],1);
   #assert rs_turn_undead(b[..],0);
   #assert !rs_has(b[0].c[1],RS_FRIGHTENED|RS_INCAPACITATED) && b[0].dice[0].rolled == 2;
@@ -125,9 +125,9 @@
   b: [1] RsBattle; sv_field(b[..]);
   b[0].c[1] = rs_monk("Monk",1,3); rs_place(b[..],1,2,1); b[0].c[1].ac = 1;
   b[0].c[1].score[RS_WIS] = 16;
-  sv_bless(b[..],0); b[0].c[0].inspired = 6;
+  sv_bless(b[..],0); b[0].c[0].eff = rs_state_value_put(b[0].c[0].eff, EF_INSPIRED, 6);
   #assert rs_strike(b[..],0,1,W_SHORTSWORD,false);
-  #assert b[0].c[0].hp == 100 && b[0].c[0].inspired == 0 && b[0].c[1].focus == 2;
+  #assert b[0].c[0].hp == 100 && rs_state_value(b[0].c[0], EF_INSPIRED) == 0 && b[0].c[1].uses[RS_USE_FOCUS] == 2;
   #assert b[0].dice[0].rolled == 7;
 }
 

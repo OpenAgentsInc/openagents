@@ -82,7 +82,7 @@ rs_npc :: (name: string, team: int, npc: int, level: int, score: [6] int, ac: in
   c[0].score = score;
   c[0].ac = ac; c[0].hp_max = hp; c[0].hp = hp; c[0].speed = 30;
   c[0].spell_ability = -1; c[0].ranged = -1;
-  c[0].conc = -1; c[0].restrained_by = -1; c[0].free_spell = -1; c[0].agonizing = -1; c[0].repelling = -1;
+  c[0].conc = -1; c[0].restrained_by = -1; c[0].free_spell = -1; c[0].rank[RS_RK_AGONIZING] = -1; c[0].rank[RS_RK_REPELLING] = -1;
   return c[0];
 }
 rs_npc_slots :: (c: [] RsCreature, level: int, n: int) { c[0].slots_max[level] = n; c[0].slots[level] = n; }
@@ -118,7 +118,7 @@ rs_path_guard :: (name: string, team: int) -> RsCreature {
 rs_veteran :: (name: string, team: int) -> RsCreature {
   c: [1] RsCreature;
   c[0] = rs_npc(name, team, RS_NPC_VETERAN, 1, [6] int.[16, 13, 14, 10, 11, 10], 17, 65);
-  c[0].weapon = W_GREATSWORD; c[0].ranged = W_HEAVY_CROSSBOW; c[0].extra_attack = 1; c[0].parry = true;
+  c[0].weapon = W_GREATSWORD; c[0].ranged = W_HEAVY_CROSSBOW; c[0].rank[RS_RK_EXTRA_ATTACK] = 1; c[0].feats = rs_feature_put(c[0].feats, RS_FT_PARRY, true);
   return c[0];
 }
 // Knight (p. 302): AC 18 (Plate Armor), HP 52 (8d8 + 16), Str 16 Dex 11 Con 14 (save +4) Int 11
@@ -130,7 +130,7 @@ rs_knight :: (name: string, team: int) -> RsCreature {
   c[0] = rs_npc(name, team, RS_NPC_KNIGHT, 1, [6] int.[16, 11, 14, 11, 11, 15], 18, 52);
   c[0].save_prof[RS_CON] = true; c[0].save_prof[RS_WIS] = true;
   c[0].immune_cond = RS_FRIGHTENED;
-  c[0].weapon = W_KNIGHT_GREATSWORD; c[0].ranged = W_KNIGHT_CROSSBOW; c[0].extra_attack = 1; c[0].parry = true;
+  c[0].weapon = W_KNIGHT_GREATSWORD; c[0].ranged = W_KNIGHT_CROSSBOW; c[0].rank[RS_RK_EXTRA_ATTACK] = 1; c[0].feats = rs_feature_put(c[0].feats, RS_FT_PARRY, true);
   return c[0];
 }
 // Scout (p. 322): AC 13 (Leather Armor), HP 16 (3d8 + 3), Str 11 Dex 14 Con 12 Int 11 Wis 13 Cha 11,
@@ -139,7 +139,7 @@ rs_knight :: (name: string, team: int) -> RsCreature {
 rs_scout :: (name: string, team: int) -> RsCreature {
   c: [1] RsCreature;
   c[0] = rs_npc(name, team, RS_NPC_SCOUT, 1, [6] int.[11, 14, 12, 11, 13, 11], 13, 16);
-  c[0].weapon = W_SHORTSWORD; c[0].ranged = W_LONGBOW; c[0].extra_attack = 1;
+  c[0].weapon = W_SHORTSWORD; c[0].ranged = W_LONGBOW; c[0].rank[RS_RK_EXTRA_ATTACK] = 1;
   return c[0];
 }
 // Priest (p. 316): AC 13 (Chain Shirt), HP 38 (7d8 + 7), Str 16 Dex 10 Con 12 Int 13 Wis 16 Cha 13,
@@ -149,7 +149,7 @@ rs_scout :: (name: string, team: int) -> RsCreature {
 rs_priest :: (name: string, team: int) -> RsCreature {
   c: [1] RsCreature;
   c[0] = rs_npc(name, team, RS_NPC_PRIEST, 1, [6] int.[16, 10, 12, 13, 16, 13], 13, 38);
-  c[0].weapon = W_PRIEST_MACE; c[0].ranged = W_RADIANT_FLAME; c[0].extra_attack = 1;
+  c[0].weapon = W_PRIEST_MACE; c[0].ranged = W_RADIANT_FLAME; c[0].rank[RS_RK_EXTRA_ATTACK] = 1;
   c[0].focus_class=RS_CLERIC; c[0].focus_held=true; // stat block Gear: Holy Symbol
   c[0].spell_ability = RS_WIS;
   rs_npc_slots(c[..], 3, 1); rs_npc_slots(c[..], 1, 3);
@@ -164,8 +164,8 @@ rs_mage :: (name: string, team: int) -> RsCreature {
   c: [1] RsCreature;
   c[0] = rs_npc(name, team, RS_NPC_MAGE, 5, [6] int.[9, 14, 11, 17, 12, 11], 15, 81);
   c[0].save_prof[RS_INT] = true; c[0].save_prof[RS_WIS] = true;
-  c[0].weapon = W_ARCANE_BURST; c[0].ranged = W_ARCANE_BURST; c[0].extra_attack = 2;
-  c[0].spell_ability = RS_INT; c[0].shield_spell = true;
+  c[0].weapon = W_ARCANE_BURST; c[0].ranged = W_ARCANE_BURST; c[0].rank[RS_RK_EXTRA_ATTACK] = 2;
+  c[0].spell_ability = RS_INT; c[0].feats = rs_feature_put(c[0].feats, RS_FT_SHIELD_SPELL, true);
   c[0].focus_class=RS_WIZARD; c[0].focus_held=true; // stat block Gear: Wand
   rs_npc_slots(c[..], 4, 2); rs_npc_slots(c[..], 5, 1); rs_npc_slots(c[..], 1, 3);
   _ := rs_grant_spell(c[..], SP_FIREBALL); _ = rs_grant_spell(c[..], SP_CONE_OF_COLD); _ = rs_grant_spell(c[..], SP_SHIELD);
@@ -257,7 +257,7 @@ rs_siege_attacker :: (k: int, team: int, blast: int) -> RsCreature {
   if npc == RS_NPC_WARLOCK {
     c: [1] RsCreature;
     c[0] = rs_warlock(name, team, rs_cult_warlock_level(k), blast);
-    c[0].npc = RS_NPC_WARLOCK; c[0].rebuke = true;
+    c[0].npc = RS_NPC_WARLOCK; c[0].feats = rs_feature_put(c[0].feats, RS_FT_REBUKE, true);
     return c[0];
   }
   return rs_cultist(name, team);
@@ -267,7 +267,7 @@ rs_siege_attacker :: (k: int, team: int, blast: int) -> RsCreature {
 rs_siege_arch :: (name: string, team: int, blast: int) -> RsCreature {
   c: [1] RsCreature;
   c[0] = rs_warlock(name, team, RS_ARCH_LEVEL, blast);
-  c[0].npc = RS_NPC_ARCH; c[0].rebuke = true;
+  c[0].npc = RS_NPC_ARCH; c[0].feats = rs_feature_put(c[0].feats, RS_FT_REBUKE, true);
   // Declared Siege kit, not a Warlock class benefit: reusable crushed black
   // pearl powder worth 500+ GP for Circle of Death (SRD 5.2.1 p.115).
   c[0].materials[0]=RsMaterialStock.{key=RS_KEY_CIRCLE_OF_DEATH,count=1};
@@ -278,7 +278,7 @@ rs_siege_arch :: (name: string, team: int, blast: int) -> RsCreature {
   g := rs_guard("Guard 1", 0);
   #assert g.ac == 16 && g.hp_max == 11 && rs_weapon_attack(g, g.weapon) == 3 && rs_mod(g.score[rs_attack_ability(g, g.weapon)]) == 1 && g.humanoid && g.klass == RS_MONSTER;
   v := rs_veteran("Warrior Veteran 1", 0);
-  #assert v.ac == 17 && v.hp_max == 65 && rs_weapon_attack(v, v.weapon) == 5 && rs_weapon_attack(v, v.ranged) == 3 && v.extra_attack == 1 && v.parry;
+  #assert v.ac == 17 && v.hp_max == 65 && rs_weapon_attack(v, v.weapon) == 5 && rs_weapon_attack(v, v.ranged) == 3 && v.rank[RS_RK_EXTRA_ATTACK] == 1 && rs_has_feature(v, RS_FT_PARRY);
   #assert rs_weapon(v.ranged).dice == 2 && rs_weapon(v.ranged).sides == 10 && rs_weapon(v.ranged).range_ft == 100;
   kn := rs_knight("Knight 1", 0);
   #assert kn.ac == 18 && kn.hp_max == 52 && rs_weapon_attack(kn, kn.weapon) == 5 && rs_weapon_attack(kn, kn.ranged) == 2;
@@ -290,8 +290,8 @@ rs_siege_arch :: (name: string, team: int, blast: int) -> RsCreature {
   #assert pr.ac == 13 && pr.hp_max == 38 && rs_weapon_attack(pr, pr.weapon) == 5 && rs_weapon_attack(pr, pr.ranged) == 5 && rs_weapon(pr.ranged).bare;
   #assert rs_spell_dc(pr) == 13 && pr.slots[3] == 1 && pr.slots[1] == 3;
   mg := rs_mage("Mage 1", 0);
-  #assert mg.ac == 15 && mg.hp_max == 81 && rs_proficiency(mg.level) == 3 && rs_weapon_attack(mg, mg.weapon) == 6 && mg.extra_attack == 2;
-  #assert rs_spell_dc(mg) == 14 && rs_save_bonus(mg, RS_INT) == 6 && rs_save_bonus(mg, RS_WIS) == 4 && mg.slots[4] == 2 && mg.slots[5] == 1 && mg.shield_spell;
+  #assert mg.ac == 15 && mg.hp_max == 81 && rs_proficiency(mg.level) == 3 && rs_weapon_attack(mg, mg.weapon) == 6 && mg.rank[RS_RK_EXTRA_ATTACK] == 2;
+  #assert rs_spell_dc(mg) == 14 && rs_save_bonus(mg, RS_INT) == 6 && rs_save_bonus(mg, RS_WIS) == 4 && mg.slots[4] == 2 && mg.slots[5] == 1 && rs_has_feature(mg, RS_FT_SHIELD_SPELL);
 }
 #test "the cult's stat blocks hold the SRD's numbers, and its warlocks are levels 1 to 5" {
   cu := rs_cultist("Cultist 1", 1);
@@ -306,13 +306,13 @@ rs_siege_arch :: (name: string, team: int, blast: int) -> RsCreature {
     town[rs_siege_defender(k, 0).npc] += 1;
     a := rs_siege_attacker(k, 1, 14);
     cult[a.npc] += 1;
-    if a.npc == RS_NPC_WARLOCK { lv[a.level] += 1; #assert a.klass == RS_WARLOCK && a.rebuke; }
+    if a.npc == RS_NPC_WARLOCK { lv[a.level] += 1; #assert a.klass == RS_WARLOCK && rs_has_feature(a, RS_FT_REBUKE); }
   }
   #assert town[RS_NPC_GUARD] == 30 && town[RS_NPC_VETERAN] == 6 && town[RS_NPC_KNIGHT] == 4 && town[RS_NPC_SCOUT] == 6 && town[RS_NPC_PRIEST] == 2 && town[RS_NPC_MAGE] == 2;
   #assert cult[RS_NPC_CULTIST] == 30 && cult[RS_NPC_FANATIC] == 10 && cult[RS_NPC_WARLOCK] == 10;
   for l: 1..<6 { #assert lv[l] == 2; }
   ar := rs_siege_arch(RS_ARCH_NAME, 1, 14);
-  #assert ar.level == 17 && ar.npc == RS_NPC_ARCH && ar.slots[5] == 4 && ar.slots[6] == 1 && ar.slots[7] == 1 && ar.rebuke;
+  #assert ar.level == 17 && ar.npc == RS_NPC_ARCH && ar.slots[5] == 4 && ar.slots[6] == 1 && ar.slots[7] == 1 && rs_has_feature(ar, RS_FT_REBUKE);
   #assert cast(string) ar.name[0..<ar.name_n] == "Darian Odiodei";
   g := rs_siege_defender(25, 0);
   #assert g.npc == RS_NPC_GUARD && g.name_n == 8 && g.name[6] == '1' && g.name[7] == '6';   // the 16th Guard

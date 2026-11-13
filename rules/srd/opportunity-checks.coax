@@ -35,8 +35,8 @@
   #assert rs_opportunity_trigger(b[..],1,0,q);
   rs_open_hand(b[..],0,1,OH_ADDLE);
   #assert !rs_opportunity_trigger(b[..],1,0,q) && !b[0].c[1].reacted;
-  rs_tick(b[..],100); #assert b[0].c[1].opportunity_blocked;
-  rs_start_turn(b[..],1); #assert !b[0].c[1].opportunity_blocked;
+  rs_tick(b[..],100); #assert rs_effect(b[0].c[1], EF_ADDLED);
+  rs_start_turn(b[..],1); #assert !rs_effect(b[0].c[1], EF_ADDLED);
 }
 
 #test "opportunity queries reject logical and physical span edges and unavailable Reactions" {

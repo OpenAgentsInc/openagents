@@ -42,7 +42,7 @@
 #test "Eldritch Blast p.127: 1d10 Force a beam, one beam at level 1 and two from level 5, each its own attack roll" {
   for level: [2] int.[1,5] {
     b: [1] RsBattle; kc_case(b[..],rs_warlock("Warlock",0,level,SP_ELDRITCH_BLAST),SP_ELDRITCH_BLAST,10,10);
-    b[0].c[0].agonizing = -1; b[0].c[1].ac = kc_ac(b[..],true);
+    b[0].c[0].rank[RS_RK_AGONIZING] = -1; b[0].c[1].ac = kc_ac(b[..],true);
     rolls := b[0].dice[0].rolled;
     #assert rs_cast(b[..],0,SP_ELDRITCH_BLAST,0,0,0,1);
     beams := ifx level >= 5 then 2 else 1;
@@ -51,7 +51,7 @@
   // Two beams split between two targets, as chosen.
   b: [1] RsBattle; b[0].w = 40; b[0].h = 8; b[0].dice[0].fixed = true;
   a := rs_add(b[..],rs_warlock("Warlock",0,5,SP_ELDRITCH_BLAST),1,1); t := kc_target(b[..],10,1,10); u := kc_target(b[..],10,3,10);
-  kc_learn(b[..],a,SP_ELDRITCH_BLAST); b[0].c[a].agonizing = -1; rs_start_turn(b[..],a);
+  kc_learn(b[..],a,SP_ELDRITCH_BLAST); b[0].c[a].rank[RS_RK_AGONIZING] = -1; rs_start_turn(b[..],a);
   b[0].c[t].ac = 1; b[0].c[u].ac = 1; picks := [2] int.[t,u];
   #assert rs_cast_creatures(b[..],a,SP_ELDRITCH_BLAST,0,picks[..],false) && b[0].c[t].hp == 195 && b[0].c[u].hp == 195;
 }

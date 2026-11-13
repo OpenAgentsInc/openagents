@@ -212,16 +212,16 @@ os_abilities :: (c: RsCreature, out: [] Ab) -> int {
   for k: 0..<n {
     a := out[k];
     if a.kind == AB_SPELL && a.lvl > 0 && c.slots_max[a.lvl] == 0 && c.free_spell != a.sp { continue; }
-    if a.kind == AB_RAGE && c.rages_max == 0 { continue; }
-    if (a.kind == AB_FLURRY || a.kind == AB_PATIENT) && c.focus_max == 0 { continue; }
+    if a.kind == AB_RAGE && c.uses_max[RS_USE_RAGE] == 0 { continue; }
+    if (a.kind == AB_FLURRY || a.kind == AB_PATIENT) && c.uses_max[RS_USE_FOCUS] == 0 { continue; }
     if a.kind == AB_SHOOT && c.ranged < 0 { continue; }
     if a.kind != AB_SPELL && a.kind != AB_ATTACK && a.kind != AB_SHOOT && a.kind != AB_RAGE && a.kind != AB_FLURRY && a.kind != AB_PATIENT && a.kind != AB_RECKLESS && os_use_of(a.kind) >= 0 && c.uses_max[os_use_of(a.kind)] == 0 { continue; }
     if a.kind == AB_RECKLESS && c.level < 2 { continue; }
-    if a.kind == AB_AIM && !c.steady_aim { continue; }
-    if a.kind == AB_TURN && !c.turn_undead { continue; }
-    if a.kind == AB_PRESERVE && !c.preserve_life { continue; }
+    if a.kind == AB_AIM && !rs_has_feature(c, RS_FT_STEADY_AIM) { continue; }
+    if a.kind == AB_TURN && !rs_has_feature(c, RS_FT_TURN_UNDEAD) { continue; }
+    if a.kind == AB_PRESERVE && !rs_has_feature(c, RS_FT_PRESERVE_LIFE) { continue; }
     if a.kind == AB_SACRED && c.level < 3 { continue; }
-    if a.kind == AB_LANDS && !c.lands_aid { continue; }
+    if a.kind == AB_LANDS && !rs_has_feature(c, RS_FT_LANDS_AID) { continue; }
     out[m] = a; m += 1;
   }
   return m;
@@ -245,8 +245,8 @@ os_free_slot :: (c: RsCreature, level: int) -> int {
 }
 os_ab_ready :: (c: RsCreature, a: Ab) -> bool {
   if a.kind == AB_SPELL { return a.lvl == 0 || os_free_slot(c, a.lvl) > 0 || (c.free_spell == a.sp && c.uses[RS_USE_FREE] > 0); }
-  if a.kind == AB_RAGE { return c.rages > 0 && !c.raging; }
-  if a.kind == AB_FLURRY || a.kind == AB_PATIENT || a.kind == AB_WIND { return c.focus > 0; }
+  if a.kind == AB_RAGE { return c.uses[RS_USE_RAGE] > 0 && !rs_effect(c, EF_RAGE); }
+  if a.kind == AB_FLURRY || a.kind == AB_PATIENT || a.kind == AB_WIND { return c.uses[RS_USE_FOCUS] > 0; }
   u := os_use_of(a.kind);
   if u >= 0 { return c.uses[u] > 0; }
   return true;
@@ -254,8 +254,8 @@ os_ab_ready :: (c: RsCreature, a: Ab) -> bool {
 // What an ability has left to show: spell slots at its level, uses, Rages or Focus (-1: none).
 os_ab_left :: (c: RsCreature, a: Ab) -> int {
   if a.kind == AB_SPELL { if a.lvl == 0 { return -1; } sl := os_free_slot(c, a.lvl); return ifx sl > 0 then c.slots[sl] else 0; }
-  if a.kind == AB_RAGE { return c.rages; }
-  if a.kind == AB_FLURRY || a.kind == AB_PATIENT { return c.focus; }
+  if a.kind == AB_RAGE { return c.uses[RS_USE_RAGE]; }
+  if a.kind == AB_FLURRY || a.kind == AB_PATIENT { return c.uses[RS_USE_FOCUS]; }
   u := os_use_of(a.kind);
   if u >= 0 { return c.uses[u]; }
   return -1;
@@ -404,7 +404,7 @@ os_start_combat :: (t: [] OsTable) -> bool {
   party: [OS_PARTY] RsCreature;
   for i: 0..<t[0].party_n { party[i] = b[0].c[i]; }
   b[0].n = 0;
-  for z: 0..<RS_ZONES { b[0].zone[z] = RsZone.{}; }
+  rs_room(b); for z: 0..<b[0].zone.count { b[0].zone[z] = RsZone.{}; }
   for i: 0..<t[0].party_n { h := rs_add(b, party[i], party[i].x, party[i].y); }
   for f: 0..<foes {
     nm: [RS_NAME] u8; nn := os_put(nm[..], 0, "Skeleton "); nn = os_put_int(nm[..], nn, f + 1);
@@ -473,7 +473,7 @@ os_end_combat :: (t: [] OsTable) {
   if b[0].who >= 0 { rs_end_turn(b, b[0].who); }
   os_take(t);
   b[0].n = t[0].party_n; b[0].who = -1;
-  for z: 0..<RS_ZONES { b[0].zone[z] = RsZone.{}; }
+  rs_room(b); for z: 0..<b[0].zone.count { b[0].zone[z] = RsZone.{}; }
   // the party back in its file
   for i: 0..<t[0].party_n { b[0].c[i].x = 3 + i / 3; b[0].c[i].y = 3 + i % 3; }
   t[0].combat = false;

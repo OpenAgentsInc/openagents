@@ -20,7 +20,7 @@ rs_truth_save :: (b:[]RsBattle,i:int,k:int) #effects(all) {
 
 rs_truth_start :: (b:[]RsBattle,i:int) #effects(all) {
   if b[0].truth_zones==0 || b[0].c[i].dead { return; }
-  for k:0..<RS_ZONES { if rs_truth_inside(b,i,k) { rs_truth_save(b,i,k); } }
+  for k:0..<rs_truth_zones(b) { if rs_truth_inside(b,i,k) { rs_truth_save(b,i,k); } }
 }
 
 // Committed rules movement, separate from raw placement and world projection.
@@ -32,7 +32,7 @@ rs_truth_move :: (b:[]RsBattle,i:int,x:int,y:int) #effects(all) {
 
 rs_truth_enter :: (b:[]RsBattle,i:int,ox:int,oy:int) #effects(all) {
   if b[0].truth_zones==0 { return; }
-  for k:0..<RS_ZONES {
+  for k:0..<rs_truth_zones(b) {
     if !rs_inside(b[0].zone[k],ox,oy) { rs_truth_cross(b,i,k); }
   }
 }
@@ -54,8 +54,8 @@ rs_truth_cross :: (b:[]RsBattle,i:int,k:int) #effects(all) {
 rs_truth_speech :: (b:[]RsBattle,i:int,deliberate_lie:bool)->bool #effects(all) {
   if i<0 || i>=b[0].n || b[0].c[i].dead { return false; }
   if !deliberate_lie { return true; }
-  for z,k:b[0].zone {
-    if (b[0].c[i].truth_failed&(1<<k))!=0 && rs_truth_contains(b,i,z) { return false; }
+  for k:0..<rs_truth_zones(b) {
+    if (b[0].c[i].truth_failed&(1<<k))!=0 && rs_truth_contains(b,i,b[0].zone[k]) { return false; }
   }
   return true;
 }

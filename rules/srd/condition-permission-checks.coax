@@ -8,7 +8,7 @@
   #assert rs_cast(b[..],0,SP_BLESS,1,0,0,0);
   rs_dodge_begin(b[..],0); b[0].c[0].cond|=RS_PRONE;
   #assert rs_put_effect(b[..],0,RsEffect.{kind=EF_COND,cond=RS_STUNNED,by=1,spell=-1,until=60,save=-1});
-  #assert b[0].c[0].conc == -1 && !b[0].c[0].dodging && !rs_can_act(b[0].c[0]);
+  #assert b[0].c[0].conc == -1 && !rs_effect(b[0].c[0], EF_DODGE) && !rs_can_act(b[0].c[0]);
   rs_start_turn(b[..],0); // the condition outlasts this turn; budgets are fresh
   #assert !b[0].turn.action && !b[0].turn.bonus;
   #assert rs_can_move(b[0].c[0]) && rs_movement_left(b[..],0)==30;
@@ -48,7 +48,7 @@
   for condition: [6] int.[RS_INCAPACITATED,RS_PARALYZED,RS_PETRIFIED,RS_STUNNED,RS_UNCONSCIOUS,0] {
     for athlete: 0..<2 { for invisible: 0..<2 {
       b: [1] RsBattle; b[0].w=8; b[0].h=8; b[0].dice[0].fixed=true;
-      c := rs_fighter("Initiative",0,1); c.cond=condition|(ifx invisible==1 then RS_INVISIBLE else 0); c.athlete=athlete==1;
+      c := rs_fighter("Initiative",0,1); c.cond=condition|(ifx invisible==1 then RS_INVISIBLE else 0); c.feats = rs_feature_put(c.feats, RS_FT_ATHLETE, athlete==1);
       _ := rs_add(b[..],c,1,1);
       up := athlete==1 || invisible==1;
       #assert b[0].dice[0].rolled==(ifx up==(condition!=0) then 1 else 2);
@@ -76,7 +76,7 @@ cp_native :: () -> bool {
   if rs_dash(b[..],0) || rs_can_act(b[0].c[0]) || b[0].turn.action { return false; }
   c := b[0].c[0];
   if rs_initiative_edge(c)!=-1 { return false; }
-  c.athlete=true;
+  c.feats = rs_feature_put(c.feats, RS_FT_ATHLETE, true);
   if rs_initiative_edge(c)!=0 { return false; }
   c.cond=RS_INVISIBLE;
   return rs_initiative_edge(c)==1;

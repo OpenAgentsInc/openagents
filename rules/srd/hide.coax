@@ -21,7 +21,7 @@ rs_hidden_at :: (c: RsCreature) -> int #effects(all) {
 rs_hide :: (b: [] RsBattle, i: int, concealed: bool, bonus: bool) -> RsAbilityResult #effects(all) {
   r: RsAbilityResult;
   if b[0].who != i || !concealed || !rs_can_act(b[0].c[i]) || rs_hidden_at(b[0].c[i]) >= 0 || rs_effect_free(b[0].c[i]) == 0 { return r; }
-  if ifx bonus then !b[0].c[i].cunning || b[0].turn.bonus else b[0].turn.action { return r; }
+  if ifx bonus then !rs_has_feature(b[0].c[i], RS_FT_CUNNING_ACTION) || b[0].turn.bonus else b[0].turn.action { return r; }
   if bonus { b[0].turn.bonus = true; } else { b[0].turn.action = true; }
   r = rs_ability_check(b, i, RsAbilityRequest.{ability = RS_DEX, skill = SK_STEALTH, dc = RS_HIDE_DC});
   if r.passed { _ := rs_put_effect(b, i, RsEffect.{kind = EF_COND, cond = RS_INVISIBLE, by = i, spell = RS_HIDE_SPELL, until = RS_NO_END, save = -1, dc = r.total}); }
@@ -45,7 +45,7 @@ rs_find_hidden :: (b: [] RsBattle, j: int, i: int) -> bool #effects(all) {
 // pocket) as a Bonus Action, against `dc`; `tools`: with Thieves' Tools (a lock or a trap).
 rs_fast_hands :: (b: [] RsBattle, i: int, dc: int, tools: bool) -> RsAbilityResult #effects(all) {
   r: RsAbilityResult;
-  if b[0].who != i || !b[0].c[i].fast_hands || b[0].turn.bonus || !rs_can_act(b[0].c[i]) { return r; }
+  if b[0].who != i || !rs_has_feature(b[0].c[i], RS_FT_FAST_HANDS) || b[0].turn.bonus || !rs_can_act(b[0].c[i]) { return r; }
   b[0].turn.bonus = true;
   q := RsAbilityRequest.{ability = RS_DEX, skill = SK_SLEIGHT, dc = dc};
   if tools { q.tool = TO_THIEVES; }
@@ -60,7 +60,7 @@ rs_fast_hands :: (b: [] RsBattle, i: int, dc: int, tools: bool) -> RsAbilityResu
     concealed := mode != 1; bonus := mode >= 6;
     if mode == 2 { b[0].who = 1; } else if mode == 3 { b[0].c[0].cond = RS_STUNNED; }
     else if mode == 4 { b[0].turn.action = true; } else if mode == 5 { for k: 0..<RS_EFFECTS { b[0].c[0].eff[k].kind = EF_BLESS; } }
-    else if mode == 7 { b[0].c[0].cunning = false; } else if mode == 8 { b[0].turn.bonus = true; }
+    else if mode == 7 { b[0].c[0].feats = rs_feature_put(b[0].c[0].feats, RS_FT_CUNNING_ACTION, false); } else if mode == 8 { b[0].turn.bonus = true; }
     else if mode == 9 { b[0].turn.action = true; } else if mode == 10 { #assert rs_put_effect(b[..], 0, RsEffect.{kind = EF_COND, cond = RS_INVISIBLE, by = 0, spell = RS_HIDE_SPELL, until = 9, save = -1, dc = 15}); }
     else if mode == 11 { b[0].c[0].eff[0] = RsEffect.{kind = EF_COND, cond = RS_INVISIBLE, by = 0, spell = -2, until = 9, save = -1, dc = 15}; }
     r := rs_hide(b[..], 0, concealed, bonus);
@@ -98,7 +98,7 @@ rs_fast_hands :: (b: [] RsBattle, i: int, dc: int, tools: bool) -> RsAbilityResu
 #test "Fast Hands: the acting level 3 Rogue's Bonus Action Sleight of Hand, Thieves' Tools only when named" {
   for mode: 0..<6 {
     b: [1] RsBattle; b[0].w = 12; b[0].h = 6; b[0].dice[0].fixed = true; _ := rs_add(b[..], rs_rogue("Nim", 0, 3), 1, 1); _ = rs_add(b[..], rs_wizard("Seeker", 1, 1), 2, 1); b[0].c[0].score[RS_DEX] = 10; b[0].c[0].checks.expert = 0; rs_fresh(b[..], 0);
-    if mode == 1 { b[0].who = 1; } else if mode == 2 { b[0].c[0].fast_hands = false; } else if mode == 3 { b[0].turn.bonus = true; }
+    if mode == 1 { b[0].who = 1; } else if mode == 2 { b[0].c[0].feats = rs_feature_put(b[0].c[0].feats, RS_FT_FAST_HANDS, false); } else if mode == 3 { b[0].turn.bonus = true; }
     else if mode == 4 { b[0].c[0].cond = RS_STUNNED; }
     tools := mode != 5;
     r := rs_fast_hands(b[..], 0, 12, tools);

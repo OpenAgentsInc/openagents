@@ -15,11 +15,11 @@
 #test "Short Rest recovery leaves the saved seat and a surrounding running turn intact" {
   b:[1]RsBattle; s:[1]FbSeat; ft_field(b[..],s[..],91);
   b[0].c[FT_HERO]=rs_monk("You",0,5); rs_place(b[..],FT_HERO,10,10);
-  b[0].c[FT_HERO].focus=0; b[0].c[FT_HERO].hp=1; b[0].c[FT_HERO].reacted=true;
+  b[0].c[FT_HERO].uses[RS_USE_FOCUS]=0; b[0].c[FT_HERO].hp=1; b[0].c[FT_HERO].reacted=true;
   b[0].who=FT_FOE; b[0].turn.action=true; b[0].turn.bonus=true; b[0].turn.slot_spent=true; b[0].turn.move_left=7;
   s[0].turn.action=true; s[0].turn.bonus=true;
   #assert rs_short_rest_begin(b[..],s[0].me); rs_tick(b[..],3600);
-  #assert b[0].c[FT_HERO].focus==5 && b[0].c[FT_HERO].rest.phase==2 && b[0].c[FT_HERO].reacted;
+  #assert b[0].c[FT_HERO].uses[RS_USE_FOCUS]==5 && b[0].c[FT_HERO].rest.phase==2 && b[0].c[FT_HERO].reacted;
   b[0].dice[0].fixed=true;
   #assert rs_short_rest_hit_die(b[..],s[0].me).healed>0;
   #assert b[0].who==FT_FOE && b[0].turn.action && b[0].turn.bonus && b[0].turn.slot_spent && b[0].turn.move_left==7;
@@ -45,23 +45,23 @@
   b: [1] RsBattle; s: [1] FbSeat; ft_field(b[..],s[..],91);
   b[0].c[FT_HERO] = rs_monk("You",0,3); rs_place(b[..],FT_HERO,10,10);
   #assert fb_seat_use(b[..],s[..],fb_feature(FB_PATIENT,"PATIENT DEFENSE","patient-defense"),FT_FOE,10,10,FT_ALLY);
-  #assert b[0].c[FT_HERO].dodging && b[0].c[FT_HERO].focus == 2 && s[0].turn.bonus;
+  #assert rs_effect(b[0].c[FT_HERO], EF_DODGE) && b[0].c[FT_HERO].uses[RS_USE_FOCUS] == 2 && s[0].turn.bonus;
   #assert rs_put_effect(b[..],FT_HERO,RsEffect.{kind=EF_COND,cond=RS_RESTRAINED,by=FT_FOE,spell=-1,until=b[0].clock+20,save=-1});
-  #assert !b[0].c[FT_HERO].dodging;
+  #assert !rs_effect(b[0].c[FT_HERO], EF_DODGE);
   rs_drop_effect(b[..],FT_HERO,0);
-  #assert rs_save_edge(b[..],FT_HERO,RS_DEX) == 0 && !b[0].c[FT_HERO].dodging && s[0].turn.bonus;
+  #assert rs_save_edge(b[..],FT_HERO,RS_DEX) == 0 && !rs_effect(b[0].c[FT_HERO], EF_DODGE) && s[0].turn.bonus;
 }
 
 #test "a dying saved seat receives Bane and rescues on its six-second death save without disturbing another actors turn" {
   b: [1] RsBattle; s: [1] FbSeat; ft_field(b[..],s[..],91);
   b[0].dice[0].fixed = true;
   b[0].c[FT_HERO].hp = 0; b[0].c[FT_HERO].cond = RS_UNCONSCIOUS|RS_PRONE;
-  b[0].c[FT_HERO].inspired = 6;
+  b[0].c[FT_HERO].eff = rs_state_value_put(b[0].c[FT_HERO].eff, EF_INSPIRED, 6);
   #assert rs_put_effect(b[..],FT_HERO,RsEffect.{kind=EF_BANE,by=FT_FOE,spell=SP_BANE,until=b[0].clock+60,save=-1});
   b[0].c[FT_HERO].round_at = b[0].c[FT_HERO].turn_at;
   who := b[0].who; turn := b[0].turn; b[0].dice[0].rolled = 0;
   b[0].clock = fb_seat_next(b[..],s[..]); fb_seat_step(b[..],s[..]);
-  #assert b[0].c[FT_HERO].death_ok == 1 && b[0].c[FT_HERO].death_fail == 0 && b[0].c[FT_HERO].inspired == 0;
+  #assert b[0].c[FT_HERO].death_ok == 1 && b[0].c[FT_HERO].death_fail == 0 && rs_state_value(b[0].c[FT_HERO], EF_INSPIRED) == 0;
   #assert b[0].dice[0].rolled == 3 && b[0].who == who && b[0].turn.action == turn.action && b[0].turn.move_left == turn.move_left;
   #assert b[0].c[FT_HERO].hp == 0 && rs_has(b[0].c[FT_HERO],RS_UNCONSCIOUS) && !s[0].turn.action;
   // An intervening short action beat is not a second death saving throw.
@@ -130,11 +130,11 @@
   b[0].c[FT_HERO].strike_plan = CS_TRIP;
   rs_place(b[..],FT_FOE,10,11); b[0].c[FT_FOE].ac = 1;
   b[0].c[FT_FOE].cond = RS_PARALYZED; b[0].c[FT_FOE].score[RS_DEX] = 30;
-  b[0].c[FT_FOE].inspired = 12; b[0].c[FT_FOE].own_luck = true; b[0].c[FT_FOE].uses[RS_USE_LUCK] = 1;
+  b[0].c[FT_FOE].eff = rs_state_value_put(b[0].c[FT_FOE].eff, EF_INSPIRED, 12); b[0].c[FT_FOE].feats = rs_feature_put(b[0].c[FT_FOE].feats, RS_FT_OWN_LUCK, true); b[0].c[FT_FOE].uses[RS_USE_LUCK] = 1;
   b[0].dice[0].fixed = true;
   #assert fb_seat_use(b[..],s[..],fb_feature(FB_ATTACK,"ATTACK","attack"),FT_FOE,10,11,FT_ALLY);
   #assert s[0].turn.action && s[0].turn.sneaked && rs_has(b[0].c[FT_FOE],RS_PRONE);
-  #assert b[0].c[FT_FOE].inspired == 12 && b[0].c[FT_FOE].uses[RS_USE_LUCK] == 1;
+  #assert rs_state_value(b[0].c[FT_FOE], EF_INSPIRED) == 12 && b[0].c[FT_FOE].uses[RS_USE_LUCK] == 1;
 }
 
 #test "hotbar Healing Word recovers a dying ally without erasing an independent Unconscious source" {
@@ -222,7 +222,7 @@ ft_field :: (b: [] RsBattle, s: [] FbSeat, seed: int) {
   rs_reset(b);
   b[0].n = 0; b[0].clock = 0; b[0].who = -1; b[0].w = 40; b[0].h = 40;
   #assert rs_set_world(b,RS_ACTION_WORLD);   // Everglade's bar: action beats, no caster in its own blast
-  for k: 0..<RS_ZONES { b[0].zone[k].on = false; }
+  rs_room(b); for k: 0..<b[0].zone.count { b[0].zone[k].on = false; }
   b[0].dice[0].state = cast(u64) seed * 7919 + 3;
   _ := rs_add(b, fb_everglade_hero("You", 0), 10, 10);
   _ = rs_add(b, fb_folk("Guard", 1, 16, 400, [6] int.[13, 12, 12, 10, 11, 10]), 12, 10);
@@ -432,7 +432,7 @@ FT_CL_AC :: [12] int.[13, 13, 16, 15, 17, 15, 18, 15, 14, 12, 15, 15];
     b: [1] RsBattle; s: [1] FbSeat;
     b[0].n = 0; b[0].clock = 0; b[0].who = -1; b[0].w = 40; b[0].h = 40;
     #assert rs_set_timing(b[..],RS_ACTION_TIMING);
-    for k: 0..<RS_ZONES { b[0].zone[k].on = false; }
+    rs_room(b[..]); for k: 0..<b[0].zone.count { b[0].zone[k].on = false; }
     b[0].dice[0].state = cast(u64) (c + 5) * 7919 + 3;
     _ := rs_add(b[..], h, 10, 10);
     _ = rs_add(b[..], fb_folk("Guard", 1, 16, 400, [6] int.[13, 12, 12, 10, 11, 10]), 11, 10);
@@ -597,7 +597,7 @@ FT_CL_AC :: [12] int.[13, 13, 16, 15, 17, 15, 18, 15, 14, 12, 15, 15];
     c[0]=rs_warlock("Watcher",0,3,SP_ELDRITCH_BLAST);
     sp:=ifx vigor==1 then SP_FALSE_LIFE else SP_HEX;
     #assert rs_grant_spell(c[0..<1],sp);
-    c[0].vigor=vigor==1; c[0].free_spell=sp; c[0].uses[RS_USE_FREE]=1;
+    c[0].feats = rs_feature_put(c[0].feats, RS_FT_FIENDISH_VIGOR, vigor==1); c[0].free_spell=sp; c[0].uses[RS_USE_FREE]=1;
     #assert rs_rest_schedule_enable(b[..]) && rs_long_rest_start_owned(b[..],0,2,true);
     rs_tick(b[..],3600); b[0].who=0;
     #assert fb_cast_at_nothing(b[..],0,sp,0);

@@ -12,17 +12,17 @@
 
 #test "Rage p.28: a Bonus Action and a use; B/P/S Resistance, +2 Rage Damage on a Strength hit, Advantage on Strength saves, no Concentration" {
   b: [1] RsBattle; cf_field(b[..], rs_barbarian("Thorn", 0, 1), 10);
-  #assert b[0].c[0].rages == 2 && rs_barbarian("T", 0, 3).rages_max == 3 && rs_barbarian("T", 0, 6).rages_max == 4;
+  #assert b[0].c[0].uses[RS_USE_RAGE] == 2 && rs_barbarian("T", 0, 3).uses_max[RS_USE_RAGE] == 3 && rs_barbarian("T", 0, 6).uses_max[RS_USE_RAGE] == 4;
   b[0].c[0].conc = SP_ENTANGLE;   // were it holding a spell, Rage ends it
-  #assert rs_rage(b[..], 0) && b[0].turn.bonus && !b[0].turn.action && b[0].c[0].rages == 1 && b[0].c[0].conc < 0;
+  #assert rs_rage(b[..], 0) && b[0].turn.bonus && !b[0].turn.action && b[0].c[0].uses[RS_USE_RAGE] == 1 && b[0].c[0].conc < 0;
   #assert !rs_rage(b[..], 0);   // already raging, and the Bonus Action is spent
   #assert rs_resisted(b[..], 0, 10, RS_SLASHING) == 5 && rs_resisted(b[..], 0, 10, RS_PIERCING) == 5 && rs_resisted(b[..], 0, 10, RS_BLUDGEONING) == 5;
   #assert rs_resisted(b[..], 0, 10, RS_FIRE) == 10;
   #assert rs_save_edge(b[..], 0, RS_STR) == 1 && rs_save_edge(b[..], 0, RS_CON) == 0;
   #assert rs_attack(b[..], 0, 1, false, -1) && b[0].c[1].hp == 200 - (6 + 3 + 2);   // 1d12 + 3, +2
   // a Short Rest gives back one use, a Long Rest all
-  b[0].c[0].rages = 0; rs_short_rest_resources(b[0].c[0..<1]); #assert b[0].c[0].rages == 1;
-  b[0].c[0].rages = 0; #assert rs_long_rest_resources(b[0].c[0..<1]) && b[0].c[0].rages == 2;
+  b[0].c[0].uses[RS_USE_RAGE] = 0; rs_short_rest_resources(b[0].c[0..<1]); #assert b[0].c[0].uses[RS_USE_RAGE] == 1;
+  b[0].c[0].uses[RS_USE_RAGE] = 0; #assert rs_long_rest_resources(b[0].c[0..<1]) && b[0].c[0].uses[RS_USE_RAGE] == 2;
 }
 
 #test "Rage p.28: it lasts while each turn has an attack, and ends after a turn without one" {
@@ -30,9 +30,9 @@
   #assert rs_rage(b[..], 0);
   rs_end_turn(b[..], 0); rs_start_turn(b[..], 0);
   #assert rs_attack(b[..], 0, 1, false, -1);
-  rs_end_turn(b[..], 0); #assert b[0].c[0].raging;
+  rs_end_turn(b[..], 0); #assert rs_effect(b[0].c[0], EF_RAGE);
   rs_start_turn(b[..], 0); rs_end_turn(b[..], 0);
-  #assert !b[0].c[0].raging;
+  #assert !rs_effect(b[0].c[0], EF_RAGE);
 }
 
 #test "Unarmored Defense p.29: AC 10 + Dexterity + Constitution without armor" {
@@ -42,7 +42,7 @@
 #test "Weapon Mastery p.29: two kinds at level 1, three at 4; a Greataxe hit Cleaves into a second foe beside it" {
   #assert rs_barbarian("T", 0, 3).mastery_n == 2 && rs_barbarian("T", 0, 4).mastery_n == 3;
   b: [1] RsBattle; cf_field(b[..], rs_barbarian("Thorn", 0, 1), 10);
-  k := rs_add(b[..], rs_sorcerer("Other", 1, 3), 2, 2); b[0].c[k].hp = 200; b[0].c[k].ac = 10; b[0].c[k].shield_spell = false;
+  k := rs_add(b[..], rs_sorcerer("Other", 1, 3), 2, 2); b[0].c[k].hp = 200; b[0].c[k].ac = 10; b[0].c[k].feats = rs_feature_put(b[0].c[k].feats, RS_FT_SHIELD_SPELL, false);
   #assert rs_attack(b[..], 0, 1, false, k);
   #assert b[0].c[1].hp == 200 - 9 && b[0].c[k].hp == 200 - 6;   // Cleave: no ability modifier
 }
@@ -67,11 +67,11 @@
 
 #test "Primal Knowledge p.29: from level 3, while raging, Acrobatics, Intimidation, Perception, Stealth or Survival with Strength" {
   for level: [2] int.[2, 3] {
-    c := rs_barbarian("Thorn", 0, level); c.raging = true;
+    c := rs_barbarian("Thorn", 0, level); c.eff = rs_state_put(c.eff, EF_RAGE, true);
     p := rs_check_plan(c, RsAbilityRequest.{ability = RS_DEX, skill = SK_STEALTH, primal = true});
     #assert p.accepted == (level == 3);
     if level == 3 { #assert p.ability == RS_STR && p.edge == 1; }   // and Rage's Advantage on Strength checks
-    c.raging = false; #assert !rs_check_plan(c, RsAbilityRequest.{ability = RS_DEX, skill = SK_STEALTH, primal = true}).accepted;
+    c.eff = rs_state_put(c.eff, EF_RAGE, false); #assert !rs_check_plan(c, RsAbilityRequest.{ability = RS_DEX, skill = SK_STEALTH, primal = true}).accepted;
   }
 }
 

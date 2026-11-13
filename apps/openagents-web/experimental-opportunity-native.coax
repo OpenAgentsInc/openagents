@@ -6,7 +6,7 @@ tool_main :: ()->int #export_c #effects(all) {
     b:=s[0].xc[0].b[..]; cr:=s[0].creator[..]; h:=cr[0].hostiles[..];
     b[0].dice[0].fixed=true; b[0].c[0].hp=20; b[0].c[0].ac=13;
     spells:=[1]int.[RS_EXEC_SOURCE[SP_SHIELD]];
-    if !rs_set_spells(b[0].c[0..<1],spells[..]) { return 1; } b[0].c[0].shield_spell=true;
+    if !rs_set_spells(b[0].c[0..<1],spells[..]) { return 1; } b[0].c[0].feats = rs_feature_put(b[0].c[0].feats, RS_FT_SHIELD_SPELL, true);
     s[0].xc[0].seat[0].turn.slot_spent=(mode&1)!=0; s[0].xc[0].seat[0].turn.quickened=(mode&2)!=0;
     h[0].enemies[0].x=0; h[0].enemies[0].z=1.5;
     slots:=b[0].c[0].slots[1]; body:=zone_keep_body(s[..],EgBody.{},EgBody.{z= -0.1});

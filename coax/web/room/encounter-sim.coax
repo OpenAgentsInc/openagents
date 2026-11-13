@@ -119,11 +119,12 @@ es_dec :: (v: int, out: [] u8) -> string {
   return cast(string) out[0..<k];
 }
 
-// Resources a creature holds: spell slots, limited uses and Focus (into r[0] now, r[1] most).
+// Resources a creature holds: spell slots and every limited use, Focus and Rages among them (into
+// r[0] now, r[1] most). A Healer's Kit is gear with no most, and is not counted.
 es_res :: (c: RsCreature, r: [] int) {
-  r[0] = c.focus; r[1] = c.focus_max;
+  r[0] = 0; r[1] = 0;
   for l: 1..<10 { r[0] += c.slots[l]; r[1] += c.slots_max[l]; }
-  for u: 0..<RS_USES { r[0] += c.uses[u]; r[1] += c.uses_max[u]; }
+  for u: 0..<RS_USES { if u != RS_USE_KIT { r[0] += c.uses[u]; r[1] += c.uses_max[u]; } }
 }
 
 // The foes' creatures (-1: down or gone) into f: how many still stand.

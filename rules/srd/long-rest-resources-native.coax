@@ -5,9 +5,9 @@ tool_main :: ()->int #export_c #effects(all) {
     c:[1]RsCreature; c[0]=rt_class(klass,level);
     for u:0..<RS_USES { c[0].uses[u]=0; }
     for slot:1..<10 { c[0].slots[slot]=0; }
-    c[0].focus=0; c[0].rages=0; c[0].reacted=true; c[0].temp=7;
+    c[0].uses[RS_USE_FOCUS]=0; c[0].uses[RS_USE_RAGE]=0; c[0].reacted=true; c[0].temp=7;
     if !rs_long_rest_resources(c[..]) || c[0].rest.dice!=level || !c[0].reacted || c[0].temp!=0 { return 1; }
-    if c[0].focus!=c[0].focus_max || c[0].rages!=c[0].rages_max { return 6; }
+    if c[0].uses[RS_USE_FOCUS]!=c[0].uses_max[RS_USE_FOCUS] || c[0].uses[RS_USE_RAGE]!=c[0].uses_max[RS_USE_RAGE] { return 6; }
     for u:0..<RS_USES { if c[0].uses[u]!=c[0].uses_max[u] { return 2; } }
     for slot:1..<10 { if c[0].slots[slot]!=c[0].slots_max[slot] { return 3; } }
   } }

@@ -313,10 +313,10 @@ eg_seat_kind :: (v: [] RmServer, k: int, seat_id: SeatId, kind: string) { seat :
   lv := fb_cl_level_of_kind(cast(string) st[0].klass[0..<st[0].klass_n]);
   if v[0].eg[k].rules[0].klass[seat] != wl || (wl >= EGB_CL0 && v[0].eg[k].rules[0].b[0].c[EGB_SEAT + seat].level != lv) {
     c:=v[0].eg[k].rules[0].b[0].c[EGB_SEAT + seat..<EGB_SEAT + seat + 1];
-    kit:=c[0].healer_kit;
+    kit:=c[0].uses[RS_USE_KIT];
     st[0].familiar=E2Familiar.{last=st[0].familiar.last};
     egb_join(v[0].eg[k].rules[..], seat, st[0].pose.x, st[0].pose.z, wl, lv);
-    c[0].healer_kit=kit;
+    c[0].uses[RS_USE_KIT]=kit;
     if c[0].klass==RS_WIZARD { fb_wizard_familiar_preset(c,1); }
     if c[0].klass==RS_PALADIN { fb_paladin_protection_preset(c,false); }
     if c[0].klass==RS_CLERIC { fb_cleric_revivify_preset(c,false); }

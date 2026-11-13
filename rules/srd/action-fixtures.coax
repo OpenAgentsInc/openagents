@@ -13,7 +13,7 @@ grapple_field :: (b: [] RsBattle) {
 jump_field :: (b: [] RsBattle) {
   b[0].w = 12; b[0].h = 6; b[0].dice[0].fixed = true;
   _ := rs_add(b, rs_rogue("Leaper", 0, 3), 1, 1); _ = rs_add(b, rs_fighter("Foe", 1, 1), 10, 5);
-  b[0].c[0].score[RS_STR] = 12; b[0].c[0].score[RS_DEX] = 16; b[0].c[0].jumper = false; b[0].c[0].climb = 0; b[0].c[0].swim = 0;
+  b[0].c[0].score[RS_STR] = 12; b[0].c[0].score[RS_DEX] = 16; b[0].c[0].feats = rs_feature_put(b[0].c[0].feats, RS_FT_JUMPER, false); b[0].c[0].climb = 0; b[0].c[0].swim = 0;
   rs_start_turn(b, 0);
 }
 
@@ -28,7 +28,7 @@ ready_field :: (b: [] RsBattle) {
 act_field :: (b: [] RsBattle) {
   b[0].w = 12; b[0].h = 6; b[0].dice[0].fixed = true;
   _ := rs_add(b, rs_rogue("Seeker", 0, 3), 1, 1); _ = rs_add(b, rs_wizard("Quarry", 1, 3), 5, 1); _ = rs_add(b, rs_rogue("Friend", 0, 3), 1, 3);
-  b[0].c[0].score = [6] int.[10, 14, 10, 10, 12, 14]; b[0].c[0].checks.skills = 0; b[0].c[0].checks.expert = 0; b[0].c[0].jack = false;
+  b[0].c[0].score = [6] int.[10, 14, 10, 10, 12, 14]; b[0].c[0].checks.skills = 0; b[0].c[0].checks.expert = 0; b[0].c[0].feats = rs_feature_put(b[0].c[0].feats, RS_FT_JACK, false);
   b[0].c[1].score[RS_INT] = 12;
   rs_fresh(b, 0);
 }

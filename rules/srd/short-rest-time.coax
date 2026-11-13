@@ -4,27 +4,27 @@
 
 #test "display clock assignments cannot complete Short Rest or replace its owned timeline" {
   b:[1]RsBattle; c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].who = -1;
-  c[0]=rs_monk("Patient",0,3); c[0].focus=0;
+  c[0]=rs_monk("Patient",0,3); c[0].uses[RS_USE_FOCUS]=0;
   #assert rs_short_rest_begin(b[..],0);
   b[0].clock=rs_secs(3600);
-  #assert !rs_short_rest_finish(b[..],0) && c[0].rest.phase==1 && c[0].focus==0;
+  #assert !rs_short_rest_finish(b[..],0) && c[0].rest.phase==1 && c[0].uses[RS_USE_FOCUS]==0;
 }
 #test "Short Rest does not finish early at large display epochs and completes at its own exact hour" {
   b:[1]RsBattle; c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].who = -1;
-  c[0]=rs_monk("Patient",0,3); c[0].focus=0;
+  c[0]=rs_monk("Patient",0,3); c[0].uses[RS_USE_FOCUS]=0;
   b[0].clock=rs_secs(16777216); b[0].rest_clock.ticks=16777216000000;
   #assert rs_short_rest_begin(b[..],0);
   rs_tick(b[..],3599);
-  #assert c[0].rest.phase==1 && c[0].focus==0;
+  #assert c[0].rest.phase==1 && c[0].uses[RS_USE_FOCUS]==0;
   rs_tick(b[..],1);
-  #assert c[0].rest.phase==2 && c[0].focus==3 && b[0].rest_clock.ticks==16780816000000;
+  #assert c[0].rest.phase==2 && c[0].uses[RS_USE_FOCUS]==3 && b[0].rest_clock.ticks==16780816000000;
 }
 #test "a late tick consumes Short Rest at its boundary and keeps later Long Rest quiet credit" {
   b:[1]RsBattle; c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].who = -1;
-  c[0]=rs_barbarian("Sleeper",0,3); c[0].rages=0;
+  c[0]=rs_barbarian("Sleeper",0,3); c[0].uses[RS_USE_RAGE]=0;
   #assert rs_rest_schedule_enable(b[..]) && rs_long_rest_start_owned(b[..],0,1,true) && rs_short_rest_begin(b[..],0);
   rs_tick(b[..],4000);
-  #assert c[0].rest.phase==2 && c[0].rages==1 && c[0].long_rest.quiet==400000000;
+  #assert c[0].rest.phase==2 && c[0].uses[RS_USE_RAGE]==1 && c[0].long_rest.quiet==400000000;
   e:=rs_recent_at(b[0].book[..],0);
   #assert e.kind==RS_EV_END && e.at==rs_secs(3600);
 }
@@ -61,7 +61,7 @@ rs_short_rest_schedule_valid :: (b:[]RsBattle)->bool #effects(all) {
 #test "malformed Short Rest metadata refuses time atomically without freezing a valid inactive actor" {
   for bad:0..<6 {
     b:[1]RsBattle; c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].who = -1;
-    c[0]=rs_monk("Patient",0,3); c[0].focus=0;
+    c[0]=rs_monk("Patient",0,3); c[0].uses[RS_USE_FOCUS]=0;
     #assert rs_short_rest_begin(b[..],0);
     if bad==0 { c[0].rest.started = -1; }
     if bad==1 { c[0].rest.started=1; }
@@ -71,14 +71,14 @@ rs_short_rest_schedule_valid :: (b:[]RsBattle)->bool #effects(all) {
     if bad==5 { b[0].reaction_frame.on=true; }
     ticks:=b[0].rest_clock.ticks; seq:=b[0].book[0].seq;
     #assert !rs_rest_tick(b[..],3600) && b[0].rest_clock.ticks==ticks && b[0].clock==0;
-    #assert c[0].rest.phase==1 && c[0].focus==0 && b[0].book[0].seq==seq;
+    #assert c[0].rest.phase==1 && c[0].uses[RS_USE_FOCUS]==0 && b[0].book[0].seq==seq;
     c[0].rest.phase=0; b[0].reaction_frame.on=false;
     #assert rs_rest_tick(b[..],1) && b[0].rest_clock.ticks==ticks+1000000;
   }
 }
 #test "Short Rest start and completion refuse malformed or unrepresentable private clocks before recovery" {
   b:[1]RsBattle; c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].who = -1;
-  c[0]=rs_monk("Patient",0,3); c[0].focus=0;
+  c[0]=rs_monk("Patient",0,3); c[0].uses[RS_USE_FOCUS]=0;
   b[0].rest_clock.fraction=1;
   #assert !rs_short_rest_begin(b[..],0) && !c[0].rest.seeded;
   b[0].rest_clock.fraction=0; b[0].rest_clock.ticks=9223372033254775808;
@@ -86,40 +86,40 @@ rs_short_rest_schedule_valid :: (b:[]RsBattle)->bool #effects(all) {
   b[0].rest_clock.ticks=9223372033254775807;
   #assert rs_short_rest_begin(b[..],0) && c[0].rest.started==9223372033254775807;
   b[0].rest_clock.ticks=9223372036854775806;
-  #assert !rs_short_rest_finish(b[..],0) && c[0].focus==0;
+  #assert !rs_short_rest_finish(b[..],0) && c[0].uses[RS_USE_FOCUS]==0;
   b[0].rest_clock.ticks=9223372036854775807;
-  #assert rs_short_rest_finish(b[..],0) && c[0].focus==3;
+  #assert rs_short_rest_finish(b[..],0) && c[0].uses[RS_USE_FOCUS]==3;
 }
 #test "unscheduled Short Rest boundaries also precede later time without observing manual Long Rest" {
   b:[1]RsBattle; c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].who = -1;
-  c[0]=rs_monk("Patient",0,3); c[0].focus=0;
+  c[0]=rs_monk("Patient",0,3); c[0].uses[RS_USE_FOCUS]=0;
   #assert rs_long_rest_start_owned(b[..],0,2,true) && rs_short_rest_begin(b[..],0);
   #assert !b[0].rest_auto;
   rs_tick(b[..],4000);
-  #assert c[0].rest.phase==2 && c[0].focus==3 && c[0].long_rest.elapsed==0;
+  #assert c[0].rest.phase==2 && c[0].uses[RS_USE_FOCUS]==3 && c[0].long_rest.elapsed==0;
   e:=rs_recent_at(b[0].book[..],0); #assert e.at==rs_secs(3600) && e.kind==RS_EV_END;
   #assert b[0].rest_clock.ticks==4000000000 && b[0].clock==rs_secs(4000);
 }
 #test "overdue Short Rest and fractional boundary ticks progress once without a rewind or duplicate grant" {
   for overdue:0..<2 {
     b:[1]RsBattle; c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].who = -1;
-    c[0]=rs_monk("Patient",0,3); c[0].focus=0;
+    c[0]=rs_monk("Patient",0,3); c[0].uses[RS_USE_FOCUS]=0;
     #assert rs_short_rest_begin(b[..],0);
     b[0].rest_clock.ticks=3600000000+overdue; b[0].rest_clock.fraction=0.5;
-    #assert rs_rest_tick(b[..],1.0/1048576) && c[0].rest.phase==2 && c[0].focus==3;
+    #assert rs_rest_tick(b[..],1.0/1048576) && c[0].rest.phase==2 && c[0].uses[RS_USE_FOCUS]==3;
     #assert b[0].rest_clock.ticks==3600000001+overdue && b[0].rest_clock.fraction==0.45367431640625;
-    seq:=b[0].book[0].seq; c[0].focus=0;
-    #assert rs_rest_tick(b[..],0) && c[0].focus==0 && b[0].book[0].seq==seq;
+    seq:=b[0].book[0].seq; c[0].uses[RS_USE_FOCUS]=0;
+    #assert rs_rest_tick(b[..],0) && c[0].uses[RS_USE_FOCUS]==0 && b[0].book[0].seq==seq;
   }
 }
 
 #test "Short Rest at a fractional target finishes before the remaining fraction instead of at the poll end" {
   b:[1]RsBattle; c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].who = -1;
-  c[0]=rs_monk("Patient",0,3); c[0].focus=0;
+  c[0]=rs_monk("Patient",0,3); c[0].uses[RS_USE_FOCUS]=0;
   #assert rs_short_rest_begin(b[..],0);
   b[0].rest_clock.ticks=3599999999; b[0].rest_clock.fraction=0.5;
   #assert rs_rest_tick(b[..],1.0/1048576);
-  #assert c[0].rest.phase==2 && c[0].focus==3;
+  #assert c[0].rest.phase==2 && c[0].uses[RS_USE_FOCUS]==3;
   #assert b[0].rest_clock.ticks==3600000000 && b[0].rest_clock.fraction==0.45367431640625;
   e:=rs_recent_at(b[0].book[..],0);
   #assert e.kind==RS_EV_END && e.at==1;

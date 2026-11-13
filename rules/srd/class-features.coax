@@ -120,7 +120,7 @@ cf_field :: (b: [] RsBattle, hero: RsCreature, ac: int) {
   b[0].w = 12; b[0].h = 6; b[0].dice[0].fixed = true;
   _ := rs_add(b, hero, 1, 1);
   t := rs_add(b, rs_sorcerer("Foe", 1, 3), 2, 1);
-  b[0].c[t].hp = 200; b[0].c[t].hp_max = 300; b[0].c[t].ac = ac; b[0].c[t].shield_spell = false; b[0].c[t].deflect = false;
+  b[0].c[t].hp = 200; b[0].c[t].hp_max = 300; b[0].c[t].ac = ac; b[0].c[t].feats = rs_feature_put(b[0].c[t].feats, RS_FT_SHIELD_SPELL, false); b[0].c[t].feats = rs_feature_put(b[0].c[t].feats, RS_FT_DEFLECT, false);
   rs_fresh(b, 0);
 }
 
@@ -144,64 +144,64 @@ rs_cf_hero :: (klass: int, level: int) -> RsCreature {
 rs_cf_held :: (c: RsCreature, f: string) -> bool {
   dex := rs_mod(c.score[RS_DEX]); con := rs_mod(c.score[RS_CON]);
   if c.klass == RS_BARBARIAN {
-    if f == "Rage" { return c.rages_max >= 2 && c.rage_bonus == 2; }
+    if f == "Rage" { return c.uses_max[RS_USE_RAGE] >= 2 && c.rank[RS_RK_RAGE_BONUS] == 2; }
     if f == "Unarmored Defense" { return c.ac == 10 + dex + con; }
     if f == "Weapon Mastery" { return c.mastery_n >= 2 && (c.masteries & (1 << M_CLEAVE)) != 0; }
-    if f == "Danger Sense" { return c.danger_sense; }
+    if f == "Danger Sense" { return rs_has_feature(c, RS_FT_DANGER_SENSE); }
     if f == "Reckless Attack" { return c.level >= 2; }   // rs_attack admits it from level 2
-    if f == "Primal Knowledge" { return c.primal; }
-    if f == "Frenzy" { return c.frenzy; }
+    if f == "Primal Knowledge" { return rs_has_feature(c, RS_FT_PRIMAL_KNOWLEDGE); }
+    if f == "Frenzy" { return rs_has_feature(c, RS_FT_FRENZY); }
     if f == "Ability Score Improvement" { return c.score[RS_STR] == 18; }
     if f == "Weapon Mastery (3)" { return c.mastery_n == 3; }
-    if f == "Extra Attack" { return c.extra_attack == 1; }
+    if f == "Extra Attack" { return c.rank[RS_RK_EXTRA_ATTACK] == 1; }
     if f == "Fast Movement" { return c.speed == 40; }
-    if f == "Mindless Rage" { return c.mindless; }
+    if f == "Mindless Rage" { return rs_has_feature(c, RS_FT_MINDLESS_RAGE); }
   }
   if c.klass == RS_FIGHTER {
     if f == "Fighting Style" { return c.ac == 16 + 1; }   // Defense: +1 AC in Chain Mail
     if f == "Second Wind" { return c.uses_max[RS_USE_WIND] >= 2; }
     if f == "Weapon Mastery" { return c.mastery_n >= 3 && (c.masteries & (1 << M_GRAZE)) != 0; }
     if f == "Action Surge" { return c.uses_max[RS_USE_SURGE] == 1; }
-    if f == "Tactical Mind" { return c.tactical; }
-    if f == "Improved Critical" { return c.crit_range == 1; }
-    if f == "Remarkable Athlete" { return c.athlete; }
+    if f == "Tactical Mind" { return rs_has_feature(c, RS_FT_TACTICAL_MIND); }
+    if f == "Improved Critical" { return c.rank[RS_RK_CRIT_RANGE] == 1; }
+    if f == "Remarkable Athlete" { return rs_has_feature(c, RS_FT_ATHLETE); }
     if f == "Ability Score Improvement" { return c.score[RS_STR] >= 18; }
     if f == "Second Wind (3)" { return c.uses_max[RS_USE_WIND] == 3; }
     if f == "Weapon Mastery (4)" { return c.mastery_n == 4; }
-    if f == "Extra Attack" { return c.extra_attack == 1; }
-    if f == "Tactical Shift" { return c.shift; }
+    if f == "Extra Attack" { return c.rank[RS_RK_EXTRA_ATTACK] == 1; }
+    if f == "Tactical Shift" { return rs_has_feature(c, RS_FT_TACTICAL_SHIFT); }
     if f == "Ability Score Improvement (6)" { return c.score[RS_STR] == 20; }
   }
   if c.klass == RS_ROGUE {
     if f == "Expertise" { return rs_cf_bits(c.checks.expert) >= 2; }
-    if f == "Sneak Attack" { return c.sneak_dice >= 1; }
-    if f == "Thieves' Cant" { return c.cant; }
+    if f == "Sneak Attack" { return c.rank[RS_RK_SNEAK_DICE] >= 1; }
+    if f == "Thieves' Cant" { return rs_has_feature(c, RS_FT_THIEVES_CANT); }
     if f == "Weapon Mastery" { return c.mastery_n == 2 && (c.masteries & (1 << M_VEX)) != 0 && (c.masteries & (1 << M_NICK)) != 0; }
-    if f == "Cunning Action" { return c.cunning; }
-    if f == "Steady Aim" { return c.steady_aim; }
-    if f == "Fast Hands" { return c.fast_hands; }
+    if f == "Cunning Action" { return rs_has_feature(c, RS_FT_CUNNING_ACTION); }
+    if f == "Steady Aim" { return rs_has_feature(c, RS_FT_STEADY_AIM); }
+    if f == "Fast Hands" { return rs_has_feature(c, RS_FT_FAST_HANDS); }
     if f == "Second-Story Work" { return c.climb == c.speed && c.climb > 0; }
-    if f == "Sneak Attack (2d6)" { return c.sneak_dice >= 2; }
+    if f == "Sneak Attack (2d6)" { return c.rank[RS_RK_SNEAK_DICE] >= 2; }
     if f == "Ability Score Improvement" { return c.score[RS_DEX] == 18; }
-    if f == "Cunning Strike" { return c.cunning_strike; }
-    if f == "Uncanny Dodge" { return c.uncanny; }
-    if f == "Sneak Attack (3d6)" { return c.sneak_dice == 3; }
+    if f == "Cunning Strike" { return rs_has_feature(c, RS_FT_CUNNING_STRIKE); }
+    if f == "Uncanny Dodge" { return rs_has_feature(c, RS_FT_UNCANNY_DODGE); }
+    if f == "Sneak Attack (3d6)" { return c.rank[RS_RK_SNEAK_DICE] == 3; }
     if f == "Expertise (6)" { return rs_cf_bits(c.checks.expert) == 4; }
   }
   if c.klass == RS_MONK {
-    if f == "Martial Arts" { return c.martial_die >= 6 && c.weapon == W_UNARMED; }
+    if f == "Martial Arts" { return c.rank[RS_RK_MARTIAL_DIE] >= 6 && c.weapon == W_UNARMED; }
     if f == "Unarmored Defense" { return c.ac == 10 + dex + rs_mod(c.score[RS_WIS]); }
-    if f == "Monk's Focus" { return c.focus_max == c.level && c.focus_max >= 2; }
+    if f == "Monk's Focus" { return c.uses_max[RS_USE_FOCUS] == c.level && c.uses_max[RS_USE_FOCUS] >= 2; }
     if f == "Unarmored Movement" { return c.speed >= 40; }
-    if f == "Uncanny Metabolism" { return c.metabolism && c.uses_max[RS_USE_METABOLISM] == 1; }
-    if f == "Deflect Attacks" { return c.deflect; }
-    if f == "Open Hand Technique" { return c.open_hand; }
+    if f == "Uncanny Metabolism" { return rs_has_feature(c, RS_FT_METABOLISM) && c.uses_max[RS_USE_METABOLISM] == 1; }
+    if f == "Deflect Attacks" { return rs_has_feature(c, RS_FT_DEFLECT); }
+    if f == "Open Hand Technique" { return rs_has_feature(c, RS_FT_OPEN_HAND); }
     if f == "Ability Score Improvement" { return c.score[RS_DEX] == 18; }
-    if f == "Slow Fall" { return c.slow_fall; }
-    if f == "Extra Attack" { return c.extra_attack == 1; }
-    if f == "Stunning Strike" { return c.stunning; }
-    if f == "Martial Arts (d8)" { return c.martial_die == 8; }
-    if f == "Empowered Strikes" { return c.empowered; }
+    if f == "Slow Fall" { return rs_has_feature(c, RS_FT_SLOW_FALL); }
+    if f == "Extra Attack" { return c.rank[RS_RK_EXTRA_ATTACK] == 1; }
+    if f == "Stunning Strike" { return rs_has_feature(c, RS_FT_STUNNING_STRIKE); }
+    if f == "Martial Arts (d8)" { return c.rank[RS_RK_MARTIAL_DIE] == 8; }
+    if f == "Empowered Strikes" { return rs_has_feature(c, RS_FT_EMPOWERED_STRIKES); }
     if f == "Wholeness of Body" { return c.uses_max[RS_USE_WHOLE] == rs_max(rs_mod(c.score[RS_WIS]), 1); }
     if f == "Unarmored Movement (+15)" { return c.speed == 45; }
   }
@@ -215,95 +215,95 @@ rs_cf_held :: (c: RsCreature, f: string) -> bool {
     if f == "Oath of Devotion Spells" { return rs_class_spell_granted(c, SP_SHIELD_OF_FAITH); }
     if f == "Sacred Weapon" { return c.level >= 3; }   // rs_sacred_weapon admits it from level 3
     if f == "Ability Score Improvement" { return c.score[RS_STR] == 18; }
-    if f == "Extra Attack" { return c.extra_attack == 1; }
-    if f == "Faithful Steed" { return c.steed && c.uses_max[RS_USE_STEED] == 1; }
-    if f == "Aura of Protection" { return c.aura; }
+    if f == "Extra Attack" { return c.rank[RS_RK_EXTRA_ATTACK] == 1; }
+    if f == "Faithful Steed" { return rs_has_feature(c, RS_FT_FAITHFUL_STEED) && c.uses_max[RS_USE_STEED] == 1; }
+    if f == "Aura of Protection" { return rs_has_feature(c, RS_FT_AURA_OF_PROTECTION); }
   }
   if c.klass == RS_RANGER {
     if f == "Spellcasting" { return c.spell_ability == RS_WIS && c.slots_max[1] >= 2; }
     if f == "Favored Enemy" { return c.free_spell == SP_HUNTERS_MARK && c.uses_max[RS_USE_FREE] >= 2 && rs_class_spell_granted(c, SP_HUNTERS_MARK); }
     if f == "Weapon Mastery" { return c.mastery_n == 2 && (c.masteries & (1 << M_VEX)) != 0 && (c.masteries & (1 << M_SLOW)) != 0; }
-    if f == "Deft Explorer" { return c.explorer && (c.checks.expert & (1 << SK_SURVIVAL)) != 0; }
-    if f == "Fighting Style" { return c.archery; }
-    if f == "Hunter's Lore" { return c.lore; }
-    if f == "Hunter's Prey" { return c.colossus; }
+    if f == "Deft Explorer" { return rs_has_feature(c, RS_FT_DEFT_EXPLORER) && (c.checks.expert & (1 << SK_SURVIVAL)) != 0; }
+    if f == "Fighting Style" { return rs_has_feature(c, RS_FT_ARCHERY); }
+    if f == "Hunter's Lore" { return rs_has_feature(c, RS_FT_HUNTERS_LORE); }
+    if f == "Hunter's Prey" { return rs_has_feature(c, RS_FT_COLOSSUS); }
     if f == "Ability Score Improvement" { return c.score[RS_DEX] == 18; }
-    if f == "Extra Attack" { return c.extra_attack == 1; }
+    if f == "Extra Attack" { return c.rank[RS_RK_EXTRA_ATTACK] == 1; }
     if f == "Favored Enemy (3)" { return c.uses_max[RS_USE_FREE] == 3; }
     if f == "Roving" { return c.speed == 40 && c.climb == 40 && c.swim == 40; }
   }
   if c.klass == RS_CLERIC {
     if f == "Spellcasting" { return c.spell_ability == RS_WIS && c.slots_max[1] >= 2; }
     if f == "Divine Order" { return c.order == RS_ORDER_PROTECTOR; }
-    if f == "Channel Divinity" { return c.uses_max[RS_USE_CHANNEL] >= 2 && c.turn_undead; }   // Divine Spark and Turn Undead
+    if f == "Channel Divinity" { return c.uses_max[RS_USE_CHANNEL] >= 2 && rs_has_feature(c, RS_FT_TURN_UNDEAD); }   // Divine Spark and Turn Undead
     if f == "Life Domain Spells" { return rs_class_spell_granted(c, SP_BLESS) && rs_class_spell_granted(c, SP_CURE_WOUNDS); }
-    if f == "Disciple of Life" { return c.disciple; }
-    if f == "Preserve Life" { return c.preserve_life; }
+    if f == "Disciple of Life" { return rs_has_feature(c, RS_FT_DISCIPLE); }
+    if f == "Preserve Life" { return rs_has_feature(c, RS_FT_PRESERVE_LIFE); }
     if f == "Ability Score Improvement" { return c.score[RS_WIS] == 18; }
-    if f == "Sear Undead" { return c.sear; }
+    if f == "Sear Undead" { return rs_has_feature(c, RS_FT_SEAR_UNDEAD); }
     if f == "Life Domain Spells (5)" { return rs_class_spell_granted(c, SP_MASS_HEALING_WORD); }
-    if f == "Blessed Healer" { return c.blessed_healer; }
+    if f == "Blessed Healer" { return rs_has_feature(c, RS_FT_BLESSED_HEALER); }
     if f == "Channel Divinity (3)" { return c.uses_max[RS_USE_CHANNEL] == 3; }
   }
   if c.klass == RS_BARD {
-    if f == "Bardic Inspiration" { return c.insp_die >= 6 && c.uses_max[RS_USE_INSPIRE] == rs_max(rs_mod(c.score[RS_CHA]), 1); }
+    if f == "Bardic Inspiration" { return c.rank[RS_RK_INSPIRATION_DIE] >= 6 && c.uses_max[RS_USE_INSPIRE] == rs_max(rs_mod(c.score[RS_CHA]), 1); }
     if f == "Spellcasting" { return c.spell_ability == RS_CHA && c.slots_max[1] >= 2; }
     if f == "Expertise" { return c.checks.expert == (1 << SK_PERFORMANCE) | (1 << SK_PERSUASION); }
-    if f == "Jack of All Trades" { return c.jack; }
+    if f == "Jack of All Trades" { return rs_has_feature(c, RS_FT_JACK); }
     if f == "Bonus Proficiencies" { return (c.checks.skills & (1 << SK_INSIGHT)) != 0; }
-    if f == "Cutting Words" { return c.cutting; }
+    if f == "Cutting Words" { return rs_has_feature(c, RS_FT_CUTTING_WORDS); }
     if f == "Ability Score Improvement" { return c.score[RS_CHA] == 18; }
-    if f == "Font of Inspiration" { return c.font; }
-    if f == "Bardic Inspiration (d8)" { return c.insp_die == 8; }
-    if f == "Magical Discoveries" { return c.discoveries[0] == SP_FIREBALL && c.discoveries[1] == SP_SPIRIT_GUARDIANS; }
+    if f == "Font of Inspiration" { return rs_has_feature(c, RS_FT_FONT); }
+    if f == "Bardic Inspiration (d8)" { return c.rank[RS_RK_INSPIRATION_DIE] == 8; }
+    if f == "Magical Discoveries" { return c.rank[RS_RK_DISCOVERY + 0] == SP_FIREBALL && c.rank[RS_RK_DISCOVERY + 1] == SP_SPIRIT_GUARDIANS; }
   }
   if c.klass == RS_WIZARD {
     if f == "Spellcasting" { return c.spell_ability == RS_INT && c.slots_max[1] >= 2; }
-    if f == "Ritual Adept" { return c.ritual; }
-    if f == "Arcane Recovery" { return c.arcane_recovery && rs_rest_slot_budget(c, true) >= 1; }
-    if f == "Scholar" { return c.scholar && (c.checks.expert & (1 << SK_ARCANA)) != 0; }
-    if f == "Evocation Savant" { return c.savant; }
-    if f == "Potent Cantrip" { return c.potent; }
+    if f == "Ritual Adept" { return rs_has_feature(c, RS_FT_RITUAL_ADEPT); }
+    if f == "Arcane Recovery" { return rs_has_feature(c, RS_FT_ARCANE_RECOVERY) && rs_rest_slot_budget(c, true) >= 1; }
+    if f == "Scholar" { return rs_has_feature(c, RS_FT_SCHOLAR) && (c.checks.expert & (1 << SK_ARCANA)) != 0; }
+    if f == "Evocation Savant" { return rs_has_feature(c, RS_FT_SAVANT); }
+    if f == "Potent Cantrip" { return rs_has_feature(c, RS_FT_POTENT_CANTRIP); }
     if f == "Ability Score Improvement" { return c.score[RS_INT] == 18; }
-    if f == "Memorize Spell" { return c.memorize; }
-    if f == "Sculpt Spells" { return c.sculpt; }
+    if f == "Memorize Spell" { return rs_has_feature(c, RS_FT_MEMORIZE); }
+    if f == "Sculpt Spells" { return rs_has_feature(c, RS_FT_SCULPT); }
   }
   if c.klass == RS_WARLOCK {
     if f == "Eldritch Invocations" { return c.ac == 13 + dex; }   // Armor of Shadows
     if f == "Pact Magic" { return c.spell_ability == RS_CHA && rs_pact_level(c) >= 1; }
-    if f == "Magical Cunning" { return c.cunning_rite && c.uses_max[RS_USE_CUNNING] == 1; }
-    if f == "Eldritch Invocations (3)" { return c.agonizing == SP_ELDRITCH_BLAST && c.repelling == SP_ELDRITCH_BLAST; }
-    if f == "Dark One's Blessing" { return c.dark_blessing; }
+    if f == "Magical Cunning" { return rs_has_feature(c, RS_FT_MAGICAL_CUNNING) && c.uses_max[RS_USE_CUNNING] == 1; }
+    if f == "Eldritch Invocations (3)" { return c.rank[RS_RK_AGONIZING] == SP_ELDRITCH_BLAST && c.rank[RS_RK_REPELLING] == SP_ELDRITCH_BLAST; }
+    if f == "Dark One's Blessing" { return rs_has_feature(c, RS_FT_DARK_BLESSING); }
     if f == "Fiend Spells" { return rs_class_spell_granted(c, SP_BURNING_HANDS) && rs_class_spell_granted(c, SP_COMMAND) && rs_class_spell_granted(c, SP_SCORCHING_RAY); }
     if f == "Ability Score Improvement" { return c.score[RS_CHA] == 18; }
-    if f == "Eldritch Invocations (5)" { return c.vigor && c.eldritch_mind && rs_class_spell_granted(c, SP_FIREBALL); }
-    if f == "Dark One's Own Luck" { return c.own_luck && c.uses_max[RS_USE_LUCK] == rs_max(rs_mod(c.score[RS_CHA]), 1); }
+    if f == "Eldritch Invocations (5)" { return rs_has_feature(c, RS_FT_FIENDISH_VIGOR) && rs_has_feature(c, RS_FT_ELDRITCH_MIND) && rs_class_spell_granted(c, SP_FIREBALL); }
+    if f == "Dark One's Own Luck" { return rs_has_feature(c, RS_FT_OWN_LUCK) && c.uses_max[RS_USE_LUCK] == rs_max(rs_mod(c.score[RS_CHA]), 1); }
   }
   if c.klass == RS_SORCERER {
     if f == "Spellcasting" { return c.spell_ability == RS_CHA && c.slots_max[1] >= 2; }
     if f == "Innate Sorcery" { return c.uses_max[RS_USE_INNATE] == 2; }
     if f == "Font of Magic" { return c.uses_max[RS_USE_SORCERY] == c.level && rs_font_of_magic_ready(c); }
-    if f == "Metamagic" { return c.quickened && c.seeking; }
+    if f == "Metamagic" { return rs_has_feature(c, RS_FT_QUICKENED) && rs_has_feature(c, RS_FT_SEEKING); }
     if f == "Draconic Resilience" { return c.ac == 10 + dex + rs_mod(c.score[RS_CHA]); }
     if f == "Draconic Spells" { return rs_class_spell_granted(c, SP_COMMAND); }
     if f == "Ability Score Improvement" { return c.score[RS_CHA] == 18; }
-    if f == "Sorcerous Restoration" { return c.restoration; }
-    if f == "Elemental Affinity" { return c.affinity == RS_FIRE && (c.resist & (1 << RS_FIRE)) != 0; }
+    if f == "Sorcerous Restoration" { return rs_has_feature(c, RS_FT_RESTORATION); }
+    if f == "Elemental Affinity" { return c.rank[RS_RK_AFFINITY] == RS_FIRE && (c.resist & (1 << RS_FIRE)) != 0; }
   }
   if c.klass == RS_DRUID {
     if f == "Spellcasting" { return c.spell_ability == RS_WIS && c.slots_max[1] >= 2; }
     if f == "Druidic" { return rs_class_spell_granted(c, SP_SPEAK_WITH_ANIMALS); }
     if f == "Primal Order" { return c.order == RS_ORDER_WARDEN; }
     if f == "Wild Shape" { return c.uses_max[RS_USE_WILD] >= 2 && rs_wild_knows(c, MON_WOLF); }
-    if f == "Wild Companion" { return c.companion; }
+    if f == "Wild Companion" { return rs_has_feature(c, RS_FT_WILD_COMPANION); }
     if f == "Circle of the Land Spells" { return rs_class_spell_granted(c, SP_HOLD_PERSON) && rs_class_spell_granted(c, SP_FOG_CLOUD) && rs_class_spell_granted(c, SP_RAY_OF_FROST); }
-    if f == "Land's Aid" { return c.lands_aid; }
+    if f == "Land's Aid" { return rs_has_feature(c, RS_FT_LANDS_AID); }
     if f == "Ability Score Improvement" { return c.score[RS_WIS] == 18; }
     if f == "Wild Shape (CR 1/2)" { return rs_wild_knows(c, MON_BLACK_BEAR); }
     if f == "Cantrips (3)" { return c.spells.cantrips == 3; }
-    if f == "Wild Resurgence" { return c.resurgence; }
+    if f == "Wild Resurgence" { return rs_has_feature(c, RS_FT_WILD_RESURGENCE); }
     if f == "Circle of the Land Spells (5)" { return rs_class_spell_granted(c, SP_SLEET_STORM); }
-    if f == "Natural Recovery" { return c.natural_recovery && c.free_spell == SP_HOLD_PERSON; }
+    if f == "Natural Recovery" { return rs_has_feature(c, RS_FT_NATURAL_RECOVERY) && c.free_spell == SP_HOLD_PERSON; }
     if f == "Wild Shape (3)" { return c.uses_max[RS_USE_WILD] == 3; }
   }
   return false;

@@ -5,17 +5,17 @@
     b:[1]RsBattle; rt_field(b[..],klass,level);
     for u:0..<RS_USES { b[0].c[0].uses[u]=0; b[0].c[0].uses_back[u]=99; }
     for slot:1..<10 { b[0].c[0].slots[slot]=0; b[0].c[0].slot_back[slot]=99; }
-    b[0].c[0].focus=0; b[0].c[0].rages=0; b[0].c[0].temp=9; b[0].c[0].rest.dice=0;
+    b[0].c[0].uses[RS_USE_FOCUS]=0; b[0].c[0].uses[RS_USE_RAGE]=0; b[0].c[0].temp=9; b[0].c[0].rest.dice=0;
     b[0].c[0].rest.recovery_used=true; b[0].c[0].rest.restoration_used=true; b[0].c[0].resurged_slot=true;
-    b[0].c[0].reacted=true; b[0].c[0].rage_back=99; b[0].c[0].focus_back=99;
+    b[0].c[0].reacted=true; b[0].c[0].uses_back[RS_USE_RAGE]=99; b[0].c[0].uses_back[RS_USE_FOCUS]=99;
     hp:=b[0].c[0].hp; b[0].turn.action=true; b[0].turn.bonus=true;
     #assert rs_long_rest_resources(b[0].c[0..<1]);
     for u:0..<RS_USES { #assert b[0].c[0].uses[u]==b[0].c[0].uses_max[u] && b[0].c[0].uses_back[u]==0; }
     for slot:1..<10 { #assert b[0].c[0].slots[slot]==b[0].c[0].slots_max[slot] && b[0].c[0].slot_back[slot]==0; }
-    #assert b[0].c[0].focus==b[0].c[0].focus_max && b[0].c[0].rages==b[0].c[0].rages_max;
+    #assert b[0].c[0].uses[RS_USE_FOCUS]==b[0].c[0].uses_max[RS_USE_FOCUS] && b[0].c[0].uses[RS_USE_RAGE]==b[0].c[0].uses_max[RS_USE_RAGE];
     #assert b[0].c[0].rest.dice==level && !b[0].c[0].rest.recovery_used && !b[0].c[0].rest.restoration_used && !b[0].c[0].resurged_slot;
     #assert b[0].c[0].temp==0 && b[0].c[0].hp==hp && b[0].c[0].reacted && b[0].turn.action && b[0].turn.bonus;
-    #assert b[0].c[0].rage_back==0 && b[0].c[0].focus_back==0;
+    #assert b[0].c[0].uses_back[RS_USE_RAGE]==0 && b[0].c[0].uses_back[RS_USE_FOCUS]==0;
   } }
 }
 #test "Long Rest expires Sorcerer created slots without deleting unrelated over-capacity banks" {
@@ -28,8 +28,8 @@
 #test "Long Rest bank refusal preserves all state for independent malformed counters" {
   for field:0..<4 {
     c:[1]RsCreature; c[0]=rs_wizard("Reader",0,3); c[0].slots[1]=0; c[0].temp=7;
-    if field==0 { c[0].rages = -1; } if field==1 { c[0].rages_max = -1; }
-    if field==2 { c[0].focus = -1; } if field==3 { c[0].focus_max = -1; }
+    if field==0 { c[0].uses[RS_USE_RAGE] = -1; } if field==1 { c[0].uses_max[RS_USE_RAGE] = -1; }
+    if field==2 { c[0].uses[RS_USE_FOCUS] = -1; } if field==3 { c[0].uses_max[RS_USE_FOCUS] = -1; }
     #assert !rs_long_rest_resources(c[..]) && !c[0].rest.seeded && c[0].slots[1]==0 && c[0].temp==7;
   }
   for u:0..<RS_USES { for maximum:0..<2 {

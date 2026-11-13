@@ -80,11 +80,11 @@ to_turn :: (b: [] RsBattle, i: int) {
   for profile: 0..<2 {
     b: [1] RsBattle; to_field(b[..],profile);
     to_turn(b[..],0);
-    b[0].c[0].dodging = true; b[0].c[0].reacted = true;
+    b[0].c[0].eff = rs_state_put(b[0].c[0].eff, EF_DODGE, true); b[0].c[0].reacted = true;
     to_turn(b[..],1);
-    #assert b[0].c[0].dodging && b[0].c[0].reacted;
+    #assert rs_effect(b[0].c[0], EF_DODGE) && b[0].c[0].reacted;
     rs_tick_ticks(b[..],b[0].c[0].turn_at - b[0].clock); rs_start_turn(b[..],0);
-    #assert !b[0].c[0].dodging && !b[0].c[0].reacted;
+    #assert !rs_effect(b[0].c[0], EF_DODGE) && !b[0].c[0].reacted;
     rs_end_turn(b[..],0);
     // a death save is a start-of-turn roll, once a round; nothing rolls at the end
     b[0].c[0].hp = 0; b[0].c[0].cond = RS_UNCONSCIOUS|RS_PRONE;

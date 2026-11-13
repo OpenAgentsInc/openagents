@@ -37,7 +37,7 @@
   for seed:1..<65 {
     b:[1]RsBattle; sa_field(b[..]); rs_start_turn(b[..],1); b[0].dice[0].fixed=false; b[0].dice[0].state=cast(u64)seed*7919;
     // Explicit trait-composition fixture, not a new monster catalog record.
-    b[0].c[0].athlete=true; b[0].turn.move_left=4;
+    b[0].c[0].feats = rs_feature_put(b[0].c[0].feats, RS_FT_ATHLETE, true); b[0].turn.move_left=4;
     r:=rs_stat_opportunity(b[..],0,1,sa_record(),RsOpportunityMove.{x=3,y=1,seen=true,movement=true});
     #assert r.admitted && r.strike.struck && b[0].turn.move_left==4;
     if r.strike.move_left>0 { critical=true; #assert r.strike.move_left==3; }

@@ -50,12 +50,12 @@
     else if mode==6 { b[0].turn.action=true; } else if mode==7 { c[0].cond=RS_STUNNED; }
     else if mode==8 { c[1].dead=true; } else if mode==9 { c[1].hp=1; }
     else { c[1].stable=true; c[1].stable_due=rs_secs(200); }
-    c[0].inspired=6; c[0].own_luck=true; c[0].uses[RS_USE_WIND]=1;
+    c[0].eff = rs_state_value_put(c[0].eff, EF_INSPIRED, 6); c[0].feats = rs_feature_put(c[0].feats, RS_FT_OWN_LUCK, true); c[0].uses[RS_USE_WIND]=1;
     turn:=b[0].turn; seq:=b[0].book[0].seq;
     r:=rs_first_aid(b[..],i,j,q);
     #assert !r.accepted && !r.passed && b[0].dice[0].rolled==0 && b[0].book[0].seq==seq;
     #assert b[0].turn.action==turn.action && b[0].turn.bonus==turn.bonus && b[0].turn.slot_spent==turn.slot_spent;
-    #assert c[0].inspired==6 && c[0].own_luck && c[0].uses[RS_USE_WIND]==1;
+    #assert rs_state_value(c[0], EF_INSPIRED)==6 && rs_has_feature(c[0], RS_FT_OWN_LUCK) && c[0].uses[RS_USE_WIND]==1;
     #assert c[1].death_ok==0 && c[1].death_fail==0 && c[1].stable==(mode==10) && c[1].stable_due==(ifx mode==10 then rs_secs(200) else 0);
   }
 }
@@ -97,12 +97,12 @@
 #test "first aid retains optional rescue spending and failed Tactical Mind keeps Second Wind" {
   for mode: 0..<3 {
     b: [1] RsBattle; c: [2] RsCreature; sa_field(b[..],c[..]); c[0].score[RS_WIS]=6;
-    if mode==0 { c[0].inspired=6; }
-    else if mode==1 { c[0].own_luck=true; c[0].uses[RS_USE_LUCK]=1; }
-    else { c[0].tactical=true; c[0].uses[RS_USE_WIND]=1; c[0].score[RS_WIS]=1; c[0].exhaustion=2; }
+    if mode==0 { c[0].eff = rs_state_value_put(c[0].eff, EF_INSPIRED, 6); }
+    else if mode==1 { c[0].feats = rs_feature_put(c[0].feats, RS_FT_OWN_LUCK, true); c[0].uses[RS_USE_LUCK]=1; }
+    else { c[0].feats = rs_feature_put(c[0].feats, RS_FT_TACTICAL_MIND, true); c[0].uses[RS_USE_WIND]=1; c[0].score[RS_WIS]=1; c[0].exhaustion=2; }
     r:=rs_first_aid(b[..],0,1,RsFirstAidContext.{contact=true});
     #assert r.accepted && r.passed==(mode<2) && c[1].stable==(mode<2) && b[0].turn.action;
-    #assert c[0].inspired==0 && c[0].own_luck==(mode==1) && c[0].uses[RS_USE_LUCK]==0;
+    #assert rs_state_value(c[0], EF_INSPIRED)==0 && rs_has_feature(c[0], RS_FT_OWN_LUCK)==(mode==1) && c[0].uses[RS_USE_LUCK]==0;
     #assert r.inspiration==(ifx mode==0 then 3 else 0) && r.luck==(ifx mode==1 then 5 else 0) && r.mind==(ifx mode==2 then 5 else 0);
     #assert c[0].uses[RS_USE_WIND]==(ifx mode==2 then 1 else 0) && !r.mind_spent;
   }

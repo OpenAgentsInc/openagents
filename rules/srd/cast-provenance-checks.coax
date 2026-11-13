@@ -82,7 +82,7 @@ pv_listed :: (klass: int, level: int, sp: int) -> bool {
       #assert s.level == 0 || bard.slots_max[s.level] > 0;
     }
     // Fiendish Vigor's prerequisite: a level 2+ Warlock
-    if g.sp == SP_FALSE_LIFE { #assert g.klass == RS_WARLOCK && g.from >= 2 && rs_warlock("P", 0, g.from, SP_ELDRITCH_BLAST).vigor; }
+    if g.sp == SP_FALSE_LIFE { #assert g.klass == RS_WARLOCK && g.from >= 2 && rs_has_feature(rs_warlock("P", 0, g.from, SP_ELDRITCH_BLAST), RS_FT_FIENDISH_VIGOR); }
     // Blessed Warrior: Cleric cantrips
     if g.klass == RS_PALADIN && (g.sp == SP_SACRED_FLAME || g.sp == SP_GUIDANCE) { #assert s.level == 0 && rs_has_class(s.classes, "Cleric"); }
   }

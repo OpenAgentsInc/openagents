@@ -9,7 +9,7 @@ RsLore :: struct { known: bool; resist: int; vulnerable: int; immune: int; immun
 // What i's Hunter's Lore tells it of j: nothing unless i has the feature and j bears i's mark.
 rs_hunters_lore :: (b: [] RsBattle, i: int, j: int) -> RsLore #effects(all) {
   r: RsLore;
-  if i < 0 || i >= b[0].n || j < 0 || j >= b[0].n || !b[0].c[i].lore { return r; }
+  if i < 0 || i >= b[0].n || j < 0 || j >= b[0].n || !rs_has_feature(b[0].c[i], RS_FT_HUNTERS_LORE) { return r; }
   for e: b[0].c[j].eff {
     if e.kind == EF_MARK && e.by == i {
       t := b[0].c[j];
@@ -26,7 +26,7 @@ rs_hunters_lore :: (b: [] RsBattle, i: int, j: int) -> RsLore #effects(all) {
     b[0].c[1].resist = 1 << RS_FIRE; b[0].c[1].vulnerable = 1 << RS_RADIANT; b[0].c[1].immune = 1 << RS_POISON; b[0].c[1].immune_cond = RS_CHARMED;
     by := ifx mode == 2 then 2 else 0; kind := ifx mode == 3 then EF_HEX else EF_MARK;
     if mode != 4 { #assert rs_put_effect(b[..], 1, RsEffect.{kind = kind, by = by, spell = SP_HUNTERS_MARK, until = 60, save = -1}); }
-    if mode == 1 { b[0].c[0].lore = false; }
+    if mode == 1 { b[0].c[0].feats = rs_feature_put(b[0].c[0].feats, RS_FT_HUNTERS_LORE, false); }
     r := rs_hunters_lore(b[..], 0, 1); ok := mode == 0;
     #assert r.known == ok && r.resist == (ifx ok then 1 << RS_FIRE else 0) && r.vulnerable == (ifx ok then 1 << RS_RADIANT else 0);
     #assert r.immune == (ifx ok then 1 << RS_POISON else 0) && r.immune_cond == (ifx ok then RS_CHARMED else 0);

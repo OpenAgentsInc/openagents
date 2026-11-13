@@ -291,8 +291,8 @@ xc_actions :: (bar: [] FbAb, n: int, hero: RsCreature) -> int {
   for q: 0..<5 { if m < bar.count { bar[m] = fb_feature(XC_ACTIONS[q], XC_ACTION_NAME[q], XC_ACTION_ART[q]); if q == 0 || q == 3 { bar[m].tg = FB_SELF; } if q == 3 { bar[m].sp = held; bar[m].lvl = held_lvl; } m += 1; } }
   rite := fb_ritual_spell(hero);
   if rite >= 0 && m < bar.count { bar[m] = fb_feature(FB_RITUAL, "Ritual", "ritual"); bar[m].sp = rite; bar[m].tg = FB_SELF; m += 1; }
-  if (hero.companion || hero.klass==RS_WIZARD) && m<bar.count {
-    bar[m]=fb_feature(XC_FAMILIAR,ifx hero.companion then "Wild Companion" else "Find Familiar","ritual");
+  if (rs_has_feature(hero, RS_FT_WILD_COMPANION) || hero.klass==RS_WIZARD) && m<bar.count {
+    bar[m]=fb_feature(XC_FAMILIAR,ifx rs_has_feature(hero, RS_FT_WILD_COMPANION) then "Wild Companion" else "Find Familiar","ritual");
     bar[m].tg=FB_SELF; bar[m].opt=0; m+=1;
   }
   return m;
@@ -818,7 +818,7 @@ xc_familiar_press :: (s:[] EgZone,k:int,a:FbAb)->bool {
   else if order==XC_FAMILIAR_POCKET {
     if f>=0 && b[0].c[f].dead { ok=xc_familiar_arrive(s,a,false,true); }
     else { ok=rs_familiar_dismiss(b,0,false); }
-  } else if b[0].c[0].companion { ok=xc_familiar_arrive(s,a,false,false); }
+  } else if rs_has_feature(b[0].c[0], RS_FT_WILD_COMPANION) { ok=xc_familiar_arrive(s,a,false,false); }
   else if a.lvl==0 { ok=rs_ritual_begin(b,0,SP_FIND_FAMILIAR); }
   else { ok=rs_familiar_begin(b,0,a.lvl); }
   if ok && order==XC_FAMILIAR_RELEASE { x[0].familiar_order=XC_FAMILIAR_CAST; }
@@ -1106,7 +1106,7 @@ xc_choose :: (s: [] EgZone, i: int, px: f32, py: f32) -> bool {
     }
     if py>=r.y1-f32(XC_BADGE)*k {
       count:=RS_FAMILIAR_FORMS.count;
-      if !x[0].b[0].c[0].companion && px>=r.x1-24*k { a[0].opt=(a[0].opt+count)%(3*count); }
+      if !rs_has_feature(x[0].b[0].c[0], RS_FT_WILD_COMPANION) && px>=r.x1-24*k { a[0].opt=(a[0].opt+count)%(3*count); }
       else { a[0].opt=a[0].opt/count*count+(a[0].opt+1)%count; }
       return true;
     }
@@ -1918,7 +1918,7 @@ xc_frame :: (s: [] EgZone, out: [] f32, at: int, u: [] f32, w: f32, h: f32, k: f
       n=xc_caption(ui,slot,out,n,ifx x[0].familiar_touch then "Familiar" else "Hand",r,false,7*k,head,k);
     }
     if a.kind==XC_FAMILIAR {
-      count:=RS_FAMILIAR_FORMS.count; druid:=x[0].b[0].c[0].companion;
+      count:=RS_FAMILIAR_FORMS.count; druid:=rs_has_feature(x[0].b[0].c[0], RS_FT_WILD_COMPANION);
       cb:[48]u8; cn:=0; for ch: rs_monster_block(RS_FAMILIAR_FORMS[a.opt%count]).name { if cn < 32 { cb[cn]=ch; cn+=1; } }
       if !druid { spirit:=[3]string.["Fey","Celestial","Fiend"]; for ch: " · " { cb[cn]=ch; cn+=1; } for ch: spirit[a.opt/count] { cb[cn]=ch; cn+=1; } }
       n=xc_caption(ui,slot,out,n,cast(string)cb[0..<cn],r,false,7*k,head,k);
@@ -2249,7 +2249,7 @@ xc_probe :: (s: [] EgZone, f: int) -> int {
   bar: [XC_SLOTS] FbAb;
   for c: 0..<FB_CL_N { for level: 1..<7 {
     hero := fb_cl_hero(c, "You", 0, level); n := xc_bar_level(c, level, bar[..]);
-    #assert xc_actions(bar[..], n, hero) == n + 5 + (ifx fb_ritual_spell(hero) >= 0 then 1 else 0) + (ifx hero.companion || hero.klass==RS_WIZARD then 1 else 0) && n + 7 <= XC_SLOTS;
+    #assert xc_actions(bar[..], n, hero) == n + 5 + (ifx fb_ritual_spell(hero) >= 0 then 1 else 0) + (ifx rs_has_feature(hero, RS_FT_WILD_COMPANION) || hero.klass==RS_WIZARD then 1 else 0) && n + 7 <= XC_SLOTS;
   } }
   for pass: 0..<3 {
     s: [1] EgZone; xc_test_lab(s[..], FB_CL_FIGHTER, 0);
@@ -2967,13 +2967,13 @@ xc_test_killed :: (s: [] EgZone) {
 #test "experimental combat: a Wizard's Shield answers a blow with its own sound and barrier" #steps 2000000000 {
   s: [1] EgZone; xc_test_lab(s[..],FB_CL_WIZARD,0); xc_set_level(s[0].xc[..],3);
   b := s[0].xc[0].b[..]; h := s[0].creator[0].hostiles[..];
-  #assert rs_spell_ready(b[0].c[0],SP_SHIELD) && b[0].c[0].shield_spell;
+  #assert rs_spell_ready(b[0].c[0],SP_SHIELD) && rs_has_feature(b[0].c[0], RS_FT_SHIELD_SPELL);
   b[0].dice[0].fixed=true; b[0].c[0].hp=20; b[0].c[0].hp_max=30; b[0].c[0].temp=0;
   h[0].enemies[0].x=0; h[0].enemies[0].z=1; h[0].enemies[0].kind=xdungeon.DG_KIND_IMP; b[0].c[1].turn_at=0;
   b[0].c[0].ac = 10 + hostile.hostile_blow(xdungeon.DG_KIND_IMP).attack - 1;   // hit by 1: Shield turns it
   xc_sync_vitals(s[..]); s[0].experimental_audio[0].n = 0;
   #assert hostile.hc_offer(h[0].contacts[..],0); xc_hostile_contacts(s[..]);
-  #assert s[0].xc[0].shields == 1 && b[0].c[0].hp == 20 && b[0].c[0].shield_active && s[0].experimental_audio[0].n > 0;
+  #assert s[0].xc[0].shields == 1 && b[0].c[0].hp == 20 && rs_effect(b[0].c[0], EF_SHIELD) && s[0].experimental_audio[0].n > 0;
 }
 #test "experimental combat: a monster that walks into a Cleric's Spirit Guardians saves once as it enters" #steps 2000000000 {
   s: [1] EgZone; xc_test_lab(s[..],FB_CL_CLERIC,0); xc_set_level(s[0].xc[..],5);
@@ -3222,7 +3222,7 @@ xc_play_kit :: (c: int) {
     if mode==0 { s[0].xc[0].seat[0].turn.disengaged=true; }
     if mode==1 { b[0].c[0].cond|=RS_INVISIBLE; }
     if mode==2 { b[0].c[1].cond|=RS_BLINDED; }
-    if mode==3 { b[0].c[1].opportunity_blocked=true; }
+    if mode==3 { b[0].c[1].eff = rs_state_put(b[0].c[1].eff, EF_ADDLED, true); }
     body:=zone_keep_body(s[..],EgBody.{},EgBody.{z= -0.1});
     #assert body.z==f32(-0.1) && b[0].c[0].hp==100 && !b[0].c[1].reacted;
   }

@@ -114,15 +114,15 @@
   b[0].c[0].uses[RS_USE_SURGE]=0; #assert !e2r_dispatch(b[..],0,fb_feature(FB_SURGE,"ACTION SURGE","action-surge")) && !b[0].turn.action;
   m:[1] RsBattle; m[0].w=12; m[0].h=12;
   _=rs_add(m[..],fb_cl_hero(FB_CL_MONK,"Monk",0,3),3,3); rs_start_turn(m[..],0);
-  f:=m[0].c[0].focus; #assert f>0;
-  #assert e2r_dispatch(m[..],0,fb_feature(FB_FLURRY,"FLURRY OF BLOWS","flurry-of-blows")) && m[0].c[0].focus==f-1 && m[0].turn.bonus;
-  #assert !e2r_dispatch(m[..],0,fb_feature(FB_FLURRY,"FLURRY OF BLOWS","flurry-of-blows")) && m[0].c[0].focus==f-1;
-  m[0].turn.bonus=false; m[0].c[0].focus=1;
-  #assert e2r_dispatch(m[..],0,fb_feature(FB_FLURRY,"FLURRY OF BLOWS","flurry-of-blows")) && m[0].c[0].focus==0;
+  f:=m[0].c[0].uses[RS_USE_FOCUS]; #assert f>0;
+  #assert e2r_dispatch(m[..],0,fb_feature(FB_FLURRY,"FLURRY OF BLOWS","flurry-of-blows")) && m[0].c[0].uses[RS_USE_FOCUS]==f-1 && m[0].turn.bonus;
+  #assert !e2r_dispatch(m[..],0,fb_feature(FB_FLURRY,"FLURRY OF BLOWS","flurry-of-blows")) && m[0].c[0].uses[RS_USE_FOCUS]==f-1;
+  m[0].turn.bonus=false; m[0].c[0].uses[RS_USE_FOCUS]=1;
+  #assert e2r_dispatch(m[..],0,fb_feature(FB_FLURRY,"FLURRY OF BLOWS","flurry-of-blows")) && m[0].c[0].uses[RS_USE_FOCUS]==0;
   m[0].turn.bonus=false;
   #assert !e2r_dispatch(m[..],0,fb_feature(FB_FLURRY,"FLURRY OF BLOWS","flurry-of-blows")) && !m[0].turn.bonus;
-  m[0].c[0].focus=1; m[0].c[0].hp=0;
-  #assert !e2r_dispatch(m[..],0,fb_feature(FB_FLURRY,"FLURRY OF BLOWS","flurry-of-blows")) && m[0].c[0].focus==1;
+  m[0].c[0].uses[RS_USE_FOCUS]=1; m[0].c[0].hp=0;
+  #assert !e2r_dispatch(m[..],0,fb_feature(FB_FLURRY,"FLURRY OF BLOWS","flurry-of-blows")) && m[0].c[0].uses[RS_USE_FOCUS]==1;
   // a Reckless Attack swings at the air as an Attack does; Bardic Inspiration needs someone else
   r:[1] RsBattle; r[0].w=12; r[0].h=12;
   _=rs_add(r[..],fb_cl_hero(FB_CL_BARBARIAN,"Barbarian",0,2),3,3); rs_start_turn(r[..],0);
@@ -133,7 +133,7 @@
   d:[1] RsBattle; d[0].w=12; d[0].h=12; d[0].dice[0].fixed=true;
   _=rs_add(d[..],fb_cl_hero(FB_CL_DRUID,"Druid",0,3),3,3); _=rs_add(d[..],fb_cl_hero(FB_CL_FIGHTER,"Other",0,1),4,3); rs_start_turn(d[..],0);
   d[0].c[0].hp=2; other:=d[0].c[1].hp; wild:=d[0].c[0].uses[RS_USE_WILD];
-  #assert d[0].c[0].lands_aid && e2r_dispatch(d[..],0,fb_feature(FB_LANDS,"LAND'S AID","lands-aid"));
+  #assert rs_has_feature(d[0].c[0], RS_FT_LANDS_AID) && e2r_dispatch(d[..],0,fb_feature(FB_LANDS,"LAND'S AID","lands-aid"));
   #assert d[0].c[0].hp>2 && d[0].c[1].hp==other && d[0].c[0].uses[RS_USE_WILD]==wild-1;
 }
 

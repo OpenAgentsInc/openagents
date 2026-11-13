@@ -21,12 +21,12 @@
 }
 
 #test "the real battle clock completes only the resting actor and never heals without a chosen Hit Die" {
-  b:[1]RsBattle; rt_field(b[..],RS_MONK,5); b[0].c[0].focus=0; b[0].c[0].hp=1; b[0].c[0].temp=7;
+  b:[1]RsBattle; rt_field(b[..],RS_MONK,5); b[0].c[0].uses[RS_USE_FOCUS]=0; b[0].c[0].hp=1; b[0].c[0].temp=7;
   #assert rs_short_rest_begin(b[..],0);
-  rs_tick(b[..],3599); #assert b[0].c[0].focus==0 && b[0].c[0].rest.phase==1;
-  rs_tick(b[..],1); #assert b[0].c[0].focus==5 && b[0].c[0].rest.phase==2;
+  rs_tick(b[..],3599); #assert b[0].c[0].uses[RS_USE_FOCUS]==0 && b[0].c[0].rest.phase==1;
+  rs_tick(b[..],1); #assert b[0].c[0].uses[RS_USE_FOCUS]==5 && b[0].c[0].rest.phase==2;
   #assert b[0].c[0].hp==1 && b[0].c[0].temp==7 && b[0].c[1].rest.phase==0;
-  b[0].c[0].focus=0; rs_tick(b[..],3600); #assert b[0].c[0].focus==0;
+  b[0].c[0].uses[RS_USE_FOCUS]=0; rs_tick(b[..],3600); #assert b[0].c[0].uses[RS_USE_FOCUS]==0;
 }
 
 #test "all twelve level one to six class loadouts recover only their declared Short Rest banks" {
@@ -34,11 +34,11 @@
     b:[1]RsBattle; rt_field(b[..],klass,level);
     for u:0..<RS_USES { b[0].c[0].uses[u]=0; }
     for slot:1..<10 { b[0].c[0].slots[slot]=0; }
-    b[0].c[0].focus=0; b[0].c[0].rages=0; b[0].c[0].hp=1;
+    b[0].c[0].uses[RS_USE_FOCUS]=0; b[0].c[0].uses[RS_USE_RAGE]=0; b[0].c[0].hp=1;
     #assert rs_short_rest_begin(b[..],0); b[0].clock=3600; b[0].rest_clock.ticks=3600000000;
     #assert rs_short_rest_finish(b[..],0) && b[0].c[0].hp==1;
-    #assert b[0].c[0].rages==(ifx klass==RS_BARBARIAN then 1 else 0);
-    #assert b[0].c[0].focus==(ifx klass==RS_MONK then b[0].c[0].focus_max else 0);
+    #assert b[0].c[0].uses[RS_USE_RAGE]==(ifx klass==RS_BARBARIAN then 1 else 0);
+    #assert b[0].c[0].uses[RS_USE_FOCUS]==(ifx klass==RS_MONK then b[0].c[0].uses_max[RS_USE_FOCUS] else 0);
     for u:0..<RS_USES {
       want:=0;
       if (klass==RS_CLERIC || klass==RS_PALADIN) && u==RS_USE_CHANNEL && b[0].c[0].uses_max[u]>0 { want=1; }
@@ -46,6 +46,8 @@
       if klass==RS_FIGHTER && u==RS_USE_WIND { want=1; }
       if klass==RS_FIGHTER && u==RS_USE_SURGE { want=b[0].c[0].uses_max[u]; }
       if klass==RS_BARD && u==RS_USE_INSPIRE && level>=5 { want=b[0].c[0].uses_max[u]; }
+      if klass==RS_BARBARIAN && u==RS_USE_RAGE { want=1; }
+      if klass==RS_MONK && u==RS_USE_FOCUS { want=b[0].c[0].uses_max[u]; }
       #assert b[0].c[0].uses[u]==want;
     }
     for slot:1..<10 { #assert b[0].c[0].slots[slot]==(ifx klass==RS_WARLOCK && slot<=5 then b[0].c[0].slots_max[slot] else 0); }
@@ -94,19 +96,19 @@
 
 #test "damage interrupts even through temporary HP while zero damage and failed strikes do not" {
   for amount:0..<2 {
-    b:[1]RsBattle; rt_field(b[..],RS_MONK,2); b[0].c[0].focus=0; b[0].c[0].temp=10;
+    b:[1]RsBattle; rt_field(b[..],RS_MONK,2); b[0].c[0].uses[RS_USE_FOCUS]=0; b[0].c[0].temp=10;
     #assert rs_short_rest_begin(b[..],0); rs_damage(b[..],1,0,amount,RS_FIRE,false,-1);
     #assert b[0].c[0].rest.phase==(ifx amount==0 then 1 else 0);
     b[0].clock=3600; b[0].rest_clock.ticks=3600000000; #assert rs_short_rest_finish(b[..],0)==(amount==0);
-    #assert b[0].c[0].focus==(ifx amount==0 then 2 else 0);
+    #assert b[0].c[0].uses[RS_USE_FOCUS]==(ifx amount==0 then 2 else 0);
   }
 }
 
 #test "a completed rests Hit Dice choice ends on actual damage but never refunds its recovered resources" {
-  b:[1]RsBattle; rt_field(b[..],RS_MONK,2); b[0].c[0].focus=0;
+  b:[1]RsBattle; rt_field(b[..],RS_MONK,2); b[0].c[0].uses[RS_USE_FOCUS]=0;
   #assert rs_short_rest_begin(b[..],0); b[0].clock=3600; b[0].rest_clock.ticks=3600000000; #assert rs_short_rest_finish(b[..],0);
   rs_damage(b[..],1,0,1,RS_FIRE,false,-1);
-  #assert b[0].c[0].rest.phase==0 && b[0].c[0].focus==2 && !rs_short_rest_hit_die(b[..],0).admitted;
+  #assert b[0].c[0].rest.phase==0 && b[0].c[0].uses[RS_USE_FOCUS]==2 && !rs_short_rest_hit_die(b[..],0).admitted;
 }
 
 #test "initiative admission ends a carried rest without replenishing its Hit Dice" {
@@ -152,7 +154,7 @@
     #assert rs_short_rest_begin(b[..],0); b[0].clock=3600; b[0].rest_clock.ticks=3600000000; #assert rs_short_rest_finish(b[..],0);
     pick:=[1]int.[3]; #assert rs_short_rest_slots(b[..],0,RsRestSlots.{levels=pick[..]})==(level==6);
     #assert b[0].c[0].slots[3]==(ifx level==6 then 1 else 0);
-    #assert b[0].c[0].natural_recovery==(level==6);
+    #assert rs_has_feature(b[0].c[0], RS_FT_NATURAL_RECOVERY)==(level==6);
   }
 }
 
@@ -164,7 +166,7 @@
     if mode==0 { n=0; } else if mode==1 { pick[0]=0; } else if mode==2 { pick[0] = -1; }
     else if mode==3 { pick[0]=6; } else if mode==4 { n=4; }
     else if mode==5 { pick[0]=3; }
-    else if mode==6 { b[0].c[0].arcane_recovery=false; }
+    else if mode==6 { b[0].c[0].feats = rs_feature_put(b[0].c[0].feats, RS_FT_ARCANE_RECOVERY, false); }
     else { b[0].c[0].rest.phase=0; }
     seq:=b[0].book[0].seq;
     #assert !rs_short_rest_slots(b[..],0,RsRestSlots.{levels=pick[0..<n],spellbook=true});
@@ -202,14 +204,14 @@
 
 #test "unliving zero-HP and reversed-clock rests cannot grant or consume recovery" {
   for mode:0..<4 {
-    b:[1]RsBattle; rt_field(b[..],RS_MONK,2); b[0].c[0].focus=0;
+    b:[1]RsBattle; rt_field(b[..],RS_MONK,2); b[0].c[0].uses[RS_USE_FOCUS]=0;
     if mode==0 { b[0].c[0].dead=true; } else if mode==1 { b[0].c[0].hp=0; }
     else if mode==2 { b[0].clock = -1; } else { b[0].clock=7; b[0].rest_clock.ticks=7000000; }
     if mode<3 { #assert !rs_short_rest_begin(b[..],0); }
     else { #assert rs_short_rest_begin(b[..],0); b[0].clock=6; b[0].rest_clock.ticks=6000000; #assert !rs_short_rest_finish(b[..],0); }
     b[0].c[0].rest.phase=1; b[0].c[0].rest.started=0;
     if mode<2 { b[0].clock=3600; b[0].rest_clock.ticks=3600000000; }
-    #assert !rs_short_rest_finish(b[..],0) && b[0].c[0].focus==0;
+    #assert !rs_short_rest_finish(b[..],0) && b[0].c[0].uses[RS_USE_FOCUS]==0;
     b[0].c[0].rest.phase=2;
     if mode<2 { #assert !rs_short_rest_hit_die(b[..],0).admitted; }
   }
@@ -226,8 +228,8 @@
 }
 
 #test "a whole Short Rest cannot retain Rage or refill daily Warlock Arcanum or free-cast banks" {
-  b:[1]RsBattle; rt_field(b[..],RS_BARBARIAN,3); b[0].c[0].raging=true;
-  #assert rs_short_rest_begin(b[..],0); b[0].clock=3600; b[0].rest_clock.ticks=3600000000; #assert rs_short_rest_finish(b[..],0) && !b[0].c[0].raging;
+  b:[1]RsBattle; rt_field(b[..],RS_BARBARIAN,3); b[0].c[0].eff = rs_state_put(b[0].c[0].eff, EF_RAGE, true);
+  #assert rs_short_rest_begin(b[..],0); b[0].clock=3600; b[0].rest_clock.ticks=3600000000; #assert rs_short_rest_finish(b[..],0) && !rs_effect(b[0].c[0], EF_RAGE);
   c:[1]RsCreature; c[0]=rs_warlock("Warlock",0,17,SP_ELDRITCH_BLAST);
   c[0].slots[5]=0; c[0].slots[6]=0; c[0].slots[9]=0; c[0].uses_max[RS_USE_FREE]=1;
   rs_short_rest_resources(c[..]);
@@ -240,11 +242,11 @@
     #assert rs_short_rest_begin(b[..],0); b[0].clock=3600; b[0].rest_clock.ticks=3600000000; #assert rs_short_rest_finish(b[..],0);
     if mode==0 { b[0].c[0].slots[1] = -1; }
     else if mode==1 { b[0].c[0].slots_max[1] = -2147483648; b[0].c[0].slots[1]=1; }
-    else if mode==2 { b[0].c[0].klass=RS_DRUID; b[0].c[0].natural_recovery=false; }
+    else if mode==2 { b[0].c[0].klass=RS_DRUID; b[0].c[0].feats = rs_feature_put(b[0].c[0].feats, RS_FT_NATURAL_RECOVERY, false); }
     else if mode==3 { b[0].c[0].level=0; }
     else if mode==4 { b[0].c[0].level=21; }
-    else if mode==5 { b[0].c[0].klass=RS_DRUID; b[0].c[0].natural_recovery=true; b[0].c[0].level=5; }
-    else if mode==6 { b[0].c[0].klass=RS_ROGUE; b[0].c[0].natural_recovery=true; }
+    else if mode==5 { b[0].c[0].klass=RS_DRUID; b[0].c[0].feats = rs_feature_put(b[0].c[0].feats, RS_FT_NATURAL_RECOVERY, true); b[0].c[0].level=5; }
+    else if mode==6 { b[0].c[0].klass=RS_ROGUE; b[0].c[0].feats = rs_feature_put(b[0].c[0].feats, RS_FT_NATURAL_RECOVERY, true); }
     else { b[0].c[0].klass=RS_ROGUE; }
     pick:=[1]int.[1]; #assert !rs_short_rest_slots(b[..],0,RsRestSlots.{levels=pick[..],spellbook=true}) && !b[0].c[0].rest.recovery_used;
   }
@@ -254,7 +256,7 @@
     if mode==0 { b[0].c[0].uses[RS_USE_SORCERY] = -1; }
     else if mode==1 { b[0].c[0].uses_max[RS_USE_SORCERY] = -2147483648; b[0].c[0].uses[RS_USE_SORCERY]=1; }
     else if mode==2 { b[0].c[0].uses[RS_USE_SORCERY]=5; }
-    else if mode==3 { b[0].c[0].restoration=false; }
+    else if mode==3 { b[0].c[0].feats = rs_feature_put(b[0].c[0].feats, RS_FT_RESTORATION, false); }
     else { b[0].c[0].klass=RS_ROGUE; }
     #assert !rs_short_rest_sorcery(b[..],0,1) && !b[0].c[0].rest.restoration_used;
   }
@@ -277,8 +279,9 @@
   modes:[13][RS_USES]int;
   modes[RS_CLERIC][RS_USE_CHANNEL]=1; modes[RS_PALADIN][RS_USE_CHANNEL]=1; modes[RS_DRUID][RS_USE_WILD]=1;
   modes[RS_FIGHTER][RS_USE_WIND]=1; modes[RS_FIGHTER][RS_USE_SURGE]=2; modes[RS_BARD][RS_USE_INSPIRE]=2;
+  modes[RS_BARBARIAN][RS_USE_RAGE]=1; modes[RS_MONK][RS_USE_FOCUS]=2;
   for klass:0..<RS_CLASSES { for level:4..<6 { for font:0..<2 {
-    c:RsCreature; c.klass=klass; c.level=level; c.font=font==1;
+    c:RsCreature; c.klass=klass; c.level=level; c.feats = rs_feature_put(c.feats, RS_FT_FONT, font==1);
     for u:0..<RS_USES {
       expected:=modes[klass][u];
       if klass==RS_BARD && (level==4 || font==0) { expected=0; }
@@ -295,7 +298,7 @@
 }
 
 #test "slot recovery rounds up all legal source levels and admits exactly full low or fifth-level budgets" {
-  c:RsCreature; c.klass=RS_WIZARD; c.arcane_recovery=true;
+  c:RsCreature; c.klass=RS_WIZARD; c.feats = rs_feature_put(c.feats, RS_FT_ARCANE_RECOVERY, true);
   for level:1..<21 { c.level=level; #assert rs_rest_slot_budget(c,true)==(level+1)/2; }
   for mode:0..<2 {
     b:[1]RsBattle; rt_field(b[..],RS_WIZARD,ifx mode==0 then 5 else 10);
@@ -342,10 +345,10 @@
 
 #test "Short Rest resource reads and writes belong to the first actor of its admitted view" {
   c:[2]RsCreature; c[0]=rs_barbarian("Resting",0,3); c[1]=rs_barbarian("Other",1,6);
-  c[0].rages=1; rs_short_rest_resources(c[..]);
-  #assert c[0].rages==2 && c[1].rages==4;
-  c[0]=rs_monk("Resting",0,5); c[1]=rs_monk("Other",1,6); c[0].focus=2;
-  rs_short_rest_resources(c[..]); #assert c[0].focus==5 && c[1].focus==6;
+  c[0].uses[RS_USE_RAGE]=1; rs_short_rest_resources(c[..]);
+  #assert c[0].uses[RS_USE_RAGE]==2 && c[1].uses[RS_USE_RAGE]==4;
+  c[0]=rs_monk("Resting",0,5); c[1]=rs_monk("Other",1,6); c[0].uses[RS_USE_FOCUS]=2;
+  rs_short_rest_resources(c[..]); #assert c[0].uses[RS_USE_FOCUS]==5 && c[1].uses[RS_USE_FOCUS]==6;
 }
 
 rt_field :: (b:[]RsBattle,klass:int,level:int) {

@@ -46,7 +46,7 @@ mc_has_text :: (b: [] RsBattle, since: int, text: string) -> bool {
   #assert wo.ac==12 && wo.hp_max==11 && wo.speed==40 && rs_trait(wo,RS_TRAIT_PACK) && !rs_trait(wo,RS_TRAIT_MAGIC) && rs_size(wo)==RS_MEDIUM && wo.klass==RS_MONSTER;
   zo := rs_monster(MON_ZOMBIE,"",0); old := rs_zombie("Zombie",0);
   #assert zo.ac==old.ac && zo.hp_max==old.hp_max && zo.speed==old.speed && zo.score[RS_STR]==old.score[RS_STR] && zo.score[RS_CON]==old.score[RS_CON] && zo.score[RS_WIS]==old.score[RS_WIS] && rs_save_bonus(zo,RS_WIS)==rs_save_bonus(old,RS_WIS);
-  #assert zo.undead && zo.fortitude && zo.immune==old.immune && zo.immune_cond==old.immune_cond && rs_save_bonus(zo,RS_WIS)==0;
+  #assert zo.undead && rs_has_feature(zo, RS_FT_UNDEAD_FORTITUDE) && zo.immune==old.immune && zo.immune_cond==old.immune_cond && rs_save_bonus(zo,RS_WIS)==0;
   // the attacks' printed numbers
   s := rs_monster_action(MON_IMP).attacks[0];
   #assert s.bonus==5 && s.dice==1 && s.sides==6 && s.flat==3 && s.kind==RS_PIERCING && s.plus_dice==2 && s.plus_sides==6 && s.plus_kind==RS_POISON && s.reach==5;
@@ -274,7 +274,7 @@ mc_has_text :: (b: [] RsBattle, since: int, text: string) -> bool {
 
 #test "an attacker dropped by a Reaction stops its Multiattack" {
   b: [1] RsBattle; j := mc_field(b[..],MON_HILL_GIANT,1);
-  w := rs_warlock("Rebuker",1,3,SP_ELDRITCH_BLAST); w.rebuke=true; w.hp=100; w.hp_max=100; w.ac=12;
+  w := rs_warlock("Rebuker",1,3,SP_ELDRITCH_BLAST); w.feats = rs_feature_put(w.feats, RS_FT_REBUKE, true); w.hp=100; w.hp_max=100; w.ac=12;
   b[0].c[j]=w; rs_place(b[..],j,2,1); b[0].c[0].hp=1;
   #assert rs_stat_multiattack(b[..],0,j,rs_monster_action(MON_HILL_GIANT));
   #assert b[0].c[j].hp==83 && !rs_up(b[0].c[0]);   // one Tree Club; Hellish Rebuke drops the giant before its second
@@ -319,9 +319,9 @@ mc_has_text :: (b: [] RsBattle, since: int, text: string) -> bool {
   d: [1] RsBattle; t := mc_field(d[..],MON_OGRE,1); d[0].c[t].hp=0; d[0].c[t].cond=RS_UNCONSCIOUS;
   #assert rs_stat_multiattack(d[..],0,t,rs_monster_action(MON_OGRE)) && d[0].dice[0].rolled>0;
   // Remarkable Athlete's half Speed after a Critical Hit follows each attack
-  e: [1] RsBattle; u := mc_field(e[..],MON_OGRE,1); e[0].c[u].cond=RS_PARALYZED; e[0].c[0].athlete=true; e[0].turn.move_left=0;
+  e: [1] RsBattle; u := mc_field(e[..],MON_OGRE,1); e[0].c[u].cond=RS_PARALYZED; e[0].c[0].feats = rs_feature_put(e[0].c[0].feats, RS_FT_ATHLETE, true); e[0].turn.move_left=0;
   #assert rs_stat_multiattack(e[..],0,u,rs_monster_action(MON_OGRE)) && e[0].turn.move_left==4;
-  f: [1] RsBattle; v := mc_field(f[..],MON_OGRE,1); f[0].c[v].cond=RS_PARALYZED; f[0].c[0].athlete=true; f[0].turn.move_left=0;
+  f: [1] RsBattle; v := mc_field(f[..],MON_OGRE,1); f[0].c[v].cond=RS_PARALYZED; f[0].c[0].feats = rs_feature_put(f[0].c[0].feats, RS_FT_ATHLETE, true); f[0].turn.move_left=0;
   #assert rs_stat_attack(f[..],0,v,rs_monster_action(MON_OGRE).attacks[0]) && f[0].turn.move_left==4;
 }
 

@@ -15,7 +15,7 @@ ck_hero :: (level: int) -> RsCreature { return rs_warlock("Kel", 0, level, SP_EL
 #test "Eldritch Invocations p.70-73: one at level 1, three at 2, five at 5" {
   for level: 1..<7 {
     c := ck_hero(level);
-    n := 1 + (ifx c.agonizing == SP_ELDRITCH_BLAST then 1 else 0) + (ifx c.repelling == SP_ELDRITCH_BLAST then 1 else 0) + (ifx c.vigor then 1 else 0) + (ifx c.eldritch_mind then 1 else 0);
+    n := 1 + (ifx c.rank[RS_RK_AGONIZING] == SP_ELDRITCH_BLAST then 1 else 0) + (ifx c.rank[RS_RK_REPELLING] == SP_ELDRITCH_BLAST then 1 else 0) + (ifx rs_has_feature(c, RS_FT_FIENDISH_VIGOR) then 1 else 0) + (ifx rs_has_feature(c, RS_FT_ELDRITCH_MIND) then 1 else 0);
     #assert c.ac == 13 + rs_mod(c.score[RS_DEX]) && n == (ifx level >= 5 then 5 else ifx level >= 2 then 3 else 1);   // Armor of Shadows: Mage Armor on itself
   }
 }

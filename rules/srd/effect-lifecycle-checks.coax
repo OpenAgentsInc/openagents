@@ -22,12 +22,12 @@
 
 #test "incapacitation ends Rage and only that clerics Turn Undead ownership immediately" {
   for condition: [5] int.[RS_INCAPACITATED,RS_PARALYZED,RS_PETRIFIED,RS_STUNNED,RS_UNCONSCIOUS] {
-    b: [1] RsBattle; el_field(b[..]); b[0].c[1].raging = true; b[0].c[1].rage_kept = true;
-    b[0].c[1].turn_undead = true;
+    b: [1] RsBattle; el_field(b[..]); b[0].c[1].eff = rs_state_put(b[0].c[1].eff, EF_RAGE, true); b[0].c[1].eff = rs_state_bit(b[0].c[1].eff, EF_RAGE, RS_RAGE_KEPT, true);
+    b[0].c[1].feats = rs_feature_put(b[0].c[1].feats, RS_FT_TURN_UNDEAD, true);
     #assert rs_put_effect(b[..],2,RsEffect.{kind=EF_TURNED,cond=RS_FRIGHTENED|RS_INCAPACITATED,by=1,spell=-1,until=60,save=-1});
     #assert rs_put_effect(b[..],2,RsEffect.{kind=EF_TURNED,cond=RS_FRIGHTENED|RS_INCAPACITATED,by=0,spell=-1,until=60,save=-1});
     #assert rs_put_effect(b[..],1,RsEffect.{kind=EF_COND,cond=condition,by=0,spell=-1,until=30,save=-1});
-    #assert !b[0].c[1].raging && !b[0].c[1].rage_kept;
+    #assert !rs_effect(b[0].c[1], EF_RAGE) && !rs_state_has(b[0].c[1], EF_RAGE, RS_RAGE_KEPT);
     #assert b[0].c[2].eff[0].kind == EF_NONE && b[0].c[2].eff[1].kind == EF_TURNED;
     #assert rs_has(b[0].c[2],RS_FRIGHTENED|RS_INCAPACITATED);
   }
@@ -58,7 +58,7 @@
   for mode: 0..<4 { for kind: [4] int.[EF_COND,EF_TURNED,EF_DAZED,EF_HEX] {
     for mask: [5] int.[RS_CHARMED,RS_FRIGHTENED,RS_CHARMED|RS_FRIGHTENED,RS_BLINDED,RS_CHARMED|RS_FRIGHTENED|RS_BLINDED] {
       b: [1] RsBattle; el_field(b[..]);
-      b[0].c[1].mindless = (mode & 1) != 0; b[0].c[1].raging = (mode & 2) != 0;
+      b[0].c[1].feats = rs_feature_put(b[0].c[1].feats, RS_FT_MINDLESS_RAGE, (mode & 1) != 0); b[0].c[1].eff = rs_state_put(b[0].c[1].eff, EF_RAGE, (mode & 2) != 0);
       #assert rs_put_effect(b[..],1,RsEffect.{kind=kind,cond=mask,by=2,spell=SP_HEX,until=47,save=RS_WIS,dc=13});
       expected := ifx mode == 3 && kind != EF_HEX then mask & RS_BLINDED else mask;
       if expected == 0 { #assert b[0].c[1].eff[0].kind == EF_NONE; }
@@ -67,7 +67,7 @@
         #assert e.kind == kind && e.cond == expected && e.by == 2 && e.spell == SP_HEX && e.until == 47 && e.save == RS_WIS && e.dc == 13;
       }
       #assert b[0].c[1].cond == (ifx kind == EF_HEX then 0 else expected);
-      #assert b[0].c[1].raging == ((mode & 2) != 0) && b[0].book[0].seq == 0;
+      #assert rs_effect(b[0].c[1], EF_RAGE) == ((mode & 2) != 0) && b[0].book[0].seq == 0;
     }
   } }
 }
@@ -81,7 +81,7 @@
   b[0].who = 0; b[0].turn = RsTurn.{};
   rs_stunning_strike(b[..],0,1);
   #assert rs_has(b[0].c[1],RS_STUNNED) && b[0].c[1].conc == -1;
-  #assert !rs_effect(b[0].c[2],EF_BLESS) && b[0].c[0].focus == 4;
+  #assert !rs_effect(b[0].c[2],EF_BLESS) && b[0].c[0].uses[RS_USE_FOCUS] == 4;
   for k: 0..<RS_EFFECTS { if b[0].c[1].eff[k].kind == EF_COND { rs_drop_effect(b[..],1,k); } }
   #assert !rs_has(b[0].c[1],RS_STUNNED) && b[0].c[1].conc == -1;
 }
@@ -89,15 +89,15 @@
 #test "Stunning Strike against condition immunity does not end Rage without inflicting Stunned" {
   b: [1] RsBattle; el_field(b[..]);
   b[0].c[0] = rs_monk("Monk",0,5); rs_place(b[..],0,1,1); b[0].c[0].stun_ready = true;
-  b[0].c[1].raging = true; b[0].c[1].immune_cond = RS_STUNNED;
+  b[0].c[1].eff = rs_state_put(b[0].c[1].eff, EF_RAGE, true); b[0].c[1].immune_cond = RS_STUNNED;
   rs_stunning_strike(b[..],0,1);
-  #assert !rs_has(b[0].c[1],RS_STUNNED) && b[0].c[1].raging;
+  #assert !rs_has(b[0].c[1],RS_STUNNED) && rs_effect(b[0].c[1], EF_RAGE);
 }
 
 #test "dropping to zero HP ends Rage immediately rather than at the next turn" {
-  b: [1] RsBattle; el_field(b[..]); b[0].c[1].raging = true;
+  b: [1] RsBattle; el_field(b[..]); b[0].c[1].eff = rs_state_put(b[0].c[1].eff, EF_RAGE, true);
   rs_damage(b[..],0,1,100,RS_FIRE,false,-1);
-  #assert b[0].c[1].hp == 0 && !b[0].c[1].raging && rs_has(b[0].c[1],RS_UNCONSCIOUS);
+  #assert b[0].c[1].hp == 0 && !rs_effect(b[0].c[1], EF_RAGE) && rs_has(b[0].c[1],RS_UNCONSCIOUS);
 }
 
 el_field :: (b: [] RsBattle) {

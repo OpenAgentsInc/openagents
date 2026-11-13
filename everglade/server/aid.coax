@@ -92,6 +92,6 @@ e2_aid_commit :: (v:[] RmServer,k:int) {
     if !ok { eg_refuse(v,k,id,aid.pending,EGF_KIT_REFUSED); continue; }
     if aid.target>=0 { e2_monster_healed(v,k,s,aid.target,b[0].c[EGB_SEAT+aid.target].hp-was); }   // a heal is a threat to whatever fights the healed (#13293)
     out:[64]u8;
-    eg_event_only(v,k,cast(string)out[0..<egf_kit_put(out[..],EgfKit.{seq=aid.pending,left=b[0].c[EGB_SEAT+s].healer_kit})],s);   // an e entry told to the asker alone
+    eg_event_only(v,k,cast(string)out[0..<egf_kit_put(out[..],EgfKit.{seq=aid.pending,left=b[0].c[EGB_SEAT+s].uses[RS_USE_KIT]})],s);   // an e entry told to the asker alone
   }
 }

@@ -235,7 +235,7 @@ sl_learn :: (b: [] RsBattle, i: int, sp: int) {
 }
 sl_sturdy :: (b: [] RsBattle, j: int, con: int, dex: int) {
   b[0].c[j].hp = 200; b[0].c[j].hp_max = 200; b[0].c[j].score[RS_CON] = con; b[0].c[j].score[RS_DEX] = dex;
-  b[0].c[j].shield_spell = false;   // the preset Sorcerer knows Shield; a plain target here does not
+  b[0].c[j].feats = rs_feature_put(b[0].c[j].feats, RS_FT_SHIELD_SPELL, false);   // the preset Sorcerer knows Shield; a plain target here does not
 }
 
 #test "the slice records carry their pinned source level, timing, range, components, page and classes" #steps 100000000 {
@@ -281,7 +281,7 @@ sl_sturdy :: (b: [] RsBattle, j: int, con: int, dex: int) {
     #assert rs_cast(b[..],a,SP_ACID_SPLASH,0,8,4,-1);
     full := 3 * (ifx level >= 5 then 2 else 1);
     // The level 5 preset is an Evoker: Potent Cantrip (level 3) halves a saved cantrip's damage.
-    dealt := ifx nimble == 0 then full else ifx b[0].c[a].potent then full / 2 else 0;
+    dealt := ifx nimble == 0 then full else ifx rs_has_feature(b[0].c[a], RS_FT_POTENT_CANTRIP) then full / 2 else 0;
     #assert 200 - b[0].c[t].hp == dealt && 200 - b[0].c[u].hp == dealt && b[0].c[far].hp == 200;
   } }
   // A point beyond 60 feet is refused.
@@ -319,12 +319,12 @@ sl_sturdy :: (b: [] RsBattle, j: int, con: int, dex: int) {
     a := rs_add(b[..],rs_wizard("Wizard",0,3),1,1); t := rs_add(b[..],rs_sorcerer("Warded",1,3),10,1);
     other := rs_add(b[..],rs_sorcerer("Open",1,3),11,1);
     sl_sturdy(b[..],t,10,10); sl_sturdy(b[..],other,10,10);
-    sl_learn(b[..],a,SP_MAGIC_MISSILE); sl_learn(b[..],t,SP_SHIELD); b[0].c[t].shield_spell = true;
+    sl_learn(b[..],a,SP_MAGIC_MISSILE); sl_learn(b[..],t,SP_SHIELD); b[0].c[t].feats = rs_feature_put(b[0].c[t].feats, RS_FT_SHIELD_SPELL, true);
     if warded == 1 { rs_shield_begin(b[0].c[t..<t+1]); b[0].c[t].reacted = true; }
     slots := b[0].c[t].slots[1];
     rs_start_turn(b[..],a); picks := [3] int.[t,t,other];
     #assert rs_cast_creatures(b[..],a,SP_MAGIC_MISSILE,1,picks[..],false);
-    #assert b[0].c[t].hp == 200 && b[0].c[t].shield_active && 200 - b[0].c[other].hp == 3;
+    #assert b[0].c[t].hp == 200 && rs_effect(b[0].c[t], EF_SHIELD) && 200 - b[0].c[other].hp == 3;
     // One Reaction and one slot when it reacted; none when Shield was already up.
     #assert b[0].c[t].slots[1] == (ifx warded == 1 then slots else slots - 1) && b[0].c[t].reacted;
   }
@@ -333,9 +333,9 @@ sl_sturdy :: (b: [] RsBattle, j: int, con: int, dex: int) {
     b: [1] RsBattle; b[0].w = 30; b[0].h = 8; b[0].dice[0].fixed = true;
     a := rs_add(b[..],rs_wizard("Wizard",0,3),1,1); t := rs_add(b[..],rs_sorcerer("Target",1,3),10,1);
     sl_learn(b[..],a,SP_MAGIC_MISSILE); sl_sturdy(b[..],t,10,10);
-    if spent == 1 { sl_learn(b[..],t,SP_SHIELD); b[0].c[t].shield_spell = true; b[0].c[t].reacted = true; }
+    if spent == 1 { sl_learn(b[..],t,SP_SHIELD); b[0].c[t].feats = rs_feature_put(b[0].c[t].feats, RS_FT_SHIELD_SPELL, true); b[0].c[t].reacted = true; }
     rs_start_turn(b[..],a); #assert rs_cast(b[..],a,SP_MAGIC_MISSILE,1,0,0,t);
-    #assert 200 - b[0].c[t].hp == 9 && !b[0].c[t].shield_active;
+    #assert 200 - b[0].c[t].hp == 9 && !rs_effect(b[0].c[t], EF_SHIELD);
   }
 }
 
@@ -374,7 +374,7 @@ sl_sturdy :: (b: [] RsBattle, j: int, con: int, dex: int) {
     #assert rs_cast(b[..],a,SP_FIREBALL,3,6,5,-1);
     #assert 200 - b[0].c[t].hp == 24;   // 8d6 on a failed save
     // The level 6 Evoker's Sculpt Spells spares its own side, the caster included.
-    #assert 200 - b[0].c[a].hp == (ifx b[0].c[a].sculpt then 0 else 24);
+    #assert 200 - b[0].c[a].hp == (ifx rs_has_feature(b[0].c[a], RS_FT_SCULPT) then 0 else 24);
   }
   // Thunderwave's Cube and Lightning Bolt's Line originate from the caster and leave it out.
   for sp: [2] int.[SP_THUNDERWAVE,SP_LIGHTNING_BOLT] {
@@ -443,7 +443,7 @@ sl_sturdy :: (b: [] RsBattle, j: int, con: int, dex: int) {
   b[0].c[t].construct = true;
   #assert rs_save_edge_with(b[..],t,RS_CON,rs_save_rider_downs(RS_SAVE_RIDER_CONSTRUCT_DIS,b[0].c[t].construct)) == -1;
   // Advantage from Rage on a Strength save cancels it rather than being overridden.
-  b[0].c[t].raging = true;
+  b[0].c[t].eff = rs_state_put(b[0].c[t].eff, EF_RAGE, true);
   #assert rs_save_edge_with(b[..],t,RS_STR,1) == 0 && rs_save_edge_with(b[..],t,RS_STR,0) == 1;
   // Fixed dice show the second d20 is taken at Disadvantage: the save still rolls once a die.
   c: [1] RsBattle; c[0].w = 30; c[0].h = 12;

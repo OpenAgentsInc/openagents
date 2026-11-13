@@ -72,15 +72,15 @@ xc_bar_level :: (klass: int, level: int, out: [] FbAb) -> int {
       if klass == FB_CL_BARD && a.sp == SP_FIREBALL && level < 6 { continue; }
     }
     if a.kind == FB_RECKLESS && level < 2 { continue; }
-    if (a.kind == FB_FLURRY || a.kind == FB_PATIENT || a.kind == FB_WIND) && hero.focus_max == 0 { continue; }
+    if (a.kind == FB_FLURRY || a.kind == FB_PATIENT || a.kind == FB_WIND) && hero.uses_max[RS_USE_FOCUS] == 0 { continue; }
     if a.kind == FB_WHOLE && hero.uses_max[RS_USE_WHOLE] == 0 { continue; }
     if a.kind == FB_SURGE && hero.uses_max[RS_USE_SURGE] == 0 { continue; }
-    if a.kind == FB_AIM && !hero.steady_aim { continue; }
+    if a.kind == FB_AIM && !rs_has_feature(hero, RS_FT_STEADY_AIM) { continue; }
     if a.kind == FB_CDASH && level < 2 { continue; }
     if a.kind == FB_SACRED && level < 3 { continue; }
-    if a.kind == FB_TURN && !hero.turn_undead { continue; }
-    if a.kind == FB_PRESERVE && !hero.preserve_life { continue; }
-    if a.kind == FB_LANDS && !hero.lands_aid { continue; }
+    if a.kind == FB_TURN && !rs_has_feature(hero, RS_FT_TURN_UNDEAD) { continue; }
+    if a.kind == FB_PRESERVE && !rs_has_feature(hero, RS_FT_PRESERVE_LIFE) { continue; }
+    if a.kind == FB_LANDS && !rs_has_feature(hero, RS_FT_LANDS_AID) { continue; }
     // the Paladin's Sacred Flame is Blessed Warrior's, its Fighting Style from level 2 (p. 54)
     if klass == FB_CL_PALADIN && a.kind == FB_SPELL && a.sp == SP_SACRED_FLAME && level < 2 { continue; }
     // Produce Flame is already represented by the combined conjure-and-hurl slot.

@@ -6,7 +6,7 @@
 // The limited-use counts profile 2 carries: the first 11 (state 16..26). Profile 3 carries the rest
 // of the rules' RS_USES in its optional `uses` (CC_MORE); a profile 2 restore leaves those full.
 CK_USES :: CC_STATE - 16;
-#test "checkpoint: a capture carries every limited-use count the rules keep, 11 in state and the rest in uses" { #assert CK_USES == 11 && CK_USES + CC_MORE == RS_USES; }
+#test "checkpoint: a capture carries every limited-use count the rules keep, 11 in state and the rest in uses" { #assert CK_USES == 11 && CK_USES + CC_MORE == RS_USES_KEPT && RS_USES_KEPT == 14; }   // Rages, Focus and a Healer's Kit (pools 14 to 16, #13285) come back full, as they did as fields
 CheckpointSlot :: struct {
   live:bool;owner:int;pid:[TICKET_PID]u8;pid_n:int;
   latest:CharacterCapture;latest_rest:CharacterRest;capture_mono:int;acked:int;accepted:bool;accepted_mono:int;

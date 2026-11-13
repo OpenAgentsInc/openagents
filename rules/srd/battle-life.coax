@@ -76,7 +76,7 @@ rs_dropped :: (b: [] RsBattle, by: int, j: int) #effects(all) {
   for k: 0..<b[0].n {
     // only a Hex or a Hunter's Mark held, or Dark One's Blessing, has anything to do here (the
     // look first, before a creature's copy: a big battle has thousands)
-    if !b[0].c[k].dark_blessing && b[0].c[k].conc != SP_HEX && b[0].c[k].conc != SP_HUNTERS_MARK { continue; }
+    if !rs_has_feature(b[0].c[k], RS_FT_DARK_BLESSING) && b[0].c[k].conc != SP_HEX && b[0].c[k].conc != SP_HUNTERS_MARK { continue; }
     c := b[0].c[k];
     for e: 0..<RS_EFFECTS {
       ek := b[0].c[j].eff[e].kind;
@@ -85,7 +85,7 @@ rs_dropped :: (b: [] RsBattle, by: int, j: int) #effects(all) {
         b[0].c[k].hex_free_after = ifx rs_turn_owner(b) == k then c.turn_at else c.turn_at - rs_beat(b);
       }
     }
-    if !c.dark_blessing || !rs_up(c) || c.team == b[0].c[j].team { continue; }
+    if !rs_has_feature(c, RS_FT_DARK_BLESSING) || !rs_up(c) || c.team == b[0].c[j].team { continue; }
     if k != by && rs_feet_to(b, k, j) >= 10 + RS_SQUARE { continue; }   // within 10 feet: nearer than the next square out
     gain := rs_max(rs_mod(c.score[RS_CHA]) + c.level, 1);
     if gain <= c.temp { continue; }
@@ -106,7 +106,7 @@ rs_damage :: (b: [] RsBattle, by: int, j: int, amount: int, kind: int, crit: boo
 }
 // A creature holding a spell by Concentration saves with Advantage if it has Eldritch Mind (p. 72):
 // the Advantages its save counts.
-rs_concentration_ups :: (c: RsCreature) -> int #effects(all) { return ifx c.eldritch_mind then 1 else 0; }
+rs_concentration_ups :: (c: RsCreature) -> int #effects(all) { return ifx rs_has_feature(c, RS_FT_ELDRITCH_MIND) then 1 else 0; }
 rs_damage_dealt :: (b: [] RsBattle, by: int, j: int, amount: int, radiant: bool, crit: bool, spell: int) #effects(all) {
   rs_rest_damage_before(b,j,amount);
   dealt:=rs_damage_floor(b[0].c[j],amount);
@@ -160,7 +160,7 @@ rs_hellish_rebuke :: (b: [] RsBattle, j: int, by: int) -> bool #effects(all) {
   if by < 0 { return false; }
   c := b[0].c[j];
   sp := SP_HELLISH_REBUKE; fire := RS_FIRE;
-  if !c.rebuke || c.reacted || !rs_capable(c) || rs_casting_barred(c) || !rs_spell_ready(c, sp) { return false; }
+  if !rs_has_feature(c, RS_FT_REBUKE) || c.reacted || !rs_capable(c) || rs_casting_barred(c) || !rs_spell_ready(c, sp) { return false; }
   if !rs_cast_sees(b, j, by, sp) { return false; }   // a creature of this battle that it can see
   // its own team's damage, its own too, is never answered; 60 feet: nearer than the next square out
   if b[0].c[by].dead || b[0].c[by].team == c.team || rs_feet_to(b, j, by) >= 60 + RS_SQUARE { return false; }
@@ -229,10 +229,10 @@ rs_hellish_rebuke :: (b: [] RsBattle, j: int, by: int) -> bool #effects(all) {
   i := rs_add(b[..], rs_fighter("Garr", 0, 3), 2, 5);
   #assert i == 0 && b[0].n == 1 && b[0].c[0].x == 2 && b[0].c[0].y == 5 && rs_at(b[..], 2, 5) == 0;
   #assert b[0].c[0].rest.seeded && b[0].c[0].rest.die == 10 && b[0].c[0].rest.dice == 3 && b[0].c[0].rest.dice_max == 3;
-  m := rs_monk("Sen", 0, 3); m.focus = 0;
-  #assert m.metabolism && m.uses[RS_USE_METABOLISM] == 1 && m.focus_max == 3;
+  m := rs_monk("Sen", 0, 3); m.uses[RS_USE_FOCUS] = 0;
+  #assert rs_has_feature(m, RS_FT_METABOLISM) && m.uses[RS_USE_METABOLISM] == 1 && m.uses_max[RS_USE_FOCUS] == 3;
   j := rs_add(b[..], m, 3, 5);
-  #assert j == 1 && b[0].c[j].focus == 3 && b[0].c[j].uses[RS_USE_METABOLISM] == 0;
+  #assert j == 1 && b[0].c[j].uses[RS_USE_FOCUS] == 3 && b[0].c[j].uses[RS_USE_METABOLISM] == 0;
 }
 #test "life: the turns begin in Initiative order, equals in the order they joined, spread evenly over the round from 0.4 s on" {
   b: [1] RsBattle; b[0].w = 16; b[0].h = 8;
@@ -267,7 +267,7 @@ rs_hellish_rebuke :: (b: [] RsBattle, j: int, by: int) -> bool #effects(all) {
   f := rs_add(b[..], rs_fighter("Garr", 0, 1), 4, 1);
   t := rs_add(b[..], rs_fighter("Target", 1, 1), 5, 1);
   u := rs_add(b[..], rs_fighter("Other", 1, 1), 6, 1);
-  #assert !b[0].c[w].dark_blessing && !b[0].c[x].dark_blessing && !b[0].c[r].dark_blessing;
+  #assert !rs_has_feature(b[0].c[w], RS_FT_DARK_BLESSING) && !rs_has_feature(b[0].c[x], RS_FT_DARK_BLESSING) && !rs_has_feature(b[0].c[r], RS_FT_DARK_BLESSING);
   far := 9000000000;
   b[0].c[w].conc = SP_HEX; b[0].c[w].conc_until = far; b[0].c[x].conc = SP_HEX; b[0].c[x].conc_until = far; b[0].c[r].conc = SP_HUNTERS_MARK; b[0].c[r].conc_until = far;
   b[0].c[w].turn_at = 100; b[0].c[r].turn_at = 200; b[0].who = w;
@@ -295,7 +295,7 @@ rs_hellish_rebuke :: (b: [] RsBattle, j: int, by: int) -> bool #effects(all) {
   down := rs_add(b[..], rs_warlock("Down", 0, 3, SP_ELDRITCH_BLAST), 5, 2); b[0].c[down].hp = 0;
   kin := rs_add(b[..], rs_warlock("Kin", 1, 3, SP_ELDRITCH_BLAST), 4, 1);      // of the team of the one that drops
   t := rs_add(b[..], rs_fighter("Target", 1, 1), 5, 1);
-  #assert b[0].c[near].dark_blessing && b[0].c[far].dark_blessing && b[0].c[down].dark_blessing && b[0].c[kin].dark_blessing && !b[0].c[killer].dark_blessing;
+  #assert rs_has_feature(b[0].c[near], RS_FT_DARK_BLESSING) && rs_has_feature(b[0].c[far], RS_FT_DARK_BLESSING) && rs_has_feature(b[0].c[down], RS_FT_DARK_BLESSING) && rs_has_feature(b[0].c[kin], RS_FT_DARK_BLESSING) && !rs_has_feature(b[0].c[killer], RS_FT_DARK_BLESSING);
   b[0].c[t].hp = 1; seq := b[0].book[0].seq;
   rs_damage(b[..], killer, t, 5, RS_SLASHING, false, -1);
   #assert b[0].c[near].temp == 6 && b[0].c[far].temp == 0 && b[0].c[down].temp == 0 && b[0].c[kin].temp == 0 && b[0].c[killer].temp == 0;
@@ -328,7 +328,7 @@ rs_hellish_rebuke :: (b: [] RsBattle, j: int, by: int) -> bool #effects(all) {
   #assert ev.kind == RS_EV_END && ev.spell == -1 && ev.by == a && ev.to == z && ev.amount == 0 && ev.damage == 0 && cast(string) ev.text[0..<ev.text_n] == "  Zombie is no longer turned";
   // one the damage kills is not told of; its death is
   #assert rs_put_effect(b[..], y, RsEffect.{kind = EF_TURNED, cond = RS_FRIGHTENED, by = a, spell = -1, until = far, save = -1});
-  b[0].c[y].hp = 1; b[0].c[y].fortitude = false; seq = b[0].book[0].seq;
+  b[0].c[y].hp = 1; b[0].c[y].feats = rs_feature_put(b[0].c[y].feats, RS_FT_UNDEAD_FORTITUDE, false); seq = b[0].book[0].seq;
   rs_damage(b[..], a, y, 9, RS_SLASHING, false, -1);
   dv := rs_recent_at(b[0].book[..], 0);
   #assert b[0].c[y].dead && !rs_saw(b[..], seq, "no longer turned") && b[0].book[0].seq == seq + 1;
@@ -356,7 +356,7 @@ rs_hellish_rebuke :: (b: [] RsBattle, j: int, by: int) -> bool #effects(all) {
   rs_damage(b[..], a, t, 23, RS_SLASHING, false, -1); #assert b[0].c[t].conc == SP_BLESS;   // DC 11
   // Eldritch Mind rolls twice
   #assert rs_concentration_ups(b[0].c[t]) == 0;
-  b[0].c[t].eldritch_mind = true; #assert rs_concentration_ups(b[0].c[t]) == 1;
+  b[0].c[t].feats = rs_feature_put(b[0].c[t].feats, RS_FT_ELDRITCH_MIND, true); #assert rs_concentration_ups(b[0].c[t]) == 1;
   rolls = b[0].dice[0].rolled; rs_damage(b[..], a, t, 5, RS_SLASHING, false, -1); #assert b[0].dice[0].rolled == rolls + 2 && b[0].c[t].conc == SP_BLESS;
   // 24 damage: DC 12
   rs_damage(b[..], a, t, 24, RS_SLASHING, false, -1);
@@ -370,7 +370,7 @@ rs_hellish_rebuke :: (b: [] RsBattle, j: int, by: int) -> bool #effects(all) {
   g := rs_add(b[..], rs_fighter("Guard", 1, 3), 13, 1);   // the first creature of the battle, 60 feet away
   w := rs_add(b[..], rs_warlock("Vesk", 0, 3, SP_ELDRITCH_BLAST), 1, 1);
   keys := [2] int.[RS_EXEC_SOURCE[SP_HEX], RS_EXEC_SOURCE[SP_HELLISH_REBUKE]];
-  b[0].c[w].rebuke = true; #assert rs_set_spells(b[0].c[w..<w+1], keys[..]);
+  b[0].c[w].feats = rs_feature_put(b[0].c[w].feats, RS_FT_REBUKE, true); #assert rs_set_spells(b[0].c[w..<w+1], keys[..]);
   b[0].c[g].hp = 200; b[0].c[w].hp = 200;
   #assert g == 0 && b[0].c[w].slots[2] == 2 && b[0].c[w].slots[1] == 0 && rs_dc(b[..], w) == 13;
   // none taken, or from its own team: no answer
@@ -387,8 +387,8 @@ rs_hellish_rebuke :: (b: [] RsBattle, j: int, by: int) -> bool #effects(all) {
   // its Reaction is spent
   #assert !rs_hellish_rebuke(b[..], w, g) && b[0].c[w].slots[2] == 1;
   // one that has not the Reaction ready does not answer, though it knows the spell
-  b[0].c[w].reacted = false; b[0].c[w].rebuke = false; #assert !rs_hellish_rebuke(b[..], w, g) && b[0].c[w].slots[2] == 1 && !b[0].c[w].reacted;
-  b[0].c[w].rebuke = true;
+  b[0].c[w].reacted = false; b[0].c[w].feats = rs_feature_put(b[0].c[w].feats, RS_FT_REBUKE, false); #assert !rs_hellish_rebuke(b[..], w, g) && b[0].c[w].slots[2] == 1 && !b[0].c[w].reacted;
+  b[0].c[w].feats = rs_feature_put(b[0].c[w].feats, RS_FT_REBUKE, true);
   // a dead attacker, or one of its own team, is not answered
   b[0].c[g].dead = true; #assert !rs_hellish_rebuke(b[..], w, g);
   b[0].c[g].dead = false; b[0].c[g].team = 0; #assert !rs_hellish_rebuke(b[..], w, g) && !b[0].c[w].reacted;
@@ -429,7 +429,7 @@ rs_hellish_rebuke :: (b: [] RsBattle, j: int, by: int) -> bool #effects(all) {
   for seed: 1..<7 {
     s: [1] RsBattle; s[0].w = 8; s[0].h = 8;
     sg := rs_add(s[..], rs_fighter("Guard", 1, 3), 3, 1); sw := rs_add(s[..], rs_warlock("Vesk", 0, 3, SP_ELDRITCH_BLAST), 1, 1);
-    s[0].c[sw].rebuke = true; #assert rs_set_spells(s[0].c[sw..<sw+1], keys[..]);
+    s[0].c[sw].feats = rs_feature_put(s[0].c[sw].feats, RS_FT_REBUKE, true); #assert rs_set_spells(s[0].c[sw..<sw+1], keys[..]);
     s[0].c[sg].hp = 200; s[0].c[sg].cond = RS_PARALYZED;
     s[0].dice[0].state = cast(u64) seed; beside: [1] RsDice; beside[0] = s[0].dice[0];
     want := rs_sum(beside[..], 3, 10);

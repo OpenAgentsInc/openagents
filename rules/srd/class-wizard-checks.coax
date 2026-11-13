@@ -27,7 +27,7 @@ cw_evocations :: (c: RsCreature) -> int {
 }
 
 #test "Ritual Adept and Arcane Recovery p.78: once a Long Rest, a Short Rest's slots totaling half its level (rounded up)" {
-  #assert rs_wizard("W", 0, 1).ritual && rs_wizard("W", 0, 1).arcane_recovery;
+  #assert rs_has_feature(rs_wizard("W", 0, 1), RS_FT_RITUAL_ADEPT) && rs_has_feature(rs_wizard("W", 0, 1), RS_FT_ARCANE_RECOVERY);
   for level: [2] int.[1, 5] {
     c := rs_wizard("W", 0, level); #assert rs_rest_slot_budget(c, true) == (level + 1) / 2 && rs_rest_slot_budget(c, false) == 0;
   }
@@ -39,12 +39,12 @@ cw_evocations :: (c: RsCreature) -> int {
 #test "Scholar p.78: from level 2, Expertise in Arcana" {
   for level: [2] int.[1, 2] {
     p := rs_check_plan(rs_wizard("W", 0, level), RsAbilityRequest.{ability = RS_INT, skill = SK_ARCANA});
-    #assert p.accepted && p.bonus == 3 + 2 * (ifx level == 2 then 2 else 1) && rs_wizard("W", 0, level).scholar == (level == 2);
+    #assert p.accepted && p.bonus == 3 + 2 * (ifx level == 2 then 2 else 1) && rs_has_feature(rs_wizard("W", 0, level), RS_FT_SCHOLAR) == (level == 2);
   }
 }
 
 #test "Evocation Savant p.82: from level 3, two Evocation spells of level 2 or lower in the book free, one more at 5" #steps 400000000 {
-  #assert !rs_wizard("W", 0, 2).savant && rs_wizard("W", 0, 3).savant;
+  #assert !rs_has_feature(rs_wizard("W", 0, 2), RS_FT_SAVANT) && rs_has_feature(rs_wizard("W", 0, 3), RS_FT_SAVANT);
   #assert cw_book(rs_wizard("W", 0, 3)) - cw_book(rs_wizard("W", 0, 2)) == 2 + 2 && cw_book(rs_wizard("W", 0, 5)) - cw_book(rs_wizard("W", 0, 4)) == 2 + 1;
   #assert cw_evocations(rs_wizard("W", 0, 3)) >= 2 + 1;   // with Magic Missile
 }
@@ -61,7 +61,7 @@ cw_evocations :: (c: RsCreature) -> int {
 }
 
 #test "Memorize Spell p.79: from level 5, a Short Rest's swap of a prepared spell for one in the book" {
-  #assert !rs_wizard("W", 0, 4).memorize && rs_wizard("W", 0, 5).memorize;
+  #assert !rs_has_feature(rs_wizard("W", 0, 4), RS_FT_MEMORIZE) && rs_has_feature(rs_wizard("W", 0, 5), RS_FT_MEMORIZE);
   w := rs_wizard("W", 0, 5); drop := RS_EXEC_SOURCE[SP_FALSE_LIFE]; add := RS_EXEC_SOURCE[SP_MAGIC_MISSILE];
   #assert rs_memorize_admits(w, drop, add) && !rs_memorize_admits(rs_wizard("W", 0, 4), drop, add);
 }

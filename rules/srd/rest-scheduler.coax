@@ -57,21 +57,21 @@
 
 #test "scheduled exertion grants one Short Rest without HP healing and does not regrant on later ticks" {
   b:[1]RsBattle; c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].who = -1;
-  c[0]=rs_barbarian("Sleeper",0,3); c[0].hp=1; c[0].rages=0;
+  c[0]=rs_barbarian("Sleeper",0,3); c[0].hp=1; c[0].uses[RS_USE_RAGE]=0;
   #assert rs_rest_schedule_enable(b[..]);
   #assert rs_long_rest_start_owned(b[..],0,1,true);
   rs_tick(b[..],3600);
   #assert rs_long_rest_activity_owned(b[..],0,3).admitted;
-  rs_tick(b[..],3599); c[0].raging=true; c[0].rage_kept=true;
+  rs_tick(b[..],3599); c[0].eff = rs_state_put(c[0].eff, EF_RAGE, true); c[0].eff = rs_state_bit(c[0].eff, EF_RAGE, RS_RAGE_KEPT, true);
   seq:=b[0].book[0].seq;
   rs_tick(b[..],3601);
-  #assert !c[0].raging && !c[0].rage_kept && b[0].book[0].seq==seq+2;
+  #assert !rs_effect(c[0], EF_RAGE) && !rs_state_has(c[0], EF_RAGE, RS_RAGE_KEPT) && b[0].book[0].seq==seq+2;
   event:=b[0].book[0].ev[(b[0].book[0].head+b[0].book[0].count-1)%RS_EVENTS];
   #assert event.kind==RS_EV_END && event.by==0 && event.to==0 && event.amount==0 && event.at==rs_secs(7200);
   #assert c[0].long_rest.phase==2 && c[0].long_rest.interruptions==1;
-  #assert c[0].rages==1 && c[0].hp==1 && c[0].rest.phase==2 && c[0].rest.seeded;
+  #assert c[0].uses[RS_USE_RAGE]==1 && c[0].hp==1 && c[0].rest.phase==2 && c[0].rest.seeded;
   #assert !c[0].long_rest.short_due;
-  rs_tick(b[..],1); #assert c[0].rages==1;
+  rs_tick(b[..],1); #assert c[0].uses[RS_USE_RAGE]==1;
   #assert rs_long_rest_resume_owned(b[..],0,1,true);
   rs_tick(b[..],25200);
   #assert c[0].long_rest.completed && c[0].long_rest.finished==36001000000;
@@ -79,15 +79,15 @@
 
 #test "an explicit Short Rest consumes its own quiet segment rather than doubling Long Rest fallback" {
   b:[1]RsBattle; c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].who = -1;
-  c[0]=rs_barbarian("Sleeper",0,3); c[0].rages=0;
+  c[0]=rs_barbarian("Sleeper",0,3); c[0].uses[RS_USE_RAGE]=0;
   #assert rs_rest_schedule_enable(b[..]);
   #assert rs_long_rest_start_owned(b[..],0,1,true) && rs_short_rest_begin(b[..],0);
   rs_tick(b[..],3600);
-  #assert c[0].rages==1 && c[0].long_rest.quiet==0;
+  #assert c[0].uses[RS_USE_RAGE]==1 && c[0].long_rest.quiet==0;
   #assert rs_long_rest_activity_owned(b[..],0,3).admitted && c[0].rest.phase==0;
   #assert !rs_short_rest_begin(b[..],0);
   rs_tick(b[..],3600);
-  #assert c[0].rages==1 && c[0].long_rest.phase==2;
+  #assert c[0].uses[RS_USE_RAGE]==1 && c[0].long_rest.phase==2;
 }
 
 #test "scheduler preflight preserves all actors and clocks on invalid late state or stale pending completion" {

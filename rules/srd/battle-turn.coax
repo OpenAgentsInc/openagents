@@ -48,7 +48,7 @@ rs_start_turn :: (b: [] RsBattle, i: int) {
   rs_truth_start(b,i);
   rs_rite_turn(b,i);
   if b[0].turn.new_round && (b[0].c[i].burning > 0 || b[0].c[i].breath_spent) { rs_dragon_turn_start(b,i); }   // Burning and Recharge, dragon-actions.coax
-  if b[0].c[i].raging && !rs_capable(b[0].c[i]) { rs_rage_end(b, i, " (Incapacitated)"); }
+  if rs_effect(b[0].c[i], EF_RAGE) && !rs_capable(b[0].c[i]) { rs_rage_end(b, i, " (Incapacitated)"); }
   if b[0].c[i].hp == 0 && !b[0].c[i].dead {
     if b[0].c[i].stable || !b[0].turn.new_round { return; }
     r := rs_battle_death_save(b,i);
@@ -70,7 +70,7 @@ rs_start_turn :: (b: [] RsBattle, i: int) {
 // doesn't send).
 rs_turn_saves :: (b: [] RsBattle, i: int) {
   if !b[0].turn.new_round || !rs_up(b[0].c[i]) { return; }
-  for k: 0..<RS_ZONES {
+  for k: 0..<b[0].zone.count {
     z := b[0].zone[k];
     if !z.on || z.spell < 0 || z.by == i || z.by < 0 || z.by >= b[0].n || b[0].c[z.by].conc != z.spell { continue; }
     sp := rs_spell(z.spell);
@@ -115,12 +115,12 @@ rs_end_turn :: (b: [] RsBattle, i: int) {
   }
   // Rage lasts until the end of its next turn; an attack roll against an enemy (or a Bonus Action)
   // in that turn extends it
-  if b[0].turn.struck { b[0].c[i].struck_round = true; }
-  if b[0].c[i].raging && b[0].turn.new_round {
-    if b[0].c[i].rage_kept || b[0].c[i].struck_round { b[0].c[i].rage_kept = false; }
+  if b[0].turn.struck { b[0].c[i].eff = rs_state_bit(b[0].c[i].eff, EF_RAGE, RS_RAGE_STRUCK, true); }
+  if rs_effect(b[0].c[i], EF_RAGE) && b[0].turn.new_round {
+    if rs_state_has(b[0].c[i], EF_RAGE, RS_RAGE_KEPT) || rs_state_has(b[0].c[i], EF_RAGE, RS_RAGE_STRUCK) { b[0].c[i].eff = rs_state_bit(b[0].c[i].eff, EF_RAGE, RS_RAGE_KEPT, false); }
     else { rs_rage_end(b, i, ""); }
   }
-  if b[0].turn.new_round { b[0].c[i].struck_round = false; }
+  if b[0].turn.new_round { b[0].c[i].eff = rs_state_bit(b[0].c[i].eff, EF_RAGE, RS_RAGE_STRUCK, false); }
   rs_halt_finish(b[0].c[i..<i+1]);
   rs_turn_effects_end(b, i, b[0].c[i].turn_at);
   b[0].c[i].turn_at += rs_beat(b);
@@ -151,19 +151,11 @@ rs_tick_raw :: (b: [] RsBattle, ticks: int) {
         if b[0].c[i].slot_back[l] == 0 { b[0].c[i].slot_back[l] = t + r; }
         else if b[0].c[i].slot_back[l] <= t { b[0].c[i].slots[l] += 1; b[0].c[i].slot_back[l] = 0; }
       }
-      if b[0].c[i].rages < b[0].c[i].rages_max {
-        if b[0].c[i].rage_back == 0 { b[0].c[i].rage_back = t + r; }
-        else if b[0].c[i].rage_back <= t { b[0].c[i].rages += 1; b[0].c[i].rage_back = 0; }
-      } else { b[0].c[i].rage_back = 0; }
-      if b[0].c[i].focus < b[0].c[i].focus_max {
-        if b[0].c[i].focus_back == 0 { b[0].c[i].focus_back = t + r / 2; }
-        else if b[0].c[i].focus_back <= t { b[0].c[i].focus += 1; b[0].c[i].focus_back = 0; }
-      } else { b[0].c[i].focus_back = 0; }
-      // the other classes' uses: one back at a time, points (Sorcery, Bardic Inspiration) and the
+      // every limited use: one back at a time, points (Sorcery, Bardic Inspiration, Focus) and the
       // Lay On Hands pool (5 Hit Points a time) at half the cooldown
       for u: 0..<RS_USES {
         if b[0].c[i].uses[u] >= b[0].c[i].uses_max[u] { b[0].c[i].uses_back[u] = 0; continue; }
-        quick := u == RS_USE_SORCERY || u == RS_USE_INSPIRE || u == RS_USE_LAY;
+        quick := u == RS_USE_SORCERY || u == RS_USE_INSPIRE || u == RS_USE_LAY || u == RS_USE_FOCUS;
         if b[0].c[i].uses_back[u] == 0 { b[0].c[i].uses_back[u] = t + (ifx quick then r / 2 else r); }
         else if b[0].c[i].uses_back[u] <= t {
           b[0].c[i].uses[u] = rs_min(b[0].c[i].uses[u] + (ifx u == RS_USE_LAY then 5 else 1), b[0].c[i].uses_max[u]);

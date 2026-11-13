@@ -22,11 +22,11 @@
     a := rs_add(b[..],rs_monk("Monk",0,5),1,1);
     t := rs_add(b[..],rs_skeleton("Target",1),2,1);
     for k: 0..<RS_EFFECTS { b[0].c[t].eff[k] = RsEffect.{kind=EF_HEX}; }
-    b[0].who = a; b[0].c[a].stun_ready = true; b[0].c[a].focus = 1;
+    b[0].who = a; b[0].c[a].stun_ready = true; b[0].c[a].uses[RS_USE_FOCUS] = 1;
     w := W_UNARMED;
-    if mode == 1 { b[0].c[a].stunning = false; }
+    if mode == 1 { b[0].c[a].feats = rs_feature_put(b[0].c[a].feats, RS_FT_STUNNING_STRIKE, false); }
     else if mode == 2 { b[0].c[a].stun_ready = false; }
-    else if mode == 3 { b[0].c[a].focus = 0; }
+    else if mode == 3 { b[0].c[a].uses[RS_USE_FOCUS] = 0; }
     else if mode == 4 { b[0].turn.stunned = true; }
     else if mode == 5 { b[0].who = t; }
     else if mode == 6 { b[0].c[t].cond = RS_STUNNED; }
@@ -43,10 +43,10 @@
     a := rs_add(b[..],rs_rogue("Rogue",0,5),1,1);
     t := rs_add(b[..],rs_skeleton("Target",1),2,1); b[0].c[t].immune_cond = 0;
     for k: 0..<RS_EFFECTS { b[0].c[t].eff[k] = RsEffect.{kind=EF_HEX}; }
-    b[0].c[a].strike_plan = CS_POISON; b[0].c[a].poison_kit = true;
-    if mode == 1 { b[0].c[a].cunning_strike = false; }
+    b[0].c[a].strike_plan = CS_POISON; b[0].c[a].feats = rs_feature_put(b[0].c[a].feats, RS_FT_POISON_KIT, true);
+    if mode == 1 { b[0].c[a].feats = rs_feature_put(b[0].c[a].feats, RS_FT_CUNNING_STRIKE, false); }
     else if mode == 2 { b[0].c[a].strike_plan = CS_TRIP; }
-    else if mode == 3 { b[0].c[a].poison_kit = false; }
+    else if mode == 3 { b[0].c[a].feats = rs_feature_put(b[0].c[a].feats, RS_FT_POISON_KIT, false); }
     else if mode == 4 { b[0].turn.sneaked = true; }
     else if mode == 5 { b[0].c[t].immune_cond = RS_POISONED; }
     else if mode == 6 { b[0].c[t].immune_cond = RS_BLINDED; }
@@ -65,7 +65,7 @@
   for k: 0..<RS_EFFECTS { b[0].c[t].eff[k] = RsEffect.{kind=EF_HEX}; }
   #assert rs_strikes_fit(b[..],a,t,W_SLAM,2,true);
   // A low-level caller can target itself: own and target demand share storage.
-  b[0].c[a].masteries = 1 << M_VEX; b[0].c[a].cunning_strike = true; b[0].c[a].strike_plan = CS_POISON; b[0].c[a].poison_kit = true;
+  b[0].c[a].masteries = 1 << M_VEX; b[0].c[a].feats = rs_feature_put(b[0].c[a].feats, RS_FT_CUNNING_STRIKE, true); b[0].c[a].strike_plan = CS_POISON; b[0].c[a].feats = rs_feature_put(b[0].c[a].feats, RS_FT_POISON_KIT, true);
   b[0].c[a].eff[RS_EFFECTS-1].kind = EF_NONE;
   #assert !rs_strikes_fit(b[..],a,a,W_SHORTSWORD,1,false);
   b[0].c[a].eff[RS_EFFECTS-2].kind = EF_NONE;
@@ -128,15 +128,15 @@
   v := rs_add(b[..],rs_skeleton("Third",0),5,1);
   for j: 0..<4 { for k: 0..<RS_EFFECTS { b[0].c[j].eff[k] = RsEffect.{kind=EF_HEX}; } }
   s := rs_spell(SP_FIREBALL); s.level = 1; s.step_n = 1; s.steps[0] = RsStep.{kind=RS_S_BOON,a=EF_BLESS};
-  b[0].c[a].sculpt = true;
+  b[0].c[a].feats = rs_feature_put(b[0].c[a].feats, RS_FT_SCULPT, true);
   #assert !rs_cast_effect_room(b[..],a,s,SP_FIREBALL,1,3,1,t);
   s.level = 2; #assert rs_cast_effect_room(b[..],a,s,SP_FIREBALL,2,3,1,t);
   b[0].c[v].team = 1; #assert !rs_cast_effect_room(b[..],a,s,SP_FIREBALL,2,3,1,t);
   b[0].c[v].dead = true; #assert rs_cast_effect_room(b[..],a,s,SP_FIREBALL,2,3,1,t);
   b[0].c[v].dead = false; b[0].c[v].x = 29; #assert rs_cast_effect_room(b[..],a,s,SP_FIREBALL,2,3,1,t);
-  b[0].c[v].x = 5; b[0].c[v].team = 0; b[0].c[a].sculpt = false;
+  b[0].c[v].x = 5; b[0].c[v].team = 0; b[0].c[a].feats = rs_feature_put(b[0].c[a].feats, RS_FT_SCULPT, false);
   #assert !rs_cast_effect_room(b[..],a,s,SP_FIREBALL,2,3,1,t);
-  b[0].c[a].sculpt = true; s.school = "Necromancy";
+  b[0].c[a].feats = rs_feature_put(b[0].c[a].feats, RS_FT_SCULPT, true); s.school = "Necromancy";
   #assert !rs_cast_effect_room(b[..],a,s,SP_FIREBALL,2,3,1,t);
   s.humanoid_only = true; b[0].c[t].humanoid = true;
   #assert !rs_cast_effect_room(b[..],a,s,SP_FIREBALL,2,3,1,a);
@@ -160,11 +160,11 @@
   }
   c.immune_cond = RS_POISONED;
   #assert rs_effect_condition_mask(c,RS_POISONED) == 0 && rs_effect_condition_mask(c,RS_BLINDED) == RS_BLINDED;
-  c.raging = true; c.mindless = true;
+  c.eff = rs_state_put(c.eff, EF_RAGE, true); c.feats = rs_feature_put(c.feats, RS_FT_MINDLESS_RAGE, true);
   #assert rs_effect_condition_mask(c,RS_CHARMED|RS_FRIGHTENED|RS_BLINDED) == RS_BLINDED;
-  c.raging = false;
+  c.eff = rs_state_put(c.eff, EF_RAGE, false);
   #assert rs_effect_condition_mask(c,RS_CHARMED) == RS_CHARMED;
-  c.mindless = false; c.raging = true;
+  c.feats = rs_feature_put(c.feats, RS_FT_MINDLESS_RAGE, false); c.eff = rs_state_put(c.eff, EF_RAGE, true);
   #assert rs_effect_condition_mask(c,RS_FRIGHTENED) == RS_FRIGHTENED;
 }
 #test "weapon batches reserve Sap at every possible foe and Vex on the attacker" {
@@ -199,7 +199,7 @@
   s.steps[0].kind = RS_S_DAMAGE; #assert rs_effect_demand(c,s,-1,0,0) == 0;
   s.steps[0].kind = RS_S_TIMED; s.steps[0].a = RS_CHARMED;
   #assert rs_effect_demand(c,s,-1,0,0) == 1;
-  c.raging = true; c.mindless = true; #assert rs_effect_demand(c,s,-1,0,0) == 0;
+  c.eff = rs_state_put(c.eff, EF_RAGE, true); c.feats = rs_feature_put(c.feats, RS_FT_MINDLESS_RAGE, true); #assert rs_effect_demand(c,s,-1,0,0) == 0;
 }
 #test "a Blinded creature in a sight-required area needs no effect room" {
   for blinded: 0..<2 {
@@ -215,14 +215,14 @@
   c: RsCreature; c.cond=RS_PETRIFIED;
   #assert rs_effect_condition_mask(c,RS_POISONED)==0 && rs_effect_condition_mask(c,RS_POISONED|RS_BLINDED)==RS_BLINDED;
   c.cond=RS_BLINDED; #assert rs_effect_condition_mask(c,RS_POISONED|RS_BLINDED)==(RS_POISONED|RS_BLINDED);
-  c.cond=RS_PETRIFIED; c.raging=true; c.mindless=true;
+  c.cond=RS_PETRIFIED; c.eff = rs_state_put(c.eff, EF_RAGE, true); c.feats = rs_feature_put(c.feats, RS_FT_MINDLESS_RAGE, true);
   #assert rs_effect_condition_mask(c,RS_POISONED|RS_CHARMED|RS_FRIGHTENED|RS_PRONE)==RS_PRONE;
 }
 rs_effect_condition_mask :: (c: RsCreature, mask: int) -> int #effects(all) {
   if (c.immune_cond & mask) != 0 { return 0; }
   // Petrified (p.186): Immunity to the Poisoned condition.
   m := ifx rs_has(c,RS_PETRIFIED) then mask & (32767-RS_POISONED) else mask;
-  return ifx c.raging && c.mindless then m & (32767-RS_CHARMED-RS_FRIGHTENED) else m;
+  return ifx rs_effect(c, EF_RAGE) && rs_has_feature(c, RS_FT_MINDLESS_RAGE) then m & (32767-RS_CHARMED-RS_FRIGHTENED) else m;
 }
 rs_effect_demand :: (c: RsCreature, s: RsSpell, zone: int, by: int, spell: int) -> int #effects(all) {
   n := 0;
@@ -260,7 +260,7 @@ rs_cast_effect_room :: (b: [] RsBattle, i: int, s: RsSpell, sp: int, slot: int, 
     } else {
       if !rs_inside(area,b[0].c[j].x,b[0].c[j].y) || b[0].c[j].dead || (j == i && rs_area_spares_caster(s.area,s.others,b[0].areas)) || rs_area_unseen(s.sight,rs_has(b[0].c[j],RS_BLINDED)) { continue; }
       if j != i && rs_area_spares_ally(b[0].c[j].team == me.team,rs_spell_harms(s),b[0].areas) { continue; }
-      if me.sculpt && s.school == "Evocation" && b[0].c[j].team == me.team && sculpted < 1+s.level { sculpted += 1; continue; }
+      if rs_has_feature(me, RS_FT_SCULPT) && s.school == "Evocation" && b[0].c[j].team == me.team && sculpted < 1+s.level { sculpted += 1; continue; }
     }
     if s.humanoid_only && !b[0].c[j].humanoid { continue; }
     // New casts prepay new leases; only a continuing area's application can

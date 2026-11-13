@@ -50,7 +50,7 @@
   for k: 1..<RS_ZONES { #assert b[0].zone[k].on && b[0].zone[k].until == rs_secs(100); }
 }
 rs_release_zone :: (b: [] RsBattle, k: int) -> bool #effects(all) {
-  if k < 0 || k >= RS_ZONES || !b[0].zone[k].on { return false; }
+  if k < 0 || k >= b[0].zone.count || !b[0].zone[k].on { return false; }
   b[0].zone[k].on = false;
   if b[0].zone[k].spell==SP_ZONE_OF_TRUTH { rs_truth_clear(b,k); }
   for j: 0..<b[0].n {
@@ -68,7 +68,7 @@ rs_release_zone :: (b: [] RsBattle, k: int) -> bool #effects(all) {
   return true;
 }
 rs_expire_zones :: (b: [] RsBattle) #effects(all) {
-  for k: 0..<RS_ZONES {
+  for k: 0..<b[0].zone.count {
     z := b[0].zone[k];
     if z.on && z.until <= b[0].clock {
       _ := rs_release_zone(b,k);

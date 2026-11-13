@@ -9,7 +9,16 @@
 rs_room :: (b: [] RsBattle) #effects(all) {
   if b[0].c.count == 0 { b[0].c = b[0].own[..]; }
   if b[0].occ.count == 0 { b[0].occ = b[0].own_occ[..]; }
+  if b[0].zone.count == 0 { b[0].zone = b[0].own_zone[..]; }
 }
+// A world's own table of lasting areas, for a battle with more casters than RS_ZONES: it starts
+// with no area. The creatures and squares are as they were (give them first with rs_use).
+rs_use_zones :: (b: [] RsBattle, zone: [] RsZone) #effects(all) {
+  b[0].zone = zone; b[0].truth_zones = 0;
+  for z: 0..<b[0].zone.count { b[0].zone[z] = RsZone.{}; }
+}
+// The table's places a Zone of Truth can take: its first RS_TRUTH_ZONES.
+rs_truth_zones :: (b: [] RsBattle) -> int #effects(all) { return rs_min(b[0].zone.count, RS_TRUTH_ZONES); }
 // A world's own room for creatures and squares (kept in its state, beside the battle), for a
 // battle bigger than RS_MAX: it starts empty.
 rs_use :: (b: [] RsBattle, c: [] RsCreature, occ: [] int) #effects(all) {
@@ -78,7 +87,7 @@ rs_reset :: (b: [] RsBattle) #effects(all) {
   blank: RsCreature;
   for i: 0..<b[0].n { b[0].c[i] = blank; }
   b[0].n = 0; b[0].truth_zones=0;
-  for z: 0..<RS_ZONES { b[0].zone[z] = RsZone.{}; }
+  for z: 0..<b[0].zone.count { b[0].zone[z] = RsZone.{}; }
   for t: 0..<RS_TERRAINS { b[0].terrain[t] = RsTerrain.{}; }
   rs_cover_clear(b);
   b[0].dice[0] = RsDice.{};
@@ -102,7 +111,7 @@ rs_inside :: (z: RsZone, x: int, y: int) -> bool #effects(all) {
   return !z.round || rs_measure_feet(z.measure, x - z.cx, y - z.cy) <= z.r_ft;
 }
 rs_difficult :: (b: [] RsBattle, x: int, y: int) -> bool #effects(all) {
-  for k: 0..<RS_ZONES { if b[0].zone[k].difficult && rs_inside(b[0].zone[k], x, y) { return true; } }
+  for k: 0..<b[0].zone.count { if b[0].zone[k].difficult && rs_inside(b[0].zone[k], x, y) { return true; } }
   return (rs_terrain_at(b, x, y) & TR_DIFFICULT) != 0;
 }
 // A hostile creature within 5 feet that can act: ranged attacks have Disadvantage then.
@@ -179,6 +188,18 @@ rs_area :: (b: [] RsBattle, i: int, sp: RsSpell, tx: int, ty: int) -> RsZone #ef
 
 // ---- checks
 
+#test "a world's table of lasting areas: given whole, with no area and no Zone of Truth left from before" {
+  zones: [70] RsZone; b: [1] RsBattle;
+  rs_room(b[..]); #assert b[0].zone.count == RS_ZONES && rs_truth_zones(b[..]) == RS_ZONES && RS_ZONES < RS_TRUTH_ZONES;
+  zones[0] = RsZone.{on = true, difficult = true, x1 = 3, y1 = 3}; zones[69] = RsZone.{on = true}; b[0].truth_zones = 5; b[0].n = 0;
+  rs_use_zones(b[..], zones[..]);
+  #assert b[0].zone.count == 70 && rs_truth_zones(b[..]) == RS_TRUTH_ZONES && b[0].truth_zones == 0 && !zones[0].on && !zones[0].difficult && !zones[69].on;
+  b[0].zone[69] = RsZone.{on = true, difficult = true, x0 = 1, y0 = 1, x1 = 3, y1 = 3};
+  #assert zones[69].on && rs_difficult(b[..], 2, 2) && !rs_difficult(b[..], 5, 5);   // the last place is read, and it is the world's memory
+  // a reset clears the world's table, every place of it, and keeps it
+  rs_reset(b[..]); #assert b[0].zone.count == 70 && !zones[69].on && !rs_difficult(b[..], 2, 2);
+  short: [3] RsZone; rs_use_zones(b[..], short[..]); #assert rs_truth_zones(b[..]) == 3;
+}
 #test "grid: a battle's room is its own until a world gives it more, and a given room starts empty" {
   b: [1] RsBattle;
   #assert b[0].c.count == 0 && b[0].occ.count == 0;
@@ -375,7 +396,7 @@ rs_area :: (b: [] RsBattle, i: int, sp: RsSpell, tx: int, ty: int) -> RsZone #ef
   dg.x1 = 2; #assert rs_inside(dg, 2, 2) && !rs_inside(dg, 3, 3);
 }
 #test "grid: Difficult Terrain is a zone's that says so, or the world's own ground" {
-  b: [1] RsBattle; b[0].w = 10; b[0].h = 10;
+  b: [1] RsBattle; b[0].w = 10; b[0].h = 10; rs_room(b[..]);
   #assert !rs_difficult(b[..], 2, 2);
   b[0].zone[RS_ZONES - 1] = RsZone.{on = true, difficult = true, x0 = 1, y0 = 1, x1 = 3, y1 = 3};
   #assert rs_difficult(b[..], 2, 2) && rs_difficult(b[..], 1, 3) && !rs_difficult(b[..], 4, 2) && !rs_difficult(b[..], 2, 0);

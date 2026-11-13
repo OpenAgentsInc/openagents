@@ -34,7 +34,7 @@
 }
 
 #test "Deft Explorer p.59: from level 2, Expertise in one of its skills (Survival)" {
-  #assert (rs_ranger("W", 0, 1).checks.expert & (1 << SK_SURVIVAL)) == 0 && rs_ranger("W", 0, 2).checks.expert == 1 << SK_SURVIVAL && rs_ranger("W", 0, 2).explorer;
+  #assert (rs_ranger("W", 0, 1).checks.expert & (1 << SK_SURVIVAL)) == 0 && rs_ranger("W", 0, 2).checks.expert == 1 << SK_SURVIVAL && rs_has_feature(rs_ranger("W", 0, 2), RS_FT_DEFT_EXPLORER);
   for level: [2] int.[1, 2] {
     p := rs_check_plan(rs_ranger("W", 0, level), RsAbilityRequest.{ability = RS_WIS, skill = SK_SURVIVAL});
     #assert p.accepted && p.bonus == 2 + 2 + (ifx level == 2 then 2 else 0);   // Wisdom, proficiency, Expertise

@@ -13,16 +13,16 @@ rs_disengage_use :: (b:[] RsBattle,i:int,mode:int)->bool #effects(all) {
     if b[0].turn.action { return false; }
   } else {
     if b[0].turn.bonus { return false; }
-    if mode==RS_DISENGAGE_CUNNING { if !b[0].c[i].cunning { return false; } }
+    if mode==RS_DISENGAGE_CUNNING { if !rs_has_feature(b[0].c[i], RS_FT_CUNNING_ACTION) { return false; } }
     else if mode==RS_DISENGAGE_PATIENT || mode==RS_DISENGAGE_DODGE {
       if b[0].c[i].klass!=RS_MONK || b[0].c[i].level<2 { return false; }
-      if mode==RS_DISENGAGE_DODGE && b[0].c[i].focus<=0 { return false; }
+      if mode==RS_DISENGAGE_DODGE && (b[0].c[i].uses[RS_USE_FOCUS]<=0 || !rs_state_room(b[0].c[i],EF_DODGE)) { return false; }
     } else if mode==RS_DISENGAGE_NIMBLE { if !rs_trait(b[0].c[i],RS_TRAIT_NIMBLE) { return false; } }
     else { return false; }
   }
   if mode==RS_DISENGAGE_ACTION { b[0].turn.action=true; } else { b[0].turn.bonus=true; }
   b[0].turn.disengaged=true;
-  if mode==RS_DISENGAGE_DODGE { b[0].c[i].focus-=1; rs_dodge_begin(b,i); }
+  if mode==RS_DISENGAGE_DODGE { b[0].c[i].uses[RS_USE_FOCUS]-=1; rs_dodge_begin(b,i); }
   return true;
 }
 rs_disengage_end :: (b:[] RsBattle,i:int) #effects(all) {

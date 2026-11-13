@@ -5,7 +5,7 @@ tool_main :: ()->int #export_c #effects(all) {
     b:[1]RsBattle; c:[2]RsCreature; b[0].c=c[..]; b[0].n=2; b[0].who = -1;
     c[0]=rt_class(klass,level); c[1]=rs_wizard("Watcher",0,3);
     c[0].hp=1; c[1].hp=1; c[0].reacted=true;
-    c[0].slots[1]=0; c[0].focus=0; c[0].rages=0;
+    c[0].slots[1]=0; c[0].uses[RS_USE_FOCUS]=0; c[0].uses[RS_USE_RAGE]=0;
     for u:0..<RS_USES { c[0].uses[u]=0; }
     if !rs_rest_schedule_enable(b[..]) || !rs_long_rest_start_owned(b[..],0,1,true) { return 1; }
     if !rs_effect_add(c[0..<1],RsEffect.{kind=EF_NOHEAL,until=rs_secs(30000),by=-1,spell=-1}) { return 2; }
@@ -18,7 +18,7 @@ tool_main :: ()->int #export_c #effects(all) {
     if c[0].hp!=1 || c[1].hp!=c[1].hp_max || rs_sleeping(c[0]) || rs_sleeping(c[1]) { return 6; }
     if c[0].rest.dice!=level || c[0].slots[1]!=c[0].slots_max[1] || !c[0].reacted { return 7; }
     for u:0..<RS_USES { if c[0].uses[u]!=c[0].uses_max[u] { return 8; } }
-    if c[0].focus!=c[0].focus_max || c[0].rages!=c[0].rages_max { return 9; }
+    if c[0].uses[RS_USE_FOCUS]!=c[0].uses_max[RS_USE_FOCUS] || c[0].uses[RS_USE_RAGE]!=c[0].uses_max[RS_USE_RAGE] { return 9; }
     hurt:=rs_hurt(c[0..<1],1,false);
     if hurt.taken!=1 || c[0].hp!=0 || rs_long_rest_apply(b[..],0) { return 10; }
   } }
@@ -31,12 +31,12 @@ tool_main :: ()->int #export_c #effects(all) {
   if c[0].long_rest.completed { return 13; }
   rs_tick(b[..],1.0/64);
   if !c[0].long_rest.completed || c[0].long_rest.finished!=28800015625 || c[0].hp!=c[0].hp_max { return 14; }
-  c[0]=rs_barbarian("Walker",0,3); c[0].hp=1; c[0].rages=0;
+  c[0]=rs_barbarian("Walker",0,3); c[0].hp=1; c[0].uses[RS_USE_RAGE]=0;
   if !rs_long_rest_start_owned(b[..],0,1,true) { return 15; }
   rs_tick(b[..],3600);
   if !rs_long_rest_activity_owned(b[..],0,3).admitted || rs_short_rest_begin(b[..],0) { return 16; }
   rs_tick(b[..],3600);
-  if c[0].long_rest.phase!=2 || c[0].rages!=1 || c[0].hp!=1 || c[0].rest.phase!=2 { return 17; }
+  if c[0].long_rest.phase!=2 || c[0].uses[RS_USE_RAGE]!=1 || c[0].hp!=1 || c[0].rest.phase!=2 { return 17; }
   rs_reset(b[..]); c[0]=rs_barbarian("Manual walker",0,3); b[0].n=1; b[0].who = -1;
   if !rs_long_rest_start_owned(b[..],0,1,true) || !rs_long_rest_activity_owned(b[..],0,3).admitted { return 18; }
   if rs_short_rest_begin(b[..],0) { return 19; }

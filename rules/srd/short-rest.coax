@@ -60,7 +60,7 @@ rs_short_rest_hit_die :: (b:[]RsBattle,i:int)->RsRestRoll #effects(all) {
 }
 rs_rest_slot_budget :: (c:RsCreature,book:bool)->int #effects(all) {
   if c.level<1 || c.level>20 { return 0; }
-  if (c.klass==RS_WIZARD && c.arcane_recovery && book) || (c.klass==RS_DRUID && c.level>=6 && c.natural_recovery) {
+  if (c.klass==RS_WIZARD && rs_has_feature(c, RS_FT_ARCANE_RECOVERY) && book) || (c.klass==RS_DRUID && c.level>=6 && rs_has_feature(c, RS_FT_NATURAL_RECOVERY)) {
     return c.level/2+c.level%2;
   }
   return 0;
@@ -88,7 +88,7 @@ rs_short_rest_slots :: (b:[]RsBattle,i:int,q:RsRestSlots)->bool #effects(all) {
 rs_short_rest_sorcery :: (b:[]RsBattle,i:int,amount:int)->bool #effects(all) {
   if !rs_short_rest_choices(b,i) { return false; }
   c:=b[0].c[i];
-  if c.klass!=RS_SORCERER || c.level<5 || !c.restoration || c.rest.restoration_used || amount<1 || amount>c.level/2 { return false; }
+  if c.klass!=RS_SORCERER || c.level<5 || !rs_has_feature(c, RS_FT_RESTORATION) || c.rest.restoration_used || amount<1 || amount>c.level/2 { return false; }
   current:=c.uses[RS_USE_SORCERY]; capacity:=rs_max(c.uses_max[RS_USE_SORCERY],0);
   if current<0 || amount>capacity-current { return false; }
   b[0].c[i].uses[RS_USE_SORCERY]+=amount; b[0].c[i].rest.restoration_used=true;
