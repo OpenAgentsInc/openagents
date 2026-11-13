@@ -526,6 +526,10 @@ cp "$here/../../components/icons/apps-sdk/"*.svg "$here/../../components/icons/N
 # host and components). The page before it, chat.coax, is now /chat-gpu.
 timed chat-web "$here/../../coax/web/wasm.sh" "$here/chat-web.coax" "$here/chat-web-face.c" "$here/build/chat-web.wasm" &
 chat_web=$!
+# /milestone (unlisted): the OpenAgents book's first milestone, the shared app the iPhone runs too
+# (apps/shared/openagents-app.coax), drawn by the browser with the kit (milestone.coax). Fake services only.
+timed milestone "$here/../../coax/web/wasm.sh" "$here/milestone.coax" "$here/milestone-face.c" "$here/build/milestone.wasm" &
+milestone=$!
 # /nostr-chat (unlisted): Nostr from scratch as a scripted chat on the same host and components, every
 # value worked out in the page by coax/lib/nostr/ (nostr-chat.coax). It signs at run time: secp256k1's
 # tables need the larger budget, as Nostr Lab's do.
@@ -547,6 +551,7 @@ wait "$components_page"
 wait "$kit_page"
 wait "$editor_shell"
 wait "$chat_web"
+wait "$milestone"
 wait "$nostr_chat"
 wait "$agents_page"
 wait "$nip01"

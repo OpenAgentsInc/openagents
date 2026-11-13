@@ -30,6 +30,9 @@
 // address it goes to is another page. Any other module opened with &path= is told it once too, as event 13 (a
 // project's attachments, project-files-web, learn the project from /projects/SLUG).
 // &as=NAME names the copy in coaxialDoms when a page holds two of one module.
+// A module that exports dom_drive(state, len) and dom_drive_out(state) answers coax drive's operations itself
+// (coaxialDom.drive(op)): coax/web/drive.coax sends a page's tree, state, clock and logs there, and reads what a
+// real click or typing made of it with `input`.
 // The app shell holds the pages it doesn't draw itself in a frame beside the side (shell.js): a page of the shell's
 // (data-shell on its script) opened at the top of the window becomes the shell instead of starting its own module, and
 // the shell opens itself by address with &top, the page's own shell. That shell is told the address with its query.
@@ -391,6 +394,16 @@ async function start() {
     if (slot >= 0) { e.preventDefault(); send(2, slot, e.target.value); send(3, slot); }
   });
   reduced.addEventListener("change", ask);
+  // coax drive through a module that answers it (dom_drive, the shared app's operations: milestone.coax): the
+  // operation goes into its inbox and its answer comes from dom_drive_out; what the operation changed is drawn
+  // at once, so the page shows it before the next operation
+  if (x.dom_drive) own.drive = (op) => {
+    const encoded = bytes.encode(op), n = Math.min(x.dom_inbox_cap(), encoded.length);
+    new Uint8Array(memory.buffer, x.dom_inbox(state), n).set(encoded.subarray(0, n));
+    const m = x.dom_drive(state, n), answer = text.decode(new Uint8Array(memory.buffer, x.dom_drive_out(state), m));
+    for (let k = 0; k < 8; k++) { frame(performance.now()); if (!x.dom_busy(state)) break; }
+    return answer;
+  };
   globalThis.coaxialDom ||= own;
   (globalThis.coaxialDoms ||= {})[named.get("as") || app] = own;
   dispatchEvent(new CustomEvent("coaxial-dom-ready", { detail: { app, host: own } }));

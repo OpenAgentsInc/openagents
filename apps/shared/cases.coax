@@ -1,0 +1,131 @@
+// The first milestone's cases on every host (The OpenAgents Book, chapters 6 and 11; GitHub #13516): each
+// operation file in openagents/examples/cases/ played against the shared app (apps/shared/openagents-app.coax),
+// its trace compared byte for byte with the committed NAME.trace. The hosts:
+//   cpu             the shared app in this process, with no host (--write writes the traces)
+//   web             /milestone in headless Chrome through coax drive (coax/web/tool.sh drive web), served from
+//                   apps/openagents-web as built (coax/remote/pages.sh origin/main, then wasm.sh milestone)
+//   ios-simulator   the iPhone app in the simulator DEVICE (its name or UDID), installed from
+//                   apps/openagents-ios/build.sh; each case launches it fresh with -OADrive SOCKET and plays
+//                   the case with coax/web/tool.sh drive native SOCKET --ops FILE
+// A host's trace is compared after its first line (`drive: ... ready`), which names the host.
+//   coax/web/tool.sh apps/shared/cases.coax cpu [--write] [CASE...]
+//   coax/web/tool.sh apps/shared/cases.coax web [CASE...]
+//   coax/web/tool.sh apps/shared/cases.coax ios-simulator DEVICE [CASE...]
+// Run it from the repository's root.
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/sys/proc.coax";
+#load "openagents-app.coax";
+
+CS_CASES :: [5] string.["login", "login-cancel", "first-milestone", "logout-pending", "reconnect"];
+CS_DIR :: "openagents/examples/cases/";
+CS_BUNDLE :: "com.openagents.app";
+
+CsRun :: struct { app: [1] OapApp; trace: [1] OapTrace; ops: [16384] u8; want: [65536] u8; got: [131072] u8; err: [8192] u8; path: [512] u8; sock: [128] u8; }
+
+cs_path :: (r: [] CsRun, name: string, ext: string) -> string {
+  n := oap_put(r[0].path[..], 0, CS_DIR); n = oap_put(r[0].path[..], n, name); n = oap_put(r[0].path[..], n, ext);
+  return cast(string) r[0].path[0..<n];
+}
+// The operations a case file holds (no notes, no blank lines).
+cs_count :: (ops: string) -> int {
+  count := 0;
+  for k: 0..<ops.count { if (k == 0 || ops[k - 1] == '\n') && ops[k] != '#' && ops[k] != '\n' { count += 1; } }
+  return count;
+}
+// A host's output after its first line, with the newline its last answer ends with.
+cs_after_head :: (out: string) -> string {
+  at := 0;
+  while at < out.count && out[at] != '\n' { at += 1; }
+  return ifx at < out.count then out[at + 1..<out.count] else "";
+}
+// "" when the two are the same; else the first line where they differ, both ways.
+cs_differ :: (got: string, want: string, out: [] u8) -> string {
+  a := 0; b := 0; line := 1;
+  while a < got.count || b < want.count {
+    ea := a; while ea < got.count && got[ea] != '\n' { ea += 1; }
+    eb := b; while eb < want.count && want[eb] != '\n' { eb += 1; }
+    if got[a..<ea] != want[b..<eb] || (ea >= got.count) != (eb >= want.count) {
+      n := oap_put(out, 0, "line "); n = oap_int(out, n, line); n = oap_put(out, n, ": the host printed \"");
+      n = oap_put(out, n, got[a..<ea]); n = oap_put(out, n, "\", the trace has \""); n = oap_put(out, n, want[b..<eb]); n = oap_put(out, n, "\"");
+      return cast(string) out[0..<n];
+    }
+    a = ea + 1; b = eb + 1; line += 1;
+  }
+  return "";
+}
+
+// One case on one host: true when its trace is the committed one.
+cs_case :: (r: [] CsRun, host: string, device: string, name: string, write: bool) -> bool {
+  on := fs_read(cs_path(r, name, ".ops"), r[0].ops[..]);
+  if on < 0 { print("case %: no %.ops in %\n", name, name, CS_DIR); return false; }
+  ops := cast(string) r[0].ops[0..<on];
+  got := "";
+  if host == "cpu" {
+    oap_play(r[0].app[..], ops, r[0].trace[..]);
+    got = cast(string) r[0].trace[0].t[0..<r[0].trace[0].n];
+    if write { ok := fs_write(cs_path(r, name, ".trace"), got); print("case %: wrote %.trace (% operations)\n", name, name, cs_count(ops)); return ok; }
+  } else if host == "web" {
+    argv := [8] string.["coax/web/tool.sh", "drive", "web", "apps/openagents-web", "/milestone", "--ops", cs_path(r, name, ".ops"), "--within=0"];
+    p := proc_run(argv[0..<7], 120000, r[0].got[..], r[0].err[..]);
+    if p.started != 0 || p.timed_out { print("case % on the web: coax drive did not run (% %)\n", name, p.started, cast(string) r[0].err[0..<p.err_n]); return false; }
+    // proc_run joins lines with newlines and drops the last one: give it back
+    n := p.out_n; if n < r[0].got.count { r[0].got[n] = '\n'; n += 1; }
+    got = cs_after_head(cast(string) r[0].got[0..<n]);
+  } else {
+    // a fresh app on the simulator for each case, listening on its own socket
+    sn := oap_put(r[0].sock[..], 0, "/tmp/oa-cases-"); sn = oap_int(r[0].sock[..], sn, proc_now_ms() % 100000000); sn = oap_put(r[0].sock[..], sn, ".sock");
+    sock := cast(string) r[0].sock[0..<sn];
+    launch := [7] string.["xcrun", "simctl", "launch", "--terminate-running-process", device, CS_BUNDLE, "-OADrive"];
+    full: [8] string; for x, k: launch { full[k] = x; } full[7] = sock;
+    p := proc_run(full[..], 60000, r[0].got[..], r[0].err[..]);
+    if p.started != 0 || p.status != 0 { print("case % on the simulator: the app did not launch on % (% %)\n", name, device, p.status, cast(string) r[0].err[0..<p.err_n]); return false; }
+    waited := 0;
+    while !fs_exists(sock) && waited < 20000 { proc_sleep(100); waited += 100; }
+    if !fs_exists(sock) { print("case % on the simulator: the app never listened on %\n", name, sock); return false; }
+    drive := [6] string.["coax/web/tool.sh", "drive", "native", sock, "--ops", cs_path(r, name, ".ops")];
+    q := proc_run(drive[..], 120000, r[0].got[..], r[0].err[..]);
+    stop := [5] string.["xcrun", "simctl", "terminate", device, CS_BUNDLE];
+    e: [1024] u8; o: [1024] u8; t := proc_run(stop[..], 30000, o[..], e[..]);
+    removed := fs_remove(sock);
+    if q.started != 0 || q.timed_out { print("case % on the simulator: coax drive did not run (% %)\n", name, q.started, cast(string) r[0].err[0..<q.err_n]); return false; }
+    n := q.out_n; if n < r[0].got.count { r[0].got[n] = '\n'; n += 1; }
+    got = cs_after_head(cast(string) r[0].got[0..<n]);
+  }
+  wn := fs_read(cs_path(r, name, ".trace"), r[0].want[..]);
+  if wn < 0 { print("case %: no %.trace (cpu --write makes it)\n", name, name); return false; }
+  why: [4096] u8;
+  differ := cs_differ(got, cast(string) r[0].want[0..<wn], why[..]);
+  if differ.count == 0 { print("case % on %: % operations, the same trace as %.trace\n", name, host, cs_count(ops), name); return true; }
+  print("case % on %: the trace differs from %.trace at %\n", name, host, name, differ);
+  return false;
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) < 1 { tool_errln("usage: coax/web/tool.sh apps/shared/cases.coax cpu [--write] | web | ios-simulator DEVICE [CASE...]"); return 2; }
+  host := args_at(a[..], 0);
+  if host != "cpu" && host != "web" && host != "ios-simulator" { tool_errln("cases: the hosts are cpu, web and ios-simulator"); return 2; }
+  if !fs_exists(CS_DIR) { tool_errln("cases: run from the repository's root (no openagents/examples/cases/ here)"); return 2; }
+  i := 1; device := ""; write := false;
+  if host == "ios-simulator" {
+    if args_count(a[..]) < 2 { tool_errln("cases: ios-simulator takes the simulator's name or UDID"); return 2; }
+    device = args_at(a[..], 1); i = 2;
+  }
+  names: [16] string; nn := 0;
+  while i < args_count(a[..]) {
+    x := args_at(a[..], i); i += 1;
+    if x == "--write" && host == "cpu" { write = true; continue; }
+    if nn < names.count { names[nn] = x; nn += 1; }
+  }
+  if nn == 0 { for c: CS_CASES { names[nn] = c; nn += 1; } }
+  failed := 0;
+  for k: 0..<nn {
+    r: [1] CsRun;
+    if !cs_case(r[..], host, device, names[k], write) { failed += 1; }
+  }
+  if failed > 0 { print("% of % cases failed on %\n", failed, nn, host); return 1; }
+  print("% cases on %: every trace the same\n", nn, host);
+  return 0;
+}

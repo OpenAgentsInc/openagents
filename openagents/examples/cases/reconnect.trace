@@ -1,0 +1,32 @@
+> tap home.login
+tapped home.login (login)
+> type account.email you@example.com
+typed into account.email
+> tap account.submit
+tapped account.submit (login)
+> clock data release auth.email_start
+released auth.email_start: 200
+> type account.code 123456
+typed into account.code
+> tap account.verify
+tapped account.verify (login)
+> clock data release auth.email_verify
+released auth.email_verify: 200
+> clock data release auth.account
+released auth.account: 200
+> tap shell.new
+tapped shell.new (chat)
+> type composer.input hello
+typed into composer.input
+> tap composer.send
+tapped composer.send (chat)
+> clock data lose chat.send
+lost chat.send: sent again as op-1
+> logs
+the connection dropped; the message was sent again with the same operation ID
+> clock data release chat.send
+released chat.send: op-1 already stored; first result
+> state service.messages
+1
+> clock data
+held: chat.part, chat.part, chat.part, chat.done

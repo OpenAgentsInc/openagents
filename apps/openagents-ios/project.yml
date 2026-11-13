@@ -43,6 +43,12 @@ targets:
         compilerFlags: "-Wno-unused-function -Wno-unused-variable"
       - path: Generated/PhoneSignin.c
         compilerFlags: "-Wno-unused-function -Wno-unused-variable"
+      # The book's first milestone (#13516): the shared app (apps/shared/openagents-app.coax, compiled through
+      # OpenagentsAppUnit.c) drawn with UIKit controls, opened with -OASharedApp YES or -OADrive SOCKET, and
+      # the phone's half of coax drive (apps/shared/host/drive.c on that socket).
+      - OpenAgents/Shared
+      - path: ../shared/host/apple/phone-drive.c
+        compilerFlags: "-Wno-unused-function"
       - path: Vendor/secp256k1/src/secp256k1.c
         compilerFlags: "-DENABLE_MODULE_EXTRAKEYS=1 -DENABLE_MODULE_SCHNORRSIG=1 -DECMULT_WINDOW_SIZE=8"
       - path: Vendor/secp256k1/src/precomputed_ecmult.c

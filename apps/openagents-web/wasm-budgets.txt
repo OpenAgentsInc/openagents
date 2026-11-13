@@ -37,6 +37,7 @@ chat 260000
 # Linux build host; 338,100 with our own tools for a Gemini message (chat-hosted.coax: the command table's help, routes and
 # properties for every realm row, function tools, the calls run and answered: #13504) on a Linux build host; about 5% room.
 chat-web 356000
+milestone 128000
 # /nostr-chat, Nostr from scratch as a scripted chat on the same components (nostr-chat.coax): the frames set and the
 # library's signing, relay, NIP-44 and NIP-59 code it runs in the page: 309,585 bytes measured 2026-11-12 on a Linux build host;
 # 375,115 as a workbench with a stage beside the transcript (components/kit/stage.coax, six staged steps and their stylesheet); about 6% room.

@@ -3,3 +3,5 @@
 #include "Generated/PhoneSignin.h"
 #include "Generated/WalletBalance.h"
 #include "OpenAgents/Platform/NostrSign.h"
+#include "Generated/OpenagentsApp.h"
+#include "../shared/host/apple/phone-drive.h"

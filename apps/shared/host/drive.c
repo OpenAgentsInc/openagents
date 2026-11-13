@@ -8,6 +8,8 @@
 //                                 MS of the clock (10000)
 //   screenshot OUT.png            the frame as it is now (offscreen)
 //   quit                          the session ends (ui_drive_serve returns)
+// Any other `clock ...` goes to the app first (UiApp.drive), for an app with clock operations of its own.
+// The iPhone app (apple/phone-drive.c) includes this file too, with a UiHost of its own and no window.
 // A host may answer operations of its own first (UI_DRIVE_HOST: the Mac's ax, ax-press ID and
 // ax-key KEY, and the file chooser's choose, choose PATH, choose done and cancel; apple/ui-host.m).
 // Everything else is the app's (UiApp.drive): `tree`, `tap ID`, `type ID TEXT` and the app's own.
@@ -65,6 +67,9 @@ int ui_drive(UiHost *h, const char *op, char *out, int cap) {
       if (h->app.busy && h->app.busy(h->app.user)) return ui_drive_say(out, cap, "clock: still busy after %.0f ms", spent);
       return 0;
     }
+    // the app's own clock operations (the shared app's fakes: clock data release NAME, apps/shared/openagents-app.coax)
+    int own = h->app.drive ? h->app.drive(h->app.user, op, out, cap) : -1;
+    if (own >= 0) { h->stale = 1; return own < cap ? own : cap - 1; }
     return ui_drive_say(out, cap, "clock +MS | clock settle [within MS]");
   }
   if (!strncmp(op, "screenshot ", 11)) {

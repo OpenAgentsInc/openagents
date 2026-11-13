@@ -1,0 +1,21 @@
+# Chapter 11's second refusal: log out with a turn pending. The transcript goes with the login, and the
+# held parts that come after are dropped.
+tap home.login
+type account.email you@example.com
+tap account.submit
+clock data release auth.email_start
+type account.code 123456
+tap account.verify
+clock data release auth.email_verify
+clock data release auth.account
+tap shell.new
+type composer.input hello
+tap composer.send
+clock data release chat.send
+clock data release chat.part
+tap shell.logout
+clock data release chat.part
+clock data release auth.logout
+state
+state transcript
+tree

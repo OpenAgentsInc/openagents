@@ -85,11 +85,14 @@
 // (no agent clock: `clock +MS` waits, settle and until refuse).
 // A page the browser draws (the chat, the settings pages, the editor's shell: components/kit/frames.coax
 // through coax/web/dom-host.js) has no engine driver: there the driver reads the page's elements
-// (drive-dom.coax) and takes tree, hit, taps, tap, type, screenshot, logs and prefer.
+// (drive-dom.coax) and takes tree, hit, taps, tap, type, screenshot, logs and prefer. One whose module
+// answers the shared app's operations (dom_drive: apps/openagents-web/milestone.coax over
+// apps/shared/openagents-app.coax) answers tree, state, clock, logs and its own there; tap and type stay
+// real clicks and typing, and their answer is what the app made of them (`input`), as on the iPhone.
 // The native hosts (apps/shared/host/drive.c, GitHub #13156) answer the same way on a Unix socket: an
 // app started with --drive SOCKET (OpenAgents, Everglade's Workshop chat) takes
-//   coax/web/tool.sh drive native SOCKET [--within MS] OP...
-// with the host's clock +MS, clock settle [within MS], screenshot OUT.png and quit, and the app's own:
+//   coax/web/tool.sh drive native SOCKET [--within MS] [--ops FILE] OP...
+// (--ops takes them from a file and echoes each as `> OP`, as the web prints them) with the host's clock +MS, clock settle [within MS], screenshot OUT.png and quit, and the app's own:
 // tree, tap ID, type ID TEXT, state NAME ... (`tree` lists the ids: components/core/elements.coax).
 // It refuses a build older than its sources (build/.drive/APP.sources, written by coax/web/wasm.sh),
 // printing the command that rebuilds it.
@@ -444,6 +447,7 @@ DvS :: struct {
   live: bool;           // --live: the dev server at `origin`, already running; the world's routes answer there
   origin: [64] u8; origin_n: int; world: [40] u8; world_n: int; cli: [1200] u8; cli_n: int;
   dom: bool;            // a page the browser draws (coax/web/dom-host.js): no engine driver, no world, no agent clock
+  app: bool;            // ... whose module answers the shared app's operations itself (coaxialDom.drive: dom_drive)
   lay: [DV_FILE] u8; lay_n: int; root: [128] u8; root_n: int;
   value: [1048576] u8;
 }
@@ -460,6 +464,37 @@ dv_canvas_at :: (s: [] DvS) -> DvCorner {
   v := dv_eval(s, "(() => { const c = document.getElementById('coaxial'); if (!c) return '0 0'; const r = c.getBoundingClientRect(); return Math.round(r.left) + ' ' + Math.round(r.top); })()");
   x := dv_int(dv_word(v, 0)); y := dv_int(dv_word(v, 1));
   return ifx x < 0 || y < 0 then DvCorner.{} else DvCorner.{x = x, y = y};
+}
+// An operation for a page whose module answers the shared app's operations (dom-host.js coaxialDom.drive).
+dv_app :: (s: [] DvS, op: string) -> string {
+  js: [8192] u8; j: [1] Jo; jo_start(j[..], js[..]); jo_str(j[..], op);
+  t: [1] Dv; dv_s(t[..], "(() => { const d = globalThis.coaxialDom?.drive; return d ? '=' + d("); dv_s(t[..], jo_text(j[..])); dv_s(t[..], ") : '!the page has no app driver'; })()");
+  v := dv_eval(s, dv_text(t[..]));
+  return ifx v.count > 0 then v[1..<v.count] else "the page gave no answer";
+}
+// The operations a page drawn by the browser answers from its elements, whatever its module: the rest go to an
+// app driver when it has one (tree, state, clock, logs and its own).
+dv_page_op :: (w0: string) -> bool {
+  for x: [16] string.["hit", "taps", "screenshot", "prefer", "text", "back", "forward", "reload", "address", "mark", "same", "gone", "swap", "answer", "drop", "swaps"] { if w0 == x { return true; } }
+  return false;
+}
+// tap ID and type ID TEXT on an app driver's page: a real click (and real typing) on the page's element ID, then
+// the app's word on what that input did (`input`). An id the page doesn't show, or a press the browser didn't
+// deliver (a disabled button), is the app's to refuse, in the words every host gives.
+dv_app_input :: (s: [] DvS, op: string, out: [] Dv) -> bool {
+  id := dv_word(op, 1);
+  tj: [2048] u8;
+  at := ifx id.count > 0 then dv_eval(s, dd_target_js(id, tj[..])) else "";
+  ok := false;
+  if id.count > 0 && !dv_starts(at, "no element") && !dv_starts(at, "that element does not show") {
+    s[0].app = false; ok = dv_op(s, op, out); s[0].app = true;
+    if !ok { return false; }   // the click or the typing failed: the browser's own words
+  }
+  out[0].n = 0;
+  said := ifx ok then dv_app(s, "input") else "no input reached the app";
+  if said == "no input reached the app" { said = dv_app(s, op); }
+  dv_s(out, said);
+  return true;
 }
 // A command to the realm: its answer (it retries while the engine is between modules).
 dv_send :: (s: [] DvS, cmd: string) -> string {
@@ -703,6 +738,8 @@ dv_clock :: (s: [] DvS, op: string, out: [] Dv) -> bool {
 dv_op :: (s: [] DvS, op: string, out: [] Dv) -> bool {
   out[0].n = 0;
   w0 := dv_word(op, 0);
+  if s[0].app && (w0 == "tap" || w0 == "type") { return dv_app_input(s, op, out); }
+  if s[0].app && !dv_page_op(w0) { a := dv_app(s, op); dv_s(out, a); return !dv_starts(a, "unknown operation"); }
   if w0 == "hit" {
     // what receives a tap at a point (#13433): the browser's own hit test, and the engine's HUD where a canvas is on top
     x := dd_px(dv_word(op, 1)); y := dd_px(dv_word(op, 2));
@@ -1033,13 +1070,15 @@ dv_state :: (s: [] DvS, path: string, out: [] Dv) -> bool {
 
 // ---- drive native: one line an operation to a native host's socket; each answer is its length, a
 // newline, then that many bytes (apps/shared/host/drive.c).
-dv_native :: (sock: string, ops: [] string, within: int) -> int {
+dv_native :: (sock: string, ops: [] string, within: int, echo: bool) -> int {
   if sock.count == 0 || sock.count > 103 { tool_errln("drive: the socket's path is empty or too long"); return 2; }
   for c: sock { r := cxsock_host_push(cast(int) c); }
   h := cxsock_connect_unix(5000);
   if h < 0 { tool_err("drive: nothing answers on "); tool_errln(sock); return 1; }
+  if echo { print("drive: % ready: a native host on its socket\n", sock); }
   status := 0;
   for op: ops {
+    if echo { print("> %\n", op); }
     ok := true;
     for c: op { if c == 10 || cxsock_write(h, cast(int) c) != 0 { ok = false; } }
     ok = ok && cxsock_write(h, 10) == 0 && cxsock_flush(h, 5000) == 0;
@@ -1058,7 +1097,8 @@ dv_native :: (sock: string, ops: [] string, within: int) -> int {
     }
     if want < 0 || got < want { tool_err("drive: no answer to "); tool_errln(op); status = 1; break; }
     text := dv_text(ans[..]);
-    if text.count > 0 { print("%", text); if text[text.count - 1] != 10 { print("\n"); } }
+    if echo { print("%\n", text); }   // as the web prints it: every answer a line, an empty one too
+    else if text.count > 0 { print("%", text); if text[text.count - 1] != 10 { print("\n"); } }
     if dv_starts(text, "unknown operation") || dv_starts(text, "no row ") || dv_starts(text, "clock: still busy") { status = 1; }
   }
   r := cxsock_close(h);
@@ -1071,7 +1111,7 @@ dv_usage :: () -> int {
   tool_errln("  OP: tree, layout, state [PATH], tap ID, type ID TEXT, type ID key NAME, walk-to ID, face ID,");
   tool_errln("      use ABILITY on ID, mount ID, stop, status, screenshot OUT.png, logs, prefer K V, perf,");
   tool_errln("      clock +MS, clock settle [within MS], clock until PATH [OP VALUE] [within MS]");
-  tool_errln("       coax/web/tool.sh drive native SOCKET [--within MS] OP...   (an app started with --drive SOCKET)");
+  tool_errln("       coax/web/tool.sh drive native SOCKET [--within MS] [--ops FILE] OP...   (an app started with --drive SOCKET)");
   return 2;
 }
 // The repository's root from this tool's own binary (ROOT/coax/web/build/tools/NAME-HASH, tool.sh).
@@ -1083,14 +1123,30 @@ tool_main :: () -> int #export_c #effects(all) {
   loaded := args_load(a[..]);   // once: a second load lists every argument again
   if loaded { kept := rs_keeper_call(a[..]); if kept >= 0 { return kept; } }
   if loaded && args_count(a[..]) >= 3 && args_at(a[..], 0) == "native" {
-    nops: [64] string; nn := 0; nwithin := 30000;
+    nops: [DV_OPS] string; nn := 0; nwithin := 30000; nfile: [16384] u8; echo := false;
     j := 2;
     while j < args_count(a[..]) {
       if args_at(a[..], j) == "--within" && j + 1 < args_count(a[..]) { nwithin = dv_int(args_at(a[..], j + 1)); j += 2; continue; }
-      if nn >= nops.count { tool_errln("drive: at most 64 operations a run"); return 2; }
+      // --ops FILE: the operations from a file, one a line (# a note), each echoed as `> OP` before its answer, as the web prints them
+      if args_at(a[..], j) == "--ops" && j + 1 < args_count(a[..]) {
+        fn := fs_read(args_at(a[..], j + 1), nfile[..]);
+        if fn <= 0 { tool_err("drive: cannot read the operations in "); tool_errln(args_at(a[..], j + 1)); return 2; }
+        at := 0;
+        while at < fn {
+          e := at;
+          while e < fn && nfile[e] != '\n' { e += 1; }
+          line := cast(string) nfile[at..<e];
+          at = e + 1;
+          if line.count == 0 || line[0] == '#' { continue; }
+          if nn >= nops.count { tool_errln("drive: at most 128 operations a run"); return 2; }
+          nops[nn] = line; nn += 1;
+        }
+        echo = true; j += 2; continue;
+      }
+      if nn >= nops.count { tool_errln("drive: at most 128 operations a run"); return 2; }
       nops[nn] = args_at(a[..], j); nn += 1; j += 1;
     }
-    return dv_native(args_at(a[..], 1), nops[0..<nn], nwithin);
+    return dv_native(args_at(a[..], 1), nops[0..<nn], nwithin, echo);
   }
   if !loaded || args_count(a[..]) < 3 || args_at(a[..], 0) != "web" { return dv_usage(); }
   app_dir := args_at(a[..], 1); path := args_at(a[..], 2);
@@ -1257,6 +1313,19 @@ dv_open :: (s: [] DvS, path: string, query: string, wh: ArgsSize) -> int {
     // has no engine driver; the driver reads its elements instead (#13433)
     if dv_eval(s, DD_IS_DOM) != "dom" { tool_err("drive: "); tool_errln(first); return 1; }
     s[0].dom = true; s[0].agent = false;
+    // its module loads after the page does: wait for it (dom-host.js sets coaxialDom once it runs), at most 10 s
+    kind := "";
+    while proc_now_ms() - start < 10000 {
+      kind = dv_eval(s, "globalThis.coaxialDom ? (globalThis.coaxialDom.drive ? 'app' : 'dom') : ''");
+      if kind.count > 0 { break; }
+      proc_sleep(25);
+    }
+    if kind == "app" {
+      // its module answers the shared app's operations (apps/shared/openagents-app.coax): the clock is the app's
+      s[0].app = true;
+      print("drive: % ready in % ms: a page the browser draws, whose app answers tree, tap ID, type ID TEXT, state, clock and logs (taps and typing are the browser's)\n", dv_text(u[..]), proc_now_ms() - start);
+      return 0;
+    }
     print("drive: % ready in % ms: a page the browser draws; it takes tree, hit X Y, taps, tap ID, type ID TEXT, screenshot, logs and prefer (no world, no agent clock)\n", dv_text(u[..]), proc_now_ms() - start);
     return 0;
   }

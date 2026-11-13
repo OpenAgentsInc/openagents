@@ -1,0 +1,137 @@
+// /milestone: the OpenAgents book's first milestone on the website (chapters 6 and 11; GitHub #13516).
+// The app is apps/shared/openagents-app.coax, the same file the iPhone app runs: this page only draws its
+// view with the kit's components on the mono skin (components/kit/frames.coax) through the browser
+// (coax/web/dom-host.js), and hands the browser's presses and typing to it. Its services are the shared
+// app's fakes with recorded answers: nothing here reaches a live service or logs anyone in. A person
+// gets each answer half a second after asking; under coax drive only the driver's clock releases them.
+//
+// coax drive reads it through the shared app (dom_drive): tree, state, clock and logs are the app's
+// answers; tap and type are real clicks and typing in the browser (coax/web/drive.coax), and their
+// answers are what the app made of them (`input`).
+//   coax/bin/coax test apps/openagents-web/milestone.coax
+//   coax/web/tool.sh apps/shared/cases.coax web       (the cases in headless Chrome)
+#load "../../components/kit/frames.coax";
+#load "../../components/backend/dom.coax";
+#load "../shared/openagents-app.coax";
+
+MS_INBOX :: 4096;
+MS_CSS :: 28672;
+MS_CLICK :: 1; MS_INPUT :: 2; MS_SUBMIT :: 3;
+MS_FIELDS :: [3] string.["account.email", "account.code", "composer.input"];
+
+Milestone :: struct {
+  ready: bool; time: f32; dirty: bool; animating: bool;
+  app: [1] OapApp;
+  shown: [3] [OAP_FIELD_MAX] u8; shown_n: [3] int;   // what each field held as the browser last had it
+  inbox: [MS_INBOX] u8;
+  drive_out: [OAP_OUT] u8; drive_n: int;
+  sets: [MF_COUNT] AfSettings;
+  css: [MS_CSS] u8;
+  ui: [1] Ui;
+  tree: [1] Tree;
+  dom: [1] Dom;
+}
+
+ms_build :: (s: [] Milestone) {
+  a := s[0].app[..];
+  oap_view(a);
+  t := s[0].tree[..]; u := s[0].ui[..];
+  tr_begin(t);
+  m := tr_open(t, "milestone", TG_MAIN, "milestone");
+  for k: 0..<a[0].els_n {
+    id := oap_el_id(a, k); label := oap_el_label(a, k); role := a[0].els[k].role;
+    if role == OAP_BUTTON { _ := k_button(t, u, id, label, ifx a[0].els[k].off then BS_DISABLED else BS_PLAIN); }
+    else if role == OAP_FIELD { _ := k_field(t, u, id, label, label); }
+    else if role == OAP_MESSAGE { _ := k_user(t, u, id, label); }
+    else if role == OAP_NOTICE || role == OAP_REPLY { _ := k_text(t, u, id, TG_P, ifx role == OAP_NOTICE then "meta" else "", label); }
+    else { _ := k_text(t, u, id, ifx k == 0 then TG_H1 else TG_P, "", label); }
+  }
+  tr_close(t);
+  // a field the app changed (cleared after Send, emptied by Cancel) is set in the browser too
+  for f: 0..<MS_FIELDS.count {
+    now := oap_field_text(a, MS_FIELDS[f]);
+    if now != cast(string) s[0].shown[f][0..<s[0].shown_n[f]] {
+      dm_value(s[0].dom[..], MS_FIELDS[f], now);
+      s[0].shown_n[f] = oap_put(s[0].shown[f][..], 0, now);
+    }
+  }
+}
+
+coaxial_milestone_frame :: (s: [] Milestone, dt: f32, reduced: bool) -> int #export_c #effects(all) {
+  if s.count < 1 { return 0; }
+  if !s[0].ready {
+    _ := mono_frames(s[0].sets[..]);
+    s[0].app[0].presenting = true;   // the browser's own buttons and fields deliver tap and type
+    s[0].app[0].hand = true;         // a person: the fakes answer on their own until a driver speaks
+    s[0].ready = true; s[0].dirty = true;
+  }
+  step := ifx dt < 0 then 0.0f32 else ifx dt > 0.1 then 0.1f32 else dt;
+  s[0].time += step;
+  if oap_tick(s[0].app[..], step) { s[0].dirty = true; }
+  if !s[0].dirty && !s[0].animating { return 0; }
+  d := s[0].dom[..];
+  if !d[0].styled { n := mono_css(s[0].css[..]); dm_style(d, cast(string) s[0].css[0..<n]); }
+  ui_begin(s[0].ui[..], s[0].time, reduced);
+  ms_build(s);
+  ui_end(s[0].ui[..]);
+  s[0].animating = s[0].ui[0].busy;
+  s[0].dirty = false;
+  bytes := dm_flush(d, s[0].tree[..], s[0].sets[..]);
+  if d[0].overflow { dm_reset(d); s[0].dirty = true; return -1; }
+  return bytes;
+}
+coaxial_milestone_busy :: (s: [] Milestone) -> bool #export_c #effects(all) { return s.count > 0 && (s[0].dirty || s[0].animating || oap_waiting(s[0].app[..])); }
+// A press (1) on the node in this slot, or a field's whole text as typed (2).
+coaxial_milestone_event :: (s: [] Milestone, kind: int, slot: int, length: int) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  s[0].dirty = true;
+  id := dm_slot_id(s[0].dom[..], slot);
+  if kind == MS_CLICK { _ := oap_press(s[0].app[..], id); return; }
+  if kind == MS_INPUT {
+    n := ifx length < 0 then 0 else ifx length > MS_INBOX then MS_INBOX else length;
+    text := cast(string) s[0].inbox[0..<n];
+    for f: 0..<MS_FIELDS.count { if MS_FIELDS[f] == id { s[0].shown_n[f] = oap_put(s[0].shown[f][..], 0, text); } }
+    _ := oap_edit(s[0].app[..], id, text);
+  }
+}
+coaxial_milestone_size :: (s: [] Milestone, slot: int, w: f32, h: f32) #export_c #effects(all) {
+  if s.count > 0 && dm_size(s[0].dom[..], slot, w, h) { s[0].dirty = true; }
+}
+coaxial_milestone_inbox_cap :: () -> int #export_c #effects(all) { return MS_INBOX; }
+// coax drive: the operation in the inbox, answered by the shared app; its length (the bytes at drive_out).
+coaxial_milestone_drive :: (s: [] Milestone, length: int) -> int #export_c #effects(all) {
+  if s.count < 1 { return 0; }
+  n := ifx length < 0 then 0 else ifx length > MS_INBOX then MS_INBOX else length;
+  answer := oap_drive(s[0].app[..], cast(string) s[0].inbox[0..<n]);
+  s[0].drive_n = oap_put(s[0].drive_out[..], 0, answer);
+  s[0].dirty = true;
+  return s[0].drive_n;
+}
+// What Copy put on the clipboard, for the browser's: its length, once.
+coaxial_milestone_clip :: (s: [] Milestone) -> int #export_c #effects(all) { return ifx s.count > 0 && s[0].app[0].clip_new then s[0].app[0].clip_n else 0; }
+coaxial_milestone_clip_done :: (s: [] Milestone) #export_c #effects(all) { if s.count > 0 { s[0].app[0].clip_new = false; } }
+
+// ---------------------------------------------------------------- checks
+
+MsTest :: struct { s: [1] Milestone; }
+
+#test "the page draws the shared view: the same ids, a press is the app's, and the app's answer is the driver's" {
+  h: [1] MsTest;
+  s := h[0].s[..];
+  #assert coaxial_milestone_frame(s, 0.016, true) > 0;
+  t := s[0].tree[..];
+  b := tr_find(t, "home.login");
+  #assert b >= 0 && t[0].nodes[b].tag == TG_BUTTON;
+  coaxial_milestone_event(s, MS_CLICK, dm_find(s[0].dom[..], "home.login"), 0);
+  _ = coaxial_milestone_frame(s, 0.016, true);
+  #assert tr_find(t, "account.email") >= 0 && t[0].nodes[tr_find(t, "account.email")].tag == TG_TEXTAREA;
+  op := "input";
+  for c, k: op { s[0].inbox[k] = c; }
+  n := coaxial_milestone_drive(s, op.count);
+  #assert cast(string) s[0].drive_out[0..<n] == "tapped home.login (login)";
+  // a driver's tap that no browser click delivered is refused: the page shows real buttons
+  op2 := "tap account.submit";
+  for c, k: op2 { s[0].inbox[k] = c; }
+  n = coaxial_milestone_drive(s, op2.count);
+  #assert cast(string) s[0].drive_out[0..<n] == "account.submit is in the tree but this host does not show it";
+}

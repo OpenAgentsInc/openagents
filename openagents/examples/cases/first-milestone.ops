@@ -1,0 +1,35 @@
+# Chapter 11, the first milestone: log in, send a message, receive the fixture reply a part at a time,
+# then stop a second turn; its later parts are dropped.
+tap home.login
+type account.email you@example.com
+tap account.submit
+clock data release auth.email_start
+type account.code 123456
+tap account.verify
+clock data release auth.email_verify
+clock data release auth.account
+tap shell.new
+tap composer.send
+type composer.input hello
+tap composer.send
+state turn
+clock data release chat.send
+clock data
+clock data release chat.part
+clock data release chat.part
+clock data release chat.part
+clock data release chat.done
+state transcript
+tree
+tap reply.copy
+state clipboard
+type composer.input again
+tap composer.send
+clock data release chat.send
+clock data release chat.part
+tap composer.stop
+clock data release chat.part
+clock data release chat.part
+clock data release chat.done
+state transcript
+logs

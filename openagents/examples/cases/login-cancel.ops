@@ -1,0 +1,9 @@
+# Chapter 6's refusal: cancel a pending code request, then release its answer. It changes nothing.
+tap home.login
+type account.email you@example.com
+tap account.submit
+tap account.cancel
+clock data release auth.email_start
+state
+logs
+tap account.code

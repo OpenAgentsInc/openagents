@@ -1,0 +1,80 @@
+> tap home.login
+tapped home.login (login)
+> type account.email you@example.com
+typed into account.email
+> tap account.submit
+tapped account.submit (login)
+> clock data release auth.email_start
+released auth.email_start: 200
+> type account.code 123456
+typed into account.code
+> tap account.verify
+tapped account.verify (login)
+> clock data release auth.email_verify
+released auth.email_verify: 200
+> clock data release auth.account
+released auth.account: 200
+> tap shell.new
+tapped shell.new (chat)
+> tap composer.send
+composer.send can't be pressed now
+> type composer.input hello
+typed into composer.input
+> tap composer.send
+tapped composer.send (chat)
+> state turn
+live
+> clock data release chat.send
+released chat.send: stored op-1
+> clock data
+held: chat.part, chat.part, chat.part, chat.done
+> clock data release chat.part
+released chat.part
+> clock data release chat.part
+released chat.part
+> clock data release chat.part
+released chat.part
+> clock data release chat.done
+released chat.done
+> state transcript
+you: hello
+reply: Hello! This is a fixture reply.
+> tree
+route chat
+chat.back button "Chats"
+transcript.0 message "hello"
+transcript.1 reply "Hello! This is a fixture reply."
+reply.copy button "Copy"
+composer.input field "Message" = ""
+composer.send button "Send" off
+shell.logout button "Log out"
+> tap reply.copy
+tapped reply.copy (chat)
+> state clipboard
+Hello! This is a fixture reply.
+> type composer.input again
+typed into composer.input
+> tap composer.send
+tapped composer.send (chat)
+> clock data release chat.send
+released chat.send: stored op-2
+> clock data release chat.part
+released chat.part
+> tap composer.stop
+tapped composer.stop (chat)
+> clock data release chat.part
+released chat.part: late part dropped
+> clock data release chat.part
+released chat.part: late part dropped
+> clock data release chat.done
+released chat.done: late part dropped
+> state transcript
+you: hello
+reply: Hello! This is a fixture reply.
+you: again
+reply: Hello! 
+notice: Stopped
+> logs
+late part dropped
+late part dropped
+late part dropped

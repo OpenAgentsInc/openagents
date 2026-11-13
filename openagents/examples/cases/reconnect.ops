@@ -1,0 +1,18 @@
+# Chapter 11's independent check: the send's answer is lost, the app reconnects and sends again with
+# the same operation ID, and the service stores one message.
+tap home.login
+type account.email you@example.com
+tap account.submit
+clock data release auth.email_start
+type account.code 123456
+tap account.verify
+clock data release auth.email_verify
+clock data release auth.account
+tap shell.new
+type composer.input hello
+tap composer.send
+clock data lose chat.send
+logs
+clock data release chat.send
+state service.messages
+clock data

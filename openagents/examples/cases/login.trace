@@ -1,0 +1,38 @@
+> tree
+route home
+home.title text "OpenAgents"
+home.login button "Log in"
+> tap home.login
+tapped home.login (login)
+> type account.email you@example.com
+typed into account.email
+> tap account.submit
+tapped account.submit (login)
+> state account.waiting
+auth.email_start
+> clock data release auth.email_start
+released auth.email_start: 200
+> state account.step
+code
+> type account.code 123456
+typed into account.code
+> tap account.verify
+tapped account.verify (login)
+> clock data release auth.email_verify
+released auth.email_verify: 200
+> clock data release auth.account
+released auth.account: 200
+> state
+route = chats
+account.step = in
+account.waiting = nothing
+turn = idle
+service.messages = 0
+clock = 0 ms
+> state account.who
+y...@example.com
+> tree
+route chats
+shell.who text "y...@example.com"
+shell.new button "New chat"
+shell.logout button "Log out"

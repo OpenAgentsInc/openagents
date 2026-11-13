@@ -1,0 +1,776 @@
+// The OpenAgents app's shared state, actions and routes (The OpenAgents Book, chapters 2 to 11; GitHub
+// #13516): the first milestone. The website (apps/openagents-web/milestone.coax) and the iPhone app
+// (apps/openagents-ios/OpenAgents/Shared/) both run this file: you open login, log in by email code,
+// send a message, receive a reply and stop a pending one, through the same actions and the same answers.
+//
+// What it holds:
+//   - routes: home, login, chats (the logged-in shell) and chat (the conversation screen);
+//   - the login, over app-login-flow.coax (the requests it writes and what their answers do);
+//   - the conversation, as the session record (coax/lib/agent/session/session.coax): a screen reads
+//     the record and draws what it finds;
+//   - the fake services with recorded answers (OapHeld): every request the app makes is held until the
+//     test clock releases it (`clock data release NAME`), so every run is the same and no live service
+//     is reached. The auth answers are app-login.coax's own fixtures; the reply is three parts;
+//   - fences: Cancel, Stop and Log out close what they started, so a held answer that arrives after
+//     them changes nothing ("late answer dropped", "late part dropped"); a send carries an operation ID,
+//     and the service answers a repeated ID with its first result (a reconnect never stores twice);
+//   - the semantic view (oap_view): each element's id, role, label and whether it can be pressed, the
+//     one thing every host draws (the web with the kit's components, the iPhone with UIKit controls);
+//   - coax drive's operations (oap_drive): tree, tap ID, type ID TEXT, state [NAME], clock +MS,
+//     clock data [release|lose NAME], logs, and input (the answer to the last input a host delivered).
+//     Every host answers them with this code, so a case's trace is the same on every host.
+//
+// A host that draws real controls (`presenting`) sends tap and type through them: the button's own
+// action or the field's own edit calls oap_press or oap_edit, and the driver reads the answer with
+// `input`. Such a host never lets the driver press an element it does not show.
+//   coax/bin/coax test apps/shared/openagents-app.coax
+#load "app-login-flow.coax";
+#load "../../coax/lib/agent/session/session.coax";
+
+OAP_HOME :: 0; OAP_LOGIN :: 1; OAP_CHATS :: 2; OAP_CHAT :: 3;
+OAP_ROUTES :: [4] string.["home", "login", "chats", "chat"];
+// What an element is, for every host: a button, a field, a line of text, and the transcript's rows.
+OAP_BUTTON :: 0; OAP_FIELD :: 1; OAP_TEXT :: 2; OAP_MESSAGE :: 3; OAP_REPLY :: 4; OAP_NOTICE :: 5;
+OAP_ROLES :: [6] string.["button", "field", "text", "message", "reply", "notice"];
+
+OAP_ELS :: 48; OAP_ID :: 32; OAP_LABEL :: 1024;
+OAP_FIELD_MAX :: 1024;      // bytes a field keeps
+OAP_HELD :: 24;             // held requests and parts at once
+OAP_NAME :: 24;
+OAP_LOG :: 2048;
+OAP_OUT :: 16384;
+OAP_POOL :: 65536;          // the transcript's text
+OAP_MESSAGES :: 16;         // operation IDs the fake conversation service remembers
+// The recorded reply, a part at a time (chapter 11: the fixture, until chapter 12's loop answers).
+OAP_REPLY_PARTS :: [3] string.["Hello! ", "This is a ", "fixture reply."];
+// The fake auth service takes this code and no other.
+OAP_CODE :: "123456";
+// The account the fake service says is logged in (as /api/auth/account answers: a masked email).
+OAP_ME :: "{\"logged_in\":true,\"account\":\"acct_7\",\"emails\":[\"y...@example.com\"],\"keys\":[]}";
+
+OapEl :: struct {
+  id: [OAP_ID] u8; id_n: int;
+  role: int;
+  label: [OAP_LABEL] u8; label_n: int;
+  off: bool;                        // shown, but can't be pressed now
+}
+
+// A request or a part the fake services hold until the clock releases it.
+OapHeld :: struct {
+  name: [OAP_NAME] u8; name_n: int;
+  epoch: int;                       // the login it belongs to (Cancel and Log out start a new one)
+  turn: int;                        // the conversation turn (0: none)
+  op: int;                          // the send's operation ID number
+  part: int;                        // which reply part
+}
+
+OapApp :: struct {
+  route: int;
+  presenting: bool;                 // the host draws real controls: tap and type go through them
+  flow: [1] AlFlow;
+  epoch: int;                       // what the held auth answers must carry to count
+  email: [OAP_FIELD_MAX] u8; email_n: int;
+  code: [OAP_FIELD_MAX] u8; code_n: int;
+  draft: [OAP_FIELD_MAX] u8; draft_n: int;
+  // the conversation
+  session: [1] Session; pool: [OAP_POOL] u8; ready: bool;
+  turn: int;                        // turns started
+  open_turn: int;                   // the turn whose parts still count (0: none)
+  ops: int;                         // operation IDs given
+  // the fake services
+  held: [OAP_HELD] OapHeld; held_n: int;
+  stored: [OAP_MESSAGES] int; stored_n: int;   // the operation IDs the conversation service stored
+  clip: [OAP_POOL] u8; clip_n: int;            // what Copy put on the clipboard
+  clip_new: bool;                              // a host copies it to the platform's clipboard
+  clock_ms: f64;                    // the controlled clock: only `clock` moves it
+  // A person using the app with no driver: the fakes answer on their own, the oldest first, half a
+  // second apart (oap_tick). Once a driver speaks, only the clock releases anything.
+  hand: bool; hand_wait: f32;
+  // what the driver reads
+  log: [OAP_LOG] u8; log_n: int;
+  input: [512] u8; input_n: int; input_had: bool;  // the answer to the last input a host delivered
+  els: [OAP_ELS] OapEl; els_n: int;
+  out: [OAP_OUT] u8; out_n: int;
+}
+
+// ---------------------------------------------------------------- text
+
+// Writes s at out[at..]; where it ends (cut at the end of out).
+oap_put :: (out: [] u8, at: int, s: string) -> int {
+  n := at;
+  for c: s { if n < out.count { out[n] = c; n += 1; } }
+  return n;
+}
+oap_int :: (out: [] u8, at: int, v: int) -> int {
+  n := at; x := v;
+  if x < 0 { n = oap_put(out, n, "-"); x = -x; }
+  d: [20] u8; k := 0;
+  while true { d[k] = cast(u8) ('0' + x % 10); k += 1; x /= 10; if x == 0 { break; } }
+  while k > 0 { k -= 1; if n < out.count { out[n] = d[k]; n += 1; } }
+  return n;
+}
+oap_starts :: (s: string, p: string) -> bool { return s.count >= p.count && s[0..<p.count] == p; }
+// Word w of a line (space-separated), and the rest of the line from word w on.
+oap_word :: (s: string, w: int) -> string {
+  at := 0; k := 0;
+  while at < s.count {
+    while at < s.count && s[at] == ' ' { at += 1; }
+    if at >= s.count { break; }
+    from := at;
+    while at < s.count && s[at] != ' ' { at += 1; }
+    if k == w { return s[from..<at]; }
+    k += 1;
+  }
+  return "";
+}
+oap_rest :: (s: string, w: int) -> string {
+  at := 0; k := 0;
+  while at < s.count {
+    while at < s.count && s[at] == ' ' { at += 1; }
+    if at >= s.count { break; }
+    if k == w { return s[at..<s.count]; }
+    while at < s.count && s[at] != ' ' { at += 1; }
+    k += 1;
+  }
+  return "";
+}
+oap_trimmed :: (s: string) -> string {
+  a := 0; b := s.count;
+  while a < b && s[a] <= ' ' { a += 1; }
+  while b > a && s[b - 1] <= ' ' { b -= 1; }
+  return s[a..<b];
+}
+
+oap_log :: (a: [] OapApp, line: string) {
+  a[0].log_n = oap_put(a[0].log[..], a[0].log_n, line);
+  a[0].log_n = oap_put(a[0].log[..], a[0].log_n, "\n");
+}
+oap_said :: (a: [] OapApp, s: string) { a[0].out_n = oap_put(a[0].out[..], a[0].out_n, s); }
+oap_said_int :: (a: [] OapApp, v: int) { a[0].out_n = oap_int(a[0].out[..], a[0].out_n, v); }
+oap_answer :: (a: [] OapApp) -> string { return cast(string) a[0].out[0..<a[0].out_n]; }
+
+// ---------------------------------------------------------------- state
+
+oap_open :: (a: [] OapApp) {
+  if a[0].ready { return; }
+  s_init(a[0].session[..], a[0].pool[..]);
+  alf_open(a[0].flow[..], "");
+  a[0].ready = true;
+}
+oap_email :: (a: [] OapApp) -> string { return cast(string) a[0].email[0..<a[0].email_n]; }
+oap_code :: (a: [] OapApp) -> string { return cast(string) a[0].code[0..<a[0].code_n]; }
+oap_draft :: (a: [] OapApp) -> string { return cast(string) a[0].draft[0..<a[0].draft_n]; }
+oap_logged_in :: (a: [] OapApp) -> bool { return a[0].flow[0].state == ALF_IN; }
+oap_live :: (a: [] OapApp) -> bool { return a[0].open_turn != 0 && a[0].session[0].live; }
+// The auth request the app waits on: its held name, or "" for none.
+oap_auth_waiting :: (a: [] OapApp) -> string {
+  for k: 0..<a[0].held_n {
+    name := cast(string) a[0].held[k].name[0..<a[0].held[k].name_n];
+    if a[0].held[k].epoch == a[0].epoch && oap_starts(name, "auth.") { return name; }
+  }
+  return "";
+}
+
+oap_hold :: (a: [] OapApp, name: string, turn: int, op: int, part: int) -> bool {
+  if a[0].held_n >= OAP_HELD { oap_log(a, "the fake service holds too much: a request was refused"); return false; }
+  h: OapHeld;
+  h.name_n = oap_put(h.name[..], 0, name);
+  h.epoch = a[0].epoch; h.turn = turn; h.op = op; h.part = part;
+  a[0].held[a[0].held_n] = h; a[0].held_n += 1;
+  return true;
+}
+// The request the login flow wrote, sent: held as the auth service's.
+oap_send_auth :: (a: [] OapApp) {
+  step := a[0].flow[0].step;
+  name := ifx step == ALF_S_EMAIL_START then "auth.email_start" else ifx step == ALF_S_EMAIL_VERIFY then "auth.email_verify"
+    else ifx step == ALF_S_WHO then "auth.account" else ifx step == ALF_S_LOGOUT then "auth.logout" else "";
+  if name.count == 0 { return; }
+  _ := oap_hold(a, name, 0, 0, 0);
+}
+
+// ---------------------------------------------------------------- actions
+
+// Every action a person can take, by the element's id. "" when it was done; else why it was refused
+// (nothing changed). The view decides what is on the screen; an id that is not there is refused.
+oap_act :: (a: [] OapApp, id: string) -> string {
+  oap_open(a);
+  r := a[0].route;
+  if r == OAP_HOME && id == "home.login" { a[0].route = OAP_LOGIN; return ""; }
+  if r == OAP_LOGIN && id == "account.submit" {
+    if !alf_email(a[0].flow[..], oap_email(a)) { return ""; }   // the flow says why ("Type your email.")
+    oap_send_auth(a); return "";
+  }
+  if r == OAP_LOGIN && id == "account.verify" {
+    if !alf_code(a[0].flow[..], oap_code(a)) { return ""; }
+    oap_send_auth(a); return "";
+  }
+  if r == OAP_LOGIN && id == "account.other" { alf_back(a[0].flow[..]); a[0].code_n = 0; return ""; }
+  if r == OAP_LOGIN && id == "account.cancel" {
+    // Cancel: back home; a held answer to what was asked no longer counts
+    a[0].epoch += 1; alf_open(a[0].flow[..], "");
+    a[0].email_n = 0; a[0].code_n = 0; a[0].route = OAP_HOME;
+    return "";
+  }
+  if (r == OAP_CHATS || r == OAP_CHAT) && id == "shell.logout" { oap_logout(a); return ""; }
+  if r == OAP_CHATS && id == "shell.new" { a[0].route = OAP_CHAT; return ""; }
+  if r == OAP_CHAT && id == "chat.back" { a[0].route = OAP_CHATS; return ""; }
+  if r == OAP_CHAT && id == "composer.send" { return oap_send(a); }
+  if r == OAP_CHAT && id == "composer.stop" { oap_stop(a); return ""; }
+  if r == OAP_CHAT && id == "reply.copy" {
+    s := a[0].session[..];
+    k := s[0].n - 1;
+    while k >= 0 && s[0].parts[k].kind != P_TEXT { k -= 1; }
+    if k < 0 { return "there is no reply to copy"; }
+    a[0].clip_n = oap_put(a[0].clip[..], 0, s_text_of(s, k)); a[0].clip_new = true;
+    return "";
+  }
+  return "nothing to do";
+}
+
+// Send: a new turn with the draft as its message, and an operation ID the service dedupes on.
+oap_send :: (a: [] OapApp) -> string {
+  text := oap_trimmed(oap_draft(a));
+  if text.count == 0 || oap_live(a) || !oap_logged_in(a) { return "there is nothing to send"; }
+  a[0].ops += 1; a[0].turn += 1;
+  s_user(a[0].session[..], text);
+  a[0].open_turn = a[0].turn;
+  a[0].draft_n = 0;
+  _ := oap_hold(a, "chat.send", a[0].turn, a[0].ops, 0);
+  return "";
+}
+// Stop: the pending turn ends at once; its parts that come after are dropped.
+oap_stop :: (a: [] OapApp) {
+  if !oap_live(a) { return; }
+  a[0].session[0].stopping = true;
+  s_turn_end(a[0].session[..], false, "");
+  a[0].open_turn = 0;
+}
+// Log out: forgotten at once (the flow), every open turn closed and the transcript gone, and nothing
+// held from before counts. The server is told, as its own held request.
+oap_logout :: (a: [] OapApp) {
+  a[0].epoch += 1;
+  a[0].open_turn = 0;
+  s_init(a[0].session[..], a[0].pool[..]);
+  a[0].draft_n = 0; a[0].email_n = 0; a[0].code_n = 0;
+  if alf_logout(a[0].flow[..]) { oap_send_auth(a); }
+  a[0].route = OAP_HOME;
+}
+
+// A field's text as a person changed it: the host's edit (the browser's field, UIKit's) gives the
+// whole text. false for an id that is not a field on this screen.
+oap_set_field :: (a: [] OapApp, id: string, text: string) -> bool {
+  oap_open(a);
+  r := a[0].route;
+  if r == OAP_LOGIN && id == "account.email" && a[0].flow[0].state == ALF_OUT { a[0].email_n = oap_put(a[0].email[..], 0, text); return true; }
+  if r == OAP_LOGIN && id == "account.code" && a[0].flow[0].state == ALF_CODE { a[0].code_n = oap_put(a[0].code[..], 0, text); return true; }
+  if r == OAP_CHAT && id == "composer.input" { a[0].draft_n = oap_put(a[0].draft[..], 0, text); return true; }
+  return false;
+}
+oap_field_text :: (a: [] OapApp, id: string) -> string {
+  if id == "account.email" { return oap_email(a); }
+  if id == "account.code" { return oap_code(a); }
+  if id == "composer.input" { return oap_draft(a); }
+  return "";
+}
+
+// ---------------------------------------------------------------- the fake services
+
+// Releases the oldest held item named so: the service answers, and the app takes the answer unless a
+// fence closed it. lose: the service acts but its answer never arrives (a dropped connection).
+oap_release :: (a: [] OapApp, name: string, lose: bool) {
+  k := -1;
+  for i: 0..<a[0].held_n { if k < 0 && cast(string) a[0].held[i].name[0..<a[0].held[i].name_n] == name { k = i; } }
+  if k < 0 { oap_said(a, "nothing held named "); oap_said(a, name); oap_said(a, " (clock data lists what is held)"); return; }
+  h := a[0].held[k];
+  for i: k..<a[0].held_n - 1 { a[0].held[i] = a[0].held[i + 1]; }
+  a[0].held_n -= 1;
+  oap_said(a, ifx lose then "lost " else "released "); oap_said(a, name);
+  if oap_starts(name, "auth.") { oap_auth_answer(a, h, name, lose); return; }
+  if name == "chat.send" { oap_send_answer(a, h, lose); return; }
+  // a reply part, or the reply's end
+  if h.epoch != a[0].epoch || h.turn != a[0].open_turn || !oap_live(a) { oap_said(a, ": late part dropped"); oap_log(a, "late part dropped"); return; }
+  if lose { return; }
+  if name == "chat.part" { s_delta(a[0].session[..], P_TEXT, OAP_REPLY_PARTS[h.part]); return; }
+  s_turn_end(a[0].session[..], false, ""); a[0].open_turn = 0;
+}
+
+// The auth service's recorded answer to the flow's request, and what the flow does with it.
+oap_auth_answer :: (a: [] OapApp, h: OapHeld, name: string, lose: bool) {
+  if h.epoch != a[0].epoch { oap_said(a, ": late answer dropped"); oap_log(a, "late answer dropped"); return; }
+  if lose { return; }
+  status := 200; answer := "{}";
+  if name == "auth.email_start" { answer = "{\"state\":\"sent\",\"pending\":\"pe_1\"}"; }
+  if name == "auth.email_verify" {
+    want: [64] u8; wn := oap_put(want[..], 0, "\"code\":\""); wn = oap_put(want[..], wn, OAP_CODE);
+    body := alf_body(a[0].flow[..]);
+    has := false;
+    for i: 0..<body.count { if !has && i + wn <= body.count && body[i..<i + wn] == cast(string) want[0..<wn] { has = true; } }
+    if has { answer = al_t_login(); } else { status = 400; answer = "{\"error\":\"That code isn't right.\"}"; }
+  }
+  if name == "auth.account" { answer = OAP_ME; }
+  more := alf_answer(a[0].flow[..], status, answer, cast(int) a[0].clock_ms);
+  oap_said(a, ": "); oap_said_int(a, status);
+  if more { oap_send_auth(a); }
+  if name == "auth.email_verify" && oap_logged_in(a) { a[0].code_n = 0; a[0].email_n = 0; a[0].route = OAP_CHATS; }
+}
+
+// The conversation service: stores the message under its operation ID once, and answers a repeated ID
+// with the first result. Its reply's parts are held from the first time.
+oap_send_answer :: (a: [] OapApp, h: OapHeld, lose: bool) {
+  first := true;
+  for i: 0..<a[0].stored_n { if a[0].stored[i] == h.op { first = false; } }
+  if first && a[0].stored_n < OAP_MESSAGES {
+    a[0].stored[a[0].stored_n] = h.op; a[0].stored_n += 1;
+    for p: 0..<OAP_REPLY_PARTS.count { _ := oap_hold(a, "chat.part", h.turn, h.op, p); }
+    _ := oap_hold(a, "chat.done", h.turn, h.op, 0);
+    for i: 0..<a[0].held_n { a[0].held[i].epoch = ifx a[0].held[i].op == h.op then h.epoch else a[0].held[i].epoch; }
+  }
+  if lose {
+    // the answer never came: the app reconnects and sends again, with the same operation ID
+    if h.epoch == a[0].epoch && h.turn == a[0].open_turn {
+      _ := oap_hold(a, "chat.send", h.turn, h.op, 0);
+      oap_said(a, ": sent again as op-"); oap_said_int(a, h.op);
+      oap_log(a, "the connection dropped; the message was sent again with the same operation ID");
+    }
+    return;
+  }
+  if h.epoch != a[0].epoch || h.turn != a[0].open_turn { oap_said(a, ": late answer dropped"); oap_log(a, "late answer dropped"); return; }
+  oap_said(a, ifx first then ": stored op-" else ": op-"); oap_said_int(a, h.op);
+  if !first { oap_said(a, " already stored; first result"); }
+}
+
+// ---------------------------------------------------------------- the view
+
+oap_el :: (a: [] OapApp, id: string, role: int, label: string, off: bool) {
+  if a[0].els_n >= OAP_ELS { return; }
+  k := a[0].els_n;
+  a[0].els[k].id_n = oap_put(a[0].els[k].id[..], 0, id);
+  a[0].els[k].role = role;
+  a[0].els[k].label_n = oap_put(a[0].els[k].label[..], 0, label);
+  a[0].els[k].off = off;
+  a[0].els_n += 1;
+}
+// What is on the screen now: every host draws these and nothing else.
+oap_view :: (a: [] OapApp) {
+  oap_open(a);
+  a[0].els_n = 0;
+  f := a[0].flow[..];
+  if a[0].route == OAP_HOME {
+    oap_el(a, "home.title", OAP_TEXT, "OpenAgents", false);
+    oap_el(a, "home.login", OAP_BUTTON, "Log in", false);
+  }
+  if a[0].route == OAP_LOGIN {
+    waiting := oap_auth_waiting(a).count > 0;
+    oap_el(a, "account.title", OAP_TEXT, "Log in", false);
+    if f[0].state == ALF_CODE {
+      oap_el(a, "account.code", OAP_FIELD, "Code", false);
+      oap_el(a, "account.verify", OAP_BUTTON, "Log in", waiting);
+      oap_el(a, "account.other", OAP_BUTTON, "Use another email", waiting);
+    } else {
+      oap_el(a, "account.email", OAP_FIELD, "Email", false);
+      oap_el(a, "account.submit", OAP_BUTTON, "Send code", waiting);
+    }
+    if f[0].words_n > 0 { oap_el(a, "account.words", OAP_TEXT, alf_words(f), false); }
+    oap_el(a, "account.cancel", OAP_BUTTON, "Cancel", false);
+  }
+  if a[0].route == OAP_CHATS {
+    oap_el(a, "shell.who", OAP_TEXT, alf_who_text(f), false);
+    oap_el(a, "shell.new", OAP_BUTTON, "New chat", false);
+    oap_el(a, "shell.logout", OAP_BUTTON, "Log out", false);
+  }
+  if a[0].route == OAP_CHAT {
+    oap_el(a, "chat.back", OAP_BUTTON, "Chats", false);
+    s := a[0].session[..];
+    id: [OAP_ID] u8;
+    for k: 0..<s[0].n {
+      p := s[0].parts[k];
+      n := oap_put(id[..], 0, "transcript."); n = oap_int(id[..], n, k);
+      if p.kind == P_USER { oap_el(a, cast(string) id[0..<n], OAP_MESSAGE, s_text_of(s, k), false); }
+      if p.kind == P_TEXT { oap_el(a, cast(string) id[0..<n], OAP_REPLY, s_text_of(s, k), false); }
+      if p.kind == P_NOTICE && p.notice == N_STOPPED { oap_el(a, cast(string) id[0..<n], OAP_NOTICE, "Stopped", false); }
+    }
+    replied := false;
+    for k: 0..<s[0].n { if s[0].parts[k].kind == P_TEXT { replied = true; } }
+    if replied && !oap_live(a) { oap_el(a, "reply.copy", OAP_BUTTON, "Copy", false); }
+    oap_el(a, "composer.input", OAP_FIELD, "Message", false);
+    if oap_live(a) { oap_el(a, "composer.stop", OAP_BUTTON, "Stop", false); }
+    else { oap_el(a, "composer.send", OAP_BUTTON, "Send", oap_trimmed(oap_draft(a)).count == 0); }
+    oap_el(a, "shell.logout", OAP_BUTTON, "Log out", false);
+  }
+}
+oap_find :: (a: [] OapApp, id: string) -> int {
+  for k: 0..<a[0].els_n { if cast(string) a[0].els[k].id[0..<a[0].els[k].id_n] == id { return k; } }
+  return -1;
+}
+oap_el_id :: (a: [] OapApp, k: int) -> string { return cast(string) a[0].els[k].id[0..<a[0].els[k].id_n]; }
+oap_el_label :: (a: [] OapApp, k: int) -> string { return cast(string) a[0].els[k].label[0..<a[0].els[k].label_n]; }
+
+// ---------------------------------------------------------------- input from a host
+
+// Why tap ID or type ID can't reach a live element now ("" when it can).
+oap_refusal :: (a: [] OapApp, id: string, field: bool) {
+  oap_view(a);
+  k := oap_find(a, id);
+  if k < 0 { oap_said(a, "no element "); oap_said(a, id); oap_said(a, " on this screen (tree lists them)"); return; }
+  if field && a[0].els[k].role != OAP_FIELD { oap_said(a, id); oap_said(a, " is not a field"); return; }
+  if !field && a[0].els[k].role == OAP_FIELD { oap_said(a, id); oap_said(a, " is a field: type into it"); return; }
+  if !field && a[0].els[k].role != OAP_BUTTON { oap_said(a, id); oap_said(a, " can't be pressed"); return; }
+  if a[0].els[k].off { oap_said(a, id); oap_said(a, " can't be pressed now"); }
+}
+oap_input_said :: (a: [] OapApp, said: string) {
+  a[0].input_n = oap_put(a[0].input[..], 0, said); a[0].input_had = true;
+}
+// A press on the element ID (a host's button action, or the driver's tap on a host that draws no
+// controls): its answer, which the driver also reads with `input`.
+oap_press :: (a: [] OapApp, id: string) -> string {
+  a[0].out_n = 0;
+  oap_refusal(a, id, false);
+  if a[0].out_n == 0 {
+    why := oap_act(a, id);
+    if why.count > 0 { oap_said(a, id); oap_said(a, ": "); oap_said(a, why); }
+    else { oap_said(a, "tapped "); oap_said(a, id); oap_said(a, " ("); oap_said(a, OAP_ROUTES[a[0].route]); oap_said(a, ")"); }
+  }
+  oap_input_said(a, oap_answer(a));
+  return oap_answer(a);
+}
+// The field ID now holds TEXT, as a person typed it (a host's field edit, or the driver's type).
+oap_edit :: (a: [] OapApp, id: string, text: string) -> string {
+  a[0].out_n = 0;
+  oap_refusal(a, id, true);
+  if a[0].out_n == 0 {
+    _ := oap_set_field(a, id, text);
+    oap_said(a, "typed into "); oap_said(a, id);
+  }
+  oap_input_said(a, oap_answer(a));
+  return oap_answer(a);
+}
+
+// ---------------------------------------------------------------- coax drive
+
+OAP_STATES :: "route, account.step, account.words, account.who, account.waiting, composer.text, turn, transcript, service.messages, clipboard, clock";
+
+oap_state :: (a: [] OapApp, name: string) {
+  f := a[0].flow[..];
+  if name == "" {
+    for n: [6] string.["route", "account.step", "account.waiting", "turn", "service.messages", "clock"] { oap_said(a, n); oap_said(a, " = "); oap_state(a, n); oap_said(a, "\n"); }
+    a[0].out_n -= 1;
+    return;
+  }
+  if name == "route" { oap_said(a, OAP_ROUTES[a[0].route]); return; }
+  if name == "account.step" { oap_said(a, ifx f[0].state == ALF_IN then "in" else ifx f[0].state == ALF_CODE then "code" else "out"); return; }
+  if name == "account.words" { oap_said(a, alf_words(f)); return; }
+  if name == "account.who" { oap_said(a, alf_who_text(f)); return; }
+  if name == "account.waiting" { w := oap_auth_waiting(a); oap_said(a, ifx w.count > 0 then w else "nothing"); return; }
+  if name == "composer.text" { oap_said(a, oap_draft(a)); return; }
+  if name == "turn" { oap_said(a, ifx oap_live(a) then "live" else "idle"); return; }
+  if name == "service.messages" { oap_said_int(a, a[0].stored_n); return; }
+  if name == "clipboard" { oap_said(a, cast(string) a[0].clip[0..<a[0].clip_n]); return; }
+  if name == "clock" { oap_said_int(a, cast(int) (a[0].clock_ms + 0.5)); oap_said(a, " ms"); return; }
+  if name == "transcript" {
+    s := a[0].session[..];
+    if s[0].n == 0 { oap_said(a, "(empty)"); return; }
+    for k: 0..<s[0].n {
+      p := s[0].parts[k];
+      if k > 0 { oap_said(a, "\n"); }
+      if p.kind == P_USER { oap_said(a, "you: "); oap_said(a, s_text_of(s, k)); }
+      else if p.kind == P_TEXT { oap_said(a, "reply: "); oap_said(a, s_text_of(s, k)); }
+      else if p.kind == P_NOTICE && p.notice == N_STOPPED { oap_said(a, "notice: Stopped"); }
+      else { oap_said(a, "part"); }
+    }
+    return;
+  }
+  // tokens, codes and keys are never inspectable (coax/native.md: inspection uses an allowlist)
+  oap_said(a, name); oap_said(a, " is not inspectable; state takes "); oap_said(a, OAP_STATES);
+}
+
+// A frame of real time for a person using the app with no driver (hand): the oldest held answer comes
+// once it has waited half a second. true when something changed.
+OAP_HAND_S :: 0.5;
+oap_tick :: (a: [] OapApp, dt: f32) -> bool {
+  oap_open(a);
+  if !a[0].hand || a[0].held_n == 0 { a[0].hand_wait = 0; return false; }
+  a[0].hand_wait += dt;
+  if a[0].hand_wait < OAP_HAND_S { return false; }
+  a[0].hand_wait = 0;
+  name: [OAP_NAME] u8; n := oap_put(name[..], 0, cast(string) a[0].held[0].name[0..<a[0].held[0].name_n]);
+  a[0].out_n = 0;
+  oap_release(a, cast(string) name[0..<n], false);
+  return true;
+}
+// Whether a hand-driven app still has answers coming (a host keeps drawing frames).
+oap_waiting :: (a: [] OapApp) -> bool { return a[0].hand && a[0].held_n > 0; }
+
+// One frame of dt seconds on the controlled clock (a host's frame under its agent clock).
+oap_step :: (a: [] OapApp, dt: f32) { oap_open(a); a[0].clock_ms += cast(f64) dt * 1000.0; }
+
+// One coax drive operation, answered: its text in a[0].out (oap_answer). Every host answers with this.
+oap_drive :: (a: [] OapApp, op: string) -> string {
+  oap_open(a);
+  a[0].hand = false;   // a driver speaks: from now on only the clock releases what is held
+  a[0].out_n = 0;
+  w0 := oap_word(op, 0);
+  if w0 == "tree" {
+    oap_view(a);
+    oap_said(a, "route "); oap_said(a, OAP_ROUTES[a[0].route]);
+    for k: 0..<a[0].els_n {
+      e := a[0].els[k];
+      oap_said(a, "\n"); oap_said(a, oap_el_id(a, k)); oap_said(a, " "); oap_said(a, OAP_ROLES[e.role]); oap_said(a, " \"");
+      oap_said(a, oap_el_label(a, k)); oap_said(a, "\"");
+      if e.role == OAP_FIELD { oap_said(a, " = \""); oap_said(a, oap_field_text(a, oap_el_id(a, k))); oap_said(a, "\""); }
+      if e.off { oap_said(a, " off"); }
+    }
+    return oap_answer(a);
+  }
+  if w0 == "tap" || w0 == "type" {
+    id := oap_word(op, 1);
+    if id.count == 0 { oap_said(a, w0); oap_said(a, " takes an id from the tree"); return oap_answer(a); }
+    if a[0].presenting {
+      // a host with real controls delivered this itself, or found no control to deliver it to
+      oap_refusal(a, id, w0 == "type");
+      if a[0].out_n == 0 { oap_said(a, id); oap_said(a, " is in the tree but this host does not show it"); }
+      return oap_answer(a);
+    }
+    if w0 == "tap" { return oap_press(a, id); }
+    // typing goes on from what the field holds, as it does in a host's field
+    typed: [OAP_FIELD_MAX] u8;
+    n := oap_put(typed[..], 0, oap_field_text(a, id)); n = oap_put(typed[..], n, oap_rest(op, 2));
+    return oap_edit(a, id, cast(string) typed[0..<n]);
+  }
+  if w0 == "input" {
+    if !a[0].input_had { oap_said(a, "no input reached the app"); return oap_answer(a); }
+    a[0].input_had = false;
+    oap_said(a, cast(string) a[0].input[0..<a[0].input_n]);
+    return oap_answer(a);
+  }
+  if w0 == "state" { oap_state(a, oap_rest(op, 1)); return oap_answer(a); }
+  if w0 == "logs" {
+    oap_said(a, ifx a[0].log_n > 0 then cast(string) a[0].log[0..<a[0].log_n - 1] else "(no logs)");
+    a[0].log_n = 0;
+    return oap_answer(a);
+  }
+  if w0 == "clock" {
+    w1 := oap_word(op, 1);
+    if w1 == "data" {
+      w2 := oap_word(op, 2);
+      if w2 == "release" || w2 == "lose" { oap_release(a, oap_word(op, 3), w2 == "lose"); return oap_answer(a); }
+      if w2 == "" {
+        oap_said(a, "held:");
+        if a[0].held_n == 0 { oap_said(a, " nothing"); }
+        for k: 0..<a[0].held_n { oap_said(a, ifx k == 0 then " " else ", "); oap_said(a, cast(string) a[0].held[k].name[0..<a[0].held[k].name_n]); }
+        return oap_answer(a);
+      }
+      oap_said(a, "clock data | clock data release NAME | clock data lose NAME"); return oap_answer(a);
+    }
+    // clock +MS: whole frames of a sixtieth of a second, as the native hosts step them (apps/shared/host/drive.c)
+    if w1.count > 1 && w1[0] == '+' {
+      ms := 0;
+      for c: w1[1..<w1.count] { if c >= '0' && c <= '9' { ms = ms * 10 + cast(int) (c - '0'); } }
+      frames := (ms * 60 + 500) / 1000;
+      if frames < 1 { frames = 1; }
+      for i: 0..<frames { oap_step(a, 1.0f32 / 60.0f32); }
+      oap_said(a, "clock: "); oap_said_int(a, cast(int) (a[0].clock_ms + 0.5)); oap_said(a, " ms");
+      return oap_answer(a);
+    }
+    oap_said(a, "clock +MS | clock data | clock data release NAME | clock data lose NAME"); return oap_answer(a);
+  }
+  oap_said(a, "unknown operation '"); oap_said(a, w0); oap_said(a, "'; operations: tree, tap ID, type ID TEXT, state [NAME], clock +MS, clock data [release|lose NAME], logs, input");
+  return oap_answer(a);
+}
+
+// ---------------------------------------------------------------- a native host's face
+
+// What a native host (the iPhone app: apps/openagents-ios/OpenAgents/Shared/) holds and calls, with
+// scalar arguments only: the text it hands over goes in `in`, and every answer comes back in `out`.
+OAP_IN :: 4096;
+OapHost :: struct { app: [1] OapApp; in: [OAP_IN] u8; out: [OAP_OUT] u8; }
+oap_host_out :: (h: [] OapHost, s: string) -> int { return oap_put(h[0].out[..], 0, s); }
+oap_host_in :: (h: [] OapHost, from: int, to: int) -> string {
+  a := ifx from < 0 then 0 else ifx from > OAP_IN then OAP_IN else from;
+  b := ifx to < a then a else ifx to > OAP_IN then OAP_IN else to;
+  return cast(string) h[0].in[a..<b];
+}
+// presenting: the host draws real controls; hand: a person, so the fakes answer on their own.
+oap_host_open :: (h: [] OapHost, presenting: bool, hand: bool) #export_c #effects(all) {
+  if h.count < 1 { return; }
+  oap_open(h[0].app[..]); h[0].app[0].presenting = presenting; h[0].app[0].hand = hand;
+}
+// A coax drive operation (in[0..n]): its answer's length in out.
+oap_host_drive :: (h: [] OapHost, n: int) -> int #export_c #effects(all) { return ifx h.count < 1 then 0 else oap_host_out(h, oap_drive(h[0].app[..], oap_host_in(h, 0, n))); }
+// A press on the element whose id is in[0..n] (a button's own action).
+oap_host_press :: (h: [] OapHost, n: int) -> int #export_c #effects(all) { return ifx h.count < 1 then 0 else oap_host_out(h, oap_press(h[0].app[..], oap_host_in(h, 0, n))); }
+// A field's whole text as typed: its id in[0..k], its text in[k..n].
+oap_host_edit :: (h: [] OapHost, k: int, n: int) -> int #export_c #effects(all) { return ifx h.count < 1 then 0 else oap_host_out(h, oap_edit(h[0].app[..], oap_host_in(h, 0, k), oap_host_in(h, k, n))); }
+// The view, built now: how many elements. Then each, as "ID\tROLE\tOFF\tLABEL" (OFF 1 or 0), and a field's text.
+oap_host_view :: (h: [] OapHost) -> int #export_c #effects(all) { if h.count < 1 { return 0; } oap_view(h[0].app[..]); return h[0].app[0].els_n; }
+oap_host_el :: (h: [] OapHost, k: int) -> int #export_c #effects(all) {
+  if h.count < 1 || k < 0 || k >= h[0].app[0].els_n { return 0; }
+  a := h[0].app[..];
+  n := oap_put(h[0].out[..], 0, oap_el_id(a, k)); n = oap_put(h[0].out[..], n, "\t");
+  n = oap_put(h[0].out[..], n, OAP_ROLES[a[0].els[k].role]); n = oap_put(h[0].out[..], n, ifx a[0].els[k].off then "\t1\t" else "\t0\t");
+  return oap_put(h[0].out[..], n, oap_el_label(a, k));
+}
+oap_host_field :: (h: [] OapHost, k: int) -> int #export_c #effects(all) {
+  if h.count < 1 || k < 0 || k >= h[0].app[0].els_n { return 0; }
+  return oap_host_out(h, oap_field_text(h[0].app[..], oap_el_id(h[0].app[..], k)));
+}
+// A frame of the controlled clock (coax drive's `clock +MS`), and one of real time for a person.
+oap_host_step :: (h: [] OapHost, dt: f32) #export_c #effects(all) { if h.count > 0 { oap_step(h[0].app[..], dt); } }
+oap_host_tick :: (h: [] OapHost, dt: f32) -> bool #export_c #effects(all) { return h.count > 0 && oap_tick(h[0].app[..], dt); }
+oap_host_waiting :: (h: [] OapHost) -> bool #export_c #effects(all) { return h.count > 0 && oap_waiting(h[0].app[..]); }
+// What Copy put on the clipboard, once: its length in out (0: nothing new).
+oap_host_clip :: (h: [] OapHost) -> int #export_c #effects(all) {
+  if h.count < 1 || !h[0].app[0].clip_new { return 0; }
+  h[0].app[0].clip_new = false;
+  return oap_host_out(h, cast(string) h[0].app[0].clip[0..<h[0].app[0].clip_n]);
+}
+
+// ---------------------------------------------------------------- checks
+
+// Plays operations, one a line, and gives the trace as every host prints it: "> OP" then the answer.
+OapTrace :: struct { t: [65536] u8; n: int; }
+oap_play :: (a: [] OapApp, ops: string, tr: [] OapTrace) {
+  at := 0;
+  while at < ops.count {
+    e := at;
+    while e < ops.count && ops[e] != '\n' { e += 1; }
+    line := ops[at..<e];
+    at = e + 1;
+    if line.count == 0 || line[0] == '#' { continue; }
+    tr[0].n = oap_put(tr[0].t[..], tr[0].n, "> "); tr[0].n = oap_put(tr[0].t[..], tr[0].n, line); tr[0].n = oap_put(tr[0].t[..], tr[0].n, "\n");
+    tr[0].n = oap_put(tr[0].t[..], tr[0].n, oap_drive(a, line)); tr[0].n = oap_put(tr[0].t[..], tr[0].n, "\n");
+  }
+}
+oap_has :: (s: string, part: string) -> bool {
+  if part.count > s.count { return false; }
+  for i: 0..<s.count - part.count + 1 { if s[i..<i + part.count] == part { return true; } }
+  return false;
+}
+OAP_T_LOGIN :: "tap home.login\ntype account.email you@example.com\ntap account.submit\nclock data release auth.email_start\ntype account.code 123456\ntap account.verify\nclock data release auth.email_verify\nclock data release auth.account\n";
+
+#test "login: email, the held code request, the code, the account; then the shell" {
+  a: [1] OapApp;
+  #assert oap_drive(a[..], "tree") == "route home\nhome.title text \"OpenAgents\"\nhome.login button \"Log in\"";
+  #assert oap_drive(a[..], "tap account.submit") == "no element account.submit on this screen (tree lists them)";
+  #assert oap_drive(a[..], "tap home.login") == "tapped home.login (login)";
+  #assert oap_drive(a[..], "type account.email you@example.com") == "typed into account.email";
+  #assert oap_drive(a[..], "tap account.submit") == "tapped account.submit (login)";
+  #assert oap_drive(a[..], "state account.waiting") == "auth.email_start";
+  #assert oap_drive(a[..], "tap account.submit") == "account.submit can't be pressed now";
+  #assert oap_drive(a[..], "clock data release auth.email_start") == "released auth.email_start: 200";
+  #assert oap_drive(a[..], "state account.step") == "code";
+  #assert oap_drive(a[..], "type account.code 000000") == "typed into account.code";
+  #assert oap_drive(a[..], "tap account.verify") == "tapped account.verify (login)";
+  #assert oap_drive(a[..], "clock data release auth.email_verify") == "released auth.email_verify: 400";
+  #assert oap_drive(a[..], "state account.words") == "That code isn't right.";
+  a[0].code_n = 0;
+  _ := oap_drive(a[..], "type account.code 123456"); _ = oap_drive(a[..], "tap account.verify");
+  #assert oap_drive(a[..], "clock data release auth.email_verify") == "released auth.email_verify: 200";
+  #assert oap_drive(a[..], "state route") == "chats" && oap_drive(a[..], "state account.waiting") == "auth.account";
+  #assert oap_drive(a[..], "clock data release auth.account") == "released auth.account: 200";
+  #assert oap_drive(a[..], "state account.who") == "y...@example.com";
+  #assert oap_drive(a[..], "clock data release auth.account") == "nothing held named auth.account (clock data lists what is held)";
+}
+
+#test "cancel fences the held answer: it is dropped and changes nothing" {
+  a: [1] OapApp;
+  tr: [1] OapTrace;
+  oap_play(a[..], "tap home.login\ntype account.email you@example.com\ntap account.submit\ntap account.cancel\nclock data release auth.email_start\nstate\nlogs\n", tr[..]);
+  t := cast(string) tr[0].t[0..<tr[0].n];
+  #assert oap_has(t, "> clock data release auth.email_start\nreleased auth.email_start: late answer dropped\n");
+  #assert oap_has(t, "route = home\naccount.step = out\naccount.waiting = nothing");
+  #assert oap_has(t, "> logs\nlate answer dropped\n");
+}
+
+#test "send, the reply a part at a time, then Stop: later parts are dropped" {
+  a: [1] OapApp; tr: [1] OapTrace;
+  oap_play(a[..], OAP_T_LOGIN, tr[..]);
+  #assert oap_drive(a[..], "tap shell.new") == "tapped shell.new (chat)";
+  #assert oap_drive(a[..], "tap composer.send") == "composer.send can't be pressed now";
+  _ := oap_drive(a[..], "type composer.input hello");
+  #assert oap_drive(a[..], "tap composer.send") == "tapped composer.send (chat)";
+  #assert oap_drive(a[..], "state turn") == "live" && oap_drive(a[..], "state composer.text") == "";
+  #assert oap_drive(a[..], "clock data release chat.send") == "released chat.send: stored op-1";
+  #assert oap_drive(a[..], "clock data") == "held: chat.part, chat.part, chat.part, chat.done";
+  for i: 0..<3 { _ = oap_drive(a[..], "clock data release chat.part"); }
+  #assert oap_drive(a[..], "clock data release chat.done") == "released chat.done";
+  #assert oap_drive(a[..], "state transcript") == "you: hello\nreply: Hello! This is a fixture reply.";
+  #assert oap_drive(a[..], "tap reply.copy") == "tapped reply.copy (chat)" && oap_drive(a[..], "state clipboard") == "Hello! This is a fixture reply.";
+  // a second turn, stopped after one part
+  _ = oap_drive(a[..], "type composer.input again"); _ = oap_drive(a[..], "tap composer.send");
+  _ = oap_drive(a[..], "clock data release chat.send"); _ = oap_drive(a[..], "clock data release chat.part");
+  #assert oap_drive(a[..], "tap composer.stop") == "tapped composer.stop (chat)";
+  #assert oap_drive(a[..], "clock data release chat.part") == "released chat.part: late part dropped";
+  #assert oap_drive(a[..], "clock data release chat.done") == "released chat.done: late part dropped";
+  #assert oap_drive(a[..], "state transcript") == "you: hello\nreply: Hello! This is a fixture reply.\nyou: again\nreply: Hello! \nnotice: Stopped";
+  #assert oap_drive(a[..], "state turn") == "idle";
+}
+
+#test "log out with a turn pending: the transcript goes, and the held parts are dropped" {
+  a: [1] OapApp; tr: [1] OapTrace;
+  oap_play(a[..], OAP_T_LOGIN, tr[..]);
+  _ := oap_drive(a[..], "tap shell.new"); _ = oap_drive(a[..], "type composer.input hello"); _ = oap_drive(a[..], "tap composer.send");
+  _ = oap_drive(a[..], "clock data release chat.send");
+  #assert oap_drive(a[..], "tap shell.logout") == "tapped shell.logout (home)";
+  #assert oap_drive(a[..], "state account.step") == "out" && oap_drive(a[..], "state transcript") == "(empty)";
+  #assert oap_drive(a[..], "clock data release chat.part") == "released chat.part: late part dropped";
+  #assert oap_drive(a[..], "clock data release auth.logout") == "released auth.logout: 200";
+}
+
+#test "a reconnect sends the same operation ID: the service stores one message and answers the first result" {
+  a: [1] OapApp; tr: [1] OapTrace;
+  oap_play(a[..], OAP_T_LOGIN, tr[..]);
+  _ := oap_drive(a[..], "tap shell.new"); _ = oap_drive(a[..], "type composer.input hello"); _ = oap_drive(a[..], "tap composer.send");
+  #assert oap_drive(a[..], "clock data lose chat.send") == "lost chat.send: sent again as op-1";
+  #assert oap_drive(a[..], "clock data release chat.send") == "released chat.send: op-1 already stored; first result";
+  #assert oap_drive(a[..], "state service.messages") == "1";
+  #assert oap_drive(a[..], "clock data") == "held: chat.part, chat.part, chat.part, chat.done";
+}
+
+#test "state is an allowlist: no token is inspectable, nor shown in the tree" {
+  a: [1] OapApp; tr: [1] OapTrace;
+  oap_play(a[..], OAP_T_LOGIN, tr[..]);
+  #assert oap_has(oap_drive(a[..], "state account.token"), "account.token is not inspectable");
+  #assert !oap_has(oap_drive(a[..], "tree"), "oa_at_") && !oap_has(oap_drive(a[..], "state"), "oa_at_");
+  #assert oap_starts(oap_drive(a[..], "layout"), "unknown operation 'layout'");
+  #assert oap_drive(a[..], "clock +1000") == "clock: 1000 ms" && oap_drive(a[..], "state clock") == "1000 ms";
+}
+
+#test "by hand, the fakes answer on their own, oldest first; a driver's first operation stops that" {
+  a: [1] OapApp;
+  a[0].hand = true;
+  _ := oap_press(a[..], "home.login"); _ = oap_edit(a[..], "account.email", "you@example.com"); _ = oap_press(a[..], "account.submit");
+  #assert !oap_tick(a[..], 0.4) && oap_waiting(a[..]) && oap_tick(a[..], 0.2) && a[0].flow[0].state == ALF_CODE && !oap_waiting(a[..]);
+  _ = oap_edit(a[..], "account.code", "123456"); _ = oap_press(a[..], "account.verify");
+  #assert oap_tick(a[..], 0.6) && oap_tick(a[..], 0.6) && oap_logged_in(a[..]) && a[0].route == OAP_CHATS;
+  _ = oap_press(a[..], "shell.new"); _ = oap_edit(a[..], "composer.input", "hi"); _ = oap_press(a[..], "composer.send");
+  #assert oap_drive(a[..], "state turn") == "live" && !a[0].hand && !oap_tick(a[..], 5.0);
+}
+
+#test "a native host's face: the view as records, an edit by id and text, a drive operation" {
+  h: [1] OapHost;
+  oap_host_open(h[..], true, false);
+  #assert oap_host_view(h[..]) == 2;
+  n := oap_host_el(h[..], 1);
+  #assert cast(string) h[0].out[0..<n] == "home.login\tbutton\t0\tLog in";
+  for c, k: "home.login" { h[0].in[k] = c; }
+  n = oap_host_press(h[..], 10);
+  #assert cast(string) h[0].out[0..<n] == "tapped home.login (login)";
+  for c, k: "account.emailyou@example.com" { h[0].in[k] = c; }
+  n = oap_host_edit(h[..], 13, 28);
+  #assert cast(string) h[0].out[0..<n] == "typed into account.email";
+  #assert oap_host_view(h[..]) == 4 && oap_host_field(h[..], 1) == 15;
+  for c, k: "state route" { h[0].in[k] = c; }
+  n = oap_host_drive(h[..], 11);
+  #assert cast(string) h[0].out[0..<n] == "login";
+}
+
+#test "a host with real controls: the driver's tap is refused unless the control delivered it" {
+  a: [1] OapApp;
+  a[0].presenting = true;
+  #assert oap_drive(a[..], "tap home.login") == "home.login is in the tree but this host does not show it";
+  #assert oap_drive(a[..], "tap nope") == "no element nope on this screen (tree lists them)";
+  #assert oap_drive(a[..], "input") == "no input reached the app";
+  #assert oap_press(a[..], "home.login") == "tapped home.login (login)";
+  #assert oap_drive(a[..], "input") == "tapped home.login (login)" && oap_drive(a[..], "input") == "no input reached the app";
+  #assert oap_edit(a[..], "account.email", "you@example.com") == "typed into account.email" && oap_drive(a[..], "state route") == "login";
+}

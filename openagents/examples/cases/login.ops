@@ -1,0 +1,16 @@
+# Chapter 6's login case: open login, request a code, enter it, and the account and the route change.
+# The services are fakes: each request is held until `clock data release` answers it from a recording.
+tree
+tap home.login
+type account.email you@example.com
+tap account.submit
+state account.waiting
+clock data release auth.email_start
+state account.step
+type account.code 123456
+tap account.verify
+clock data release auth.email_verify
+clock data release auth.account
+state
+state account.who
+tree

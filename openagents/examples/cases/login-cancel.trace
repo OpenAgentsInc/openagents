@@ -1,0 +1,21 @@
+> tap home.login
+tapped home.login (login)
+> type account.email you@example.com
+typed into account.email
+> tap account.submit
+tapped account.submit (login)
+> tap account.cancel
+tapped account.cancel (home)
+> clock data release auth.email_start
+released auth.email_start: late answer dropped
+> state
+route = home
+account.step = out
+account.waiting = nothing
+turn = idle
+service.messages = 0
+clock = 0 ms
+> logs
+late answer dropped
+> tap account.code
+no element account.code on this screen (tree lists them)
