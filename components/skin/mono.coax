@@ -219,6 +219,8 @@ mono_css :: (out: [] u8) -> int {
   n = mc(out, n, ".side-s input{flex:1;min-width:0;appearance:none;background:none;border:0;outline:none;padding:0;color:var(--ink);font:13px/1.4 var(--sans)}.side-s input::placeholder{color:var(--ink-faint)}");
   n = mc(out, n, ".side-f{display:flex;align-items:center;gap:2px;padding-top:8px;border-top:1px solid var(--line-dim)}.side-f>.row{flex:1;min-width:0;width:auto}");
   n = mc(out, n, ".side .row{padding:7px 10px}.side .row-t{font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.side .row .meta{text-transform:none;letter-spacing:0;font:11px/1.4 var(--mono)}");
+  // the current place or row in the side: bright on the raised surface, with no frame under it
+  n = mc(out, n, ".side .row[aria-current=true]{color:#fff;background:var(--raised);--frame-bg:transparent;--frame-line:transparent;--frame-deco:transparent}");
   n = mc(out, n, ".sec>.side{position:relative;z-index:auto;height:460px;border:1px solid var(--line-dim);view-transition-name:none}");
   n = mc(out, n, ".ib[data-state=side]{position:fixed;left:10px;top:10px;z-index:4;view-transition-name:side}");
   // a place: an icon beside its name, a link
