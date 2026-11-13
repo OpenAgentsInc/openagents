@@ -404,7 +404,7 @@ static void merge_confirm(const request *q, PGconn *db, const auth_principal *p,
   auth_audit(db, other, p->session, "merged", "ok", detail);
   auth_notice(db, p->account, "merge", "two accounts became one",
               "Two of your OpenAgents accounts were merged into this one: its emails, keys, agents, realms and saves are all here now, "
-              "and the other account's history is kept with this one. If this wasn't you, freeze your account from the link below.");
+              "and the other account's history is kept with this one. If this wasn't you, freeze your account from this notice.");
   char json[2300], lines[200];
   snprintf(json, sizeof json, "{\"state\":\"merged\",\"merged\":\"%s\",\"result\":%s}", other, result);
   snprintf(lines, sizeof lines, "state merged\nmerged %s\n", other);

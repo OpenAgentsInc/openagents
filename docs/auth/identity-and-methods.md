@@ -225,10 +225,34 @@ same shape with `kind = service` and owner `acct_openagents`.
   account, to the app by push, and to the account's Nostr keys as a
   NIP-17 direct message, with a "This wasn't me" link that freezes the
   account and ends all sessions. A removed email or key gets the notice
-  too. Push notices wait on device keys (#13216); email and NIP-17 notices
-  ship now, sent from our notice key to `relay.openagents.com`. Each
-  notice is a row in `auth.notices` with what was sent, and the account
+  too. Email and NIP-17 notices are sent from our notice key to
+  `relay.openagents.com`. Each notice is a row in `auth.notices` with
+  what was sent (`{"email", "nostr", "push", "failed"}`), and the account
   lists them at `GET /api/auth/notices`.
+- **Notices by push** (#13233, migration 0177, `auth-device.c`, `push.c`).
+  An app whose login is bound to a device key gives that device a push
+  target: `POST /api/auth/devices/push {service, token}`, where the
+  service is `apns` or `apns_sandbox` (an iPhone or a Mac) or `fcm`
+  (Android), and the token is the one Apple or Google gave the install.
+  `POST /api/auth/devices/push/off` forgets it. Each notice then goes to
+  every device of the account that has a target and still holds a login.
+  What may keep a target is `auth-device-policy.coax`'s `dk_push_set`:
+  an app login's own live device key, the maker's service for its
+  platform, and a token of that maker's shape. A limited login (email
+  alone on an account with a stronger way in) can't add one. A token is
+  one device's; a removed device forgets it, and so does a device Apple
+  (410) or Google (404) says is gone.
+  The push says what happened in the notice's own words and names the
+  page to open (`proto/auth/push-notice-v1.json`). It carries no link,
+  token or address: the phone is already logged in. Tapping it opens
+  the app's Security screen, where that login cancels a waiting
+  recovery (`POST /api/auth/recovery/cancel`) or freezes the account
+  (`POST /api/auth/freeze`). The iPhone app and the Mac app do this
+  (`apps/shared/host/apple/AppAuth.swift`); the Mac app gets a token
+  only in a build signed with the push entitlement, and the Android app
+  has no receiver yet (#13388). The API sends nothing until Apple's push
+  key (`oa-apns-key`, `oa-apns-key-id`) or the Firebase project
+  (`oa-fcm-project`) is set; a notice still goes by email and Nostr.
 - **A key with an account of its own** is refused when linked ("This
   already has an account. Log in to it to merge."). A key links only
   with a signature over a one-time challenge, so a key you don't hold

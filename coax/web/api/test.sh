@@ -193,6 +193,8 @@ export OA_INFERENCE_PUBKEYS="$("$SIGN" --new "$INFER_KEY")"
 # /api/v1/inference/credit (test_inference.py): a fake Spark wallet on SPARK_PORT.
 export SPARK_PORT
 # Email (test_email.py): a fake Resend on RESEND_PORT; staging's allowlist is one address.
+# Security notices as push (push.c, #13233): Apple's two services and Google's are the fake Resend too (the auth
+# checks' own keeps each request's line and headers), with a push key made here.
 export RESEND_PORT
 # Scheduled jobs (test_jobs.py): a fake Google tokeninfo on TOKENINFO_PORT, and the scheduler's account.
 export TOKENINFO_PORT
@@ -225,8 +227,10 @@ OA_PROJECT_KEK="$(openssl rand -hex 32)" OA_PUBLISH_RELAY="ws://127.0.0.1:$RELAY
 OA_DROPS_GCS="http://127.0.0.1:$GCS_PORT" OA_DROPS_TOKEN=test-gcs OA_DROPS_BUCKET=drops-test OA_DROPS_PREFIX=test OA_DRAFT_URL="http://127.0.0.1:$GCS_PORT/model" OA_VILLA_URL="http://127.0.0.1:$GCS_PORT/villa-model" \
 OA_INFERENCE_URL="$infer_url" OA_INFERENCE_TOKEN="$infer_token" OA_INFERENCE_DAILY_REQUESTS="$infer_daily" \
 OA_SPARK_URL="http://127.0.0.1:$SPARK_PORT" OA_SPARK_TOKEN=test-spark OA_LNADDR_TEST_PORT="$SPARK_PORT" \
-OA_RESEND_URL="http://127.0.0.1:$RESEND_PORT/emails" OA_RESEND_API_KEY=test-resend OA_EMAIL_ALLOW=device-a@example.com,device-b@example.com,life-a@example.com,life-c@example.com,life-d@example.com,life-f@example.com,life-h@example.com,owner@example.com,ada@example.com,frozen@example.com,app@example.com,rec@example.com,solo@example.com,pk@example.com,newcomer@example.com,wallet@example.com OA_EMAIL_BACKOFF_MS=10 \
+OA_RESEND_URL="http://127.0.0.1:$RESEND_PORT/emails" OA_RESEND_API_KEY=test-resend OA_EMAIL_ALLOW=device-a@example.com,device-b@example.com,life-a@example.com,life-c@example.com,life-d@example.com,life-f@example.com,life-h@example.com,owner@example.com,ada@example.com,frozen@example.com,app@example.com,rec@example.com,push-a@example.com,push-b@example.com,solo@example.com,pk@example.com,newcomer@example.com,wallet@example.com OA_EMAIL_BACKOFF_MS=10 \
 OA_AUTH_SEAL_KEY="1:$(openssl rand -hex 32),2:$(openssl rand -hex 32)" OA_AUTH_LOOKUP_PEPPER="1:$(openssl rand -hex 32)" \
+OA_APNS_KEY="$(openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-256 2>/dev/null)" OA_APNS_KEY_ID=TESTKEY123 OA_APNS_URL="http://127.0.0.1:$RESEND_PORT/apns" OA_APNS_SANDBOX_URL="http://127.0.0.1:$RESEND_PORT/apns-sandbox" \
+OA_FCM_PROJECT=test-project OA_FCM_URL="http://127.0.0.1:$RESEND_PORT/fcm" OA_FCM_TOKEN=test-fcm \
 OA_AUTH_NOTICE_NSEC="$(openssl rand -hex 32)" OA_AUTH_NOTICE_RELAY="ws://127.0.0.1:$NOTICE_RELAY_PORT" OA_LNADDR_PROFILE_RELAYS="ws://127.0.0.1:$NOTICE_RELAY_PORT" OA_AUTH_NOTICE_SYNC=1 OA_AUTH_SCRYPT_LOG_N=10 \
 OA_TOKENINFO_URL="http://127.0.0.1:$TOKENINFO_PORT/tokeninfo" OA_JOBS_CALLER=jobs@example.iam.gserviceaccount.com OA_ALERT_TO=owner@example.com OA_DEVICE_TTL_MS=4000 \
 OA_NPC_URL="http://127.0.0.1:$NPC_PORT/model" OA_NPC_TOKEN=test-token OA_NPC_DAILY_CAP=5 OA_NPC_KEY_10M=3 OA_NPC_ADDR_10M=5 OA_NPC_RUNNING=3 OA_NPC_RUNNING_KEY=1 OA_PIECE_URL="http://127.0.0.1:$PIECE_PORT/model" OA_PIECE_DAILY_CAP=40 OA_EDIT_URL="http://127.0.0.1:$PIECE_PORT/edit-model" OA_EDIT_TIMEOUT_MS=1500 OA_BUILDER_URL="http://127.0.0.1:$BUILDER_PORT/model" OA_BUILDER_TIMEOUT_MS=1200 OA_BUILDER_PER_DAY=6 \

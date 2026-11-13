@@ -112,6 +112,7 @@ static bool token(char *out, size_t cap) {
   curl_slist_free_all(hd); curl_easy_cleanup(h); free(b.p);
   return out[0] != 0;
 }
+bool inference_google_token(char *out, size_t cap) { return token(out, cap); }
 
 static bool send_all(int fd, const char *p, size_t n);
 

@@ -149,7 +149,10 @@ script on our own origin, so the strict CSP stays the main defence.
   where the key is kept, when it was last used and how many logins it
   holds. REMOVE (`POST /api/auth/devices/<id>/remove`) revokes the key and
   ends every login bound to it at once. `GET /api/auth/sessions` lists
-  every login, browsers too, each with a remove.
+  every login, browsers too, each with a remove. An app also gives its
+  device a push target here (`POST /api/auth/devices/push`), so the
+  account's security notices reach it
+  ([Notify](identity-and-methods.md#linking-and-unlinking)).
 - **Freeze** ("This wasn't me" from any notice, or FREEZE MY ACCOUNT on
   `/settings/data` from any login, even email alone) ends every session,
   suspends every agent grant and blocks spends, at once (#13214). A frozen

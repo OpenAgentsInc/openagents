@@ -1,0 +1,126 @@
+{
+ "profile": "openagents.auth.push-notice",
+ "version": 1,
+ "id": "auth-push-notice-v1",
+ "what": "A security notice as a push to an app (#13233, docs/auth/identity-and-methods.md \"Notify\"): the request body coax/web/api/push.c sends Apple's push service (POST /3/device/TOKEN) and Google's (POST /v1/projects/PROJECT/messages:send) for each notice coax/web/api/auth-recover.c delivers to a device that gave a push target. The outer members are Apple's and Google's own; ours are the alert's words and the three members that say which notice it is and the page the app opens. A push carries no link, no token and no address.",
+ "encoding": "compact JSON, members in the order below, strings escaped as coax/lib/json writes them (UTF-8 as it is)",
+ "codec": "coax/web/api/auth-push.coax",
+ "check": "coax/web/tool.sh coax/web/api/auth-push-goldens.coax proto/auth/push-notice-v1.json",
+ "apns": [
+  {
+   "name": "aps.alert.title",
+   "type": "string",
+   "rule": "\"OpenAgents security: \" and the notice's subject"
+  },
+  {
+   "name": "aps.alert.body",
+   "type": "string",
+   "rule": "the notice's words (auth.notices.words), at most 400 characters"
+  },
+  {
+   "name": "aps.sound",
+   "type": "string",
+   "rule": "\"default\""
+  },
+  {
+   "name": "oa.notice",
+   "type": "integer",
+   "rule": "the notice's id in auth.notices"
+  },
+  {
+   "name": "oa.what",
+   "type": "string",
+   "rule": "the notice's kind, as auth.notices.what: recovery.start, link.nostr, wallet.limit.raise and the rest"
+  },
+  {
+   "name": "oa.open",
+   "type": "string",
+   "rule": "\"/settings/security\": the page the app opens when the notice is tapped. An app opens nothing else from a push"
+  }
+ ],
+ "fcm": [
+  {
+   "name": "message.token",
+   "type": "string",
+   "rule": "the device's registration token"
+  },
+  {
+   "name": "message.notification.title",
+   "type": "string",
+   "rule": "as aps.alert.title"
+  },
+  {
+   "name": "message.notification.body",
+   "type": "string",
+   "rule": "as aps.alert.body"
+  },
+  {
+   "name": "message.data.notice",
+   "type": "string",
+   "rule": "oa.notice as decimal digits (Google's data values are strings)"
+  },
+  {
+   "name": "message.data.what",
+   "type": "string",
+   "rule": "as oa.what"
+  },
+  {
+   "name": "message.data.open",
+   "type": "string",
+   "rule": "as oa.open"
+  },
+  {
+   "name": "message.android.priority",
+   "type": "string",
+   "rule": "\"high\""
+  }
+ ],
+ "goldens": [
+  {
+   "name": "apns-recovery-start",
+   "writer": "apns",
+   "values": {
+    "title": "OpenAgents security: someone asked to recover your account",
+    "body": "Someone logged in to your OpenAgents account with its email and asked to recover it. If nothing stops it, after 2026-11-15 14:02 UTC a new key they choose replaces every key and passkey on the account. Logging in with your key or passkey cancels it, and you can cancel it from this notice.",
+    "what": "recovery.start",
+    "notice": 12
+   },
+   "body": "{\"aps\":{\"alert\":{\"title\":\"OpenAgents security: someone asked to recover your account\",\"body\":\"Someone logged in to your OpenAgents account with its email and asked to recover it. If nothing stops it, after 2026-11-15 14:02 UTC a new key they choose replaces every key and passkey on the account. Logging in with your key or passkey cancels it, and you can cancel it from this notice.\"},\"sound\":\"default\"},\"oa\":{\"notice\":12,\"what\":\"recovery.start\",\"open\":\"/settings/security\"}}"
+  },
+  {
+   "name": "apns-quotes-and-utf8",
+   "writer": "apns",
+   "values": {
+    "title": "OpenAgents security: a Nostr key was added",
+    "body": "A Nostr key (\"phone\") was added to your OpenAgents account: 3bf0c63f…459d.",
+    "what": "link.nostr",
+    "notice": 7
+   },
+   "body": "{\"aps\":{\"alert\":{\"title\":\"OpenAgents security: a Nostr key was added\",\"body\":\"A Nostr key (\\\"phone\\\") was added to your OpenAgents account: 3bf0c63f…459d.\"},\"sound\":\"default\"},\"oa\":{\"notice\":7,\"what\":\"link.nostr\",\"open\":\"/settings/security\"}}"
+  },
+  {
+   "name": "fcm-recovery-start",
+   "writer": "fcm",
+   "values": {
+    "title": "OpenAgents security: someone asked to recover your account",
+    "body": "Someone logged in to your OpenAgents account with its email and asked to recover it. If nothing stops it, after 2026-11-15 14:02 UTC a new key they choose replaces every key and passkey on the account. Logging in with your key or passkey cancels it, and you can cancel it from this notice.",
+    "what": "recovery.start",
+    "notice": 12,
+    "token": "dKq1Zx-9_APA91bQ7Q7Q7Q7Q7Q7Q7Q7Q7Q7Q7Q7Q7Q7Q7Q7Q7Q7Q7Q7"
+   },
+   "body": "{\"message\":{\"token\":\"dKq1Zx-9_APA91bQ7Q7Q7Q7Q7Q7Q7Q7Q7Q7Q7Q7Q7Q7Q7Q7Q7Q7Q7Q7\",\"notification\":{\"title\":\"OpenAgents security: someone asked to recover your account\",\"body\":\"Someone logged in to your OpenAgents account with its email and asked to recover it. If nothing stops it, after 2026-11-15 14:02 UTC a new key they choose replaces every key and passkey on the account. Logging in with your key or passkey cancels it, and you can cancel it from this notice.\"},\"data\":{\"notice\":\"12\",\"what\":\"recovery.start\",\"open\":\"/settings/security\"},\"android\":{\"priority\":\"high\"}}}"
+  },
+  {
+   "name": "fcm-recovery-cancel",
+   "writer": "fcm",
+   "values": {
+    "token": "fGh2:APA91b-x_yABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
+    "title": "OpenAgents security: recovery was cancelled",
+    "body": "The recovery of your OpenAgents account was cancelled (from a login). Nothing changed on the account.",
+    "what": "recovery.cancel",
+    "notice": 13
+   },
+   "body": "{\"message\":{\"token\":\"fGh2:APA91b-x_yABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789\",\"notification\":{\"title\":\"OpenAgents security: recovery was cancelled\",\"body\":\"The recovery of your OpenAgents account was cancelled (from a login). Nothing changed on the account.\"},\"data\":{\"notice\":\"13\",\"what\":\"recovery.cancel\",\"open\":\"/settings/security\"},\"android\":{\"priority\":\"high\"}}}"
+  }
+ ]
+}

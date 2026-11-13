@@ -24,7 +24,8 @@
 // Every step is in auth.audit, and every change to the ways in sends a notice to each email and
 // key of the account (and to the way removed): an email through email.c, and a NIP-17 message (a
 // NIP-59 gift wrap, auth-recover-crypto.coax) from our notice key (OA_AUTH_NOTICE_NSEC) through
-// OA_AUTH_NOTICE_RELAY (wss://relay.openagents.com). Notices go from a child process, so a slow
+// OA_AUTH_NOTICE_RELAY (wss://relay.openagents.com). It goes to the account's apps too, as a push
+// to each device that gave a target (auth-device.c's auth_device_push, push.c; #13233). Notices go from a child process, so a slow
 // mail service or relay never holds up the API; OA_AUTH_NOTICE_SYNC=1 (the checks) sends them inline.
 //
 // A recovery code is 24 BIP-39 words, stored as scrypt(words, salt, N = 2^17, r = 8, p = 1): 128 MiB
@@ -128,8 +129,8 @@ static void methods_json(PGconn *db, const char *acct, char *out, size_t cap) {
 }
 
 // ---------------------------------------------------------------- notices
-// Sends one notice to every email and key of the account, and to also_email / also_pubkey (a way
-// just removed). Every delivery is counted on the notice row and in the audit log.
+// Sends one notice to every email, key and app device of the account, and to also_email /
+// also_pubkey (a way just removed). Every delivery is counted on the notice row and in the audit log.
 // A notice's cancel link: the line above it and where it goes (the recovery's, a limit raise's).
 typedef struct { const char *lead, *url; } notice_link;
 static void deliver(PGconn *db, long long notice_id, const char *acct, const char *what, const char *subject, const char *words,
@@ -201,13 +202,17 @@ static void deliver(PGconn *db, long long notice_id, const char *acct, const cha
   if (rl) relay_close(rl);
   free(work); free(wrap);
   memset(sk, 0, sizeof sk);
-  char sent[120], idb[24];
-  snprintf(sent, sizeof sent, "{\"email\":%d,\"nostr\":%d,\"failed\":%d}", emailed, nostr_sent, failed);
+  // ---- push: each device of the account that still holds a login (auth-device.c). The words
+  // alone: the app opens its Security page, where its own login cancels or freezes, so no link.
+  char title[200]; snprintf(title, sizeof title, "OpenAgents security: %s", subject);
+  int pushed = auth_device_push(db, acct, notice_id, what, title, words, &failed);
+  char sent[160], idb[24];
+  snprintf(sent, sizeof sent, "{\"email\":%d,\"nostr\":%d,\"push\":%d,\"failed\":%d}", emailed, nostr_sent, pushed, failed);
   snprintf(idb, sizeof idb, "%lld", notice_id);
   const char *w[2] = {idb, sent};
   PQclear(PQexecParams(db, "SELECT auth.notice_sent($1::bigint, $2::jsonb)", 2, NULL, w, NULL, NULL, 0));
-  char detail[200]; snprintf(detail, sizeof detail, "{\"what\":\"%s\",\"email\":%d,\"nostr\":%d,\"failed\":%d}", what, emailed, nostr_sent, failed);
-  auth_audit(db, acct, NULL, "notice", failed && !emailed && !nostr_sent ? "failed" : "ok", detail);
+  char detail[240]; snprintf(detail, sizeof detail, "{\"what\":\"%s\",\"email\":%d,\"nostr\":%d,\"push\":%d,\"failed\":%d}", what, emailed, nostr_sent, pushed, failed);
+  auth_audit(db, acct, NULL, "notice", failed && !emailed && !nostr_sent && !pushed ? "failed" : "ok", detail);
 }
 // The notice's row now, its delivery from a child (inline under OA_AUTH_NOTICE_SYNC=1).
 static void notify(PGconn *db, const char *acct, const char *what, const char *subject, const char *words,
@@ -608,7 +613,7 @@ static void recovery_start(const request *q, PGconn *db, const auth_principal *p
   utc(ready, when, sizeof when);
   snprintf(words, sizeof words, "Someone logged in to your OpenAgents account with its email and asked to recover it. "
            "If nothing stops it, after %s a new key they choose replaces every key and passkey on the account. "
-           "Logging in with your key or passkey cancels it, and so does the link below.", when);
+           "Logging in with your key or passkey cancels it, and you can cancel it from this notice.", when);
   char cancel_url[300]; snprintf(cancel_url, sizeof cancel_url, "%s/settings/security#cancel=%s", auth_origin(), tok);
   notice_link cancel = {"Cancel the recovery:", cancel_url};
   notify(db, p->account, "recovery.start", "someone asked to recover your account", words, &cancel, NULL, NULL);
@@ -685,7 +690,7 @@ static void recovery_finish(const request *q, PGconn *db, const auth_principal *
   char sk[40], words[500];
   short_key(pk, sk, sizeof sk);
   snprintf(words, sizeof words, "Your OpenAgents account was recovered: a new key (%s) replaced its keys and passkeys, and every other login ended. "
-           "If this wasn't you, freeze the account with the link below and write to us.", sk);
+           "If this wasn't you, freeze the account from this notice and write to us.", sk);
   // one notice: every email, the new key, and the keys that were removed
   notify(db, p->account, "recovery.done", "your account was recovered", words, NULL, NULL, old_keys);
   char json[200], lines[200];

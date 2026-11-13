@@ -380,7 +380,7 @@ static void limit_set(const request *q, PGconn *db, const auth_principal *p, con
     char when[40], words[400], url[300];
     utc(at_ms, when, sizeof when);
     snprintf(words, sizeof words, "Someone asked to raise your wallet's daily limit from %s to %s sats. If nothing stops it, the new limit counts after %s. "
-             "Any login of your account can cancel it, and so does the link below.", was, to, when);
+             "Any login of your account can cancel it, and you can cancel it from this notice.", was, to, when);
     snprintf(url, sizeof url, "%s/settings/wallet#cancel=%s", auth_origin(), tok);
     auth_notice_link(db, p->account, "wallet.limit.raise", "someone asked to raise your wallet's daily limit", words, "Cancel the raise:", url);
     memset(tok, 0, sizeof tok); memset(url, 0, sizeof url);

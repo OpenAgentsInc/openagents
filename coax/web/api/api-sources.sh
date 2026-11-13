@@ -15,11 +15,11 @@ API_C="api.c analytics.c admin.c player.c rooms.c npc.c room.c private.c drops.c
   access.c makers.c inference.c mesh.c mesh-policy.generated.c caller-policy.generated.c nip98.generated.c
   anime.c seats.c nostr.c email.c jobs.c relay.c verse_packs.c worldbuilder.c auth.c auth-seal-unit.c
   lnaddr.c lnaddr-unit.c agents.c agent-wire-unit.c agent-attest-unit.c auth-recover.c auth-life.c
-  auth-recover-crypto-unit.c auth-device.c auth-device-crypto-unit.c passkeys.c passkey-verify-unit.c
+  auth-recover-crypto-unit.c auth-device.c auth-device-crypto-unit.c push.c passkeys.c passkey-verify-unit.c
   wallet.c wallet-vault-unit.c ticket-sign-unit.c service.c"
 API_COAX="npc-personas anime-director-policy seat-policy progress-policy item-policy moderation-policy
   character-policy worldbuilder-policy auth-policy auth-recover-policy auth-life-policy
-  auth-device-policy passkey-policy pay/wallet-policy:wallet-policy service-policy service-wire realm-wire"
+  auth-device-policy passkey-policy pay/wallet-policy:wallet-policy service-policy service-wire realm-wire auth-push"
 API_COAX_WRAPPED="auth-seal pay/lnaddr-policy:lnaddr-policy agent-wire agent-attest auth-recover-crypto
   auth-device-crypto passkey-verify pay/wallet-vault-store:wallet-vault ticket-sign"
 api_sources() {

@@ -10,6 +10,8 @@
 //   dk_refresh    a refresh: a bound login needs its own live key's fresh, unused proof
 //   dk_allows     does this verdict let the tokens move
 //   dk_remove     may this account remove this device
+//   dk_push_set   may this login's device keep a push target for security notices (#13233)
+//   dk_push_gone  did Apple or Google say the target is no install's any more
 //
 // The threats, each with its check below and in tests/auth_device_checks.coax:
 //   a token copied to another device   no proof: DK_NEEDED; another key's proof: DK_BAD
@@ -17,13 +19,22 @@
 //   a clock that is off                DK_CLOCK past 60 seconds either way, with our time to retry on
 //   a key that was removed             DK_REVOKED (its logins ended when it was removed)
 //   a downgrade to no proof            a bound login is never DK_UNBOUND; no input here unbinds one
+//   notices sent to a stranger         a push target is kept only for an app login's own live device
+//                                      key (DK_NO_DEVICE otherwise), only Apple's for an iPhone or a
+//                                      Mac and Google's for Android, and only a token of their shape
 #authority;
 
 DK_WINDOW_MS :: 60000;   // a proof's time may be this far from ours, either way
 
 // Verdicts.
 DK_OK :: 0; DK_UNBOUND :: 1; DK_NEEDED :: 2; DK_MALFORMED :: 3; DK_CLOCK :: 4; DK_BAD :: 5; DK_REPLAY :: 6;
-DK_REVOKED :: 7; DK_BAD_KEY :: 8; DK_BAD_PLATFORM :: 9; DK_NOT_FOUND :: 10;
+DK_REVOKED :: 7; DK_BAD_KEY :: 8; DK_BAD_PLATFORM :: 9; DK_NOT_FOUND :: 10; DK_NO_DEVICE :: 11; DK_BAD_PUSH :: 12;
+// Who delivers a push: Apple (its production and its sandbox, which development builds use) or Google.
+DK_APNS :: 1; DK_APNS_SANDBOX :: 2; DK_FCM :: 3;
+DK_APNS_TOKEN_MIN :: 32;    // bytes (64 hex characters): what Apple gives today
+DK_APNS_TOKEN_MAX :: 100;   // bytes: Apple says a token's size may grow
+DK_FCM_TOKEN_MIN :: 32;
+DK_FCM_TOKEN_MAX :: 512;
 // Platforms and where a key is kept.
 DK_IOS :: 1; DK_MAC :: 2; DK_ANDROID :: 3;
 DK_ENCLAVE :: 1; DK_STRONGBOX :: 2; DK_TEE :: 3; DK_SOFTWARE :: 4;
@@ -80,7 +91,7 @@ DK_ENCLAVE :: 1; DK_STRONGBOX :: 2; DK_TEE :: 3; DK_SOFTWARE :: 4;
   #assert dk_allows(DK_OK) && dk_allows(DK_UNBOUND);
   #assert !dk_allows(DK_NEEDED) && !dk_allows(DK_MALFORMED) && !dk_allows(DK_CLOCK) && !dk_allows(DK_BAD) && !dk_allows(DK_REPLAY);
   #assert !dk_allows(DK_REVOKED) && !dk_allows(DK_BAD_KEY) && !dk_allows(DK_BAD_PLATFORM) && !dk_allows(DK_NOT_FOUND);
-  #assert !dk_allows(-1) && !dk_allows(11) && !dk_allows(99);
+  #assert !dk_allows(-1) && !dk_allows(13) && !dk_allows(99);
 }
 #test "only a verified proof names its device to the database" {
   #assert dk_proved(DK_OK) && !dk_proved(DK_UNBOUND);
@@ -148,6 +159,86 @@ DK_ENCLAVE :: 1; DK_STRONGBOX :: 2; DK_TEE :: 3; DK_SOFTWARE :: 4;
   #assert dk_why(DK_NEEDED) == "none" && dk_why(DK_MALFORMED) == "malformed" && dk_why(DK_CLOCK) == "clock" && dk_why(DK_BAD) == "signature"
        && dk_why(DK_REPLAY) == "replay" && dk_why(DK_REVOKED) == "removed" && dk_why(DK_BAD_KEY) == "key" && dk_why(DK_BAD_PLATFORM) == "platform"
        && dk_why(DK_NOT_FOUND) == "unknown" && dk_why(DK_OK) == "" && dk_why(DK_UNBOUND) == "" && dk_why(99) == "";
+}
+
+#test "the push services an app may name" {
+  #assert dk_push_service("apns") == DK_APNS && dk_push_service("apns_sandbox") == DK_APNS_SANDBOX && dk_push_service("fcm") == DK_FCM;
+  #assert dk_push_service("") == 0 && dk_push_service("APNS") == 0 && dk_push_service("apns ") == 0 && dk_push_service("gcm") == 0 && dk_push_service("web") == 0;
+  #assert dk_push_service_name(DK_APNS) == "apns" && dk_push_service_name(DK_APNS_SANDBOX) == "apns_sandbox" && dk_push_service_name(DK_FCM) == "fcm";
+  #assert dk_push_service_name(0) == "" && dk_push_service_name(4) == "" && dk_push_service_name(-1) == "";
+}
+#test "Apple delivers to an iPhone or a Mac, Google to Android, and never the other way" {
+  #assert dk_push_fits(DK_IOS, DK_APNS) && dk_push_fits(DK_MAC, DK_APNS) && dk_push_fits(DK_IOS, DK_APNS_SANDBOX) && dk_push_fits(DK_MAC, DK_APNS_SANDBOX);
+  #assert dk_push_fits(DK_ANDROID, DK_FCM);
+  #assert !dk_push_fits(DK_ANDROID, DK_APNS) && !dk_push_fits(DK_ANDROID, DK_APNS_SANDBOX) && !dk_push_fits(DK_IOS, DK_FCM) && !dk_push_fits(DK_MAC, DK_FCM);
+  #assert !dk_push_fits(0, DK_APNS) && !dk_push_fits(0, DK_FCM) && !dk_push_fits(4, DK_FCM) && !dk_push_fits(4, DK_APNS) && !dk_push_fits(-1, DK_APNS_SANDBOX);
+  #assert !dk_push_fits(DK_IOS, 0) && !dk_push_fits(DK_IOS, 4) && !dk_push_fits(DK_ANDROID, 0) && !dk_push_fits(DK_ANDROID, 4) && !dk_push_fits(DK_MAC, -1);
+}
+#test "Apple's token is 64 to 200 lower-case hex characters, whole bytes" {
+  b: [210] u8; for i: 0..<210 { b[i] = 'a'; }
+  #assert DK_APNS_TOKEN_MIN == 32 && DK_APNS_TOKEN_MAX == 100;
+  #assert dk_push_token_ok(DK_APNS, cast(string) b[0..<64]) && dk_push_token_ok(DK_APNS_SANDBOX, cast(string) b[0..<64]);
+  #assert dk_push_token_ok(DK_APNS, cast(string) b[0..<66]) && dk_push_token_ok(DK_APNS, cast(string) b[0..<200]);
+  #assert !dk_push_token_ok(DK_APNS, cast(string) b[0..<62]) && !dk_push_token_ok(DK_APNS, cast(string) b[0..<63]) && !dk_push_token_ok(DK_APNS, cast(string) b[0..<65]);
+  #assert !dk_push_token_ok(DK_APNS, cast(string) b[0..<202]) && !dk_push_token_ok(DK_APNS, cast(string) b[0..<201]) && !dk_push_token_ok(DK_APNS, "");
+  #assert !dk_push_token_ok(DK_APNS_SANDBOX, cast(string) b[0..<62]) && !dk_push_token_ok(DK_APNS_SANDBOX, cast(string) b[0..<202]);
+  good := "0123456789abcdef"; bad := "/:`gAF Z-_";
+  for c: good { b[0] = c; #assert dk_push_token_ok(DK_APNS, cast(string) b[0..<64]); b[0] = 'a'; b[63] = c; #assert dk_push_token_ok(DK_APNS_SANDBOX, cast(string) b[0..<64]); b[63] = 'a'; }
+  for c: bad {
+    b[0] = c; #assert !dk_push_token_ok(DK_APNS, cast(string) b[0..<64]); b[0] = 'a';
+    b[63] = c; #assert !dk_push_token_ok(DK_APNS, cast(string) b[0..<64]); b[63] = 'a';
+    b[31] = c; #assert !dk_push_token_ok(DK_APNS_SANDBOX, cast(string) b[0..<64]); b[31] = 'a';
+  }
+}
+#test "Google's token is 32 to 512 letters, digits, colons, dashes and underscores" {
+  b: [520] u8; for i: 0..<520 { b[i] = 'k'; }
+  #assert DK_FCM_TOKEN_MIN == 32 && DK_FCM_TOKEN_MAX == 512;
+  #assert dk_push_token_ok(DK_FCM, cast(string) b[0..<32]) && dk_push_token_ok(DK_FCM, cast(string) b[0..<33]) && dk_push_token_ok(DK_FCM, cast(string) b[0..<163]);
+  #assert dk_push_token_ok(DK_FCM, cast(string) b[0..<512]);
+  #assert !dk_push_token_ok(DK_FCM, cast(string) b[0..<31]) && !dk_push_token_ok(DK_FCM, cast(string) b[0..<513]) && !dk_push_token_ok(DK_FCM, "");
+  good := "09AZaz:_-"; bad := "/;@[`{^,. \n\"\\";
+  for c: good { b[0] = c; #assert dk_push_token_ok(DK_FCM, cast(string) b[0..<32]); b[0] = 'k'; b[31] = c; #assert dk_push_token_ok(DK_FCM, cast(string) b[0..<32]); b[31] = 'k'; }
+  for c: bad {
+    b[0] = c; #assert !dk_push_token_ok(DK_FCM, cast(string) b[0..<32]); b[0] = 'k';
+    b[31] = c; #assert !dk_push_token_ok(DK_FCM, cast(string) b[0..<32]); b[31] = 'k';
+    b[7] = c; #assert !dk_push_token_ok(DK_FCM, cast(string) b[0..<32]); b[7] = 'k';
+  }
+  // Apple's shape is not Google's, and no service has no shape
+  #assert !dk_push_token_ok(DK_APNS, cast(string) b[0..<64]);
+  for i: 0..<64 { b[i] = 'a'; }
+  #assert !dk_push_token_ok(0, cast(string) b[0..<64]) && !dk_push_token_ok(4, cast(string) b[0..<64]) && !dk_push_token_ok(-1, cast(string) b[0..<64]);
+}
+#test "notices sent to a stranger: only an app login's own live device keeps a push target" {
+  #assert dk_push_set(true, DK_IOS, DK_APNS, true) == DK_OK && dk_push_set(true, DK_IOS, DK_APNS_SANDBOX, true) == DK_OK;
+  #assert dk_push_set(true, DK_MAC, DK_APNS, true) == DK_OK && dk_push_set(true, DK_MAC, DK_APNS_SANDBOX, true) == DK_OK;
+  #assert dk_push_set(true, DK_ANDROID, DK_FCM, true) == DK_OK;
+  // a browser's login, and an app's login bound to no device (or to one that was removed)
+  #assert dk_push_set(false, DK_IOS, DK_APNS, true) == DK_NO_DEVICE && dk_push_set(false, 0, DK_APNS, true) == DK_NO_DEVICE;
+  #assert dk_push_set(true, 0, DK_APNS, true) == DK_NO_DEVICE && dk_push_set(true, 0, DK_FCM, true) == DK_NO_DEVICE;
+  #assert dk_push_set(false, 0, 0, false) == DK_NO_DEVICE && dk_push_set(true, 0, 0, false) == DK_NO_DEVICE;
+  // the other maker's service, no service, and a token that isn't one
+  #assert dk_push_set(true, DK_IOS, DK_FCM, true) == DK_BAD_PUSH && dk_push_set(true, DK_ANDROID, DK_APNS, true) == DK_BAD_PUSH;
+  #assert dk_push_set(true, DK_MAC, DK_FCM, true) == DK_BAD_PUSH && dk_push_set(true, DK_ANDROID, DK_APNS_SANDBOX, true) == DK_BAD_PUSH;
+  #assert dk_push_set(true, DK_IOS, 0, true) == DK_BAD_PUSH && dk_push_set(true, DK_ANDROID, 4, true) == DK_BAD_PUSH;
+  #assert dk_push_set(true, DK_IOS, DK_APNS, false) == DK_BAD_PUSH && dk_push_set(true, DK_ANDROID, DK_FCM, false) == DK_BAD_PUSH;
+  #assert dk_push_set(true, 4, DK_APNS, true) == DK_BAD_PUSH && dk_push_set(true, -1, DK_FCM, true) == DK_BAD_PUSH;
+  #assert !dk_allows(DK_NO_DEVICE) && !dk_allows(DK_BAD_PUSH) && !dk_proved(DK_NO_DEVICE) && !dk_proved(DK_BAD_PUSH);
+}
+#test "a push was delivered on a 2xx, and its target is gone when the maker says so" {
+  #assert dk_push_sent(200) && dk_push_sent(201) && dk_push_sent(299);
+  #assert !dk_push_sent(199) && !dk_push_sent(300) && !dk_push_sent(0) && !dk_push_sent(-1) && !dk_push_sent(410) && !dk_push_sent(503);
+  #assert dk_push_gone(DK_APNS, 410) && dk_push_gone(DK_APNS_SANDBOX, 410) && dk_push_gone(DK_FCM, 404);
+  #assert !dk_push_gone(DK_APNS, 404) && !dk_push_gone(DK_APNS_SANDBOX, 404) && !dk_push_gone(DK_FCM, 410);
+  #assert !dk_push_gone(DK_APNS, 400) && !dk_push_gone(DK_APNS, 403) && !dk_push_gone(DK_APNS, 429) && !dk_push_gone(DK_APNS, 500) && !dk_push_gone(DK_APNS, 0);
+  #assert !dk_push_gone(DK_APNS, 409) && !dk_push_gone(DK_APNS, 411) && !dk_push_gone(DK_FCM, 403) && !dk_push_gone(DK_FCM, 405);
+  #assert !dk_push_gone(DK_FCM, 400) && !dk_push_gone(DK_FCM, 401) && !dk_push_gone(DK_FCM, 503) && !dk_push_gone(DK_FCM, 0) && !dk_push_gone(DK_FCM, 200);
+  #assert !dk_push_gone(0, 410) && !dk_push_gone(0, 404) && !dk_push_gone(4, 410) && !dk_push_gone(4, 404) && !dk_push_gone(DK_APNS, 200);
+}
+#test "the push verdicts have their status and words" {
+  #assert dk_status(DK_NO_DEVICE) == 403 && dk_status(DK_BAD_PUSH) == 400;
+  #assert dk_words(DK_NO_DEVICE) == "This login isn't tied to a device, so it can't get notices. Log in again in the app.";
+  #assert dk_words(DK_BAD_PUSH) == "That isn't a push token we can use. Update the app.";
+  #assert dk_why(DK_NO_DEVICE) == "device" && dk_why(DK_BAD_PUSH) == "push";
 }
 
 // ts_ms: the proof's own time. Both in milliseconds since 1970.
@@ -229,12 +320,75 @@ dk_remove :: (found: bool, mine: bool, removed: bool) -> int #export_c #effects(
   return DK_OK;
 }
 
+// ---------------------------------------------------------------- push targets (#13233)
+dk_push_service :: (name: string) -> int #export_c #effects(all) {
+  if name == "apns" { return DK_APNS; }
+  if name == "apns_sandbox" { return DK_APNS_SANDBOX; }
+  if name == "fcm" { return DK_FCM; }
+  return 0;
+}
+dk_push_service_name :: (service: int) -> string #export_c #effects(all) {
+  if service == DK_APNS { return "apns"; }
+  if service == DK_APNS_SANDBOX { return "apns_sandbox"; }
+  if service == DK_FCM { return "fcm"; }
+  return "";
+}
+dk_push_fits :: (platform: int, service: int) -> bool #export_c #effects(all) {
+  if service == DK_APNS || service == DK_APNS_SANDBOX { return platform == DK_IOS || platform == DK_MAC; }
+  if service == DK_FCM { return platform == DK_ANDROID; }
+  return false;
+}
+dk_hex_char :: (c: u8) -> bool #effects(all) {
+  if c >= '0' && c <= '9' { return true; }
+  return c >= 'a' && c <= 'f';
+}
+dk_token_char :: (c: u8) -> bool #effects(all) {
+  if c >= '0' && c <= ':' { return true; }   // the digits, and the colon after them
+  if c >= 'a' && c <= 'z' { return true; }
+  if c >= 'A' && c <= 'Z' { return true; }
+  return c == '_' || c == '-';
+}
+// Whether token has the shape the service gives an install: Apple's bytes as lower-case hex,
+// Google's registration token. It goes into a URL or a JSON string as it is, so nothing else passes.
+dk_push_token_ok :: (service: int, token: string) -> bool #export_c #effects(all) {
+  if service == DK_APNS || service == DK_APNS_SANDBOX {
+    if token.count % 2 != 0 { return false; }
+    bytes := token.count / 2;
+    if bytes < DK_APNS_TOKEN_MIN || bytes > DK_APNS_TOKEN_MAX { return false; }
+    for c: token { if !dk_hex_char(c) { return false; } }
+    return true;
+  }
+  if service == DK_FCM {
+    if token.count < DK_FCM_TOKEN_MIN || token.count > DK_FCM_TOKEN_MAX { return false; }
+    for c: token { if !dk_token_char(c) { return false; } }
+    return true;
+  }
+  return false;
+}
+// app: the session is an app's. platform: dk_platform of the live device it is bound to (0: none).
+// service: dk_push_service of what it named. token_ok: dk_push_token_ok of what it sent.
+dk_push_set :: (app: bool, platform: int, service: int, token_ok: bool) -> int #export_c #effects(all) {
+  if !app || platform == 0 { return DK_NO_DEVICE; }
+  if !dk_push_fits(platform, service) || !token_ok { return DK_BAD_PUSH; }
+  return DK_OK;
+}
+// The delivery's HTTP status: delivered, and (Apple's 410, Google's 404) the token is no install's
+// any more, so the device forgets it.
+dk_push_sent :: (status: int) -> bool #export_c #effects(all) { return status >= 200 && status <= 299; }
+dk_push_gone :: (service: int, status: int) -> bool #export_c #effects(all) {
+  if service == DK_APNS || service == DK_APNS_SANDBOX { return status == 410; }
+  if service == DK_FCM { return status == 404; }
+  return false;
+}
+
 dk_status :: (verdict: int) -> int #export_c #effects(all) {
   if verdict == DK_OK || verdict == DK_UNBOUND { return 200; }
   if verdict == DK_NEEDED || verdict == DK_MALFORMED || verdict == DK_BAD || verdict == DK_REVOKED { return 401; }
   if verdict == DK_CLOCK || verdict == DK_BAD_KEY || verdict == DK_BAD_PLATFORM { return 400; }
   if verdict == DK_REPLAY { return 409; }
   if verdict == DK_NOT_FOUND { return 404; }
+  if verdict == DK_NO_DEVICE { return 403; }
+  if verdict == DK_BAD_PUSH { return 400; }
   return 500;
 }
 dk_words :: (verdict: int) -> string #export_c #effects(all) {
@@ -245,6 +399,8 @@ dk_words :: (verdict: int) -> string #export_c #effects(all) {
   if verdict == DK_REVOKED { return "This device was removed from the account. Log in again."; }
   if verdict == DK_BAD_KEY || verdict == DK_BAD_PLATFORM { return "This app's device key isn't one we can use. Update the app and log in again."; }
   if verdict == DK_NOT_FOUND { return "No such device."; }
+  if verdict == DK_NO_DEVICE { return "This login isn't tied to a device, so it can't get notices. Log in again in the app."; }
+  if verdict == DK_BAD_PUSH { return "That isn't a push token we can use. Update the app."; }
   return "";
 }
 // The audit row's and the answer's short reason (never a secret).
@@ -258,5 +414,7 @@ dk_why :: (verdict: int) -> string #export_c #effects(all) {
   if verdict == DK_BAD_KEY { return "key"; }
   if verdict == DK_BAD_PLATFORM { return "platform"; }
   if verdict == DK_NOT_FOUND { return "unknown"; }
+  if verdict == DK_NO_DEVICE { return "device"; }
+  if verdict == DK_BAD_PUSH { return "push"; }
   return "";
 }

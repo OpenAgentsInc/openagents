@@ -7,11 +7,15 @@
 //                     minutes can't remove a way in, make a recovery code or act as an admin
 //   a hostile key     linking needs L2; a key that has its own account is refused; every link
 //                     tells every email and key of the account
+//   notices by push   a recovery's notice reaches the account's phone (a device key that gave a push
+//                     target), in its own words and with no link, and the phone cancels the
+//                     recovery from its own login (#13233)
 // Notices are sent inline (OA_AUTH_NOTICE_SYNC=1): email to the fake Resend, Nostr to test.sh's
-// fake relay. Recovery codes are hashed at a lower scrypt cost here (OA_AUTH_SCRYPT_LOG_N=10).
+// fake relay, push to the fake Resend too (test.sh points Apple's and Google's services at it). Recovery codes are hashed at a lower scrypt cost here (OA_AUTH_SCRYPT_LOG_N=10).
 //   API=... PGURL=... PSQL=... SIGN=... OTHER_KEY=... RESEND_PORT=... coax/web/tool.sh coax/web/api/tests/auth_recover_checks.coax
 // tool.sh: tls
-#load "auth_harness.coax";
+// tool.sh: run-steps 250000000
+#load "auth_device_harness.coax";
 
 // The words of all mail so far, in out.
 ar_mails :: (dir: string, out: [] u8) -> string {
@@ -60,10 +64,40 @@ ar_with :: (t: [] Ap, method: string, path: string, body: string, session: strin
   c1: [1] Sb;
   return ac_call(t, method, path, body, ac_cookie_header("__Host-oa_session", session, c1[..]), "", "");
 }
+// An app's login with a key (a signed challenge) and these device headers: the pair in d.
+ar_app_key :: (t: [] Ap, keyfile: string, h1: string, h2: string, h3: string, h4: string, d: [] Dv) -> int {
+  ap_do(t, "DELETE FROM auth.limit_counts");
+  d[0].at_n = 0; d[0].rt_n = 0; d[0].acct_n = 0; d[0].bound = false;
+  if ac_call(t, "POST", "/api/auth/nostr/challenge", "{\"client\":\"app\"}", "", "", "") != 200 { return -1; }
+  chb: [128] u8; ch := ap_member(ap_body(t), "challenge", chb[..]);
+  body: [1] Sb; sb(body[..], "{\"challenge\":\""); sb(body[..], ch); sb(body[..], "\",\"label\":\"app\"}");
+  url: [1] Sb; sb(url[..], t[0].api); sb(url[..], "/api/auth/nostr");
+  sigb: [4096] u8; sig := ap_nostr(t, keyfile, "POST", sb_text(url[..]), sb_text(body[..]), true, sigb[..]);
+  ah: [1] Sb; sb(ah[..], "Authorization: Nostr "); sb(ah[..], sig);
+  h: [6] string;
+  h[0] = "Content-Type: application/json"; h[1] = sb_text(ah[..]); h[2] = h1; h[3] = h2; h[4] = h3; h[5] = h4;
+  st := ap_call(t, "POST", "/api/auth/nostr", sb_text(body[..]), h[..]);
+  if st != 200 { return st; }
+  eb: [16] u8;
+  a := ap_member(ap_body(t), "access_token", d[0].at[..]); d[0].at_n = a.count;
+  r := ap_member(ap_body(t), "refresh_token", d[0].rt[..]); d[0].rt_n = r.count;
+  c := ap_member(ap_body(t), "account", d[0].acct[..]); d[0].acct_n = c.count;
+  d[0].bound = ap_member(ap_body(t), "device_bound", eb[..]) == "true";
+  return st;
+}
+// Everything after the last place `part` starts in s, to the line's end ("" when it isn't there).
+ar_last_line :: (s: string, part: string) -> string {
+  at := -1; k := 0;
+  while k + part.count <= s.count { if s[k..<k + part.count] == part { at = k; } k += 1; }
+  if at < 0 { return ""; }
+  end := at;
+  while end < s.count && s[end] != '\n' { end += 1; }
+  return s[at..<end];
+}
 ar_q :: (q: [] Sb, a: string, b: string, c: string) -> string { sb_clear(q); sb(q, a); sb(q, b); sb(q, c); return sb_text(q); }
 
 ar_checks :: (t: [] Ap, dir: string) {
-  out: [8192] u8; eb: [1024] u8; mail: [262144] u8; q: [1] Sb;
+  out: [8192] u8; eb: [1024] u8; mail: [262144] u8; q: [1] Sb; lb9: [1100] u8;
   kb: [2048] u8; ok_key := proc_getenv("OTHER_KEY", kb[..]);
   // The owner: a key (K1) and an email. K1 logs in, then links the email.
   k1b: [1100] u8; K1 := fs_join(dir, "k1.key", k1b[..]); pk1b: [128] u8; pk1 := ac_newkey(t, K1, pk1b[..]);
@@ -247,6 +281,54 @@ ar_checks :: (t: [] Ap, dir: string) {
   ap_check(t, "the notice's cancel link cancels it, with no login", st == 200, ap_body(t));
   st = ac_call(t, "POST", "/api/auth/recovery/cancel", sb_text(tb[..]), "", "", "");
   ap_check(t, "a cancel link works once", st == 410, ap_body(t));
+  // ---- notices by push (#13233): the account's phone gets the recovery's notice and cancels it
+  // The phone: the app, logged in with the account's key and bound to its own device key.
+  ph: [1] Dv; pkh: [1] Sb; pbh: [1] Sb; psec: [32] u8; heads: [262144] u8;
+  pkey := dv_key_header(dv_secret(57, psec[..]), pkh[..]);
+  st = ar_app_key(t, K1, pkey, "OA-Device-Platform: ios", "OA-Device-Store: enclave", "OA-Device-Name: Recovery iPhone", ph[..]);
+  ap_check(t, "push: the phone's app logs in with the key, bound to its device key", st == 200 && ph[0].bound, ap_body(t));
+  st = ac_call(t, "POST", "/api/auth/devices/push", "{\"service\":\"apns_sandbox\",\"token\":\"a1b2c3d4a1b2c3d4a1b2c3d4a1b2c3d4a1b2c3d4a1b2c3d4a1b2c3d4a1b2c3d4\"}", dv_bearer(ph[..], pbh[..]), "", "");
+  ap_check(t, "push: the phone gives its push target", st == 200 && ap_member(ap_body(t), "state", eb[..]) == "on", ap_body(t));
+  // email alone on this account is a limited login: it adds no place for notices to go
+  le: [1] Dv; lkh: [1] Sb; lbh: [1] Sb; lsec: [32] u8;
+  st = dv_login(t, dir, "rec@example.com", "203.0.113.61", dv_key_header(dv_secret(113, lsec[..]), lkh[..]), "OA-Device-Platform: ios", "OA-Device-Store: enclave", "OA-Device-Name: Another iPhone", le[..]);
+  st = ac_call(t, "POST", "/api/auth/devices/push", "{\"service\":\"apns\",\"token\":\"e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5\"}", dv_bearer(le[..], lbh[..]), "", "");
+  ap_check(t, "push: email takeover: a limited login can't add its phone to the notices", st == 401
+           && ap_sql(t, ar_q(q[..], "SELECT count(*) FROM auth.devices WHERE account = '", acct, "' AND push_token IS NOT NULL"), out[..]) == "1", ap_body(t));
+  ap_do(t, "DELETE FROM auth.limit_counts");
+  st = ar_with(t, "POST", "/api/auth/recovery/start", "{}", SE3);
+  m = ar_mails(dir, mail[..]);
+  note := ar_last_line(m, "{\"aps\":");
+  ap_check(t, "push: a recovery's notice reaches the account's phone, in the notice's words",
+           st == 200 && ap_has(note, "\"title\":\"OpenAgents security: ") && ap_has(note, "asked to recover it")
+           && ap_ends(note, "\"what\":\"recovery.start\",\"open\":\"/settings/security\"}}")
+           && ap_sql(t, ar_q(q[..], "SELECT sent->>'push' FROM auth.notices WHERE what = 'recovery.start' AND account = '", acct, "' ORDER BY id DESC LIMIT 1"), out[..]) == "1", note);
+  ap_check(t, "push: the notice carries no link, token or address", note != "" && !ap_has(note, "http") && !ap_has(note, "#cancel=") && !ap_has(note, "#freeze=") && !ap_has(note, "@"), note);
+  hn := fs_read(fs_join(dir, "heads", lb9[..]), heads[..]);
+  hd := ifx hn <= 0 then "" else cast(string) heads[0..<hn];
+  ap_check(t, "push: it goes to Apple's sandbox for that device, for the iPhone app, signed with our push key",
+           ap_has(hd, "POST /apns-sandbox/3/device/a1b2c3d4a1b2c3d4a1b2c3d4a1b2c3d4a1b2c3d4a1b2c3d4a1b2c3d4a1b2c3d4 ") && ap_has(hd, "apns-topic: com.openagents.app") && ap_has(hd, "apns-push-type: alert")
+           && ap_has(hd, "authorization: bearer eyJhbGciOiJFUzI1NiIsImtpZCI6IlRFU1RLRVkxMjMifQ."), "");
+  st = ac_call(t, "POST", "/api/auth/recovery/cancel", "{}", dv_bearer(ph[..], pbh[..]), "", "");
+  ap_check(t, "push: the phone cancels the recovery from its own login", st == 200 && ap_member(ap_body(t), "state", eb[..]) == "cancelled", ap_body(t));
+  st = ar_with(t, "GET", "/api/auth/recovery", "", SE3);
+  ap_check(t, "push: the recovery shows cancelled, from a login", ap_member(ap_body(t), "state", eb[..]) == "cancelled" && ap_member(ap_body(t), "cancelled_via", eb[..]) == "session", ap_body(t));
+  ap_check(t, "push: the cancel's notice reaches the phone too, and the notices list says so",
+           ap_has(ar_last_line(ar_mails(dir, mail[..]), "{\"aps\":"), "\"what\":\"recovery.cancel\"")
+           && ap_sql(t, ar_q(q[..], "SELECT sent->>'push' FROM auth.notices WHERE what = 'recovery.cancel' AND account = '", acct, "' ORDER BY id DESC LIMIT 1"), out[..]) == "1"
+           && ap_sql(t, ar_q(q[..], "SELECT auth.notices_of('", acct, "')->0->'sent'->>'push'"), out[..]) == "1", "");
+  ap_check(t, "push: the audit log counts the push and holds no device's token",
+           ap_sql(t, ar_q(q[..], "SELECT detail->>'push' FROM auth.audit WHERE action = 'notice' AND account = '", acct, "' ORDER BY id DESC LIMIT 1"), out[..]) == "1"
+           && ap_sql(t, "SELECT count(*) FROM auth.audit WHERE detail::text LIKE '%a1b2c3d4a1b2c3d4a1b2c3d4%'", out[..]) == "0", "");
+  // a phone Apple says is gone (the app was deleted): the notice is counted as not delivered, and the target is forgotten
+  st = ac_call(t, "POST", "/api/auth/devices/push", "{\"service\":\"apns_sandbox\",\"token\":\"dead000000000000000000000000000000000000000000000000000000000000\"}", dv_bearer(ph[..], pbh[..]), "", "");
+  ap_do(t, "DELETE FROM auth.limit_counts");
+  st = ar_with(t, "POST", "/api/auth/recovery/start", "{}", SE3);
+  ap_check(t, "push: a device Apple calls gone gets nothing more",
+           st == 200 && ap_sql(t, ar_q(q[..], "SELECT (sent->>'push') || ' ' || ((sent->>'failed')::int >= 1) FROM auth.notices WHERE what = 'recovery.start' AND account = '", acct, "' ORDER BY id DESC LIMIT 1"), out[..]) == "0 true"
+           && ap_sql(t, ar_q(q[..], "SELECT count(*) FROM auth.devices WHERE account = '", acct, "' AND push_token IS NOT NULL"), out[..]) == "0", "");
+  st = ac_call(t, "POST", "/api/auth/recovery/cancel", "{}", dv_bearer(ph[..], pbh[..]), "", "");
+  ap_check(t, "push: the phone still cancels from its login", st == 200, ap_body(t));
   // again: a key login cancels it
   ap_do(t, "DELETE FROM auth.limit_counts");
   st = ar_with(t, "POST", "/api/auth/recovery/start", "{}", SE3);

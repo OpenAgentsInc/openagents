@@ -22,7 +22,7 @@ A sketch, not a migration. Every id is random; every secret is a digest.
 | `auth.emails` | `account`, `lookup` (HMAC-SHA256 of the normalized address, unique), `sealed` (ciphertext), `verified_at`, `primary` |
 | `auth.passkeys` | `account`, `credential_id` (unique), `user_handle`, `public_key` (COSE), `alg`, `sign_count`, `backup_eligible`, `backed_up`, `aaguid`, `transports`, `name`, `prf_salt`, `last_used_at` |
 | `auth.nostr_keys` | `account`, `pubkey` (unique), `label` (`phone`, `cli:<machine>`, `extension`, `bunker`), `last_used_at` |
-| `auth.devices` | `account`, `public_key` (P-256), `platform`, `name`, `created_at`, `last_seen_at`, `revoked_at` |
+| `auth.devices` | `account`, `public_key` (P-256), `platform`, `name`, `created_at`, `last_seen_at`, `revoked_at`; `push_service`, `push_token`, `push_at`: where the device's security notices go (the token Apple or Google gave the install; gone when the device is removed) |
 | `auth.sessions` | `token_sha256` (key), `account`, `via` (authenticator id), `device`, `level`, `l1_at`, `l2_at`, `created_at`, `last_seen_at`, `expires_at`, `epoch` |
 | `auth.refresh` | `token_sha256`, `family`, `session`, `spent_at` |
 | `auth.agent_grants` | `agent`, `owner`, `scopes`, `sats_per_day`, `sats_per_payment`, `hosts`, `expires_at`, `suspended_at`, `approved_session` |

@@ -63,7 +63,7 @@ cp "$here"/*.c "$here"/*.h "$stage/src/"; cp -R "$here/migrations" "$here/Docker
 # deploy; release.sh already gates the compiler before it ships.
 (cd "$work/source" && coax/build.sh) > "$work/coax-build.log" 2>&1 || { tail -30 "$work/coax-build.log"; exit 1; }
 mkdir -p "$stage/gen"
-for m in nip98 mesh-policy caller-policy anime-director-policy seat-policy progress-policy item-policy moderation-policy character-policy worldbuilder-policy npc-personas auth-policy auth-seal agent-wire agent-attest auth-recover-policy auth-recover-crypto auth-life-policy passkey-policy passkey-verify auth-device-policy auth-device-crypto ticket-sign service-policy service-wire realm-wire; do
+for m in nip98 mesh-policy caller-policy anime-director-policy seat-policy progress-policy item-policy moderation-policy character-policy worldbuilder-policy npc-personas auth-policy auth-seal agent-wire agent-attest auth-recover-policy auth-recover-crypto auth-life-policy passkey-policy passkey-verify auth-device-policy auth-device-crypto auth-push ticket-sign service-policy service-wire realm-wire; do
   "$work/source/coax/bin/coax" c "$here/$m.coax" --run-steps 250000000 --library --header "$stage/gen/$m.generated.h" > "$stage/gen/$m.generated.c"
 done
 # The money rules are the Payments context's (pay/, #13320): SOURCE:GENERATED.
@@ -153,6 +153,11 @@ deploy() {  # service runtime-secret host agent-projects-secret runner-service d
   if gcloud secrets describe "oa-auth-lookup-pepper$sfx" --project "$project" >/dev/null 2>&1; then secrets+=",OA_AUTH_LOOKUP_PEPPER=oa-auth-lookup-pepper$sfx:latest"; fi
   # Security notices as NIP-17 messages (auth-recover.c): our notice key, one per environment.
   if gcloud secrets describe "oa-auth-notice-nsec$sfx" --project "$project" >/dev/null 2>&1; then secrets+=",OA_AUTH_NOTICE_NSEC=oa-auth-notice-nsec$sfx:latest"; fi
+  # Security notices as push to the apps (push.c, #13233): Apple's push key (the .p8 file's text) and
+  # its key id, and the Firebase project's id for Android. Without them no push goes, and nothing else changes.
+  if gcloud secrets describe oa-apns-key --project "$project" >/dev/null 2>&1; then secrets+=",OA_APNS_KEY=oa-apns-key:latest"; fi
+  if gcloud secrets describe oa-apns-key-id --project "$project" >/dev/null 2>&1; then secrets+=",OA_APNS_KEY_ID=oa-apns-key-id:latest"; fi
+  if gcloud secrets describe oa-fcm-project --project "$project" >/dev/null 2>&1; then secrets+=",OA_FCM_PROJECT=oa-fcm-project:latest"; fi
   local spark
   spark="$(gcloud run services describe oa-spark --project "$project" --region "$region" --format 'value(status.url)' 2>/dev/null || true)"
   [[ -n "$spark" ]] && env+="~OA_SPARK_URL=$spark"

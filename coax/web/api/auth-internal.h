@@ -86,7 +86,10 @@ bool auth_device_look(PGconn *db, const char *rt_sha, auth_refresh_facts *f);
 bool auth_device_refresh(const request *q, PGconn *db, const char *rt_sha, const auth_refresh_facts *f, char proved[24]);
 // The database's own refusal of a bound token with no proved device (never reached through the above).
 void auth_device_refuse_unproved(const request *q);
-// Answers /api/auth/devices and /api/auth/devices/<id>/remove; false when op isn't one.
+// A security notice to each of the account's devices that has a push target (#13233): how many
+// took it, with the ones that didn't added to *failed. A target its maker calls gone is forgotten.
+int auth_device_push(PGconn *db, const char *acct, long long notice, const char *what, const char *title, const char *words, int *failed);
+// Answers /api/auth/devices, /api/auth/devices/push[/off] and /api/auth/devices/<id>/remove; false when op isn't one.
 bool auth_device_route(const request *q, PGconn *db, const char *op);
 
 // ---- wallet.c (the encrypted seed backup and the daily limit, #13217)

@@ -1,0 +1,222 @@
+// A security notice as a push to an app, one codec (docs/auth/identity-and-methods.md "Notify";
+// #13233): what push.c sends Apple's push service and Google's for each notice auth-recover.c
+// delivers, and the token Apple asks for. push.c calls the #export_c writers below through
+// auth-push.generated.c (deploy.sh, test.sh) and builds no body of its own. The shape is
+// proto/auth/push-notice-v1.json; auth-push-goldens.coax holds these writers to its goldens.
+//
+// A notice's push says what happened, in the notice's own words, and names the page the app
+// opens: its Security page, where this login cancels a recovery or freezes the account. It
+// carries no link, no token and no address: the phone is already logged in.
+//
+//   apw_apns        Apple's payload:  {"aps":{"alert":{"title","body"},"sound":"default"},
+//                                      "oa":{"notice":N,"what":"recovery.start","open":"/settings/security"}}
+//   apw_fcm         Google's message: {"message":{"token","notification":{"title","body"},
+//                                      "data":{"notice":"N","what","open"},"android":{"priority":"high"}}}
+//   apw_p8_key      the 32-byte key inside Apple's .p8 file (PKCS#8, PEM), for adc_es256
+//   apw_jwt_input   what the token signs: base64url({"alg":"ES256","kid":KEY_ID}) "."
+//                   base64url({"iss":TEAM_ID,"iat":SECONDS})
+//   apw_jwt_close   the token: that, ".", base64url(the ES256 signature, r || s)
+//   apw_iat         the token's time: the start of the 20 minutes now is in, so every notice in
+//                   them carries the same token (Apple refuses one that changes more often)
+// A writer returns the end of what it wrote, or -1 when it does not fit or an input isn't right.
+//   coax/bin/coax test coax/web/api/auth-push.coax --library
+#load "api-wire.coax";
+#load "../../lib/text/base64.coax";
+
+APW_OPEN :: "/settings/security";   // the page a notice opens in the app
+APW_TOKEN_SECONDS :: 1200;          // a token for Apple lasts an hour; ours changes every 20 minutes
+APW_ID_MAX :: 32;                   // a key id or a team id (Apple's are 10 letters and digits)
+APW_DER_MAX :: 256;                 // a P-256 PKCS#8 key is 138 bytes
+
+#test "Apple's payload: the alert, and the notice the app opens its Security page for" {
+  b: [512] u8;
+  n := apw_apns("OpenAgents security: recovery started", "A recovery of your OpenAgents account was started.", "recovery.start", 12, b[..]);
+  #assert n > 0 && cast(string) b[0..<n] == "{\"aps\":{\"alert\":{\"title\":\"OpenAgents security: recovery started\",\"body\":\"A recovery of your OpenAgents account was started.\"},\"sound\":\"default\"},\"oa\":{\"notice\":12,\"what\":\"recovery.start\",\"open\":\"/settings/security\"}}";
+  n = apw_apns("a \"b\"", "c\\d\ne", "link.email", 7, b[..]);
+  #assert cast(string) b[0..<n] == "{\"aps\":{\"alert\":{\"title\":\"a \\\"b\\\"\",\"body\":\"c\\\\d\\ne\"},\"sound\":\"default\"},\"oa\":{\"notice\":7,\"what\":\"link.email\",\"open\":\"/settings/security\"}}";
+  #assert apw_apns("t", "b", "w", 1, b[0..<117]) == 117 && apw_apns("t", "b", "w", 1, b[..]) == 117;
+  #assert apw_apns("t", "b", "w", 1, b[0..<116]) == -1 && apw_apns("t", "b", "w", 1, b[0..<0]) == -1;
+}
+#test "Google's message: the token, the same words, and the data as strings" {
+  b: [512] u8;
+  n := apw_fcm("dKq1:APA91b-x_y", "OpenAgents security: recovery started", "A recovery of your OpenAgents account was started.", "recovery.start", 12, b[..]);
+  #assert n > 0 && cast(string) b[0..<n] == "{\"message\":{\"token\":\"dKq1:APA91b-x_y\",\"notification\":{\"title\":\"OpenAgents security: recovery started\",\"body\":\"A recovery of your OpenAgents account was started.\"},\"data\":{\"notice\":\"12\",\"what\":\"recovery.start\",\"open\":\"/settings/security\"},\"android\":{\"priority\":\"high\"}}}";
+  n = apw_fcm("k", "a \"b\"", "c\\d", "unlink.nostr", 0, b[..]);
+  #assert cast(string) b[0..<n] == "{\"message\":{\"token\":\"k\",\"notification\":{\"title\":\"a \\\"b\\\"\",\"body\":\"c\\\\d\"},\"data\":{\"notice\":\"0\",\"what\":\"unlink.nostr\",\"open\":\"/settings/security\"},\"android\":{\"priority\":\"high\"}}}";
+  #assert apw_fcm("k", "t", "b", "w", 1, b[0..<20]) == -1;
+}
+#test "base64url: no padding, - for + and _ for /" {
+  b: [128] u8; o: [1] Jo; sig: [64] u8;
+  for i: 0..<64 { sig[i] = cast,trunc(u8) (i * 7 + 251); }
+  jo_start(o[..], b[..]); apw_b64url(o[..], cast(string) sig[..]);
+  #assert !o[0].bad && jo_text(o[..]) == "-wIJEBceJSwzOkFIT1ZdZGtyeYCHjpWco6qxuL_GzdTb4unw9_4FDBMaISgvNj1ES1JZYGdudXyDipGYn6attA";
+  jo_start(o[..], b[..]); apw_b64url(o[..], "a"); #assert jo_text(o[..]) == "YQ";
+  jo_start(o[..], b[..]); apw_b64url(o[..], "ab"); #assert jo_text(o[..]) == "YWI";
+  jo_start(o[..], b[..]); apw_b64url(o[..], "abc"); #assert jo_text(o[..]) == "YWJj";
+  jo_start(o[..], b[..]); apw_b64url(o[..], ""); #assert !o[0].bad && jo_text(o[..]) == "";
+  jo_start(o[..], b[0..<3]); apw_b64url(o[..], "abc"); #assert o[0].bad;
+  long: [APW_B64_IN + 1] u8;
+  jo_start(o[..], b[..]); apw_b64url(o[..], cast(string) long[..]); #assert o[0].bad;
+}
+#test "the token for Apple: its two signed parts, then the signature" {
+  b: [256] u8; sig: [64] u8;
+  for i: 0..<64 { sig[i] = cast,trunc(u8) (i * 7 + 251); }
+  n := apw_jwt_input("ABC123DEFG", "HQWSG26L43", 1800000000, b[..]);
+  #assert n == 97 && cast(string) b[0..<n] == "eyJhbGciOiJFUzI1NiIsImtpZCI6IkFCQzEyM0RFRkcifQ.eyJpc3MiOiJIUVdTRzI2TDQzIiwiaWF0IjoxODAwMDAwMDAwfQ";
+  m := apw_jwt_close(sig[..], n, b[..]);
+  #assert m == 97 + 1 + 86 && cast(string) b[n..<m] == ".-wIJEBceJSwzOkFIT1ZdZGtyeYCHjpWco6qxuL_GzdTb4unw9_4FDBMaISgvNj1ES1JZYGdudXyDipGYn6attA";
+  #assert cast(string) b[0..<n] == "eyJhbGciOiJFUzI1NiIsImtpZCI6IkFCQzEyM0RFRkcifQ.eyJpc3MiOiJIUVdTRzI2TDQzIiwiaWF0IjoxODAwMDAwMDAwfQ";
+  // a signature that isn't 64 bytes, no room, and a start outside the buffer
+  #assert apw_jwt_close(sig[0..<63], n, b[..]) == -1 && apw_jwt_close(sig[..], n, b[0..<n + 86]) == -1 && apw_jwt_close(sig[..], n, b[0..<n + 87]) == n + 87;
+  #assert apw_jwt_close(sig[..], -1, b[..]) == -1 && apw_jwt_close(sig[..], 257, b[..]) == -1;
+  // an id that isn't letters and digits never reaches the JSON; a time must be one
+  #assert apw_jwt_input("", "HQWSG26L43", 1800000000, b[..]) == -1 && apw_jwt_input("ABC123DEFG", "", 1800000000, b[..]) == -1;
+  #assert apw_jwt_input("AB\"C", "HQWSG26L43", 1800000000, b[..]) == -1 && apw_jwt_input("ABC123DEFG", "HQ WSG", 1800000000, b[..]) == -1;
+  #assert apw_jwt_input("ABC123DEFG", "HQWSG26L43", 0, b[..]) == -1 && apw_jwt_input("ABC123DEFG", "HQWSG26L43", -5, b[..]) == -1;
+  #assert apw_jwt_input("ABC123DEFG", "HQWSG26L43", 1, b[..]) > 0 && apw_jwt_input("ABC123DEFG", "HQWSG26L43", 1800000000, b[0..<96]) == -1;
+  #assert apw_id_ok("az09AZ") && !apw_id_ok("a-b") && !apw_id_ok("a_b") && !apw_id_ok("a.b") && !apw_id_ok("a/") && !apw_id_ok(":a") && !apw_id_ok("@") && !apw_id_ok("[") && !apw_id_ok("`") && !apw_id_ok("{");
+  #assert apw_id_ok("12345678901234567890123456789012") && !apw_id_ok("123456789012345678901234567890123");
+}
+#test "the token's time is the start of its 20 minutes" {
+  #assert APW_TOKEN_SECONDS == 1200;
+  #assert apw_iat(1800000000) == 1800000000 && apw_iat(1800000001) == 1800000000 && apw_iat(1800001199) == 1800000000 && apw_iat(1800001200) == 1800001200;
+  #assert apw_iat(1199) == 0 && apw_iat(0) == 0;
+}
+// A key made for this check and used nowhere (openssl genpkey, P-256, PKCS#8), without its PEM
+// lines, and its 32 bytes.
+APW_TEST_P8 :: "MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQguYIdu+OOt4GGKwPb\nkLiZEU3tQqZVY50D52H6L1b21yyhRANCAASFhbv+6HLRQaCKvIthgf7W0WnSzehm\nyaXuTt6BCwLcDFdf26UUJyuDZ4igGVg+YOB+JLoeQAhvTt4a2Q+5vVAe\n";
+APW_TEST_P8_KEY :: [32] u8.[0xb9, 0x82, 0x1d, 0xbb, 0xe3, 0x8e, 0xb7, 0x81, 0x86, 0x2b, 0x03, 0xdb, 0x90, 0xb8, 0x99, 0x11,
+                            0x4d, 0xed, 0x42, 0xa6, 0x55, 0x63, 0x9d, 0x03, 0xe7, 0x61, 0xfa, 0x2f, 0x56, 0xf6, 0xd7, 0x2c];
+#test "Apple's .p8 file gives its 32-byte key, with or without the PEM lines" {
+  key: [32] u8; want := APW_TEST_P8_KEY; pem: [400] u8; o: [1] Jo;
+  #assert apw_p8_key(APW_TEST_P8, key[..]);
+  for i: 0..<32 { #assert key[i] == want[i]; key[i] = 0; }
+  jo_start(o[..], pem[..]); jo_put(o[..], "-----BEGIN TEST-----\r\n"); jo_put(o[..], APW_TEST_P8); jo_put(o[..], "-----END TEST-----\n");
+  #assert !o[0].bad && apw_p8_key(jo_text(o[..]), key[..]);
+  for i: 0..<32 { #assert key[i] == want[i]; key[i] = 0; }
+  // not base64, not this curve's key, cut short, nothing at all, and no room: out stays as it was
+  #assert !apw_p8_key("MIGH!gEA", key[..]) && !apw_p8_key("", key[..]) && !apw_p8_key("-----BEGIN TEST-----\n", key[..]);
+  #assert !apw_p8_key(APW_TEST_P8[0..<80], key[..]) && !apw_p8_key(APW_TEST_P8[0..<91], key[..]);
+  #assert !apw_p8_key(APW_TEST_P8, key[0..<31]);
+  for i: 0..<32 { #assert key[i] == 0; }
+  // the file up to the key's last byte holds the key
+  #assert apw_p8_key(APW_TEST_P8[0..<92], key[..]) && key[31] == want[31];
+  // the curve's name changed by one letter (P-256's ...AwEH becomes ...AwEI): not a key we sign with
+  jo_start(o[..], pem[..]); jo_put(o[..], APW_TEST_P8); pem[35] = 'I';
+  #assert APW_TEST_P8[35] == 'H' && !apw_p8_key(jo_text(o[..]), key[..]);
+  // the first byte isn't a DER sequence
+  jo_start(o[..], pem[..]); jo_put(o[..], APW_TEST_P8); pem[0] = 'N';
+  #assert !apw_p8_key(jo_text(o[..]), key[..]);
+}
+#test "finding bytes: the place after them, at or after a start" {
+  hay := [6] u8.[1, 2, 3, 2, 3, 4]; a := [2] u8.[2, 3]; z := [2] u8.[3, 4]; no := [2] u8.[4, 5]; all := [6] u8.[1, 2, 3, 2, 3, 4];
+  #assert apw_after(hay[..], 0, a[..]) == 3 && apw_after(hay[..], 1, a[..]) == 3 && apw_after(hay[..], 2, a[..]) == 5 && apw_after(hay[..], 4, a[..]) == -1;
+  #assert apw_after(hay[..], 0, z[..]) == 6 && apw_after(hay[..], 0, no[..]) == -1 && apw_after(hay[..], 0, all[..]) == 6 && apw_after(hay[0..<5], 0, all[..]) == -1;
+  #assert apw_after(hay[..], -1, a[..]) == -1 && apw_after(hay[..], 7, a[..]) == -1 && apw_after(hay[..], 3, a[..]) == 5;
+}
+
+// ---------------------------------------------------------------- the payloads
+apw_apns :: (title: string, body: string, what: string, notice: int, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_obj(o[..]);
+  jo_key(o[..], "aps"); jo_obj(o[..]);
+  jo_key(o[..], "alert"); jo_obj(o[..]); jo_key(o[..], "title"); jo_str(o[..], title); jo_key(o[..], "body"); jo_str(o[..], body); jo_end(o[..]);
+  jo_key(o[..], "sound"); jo_str(o[..], "default"); jo_end(o[..]);
+  jo_key(o[..], "oa"); jo_obj(o[..]); jo_key(o[..], "notice"); jo_int(o[..], notice); jo_key(o[..], "what"); jo_str(o[..], what);
+  jo_key(o[..], "open"); jo_str(o[..], APW_OPEN); jo_end(o[..]);
+  jo_end(o[..]);
+  return aw_len(o[..]);
+}
+apw_fcm :: (token: string, title: string, body: string, what: string, notice: int, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_obj(o[..]); jo_key(o[..], "message"); jo_obj(o[..]);
+  jo_key(o[..], "token"); jo_str(o[..], token);
+  jo_key(o[..], "notification"); jo_obj(o[..]); jo_key(o[..], "title"); jo_str(o[..], title); jo_key(o[..], "body"); jo_str(o[..], body); jo_end(o[..]);
+  // Google's data values are strings, the number too
+  jo_key(o[..], "data"); jo_obj(o[..]); jo_key(o[..], "notice"); jo_byte(o[..], '"'); jo_int(o[..], notice); jo_byte(o[..], '"');
+  jo_key(o[..], "what"); jo_str(o[..], what); jo_key(o[..], "open"); jo_str(o[..], APW_OPEN); jo_end(o[..]);
+  jo_key(o[..], "android"); jo_obj(o[..]); jo_key(o[..], "priority"); jo_str(o[..], "high"); jo_end(o[..]);
+  jo_end(o[..]); jo_end(o[..]);
+  return aw_len(o[..]);
+}
+
+// ---------------------------------------------------------------- the token for Apple
+APW_B64_IN :: 96;   // the most bytes one part of the token holds
+// input as base64url (RFC 4648 section 5, no padding) after what o holds.
+apw_b64url :: (o: [] Jo, input: string) #effects(all) {
+  text: [128] u8;
+  if input.count > APW_B64_IN { o[0].bad = true; return; }
+  n := b64_encode(input, text[..]);
+  for i: 0..<n {
+    c := text[i];
+    if c == '=' { continue; }
+    if c == '+' { c = '-'; }
+    if c == '/' { c = '_'; }
+    jo_byte(o, c);
+  }
+}
+// 1 to 32 letters and digits: what goes into the token's JSON as it is.
+apw_id_ok :: (s: string) -> bool #effects(all) {
+  if s.count < 1 || s.count > APW_ID_MAX { return false; }
+  for c: s {
+    digit := c >= '0' && c <= '9'; lower := c >= 'a' && c <= 'z'; upper := c >= 'A' && c <= 'Z';
+    if !digit && !lower && !upper { return false; }
+  }
+  return true;
+}
+apw_iat :: (now_s: int) -> int #export_c #effects(all) { return now_s - now_s % APW_TOKEN_SECONDS; }
+apw_jwt_input :: (key_id: string, team: string, iat: int, out: [] u8) -> int #export_c #effects(all) {
+  if !apw_id_ok(key_id) || !apw_id_ok(team) || iat <= 0 { return -1; }
+  hb: [APW_B64_IN] u8; h: [1] Jo; jo_start(h[..], hb[..]);
+  jo_obj(h[..]); jo_key(h[..], "alg"); jo_str(h[..], "ES256"); jo_key(h[..], "kid"); jo_str(h[..], key_id); jo_end(h[..]);
+  cb: [APW_B64_IN] u8; c: [1] Jo; jo_start(c[..], cb[..]);
+  jo_obj(c[..]); jo_key(c[..], "iss"); jo_str(c[..], team); jo_key(c[..], "iat"); jo_int(c[..], iat); jo_end(c[..]);
+  o: [1] Jo; aw_at(o[..], out, 0);
+  apw_b64url(o[..], jo_text(h[..])); jo_byte(o[..], '.'); apw_b64url(o[..], jo_text(c[..]));
+  return aw_len(o[..]);
+}
+apw_jwt_close :: (signature: [] u8, at: int, out: [] u8) -> int #export_c #effects(all) {
+  if signature.count != 64 { return -1; }
+  o: [1] Jo; aw_at(o[..], out, at);
+  jo_byte(o[..], '.'); apw_b64url(o[..], cast(string) signature);
+  return aw_len(o[..]);
+}
+
+// ---------------------------------------------------------------- Apple's key file
+// Where needle ends in hay, looking from `from`: the index after it, or -1.
+apw_after :: (hay: [] u8, from: int, needle: [] u8) -> int #effects(all) {
+  if from < 0 { return -1; }
+  at := from;
+  while at + needle.count <= hay.count {
+    same := true;
+    for i: 0..<needle.count { if hay[at + i] != needle[i] { same = false; } }
+    if same { return at + needle.count; }
+    at += 1;
+  }
+  return -1;
+}
+// The private key of a PKCS#8 P-256 key file (RFC 5958, RFC 5915), PEM or its base64 alone: a DER
+// sequence that names the curve prime256v1 and then holds ECPrivateKey version 1 with 32 bytes.
+// False, with out untouched, for anything else.
+apw_p8_key :: (pem: string, out: [] u8) -> bool #export_c #effects(all) {
+  if out.count != 32 { return false; }
+  body: [512] u8; n := 0; line_start := true; skip := false;
+  for c: pem {
+    if line_start { skip = c == '-'; }
+    line_start = c == '\n';
+    if skip || c == '\n' || c == '\r' { continue; }
+    if n >= body.count { return false; }
+    body[n] = c; n += 1;
+  }
+  der: [APW_DER_MAX] u8;
+  dn := b64_decode(cast(string) body[0..<n], der[..]);
+  if dn < 1 || der[0] != 0x30 { return false; }
+  curve := [10] u8.[0x06, 0x08, 0x2a, 0x86, 0x48, 0xce, 0x3d, 0x03, 0x01, 0x07];
+  key := [5] u8.[0x02, 0x01, 0x01, 0x04, 0x20];
+  at := apw_after(der[0..<dn], apw_after(der[0..<dn], 0, curve[..]), key[..]);
+  if at < 0 || at + 32 > dn { return false; }
+  for i: 0..<32 { out[i] = der[at + i]; }
+  for i: 0..<APW_DER_MAX { der[i] = 0; }
+  for i: 0..<body.count { body[i] = 0; }
+  return true;
+}

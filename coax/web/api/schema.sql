@@ -1365,6 +1365,66 @@ END $$;
 
 
 --
+-- Name: device_push_forget(); Type: FUNCTION; Schema: auth; Owner: -
+--
+
+CREATE FUNCTION auth.device_push_forget() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+  IF NEW.revoked_at IS NOT NULL THEN NEW.push_service := NULL; NEW.push_token := NULL; NEW.push_at := NULL; END IF;
+  RETURN NEW;
+END $$;
+
+
+--
+-- Name: device_push_gone(bigint, text); Type: FUNCTION; Schema: auth; Owner: -
+--
+
+CREATE FUNCTION auth.device_push_gone(dev bigint, token_ text) RETURNS void
+    LANGUAGE sql
+    AS $$
+  UPDATE auth.devices SET push_service = NULL, push_token = NULL, push_at = NULL WHERE id = dev AND push_token = token_
+$$;
+
+
+--
+-- Name: device_push_off(text, text); Type: FUNCTION; Schema: auth; Owner: -
+--
+
+CREATE FUNCTION auth.device_push_off(acct text, sid text) RETURNS boolean
+    LANGUAGE plpgsql
+    AS $$
+DECLARE n int;
+BEGIN
+  UPDATE auth.devices d SET push_service = NULL, push_token = NULL, push_at = NULL
+    FROM auth.sessions s
+   WHERE s.id = sid AND s.account = acct AND d.id = s.device AND d.account = acct AND d.push_token IS NOT NULL;
+  GET DIAGNOSTICS n = ROW_COUNT;
+  RETURN n > 0;
+END $$;
+
+
+--
+-- Name: device_push_set(text, text, text, text); Type: FUNCTION; Schema: auth; Owner: -
+--
+
+CREATE FUNCTION auth.device_push_set(acct text, sid text, service_ text, token_ text) RETURNS bigint
+    LANGUAGE plpgsql
+    AS $$
+DECLARE dev bigint;
+BEGIN
+  SELECT d.id INTO dev FROM auth.sessions s JOIN auth.devices d ON d.id = s.device
+   WHERE s.id = sid AND s.account = acct AND s.client = 'app' AND d.account = acct AND d.revoked_at IS NULL FOR UPDATE OF d;
+  IF dev IS NULL THEN RETURN NULL; END IF;
+  UPDATE auth.devices SET push_service = NULL, push_token = NULL, push_at = NULL
+   WHERE push_service = service_ AND push_token = token_ AND id <> dev;
+  UPDATE auth.devices SET push_service = service_, push_token = token_, push_at = now() WHERE id = dev;
+  RETURN dev;
+END $$;
+
+
+--
 -- Name: device_remove(text, bigint); Type: FUNCTION; Schema: auth; Owner: -
 --
 
@@ -2450,6 +2510,21 @@ END $$;
 
 
 --
+-- Name: push_targets(text); Type: FUNCTION; Schema: auth; Owner: -
+--
+
+CREATE FUNCTION auth.push_targets(acct text) RETURNS TABLE(device bigint, platform text, service text, token text)
+    LANGUAGE sql STABLE
+    AS $$
+  SELECT d.id, d.platform, d.push_service, d.push_token
+    FROM auth.devices d
+   WHERE d.account = acct AND d.revoked_at IS NULL AND d.push_token IS NOT NULL
+     AND EXISTS (SELECT 1 FROM auth.sessions s WHERE s.device = d.id)
+   ORDER BY d.id
+$$;
+
+
+--
 -- Name: random_b32(integer); Type: FUNCTION; Schema: auth; Owner: -
 --
 
@@ -2591,6 +2666,19 @@ BEGIN
   UPDATE auth.sessions SET device = dev WHERE id = sid;
   RETURN dev;
 END $$;
+
+
+--
+-- Name: session_device(text, text); Type: FUNCTION; Schema: auth; Owner: -
+--
+
+CREATE FUNCTION auth.session_device(acct text, sid text, OUT app boolean, OUT platform text) RETURNS record
+    LANGUAGE sql STABLE
+    AS $$
+  SELECT coalesce(bool_or(s.client = 'app'), false), coalesce(max(d.platform), '')
+    FROM auth.sessions s LEFT JOIN auth.devices d ON d.id = s.device AND d.revoked_at IS NULL
+   WHERE s.id = sid AND s.account = acct
+$$;
 
 
 --
@@ -19837,8 +19925,16 @@ CREATE TABLE auth.devices (
     last_seen_at timestamp with time zone,
     revoked_at timestamp with time zone,
     store text DEFAULT 'software'::text NOT NULL,
+    push_service text,
+    push_token text,
+    push_at timestamp with time zone,
     CONSTRAINT devices_key_shape CHECK (((length(public_key) = 65) AND (get_byte(public_key, 0) = 4))),
     CONSTRAINT devices_platform_check CHECK ((platform = ANY (ARRAY['ios'::text, 'mac'::text, 'android'::text, 'web'::text]))),
+    CONSTRAINT devices_push_live CHECK (((push_token IS NULL) OR (revoked_at IS NULL))),
+    CONSTRAINT devices_push_platform CHECK (((push_service IS NULL) OR ((push_service = ANY (ARRAY['apns'::text, 'apns_sandbox'::text])) AND (platform = ANY (ARRAY['ios'::text, 'mac'::text]))) OR ((push_service = 'fcm'::text) AND (platform = 'android'::text)))),
+    CONSTRAINT devices_push_service_check CHECK ((push_service = ANY (ARRAY['apns'::text, 'apns_sandbox'::text, 'fcm'::text]))),
+    CONSTRAINT devices_push_token_check CHECK (((push_token ~ '^[A-Za-z0-9:_-]+$'::text) AND ((length(push_token) >= 32) AND (length(push_token) <= 512)))),
+    CONSTRAINT devices_push_whole CHECK (((push_service IS NULL) = (push_token IS NULL))),
     CONSTRAINT devices_store_check CHECK ((store = ANY (ARRAY['enclave'::text, 'strongbox'::text, 'tee'::text, 'software'::text])))
 );
 
@@ -24979,6 +25075,13 @@ CREATE UNIQUE INDEX devices_live_key ON auth.devices USING btree (account, publi
 
 
 --
+-- Name: devices_push_token; Type: INDEX; Schema: auth; Owner: -
+--
+
+CREATE UNIQUE INDEX devices_push_token ON auth.devices USING btree (push_service, push_token) WHERE (push_token IS NOT NULL);
+
+
+--
 -- Name: emails_account; Type: INDEX; Schema: auth; Owner: -
 --
 
@@ -25613,6 +25716,13 @@ CREATE TRIGGER audit_frozen BEFORE DELETE OR UPDATE ON auth.audit FOR EACH ROW E
 --
 
 CREATE TRIGGER device_moved BEFORE UPDATE OF account ON auth.devices FOR EACH ROW EXECUTE FUNCTION auth.device_moved();
+
+
+--
+-- Name: devices device_push_forget; Type: TRIGGER; Schema: auth; Owner: -
+--
+
+CREATE TRIGGER device_push_forget BEFORE UPDATE ON auth.devices FOR EACH ROW EXECUTE FUNCTION auth.device_push_forget();
 
 
 --

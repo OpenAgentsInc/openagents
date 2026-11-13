@@ -98,6 +98,11 @@ bool crash_keep(PGconn *db, const char *body, size_t n, bool automated, char buc
 bool email_route(const request *q);       // email.c: POST /api/admin/email, through Resend
 // Mail through Resend (email.c): 0 sent, 1 sent before under the same key, else an HTTP status with err.
 int email_send(PGconn *db, const char *message, char id[128], char *err, size_t errcap);
+// A security notice as a push to one device (push.c, #13233). service: apns, apns_sandbox or fcm;
+// platform: ios, mac or android. The service's HTTP status, 0 unreached, -1 not set up here.
+int push_send(const char *service, const char *platform, const char *token, const char *title, const char *body, const char *what, long long notice);
+// This service's own Google token, from the metadata server (inference.c).
+bool inference_google_token(char *out, size_t cap);
 bool access_route(const request *q);      // access.c: realm invites, the waitlist, auth v2 (flags off by default)
 // realms.c, before a realm is planned or made: true when access.c answered 403 invite only (realm_invites on).
 // signer: a NIP-98 caller's pubkey (access_signed), or NULL.

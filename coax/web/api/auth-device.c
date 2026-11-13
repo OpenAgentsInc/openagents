@@ -22,6 +22,13 @@
 //   GET  /api/auth/devices               the devices list: name, platform, store, last used, logins
 //   POST /api/auth/devices/<id>/remove   the key is revoked and every login bound to it ends
 //
+// Security notices as push (docs/auth/identity-and-methods.md "Notify", #13233; migration 0177):
+//   POST /api/auth/devices/push          {service: apns | apns_sandbox | fcm, token}: the device this
+//                                        login is bound to gets the account's security notices
+//   POST /api/auth/devices/push/off      it gets none
+// Only an app login bound to a live device key keeps a target (dk_push_set). auth_device_push
+// sends a notice to each of the account's devices through push.c and counts them.
+//
 // Nothing here logs a key, a proof or a token.
 #include "api.h"
 #include "auth-internal.h"
@@ -33,7 +40,8 @@
 
 // auth-device-policy.coax's verdicts (DK_*), checked against it at start.
 enum { DK_OK = 0, DK_UNBOUND = 1, DK_NEEDED = 2, DK_MALFORMED = 3, DK_CLOCK = 4, DK_BAD = 5, DK_REPLAY = 6,
-       DK_REVOKED = 7, DK_BAD_KEY = 8, DK_BAD_PLATFORM = 9, DK_NOT_FOUND = 10 };
+       DK_REVOKED = 7, DK_BAD_KEY = 8, DK_BAD_PLATFORM = 9, DK_NOT_FOUND = 10, DK_NO_DEVICE = 11, DK_BAD_PUSH = 12 };
+enum { DK_IOS = 1, DK_ANDROID = 3, DK_APNS = 1, DK_FCM = 3 };
 
 // auth-device-crypto.coax's two exports (auth-device-crypto-unit.c), declared here as the
 // generated header declares them: that header also names the libraries' types, which other
@@ -55,7 +63,10 @@ bool auth_device_init(void) {
       && dk_refresh(true, false, true, true, now - 60001, now, true, false) == DK_CLOCK && dk_refresh(true, false, true, true, now, now, false, false) == DK_BAD
       && dk_refresh(true, false, true, true, now, now, true, true) == DK_REPLAY && dk_refresh(true, true, true, true, now, now, true, false) == DK_REVOKED
       && dk_register(true, true, false, 1, 1) == DK_BAD_KEY && dk_register(true, true, true, 0, 1) == DK_BAD_PLATFORM
-      && dk_remove(false, false, false) == DK_NOT_FOUND && dk_status(DK_CLOCK) == 400 && dk_status(DK_NEEDED) == 401;
+      && dk_remove(false, false, false) == DK_NOT_FOUND && dk_status(DK_CLOCK) == 400 && dk_status(DK_NEEDED) == 401
+      && dk_platform(str("ios")) == DK_IOS && dk_platform(str("android")) == DK_ANDROID && dk_push_service(str("apns")) == DK_APNS && dk_push_service(str("fcm")) == DK_FCM
+      && dk_push_set(true, DK_IOS, DK_APNS, true) == DK_OK && dk_push_set(false, DK_IOS, DK_APNS, true) == DK_NO_DEVICE && dk_push_set(true, DK_IOS, DK_FCM, true) == DK_BAD_PUSH
+      && dk_status(DK_NO_DEVICE) == 403 && dk_status(DK_BAD_PUSH) == 400 && dk_push_gone(DK_APNS, 410) && !dk_push_gone(DK_APNS, 200) && dk_push_sent(200);
 }
 
 // A refusal with its reason: {"error", "device_proof"} and, for a clock that is off, our time.
@@ -230,6 +241,81 @@ static void device_remove(const request *q, PGconn *db, const auth_principal *p)
   auth_answer(q, 200, NULL, json, lines);
 }
 
+// ---------------------------------------------------------------- push targets
+static void refuse_push(const request *q, PGconn *db, const auth_principal *p, int verdict) {
+  char words[200], why[24], d[80];
+  copy_words(dk_words(verdict), words, sizeof words);
+  copy_words(dk_why(verdict), why, sizeof why);
+  snprintf(d, sizeof d, "{\"why\":\"%s\"}", why);
+  auth_audit(db, p->account, p->session, "device.push", "refused", d);
+  auth_refuse(q, (int)dk_status(verdict), words);
+}
+static void push_set(const request *q, PGconn *db, const auth_principal *p) {
+  char service[32] = "", token[600] = "", platform[12] = "";
+  char *body = malloc(q->body_len + 1);
+  if (!body) { auth_refuse(q, 500, "Out of memory."); return; }
+  memcpy(body, q->body, q->body_len); body[q->body_len] = 0;
+  auth_json_str(body, q->body_len, "service", service, sizeof service);
+  auth_json_str(body, q->body_len, "token", token, sizeof token);
+  free(body);
+  const char *v[2] = {p->account, p->session};
+  PGresult *r = PQexecParams(db, "SELECT app, platform FROM auth.session_device($1, $2)", 2, NULL, v, NULL, NULL, 0);
+  bool app = false;
+  if (PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1) { app = !strcmp(PQgetvalue(r, 0, 0), "t"); snprintf(platform, sizeof platform, "%s", PQgetvalue(r, 0, 1)); }
+  else api_log("auth-device: session_device: %s", PQerrorMessage(db));
+  PQclear(r);
+  int svc = (int)dk_push_service(str(service));
+  int verdict = (int)dk_push_set(app, (int)dk_platform(str(platform)), svc, dk_push_token_ok(svc, str(token)));
+  if (verdict != DK_OK) { refuse_push(q, db, p, verdict); return; }
+  const char *w[4] = {p->account, p->session, service, token};
+  r = PQexecParams(db, "SELECT auth.device_push_set($1, $2, $3, $4)", 4, NULL, w, NULL, NULL, 0);
+  // The database's own refusal (the session's device went while we looked): never a quiet success.
+  if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1 || PQgetisnull(r, 0, 0)) {
+    if (PQresultStatus(r) != PGRES_TUPLES_OK) api_log("auth-device: device_push_set: %s", PQerrorMessage(db));
+    PQclear(r); refuse_push(q, db, p, DK_NO_DEVICE); return;
+  }
+  char id[24]; snprintf(id, sizeof id, "%s", PQgetvalue(r, 0, 0));
+  PQclear(r);
+  char d[120], json[120], lines[120];
+  snprintf(d, sizeof d, "{\"device\":%s,\"service\":\"%s\"}", id, service);
+  auth_audit(db, p->account, p->session, "device.push", "ok", d);
+  snprintf(json, sizeof json, "{\"state\":\"on\",\"device\":%s}", id);
+  snprintf(lines, sizeof lines, "state on\ndevice %s\n", id);
+  auth_answer(q, 200, NULL, json, lines);
+}
+static void push_off(const request *q, PGconn *db, const auth_principal *p) {
+  const char *v[2] = {p->account, p->session};
+  PGresult *r = PQexecParams(db, "SELECT auth.device_push_off($1, $2)", 2, NULL, v, NULL, NULL, 0);
+  bool was = PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1 && !strcmp(PQgetvalue(r, 0, 0), "t");
+  if (PQresultStatus(r) != PGRES_TUPLES_OK) api_log("auth-device: device_push_off: %s", PQerrorMessage(db));
+  PQclear(r);
+  if (was) auth_audit(db, p->account, p->session, "device.push", "ok", "{\"off\":true}");
+  auth_answer(q, 200, NULL, "{\"state\":\"off\"}", "state off\n");
+}
+
+int auth_device_push(PGconn *db, const char *acct, long long notice, const char *what, const char *title, const char *words, int *failed) {
+  const char *v[1] = {acct};
+  PGresult *r = PQexecParams(db, "SELECT device, platform, service, token FROM auth.push_targets($1)", 1, NULL, v, NULL, NULL, 0);
+  int n = PQresultStatus(r) == PGRES_TUPLES_OK ? PQntuples(r) : 0, sent = 0;
+  if (PQresultStatus(r) != PGRES_TUPLES_OK) api_log("auth-device: push_targets: %s", PQerrorMessage(db));
+  for (int i = 0; i < n; i++) {
+    const char *service = PQgetvalue(r, i, 2), *token = PQgetvalue(r, i, 3);
+    int svc = (int)dk_push_service(str(service));
+    int status = push_send(service, PQgetvalue(r, i, 1), token, title, words, what, notice);
+    if (dk_push_sent(status)) { sent++; continue; }
+    (*failed)++;
+    if (status < 0) api_log("auth-device: notice %lld: %s push isn't set up here", notice, service);
+    if (dk_push_gone(svc, status)) {
+      const char *g[2] = {PQgetvalue(r, i, 0), token};
+      PQclear(PQexecParams(db, "SELECT auth.device_push_gone($1::bigint, $2)", 2, NULL, g, NULL, NULL, 0));
+      char d[80]; snprintf(d, sizeof d, "{\"device\":%s,\"gone\":true}", g[0]);
+      auth_audit(db, acct, NULL, "device.push", "ok", d);
+    }
+  }
+  PQclear(r);
+  return sent;
+}
+
 bool auth_device_route(const request *q, PGconn *db, const char *op) {
   bool list = !strcmp(op, "devices"), remove = !strncmp(op, "devices/", 8);
   if (!list && !remove) return false;
@@ -243,6 +329,8 @@ bool auth_device_route(const request *q, PGconn *db, const char *op) {
   }
   if (strcmp(q->method, "POST")) { auth_refuse(q, 405, "POST this."); return true; }
   if (!auth_same_site(q)) { auth_refuse(q, 403, "Not from this site."); return true; }
+  if (!strcmp(op, "devices/push")) { push_set(q, db, p); return true; }
+  if (!strcmp(op, "devices/push/off")) { push_off(q, db, p); return true; }
   device_remove(q, db, p);
   return true;
 }

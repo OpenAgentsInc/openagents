@@ -44,6 +44,7 @@
 typedef struct { int64_t ts_ms; bool well_formed; bool verified; } adc_proof;
 bool adc_key_c(const char *text, size_t n, unsigned char out[65]);
 adc_proof adc_check_c(const char *header, const char *method, const char *url, const char *binding, const unsigned char key[65], unsigned char digest[32]);
+bool adc_es256_c(const unsigned char secret[32], const char *message, size_t n, unsigned char out[64]);
 
 static coax_v_u8 adc_view(const char *s) { return (coax_v_u8){(uint8_t *)s, (int64_t)strlen(s)}; }
 bool adc_key_c(const char *text, size_t n, unsigned char out[65]) {
@@ -52,4 +53,7 @@ bool adc_key_c(const char *text, size_t n, unsigned char out[65]) {
 adc_proof adc_check_c(const char *header, const char *method, const char *url, const char *binding, const unsigned char key[65], unsigned char digest[32]) {
   coax_t_AdcProof p = adc_check(adc_view(header), adc_view(method), adc_view(url), adc_view(binding), (coax_v_u8){(uint8_t *)key, 65}, (coax_v_u8){digest, 32});
   return (adc_proof){p.ts_ms, p.well_formed, p.verified};
+}
+bool adc_es256_c(const unsigned char secret[32], const char *message, size_t n, unsigned char out[64]) {
+  return adc_es256((coax_v_u8){(uint8_t *)secret, 32}, (coax_v_u8){(uint8_t *)message, (int64_t)n}, (coax_v_u8){out, 64});
 }

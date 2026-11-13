@@ -19,6 +19,8 @@
 //                parsed, whether the signature verifies, and the SHA-256 of what was signed (the
 //                replay book's key)
 //   adc_sign     a proof header from a software key (the checks; never the API)
+//   adc_es256    an ES256 signature of a message by a key we hold: the token Apple's push service
+//                asks for (#13233; auth-push.coax builds what is signed)
 #run_steps 250000000;
 #load "../../lib/crypto/p256_ecdsa.coax";
 #authority;
@@ -247,6 +249,19 @@ ADC_TEST_TIME :: 1800000000000;
   #assert adc_digits(999, d[0..<3]) == 3;
 }
 
+#test "an ES256 signature of a message verifies under its key, and only for that message" #steps 4000000000 {
+  x: [32] u8; public: [65] u8; zero: [32] u8; sig: [64] u8; hash: [32] u8; m: [16] u8;
+  key := pe_unhex(PE_X, x[..]);
+  #assert p256_public_key(key, public[..]);
+  message := adc_text("header.claims", m[..]);
+  #assert adc_es256(key, message, sig[..]);
+  #assert sha256_hash_checked(message, hash[..], false) == SHA_OK && p256_verify(hash[..], public[..], sig[..], false);
+  other := adc_text("header.claimz", m[..]);
+  #assert sha256_hash_checked(other, hash[..], false) == SHA_OK && !p256_verify(hash[..], public[..], sig[..], false);
+  // no key, and no room for the signature: nothing is signed
+  #assert !adc_es256(zero[..], other, sig[..]) && !adc_es256(key[0..<31], other, sig[..]) && !adc_es256(key, other, sig[0..<63]);
+}
+
 // ---------------------------------------------------------------- reading
 adc_nibble :: (c: u8) -> int #effects(all) {
   if c >= '0' && c <= '9' { return cast(int) (c - '0'); }
@@ -369,4 +384,12 @@ adc_sign :: (secret: [] u8, method: [] u8, url: [] u8, ts_ms: int, binding: [] u
   for i: 0..<dn { out[3 + i] = digits[i]; }
   out[3 + dn] = ' ';
   return 4 + dn + adc_hex_write(signature[..], out[4 + dn..<4 + dn + 128]);
+}
+
+// ---------------------------------------------------------------- a token for Apple's push service
+// The ES256 signature (r || s, 64 bytes, RFC 6979 nonces) of message by a 32-byte key of ours.
+// False, with out untouched, when the key isn't one or out isn't 64 bytes.
+adc_es256 :: (secret: [] u8, message: [] u8, out: [] u8) -> bool #export_c #effects(all) {
+  hash: [32] u8;
+  return sha256_hash_checked(message, hash[..], false) == SHA_OK && p256_sign(secret, hash[..], out);
 }

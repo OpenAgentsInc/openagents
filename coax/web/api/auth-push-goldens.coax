@@ -1,0 +1,104 @@
+// A security notice's push, held to its goldens (#13233; Protocol, GitHub #13250):
+// proto/auth/push-notice-v1.json names the members of what push.c sends Apple's push service and
+// Google's, and holds exact bodies. For each one this check
+//   - writes it through auth-push.coax from its values, and requires the same bytes;
+//   - reads the body back (the alert's words, the notice's number and kind, the page it opens)
+//     and writes it again through the codec from what it read, for the same bytes;
+//   - requires the page a notice opens to be the app's Security page, and nothing else.
+// Both writers must have a golden.
+//
+//   coax/web/tool.sh coax/web/api/auth-push-goldens.coax [proto/auth/push-notice-v1.json]
+#import "Basic";
+#load "auth-push.coax";
+#load "../../lib/sys/tool.coax";
+#load "../../lib/sys/args.coax";
+#load "../../lib/sys/fs.coax";
+
+PG_FIXTURE :: "proto/auth/push-notice-v1.json";
+PG_BODY :: 8192;
+
+PgText :: struct { b: [PG_BODY] u8; n: int; }
+pg_s :: (d: Jv, at: int, key: string, t: [] PgText) -> string {
+  t[0].n = jv_str(d, jv_get(d, at, key), t[0].b[..]);
+  return ifx t[0].n < 0 then "" else cast(string) t[0].b[0..<t[0].n];
+}
+// The digits of a JSON string member as a number, or -1.
+pg_number :: (text: string) -> int {
+  if text.count < 1 || text.count > 18 { return -1; }
+  value := 0;
+  for c: text { if c < '0' || c > '9' { return -1; } value = value * 10 + cast(int) (c - '0'); }
+  return value;
+}
+
+// A golden written from its values: its length in out, or -1.
+pg_write :: (writer: string, d: Jv, v: int, out: [] u8) -> int {
+  a: [1] PgText; b: [1] PgText; c: [1] PgText; e: [1] PgText;
+  notice := jv_int(d, jv_get(d, v, "notice"), -1);
+  if writer == "apns" { return apw_apns(pg_s(d, v, "title", a[..]), pg_s(d, v, "body", b[..]), pg_s(d, v, "what", c[..]), notice, out); }
+  if writer == "fcm" { return apw_fcm(pg_s(d, v, "token", e[..]), pg_s(d, v, "title", a[..]), pg_s(d, v, "body", b[..]), pg_s(d, v, "what", c[..]), notice, out); }
+  return -1;
+}
+// A body read back and written again through the codec from what was read: its length, or -1
+// when it isn't a notice's push or opens anything but the Security page.
+pg_rewrite :: (writer: string, body: string, nodes: [] JvNode, out: [] u8) -> int {
+  j: [1] Jv;
+  if !jv_parse(j[..], body, nodes) || jv_kind(j[0], 0) != JV_OBJECT { return -1; }
+  d := j[0];
+  a: [1] PgText; b: [1] PgText; c: [1] PgText; e: [1] PgText; f: [1] PgText;
+  if writer == "apns" {
+    alert := jv_get(d, jv_get(d, 0, "aps"), "alert"); oa := jv_get(d, 0, "oa");
+    if pg_s(d, oa, "open", f[..]) != APW_OPEN { return -1; }
+    return apw_apns(pg_s(d, alert, "title", a[..]), pg_s(d, alert, "body", b[..]), pg_s(d, oa, "what", c[..]), jv_int(d, jv_get(d, oa, "notice"), -1), out);
+  }
+  if writer == "fcm" {
+    m := jv_get(d, 0, "message"); note := jv_get(d, m, "notification"); data := jv_get(d, m, "data");
+    if pg_s(d, data, "open", f[..]) != APW_OPEN { return -1; }
+    return apw_fcm(pg_s(d, m, "token", e[..]), pg_s(d, note, "title", a[..]), pg_s(d, note, "body", b[..]), pg_s(d, data, "what", c[..]), pg_number(pg_s(d, data, "notice", f[..])), out);
+  }
+  return -1;
+}
+
+PgWork :: struct { nodes: [4096] JvNode; body_nodes: [1024] JvNode; name: [128] u8; writer: [16] u8; body: [PG_BODY] u8; out: [PG_BODY] u8; back: [PG_BODY] u8; }
+pg_check :: (text: string, w: [] PgWork) -> int {
+  j: [1] Jv;
+  if !jv_parse(j[..], text, w[0].nodes[..]) || jv_kind(j[0], 0) != JV_OBJECT { print("FAIL  cannot parse the fixture\n"); return 1; }
+  d := j[0];
+  goldens := jv_get(d, 0, "goldens");
+  if jv_kind(d, goldens) != JV_ARRAY || jv_len(d, goldens) == 0 { print("FAIL  no goldens\n"); return 1; }
+  apns := false; fcm := false; bad := 0;
+  for i: 0..<jv_len(d, goldens) {
+    item := jv_at(d, goldens, i);
+    name := cast(string) w[0].name[0..<jv_str(d, jv_get(d, item, "name"), w[0].name[..])];
+    writer := cast(string) w[0].writer[0..<jv_str(d, jv_get(d, item, "writer"), w[0].writer[..])];
+    bn := jv_str(d, jv_get(d, item, "body"), w[0].body[..]);
+    want := ifx bn < 0 then "" else cast(string) w[0].body[0..<bn];
+    if writer == "apns" { apns = true; } else if writer == "fcm" { fcm = true; } else { print("FAIL  % : no writer %\n", name, writer); bad += 1; continue; }
+    n := pg_write(writer, d, jv_get(d, item, "values"), w[0].out[..]);
+    got := ifx n < 0 then "" else cast(string) w[0].out[0..<n];
+    if n < 0 || got != want { print("FAIL  % (%):\n  want: %\n  got:  %\n", name, writer, want, got); bad += 1; continue; }
+    r := pg_rewrite(writer, want, w[0].body_nodes[..], w[0].back[..]);
+    if r < 0 || cast(string) w[0].back[0..<r] != want { print("FAIL  % (%): read back and written through the codec, it is not the same bytes\n", name, writer); bad += 1; continue; }
+    print("ok    % (%)\n", name, writer);
+  }
+  if !apns { print("FAIL  writer apns has no golden\n"); bad += 1; }
+  if !fcm { print("FAIL  writer fcm has no golden\n"); bad += 1; }
+  print("%\n", ifx bad == 0 then "push notice goldens hold" else "push notice goldens fail");
+  return ifx bad == 0 then 0 else 1;
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  args: [1] Args;
+  loaded := args_load(args[..]);
+  w: [1] PgWork;
+  // the check bites: a notice that opens another page, or names a link, is not one of ours
+  if pg_rewrite("apns", "{\"aps\":{\"alert\":{\"title\":\"t\",\"body\":\"b\"},\"sound\":\"default\"},\"oa\":{\"notice\":1,\"what\":\"w\",\"open\":\"/settings/wallet\"}}", w[0].body_nodes[..], w[0].back[..]) >= 0 ||
+     pg_rewrite("fcm", "{\"message\":{\"token\":\"k\",\"notification\":{\"title\":\"t\",\"body\":\"b\"},\"data\":{\"notice\":\"1\",\"what\":\"w\",\"open\":\"https://example.com\"},\"android\":{\"priority\":\"high\"}}}", w[0].body_nodes[..], w[0].back[..]) >= 0 ||
+     pg_rewrite("apns", "[]", w[0].body_nodes[..], w[0].back[..]) >= 0 {
+    print("FAIL  the check takes a body it should refuse\n"); return 1;
+  }
+  path := ifx loaded && args_count(args[..]) >= 1 then args_at(args[..], 0) else PG_FIXTURE;
+  buf: [65536] u8;
+  n := fs_read(path, buf[..]);
+  if n <= 0 { tool_errln("auth-push-goldens: cannot read the fixture"); return 2; }
+  return pg_check(cast(string) buf[0..<n], w[..]);
+}

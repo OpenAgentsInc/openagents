@@ -3,7 +3,8 @@
 // tool.sh: tls
 #load "api_harness.coax";
 
-// The fake Resend: every POST's body goes to DIR/last (and DIR/all); it answers 200 with an id.
+// The fake Resend: every POST's body goes to DIR/last (and DIR/all), its line and headers to
+// DIR/heads; it answers 200 with an id.
 // It stops when DIR/stop exists.
 am_main :: (port: int, dir: string) -> int {
   listener := cxsock_listen(port);
@@ -11,6 +12,7 @@ am_main :: (port: int, dir: string) -> int {
   pb: [1100] u8; ready := fs_write(fs_join(dir, "ready", pb[..]), "1");
   lb: [1100] u8; last := fs_join(dir, "last", lb[..]);
   ab: [1100] u8; all := fs_join(dir, "all", ab[..]);
+  hb: [1100] u8; heads := fs_join(dir, "heads", hb[..]);
   sp: [1100] u8; stop := fs_join(dir, "stop", sp[..]);
   req: [65536] u8; sent := 0;
   while !fs_exists(stop) {
@@ -31,10 +33,16 @@ am_main :: (port: int, dir: string) -> int {
     if end < 0 { c := cxsock_close(h); continue; }
     body := cast(string) req[end..<ifx used < end + want then used else end + want];
     w1 := fs_write(last, body); w2 := fs_append(all, body); w3 := fs_append(all, "\n");
+    // A push (push.c's services point here too, #13233): the request's line and headers are kept
+    // as well, and a device whose token starts "dead" is one Apple says is gone.
+    head := cast(string) req[0..<end];
+    w4 := fs_append(heads, head);
+    gone := ac_find(head, "/3/device/dead") >= 0;
     sent += 1;
     reply: [1] Sb; sb(reply[..], "{\"id\":\"re_test_"); sb_int(reply[..], sent); sb(reply[..], "\"}");
     s: [1] Sb;
-    sb(s[..], "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nConnection: close\r\nContent-Length: "); sb_int(s[..], reply[0].n); sb(s[..], "\r\n\r\n");
+    sb(s[..], ifx gone then "HTTP/1.1 410 Gone" else "HTTP/1.1 200 OK");
+    sb(s[..], "\r\nContent-Type: application/json\r\nConnection: close\r\nContent-Length: "); sb_int(s[..], reply[0].n); sb(s[..], "\r\n\r\n");
     sb(s[..], sb_text(reply[..]));
     good := true;
     for c: sb_text(s[..]) { if good && cxsock_write(h, cast(int) c) != 0 { good = false; } }

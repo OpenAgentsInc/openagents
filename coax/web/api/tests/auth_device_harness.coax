@@ -1,0 +1,86 @@
+// What the checks of device keys share (auth_device_checks.coax; auth_recover_checks.coax for the
+// notices a device gets by push, #13233): an app's login bound to a software P-256 key
+// (auth-device-crypto.coax's adc_sign stands in for the Secure Enclave or Keystore), its proof
+// header, a refresh, and its bearer header. A file that loads this one needs the same two lines:
+// tool.sh: tls
+// tool.sh: run-steps 250000000
+#load "auth_harness.coax";
+#load "../auth-device-crypto.coax";
+
+Dv :: struct { at: [160] u8; at_n: int; rt: [160] u8; rt_n: int; acct: [64] u8; acct_n: int; bound: bool; }
+dv_at :: (d: [] Dv) -> string { return cast(string) d[0].at[0..<d[0].at_n]; }
+dv_rt :: (d: [] Dv) -> string { return cast(string) d[0].rt[0..<d[0].rt_n]; }
+dv_acct :: (d: [] Dv) -> string { return cast(string) d[0].acct[0..<d[0].acct_n]; }
+dv_q :: (q: [] Sb, a: string, b: string, c: string) -> string { sb_clear(q); sb(q, a); sb(q, b); sb(q, c); return sb_text(q); }
+
+// A software key: 32 bytes of seed, never zero.
+dv_secret :: (seed: u8, out: [] u8) -> [] u8 { for i: 0..<32 { out[i] = cast,trunc(u8) (cast(int) seed + 3 * i + 1); } return out[0..<32]; }
+// "OA-Device-Key: <130 hex>" for a secret.
+dv_key_header :: (secret: [] u8, out: [] Sb) -> string {
+  public: [65] u8; hex: [130] u8;
+  sb_clear(out);
+  if !p256_public_key(secret, public[..]) { return ""; }
+  n := adc_hex_write(public[..], hex[..]);
+  sb(out, "OA-Device-Key: "); sb(out, cast(string) hex[0..<n]);
+  return sb_text(out);
+}
+// The API's clock, in milliseconds.
+dv_now :: (t: [] Ap) -> int { b: [64] u8; return ap_whole(ap_sql(t, "SELECT (extract(epoch FROM now()) * 1000)::bigint", b[..])); }
+// SHA-256 of a token, hex.
+dv_sha :: (text: string, out: [] u8) -> string {
+  copy: [200] u8; d: [32] u8;
+  for i: 0..<text.count { copy[i] = text[i]; }
+  if sha256_hash_checked(copy[0..<text.count], d[..], false) != SHA_OK { return ""; }
+  n := adc_hex_write(d[..], out);
+  return cast(string) out[0..<n];
+}
+// "OA-Device-Proof: v1 <ms> <hex>" by secret over method, path, ts and the token.
+dv_proof :: (t: [] Ap, secret: [] u8, method: string, path: string, ts_ms: int, token: string, out: [] Sb) -> string {
+  u: [1] Sb; sb(u[..], t[0].api); sb(u[..], path);
+  m: [8] u8; hb: [64] u8; h: [ADC_HEADER_MAX] u8; b: [64] u8; ub: [600] u8;
+  binding := dv_sha(token, hb[..]);
+  for i: 0..<binding.count { b[i] = binding[i]; }
+  url := sb_text(u[..]); for i: 0..<url.count { ub[i] = url[i]; }
+  n := adc_sign(secret, adc_text(method, m[..]), ub[0..<url.count], ts_ms, b[0..<binding.count], h[..]);
+  sb_clear(out);
+  if n < 0 { return ""; }
+  sb(out, "OA-Device-Proof: "); sb(out, cast(string) h[0..<n]);
+  return sb_text(out);
+}
+// An app's login by email code from ip, with these extra headers: the pair and whether it was bound.
+dv_login :: (t: [] Ap, dir: string, address: string, ip: string, h1: string, h2: string, h3: string, h4: string, d: [] Dv) -> int {
+  ap_do(t, "DELETE FROM auth.limit_counts");
+  pb: [128] u8; code: [6] u8; link: [64] u8; apb: [128] u8;
+  d[0].at_n = 0; d[0].rt_n = 0; d[0].acct_n = 0; d[0].bound = false;
+  st := ac_start(t, address, ip, true, pb[..]);
+  pend := ap_member(ap_body(t), "pending", apb[..]);
+  if st != 200 || !ac_mail(dir, code[..], link[..]) { return -1; }
+  vb: [1] Sb; sb(vb[..], "{\"code\":\""); sb(vb[..], cast(string) code[..]); sb(vb[..], "\",\"pending\":\""); sb(vb[..], pend); sb(vb[..], "\"}");
+  h: [5] string; n := 0;
+  h[n] = "Content-Type: application/json"; n += 1;
+  if h1 != "" { h[n] = h1; n += 1; }
+  if h2 != "" { h[n] = h2; n += 1; }
+  if h3 != "" { h[n] = h3; n += 1; }
+  if h4 != "" { h[n] = h4; n += 1; }
+  st = ap_call(t, "POST", "/api/auth/email/verify", sb_text(vb[..]), h[0..<n]);
+  if st != 200 { return st; }
+  eb: [16] u8;
+  a := ap_member(ap_body(t), "access_token", d[0].at[..]); d[0].at_n = a.count;
+  r := ap_member(ap_body(t), "refresh_token", d[0].rt[..]); d[0].rt_n = r.count;
+  c := ap_member(ap_body(t), "account", d[0].acct[..]); d[0].acct_n = c.count;
+  d[0].bound = ap_member(ap_body(t), "device_bound", eb[..]) == "true";
+  return st;
+}
+// A refresh of token with this proof header ("" for none): the status; a new pair goes into d.
+dv_refresh :: (t: [] Ap, token: string, proof: string, d: [] Dv) -> int {
+  rq: [1] Sb; sb(rq[..], "{\"refresh_token\":\""); sb(rq[..], token); sb(rq[..], "\"}");
+  st := ac_call(t, "POST", "/api/auth/refresh", sb_text(rq[..]), proof, "", "");
+  if st == 200 {
+    nb: [160] u8; ab: [160] u8;
+    r := ap_member(ap_body(t), "refresh_token", nb[..]); a := ap_member(ap_body(t), "access_token", ab[..]);
+    for i: 0..<r.count { d[0].rt[i] = r[i]; } d[0].rt_n = r.count;
+    for i: 0..<a.count { d[0].at[i] = a[i]; } d[0].at_n = a.count;
+  }
+  return st;
+}
+dv_bearer :: (d: [] Dv, out: [] Sb) -> string { sb_clear(out); sb(out, "Authorization: Bearer "); sb(out, dv_at(d)); return sb_text(out); }
