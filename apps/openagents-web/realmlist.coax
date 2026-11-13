@@ -1195,7 +1195,7 @@ listed_answer :: (s: [] RealmsState, status: string, n: int, total: int) {
     m += put_int(s[0].inbox[..], m, i);
     m += put_text(s[0].inbox[..], m, "|A Realm Someone Made Number ");
     m += put_int(s[0].inbox[..], m, i);
-    m += put_text(s[0].inbox[..], m, "|A meadow by day with a red barn, a windmill and a herd of six horses. A realm built on the Verse.|2026-10-31T09:");
+    m += put_text(s[0].inbox[..], m, "|A meadow by day with a red barn, a windmill and a herd of six horses. A realm built on the OpenAgents Metaverse.|2026-10-31T09:");
     m += put_int(s[0].inbox[..], m, 10 + i % 50);
     m += put_text(s[0].inbox[..], m, "|lowpoly\n");
   }

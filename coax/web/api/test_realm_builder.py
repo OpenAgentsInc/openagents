@@ -149,7 +149,7 @@ def realm_builder_checks():
     check("its text says what is there and what visitors may do", "- 20 dead trees" in md and "Large pond" not in md and "- Talk" in md and "Build" not in md, md)
     # its link preview (0071): every tag, its line written from what is in it, never the Haunted House's picture
     check("its page has every preview tag, its line from what is in it, and the branded card until its own",
-          '<meta property="og:description" content="A forest at night with 20 dead trees, 4 rocks, a flock of bats and wagons, where Old Mott lives. A world built on the Verse.">' in page
+          '<meta property="og:description" content="A forest at night with 20 dead trees, 4 rocks, a flock of bats and wagons, where Old Mott lives. A world built on the OpenAgents Metaverse.">' in page
           and '<meta name="twitter:card" content="summary_large_image">' in page and '<meta property="og:image:width" content="1200">' in page
           and "og-verse.jpg" not in page and '/og/default.jpg"' in page and 'data-card="/api/playtest/realms/" + slug + "/card"' not in page
           and 's.dataset.card = "/api/playtest/realms/" + slug + "/card"' in page and "ff8c1f" not in page, page[:1600])
@@ -201,7 +201,7 @@ def realm_builder_checks():
     check("the realm is a world its owner owns", sql("select owner_player is not null from verse.worlds where id = 'made-moonlit-marsh'") == "t")
     st, made2 = b_call("POST", "/api/playtest/realms", {"board": {"name": "Moonlit Marsh", "features": []}}, owner)
     page2 = site.get("realms/moonlit-marsh-2", {}).get("data", b"").decode()
-    check("an empty realm's line still says what it is", 'content="A meadow by day. A world built on the Verse."' in page2, page2[:900])
+    check("an empty realm's line still says what it is", 'content="A meadow by day. A world built on the OpenAgents Metaverse."' in page2, page2[:900])
     check("a second realm of the same name gets its own address", st == 200 and made2["slug"] == "moonlit-marsh-2", made2)
     st, made3 = b_call("POST", "/api/playtest/realms", {"board": {"name": "Haunted House", "features": []}}, owner)
     check("a made realm never takes a built-in realm's address", st == 200 and made3["slug"] == "haunted-house-2", made3)

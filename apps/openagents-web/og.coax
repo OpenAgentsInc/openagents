@@ -563,7 +563,7 @@ OG_FIXTURE :: "200\n# path|kind|noindex|title|description|url|image|alt|source|w
   s: [1] OgState; data: [OG_TEST_DATA] u8; s[0].data = data[..];
   og_answer(s[..], OG_FIXTURE);
   #assert s[0].made && cast(string) s[0].ask[0..<s[0].ask_n] == OG_MADE_URL;
-  og_answer(s[..], "200\n/realms/moss-keep|made||Moss Keep|A forest at dusk. A realm built on the Verse.|https://openagents.com/worlds/moss-keep|/worlds/moss-keep/card.jpg?v=9|Moss Keep|made|1200|630|88|||\n");
+  og_answer(s[..], "200\n/realms/moss-keep|made||Moss Keep|A forest at dusk. A realm built on the OpenAgents Metaverse.|https://openagents.com/worlds/moss-keep|/worlds/moss-keep/card.jpg?v=9|Moss Keep|made|1200|630|88|||\n");
   #assert !s[0].made && s[0].status == 200 && s[0].row_n == 4 && og_cell(s[..], 3, O_TITLE) == "Moss Keep" && og_cell(s[..], 3, O_IMAGE) == "/worlds/moss-keep/card.jpg?v=9";
   q: [1] OgState; qd: [OG_TEST_DATA] u8; q[0].data = qd[..];
   og_answer(q[..], OG_FIXTURE);

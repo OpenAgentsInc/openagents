@@ -1751,7 +1751,7 @@ drop_message :: (s: [] ProjectsState, text: string) {
     drop_message(s[..], "S|1|0|0|\nF|notes.md|document|20|1000|kept|\nD|reading|||0|0|0|0|0|\n");
     #assert !can_ask(drops_of(s[..])) && draft_row(drops_of(s[..])) == 2;
     #assert projects_frame(s[..], FIXTURE, out[..], uniforms[..], w, h, 2, 0, true) > 600;
-    drop_message(s[..], "S|1|0|0|\nF|notes.md|document|20|1000|kept|\nD|ready|Planetary Villa|A world on the Verse with game expansions.|9|31|28|7|12|\n");
+    drop_message(s[..], "S|1|0|0|\nF|notes.md|document|20|1000|kept|\nD|ready|Planetary Villa|A world on the OpenAgents Metaverse with game expansions.|9|31|28|7|12|\n");
     nv := projects_frame(s[..], FIXTURE, out[..], uniforms[..], w, h, 2, 0, true);
     #assert nv > 900 && nv < MAX_VERTICES && on_canvas(out[..], nv, w, h, 2);
     dd := drop_layout(l, 2, true);
@@ -1759,7 +1759,7 @@ drop_message :: (s: [] ProjectsState, text: string) {
   }
 }
 
-REVIEW_FIXTURE :: "V|ready|0||Moon Villa\nR|0|H|CARD|\nR|0|T|Name|Moon Villa\nR|0|T|Design document|# Planetary Villa. A world on the Verse where two moons rise over a garden of glowing flowers.\nR|0|A|+ add a mechanic|\nR|1|H|ROADMAP|\nR|1|G|MILESTONE 1  Flowers|\nR|1|T|Title|Flowers\nR|1|B|Reuses an engine task|yes\n";
+REVIEW_FIXTURE :: "V|ready|0||Moon Villa\nR|0|H|CARD|\nR|0|T|Name|Moon Villa\nR|0|T|Design document|# Planetary Villa. A world on the OpenAgents Metaverse where two moons rise over a garden of glowing flowers.\nR|0|A|+ add a mechanic|\nR|1|H|ROADMAP|\nR|1|G|MILESTONE 1  Flowers|\nR|1|T|Title|Flowers\nR|1|B|Reuses an engine task|yes\n";
 
 send_to :: (s: [] ProjectsState, kind: int, text: string) {
   for i: 0..<text.count { s[0].inbox[i] = text[i]; }

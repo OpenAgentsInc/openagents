@@ -74,7 +74,7 @@ def realm_fork_checks():
     check("its page says what it was forked from, links to it and credits its maker",
           'Forked from <a href="/worlds/everglade">Everglade</a>, made by OpenAgents.' in page, page[:2400])
     check("its line says what it forks and its rules, until its owner writes one",
-          'content="A fork of Everglade on the Verse by OpenAgents: always night, hostile waves."' in page, page[:1600])
+          'content="A fork of Everglade on the OpenAgents Metaverse by OpenAgents: always night, hostile waves."' in page, page[:1600])
     check("unpublished, it is noindex and not on /og's rows",
           '<meta name="robots" content="noindex">' in page and "/realms/doomglade|" not in b_call("GET", R + "made")[1], page[:600])
     md = site.get("realms/doomglade/index.md", {}).get("data", b"").decode()

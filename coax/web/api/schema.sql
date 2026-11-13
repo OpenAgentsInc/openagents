@@ -9912,7 +9912,7 @@ CREATE FUNCTION verse.builder_line(v jsonb, n integer) RETURNS text
 CREATE FUNCTION verse.builder_line_of(m verse.made_realms) RETURNS text
     LANGUAGE sql IMMUTABLE
     AS $$
-  SELECT replace(verse.builder_line_of_0110(m), ' A realm built on the Verse.', ' A world built on the Verse.') $$;
+  SELECT replace(verse.builder_line_of_0110(m), ' A realm built on the OpenAgents Metaverse.', ' A world built on the OpenAgents Metaverse.') $$;
 
 
 --
@@ -9946,7 +9946,7 @@ BEGIN
   END LOOP;
   out := left(out, 160);
   -- a short line says what it is too (a preview's line wants 50 characters or more)
-  RETURN out || ' A realm built on the Verse.';
+  RETURN out || ' A realm built on the OpenAgents Metaverse.';
 END $$;
 
 
@@ -10072,7 +10072,7 @@ CREATE FUNCTION verse.builder_md_0071(s text) RETURNS text
     LANGUAGE sql STABLE
     AS $$
   SELECT '# ' || m.name || E'\n\n' || verse.builder_share_line(m)
-      || E'\n\nA realm on the Verse at https://openagents.com/realms/' || m.slug
+      || E'\n\nA realm on the OpenAgents Metaverse at https://openagents.com/realms/' || m.slug
       || ', made by a visitor from one prompt (https://openagents.com/realms/new). '
       || CASE m.camera WHEN 'first' THEN '3D, first person' WHEN 'top' THEN '3D, top-down' WHEN 'side' THEN '2D, side-on' ELSE '3D, third person' END
       || '. Style: ' || m.style || '. Ground: ' || m.ground
@@ -10262,7 +10262,7 @@ CREATE FUNCTION verse.builder_page_0071(s text, origin text) RETURNS text
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>' || verse.builder_html(m.name) || ' · a realm on the Verse · OpenAgents</title>
+<title>' || verse.builder_html(m.name) || ' · a realm on the Metaverse · OpenAgents</title>
 <meta name="description" content="' || verse.builder_html(verse.builder_share_line(m)) || '">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="OpenAgents">
@@ -10272,7 +10272,7 @@ CREATE FUNCTION verse.builder_page_0071(s text, origin text) RETURNS text
 <meta property="og:image" content="' || verse.builder_html(origin) || verse.builder_html(verse.builder_card_path(m)) || '">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
-<meta property="og:image:alt" content="' || verse.builder_html(m.name) || ', a realm on the Verse">
+<meta property="og:image:alt" content="' || verse.builder_html(m.name) || ', a realm on the Metaverse">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="' || verse.builder_html(m.name) || '">
 <meta name="twitter:description" content="' || verse.builder_html(verse.builder_share_line(m)) || '">
@@ -12657,7 +12657,7 @@ END $$;
 CREATE FUNCTION verse.fork_line(m verse.made_realms) RETURNS text
     LANGUAGE sql STABLE
     AS $$
-  SELECT 'A fork of ' || verse.fork_name_of(m.forked_from) || ' on the Verse'
+  SELECT 'A fork of ' || verse.fork_name_of(m.forked_from) || ' on the OpenAgents Metaverse'
       || CASE WHEN m.forked_from <> m.base THEN ' (from ' || b.title || ' by ' || verse.fork_maker(m.base) || ')' ELSE ' by ' || verse.fork_maker(m.base) END
       || coalesce(': ' || lower(nullif((SELECT string_agg(r->>'label', ', ' ORDER BY o) FROM jsonb_array_elements(b.rules) WITH ORDINALITY AS t(r, o)
                                   WHERE (r->>'id') = ANY (verse.fork_rules_on(m))), '')) || '.', ', with the same rules.')
@@ -12839,7 +12839,7 @@ CREATE FUNCTION verse.fork_page_0110(s text, origin text) RETURNS text
 <meta property="og:image" content="' || verse.builder_html(origin) || verse.builder_html(verse.builder_card_path(m)) || '">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
-<meta property="og:image:alt" content="' || verse.builder_html(m.name) || ', a fork of ' || verse.builder_html(b.title) || ' on the Verse">
+<meta property="og:image:alt" content="' || verse.builder_html(m.name) || ', a fork of ' || verse.builder_html(b.title) || ' on the Metaverse">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="' || verse.builder_html(m.name) || '">
 <meta name="twitter:description" content="' || verse.builder_html(verse.builder_share_line(m)) || '">
