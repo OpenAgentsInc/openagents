@@ -1918,7 +1918,7 @@ click :: (s: [] LandState, x: f32, y: f32) -> bool {
     if k >= 0 && inside(s[0].open_box, x, y) { go_project(s, k); return true; }
     if inside(s[0].card_box, x, y) { return true; }
   }
-  if inside(s[0].playtest, x, y) { go(s, "/verse"); return true; }
+  if inside(s[0].playtest, x, y) { go(s, "/metaverse"); return true; }
   if inside(s[0].walk_box, x, y) { walk_around(s); return true; }
   if gal_click(s, x, y) { return true; }
   got := pick(s, x, y);
@@ -2253,7 +2253,7 @@ coaxial_land_uniform_floats :: () -> int #export_c #effects(all) { return UNIFOR
   #assert m > 1000 && m < TEST_VERTICES;
 }
 
-#test "desktop Playtest button opens /verse" #steps 40000000 {
+#test "desktop Playtest button opens /metaverse" #steps 40000000 {
   s: [1] LandState; u: [UNIFORM_FLOATS] f32;
   out: [TEST_VERTICES * VERTEX_FLOATS] f32;
   s[0].time = 9;
@@ -2263,10 +2263,10 @@ coaxial_land_uniform_floats :: () -> int #export_c #effects(all) { return UNIFOR
   #assert b.x1 > b.x0 && b.y1 > b.y0;
   down := coaxial_land_pointer(s[..], (b.x0 + b.x1) * 0.5, (b.y0 + b.y1) * 0.5, POINTER_DOWN, 0, 1);
   #assert coaxial_land_pointer(s[..], (b.x0 + b.x1) * 0.5, (b.y0 + b.y1) * 0.5, POINTER_UP, 0, 1);
-  #assert s[0].action == ACT_NAVIGATE && same(cast(string) s[0].outbox[0..<s[0].out_n], "/verse");
+  #assert s[0].action == ACT_NAVIGATE && same(cast(string) s[0].outbox[0..<s[0].out_n], "/metaverse");
 }
 
-#test "phone Playtest button opens /verse" {
+#test "phone Playtest button opens /metaverse" {
   s: [1] LandState; u: [UNIFORM_FLOATS] f32;
   out: [TEST_VERTICES * VERTEX_FLOATS] f32;
   s[0].time = 9;
@@ -2276,7 +2276,7 @@ coaxial_land_uniform_floats :: () -> int #export_c #effects(all) { return UNIFOR
   #assert b.x1 > b.x0 && b.y1 > b.y0;
   down := coaxial_land_pointer(s[..], (b.x0 + b.x1) * 0.5, (b.y0 + b.y1) * 0.5, POINTER_DOWN, 1, 1);
   #assert coaxial_land_pointer(s[..], (b.x0 + b.x1) * 0.5, (b.y0 + b.y1) * 0.5, POINTER_UP, 1, 1);
-  #assert s[0].action == ACT_NAVIGATE && same(cast(string) s[0].outbox[0..<s[0].out_n], "/verse");
+  #assert s[0].action == ACT_NAVIGATE && same(cast(string) s[0].outbox[0..<s[0].out_n], "/metaverse");
 }
 #test "the small galaxy holds only the public realms, and opens them" #steps 40000000 {
   s: [1] LandState; u: [UNIFORM_FLOATS] f32;

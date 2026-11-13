@@ -159,7 +159,7 @@ export function worlds(file = join(SITE, "realms.json"), opts: { site?: string; 
     if (w.kind === "open" && w.listed !== false && (typeof r.line !== "string" || !/^[^|\n"\\]{1,60}$/.test(r.line)))
       throw new Error(`realms.json: ${r.slug}: a listed realm needs line, its one line on /worlds (at most 60, no | or ")`)
     for (const a of r.assets) if (!/^[a-z]+:\S+$/.test(a)) throw new Error(`realms.json: ${r.slug}: asset ${a}`)
-    if (r.short !== undefined && (!/^\/[a-z][a-z0-9-]{1,31}$/.test(r.short) || ["/worlds", "/realms", "/realm", "/coaxial", "/verse"].includes(r.short))) throw new Error(`realms.json: ${r.slug}: short is a free top-level path such as /druid, not ${JSON.stringify(r.short)}`)
+    if (r.short !== undefined && (!/^\/[a-z][a-z0-9-]{1,31}$/.test(r.short) || ["/worlds", "/realms", "/realm", "/coaxial", "/verse", "/metaverse"].includes(r.short))) throw new Error(`realms.json: ${r.slug}: short is a free top-level path such as /druid, not ${JSON.stringify(r.short)}`)
     if (r.short !== undefined) once(`short ${r.short}`)
     const g = r.golden
     if (!g || !(g.lit > 0 && g.lit < 1) || !(g.settle >= 0 && g.settle <= 20000) || !(Number.isInteger(g.blocks) && g.blocks >= 0)) throw new Error(`realms.json: ${r.slug}: golden needs lit (0 to 1), settle (ms) and blocks`)
@@ -243,7 +243,7 @@ export function listMarkdown(list: World[]): string {
     "",
     ...rows.map((r) => `- [${r.title}](https://openagents.com/worlds/${r.slug}): ${r.line}. Opened ${day(r.added!)}.`),
     "",
-    "Also: [the Metaverse](https://openagents.com/verse), [build your own world](https://openagents.com/worlds/new).",
+    "Also: [the Metaverse](https://openagents.com/metaverse), [build your own world](https://openagents.com/worlds/new).",
     "",
   ].join("\n")
 }

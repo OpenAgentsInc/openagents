@@ -18,7 +18,7 @@
         "title": "Haunted House",
         "description": "The Haunted House, a Metaverse realm you walk through in the browser: nine haunts to find, characters to talk to, doors to open. The same Coax code as the OpenAgents iOS app.",
         "alt": "Enter the Metaverse: edit our haunted house. Can you make it scarier?",
-        "card": "/verse/og-verse.jpg",
+        "card": "/metaverse/og-verse.jpg",
         "module": "realm",
         "slot": "haunted-house",
         "slot_was": "realm",

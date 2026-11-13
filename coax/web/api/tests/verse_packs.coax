@@ -147,6 +147,38 @@ vp_checks :: (t: [] Ap, dir: string) {
   st = vp_session(t, "test-human", "203.0.113.9");
   ap_check(t, "the day's budget stops new sessions (OA_VERSE_PACK_DAILY_GB)", st == 429 && ap_has(ap_member(ap_body(t), "error", eb[..]), "budget"), ap_body(t));
   ap_do(t, "DELETE FROM verse.pack_sessions");
+
+  // /api/metaverse/packs/ is the packs' address (#13405); /api/verse/packs/, used above, is the same
+  // routes under their first name. A session names its bytes under the address it was asked at.
+  ap_check(t, "the first address's session names its bytes under /api/verse/packs/", ap_starts(url, "/api/verse/packs/fetch/"), url);
+  mh := [1] string.["X-Forwarded-For: 203.0.113.20, 130.211.0.1"];
+  st = ap_call(t, "POST", "/api/metaverse/packs/test-human", "", mh[..]);
+  ms: [8192] u8; msn := t[0].n; for i: 0..<msn { ms[i] = t[0].out[i]; }
+  MS := cast(string) ms[0..<msn];
+  mkb: [128] u8; mkey := ap_member(MS, "key", mkb[..]);
+  mib: [128] u8; miv := ap_member(MS, "iv", mib[..]);
+  mhb: [128] u8; mub: [512] u8; murl := ap_member(MS, "url", mub[..]);
+  ap_check(t, "/api/metaverse/packs/ answers a session as the first address does", st == 200 && mkey.count == 64 && ap_ends(miv, "0000000000000000")
+           && ap_member(MS, "sha256", mhb[..]) == sha && ap_member_int(MS, "bytes", -1) == pn && ap_member_int(MS, "size", -1) == on && ap_member_int(MS, "expires", -1) == 120
+           && ap_starts(murl, "/api/metaverse/packs/fetch/") && ap_has(ap_header(t, "Cache-Control"), "no-store"), MS);
+  st = ap_call(t, "GET", murl, "", none_of(t));
+  mbn := t[0].n; for i: 0..<mbn { body[i] = t[0].out[i]; }
+  MB := cast(string) body[0..<mbn];
+  mgot := ifx st == 200 then vp_open(MB, mkey, miv, opened[..]) else -1;
+  msame := false;
+  if mgot >= 0 { r := sha256_hash(opened[0..<mgot], od[..]); msame = ap_lower_hex(od[..], ohex[..]) == sha && mgot == pn; }
+  ap_check(t, "its bytes open to the same pack, once", st == 200 && mbn == on && msame && ap_call(t, "GET", murl, "", none_of(t)) == 410, "");
+  // one session, either address: a session asked for at the first address is fetched at the new one
+  st = vp_session(t, "test-human", "203.0.113.21");
+  xub: [512] u8; xurl := ap_member(ap_body(t), "url", xub[..]);
+  xs := xurl.count; while xs > 0 && xurl[xs - 1] != '/' { xs -= 1; }
+  xp: [1] Sb; sb(xp[..], "/api/metaverse/packs/fetch/"); sb(xp[..], xurl[xs..<xurl.count]);
+  ap_check(t, "a session is the same session at either address", st == 200 && ap_call(t, "GET", sb_text(xp[..]), "", none_of(t)) == 200 && t[0].n == on
+           && ap_call(t, "GET", xurl, "", none_of(t)) == 410, ap_body(t));
+  ap_check(t, "the new address takes its own methods and knows its packs", ap_call(t, "GET", "/api/metaverse/packs/test-human", "", none_of(t)) == 405
+           && ap_call(t, "POST", "/api/metaverse/packs/no-such", "", mh[..]) == 404
+           && ap_call(t, "GET", "/api/metaverse/packs/fetch/00000000000000000000000000000000", "", none_of(t)) == 410, ap_body(t));
+  ap_do(t, "DELETE FROM verse.pack_sessions");
 }
 none_of :: (t: [] Ap) -> [] string { return t[0].no[0..<0]; }
 

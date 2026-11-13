@@ -1,0 +1,74 @@
+// The site's moved addresses (docs/naming/2026-11-12-metaverse-rename.md, #13405), as the dev
+// server answers them (serve.c). The load balancer holds the same rules for the deployed site
+// (coax/web/api/lb.sh, "The Metaverse's addresses"); smoke.sh checks those on staging and
+// production. Change both together.
+//
+//   /verse, /verse/*                    moved for good to /metaverse, /metaverse/* (query kept)
+//   /projects/verse, /projects/verse/*  moved for good to /projects/metaverse, ... (query kept)
+//   /projects/metaverse, .../*          the project whose slug is still "verse": its files are
+//                                       projects/verse/ (the slug is the project's name on the
+//                                       relay and in the bucket; only the address changed)
+//   /verse/galaxy, /metaverse/galaxy    the retired galaxy: moved for good to /worlds, query dropped
+//
+// A route says what to do with a path (the address without its query):
+//   status 0    serve the file at `to` followed by the path after its first `skip` bytes
+//   status 301  answer 301 with Location `to` followed by the path after its first `skip`
+//               bytes, and the request's query when `query` is set
+SiteRoute :: struct { status:int; to:string; skip:int; query:bool; }
+
+// Whether path is root itself or something under it ("/verse" and "/verse/x", never "/verse-os").
+site_under :: (path:string,root:string)->bool #effects(all) {
+  if path.count<root.count {return false;}
+  for i:0..<root.count {if path[i]!=root[i] {return false;}}
+  return path.count==root.count || path[root.count]=='/';
+}
+
+site_route :: (path:string)->SiteRoute #export_c #effects(all) {
+  if site_under(path,"/verse/galaxy") || site_under(path,"/metaverse/galaxy") {return SiteRoute.{status=301,to="/worlds",skip=path.count,query=false};}
+  if site_under(path,"/verse") {return SiteRoute.{status=301,to="/metaverse",skip=6,query=true};}
+  if site_under(path,"/projects/verse") {return SiteRoute.{status=301,to="/projects/metaverse",skip=15,query=true};}
+  if site_under(path,"/projects/metaverse") {return SiteRoute.{status=0,to="/projects/verse",skip=19,query=false};}
+  return SiteRoute.{status=0,to="",skip=0,query=false};
+}
+
+// Where a route sends a path, as text, for the checks below.
+site_goes :: (path:string,out:[]u8)->string #effects(all) {
+  r:=site_route(path);n:=0;
+  for ch:r.to {out[n]=ch;n+=1;}
+  for i:r.skip..<path.count {out[n]=path[i];n+=1;}
+  return cast(string)out[0..<n];
+}
+
+#test "the old landing moves for good to /metaverse, the rest of its path kept" {
+  b:[256]u8;
+  r:=site_route("/verse");#assert r.status==301 && r.query && site_goes("/verse",b[..])=="/metaverse";
+  r=site_route("/verse/");#assert r.status==301 && r.query && site_goes("/verse/",b[..])=="/metaverse/";
+  r=site_route("/verse/index.md");#assert r.status==301 && r.query && site_goes("/verse/index.md",b[..])=="/metaverse/index.md";
+  r=site_route("/verse/og-verse.jpg");#assert r.status==301 && site_goes("/verse/og-verse.jpg",b[..])=="/metaverse/og-verse.jpg";
+}
+#test "the old project address moves for good to /projects/metaverse" {
+  b:[256]u8;
+  r:=site_route("/projects/verse");#assert r.status==301 && r.query && site_goes("/projects/verse",b[..])=="/projects/metaverse";
+  r=site_route("/projects/verse/index.md");#assert r.status==301 && r.query && site_goes("/projects/verse/index.md",b[..])=="/projects/metaverse/index.md";
+  r=site_route("/projects/verse/work/engine.json");#assert r.status==301 && site_goes("/projects/verse/work/engine.json",b[..])=="/projects/metaverse/work/engine.json";
+}
+#test "/projects/metaverse is the project whose slug is verse" {
+  b:[256]u8;
+  r:=site_route("/projects/metaverse");#assert r.status==0 && site_goes("/projects/metaverse",b[..])=="/projects/verse";
+  r=site_route("/projects/metaverse/index.md");#assert r.status==0 && site_goes("/projects/metaverse/index.md",b[..])=="/projects/verse/index.md";
+}
+#test "the retired galaxy moves to /worlds under both names, its query dropped" {
+  b:[256]u8;
+  paths:=[6]string.["/verse/galaxy","/verse/galaxy/","/verse/galaxy/index.md","/metaverse/galaxy","/metaverse/galaxy/","/metaverse/galaxy/index.md"];
+  for p:paths {r:=site_route(p);#assert r.status==301 && !r.query && site_goes(p,b[..])=="/worlds";}
+}
+#test "every other path is served as it is" {
+  b:[256]u8;
+  same:=[12]string.["/","/metaverse","/metaverse/","/metaverse/index.md","/metaverse/og-verse.jpg","/verse-os/","/verses","/projects","/projects/verses","/projects/metaverse-x","/worlds/haunted-house","/forge"];
+  for p:same {r:=site_route(p);#assert r.status==0 && r.skip==0 && r.to.count==0 && site_goes(p,b[..])==p;}
+}
+#test "a moved address never leads to another moved address" {
+  b:[256]u8;c:[256]u8;
+  old:=[8]string.["/verse","/verse/","/verse/index.md","/verse/galaxy","/metaverse/galaxy","/projects/verse","/projects/verse/","/projects/verse/index.md"];
+  for p:old {to:=site_goes(p,b[..]);#assert site_route(p).status==301 && site_route(to).status==0;}
+}

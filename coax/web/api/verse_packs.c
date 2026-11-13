@@ -5,13 +5,18 @@
 // own (AES-256-CTR) and puts it in the private bucket by its digest, packs/<sha256>; the keys and
 // the names live in Secret Manager (verse-private-packs), never in git.
 //
-//   POST /api/verse/packs/<name>        a session: {url, key, iv, sha256, bytes, size, expires}
-//                                       (404 no such pack, 429 too many for this address or the day's
-//                                       budget spent, 503 the manifest or the database unreachable)
-//   GET  /api/verse/packs/fetch/<sid>   the session's bytes, once, within EXPIRES seconds of being
-//                                       asked for: the gzipped pack under the session's own key
-//                                       (AES-256-CTR, the key and iv the session gave), chunked,
-//                                       Cache-Control no-store. 410 used, expired or unknown.
+//   POST /api/metaverse/packs/<name>        a session: {url, key, iv, sha256, bytes, size, expires}
+//                                           (404 no such pack, 429 too many for this address or the day's
+//                                           budget spent, 503 the manifest or the database unreachable)
+//   GET  /api/metaverse/packs/fetch/<sid>   the session's bytes, once, within EXPIRES seconds of being
+//                                           asked for: the gzipped pack under the session's own key
+//                                           (AES-256-CTR, the key and iv the session gave), chunked,
+//                                           Cache-Control no-store. 410 used, expired or unknown.
+//
+// /api/verse/packs/... is the same two routes under their first name (docs/naming/2026-11-12-metaverse-rename.md,
+// #13405): pages in visitors' caches and the desktop app call it, so it answers as it always did,
+// its session's url under /api/verse/packs/ too. It is not a redirect (a POST would not follow one
+// everywhere). It goes when no request has used it for 30 days.
 //
 // A child streams the bytes (this service answers one request at a time): it reads the stored
 // object from the bucket, takes off the stored key and puts on the session's, a chunk at a time,
@@ -167,6 +172,13 @@ static void visitor(const request *q, char ip[128]) {
   snprintf(ip, 128, "%s", np ? parts[np >= 2 ? np - 2 : 0] : "local");
 }
 
+// The route a path is under: the packs' address, or the first one they had (kept: see the top). NULL for neither.
+static const char *packs_base(const char *path) {
+  static const char *const bases[] = {"/api/metaverse/packs/", "/api/verse/packs/"};
+  for (size_t i = 0; i < sizeof bases / sizeof *bases; i++) if (!strncmp(path, bases[i], strlen(bases[i]))) return bases[i];
+  return NULL;
+}
+
 static void issue(const request *q, const char *name) {
   if (!load()) { api_json(q->fd, 503, "{\"error\":\"packs unavailable\"}"); return; }
   const pack_entry *p = name_ok(name) ? find(name) : NULL;
@@ -196,8 +208,8 @@ static void issue(const request *q, const char *name) {
   unsigned char key[32], iv[16]; char kh[65], ivh[33], json[700];
   session_key(sid, key, iv);
   tohex(key, 32, kh); tohex(iv, 16, ivh);
-  snprintf(json, sizeof json, "{\"url\":\"/api/verse/packs/fetch/%s\",\"key\":\"%s\",\"iv\":\"%s\",\"sha256\":\"%s\",\"bytes\":%lld,\"size\":%lld,\"expires\":%d}",
-           sid, kh, ivh, p->sha256, p->plain, p->stored, SESSION_SECONDS);
+  snprintf(json, sizeof json, "{\"url\":\"%sfetch/%s\",\"key\":\"%s\",\"iv\":\"%s\",\"sha256\":\"%s\",\"bytes\":%lld,\"size\":%lld,\"expires\":%d}",
+           packs_base(q->path), sid, kh, ivh, p->sha256, p->plain, p->stored, SESSION_SECONDS);
   OPENSSL_cleanse(key, sizeof key); OPENSSL_cleanse(kh, sizeof kh);
   api_json(q->fd, 200, json);
 }
@@ -297,14 +309,15 @@ static void fetch(const request *q, const char *sid) {
 }
 
 bool verse_packs_route(const request *q) {
-  static const char base[] = "/api/verse/packs/", fetch_at[] = "/api/verse/packs/fetch/";
-  if (strncmp(q->path, base, sizeof base - 1)) return false;
-  if (!strncmp(q->path, fetch_at, sizeof fetch_at - 1)) {
+  const char *base = packs_base(q->path);
+  if (!base) return false;
+  const char *rest = q->path + strlen(base);
+  if (!strncmp(rest, "fetch/", 6)) {
     if (strcmp(q->method, "GET")) { api_json(q->fd, 405, "{\"error\":\"GET\"}"); return true; }
-    fetch(q, q->path + sizeof fetch_at - 1);
+    fetch(q, rest + 6);
     return true;
   }
   if (strcmp(q->method, "POST")) { api_json(q->fd, 405, "{\"error\":\"POST\"}"); return true; }
-  issue(q, q->path + sizeof base - 1);
+  issue(q, rest);
   return true;
 }

@@ -10,6 +10,18 @@
 # names goes to the site's bucket (the coder service is retired).
 # Old addresses move: /verse/galaxy (retired 2026-10-31), /realms and /realm to /worlds, on both hosts;
 # /worlds is the site's realms/ (2026-11-02: realms are worlds).
+# The Metaverse's addresses (2026-11-12, #13405): /verse and /verse/* move for good to /metaverse
+# and /metaverse/*, /projects/verse and /projects/verse/* to /projects/metaverse (the site's
+# projects/verse/, whose slug stays), path and query kept, on both hosts. The dev server answers the
+# same way (coax/web/site-routes.coax); smoke.sh checks both hosts. /verse moves on a host only once
+# that host's /metaverse answers (the release that has the page), so this is safe to run before
+# that release and is run again after it.
+#
+#   lb.sh rules FILE           only the path rules, on a url map saved as JSON (gcloud compute
+#                              url-maps describe ... --format json): FILE is rewritten, nothing is
+#                              asked of Google Cloud and nothing is deployed. For checking a change
+#                              to this file. LB_METAVERSE_THERE="production staging" names the
+#                              hosts whose /metaverse is taken to answer (none are asked).
 #
 # Private projects (private.c, docs/private-projects.md):
 #   lb.sh private-route SLUG   /projects/SLUG and /projects/SLUG/* on both hosts -> the API
@@ -90,6 +102,11 @@ PY
   g compute url-maps import "$map" --global --source "$tmp" 2>&1 | grep -E "ERROR" && exit 1
   exit 0
 fi
+offline=""
+if [[ "${1:-}" == rules ]]; then
+  offline="${2:-}"; [[ -f "$offline" ]] || { echo "lb.sh: rules FILE (a url map as JSON)" >&2; exit 2; }
+fi
+if [[ -z "$offline" ]]; then
 headers=(
   "X-Client-Region:{client_region}" "X-Client-Subdivision:{client_region_subdivision}"
   "X-Client-City:{client_city}" "X-Client-Latlong:{client_city_lat_long}"
@@ -107,11 +124,12 @@ for svc in oa-api-staging oa-api; do
 done
 # The path rules (the map read as JSON, which import takes as YAML): /api/ in each host's matcher, at the next
 # free priority, and /admin/analytics, /signin, /chat and the app's universal-link file to the site in production.
+fi
 tmp="$(mktemp)"; trap 'rm -f "$tmp"' EXIT
-g compute url-maps describe "$map" --global --format json > "$tmp"
-python3 -I - "$tmp" "$project" <<'PY'
-import json, sys
-path, project = sys.argv[1:]
+if [[ -n "$offline" ]]; then cp "$offline" "$tmp"; else g compute url-maps describe "$map" --global --format json > "$tmp"; fi
+python3 -I - "$tmp" "$project" "$offline" <<'PY'
+import json, os, sys, urllib.request, urllib.error
+path, project, offline = sys.argv[1:]
 m = json.load(open(path))
 want = {"production": "oa-api", "staging": "oa-api-staging"}
 changed = False
@@ -274,6 +292,67 @@ for pm in m["pathMatchers"]:
         rules[:] = order
         changed = True
         print(f"url map: {pm['name']} /worlds/everglade-5e ahead of /worlds/*")
+# The Metaverse's addresses (docs/naming/2026-11-12-metaverse-rename.md, #13405), on both hosts.
+# coax/web/site-routes.coax holds the same rules for the dev server: change both together.
+#   /projects/metaverse, /projects/metaverse/*   the site's projects/verse/ (the project's slug, its name
+#                                                on the relay and in the bucket, stays "verse")
+#   /projects/verse, /projects/verse/*           move for good to /projects/metaverse..., query kept
+#   /metaverse/galaxy and under it               move for good to /worlds, as /verse/galaxy does
+#   /verse, /verse/*                             move for good to /metaverse..., query kept: only once
+#                                                the host's /metaverse answers, after /verse/galaxy's
+#                                                rule and ahead of any rule that sends /verse to the site
+def place(rules, rule, after=None, before=None):   # a free priority above `after` and below `before`
+    while True:
+        used = {r["priority"] for r in rules}
+        lo = 0 if after is None else after["priority"] + 1
+        hi = before["priority"] if before is not None else max(used | {lo}) + 11
+        free = [p for p in range(lo, hi) if p not in used]
+        if free: break
+        for r in rules: r["priority"] = r["priority"] * 10 + 10   # no room: everyone spreads out
+    rule["priority"] = free[0] if after is not None else free[-1]
+    rules.append(rule); rules.sort(key=lambda r: r["priority"])
+def names(rule, *paths):   # whether a rule matches one of these exact or prefix paths
+    return any((x.get("fullPathMatch") or x.get("prefixMatch")) in paths for x in rule.get("matchRules", []))
+def answers(name, host, page):   # whether the host has the page today
+    if offline: return name in os.environ.get("LB_METAVERSE_THERE", "").split()
+    try:
+        with urllib.request.urlopen(urllib.request.Request(f"https://{host}{page}", headers={"User-Agent": "coaxial-lb"}), timeout=20) as r: return r.status == 200
+    except (urllib.error.URLError, OSError): return False
+for pm in m["pathMatchers"]:
+    if pm["name"] not in ("production", "staging"): continue
+    rules = pm.setdefault("routeRules", [])
+    host = "openagents.com" if pm["name"] == "production" else "staging.openagents.com"
+    bucket = f"https://www.googleapis.com/compute/v1/projects/{project}/global/backendBuckets/" + ("coaxial-openagents-web" if pm["name"] == "production" else "coaxial-openagents-web-staging")
+    moved = {"redirectResponseCode": "MOVED_PERMANENTLY_DEFAULT"}
+    def want(match, action, after=None, before=None):   # this rule, where it must be; True when the map changed
+        rule = next((r for r in rules if r.get("matchRules") == match), None)
+        placed = rule is not None and (after is None or rule["priority"] > after["priority"]) and (before is None or rule["priority"] < before["priority"])
+        if placed and {k: v for k, v in rule.items() if k not in ("priority", "matchRules")} == action: return False
+        if rule: rules.remove(rule)
+        place(rules, {"matchRules": match, **action}, after, before)
+        print(f"url map: {pm['name']} {next(iter(match[0].values()))} " + ("moves to " + next(iter(action["urlRedirect"].values())) if "urlRedirect" in action else "is the site's " + action["routeAction"]["urlRewrite"]["pathPrefixRewrite"]))
+        return True
+    def first(*paths):   # the first rule (lowest priority) that names one of these paths, but none of ours
+        ours = ("/projects/metaverse", "/projects/metaverse/", "/projects/verse", "/projects/verse/", "/metaverse/galaxy", "/metaverse/galaxy/")
+        hits = [r for r in rules if names(r, *paths) and not names(r, *ours) and not (r.get("urlRedirect", {}).get("pathRedirect") == "/metaverse" or r.get("urlRedirect", {}).get("prefixRedirect") == "/metaverse/")]
+        return min(hits, key=lambda r: r["priority"]) if hits else None
+    for match, action in (
+        ([{"fullPathMatch": "/projects/metaverse"}], {"service": bucket, "routeAction": {"urlRewrite": {"pathPrefixRewrite": "/projects/verse"}}}),
+        ([{"prefixMatch": "/projects/metaverse/"}], {"service": bucket, "routeAction": {"urlRewrite": {"pathPrefixRewrite": "/projects/verse/"}}}),
+        ([{"fullPathMatch": "/projects/verse"}], {"urlRedirect": {"pathRedirect": "/projects/metaverse", **moved}}),
+        ([{"prefixMatch": "/projects/verse/"}], {"urlRedirect": {"prefixRedirect": "/projects/metaverse/", **moved}})):
+        changed = want(match, action, before=first("/projects", "/projects/")) or changed
+    galaxy = next((r for r in rules if r.get("matchRules") == [{"fullPathMatch": "/verse/galaxy"}, {"prefixMatch": "/verse/galaxy/"}]), None)
+    if galaxy is None: raise SystemExit(f"lb.sh: {pm['name']} has no /verse/galaxy rule")
+    changed = want([{"fullPathMatch": "/metaverse/galaxy"}, {"prefixMatch": "/metaverse/galaxy/"}],
+                   {"urlRedirect": {"pathRedirect": "/worlds", "stripQuery": True, **moved}}) or changed
+    have = any(r.get("urlRedirect", {}).get("pathRedirect") == "/metaverse" for r in rules)
+    if have or answers(pm["name"], host, "/metaverse"):
+        for match, action in (([{"fullPathMatch": "/verse"}], {"urlRedirect": {"pathRedirect": "/metaverse", **moved}}),
+                              ([{"prefixMatch": "/verse/"}], {"urlRedirect": {"prefixRedirect": "/metaverse/", **moved}})):
+            changed = want(match, action, after=galaxy, before=first("/verse", "/verse/")) or changed
+    else:
+        print(f"url map: {pm['name']} /verse stays as it is: https://{host}/metaverse doesn't answer yet. Run lb.sh again after the release that has it.")
 # The coder service is retired (docs/2026-10-28-coder-service-deprecation.md): whatever no rule
 # names is the site's bucket, so an unknown path gets the Coax 404.
 for pm in m["pathMatchers"]:
@@ -288,4 +367,7 @@ for k in ("kind", "creationTimestamp", "id", "selfLink"): m.pop(k, None)   # rea
 json.dump(m, open(path, "w"))
 print("url map: /api/ rules added" if changed else "url map: /api/ rules already there")
 PY
+if [[ -n "$offline" ]]; then cp "$tmp" "$offline"; exit 0; fi
+g compute url-maps validate --global --source "$tmp" --format 'value(result.loadSucceeded)' 2>&1 | grep -qi true ||
+  { echo "lb.sh: the new url map doesn't validate; nothing was changed" >&2; g compute url-maps validate --global --source "$tmp" >&2; exit 1; }
 g compute url-maps import "$map" --global --source "$tmp" 2>&1 | grep -E "ERROR" && exit 1 || true

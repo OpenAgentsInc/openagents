@@ -52,6 +52,7 @@
 
 #include "../../verse/voice-host/ws.h"
 #include "http-range.h"
+#include "site-routes.h"
 
 #define MAX_CLIENTS 64
 #define MAX_WATCH 256
@@ -175,6 +176,13 @@ static bool resolve(const char *url, char *out, size_t cap) {
   for (; url[i] && url[i] != '?' && url[i] != '#' && i + 1 < sizeof path; i++) path[i] = url[i];
   path[i] = 0;
   if (path[0] != '/' || strstr(path, "..") || strstr(path, "/.")) return false;
+  // An address whose files have another name (site-routes.coax: /projects/metaverse is projects/verse/).
+  coax_t_SiteRoute route = site_route((coax_string){path, (int64_t)strlen(path)});
+  if (route.status == 0 && route.to.count > 0) {
+    char named[sizeof path];
+    if (snprintf(named, sizeof named, "%.*s%s", (int)route.to.count, route.to.data, path + route.skip) >= (int)sizeof named) return false;
+    memcpy(path, named, strlen(named) + 1);
+  }
   if (!strcmp(path, "/")) return snprintf(out, cap, "%s/index.html", app_dir) < (int)cap;
   if (!strncmp(path, "/coaxial/", 9)) return snprintf(out, cap, "%s/%s", host_dir, path + 9) < (int)cap;
   // /private/* (watching only, never --static): private builds outside the repo, such as a MetaHuman
@@ -228,8 +236,24 @@ static void range_header(const char *request, char *out, size_t cap) {
   }
 }
 #define BIG_BODY (4 * 1024 * 1024)   // bytes: a body longer than this is sent by a child (serve_file)
+// An address that moved for good (site-routes.coax, as the load balancer answers it: coax/web/api/lb.sh):
+// 301 to the new one, with the request's query when the route keeps it. Whether it answered.
+static bool moved(int fd, const char *url) {
+  size_t n = strcspn(url, "?#");
+  coax_t_SiteRoute route = site_route((coax_string){url, (int64_t)n});
+  if (route.status != 301) return false;
+  const char *query = route.query && url[n] == '?' ? url + n : "";
+  char head[2600];
+  int h = snprintf(head, sizeof head,
+                   "HTTP/1.1 301 Moved Permanently\r\nLocation: %.*s%.*s%.*s\r\nContent-Length: 0\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n",
+                   (int)route.to.count, route.to.data, (int)(n - (size_t)route.skip), url + route.skip, (int)strcspn(query, "#"), query);
+  if (h > 0 && h < (int)sizeof head) send_all(fd, head, (size_t)h);
+  return true;
+}
+
 static void serve_file(int fd, const char *url, const char *request) {
   char path[PATH_MAX + 1024];
+  if (moved(fd, url)) return;
   if (!resolve(url, path, sizeof path)) { not_found(fd); return; }
   FILE *f = fopen(path, "rb");
   struct stat st;

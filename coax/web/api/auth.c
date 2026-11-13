@@ -194,7 +194,8 @@ static const auth_rule RULES[] = {
   R("*",    "/api/log/", true, AP_GUEST, "the demo's old paths (player.c)"),
   R("*",    "/api/award", true, AP_GUEST, "the demo's old paths (player.c)"),
   R("*",    "/api/planets", true, AP_GUEST, "the demo's old paths (player.c)"),
-  R("*",    "/api/verse/packs/", true, AP_GUEST, "private human packs, a key a session (verse_packs.c)"),
+  R("*",    "/api/metaverse/packs/", true, AP_GUEST, "private human packs, a key a session (verse_packs.c)"),
+  R("*",    "/api/verse/packs/", true, AP_GUEST, "private human packs, a key a session (verse_packs.c: the first address, kept)"),
   R("*",    "/api/villa/", true, AP_GUEST, "the villa (villa.c)"),
   R("*",    "/memorial", true, AP_PUBLIC, "a memorial's page (villa.c)"),
   // ---- Lightning Addresses (lnaddr.c, #13208): wallets ask without a credential; the holder's routes

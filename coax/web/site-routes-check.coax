@@ -1,0 +1,123 @@
+// The site's moved addresses over real HTTP (docs/naming/2026-11-12-metaverse-rename.md, #13405):
+// starts the dev server on the site and asks for each old and new address. The rules are
+// site-routes.coax (its own checks cover every case); this one checks that the server answers
+// by them and that the pages they name are there. No browser.
+//   coax/web/serve.sh builds coax/web/build/serve when it is missing or behind (any run of it does)
+//   coax/web/tool.sh site-routes-check [SERVE_BINARY] [APP_DIR]
+// smoke.sh asks staging and production the same questions of the load balancer (coax/web/api/lb.sh).
+#import "Basic";
+#load "../lib/sys/tool.coax";
+#load "../lib/sys/fs.coax";
+#load "../lib/sys/proc.coax";
+#load "../lib/net/socket_foreign.coax";
+#load "../lib/net/ws.coax";
+
+SRC_BODY :: 1048576;   // the most of an answer that is read (the card is about 200 KB)
+
+src_connect :: (port:int)->int {
+  for ch:"127.0.0.1" {if cxsock_host_push(cast(int)ch)!=0 {return -1;}}
+  return cxsock_connect(port,500);
+}
+// One GET: the whole answer (head and body), or -1.
+src_get :: (port:int,path:string,out:[]u8)->int {
+  h:=src_connect(port);if h<0 {return -1;}
+  q:[1024]u8;n:=ws_put(q[..],0,"GET ");n=ws_put(q[..],n,path);n=ws_put(q[..],n," HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n");
+  ok:=true;for i:0..<n {if cxsock_write(h,cast(int)q[i])!=0 {ok=false;}}
+  ok=ok && cxsock_flush(h,500)==0;
+  used:=0;end:=proc_now_ms()+5000;
+  while ok && proc_now_ms()<end {
+    k:=cxsock_read(h,end-proc_now_ms());
+    if k== -1 {break;}   // the server closed: the answer is whole
+    if k== -2 {continue;}
+    if k<0 || k>out.count-used {ok=false;break;}
+    for i:0..<k {out[used+i]=cast,trunc(u8)cxsock_byte(h,i);}used+=k;
+  }
+  closed:=cxsock_close(h);
+  return ifx ok then used else -1;
+}
+src_has :: (text:string,part:string)->bool {
+  if part.count>text.count {return false;}
+  for i:0..<text.count-part.count+1 {if text[i..<i+part.count]==part {return true;}}
+  return false;
+}
+src_check :: (ok:bool,what:string)->int {
+  if ok {print("  ok    %\n",what);return 0;}
+  print("  FAIL  %\n",what);return 1;
+}
+// An old address answers 301 with exactly this Location.
+src_moved :: (port:int,path:string,to:string,b:[]u8)->int {
+  n:=src_get(port,path,b);text:=ifx n>0 then cast(string)b[0..<n] else "";
+  want:[1100]u8;k:=ws_put(want[..],0,"\r\nLocation: ");k=ws_put(want[..],k,to);k=ws_put(want[..],k,"\r\n");
+  line:[2200]u8;m:=ws_put(line[..],0,path);m=ws_put(line[..],m," moves for good to ");m=ws_put(line[..],m,to);
+  return src_check(ws_starts(text,"HTTP/1.1 301 ") && src_has(text,cast(string)want[0..<k]),cast(string)line[0..<m]);
+}
+// A new address answers 200; its body is kept in b for the caller. The body's start, or -1.
+src_page :: (port:int,path:string,b:[]u8,n:[]int)->int {
+  n[0]=src_get(port,path,b);text:=ifx n[0]>0 then cast(string)b[0..<n[0]] else "";
+  return ifx ws_starts(text,"HTTP/1.1 200 ") then ws_find_end(text) else -1;
+}
+
+tool_main :: ()->int #export_c #effects(all) {
+  args:[1]Args;if !args_load(args[..]) {return 2;}
+  serve:=ifx args_count(args[..])>0 then args_at(args[..],0) else "coax/web/build/serve";
+  app:=ifx args_count(args[..])>1 then args_at(args[..],1) else "apps/openagents-web";
+  if fs_kind(serve)!=FS_FILE {tool_errln("site-routes-check: no dev server at coax/web/build/serve (coax/web/serve.sh builds it)");return 2;}
+  listener:=cxsock_listen(0);if listener<0 {return 1;}port:=cxsock_port(listener);closed:=cxsock_close(listener);
+  address:[64]u8;an:=ws_put(address[..],0,"127.0.0.1:");an=ws_digits(address[..],an,port);
+  h:=proc_new();argv:=[4]string.[serve,app,"--listen",cast(string)address[0..<an]];
+  ok:=true;for x:argv {ok=ok && proc_arg(h,x);}
+  ok=ok && proc_arg(h,"--static") && proc_quiet(h) && proc_start(h)==0;
+  if !ok {tool_errln("site-routes-check: the dev server did not start");return 1;}
+  buf:[SRC_BODY]u8;b:=buf[..];n:[1]int;
+  up:=false;end:=proc_now_ms()+5000;
+  while !up && proc_now_ms()<end {up=src_get(port,"/",b)>0;if !up {proc_sleep(20);}}
+  failed:=src_check(up,"the dev server answers");
+  if up {
+    // the landing: /verse and everything under it, its query kept
+    failed+=src_moved(port,"/verse","/metaverse",b);
+    failed+=src_moved(port,"/verse/","/metaverse/",b);
+    failed+=src_moved(port,"/verse?realms=all&from=old","/metaverse?realms=all&from=old",b);
+    failed+=src_moved(port,"/verse/index.md","/metaverse/index.md",b);
+    failed+=src_moved(port,"/verse/og-verse.jpg","/metaverse/og-verse.jpg",b);
+    // the project page
+    failed+=src_moved(port,"/projects/verse","/projects/metaverse",b);
+    failed+=src_moved(port,"/projects/verse/index.md?x=1","/projects/metaverse/index.md?x=1",b);
+    failed+=src_moved(port,"/projects/verse/work/engine.json","/projects/metaverse/work/engine.json",b);
+    // the retired galaxy, under both names, its query dropped
+    failed+=src_moved(port,"/verse/galaxy","/worlds",b);
+    failed+=src_moved(port,"/verse/galaxy?realms=all","/worlds",b);
+    failed+=src_moved(port,"/verse/galaxy/index.md","/worlds",b);
+    failed+=src_moved(port,"/metaverse/galaxy","/worlds",b);
+    // the new addresses answer, and the landing names itself by its new address
+    at:=src_page(port,"/metaverse",b,n[..]);
+    page:=ifx at>0 then cast(string)b[at..<n[0]] else "";
+    failed+=src_check(at>0 && src_has(page,"data-app=\"verse\""),"/metaverse is the landing");
+    failed+=src_check(src_has(page,"<meta property=\"og:url\" content=\"https://openagents.com/metaverse\">") && src_has(page,"href=\"/metaverse/index.md\"")
+                      && src_has(page,"content=\"https://openagents.com/metaverse/og-verse.jpg\"") && !src_has(page,"openagents.com/verse") && !src_has(page,"\"/verse"),
+                      "/metaverse names its address, its Markdown and its card under /metaverse");
+    at=src_page(port,"/metaverse/index.md",b,n[..]);
+    failed+=src_check(at>0 && ws_starts(cast(string)b[at..<n[0]],"# "),"/metaverse/index.md");
+    at=src_page(port,"/metaverse/og-verse.jpg",b,n[..]);
+    failed+=src_check(at>0 && n[0]-at>3 && b[at]==0xff && b[at+1]==0xd8 && b[at+2]==0xff,"/metaverse/og-verse.jpg is the card");
+    at=src_page(port,"/projects/metaverse",b,n[..]);
+    failed+=src_check(at>0 && src_has(cast(string)b[at..<n[0]],"data-app=\"project\"") && src_has(cast(string)b[at..<n[0]]," verse\"></script>"),"/projects/metaverse is the project whose slug is verse");
+    at=src_page(port,"/projects/metaverse/index.md",b,n[..]);
+    failed+=src_check(at>0 && ws_starts(cast(string)b[at..<n[0]],"# "),"/projects/metaverse/index.md");
+    // what must not change
+    at=src_page(port,"/worlds/haunted-house",b,n[..]);
+    failed+=src_check(at>0 && src_has(cast(string)b[at..<n[0]],"data-app=\"realm\""),"/worlds/haunted-house is unchanged");
+    at=src_page(port,"/worlds/new",b,n[..]);
+    failed+=src_check(at>0,"/worlds/new is unchanged");
+    // the pages that link to the landing use its new address
+    at=src_page(port,"/",b,n[..]);
+    failed+=src_check(at>0 && src_has(cast(string)b[at..<n[0]],"href=\"/metaverse\"") && !src_has(cast(string)b[at..<n[0]],"href=\"/verse\""),"/ links to /metaverse");
+    at=src_page(port,"/llms.txt",b,n[..]);
+    failed+=src_check(at>0 && src_has(cast(string)b[at..<n[0]],"https://openagents.com/metaverse/index.md") && src_has(cast(string)b[at..<n[0]],"https://openagents.com/projects/metaverse/index.md")
+                      && !src_has(cast(string)b[at..<n[0]],"openagents.com/verse/") && !src_has(cast(string)b[at..<n[0]],"/projects/verse/"),"/llms.txt names the new addresses");
+  }
+  number:[32]u8;dn:=ws_digits(number[..],0,proc_pid(h));out:[256]u8;err:[256]u8;
+  command:=[3]string.["/bin/kill","-TERM",cast(string)number[0..<dn]];killed:=proc_run(command[..],1000,out[..],err[..]);
+  waited:=proc_wait(h,2000);released:=proc_release(h);
+  print("site-routes-check: % failed\n",failed);
+  return ifx failed==0 then 0 else 1;
+}

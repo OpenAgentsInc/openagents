@@ -93,7 +93,8 @@ service (a different, older product that keeps its name in history), the
 | `apps/aethyrforge-desktop/` | `apps/metaverse-engine-desktop/` | The desktop app |
 | `docs/verse/` | `docs/metaverse/` | |
 | `apps/openagents-web/verse*`, `gpu/verse.*`, `carriers/verse.coax` | `metaverse*` | Page sources |
-| `apps/openagents-web/projects/verse/` | `projects/metaverse/` | Old URL redirects; see Routes |
+| `apps/openagents-web/verse/` | `apps/openagents-web/metaverse/` | Done in stage 5: the landing's page folder is its address |
+| `apps/openagents-web/projects/verse/` | Stays | The folder is the project's slug, its name on the relay and in the bucket. The address `/projects/metaverse` is an alias; see Routes |
 | `assets/verse/` | `assets/metaverse/` | |
 | `os/verse-*.coax` | `os/metaverse-*.coax` | |
 | `aethyr/layer-allowlist.txt`, `aethyr/consumers.txt`, `aethyr/model-files.txt` | Move with the folder | `contexts.txt`, `docs/architecture/contexts.md`, `docs/reuse.md`, `AGENTS.md` and `coax/web/tool.sh layer-check` change in the same commit |
@@ -151,10 +152,12 @@ condition that retires it.
 | `aethyr.physics-lab.v1` and the other `proto/aethyr/*.json` profiles | `proto/aethyr/` | Published profiles | Next version of each |
 | `aethyr-transport-v1`, `aethyr-projectile-v1` | `proto/registry.json` row IDs, `docs/protocol/aethyr-transport-v1.md` | Wire profile IDs that production rooms and pages agree on | The next transport or projectile version, registered as `metaverse-…` |
 | `aethyr.render.*.v1…v7`, `aethyr.host.*.v1`, `aethyr.metal.*.v1`, `aethyr.stream-walk-*`, `aethyr.recorded-source.v1`, `aethyr.native-gpu-worker.v1`, `aethyr.streaming-scene.v1`, `aethyr.realm` | Render packages, host observation and effect records, recorded fixtures, `docs/verification/` evidence | Format IDs inside recorded files; changing one invalidates every recorded golden | Each format's next version; the reader accepts the old ID until its fixtures are re-recorded |
-| `VPK1` and the `/api/verse/packs/…` routes | Asset packs in the bucket, pages in production, the desktop app | Stored pack magic and a route that cached pages call | Packs v2; `/api/metaverse/packs/` is added as the main route first and `/api/verse/packs/` stays until no request has used it for 30 days |
+| `VPK1` and the `/api/verse/packs/…` routes | Asset packs in the bucket, pages in production, the desktop app | Stored pack magic and a route that cached pages call | Packs v2. `/api/metaverse/packs/` is the main route (`verse_packs.c`) and `/api/verse/packs/` answers the same way, not as a redirect. The pages (`host.js`, `character-host.js`) move to the new route once the API that has it is in production; the old route stays until no request has used it for 30 days |
 | `verse.player`, `verse.quality`, `verse.quality.settled`, `verse.settings`, `verse.sound`, `verse.gyro`, `verse.voice.speaker`, `verse.hud`, `verse.haunt.save`, `verse.world.v1`, `verse-place 1` | Browser `localStorage`, saved places | Players' saved settings, identity and places | A storage version that copies each key to `metaverse.…` once, then 90 days |
 | Postgres schema `verse` (`verse.item_outbox`, `verse.character_outbox`, …), 123 migrations | Production database | Renaming a schema needs a migration and a deploy in step with every query; migrations are history | A planned database change adds `metaverse` as the schema and leaves `verse` as views for one release. Not part of this rename |
-| `/verse`, `/verse/galaxy`, `/projects/verse`, `/verse-os/` | Published links, link previews, the sitemap | Saved links must keep working | Never removed: each becomes a permanent redirect to `/metaverse…` or `/projects/metaverse` |
+| `/verse`, `/verse/galaxy`, `/projects/verse` | Published links, link previews, the sitemap | Saved links must keep working | Never removed: each is a permanent redirect. See Routes |
+| `/verse-os/` | The OS image's update address (`verseos.image.updateUrl`) | Installed machines ask it | Moves with the OS rename, not with the pages |
+| The project slug `verse` (`projects/verse/project.json`, the relay's `d` tag, the bucket's `projects/verse/`) | The relay, the bucket, `openagents project …` | A project's slug is its identity on the relay; a new slug is a new project | The owner republishes the project as `metaverse` with the project keys. Until then `/projects/metaverse` is an alias for it |
 | `/api/playtest/…` | API | Not a Verse name; unchanged | |
 | `/forge` | Published links | A stable public link | Never removed: it stays as a permanent redirect to the realm creation page. No UI text says "Forge" |
 | `/realms/<slug>` | Published links | Already the right name; unchanged | |
@@ -164,6 +167,46 @@ condition that retires it.
 | `https://openagents.gitbook.io/building-aethyr-world-engine` | The published engine book | Published link | The space is renamed "Building the OpenAgents Metaverse Engine" and GitBook redirects the old slug. The publication file records both |
 | `https://github.com/OpenAgentsInc/openagents/blob/main/verse/SKILL.md` and other `blob/main/aethyr/…`, `blob/main/verse/…`, `blob/main/docs/verse/…` links | Agent discovery text, pages in production | GitHub does not redirect a moved file | Links in this repository change with the folder moves. Links outside it can't be fixed; `verse/SKILL.md` stays as a one-line pointer file until the pages that name it are redeployed |
 | Unreal class and module names (`AethyrProbe`, `AethyrBridge`, …) | Unreal project files | Saved assets point at them | A core redirect lands with the rename |
+
+## Routes
+
+Stage 5. The rules are in two places that must agree: `coax/web/site-routes.coax`
+(the dev server, with its checks) and the load balancer's url map, written by
+`coax/web/api/lb.sh` ("The Metaverse's addresses"). `coax/web/tool.sh
+site-routes-check` asks the dev server every address below; `coax/web/smoke.sh`
+asks staging and production.
+
+| Address | Answer |
+| --- | --- |
+| `/metaverse`, `/metaverse/index.md`, `/metaverse/og-verse.jpg` | The landing: `apps/openagents-web/metaverse/` |
+| `/verse`, `/verse/*` | 301 to `/metaverse`, `/metaverse/*`, path and query kept |
+| `/verse/galaxy`, `/metaverse/galaxy` and under them | 301 to `/worlds`, query dropped (the galaxy was retired on 2026-10-31) |
+| `/projects/metaverse`, `/projects/metaverse/*` | The project page: the site's `projects/verse/`, by a rewrite |
+| `/projects/verse`, `/projects/verse/*` | 301 to `/projects/metaverse`, `/projects/metaverse/*`, path and query kept |
+| `/api/metaverse/packs/<name>`, `/api/metaverse/packs/fetch/<sid>` | The pack routes |
+| `/api/verse/packs/…` | The same routes, answered the same way (an alias, not a redirect) |
+| `/worlds/<slug>`, `/realms/<slug>` | Unchanged |
+
+Pages the project tool writes (`projects/verse/index.html`, `projects/index.md`,
+`projects/list.coax`) and links between projects are made from the slug, so
+they still say `/projects/verse`. They work through the redirect. They change
+when the project is republished under the new slug.
+
+`/forge` answers 404 in production today (checked 2026-11-12). Its redirect to
+the realm creation page is not part of stage 5.
+
+Deploy order, each step safe on its own:
+
+1. `coax/web/api/lb.sh`. It adds the `/projects/metaverse` alias, the
+   `/projects/verse` redirect and the `/metaverse/galaxy` redirect. It leaves
+   `/verse` alone on a host whose `/metaverse` doesn't answer yet, and says so.
+2. The API deploy (`/api/metaverse/packs/`, migration 0178).
+3. The web release (`/metaverse` is in the bucket; links point at it).
+4. `coax/web/api/lb.sh` again. Now it adds the `/verse` redirect on both hosts.
+5. `coax/web/smoke.sh https://openagents.com` and the same for staging.
+
+A web release before step 1 is safe except for one link: `llms.txt` names
+`/projects/metaverse/index.md`, which answers 404 until step 1.
 
 ## Root folders
 
@@ -202,9 +245,9 @@ Found while changing UI text (stage 2b). Each needs more than a text edit.
 
 | Where | What it says | Why it stays for now | Changes when |
 | --- | --- | --- | --- |
-| `coax/web/api/schema.sql`, served realm pages (lines near 9915, 9949, 10075, 10265, 10275, 12660, 12842) | "A world built on the Verse.", the share text, the page title "a realm on the Verse", `og:image:alt`, "A fork of … on the Verse" | Text served from SQL functions. Changing it is a new migration, and `test_realm_builder.py`, `test_realm_fork.py` and three client fixtures pin it | A migration that replaces the functions' text, with the tests, lands with the next API deploy |
+| `coax/web/api/schema.sql`, served realm pages | Changed by migration `0178_metaverse_page_text.sql`: the pages say "the Metaverse" once the API with that migration is deployed | | Done in the repository; live with the next API deploy |
 | `coax/web/api/schema.sql` model prompts, `coax/web/agent/chat.coax` lines 150 and 152 | NPC and chat-agent prompts that say "the Verse" | Prompts are agent behaviour, which this rename must not change without an evaluation | A prompt change with its own check of the answers |
-| `apps/openagents-web/verse/og-verse.jpg` | "ENTER THE VERSE" and "OPENAGENTS.COM/VERSE" drawn into the picture | A picture; `og-card.py` needs a page shot to redraw it | The card is redrawn after the web release that shows the new landing title |
+| `apps/openagents-web/metaverse/og-verse.jpg` | "ENTER THE VERSE" and "OPENAGENTS.COM/VERSE" drawn into the picture | A picture; `og-card.py` needs a page shot to redraw it | The card is redrawn after the web release that shows the new landing title |
 | `coax/web/goldens/landing.png`, `goldens/linux/landing.png` | The old landing title | Goldens are re-recorded from staging | The next staging release (`bun coax/web/goldens.ts … --only landing --update`) |
 | `aethyr/ui/arwes-paint.coax` line 205 | Draws "AETHYR / ONLINE" in the HUD lab | Asserted by two checks; a drawn string | The symbol stage |
 | The macOS app name in `coax/web/voice.js` line 233 ("Microphone → Aethyrforge") | The installed app's name in System Settings | Must match the installed app | The app's display name changes |
@@ -223,7 +266,9 @@ Found while changing UI text (stage 2b). Each needs more than a text edit.
 4. **Symbols and modules.** One scripted commit per prefix.
 5. **Routes and aliases.** `/metaverse`, `/projects/metaverse`,
    `/api/metaverse/packs/`, `~/.openagents/metaverse-engine/`, with the old forms
-   redirecting or read as fallbacks, and tests for each.
+   redirecting or read as fallbacks, and tests for each. The web routes and
+   the served page text are done (see Routes); `~/.openagents/metaverse-engine/`
+   is not.
 6. **Verification.** layer-check, wire-check, tools-check, the touched
    suites, page builds and a walk of saved links.
 7. **Cleanup.** A search for the old names finds only this document's

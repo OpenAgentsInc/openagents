@@ -36,7 +36,7 @@ export type Page = { path: string; lit: number; settle: number; blocks: number; 
 export type Pages = { pages: Record<string, Page>; byAddress: Record<string, Page>; open: ReturnType<typeof worlds>; unlisted: Set<string>; devOnly: Set<string> }
 
 export function goldenPages(file = join(ROOT, APP, "realms.json")): Pages {
-  const pages: Record<string, Page> = { landing: { path: "/verse", lit: 0.004, settle: 2500, blocks: 4, module: "verse" } }
+  const pages: Record<string, Page> = { landing: { path: "/metaverse", lit: 0.004, settle: 2500, blocks: 4, module: "verse" } }
   // Every realm, the open worlds in realms.json's order.
   const open = worlds(file, { site: join(ROOT, APP), packs: join(ROOT, "verse/packs"), styleBlock: existsSync(join(ROOT, "verse/style.coax")) }).filter((w) => w.kind === "open" && w.realm)
   for (const w of open) pages[w.realm!.slug] = { path: `/worlds/${w.realm!.slug}`, ...w.realm!.golden, module: w.realm!.module }
@@ -166,7 +166,7 @@ export function touches(name: string, files: string[], p: Pages = goldenPages())
   return files.some(sharedHit) ? "shared" : ""
 }
 
-/** The bucket objects that are a page's bytes: /verse is verse (the bare path's page) and verse/index.html. */
+/** The bucket objects that are a page's bytes: /metaverse is metaverse (the bare path's page) and metaverse/index.html. */
 export function pageObjects(path: string): string {
   const dir = path.split("?")[0].replace(/^\/|\/$/g, "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
   return dir ? `^${dir}(/index\\.html)?$` : "^index\\.html$"

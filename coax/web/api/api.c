@@ -47,7 +47,7 @@
 //   email, admins only            POST /api/admin/email, through Resend (email.c)
 //   /chat, admins only             /api/chat/*, and the runner's /api/chat/runner/* (chat.c)
 //   realm invites                  /api/playtest/access, /api/admin/access (access.c, flag off)
-//   private human packs            /api/verse/packs/<name>, /api/verse/packs/fetch/<sid>, per-session keys (verse_packs.c)
+//   private human packs            /api/metaverse/packs/<name>, /api/metaverse/packs/fetch/<sid>, per-session keys; /api/verse/packs/ kept (verse_packs.c)
 #include "api.h"
 
 #include <arpa/inet.h>

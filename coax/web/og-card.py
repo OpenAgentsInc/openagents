@@ -10,7 +10,7 @@ Tooling only: it runs on this machine and ships a JPEG.
         --foot "OPENAGENTS · OPENAGENTS.COM/VERSE"
 
 SHOT is a screenshot taken with coax/web/tool.sh shot; the crop keeps the HUD out.
-It needs Pillow (pip install pillow, in a venv). /verse/og-verse.jpg came from
+It needs Pillow (pip install pillow, in a venv). /metaverse/og-verse.jpg came from
 a 2000x1100 shot of /realms/haunted-house with --crop 150,112,1850,1004.
 """
 import argparse, os, re

@@ -57,14 +57,19 @@ def check(ok, what):
     print(("  ok    " if ok else "  FAIL  ") + what)
     if not ok: failed.append(what)
 
-pages = ["/projects", "/projects/index.md", "/projects/coax/demo"] + [p for slug in sys.argv[5].split() for p in (f"/projects/{slug}", f"/projects/{slug}/index.md")]
-check(all(f"/projects/{slug}" in pages for slug in ("coax", "verse", "planetary-villa")), f"the project pages: {sys.argv[5].strip()}")
+# The Metaverse project's slug is still "verse" (its name on the relay and in the bucket); its address is /projects/metaverse (lb.sh).
+address = {"verse": "metaverse"}
+slug_at = {v: k for k, v in address.items()}
+pages = ["/projects", "/projects/index.md", "/projects/coax/demo"] + [p for slug in sys.argv[5].split() for p in (f"/projects/{address.get(slug, slug)}", f"/projects/{address.get(slug, slug)}/index.md")]
+check(all(f"/projects/{slug}" in pages for slug in ("coax", "metaverse", "planetary-villa")), f"the project pages: {sys.argv[5].strip()}")
 moved = ["/project/coax", "/project/coax/index.md", "/project/verse/index.md",   # the old addresses: 301 to /projects/* and /worlds/*
+         "/projects/verse", "/projects/verse/", "/projects/verse/index.md", "/projects/verse/index.md?from=old",   # 301 to /projects/metaverse* (#13405)
+         "/verse", "/verse/", "/verse?realms=all&from=old", "/verse/index.md", "/verse/og-verse.jpg",             # 301 to /metaverse*
          "/realm/haunted-house", "/realm/everglade?from=playtest", "/realm/haunted-house/index.md", "/realm/everglade/og.jpg", "/realm/hecates-cemetery/card.jpg",
          "/realms", "/realms/", "/realms/everglade", "/realms/everglade?from=playtest", "/realms/haunted-house/index.md", "/realms/built"]
 extra = [("/llms.txt", {200}), ("/index.md", {200}), ("/v1/projects", {401, 403}), ("/docs", {200, 301, 302, 308})] if coder else [("/" + uuid.uuid4().hex, {404})]
-verse = ["/verse", "/verse/index.md"]   # the playtest's landing
-retired = ["/verse/galaxy", "/verse/galaxy/", "/verse/galaxy/index.md", "/verse/galaxy?realms=all"]   # the galaxy: 301 to /worlds (lb.sh)
+verse = ["/metaverse", "/metaverse/index.md"]   # the playtest's landing
+retired = ["/verse/galaxy", "/verse/galaxy/", "/verse/galaxy/index.md", "/verse/galaxy?realms=all", "/metaverse/galaxy", "/metaverse/galaxy/index.md?realms=all"]   # the galaxy: 301 to /worlds (lb.sh)
 first = fetch(["/", ("/", "GET", "http"), "/worlds/haunted-house", "/worlds/haunted-house/index.md"] + pages + moved + [p for p, _ in extra] + verse + retired)
 (s, h, page), redirect, house, house_md = first[:4]
 s_pages = first[4:4 + len(pages)]
@@ -113,11 +118,14 @@ for path, (s, h, body) in zip(pages, s_pages):
     check(ok, f"{path} ({s})")
     # a real project page names its project (key and d) for the page's own line to the relay
     if path.count("/") == 2 and not path.endswith(".md"):
-        slug = path.rsplit("/", 1)[1]
+        slug = path.rsplit("/", 1)[1]; slug = slug_at.get(slug, slug)
         check(re.search(rb'data-text="[0-9a-f]{64} ' + slug.encode() + rb'"', body) is not None, f"{path} names its project")
-# The old /project/*, /realm/* and /realms/* addresses move for good to /projects/* and /worlds/*, path and query kept.
+# The old /project/*, /realm/* and /realms/* addresses move for good to /projects/* and /worlds/*, and /verse* and
+# /projects/verse* to /metaverse* and /projects/metaverse*, path and query kept. One move each: /project/verse/... goes
+# to /projects/verse/..., which moves again.
 for path, (s, h, _) in zip(moved, s_moved):
-    want = re.sub(r"^/project/", "/projects/", re.sub(r"^/realms?(?=/|$)", "/worlds", path))
+    if path.startswith("/project/"): want = "/projects/" + path[len("/project/"):]
+    else: want = re.sub(r"^/projects/verse(?=[/?]|$)", "/projects/metaverse", re.sub(r"^/verse(?=[/?]|$)", "/metaverse", re.sub(r"^/realms?(?=/|$)", "/worlds", path)))
     where = h.get("location", "")
     check(s == 301 and where in (want, f"https://{host}{want}"), f"{path} moves to {want} ({s} {where})")
 # The Haunted House: its page, its Markdown, and every asset it names (the
@@ -136,7 +144,7 @@ for (path, want), (s, _, body) in zip(extra, s_extra):
 for path, (s, h, _) in zip(retired, s_retired):
     where = h.get("location", "")
     check(s == 301 and where in ("/worlds", f"https://{host}/worlds"), f"{path} moves to /worlds ({s} {where})")
-# The Verse's way in: the landing (the verse app's page 0) and its Markdown.
+# The Metaverse's way in, /metaverse: the landing (the verse app's page 0) and its Markdown.
 for path, (s, h, body) in zip(verse, s_verse):
     if path.endswith(".md"):
         check(s == 200 and body.startswith(b"# "), f"{path} ({s})")
@@ -149,9 +157,10 @@ for path, (s, h, body) in zip(verse, s_verse):
                 check(fs == 200 and (not f.endswith(b".wasm") or fb[:4] == b"\0asm"), f"{path}: {f.decode()} ({fs})")
         cards = re.findall(rb'<meta (?:property="og:image"|name="twitter:image") content="https://openagents\.com(/[^"]+)">', body)
         check(len(cards) == 2 and b'name="twitter:card" content="summary_large_image"' in body, f"{path} names its link-preview card")
+        check(b'<meta property="og:url" content="https://openagents.com/metaverse">' in body and b"openagents.com/verse" not in body and b'"/verse' not in body, f"{path} names itself and its files by its new address")
 # The link-preview card those tags name: a JPEG, served without a script.
-cs, ch, cb = get("/verse/og-verse.jpg")
-check(cs == 200 and ch.get("content-type", "").startswith("image/jpeg") and cb[:3] == b"\xff\xd8\xff", f"/verse/og-verse.jpg is the card ({cs}, {ch.get('content-type')})")
+cs, ch, cb = get("/metaverse/og-verse.jpg")
+check(cs == 200 and ch.get("content-type", "").startswith("image/jpeg") and cb[:3] == b"\xff\xd8\xff", f"/metaverse/og-verse.jpg is the card ({cs}, {ch.get('content-type')})")
 # Link previews (docs/web/og-tags.md, coax/web/og.ts): a page of each kind names a whole preview,
 # and its card is a JPEG on the site.
 if not coder:

@@ -18,11 +18,14 @@ input and WebGPU. The [homepage notes](new-land/README.md) name the focused chec
 `font.coax` is Filament ([coax/font.md](../../coax/font.md)); HTML/Markdown twins
 carry accessible text. Visible UI is drawn in Coax.
 
-`/verse` is the OpenAgents Metaverse playtest's way in (`verse.coax`, `verse-face.c`,
+`/metaverse` is the OpenAgents Metaverse playtest's way in (`verse.coax`, `verse-face.c`,
 `verse.wgsl`, `data-page` 0): the landing, where PLAYTEST NOW opens the
 Haunted House. Its panels are the Haunted House's wood-and-bronze plates, not
 the HUD bar. The app's page 1, the galaxy, runs only on the native host;
-`/verse/galaxy` redirects to `/worlds`, where every world is listed.
+`/verse/galaxy` and `/metaverse/galaxy` redirect to `/worlds`, where every world is listed.
+The page's old address, `/verse`, and the project page's, `/projects/verse`, move for good to
+`/metaverse` and `/projects/metaverse` (`coax/web/site-routes.coax` for the dev server,
+`coax/web/api/lb.sh` for the deployed site).
 
 ```sh
 coax/bin/coax test apps/openagents-web/newland.coax --steps 400000000

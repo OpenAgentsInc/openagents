@@ -12,4 +12,4 @@ Worlds on the OpenAgents Metaverse you play in the browser, newest first. The pa
 - [Ice Cream Man](https://openagents.com/worlds/ice-cream-man): Find three keys and escape the house. Opened Oct 28, 2026.
 - [Haunted House](https://openagents.com/worlds/haunted-house): Nine haunts to find and doors to open. Opened Oct 28, 2026.
 
-Also: [the Metaverse](https://openagents.com/verse), [build your own world](https://openagents.com/worlds/new).
+Also: [the Metaverse](https://openagents.com/metaverse), [build your own world](https://openagents.com/worlds/new).

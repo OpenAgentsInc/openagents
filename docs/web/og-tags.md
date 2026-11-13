@@ -11,7 +11,7 @@ Checked with `curl` against openagents.com and the staged site (67 pages).
 
 | Pages | og:title / description / url | og:image | twitter:card | Notes |
 |---|---|---|---|---|
-| 15 realm pages (`realms.json`), the Garden, `/verse`, `/verse/galaxy` | yes | yes, 1200x630 | large image | 4 realms have their own card (Everglade, Fairy Forest, Hecate's Cemetery, Ice Cream Man). The other 11, the Garden, `/verse` and the galaxy all showed one picture, `/verse/og-verse.jpg`: the Haunted House's. 8 realm descriptions ran 200 to 291 characters, so previews cut them off mid-sentence. |
+| 15 realm pages (`realms.json`), the Garden, `/metaverse` | yes | yes, 1200x630 | large image | 4 realms have their own card (Everglade, Fairy Forest, Hecate's Cemetery, Ice Cream Man). The other 11, the Garden, `/metaverse` and the galaxy all showed one picture, `/metaverse/og-verse.jpg`: the Haunted House's. 8 realm descriptions ran 200 to 291 characters, so previews cut them off mid-sentence. |
 | `/realms/new`, `/realms/characters` | yes | none | small or none | A text-only preview. |
 | Homepage, `/projects` and its 9 project pages, `/pylon`, `/download`, `/docs/connect-a-pylon`, `/nip` and its 22 NIP pages | none | none | none | Chat apps fell back to the `<title>` and description, with no picture. `/download` had no description either. |
 | `/login`, `/chat`, `/admin/*`, `/new-land`, the 404, private and demo project pages | none | none | none | All `noindex`; they still get shared. |
@@ -57,7 +57,7 @@ committed in `apps/openagents-web/og/`):
   fixed game time with `?stage=highlight&card=1` (`card=1` leaves the HUD
   out; Dead Gears takes it too); the walking realms are shot large in golden
   mode and cropped clear of their HUD. A realm with a hand-made `card` in `realms.json`
-  keeps it (the Haunted House keeps `/verse/og-verse.jpg`). A realm's line is
+  keeps it (the Haunted House keeps `/metaverse/og-verse.jpg`). A realm's line is
   its `share` field when it has one (20 to 200 characters), else its
   description, shortened.
 - **Project** (`projects/<slug>/project.json`): its name, its line, and a
