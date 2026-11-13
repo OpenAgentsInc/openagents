@@ -1,0 +1,67 @@
+// A seat's reagents (docs/dnd/everglade-combat-profile.md, #13284): the consumed Material components its
+// character carries (SRD 5.2.1 p. 104), by component key and count, in the rules' own record
+// (rules/srd/cast-components.coax RsMaterialStock). The room keeps what a cast left, and gives it back to
+// the character whenever its class's preset rebuilds it (a new socket, a level), so what is spent stays
+// spent while the seat is held. One list for every reagent: it replaces a boolean a spell on the seat
+// (Find Familiar's incense, Protection from Evil and Good's water, Revivify's diamond).
+#authority;
+
+// Remember each material the character holds: a key the list has takes the count; a new key takes a
+// free place. A full list keeps what it has.
+xr_keep :: (stock: [] RsMaterialStock, have: [] const RsMaterialStock) #effects(all) {
+  for m: have {
+    if m.key < 0 { continue; }
+    at := -1;
+    for k: 0..<stock.count { if stock[k].key == m.key { at = k; break; } }
+    if at < 0 { for k: 0..<stock.count { if stock[k].key < 0 { at = k; break; } } }
+    if at >= 0 { stock[at] = m; }
+  }
+}
+// Give the character what the list remembers: each material it holds whose key the list has takes
+// the remembered count. A material the list never saw keeps its preset's count.
+xr_apply :: (stock: [] const RsMaterialStock, have: [] RsMaterialStock) #effects(all) {
+  for k: 0..<have.count {
+    if have[k].key < 0 { continue; }
+    for s: stock { if s.key == have[k].key { have[k].count = s.count; break; } }
+  }
+}
+
+#test "a seat's reagents: what a cast left is remembered by key and given back to a rebuilt character" {
+  stock: [3] RsMaterialStock;
+  #assert stock[0].key == -1 && stock[2].key == -1;
+  have: [4] RsMaterialStock;
+  have[1] = RsMaterialStock.{key = 7, count = 1}; have[3] = RsMaterialStock.{key = 9, count = 4};
+  // nothing remembered: a preset's counts stand
+  xr_apply(stock[..], have[..]); #assert have[1].count == 1 && have[3].count == 4 && have[0].key == -1;
+  xr_keep(stock[..], have[..]);
+  #assert stock[0].key == 7 && stock[0].count == 1 && stock[1].key == 9 && stock[1].count == 4 && stock[2].key == -1;
+  // spent: the same keys take the new counts in place, and no second place
+  have[1].count = 0; have[3].count = 3; xr_keep(stock[..], have[..]);
+  #assert stock[0].key == 7 && stock[0].count == 0 && stock[1].key == 9 && stock[1].count == 3 && stock[2].key == -1;
+  // a rebuilt character (its preset's full counts, in other places) gets the remembered counts back
+  fresh: [4] RsMaterialStock;
+  fresh[0] = RsMaterialStock.{key = 9, count = 4}; fresh[2] = RsMaterialStock.{key = 7, count = 1}; fresh[3] = RsMaterialStock.{key = 5, count = 2};
+  xr_apply(stock[..], fresh[..]);
+  #assert fresh[0].count == 3 && fresh[2].count == 0 && fresh[3].count == 2 && fresh[1].key == -1 && fresh[1].count == 0;
+  // a key in the last place is found, and one never seen takes the last free place
+  xr_keep(stock[..], fresh[..]); #assert stock[2].key == 5 && stock[2].count == 2;
+  fresh[3].count = 1; xr_keep(stock[..], fresh[..]); #assert stock[2].count == 1 && stock[0].count == 0 && stock[1].count == 3;
+  again: [1] RsMaterialStock; again[0] = RsMaterialStock.{key = 5, count = 9};
+  xr_apply(stock[..], again[..]); #assert again[0].count == 1;
+  // a full list keeps what it has and drops the new key
+  more: [1] RsMaterialStock; more[0] = RsMaterialStock.{key = 11, count = 6};
+  xr_keep(stock[..], more[..]);
+  #assert stock[0].key == 7 && stock[1].key == 9 && stock[2].key == 5 && stock[2].count == 1;
+  xr_apply(stock[..], more[..]); #assert more[0].count == 6;
+  // component key 0 is a material like any other: kept, given back, and its place in the list is not a free one
+  zs: [2] RsMaterialStock; zh: [1] RsMaterialStock; zh[0] = RsMaterialStock.{key = 0, count = 3};
+  xr_keep(zs[..], zh[..]); #assert zs[0].key == 0 && zs[0].count == 3 && zs[1].key == -1;
+  other: [1] RsMaterialStock; other[0] = RsMaterialStock.{key = 4, count = 8};
+  xr_keep(zs[..], other[..]); #assert zs[0].key == 0 && zs[0].count == 3 && zs[1].key == 4 && zs[1].count == 8;
+  zh[0].count = 1; xr_keep(zs[..], zh[..]); #assert zs[0].count == 1;
+  zh[0].count = 7; xr_apply(zs[..], zh[..]); #assert zh[0].count == 1;
+  // an empty place in the character's list matches nothing, though the list has free places of the same key (-1)
+  none: [2] RsMaterialStock; free: [2] RsMaterialStock; none[0].count = 5;
+  xr_apply(free[..], none[..]); #assert none[0].count == 5 && none[0].key == -1;
+  xr_keep(free[..], none[..]); #assert free[0].key == -1 && free[0].count == 0;
+}

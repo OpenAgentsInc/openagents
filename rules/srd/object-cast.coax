@@ -27,7 +27,7 @@ rs_cast_object :: (b: [] RsBattle, i: int, sp: int, o: [] RsObject) -> bool {
   if !rs_object_spell(sp) || o[0].destroyed || !rs_can_cast_as(b, i, sp, 0, false) { return false; }
   s := rs_spell(sp);
   me := b[0].c[i];
-  if rs_feet(me.x, me.y, o[0].x, o[0].y) > s.range_ft { return false; }
+  if rs_range_ft(b, me.x, me.y, o[0].x, o[0].y) > s.range_ft { return false; }
   rs_rest_cast_before(b, i, s.level);
   if !rs_cast_components_pay(b[0].c[i..<i+1], sp) { return false; }
   if s.components.count > 0 && s.components[0] == 86 { rs_unhide(b, i); }

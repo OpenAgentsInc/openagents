@@ -1,70 +1,81 @@
 // A world's whole rules declaration: every way its combat departs from SRD
-// 5.2.1 turn timing, areas, press costs and walking, chosen in one call before
+// 5.2.1 turn timing, areas, measuring and walking, chosen in one call before
 // the battle's clock is sealed. The shared rules read only the battle's applied
-// fields (timing, areas, press, walk); worlds never pick them one at a time.
+// fields (timing, areas, measure, walk); worlds never pick them one at a time.
 // Removing a profile (rs_reset, or RS_STRICT_WORLD) gives strict SRD results.
+//
+// No profile makes anything free (#13284): what an ability costs (its Ability
+// record, ability-record.coax) is paid in every world, and comes back by the
+// SRD's rests, or on the action profile's declared cooldowns.
 #authority;
-#load "press-budget.coax";
 
 RS_WALK_PAID :: 0;   // SRD p.24: continuous walking spends the turn's feet (walk-budget.coax)
 RS_WALK_RATE :: 1;   // house: continuous walking at a Speed-proportional rate, unpaid
-RsWorldProfile :: struct { timing: RsTimingProfile; areas: RsAreaProfile; press: RsPressProfile; walk: int; }
+RsWorldProfile :: struct { timing: RsTimingProfile; areas: RsAreaProfile; measure: int; walk: int; }
 RS_STRICT_WORLD :: RsWorldProfile.{};
 // Grid action worlds: Everglade 5E single play, 5E MMO and 5E Lab's action mode.
 RS_ACTION_WORLD :: RsWorldProfile.{timing=RS_ACTION_TIMING, areas=RS_SPARE_CASTER_AREAS};
-// Everglade Experimental, the Everglade 5E room and Everglade II: also free
-// presses and continuous rate walking.
-RS_EVERGLADE_WORLD :: RsWorldProfile.{timing=RS_ACTION_TIMING, areas=RS_SPARE_CASTER_AREAS, press=RS_UNLIMITED_PRESS, walk=RS_WALK_RATE};
+// Everglade (docs/dnd/everglade-combat-profile.md): 1.5-second turns with no
+// timed recovery, areas that can harm leave out the caster's team, ranges and
+// areas along the straight line, continuous rate walking.
+RS_EVERGLADE_WORLD :: RsWorldProfile.{timing=RS_BEATS_TIMING, areas=RS_SPARE_ALLIES_AREAS, measure=RS_MEASURE_STRAIGHT, walk=RS_WALK_RATE};
 
 // The named deviations, one bit each.
 RS_DEV_BEATS :: 1;         // 1.5-second turns and a quarter-round movement grant
 RS_DEV_RECHARGE :: 2;      // spent slots, uses and points come back on cooldowns
 RS_DEV_SPARE_CASTER :: 4;  // a caster is never in its own area
-RS_DEV_FREE_PRESS :: 8;    // each press refills slots, uses, Focus, Rage and the Action budget
+RS_DEV_SPARE_ALLIES :: 8;  // nor is its team in one that can harm
 RS_DEV_RATE_WALK :: 16;    // continuous walking is not paid from the turn's feet
-RS_DEV_NAMES :: [5] string.["1.5-second turns", "cooldown recovery", "caster spared by its own areas", "unlimited presses", "unpaid continuous walking"];
+RS_DEV_STRAIGHT :: 32;     // ranges and areas along the straight line, not the grid's count
+RS_DEV_NAMES :: [6] string.["1.5-second turns", "cooldown recovery", "caster spared by its own areas", "team spared by its harmful areas", "unpaid continuous walking", "straight-line ranges"];
 
 rs_world_deviations :: (p: RsWorldProfile) -> int #effects(reads, writes, traps) {
   d := 0;
-  if p.timing.kind == RS_TIME_ACTION { d = d + RS_DEV_BEATS + RS_DEV_RECHARGE; }
-  if p.areas.kind == RS_AREA_SPARE_CASTER { d = d + RS_DEV_SPARE_CASTER; }
-  if p.press.kind == RS_UNLIMITED_PRESS.kind { d = d + RS_DEV_FREE_PRESS; }
+  if p.timing.kind != RS_TIME_STRICT { d = d + RS_DEV_BEATS; }
+  if p.timing.kind == RS_TIME_ACTION { d = d + RS_DEV_RECHARGE; }
+  if p.areas.kind != RS_AREA_STRICT { d = d + RS_DEV_SPARE_CASTER; }
+  if p.areas.kind == RS_AREA_SPARE_ALLIES { d = d + RS_DEV_SPARE_ALLIES; }
   if p.walk == RS_WALK_RATE { d = d + RS_DEV_RATE_WALK; }
+  if p.measure == RS_MEASURE_STRAIGHT { d = d + RS_DEV_STRAIGHT; }
   return d;
 }
 rs_world_allowed :: (p: RsWorldProfile, sealed: bool) -> bool #effects(reads, writes, traps) {
   return rs_timing_allowed(p.timing,sealed) && rs_area_allowed(p.areas,sealed)
-    && (p.press.kind == RS_PAID_PRESS.kind || p.press.kind == RS_UNLIMITED_PRESS.kind)
+    && rs_measure_allowed(p.measure)
     && (p.walk == RS_WALK_PAID || p.walk == RS_WALK_RATE);
 }
 // All or nothing: a refused profile leaves every applied field as it was.
 rs_set_world :: (b: [] RsBattle, p: RsWorldProfile) -> bool #effects(reads, writes, traps) {
   if !rs_world_allowed(p,b[0].timing_sealed) { return false; }
-  b[0].timing = p.timing; b[0].areas = p.areas; b[0].press = p.press; b[0].walk = p.walk;
+  b[0].timing = p.timing; b[0].areas = p.areas; b[0].measure = p.measure; b[0].walk = p.walk;
   return true;
 }
 rs_world_of :: (b: [] RsBattle) -> RsWorldProfile #effects(reads, writes, traps) {
-  return RsWorldProfile.{timing=b[0].timing, areas=b[0].areas, press=b[0].press, walk=b[0].walk};
+  return RsWorldProfile.{timing=b[0].timing, areas=b[0].areas, measure=b[0].measure, walk=b[0].walk};
 }
 rs_reset_world :: (b: [] RsBattle) #effects(reads, writes, traps) {
-  rs_reset_timing(b); rs_reset_areas(b); b[0].press = RS_PAID_PRESS; b[0].walk = RS_WALK_PAID;
+  rs_reset_timing(b); rs_reset_areas(b); b[0].measure = RS_MEASURE_GRID; b[0].walk = RS_WALK_PAID;
 }
 
 #test "world admission accepts exactly declared fields and only before the clock is sealed" {
-  for t: -1..<3 { for a: -1..<3 { for p: -1..<3 { for w: -1..<3 { for sealed: 0..<2 {
-    profile := RsWorldProfile.{timing=RsTimingProfile.{kind=t}, areas=RsAreaProfile.{kind=a}, press=RsPressProfile.{kind=p}, walk=w};
-    ok := t >= 0 && t <= 1 && a >= 0 && a <= 1 && p >= 0 && p <= 1 && w >= 0 && w <= 1 && sealed == 0;
+  for t: -1..<4 { for a: -1..<4 { for m: -1..<3 { for w: -1..<3 { for sealed: 0..<2 {
+    profile := RsWorldProfile.{timing=RsTimingProfile.{kind=t}, areas=RsAreaProfile.{kind=a}, measure=m, walk=w};
+    ok := t >= 0 && t <= 2 && a >= 0 && a <= 2 && m >= 0 && m <= 1 && w >= 0 && w <= 1 && sealed == 0;
     #assert rs_world_allowed(profile,sealed == 1) == ok;
-    #assert rs_world_deviations(profile) == (ifx t == 1 then 3 else 0) + (ifx a == 1 then 4 else 0) + (ifx p == 1 then 8 else 0) + (ifx w == 1 then 16 else 0);
+    want := (ifx t == 1 then 3 else ifx t == 0 then 0 else 1) + (ifx a == 1 then 4 else ifx a == 2 then 12 else ifx a == 0 then 0 else 4) + (ifx m == 1 then 32 else 0) + (ifx w == 1 then 16 else 0);
+    #assert rs_world_deviations(profile) == want;
   } } } } }
 }
 
 #test "the declared worlds name every departure and the strict world none" {
   #assert rs_world_deviations(RS_STRICT_WORLD) == 0;
   #assert rs_world_deviations(RS_ACTION_WORLD) == RS_DEV_BEATS|RS_DEV_RECHARGE|RS_DEV_SPARE_CASTER;
-  #assert rs_world_deviations(RS_EVERGLADE_WORLD) == 31;
+  // Everglade: beats with no cooldown recovery, its team spared, rate walking, straight ranges
+  #assert rs_world_deviations(RS_EVERGLADE_WORLD) == 1 + 4 + 8 + 16 + 32;
+  #assert RS_EVERGLADE_WORLD.timing.kind == RS_TIME_BEATS && RS_EVERGLADE_WORLD.areas.kind == RS_AREA_SPARE_ALLIES && RS_EVERGLADE_WORLD.measure == RS_MEASURE_STRAIGHT && RS_EVERGLADE_WORLD.walk == RS_WALK_RATE;
+  #assert RS_DEV_BEATS == 1 && RS_DEV_RECHARGE == 2 && RS_DEV_SPARE_CASTER == 4 && RS_DEV_SPARE_ALLIES == 8 && RS_DEV_RATE_WALK == 16 && RS_DEV_STRAIGHT == 32;
   #assert RS_DEV_NAMES[0] == "1.5-second turns" && RS_DEV_NAMES[1] == "cooldown recovery" && RS_DEV_NAMES[2] == "caster spared by its own areas";
-  #assert RS_DEV_NAMES[3] == "unlimited presses" && RS_DEV_NAMES[4] == "unpaid continuous walking";
+  #assert RS_DEV_NAMES[3] == "team spared by its harmful areas" && RS_DEV_NAMES[4] == "unpaid continuous walking" && RS_DEV_NAMES[5] == "straight-line ranges";
 }
 
 #test "a world applies all or nothing, the clock seals it and reset restores strict" {
@@ -73,14 +84,63 @@ rs_reset_world :: (b: [] RsBattle) #effects(reads, writes, traps) {
   #assert rs_set_world(b[..],RS_ACTION_WORLD) && rs_world_deviations(rs_world_of(b[..])) == 7;
   for bad: 0..<4 {
     p := RS_EVERGLADE_WORLD;
-    if bad == 0 { p.timing.kind = 2; } else if bad == 1 { p.areas.kind = 2; } else if bad == 2 { p.press.kind = 2; } else { p.walk = 2; }
+    if bad == 0 { p.timing.kind = 3; } else if bad == 1 { p.areas.kind = 3; } else if bad == 2 { p.measure = 2; } else { p.walk = 2; }
     #assert !rs_set_world(b[..],p) && rs_world_deviations(rs_world_of(b[..])) == 7;
+    #assert b[0].timing.kind == RS_TIME_ACTION && b[0].areas.kind == RS_AREA_SPARE_CASTER && b[0].measure == RS_MEASURE_GRID && b[0].walk == RS_WALK_PAID;
   }
-  #assert rs_set_world(b[..],RS_EVERGLADE_WORLD) && rs_world_deviations(rs_world_of(b[..])) == 31;
+  #assert rs_set_world(b[..],RS_EVERGLADE_WORLD) && rs_world_deviations(rs_world_of(b[..])) == 61;
+  #assert b[0].timing.kind == RS_TIME_BEATS && b[0].areas.kind == RS_AREA_SPARE_ALLIES && b[0].measure == RS_MEASURE_STRAIGHT && b[0].walk == RS_WALK_RATE;
   _ := rs_add(b[..],rs_fighter("Actor",0,1),1,1); rs_begin(b[..]);
-  #assert !rs_set_world(b[..],RS_STRICT_WORLD) && rs_world_deviations(rs_world_of(b[..])) == 31;
+  #assert !rs_set_world(b[..],RS_STRICT_WORLD) && rs_world_deviations(rs_world_of(b[..])) == 61;
   rs_reset(b[..]);
-  #assert rs_world_deviations(rs_world_of(b[..])) == 0 && !b[0].timing_sealed;
+  #assert rs_world_deviations(rs_world_of(b[..])) == 0 && !b[0].timing_sealed && b[0].measure == RS_MEASURE_GRID && b[0].walk == RS_WALK_PAID;
   #assert rs_set_world(b[..],RS_ACTION_WORLD);
 }
 
+// The Everglade profile's rules together (#13284): what is spent stays spent until a rest, an area
+// that can harm takes every enemy in its shape and none of the caster's team, and an area that helps
+// reaches the team.
+#test "Everglade's world: a spent slot comes back by a rest and never by the clock; the action world's comes back in 9 seconds" {
+  for world: 0..<2 {
+    b: [1] RsBattle; b[0].w = 20; b[0].h = 20;
+    #assert rs_set_world(b[..],ifx world == 0 then RS_EVERGLADE_WORLD else RS_ACTION_WORLD);
+    i := rs_add(b[..],rs_wizard("Mordra",0,5),5,5); rs_begin(b[..]);
+    b[0].c[i].slots[3] = 0; b[0].c[i].uses[RS_USE_FREE] = 0; b[0].c[i].uses_max[RS_USE_FREE] = 1;
+    rs_tick_ticks(b[..],rs_secs(1)); rs_tick_ticks(b[..],rs_secs(60));
+    #assert b[0].c[i].slots[3] == (ifx world == 0 then 0 else 1) && b[0].c[i].uses[RS_USE_FREE] == (ifx world == 0 then 0 else 1);
+    #assert (b[0].c[i].slot_back[3] == 0) && rs_beat(b[..]) == 1500000;
+  }
+}
+#test "Everglade's world: an area that can harm takes every enemy in its shape, never the caster or its team; a helping area reaches the team" {
+  for world: 0..<3 {
+    b: [1] RsBattle; b[0].w = 30; b[0].h = 30; b[0].dice[0].fixed = true;
+    #assert rs_set_world(b[..],ifx world == 0 then RS_EVERGLADE_WORLD else ifx world == 1 then RS_ACTION_WORLD else RS_STRICT_WORLD);
+    i := rs_add(b[..],rs_wizard("Mordra",0,5),10,10);
+    mate := rs_add(b[..],rs_fighter("Mate",0,5),11,10);
+    w1 := rs_add(b[..],rs_guard("Wolf one",2),12,10); w2 := rs_add(b[..],rs_guard("Wolf two",2),12,12); w3 := rs_add(b[..],rs_guard("Wolf three",1),10,13);
+    out := rs_add(b[..],rs_guard("Outside",2),20,20);
+    hp := [6] int.[b[0].c[i].hp, b[0].c[mate].hp, b[0].c[w1].hp, b[0].c[w2].hp, b[0].c[w3].hp, b[0].c[out].hp];
+    rs_start_turn(b[..],i);
+    // Fireball (20-foot sphere) centred on the caster's own square: every one but Outside is in it
+    #assert rs_cast(b[..],i,SP_FIREBALL,3,10,10,-1) && b[0].c[i].slots[3] == 1;
+    #assert b[0].c[w1].hp < hp[2] && b[0].c[w2].hp < hp[3] && b[0].c[w3].hp < hp[4] && b[0].c[out].hp == hp[5];
+    #assert (b[0].c[i].hp == hp[0]) == (world != 2);          // the caster: spared by both house profiles
+    #assert (b[0].c[mate].hp == hp[1]) == (world == 0);       // its team: only by Everglade's
+  }
+}
+#test "Everglade's world: a teammate with no room for an effect doesn't refuse a harmful area it is spared from; an enemy's full list still does" {
+  for world: 0..<2 { for full: 0..<3 {
+    b: [1] RsBattle; b[0].w = 30; b[0].h = 30;
+    #assert rs_set_world(b[..],ifx world == 0 then RS_EVERGLADE_WORLD else RS_ACTION_WORLD);
+    i := rs_add(b[..],rs_bard("Lark",0,5),5,5);
+    mate := rs_add(b[..],rs_fighter("Mate",0,5),15,15); foe := rs_add(b[..],rs_guard("Foe",1),16,15);
+    who := ifx full == 1 then mate else ifx full == 2 then foe else -1;
+    if who >= 0 { for k: 0..<RS_EFFECTS { b[0].c[who].eff[k] = RsEffect.{kind = EF_HEX, by = 20 + k, spell = SP_HEX, until = RS_NO_END}; } }
+    rs_start_turn(b[..],i);
+    slots := b[0].c[i].slots[3];
+    ok := rs_cast(b[..],i,SP_HYPNOTIC_PATTERN,3,15,15,-1);
+    // no one full: cast. The enemy full: refused in both. The teammate full: refused only where it is in the area
+    #assert ok == (full == 0 || (full == 1 && world == 0));
+    #assert b[0].c[i].slots[3] == (ifx ok then slots - 1 else slots);
+  } }
+}

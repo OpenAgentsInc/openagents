@@ -59,6 +59,7 @@
 #load "cast-sight.coax";
 #load "magic-missile-ward.coax";
 #load "area-origin.coax";
+#load "measure.coax";
 #load "strike-features.coax";
 #load "condition-permissions.coax";
 #load "monster-traits.coax";
@@ -78,6 +79,7 @@
 #load "movement-credit.coax";
 #load "locomotion-scale.coax";
 #load "world-profile.coax";
+#load "press-budget.coax";
 #load "walk-budget.coax";
 #load "exhaustion-lifecycle.coax";
 #load "ability-check-math.coax";
@@ -115,6 +117,7 @@ RS_MAX :: 216;
 RS_SQUARES :: 8192;
 RS_ZONES :: 8;
 RsZone :: struct { on: bool; spell: int; by: int; x0: int; y0: int; x1: int; y1: int; until: int; difficult: bool; round: bool; cx: int; cy: int; r_ft: int; truth_dc: int;
+                  measure: int;   // how its radius and length are measured (measure.coax): the battle's, from rs_area
                   line: bool; dx: f32; dy: f32; half: f32; }   // a Line: from (cx, cy) along (dx, dy), a unit, r_ft long, half (squares) each side
 // A turn's economy and what has happened in it: moved (Steady Aim needs none), aimed (Steady Aim's
 // Advantage waiting) and anchored (its Speed 0 after), last_hit (1 + whom its last melee weapon
@@ -148,10 +151,11 @@ RsBattle :: struct {
   // existing point/pool exceptions at 4.5 seconds.
   // Repeat saves, death saves and Rage upkeep stay on six-second rounds.
   timing: RsTimingProfile;
-  areas: RsAreaProfile;      // strict, or a declared house rule sparing the caster (area-origin.coax)
-  press: RsPressProfile;     // paid, or a declared unlimited press budget (press-budget.coax)
+  areas: RsAreaProfile;      // strict, or a declared house rule sparing the caster or its team (area-origin.coax)
+  measure: int;              // RS_MEASURE_GRID, or a declared straight-line measure of ranges and areas (measure.coax)
   walk: int;                 // RS_WALK_PAID or the declared unpaid RS_WALK_RATE (world-profile.coax)
-  // A world selects all four together with rs_set_world (world-profile.coax).
+  // A world selects all four together with rs_set_world (world-profile.coax). Every press is paid:
+  // no profile refills what a creature spends (#13284).
   timing_sealed: bool;       // configured before begin/turn/tick; reset opens it
   // Who stands on each square (1 + the creature, 0 none), so rs_at is one look rather than a scan
   // of every creature: kept by rs_add, rs_place, rs_step_to and the pushes, and rebuilt at each
@@ -188,7 +192,10 @@ rs_abs :: (v: int) -> int { return ifx v < 0 then -v else v; }
 rs_sign :: (v: int) -> int { if v > 0 { return 1; } if v < 0 { return -1; } return 0; }
 // Distance in feet on the grid: each square 5 feet, diagonals too (the SRD's grid rule).
 rs_feet :: (ax: int, ay: int, bx: int, by: int) -> int { return rs_max(rs_abs(ax - bx), rs_abs(ay - by)) * RS_SQUARE; }
-rs_feet_to :: (b: [] RsBattle, i: int, j: int) -> int { return rs_feet(b[0].c[i].x, b[0].c[i].y, b[0].c[j].x, b[0].c[j].y); }
+// Ranges, reaches and areas measure as the battle's world declared (measure.coax): the grid's count,
+// or the straight line between the squares' middles. Movement always counts the grid (rs_feet).
+rs_range_ft :: (b: [] RsBattle, ax: int, ay: int, bx: int, by: int) -> int { return rs_measure_feet(b[0].measure, ax - bx, ay - by); }
+rs_feet_to :: (b: [] RsBattle, i: int, j: int) -> int { return rs_range_ft(b, b[0].c[i].x, b[0].c[i].y, b[0].c[j].x, b[0].c[j].y); }
 // Who stands on a square (the dead lie where they fell and still fill it), or -1.
 rs_at :: (b: [] RsBattle, x: int, y: int) -> int {
   if rs_indexed(b) && x >= 0 && y >= 0 && x < b[0].w && y < b[0].h {
@@ -253,9 +260,9 @@ rs_inside :: (z: RsZone, x: int, y: int) -> bool {
     along := px * z.dx + py * z.dy;
     across := px * z.dy - py * z.dx;
     h := ifx z.half > 0 then z.half else 0.5f32;
-    return along > 0 && rs_feet(x, y, z.cx, z.cy) <= z.r_ft && across <= h && across >= -h;
+    return along > 0 && rs_measure_feet(z.measure, x - z.cx, y - z.cy) <= z.r_ft && across <= h && across >= -h;
   }
-  return !z.round || rs_feet(x, y, z.cx, z.cy) <= z.r_ft;
+  return !z.round || rs_measure_feet(z.measure, x - z.cx, y - z.cy) <= z.r_ft;
 }
 rs_difficult :: (b: [] RsBattle, x: int, y: int) -> bool {
   for k: 0..<RS_ZONES { if b[0].zone[k].difficult && rs_inside(b[0].zone[k], x, y) { return true; } }
@@ -298,7 +305,7 @@ rs_line_box :: (z0: RsZone) -> RsZone {
 // The squares a spell's area covers from caster i toward the point (tx, ty).
 rs_area :: (b: [] RsBattle, i: int, sp: RsSpell, tx: int, ty: int) -> RsZone {
   z: RsZone;
-  z.on = true; z.by = i; z.spell = -1;
+  z.on = true; z.by = i; z.spell = -1; z.measure = b[0].measure;
   k := rs_max(sp.area_ft / RS_SQUARE, 1);
   cx := b[0].c[i].x; cy := b[0].c[i].y;
   if sp.area == RS_A_CUBE_SELF {
@@ -636,7 +643,7 @@ rs_cast_request_from :: (b: [] RsBattle, i: int, sp: int, slot: int, tx: int, ty
     // Divine Smite: right after a melee weapon hit on this target
     if smite && b[0].turn.last_hit != target + 1 { return false; }
   } else if s.area != RS_A_NONE && s.area != RS_A_CUBE_SELF && s.area != RS_A_LINE {
-    if rs_feet(me.x, me.y, tx, ty) > s.range_ft || !rs_point_sees(b, i, sp) { return false; }
+    if rs_range_ft(b, me.x, me.y, tx, ty) > s.range_ft || !rs_point_sees(b, i, sp) { return false; }
   }
   if chosen && smite && b[0].turn.last_hit != target+1 { return false; }
   // Serialized preflight: ending this cast's old concentration is the only
@@ -739,6 +746,8 @@ rs_cast_request_from :: (b: [] RsBattle, i: int, sp: int, slot: int, tx: int, ty
         if !rs_inside(area, b[0].c[j].x, b[0].c[j].y) || b[0].c[j].dead { continue; }
         // A Cube or Line from you starts at you and leaves you out; an area at a point includes you (area-origin.coax)
         if j == i && rs_area_spares_caster(s.area,s.others,b[0].areas) { continue; }
+        // a world where players can't harm each other: the caster's team is out of an area that can harm
+        if j != i && rs_area_spares_ally(b[0].c[j].team == me.team,rs_spell_harms(s),b[0].areas) { continue; }
         // only a creature that can see the pattern (Hypnotic Pattern)
         if rs_area_unseen(s.sight,rs_has(b[0].c[j],RS_BLINDED)) { continue; }
         // Sculpt Spells (Evoker, p. 82): up to 1 + the spell's level allies are spared an Evocation
@@ -2219,7 +2228,7 @@ rs_resurge_slot :: (b: [] RsBattle, i: int) -> bool {
 // there (`heal`, -1 none) regains 2d6 Hit Points.
 rs_lands_aid :: (b: [] RsBattle, i: int, tx: int, ty: int, heal: int) -> bool {
   if !rs_action_free(b, i) || !b[0].c[i].lands_aid || b[0].c[i].uses[RS_USE_WILD] <= 0 { return false; }
-  if rs_feet(b[0].c[i].x, b[0].c[i].y, tx, ty) > 60 { return false; }
+  if rs_range_ft(b, b[0].c[i].x, b[0].c[i].y, tx, ty) > 60 { return false; }
   b[0].turn.action = true; b[0].c[i].uses[RS_USE_WILD] -= 1;
   n6 := ifx b[0].c[i].level >= 14 then 4 else ifx b[0].c[i].level >= 10 then 3 else 2;
   rs_say_ft(b, RS_EV_CAST, i, -1, 0, RS_FT_LANDS_AID, " calls on Land's Aid: flowers and thorns");
@@ -2228,7 +2237,7 @@ rs_lands_aid :: (b: [] RsBattle, i: int, tx: int, ty: int, heal: int) -> bool {
   dc := rs_dc(b, i);
   for j: 0..<b[0].n {
     c := b[0].c[j];
-    if c.team == b[0].c[i].team || !rs_up(c) || rs_feet(tx, ty, c.x, c.y) > 10 { continue; }
+    if c.team == b[0].c[i].team || !rs_up(c) || rs_range_ft(b, tx, ty, c.x, c.y) > 10 { continue; }
     saving := rs_saving_throw_magic(b,j,RS_CON,dc,0);
     total := saving.total; ok := saving.passed;
     amount := rs_sum(b[0].dice[..], n6, 6);
@@ -2240,7 +2249,7 @@ rs_lands_aid :: (b: [] RsBattle, i: int, tx: int, ty: int, heal: int) -> bool {
     rs_tell(b, RS_EV_DAMAGE, -1, i, j, amount, RS_NECROTIC, l[..]);
     rs_damage(b, i, j, amount, RS_NECROTIC, false, -1);
   }
-  if heal >= 0 && heal < b[0].n && !b[0].c[heal].dead && rs_feet(tx, ty, b[0].c[heal].x, b[0].c[heal].y) <= 10 {
+  if heal >= 0 && heal < b[0].n && !b[0].c[heal].dead && rs_range_ft(b, tx, ty, b[0].c[heal].x, b[0].c[heal].y) <= 10 {
     got := rs_feature_heal(b, i, heal, rs_sum(b[0].dice[..], n6, 6), "Land's Aid", RS_FT_LANDS_AID);
   }
   return true;

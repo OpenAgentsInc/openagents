@@ -1,50 +1,60 @@
-// Everglade II's declared social combat profile: shared self effects and paid
-// empty offensive casts, at the seat's own class level (1 to 6, #13046). No player is selected for harm and no area damages
-// bystanders. The one creature a cast may harm is the one the room names (e2r_use_on): the path's guard
-// (everglade/server/guard.coax), never another seat or the caster's own team. The room owns the
+// Everglade's casts on the shared rules (docs/dnd/everglade-combat-profile.md, #13284), at the seat's own
+// class level (1 to 6, #13046). Every press is paid: its slot, use or point, and its part of the seat's
+// turn. An ability at one creature strikes the one the room names (e2r_use_on), alive and of another team.
+// An area that can harm is cast at the aimed point and takes every creature in its shape (rs_area); the
+// world's area profile leaves the caster and its team out, so no player harms another. The room owns the
 // class/slot and real creature/turn state.
 #load "class-kit.coax";
-#load "../../rules/srd/press-budget.coax";
+#load "reagent-stock.coax";
 #authority;
 
 E2rPoint :: struct { x:int; y:int; }
 e2r_use :: (b:[]RsBattle,seats:[]FbSeat,klass:int,slot:int)->bool #effects(all) {
-  return e2r_request(b,seats,klass,slot,null,-1);
+  return e2r_request(b,seats,klass,slot,null,-1,0);
 }
 e2r_use_at :: (b:[]RsBattle,seats:[]FbSeat,klass:int,slot:int,x:int,y:int)->bool #effects(all) {
-  return e2r_request(b,seats,klass,slot,some(E2rPoint.{x=x,y=y}),-1);
+  return e2r_request(b,seats,klass,slot,some(E2rPoint.{x=x,y=y}),-1,0);
 }
 // A creature the room chose (target, -1 none): a Touch spell such as Revivify takes it, and a harmful
 // ability strikes it when it is alive and not the caster's team (the path's guard); the shared rules judge it.
 e2r_use_on :: (b:[]RsBattle,seats:[]FbSeat,klass:int,slot:int,target:int)->bool #effects(all) {
-  return e2r_request(b,seats,klass,slot,null,target);
+  return e2r_request(b,seats,klass,slot,null,target,0);
 }
 e2r_use_at_on :: (b:[]RsBattle,seats:[]FbSeat,klass:int,slot:int,x:int,y:int,target:int)->bool #effects(all) {
-  return e2r_request(b,seats,klass,slot,some(E2rPoint.{x=x,y=y}),target);
+  return e2r_request(b,seats,klass,slot,some(E2rPoint.{x=x,y=y}),target,0);
 }
-e2r_request :: (b:[]RsBattle,seats:[]FbSeat,klass:int,slot:int,point:E2rPoint?,target:int)->bool #effects(all) {
-  switch e2r_atomic(b,seats,klass,slot,point,target) { case none { return false; } case some(ok) { return ok; } }
+// The room's press: the same, with the parts of the seat's turn its clock gives back first (`open`,
+// cast-pace.coax xp_opens: all of a new turn's, or none). Refused, they stay as they were.
+e2r_press :: (b:[]RsBattle,seats:[]FbSeat,klass:int,slot:int,x:int,y:int,target:int,open:int)->bool #effects(all) {
+  return e2r_request(b,seats,klass,slot,some(E2rPoint.{x=x,y=y}),target,open);
 }
-e2r_atomic :: (b:[]RsBattle,seats:[]FbSeat,klass:int,slot:int,point:E2rPoint?,target:int)->bool? #effects(all) {
+e2r_request :: (b:[]RsBattle,seats:[]FbSeat,klass:int,slot:int,point:E2rPoint?,target:int,open:int)->bool #effects(all) {
+  switch e2r_atomic(b,seats,klass,slot,point,target,open) { case none { return false; } case some(ok) { return ok; } }
+}
+e2r_atomic :: (b:[]RsBattle,seats:[]FbSeat,klass:int,slot:int,point:E2rPoint?,target:int,open:int)->bool? #effects(all) {
   #transaction {
-    if !e2r_apply(b,seats,klass,slot,point,target) { return null; }
+    if !e2r_apply(b,seats,klass,slot,point,target,open) { return null; }
   }
   return some(true);
 }
+// Whether `target` names one of the battle's creatures.
+e2r_named :: (b:[]RsBattle,target:int)->bool #effects(all) { return target>=0 && target<b[0].n; }
 // Creature foe as caster i's harm's target: itself when it stands and is another team's, else -1.
 e2r_foe :: (b:[] RsBattle,i:int,foe:int)->int #effects(reads,traps) {
   if foe<0 || foe>=b[0].n { return -1; }
   if b[0].c[foe].dead || b[0].c[foe].hp<=0 || b[0].c[foe].team==b[0].c[i].team { return -1; }
   return foe;
 }
-e2r_apply :: (b:[]RsBattle,seats:[]FbSeat,klass:int,slot:int,point:E2rPoint?,target:int)->bool #effects(all) {
+e2r_apply :: (b:[]RsBattle,seats:[]FbSeat,klass:int,slot:int,point:E2rPoint?,target:int,open:int)->bool #effects(all) {
   i:=seats[0].me;
   if i<0 || i>=b[0].n { return false; }
   e:=xk_entry_at(klass,b[0].c[i].level,slot);   // the seat's own level's bar (#13046)
   if !e.ok || !rs_can_act(b[0].c[i]) { return false; }
-  turn:[1] RsTurn; turn[0]=seats[0].turn;
-  _:=rs_press_prepare(b[0].c[i..<b[0].n],turn[..],b[0].press);
-  seats[0].turn=turn[0]; seats[0].open=true;
+  // a new turn: its Action, its Bonus Action and its one spell with a slot (the transaction undoes this on a refusal)
+  if (open & XP_ACTION)!=0 { seats[0].turn.action=false; }
+  if (open & XP_BONUS)!=0 { seats[0].turn.bonus=false; }
+  if (open & XP_SLOT)!=0 { seats[0].turn.slot_spent=false; }
+  seats[0].open=true;
   fb_seat_in(b,seats);
   ok:=false;
   if e.ab.kind==FB_SPELL && e.ab.sp==SP_ZONE_OF_TRUTH {
@@ -57,16 +67,35 @@ e2r_apply :: (b:[]RsBattle,seats:[]FbSeat,klass:int,slot:int,point:E2rPoint?,tar
       }
     }
   } else if e.ab.kind==FB_SPELL && e.ab.sp==SP_REVIVIFY {
-    ok=target>=0 && target<b[0].n && fb_cast(b,i,e.ab,-1,b[0].c[i].x,b[0].c[i].y,target);
-  } else { ok=e2r_dispatch_at(b,i,xk_rules(klass,e.ab),e2r_foe(b,i,target)); }   // a bow kit's Attack is its Longbow's shot (#13130)
+    ok=e2r_named(b,target) && fb_cast(b,i,e.ab,target,b[0].c[i].x,b[0].c[i].y,target);
+  } else { ok=e2r_dispatch_at(b,i,xk_rules(klass,e.ab),e2r_foe(b,i,target),point); }   // a bow kit's Attack is its Longbow's shot (#13130)
   fb_seat_out(b,seats);
   return ok;
 }
-e2r_dispatch :: (b:[] RsBattle,i:int,a:FbAb)->bool #effects(all) { return e2r_dispatch_at(b,i,a,-1); }
-// The same with the room's named creature foe (-1 none) as a harmful ability's target.
-e2r_dispatch_at :: (b:[] RsBattle,i:int,a:FbAb,foe:int)->bool #effects(all) {
+e2r_dispatch :: (b:[] RsBattle,i:int,a:FbAb)->bool #effects(all) { return e2r_dispatch_at(b,i,a,-1,null); }
+// Whether an entry is a spell with an area that can harm: cast at a point, at every creature in its shape.
+e2r_area :: (a:FbAb)->bool #effects(all) {
+  if a.kind!=FB_SPELL { return false; }
+  r:=rs_ability(a.kind,a.sp);
+  return r.harm && r.area!=RS_A_NONE;
+}
+// The same with the room's named creature foe (-1 none) as a harmful ability's target, and the aimed
+// point (none: no point was aimed).
+e2r_dispatch_at :: (b:[] RsBattle,i:int,a:FbAb,foe:int,point:E2rPoint?)->bool #effects(all) {
   if a.tg==FB_SELF || a.tg==FB_ALLY {
     return fb_use(b,i,a,i,b[0].c[i].x,b[0].c[i].y,i);
+  }
+  // an area that can harm: at the aimed point, every creature in its shape (the shared rules' rs_area);
+  // a point off the grid is refused with nothing spent
+  if e2r_area(a) {
+    switch point {
+      case none {}
+      case some(p) {
+        if p.x<0 || p.x>=b[0].w || p.y<0 || p.y>=b[0].h { return false; }
+        at:=a; at.tg=FB_POINT;
+        return fb_use(b,i,at,foe,p.x,p.y,i);
+      }
+    }
   }
   // the room's named creature: the shared rules' own strike or spell at it (Produce Flame to hand first)
   if foe>=0 {
@@ -221,4 +250,132 @@ e2r_dispatch_at :: (b:[] RsBattle,i:int,a:FbAb,foe:int)->bool #effects(all) {
   p:=rs_add(b[..],fb_cl_hero(FB_CL_PALADIN,"Paladin",0,5),5,5); seats[0]=FbSeat.{me=p};
   slot:=xk_wire(FB_CL_PALADIN,fb_spell(SP_ZONE_OF_TRUTH,2,FB_POINT));
   #assert e2r_use_at_on(b[..],seats[..],FB_CL_PALADIN,slot,6,5,g) && b[0].zone[0].cx==6 && b[0].zone[0].cy==5;
+}
+
+// ---- the combat profile Everglade ships (#13284)
+
+e2rt_slot :: (klass:int,level:int,kind:int,sp:int)->int #effects(all) {
+  bar:[XC_SLOTS] FbAb; n:=xk_bar_at(klass,level,bar[..]);
+  for k:0..<n { if bar[k].kind==kind && (kind!=FB_SPELL || bar[k].sp==sp) { return xk_wire(klass,bar[k]); } }
+  return -1;
+}
+#test "the room's press opens a new turn's Action, Bonus Action and slot, each on its own; refused, they stay spent" {
+  b:[1] RsBattle; b[0].w=12; b[0].h=12; _w:=rs_set_world(b[..],RS_EVERGLADE_WORLD); b[0].dice[0].fixed=true;
+  i:=rs_add(b[..],fb_cl_hero(FB_CL_FIGHTER,"Fighter",0,1),3,3);
+  g:=rs_add(b[..],rs_guard("Guard",1),4,3); b[0].c[g].ac=1; b[0].c[g].hp=400; b[0].c[g].hp_max=400;
+  attack:=e2rt_slot(FB_CL_FIGHTER,1,FB_ATTACK,-1); wind:=e2rt_slot(FB_CL_FIGHTER,1,FB_SECOND,-1);
+  seats:[1] FbSeat; seats[0].me=i; #assert attack>=0 && wind>=0 && e2rt_slot(FB_CL_FIGHTER,1,FB_SPELL,SP_FIREBALL)== -1;
+  // a turn all spent: nothing is given back unless the room's clock opens it
+  seats[0].turn.action=true; seats[0].turn.bonus=true; seats[0].turn.slot_spent=true; b[0].c[i].hp=1;
+  #assert !e2r_press(b[..],seats[..],FB_CL_FIGHTER,attack,4,3,g,0) && b[0].c[g].hp==400;
+  #assert !e2r_press(b[..],seats[..],FB_CL_FIGHTER,attack,4,3,g,XP_BONUS+XP_SLOT) && b[0].c[g].hp==400;
+  #assert seats[0].turn.action && seats[0].turn.bonus && seats[0].turn.slot_spent;   // a refusal undoes the opening
+  // every entry but the room's press opens nothing: with the Action spent, each is refused
+  #assert !e2r_use(b[..],seats[..],FB_CL_FIGHTER,attack) && !e2r_use_at(b[..],seats[..],FB_CL_FIGHTER,attack,4,3);
+  #assert !e2r_use_on(b[..],seats[..],FB_CL_FIGHTER,attack,g) && !e2r_use_at_on(b[..],seats[..],FB_CL_FIGHTER,attack,4,3,g) && b[0].c[g].hp==400;
+  // the Action alone: the swing lands and spends it again; the Bonus Action and the slot stay spent
+  #assert e2r_press(b[..],seats[..],FB_CL_FIGHTER,attack,4,3,g,XP_ACTION) && b[0].c[g].hp<400;
+  #assert seats[0].turn.action && seats[0].turn.bonus && seats[0].turn.slot_spent;
+  // the Bonus Action alone: Second Wind
+  #assert !e2r_press(b[..],seats[..],FB_CL_FIGHTER,wind,3,3,-1,XP_ACTION+XP_SLOT) && b[0].c[i].hp==1;
+  #assert e2r_press(b[..],seats[..],FB_CL_FIGHTER,wind,3,3,-1,XP_BONUS) && b[0].c[i].hp>1 && seats[0].turn.bonus && seats[0].turn.action;
+  // the slot alone: a Wizard's Magic Missile needs the turn's one slot spell unspent
+  w:=rs_add(b[..],fb_cl_hero(FB_CL_WIZARD,"Wizard",0,5),3,5);
+  ws:[1] FbSeat; ws[0].me=w; ws[0].turn.slot_spent=true;
+  ball:=e2rt_slot(FB_CL_WIZARD,5,FB_SPELL,SP_FIREBALL); slots:=b[0].c[w].slots[3]; #assert ball>=0 && slots>0;
+  #assert !e2r_press(b[..],ws[..],FB_CL_WIZARD,ball,4,3,-1,XP_ACTION+XP_BONUS) && b[0].c[w].slots[3]==slots && ws[0].turn.slot_spent && !ws[0].turn.action;
+  #assert e2r_press(b[..],ws[..],FB_CL_WIZARD,ball,4,3,-1,XP_SLOT) && b[0].c[w].slots[3]==slots-1 && ws[0].turn.slot_spent && ws[0].turn.action;
+  // all of a new turn's parts at once
+  #assert !e2r_press(b[..],ws[..],FB_CL_WIZARD,ball,4,3,-1,0) && e2r_press(b[..],ws[..],FB_CL_WIZARD,ball,4,3,-1,XP_TURN) && b[0].c[w].slots[3]==slots-2;
+}
+#test "an entry is an area cast at a point only when it is a spell with an area that can harm" {
+  #assert e2r_area(fb_spell(SP_FIREBALL,3,FB_POINT)) && e2r_area(fb_spell(SP_THUNDERWAVE,1,FB_POINT)) && e2r_area(fb_spell(SP_BURNING_HANDS,1,FB_FOE));
+  #assert !e2r_area(fb_spell(SP_FIRE_BOLT,0,FB_FOE)) && !e2r_area(fb_spell(SP_HEALING_WORD,1,FB_ALLY)) && !e2r_area(fb_feature(FB_ATTACK,"Attack","attack"));
+  // an area with no attack roll, save or damage of its own is not one (Spike Growth's ground)
+  ground:=FbAb.{kind=FB_SPELL,sp=SP_SPIKE_GROWTH,lvl=2,tg=FB_POINT};
+  #assert !e2r_area(ground) && rs_spell(SP_SPIKE_GROWTH).area!=RS_A_NONE && !rs_ability(FB_SPELL,SP_SPIKE_GROWTH).harm;
+  // a feature numbered as a spell's kind is read by its kind first
+  #assert !e2r_area(FbAb.{kind=FB_LANDS,sp=SP_FIREBALL});
+}
+#test "a harmful area is cast at the aimed point: every enemy in its shape, no player, whoever the room named" {
+  b:[1] RsBattle; b[0].w=40; b[0].h=40; _w:=rs_set_world(b[..],RS_EVERGLADE_WORLD); b[0].dice[0].fixed=true;
+  i:=rs_add(b[..],fb_cl_hero(FB_CL_WIZARD,"Wizard",0,5),10,10);
+  mate:=rs_add(b[..],fb_cl_hero(FB_CL_FIGHTER,"Mate",0,5),20,11);   // in the blast, on the caster's team
+  w1:=rs_add(b[..],rs_monster(MON_WOLF,"Wolf one",2),20,10); w2:=rs_add(b[..],rs_monster(MON_WOLF,"Wolf two",2),22,12); w3:=rs_add(b[..],rs_monster(MON_WOLF,"Wolf three",2),18,9);
+  far:=rs_add(b[..],rs_monster(MON_WOLF,"Far wolf",2),30,30);
+  seats:[1] FbSeat; seats[0].me=i;
+  ball:=e2rt_slot(FB_CL_WIZARD,5,FB_SPELL,SP_FIREBALL); slots:=b[0].c[i].slots[3];
+  hp:=b[0].c[w1].hp; mate_hp:=b[0].c[mate].hp; me_hp:=b[0].c[i].hp;
+  // a point off the grid on any side, though within the spell's range: refused, nothing spent
+  #assert !e2r_press(b[..],seats[..],FB_CL_WIZARD,ball,-1,10,-1,XP_TURN) && !e2r_press(b[..],seats[..],FB_CL_WIZARD,ball,40,10,-1,XP_TURN);
+  #assert !e2r_press(b[..],seats[..],FB_CL_WIZARD,ball,10,-1,-1,XP_TURN) && !e2r_press(b[..],seats[..],FB_CL_WIZARD,ball,10,40,-1,XP_TURN) && b[0].c[i].slots[3]==slots && !seats[0].turn.action;
+  // at the pack's middle, the room naming the far wolf: the point decides, and the whole pack is in it
+  #assert e2r_press(b[..],seats[..],FB_CL_WIZARD,ball,20,10,far,XP_TURN) && b[0].c[i].slots[3]==slots-1;
+  #assert b[0].c[w1].hp<hp && b[0].c[w2].hp<hp && b[0].c[w3].hp<hp && b[0].c[far].hp==hp;
+  #assert b[0].c[mate].hp==mate_hp && b[0].c[i].hp==me_hp;
+  // the grid's own corners are points too
+  #assert e2r_press(b[..],seats[..],FB_CL_WIZARD,ball,0,0,-1,XP_TURN) && e2r_press(b[..],seats[..],FB_CL_WIZARD,ball,39,39,-1,XP_TURN)==(b[0].c[i].slots[3]<slots-2);
+  // an entry not aimed at a point (FB_FOE) is cast at the point all the same: its area is what it is
+  d:[1] RsBattle; d[0].w=40; d[0].h=40; _d:=rs_set_world(d[..],RS_EVERGLADE_WORLD); d[0].dice[0].fixed=true;
+  dj:=rs_add(d[..],fb_cl_hero(FB_CL_WIZARD,"Wizard",0,5),10,10); dw:=rs_add(d[..],rs_monster(MON_WOLF,"Wolf",2),20,10);
+  rs_start_turn(d[..],dj);
+  #assert e2r_dispatch_at(d[..],dj,fb_spell(SP_FIREBALL,3,FB_FOE),-1,some(E2rPoint.{x=21,y=10})) && d[0].c[dw].hp<hp;
+  // with no point aimed (a check's e2r_use_on), it is cast at the named creature's square as before
+  c:[1] RsBattle; c[0].w=40; c[0].h=40; _c:=rs_set_world(c[..],RS_EVERGLADE_WORLD); c[0].dice[0].fixed=true;
+  j:=rs_add(c[..],fb_cl_hero(FB_CL_WIZARD,"Wizard",0,5),10,10);
+  x1:=rs_add(c[..],rs_monster(MON_WOLF,"Wolf one",2),20,10); x2:=rs_add(c[..],rs_monster(MON_WOLF,"Wolf two",2),21,11);
+  cs:[1] FbSeat; cs[0].me=j;
+  #assert e2r_use_on(c[..],cs[..],FB_CL_WIZARD,ball,x1) && c[0].c[x1].hp<hp && c[0].c[x2].hp<hp;
+}
+// #13284's "Done when": a level 5 party clears a wolf pack with area spells, runs out of slots, rests
+// and continues. The Warlock's two pact slots are Fireballs; a Short Rest brings them back (p. 71).
+#test "a level 5 party clears a wolf pack with area spells, runs out of slots, rests and goes on" #steps 2000000000 {
+  b:[1] RsBattle; b[0].w=60; b[0].h=40; _w:=rs_set_world(b[..],RS_EVERGLADE_WORLD); b[0].dice[0].state=13284;
+  lock:=rs_add(b[..],fb_cl_hero(FB_CL_WARLOCK,"Warlock",0,5),10,10);
+  wiz:=rs_add(b[..],fb_cl_hero(FB_CL_WIZARD,"Wizard",0,5),10,12);
+  tank:=rs_add(b[..],fb_cl_hero(FB_CL_FIGHTER,"Fighter",0,5),19,10);   // among the wolves, in every blast
+  pack:[3] int; for q:0..<3 { pack[q]=rs_add(b[..],rs_monster(MON_WOLF,"Wolf",2),20+q,10+q); }
+  rs_begin(b[..]); #assert rs_rest_schedule_enable(b[..]);
+  seats:[2] FbSeat; seats[0].me=lock; seats[1].me=wiz;
+  lball:=e2rt_slot(FB_CL_WARLOCK,5,FB_SPELL,SP_FIREBALL); wball:=e2rt_slot(FB_CL_WIZARD,5,FB_SPELL,SP_FIREBALL);
+  #assert lball>=0 && wball>=0 && b[0].c[lock].slots[3]==2;
+  tank_hp:=b[0].c[tank].hp;
+  // the two casters' Fireballs on the pack's middle, a turn each
+  #assert e2r_press(b[..],seats[0..<1],FB_CL_WARLOCK,lball,21,11,-1,XP_TURN);
+  #assert e2r_press(b[..],seats[1..<2],FB_CL_WIZARD,wball,21,11,-1,XP_TURN);
+  for q:0..<3 { #assert b[0].c[pack[q]].dead || b[0].c[pack[q]].hp<=0; }   // 16d6 in two saves: no Wolf (11 HP) stands
+  #assert b[0].c[tank].hp==tank_hp && b[0].c[lock].hp==b[0].c[lock].hp_max && b[0].c[wiz].hp==b[0].c[wiz].hp_max;
+  // a second pack: the Warlock's other slot, and then it is out
+  for q:0..<3 { pack[q]=rs_add(b[..],rs_monster(MON_WOLF,"Wolf",2),30+q,10+q); }
+  #assert e2r_press(b[..],seats[0..<1],FB_CL_WARLOCK,lball,31,11,-1,XP_TURN) && b[0].c[lock].slots[3]==0;
+  #assert !e2r_press(b[..],seats[0..<1],FB_CL_WARLOCK,lball,31,11,-1,XP_TURN);
+  // no clock gives a slot back: an hour of turns later it is still out
+  rs_tick_ticks(b[..],rs_secs(1800)); #assert b[0].c[lock].slots[3]==0 && !e2r_press(b[..],seats[0..<1],FB_CL_WARLOCK,lball,31,11,-1,XP_TURN);
+  for q:0..<3 { b[0].c[pack[q]].dead=true; b[0].c[pack[q]].hp=0; }   // the Wizard's cantrips finish them: not this check's matter
+  // a Short Rest (an hour, p. 187): the pact slots are back
+  #assert rs_rest_control(b[..],lock,RS_REST_SHORT,true);
+  rs_tick_ticks(b[..],rs_secs(3599)); #assert b[0].c[lock].slots[3]==0;
+  rs_tick_ticks(b[..],rs_secs(1)); #assert b[0].c[lock].slots[3]==2;
+  // and the party goes on: a third pack, cleared the same way
+  for q:0..<3 { pack[q]=rs_add(b[..],rs_monster(MON_WOLF,"Wolf",2),36+q,10+q); }
+  #assert e2r_press(b[..],seats[0..<1],FB_CL_WARLOCK,lball,37,11,-1,XP_TURN) && e2r_press(b[..],seats[0..<1],FB_CL_WARLOCK,lball,37,11,-1,XP_TURN);
+  for q:0..<3 { #assert b[0].c[pack[q]].dead || b[0].c[pack[q]].hp<=0; }
+  #assert b[0].c[lock].slots[3]==0;
+}
+#test "Revivify takes the creature the room names: a dead one within reach, at any place in the battle but none past it" {
+  b:[1] RsBattle; b[0].w=12; b[0].h=12; _w:=rs_set_world(b[..],RS_EVERGLADE_WORLD);
+  ally:=rs_add(b[..],fb_cl_hero(FB_CL_FIGHTER,"Fallen",0,5),4,3);            // creature 0: the first is a creature too
+  i:=rs_add(b[..],fb_cl_hero(FB_CL_CLERIC,"Cleric",0,5),3,3); fb_cleric_revivify_preset(b[0].c[i..<i+1],false);
+  rs_begin(b[..]);
+  rs_damage(b[..],-1,ally,b[0].c[ally].hp+b[0].c[ally].hp_max,RS_FORCE,false,-1); #assert ally==0 && b[0].c[ally].dead;
+  slot:=xk_wire(FB_CL_CLERIC,fb_spell(SP_REVIVIFY,3,FB_ALLY)); slots:=b[0].c[i].slots[3]; #assert slot>=0 && slots>0;
+  seats:[1] FbSeat; seats[0].me=i;
+  #assert b[0].n==2 && e2r_named(b[..],0) && e2r_named(b[..],1) && !e2r_named(b[..],2) && !e2r_named(b[..],-1) && !e2r_named(b[..],3);
+  // no one named, or a place past the battle's creatures (though a dead record lies there): refused, nothing spent
+  b[0].c[b[0].n]=b[0].c[ally]; b[0].c[b[0].n].x=3; b[0].c[b[0].n].y=4;
+  #assert !e2r_use(b[..],seats[..],FB_CL_CLERIC,slot) && !e2r_use_on(b[..],seats[..],FB_CL_CLERIC,slot,-1) && !e2r_use_on(b[..],seats[..],FB_CL_CLERIC,slot,b[0].n);
+  #assert b[0].c[ally].dead && b[0].c[i].slots[3]==slots && b[0].c[i].materials[1].count==1 && !seats[0].turn.action;
+  // the fallen friend named: alive at 1 Hit Point, the slot and the diamond spent
+  #assert e2r_use_on(b[..],seats[..],FB_CL_CLERIC,slot,ally);
+  #assert !b[0].c[ally].dead && b[0].c[ally].hp==1 && b[0].c[i].slots[3]==slots-1 && b[0].c[i].materials[1].count==0 && seats[0].turn.action;
 }

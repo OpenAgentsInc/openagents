@@ -3,18 +3,22 @@
 #authority;
 RS_TIME_STRICT :: 0;
 RS_TIME_ACTION :: 1;
+// The action profile's 1.5-second turns and movement grant with no timed recovery: what is spent
+// comes back by resting, as the SRD has it (docs/dnd/everglade-combat-profile.md, #13284).
+RS_TIME_BEATS :: 2;
 RsTimingProfile :: struct { kind: int; }
 RS_STRICT_TIMING :: RsTimingProfile.{};
 RS_ACTION_TIMING :: RsTimingProfile.{kind=RS_TIME_ACTION};
+RS_BEATS_TIMING :: RsTimingProfile.{kind=RS_TIME_BEATS};
 
-#test "timing admission accepts exactly strict and action profiles before the clock is sealed" {
-  for kind: -2..<4 { for sealed: 0..<2 {
+#test "timing admission accepts exactly the strict, action and beats profiles before the clock is sealed" {
+  for kind: -2..<5 { for sealed: 0..<2 {
     p := RsTimingProfile.{kind=kind};
-    #assert rs_timing_allowed(p,sealed==1) == ((kind==0 || kind==1) && sealed==0);
+    #assert rs_timing_allowed(p,sealed==1) == ((kind==0 || kind==1 || kind==2) && sealed==0);
   } }
   b: [1] RsBattle;
   #assert rs_set_timing(b[..],RS_ACTION_TIMING) && b[0].timing.kind == RS_TIME_ACTION;
-  #assert !rs_set_timing(b[..],RsTimingProfile.{kind=2}) && b[0].timing.kind == RS_TIME_ACTION;
+  #assert !rs_set_timing(b[..],RsTimingProfile.{kind=3}) && b[0].timing.kind == RS_TIME_ACTION;
   rs_seal_timing(b[..]);
   #assert !rs_set_timing(b[..],RS_STRICT_TIMING) && b[0].timing.kind == RS_TIME_ACTION;
   rs_reset_timing(b[..]);
@@ -23,6 +27,8 @@ RS_ACTION_TIMING :: RsTimingProfile.{kind=RS_TIME_ACTION};
 #test "profile timing declares beat cooldown and movement without changing strict defaults" {
   #assert rs_timing_beat(RS_STRICT_TIMING) == 6000000 && rs_timing_beat(RS_ACTION_TIMING) == 1500000;
   #assert rs_timing_recharge(RS_STRICT_TIMING) == 0 && rs_timing_recharge(RS_ACTION_TIMING) == 9000000;
+  // the beats profile: the action profile's turns and movement, and no timed recovery
+  #assert rs_timing_beat(RS_BEATS_TIMING) == 1500000 && rs_timing_recharge(RS_BEATS_TIMING) == 0 && RS_BEATS_TIMING.kind == 2;
   for speed: -1..<101 {
     #assert rs_timing_move(RS_STRICT_TIMING,speed) == (ifx speed>0 then speed else 0);
     expected := 0;
@@ -38,11 +44,12 @@ RS_ACTION_TIMING :: RsTimingProfile.{kind=RS_TIME_ACTION};
     #assert rs_timing_move(RS_ACTION_TIMING,speed) == expected;
     #assert rs_timing_stand_speed(RS_STRICT_TIMING,speed) == (ifx speed>0 then speed else 0);
     #assert rs_timing_stand_speed(RS_ACTION_TIMING,speed) == expected;
+    #assert rs_timing_move(RS_BEATS_TIMING,speed) == expected && rs_timing_stand_speed(RS_BEATS_TIMING,speed) == expected;
   }
 }
 
 rs_timing_allowed :: (p: RsTimingProfile, sealed: bool) -> bool #effects(reads, writes, traps) {
-  return !sealed && (p.kind==RS_TIME_STRICT || p.kind==RS_TIME_ACTION);
+  return !sealed && (p.kind==RS_TIME_STRICT || p.kind==RS_TIME_ACTION || p.kind==RS_TIME_BEATS);
 }
 rs_set_timing :: (b: [] RsBattle, p: RsTimingProfile) -> bool #effects(reads, writes, traps) {
   if !rs_timing_allowed(p,b[0].timing_sealed) { return false; }
@@ -50,7 +57,7 @@ rs_set_timing :: (b: [] RsBattle, p: RsTimingProfile) -> bool #effects(reads, wr
 }
 rs_seal_timing :: (b: [] RsBattle) #effects(reads, writes, traps) { b[0].timing_sealed = true; }
 rs_reset_timing :: (b: [] RsBattle) #effects(reads, writes, traps) { b[0].timing = RS_STRICT_TIMING; b[0].timing_sealed = false; }
-rs_timing_beat :: (p: RsTimingProfile) -> int #effects(reads, writes, traps) { return ifx p.kind==RS_TIME_ACTION then 1500000 else 6000000; }
+rs_timing_beat :: (p: RsTimingProfile) -> int #effects(reads, writes, traps) { return ifx p.kind==RS_TIME_STRICT then 6000000 else 1500000; }
 rs_timing_recharge :: (p: RsTimingProfile) -> int #effects(reads, writes, traps) { return ifx p.kind==RS_TIME_ACTION then 9000000 else 0; }
 rs_timing_move :: (p: RsTimingProfile, speed: int) -> int #effects(reads, writes, traps) {
   if speed<=0 { return 0; }
@@ -60,5 +67,5 @@ rs_timing_move :: (p: RsTimingProfile, speed: int) -> int #effects(reads, writes
 // The action profile prices standing against its beat's movement grant. Strict
 // mode uses actual current Speed. The Prone policy rounds the half-cost down.
 rs_timing_stand_speed :: (p: RsTimingProfile, speed: int) -> int #effects(reads, writes, traps) {
-  return ifx p.kind==RS_TIME_ACTION then rs_timing_move(p,speed) else rs_max(speed,0);
+  return ifx p.kind==RS_TIME_STRICT then rs_max(speed,0) else rs_timing_move(p,speed);
 }

@@ -6906,14 +6906,16 @@ Scope and outstanding #13045 acceptance:
 
 `rules/srd/world-profile.coax` (`#authority`) is the one place a world
 says how its combat departs from SRD 5.2.1: `RsWorldProfile` carries the timing
-profile, area origin, press budget and continuous walking mode, and
+profile, area origin, measure and continuous walking mode, and
 `rs_world_deviations` names each departure. Worlds call `rs_set_world` once,
 before the clock is sealed; it applies all four fields or none. Shared rules
-read only the battle's applied fields (`timing`, `areas`, `press`, `walk`); no
-world passes a literal timing, area or press profile. `RS_STRICT_WORLD` (and
+read only the battle's applied fields (`timing`, `areas`, `measure`, `walk`); no
+world passes a literal timing, area or measure profile. `RS_STRICT_WORLD` (and
 `rs_reset`) gives strict results. `RS_ACTION_WORLD` is the grid action worlds
-(single 5E, MMO, Lab action); `RS_EVERGLADE_WORLD` adds unlimited presses and
-unpaid rate walking for Experimental, the 5E room and Everglade II.
+(single 5E, MMO, Lab action); `RS_EVERGLADE_WORLD` is Everglade's profile
+(`docs/dnd/everglade-combat-profile.md`, #13284): 1.5-second turns with no
+cooldown recovery, harmful areas that spare the caster's team, straight-line
+ranges and unpaid rate walking, for Experimental, the 5E room and Everglade II.
 
 Under `RS_WALK_PAID`, continuous walking pays from the same turn budget as
 grid steps (`walk-budget.coax`, `#authority`): one foot of movement per foot
@@ -7177,28 +7179,21 @@ adapters preserve the other actor's turn. Caller facts, native scope, world inpu
 and remaining action/recovery boundaries:
 `docs/verification/srd-help-2026-11-08/README.md`.
 
-## Experimental's unlimited presses use an explicit shared cost policy
+## Every press is paid
 
-`press-budget.coax` separates paid no-op preparation from the declared
-unlimited slot/use/Focus/Rage and Action/Bonus Action/slot-spent override.
-Unknown profiles refuse before writes. Experimental retains a narrow receipt
-and restores overridden budgets and seat openness after refused execution.
-The policy cannot refill health, Reactions, movement or components, and does
-not manufacture a logical turn or spell grant. Other world reset paths remain
-migration work. Evidence and exact limits:
-`docs/verification/srd-press-budget-2026-11-08/README.md`.
-
-## Legacy room presses do not renew a Reaction
-
-The room's ordinary `e5rr_use_apply` entry declares the same unlimited press
-cost policy as Experimental. Its public transaction retains complete refusal
-rollback. An accepted press preserves spent Reactions and every other seat's
-budgets; only a real turn renews a Reaction. The explicit override now includes
-Focus/Rage along with slots/ordinary uses. Raid-hero/custom-summon paths and
-Everglade II's visible state/prediction still need migration work.
-The formerly retained room-library failures are resolved; see
-`docs/verification/srd-room-traversal-2026-11-08/README.md`.
-Evidence: `docs/verification/srd-room-press-2026-11-08/README.md`.
+No world profile refills what a press spends (#13284,
+`docs/dnd/everglade-combat-profile.md`). `RS_UNLIMITED_PRESS` and
+`rs_press_prepare` are deleted. An ability's cost is its Ability record's
+(`rules/srd/ability-record.coax`) and is paid in every world; it comes back
+by the SRD's rests, or on the action profile's declared cooldowns. Everglade's
+room gives a seat one turn each 1.5 seconds (`everglade/shared/cast-pace.coax`,
+`#authority`): one Action, one Bonus Action and one slot spell, opened on its
+first press, with the room's refusal undoing the opening. A single-player
+zone's turn is its one-second press cooldown. `press-budget.coax`
+keeps only the snapshot and restore a single-player zone uses to undo a
+refused press. An accepted press never renews a Reaction; only a real turn
+does. Checks: `everglade/shared/cast-rules.coax` (the level 5 party),
+`everglade/server/room-checks.coax` (the room), `everglade/shared/cast-pace.coax`.
 
 ## Everglade II broadcasts accepted casts only after shared execution
 

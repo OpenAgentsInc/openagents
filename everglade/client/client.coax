@@ -2215,9 +2215,10 @@ e2_test_cast_state :: (s: [] E2, c: int) {
   played := k[0].audio[0].played;
   e2_test_taken(s[..], wc.slot, wc.ax, wc.az);
   #assert fxp_live(k[0].puffs[..]) >= 1 && k[0].audio[0].played == played && k[0].me[0].clip == figs.BD_SPELL && k[0].deeds[0].accepted == 1 && k[0].shown == 1;   // confirmed, not played twice
-  // too soon: nothing; a second on, the next
+  // too soon: nothing, a second on too (its Action is the turn's: 1.5 s, cast-pace.coax); when the turn's beat is over, the next
   #assert e2_key(s[..], '1', 0) && k[0].pressed == 1;
-  s[0].clock += 1.01; #assert e2_key(s[..], '1', 0) && k[0].pressed == 2;
+  s[0].clock += 1.01; #assert e2_key(s[..], '1', 0) && k[0].pressed == 1;
+  s[0].clock += 0.5; #assert e2_key(s[..], '1', 0) && k[0].pressed == 2;
   // the bolt fizzles where it ends: its sound a moment later
   heard := k[0].audio[0].played; s[0].clock += 1; e2k_step(s[..]); #assert k[0].audio[0].played > heard;
   // a key past the bar is left alone; in the studio the bar is away

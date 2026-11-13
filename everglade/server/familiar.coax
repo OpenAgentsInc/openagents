@@ -320,7 +320,7 @@ e2_wizard_cast :: (v:[]RmServer,k:int,s:int,admitted:bool) {
   fb_seat_in(b,seat);
   if rs_rite_due_now(b,actor,SP_FIND_FAMILIAR) {
     ok:=req.clear && rs_familiar_finish(b,actor,RS_FAMILIAR_FORMS[req.form],req.spirit,req.x,req.y);
-    if ok { st[0].familiar_incense_used=true; }
+    if ok { xr_keep(st[0].stock[..],b[0].c[EGB_SEAT+s].materials[..]); }
     else { rs_rite_fail(b,actor," (completion refused)"); }
     st[0].familiar=E2Familiar.{last=req.last};
     e2_wizard_status(v,k,s,req.active,ifx ok then E2_WIZARD_COMPLETE else E2_WIZARD_INTERRUPTED);

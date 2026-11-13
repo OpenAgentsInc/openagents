@@ -56,7 +56,7 @@ sc_components :: () -> bool {
 #test "compliance timing: declared action movement and recharge cannot leak into reset strict mode" { #assert sc_timing(); }
 sc_timing :: () -> bool {
   b: [1] RsBattle; b[0].w=12; b[0].h=8;
-  if rs_beat(b[..]) != RS_ROUND_TICKS || rs_set_timing(b[..],RsTimingProfile.{kind=2}) { return false; }
+  if rs_beat(b[..]) != RS_ROUND_TICKS || rs_set_timing(b[..],RsTimingProfile.{kind=3}) { return false; }
   if !rs_set_timing(b[..],RS_ACTION_TIMING) { return false; }
   a := rs_add(b[..],rs_cleric("Actor",0,1),1,1);
   b[0].c[a].cond = RS_PRONE;

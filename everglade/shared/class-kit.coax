@@ -19,8 +19,9 @@
 #load "../model/content-ids.coax";   // the numbers a cast's wire slot and a save carry (#13286)
 #load "../../rules/srd/death-save-line.coax";   // at 0 Hit Points: the Death Saving Throws on a row and the plain line, every realm
 
+#load "cast-pace.coax";   // a seat's turn in real time: the room's and the page's one arithmetic (#13284)
 XC_SLOTS :: 24;
-XC_COOL :: 1.0;                // seconds between presses
+XC_COOL :: 1.0;                // seconds between presses in the single-player zones (Everglade's room and page pace by the turn: cast-pace.coax)
 XC_DEFAULT :: 11;              // FB_CL_WIZARD
 XC_CL_UP :: [12] string.["BARBARIAN", "BARD", "CLERIC", "DRUID", "FIGHTER", "MONK", "PALADIN", "RANGER", "ROGUE", "SORCERER", "WARLOCK", "WIZARD"];
 XC_EG_URL :: "/worlds/everglade/hotbar/";
@@ -115,6 +116,18 @@ xc_bar_level :: (klass: int, level: int, out: [] FbAb) -> int {
     out[selected] = out[i]; selected += 1;
   }
   return selected;
+}
+// The parts of a turn a bar's entry takes (cast-pace.coax xp_parts over its Ability record), and the
+// page's count of ticks for its own clock's seconds.
+xk_parts :: (a: FbAb) -> int { return xp_parts(rs_ability(a.kind, a.sp), a.lvl); }
+xk_gives :: (a: FbAb) -> int { return rs_ability(a.kind, a.sp).gives; }
+xk_tick :: (seconds: f32) -> int { return cast(int) floor(seconds * f32(XP_HZ)); }
+// How much of an entry's wait is left at tick t, 0 to 1 (0: it can be pressed), for its icon's sweep.
+xk_sweep :: (p: XpPace, a: FbAb, t: int) -> f32 {
+  parts := xk_parts(a); left := xp_wait(p, parts, t, 0);
+  if left <= 0 { return 0; }
+  share := f32(left) / f32(ifx parts == 0 then XP_FREE_GAP else XP_BEAT);
+  return ifx share > 1 then 1.0f32 else share;
 }
 // A stable identity for a class ability, independent of its icon and position.
 xc_id :: (a: FbAb) -> int { return a.kind * 10000 + a.sp + 1; }
@@ -408,7 +421,7 @@ xk_ability :: (c: int, a: FbAb) -> AbilityId {
 // The wire slot of class c's ability a: its content number (-1: none).
 xk_wire :: (c: int, a: FbAb) -> int { return xk_ability(c, a).value; }
 
-#test "class kits: reordering a class's bar changes no wire slot, and every ability a bar holds has its number" #steps 400000000 {
+#test "class kits: reordering a class's bar changes no wire slot, and every ability a bar holds has its number" #steps 400000000 #traversal 1073741824 {
   seen := 0;
   for c: 0..<FB_CL_N {
     for level: 1..<XK_LEVELS + 1 {

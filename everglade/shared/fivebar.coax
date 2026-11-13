@@ -564,7 +564,7 @@ fb_cast :: (b: [] RsBattle, i: int, a: FbAb, foe: int, tx: int, ty: int, ally: i
         best := -1; bv := 2.0f32;
         for j: 0..<b[0].n {
           c := b[0].c[j];
-          if j == i || c.team != b[0].c[i].team || c.dead || rs_feet(tx, ty, c.x, c.y) > FB_ALLIES_FT || c.hp >= c.hp_max { continue; }
+          if j == i || c.team != b[0].c[i].team || c.dead || rs_range_ft(b, tx, ty, c.x, c.y) > FB_ALLIES_FT || c.hp >= c.hp_max { continue; }
           v := f32(c.hp) / f32(rs_max(c.hp_max, 1));
           if v < bv { bv = v; best = j; }
         }
@@ -780,7 +780,7 @@ fb_zones_round :: (z: [] FbZone, b: [] RsBattle) -> int {
         for j: 0..<b[0].n {
           c := b[0].c[j];
           if j == by || c.dead || c.team == b[0].c[by].team { continue; }
-          d := rs_feet(z[q].cx, z[q].cy, c.x, c.y);
+          d := rs_range_ft(b, z[q].cx, z[q].cy, c.x, c.y);
           if d > z[q].r_ft || d >= bd { continue; }
           seen := false;
           for u: 0..<tn { if took[u] == j { seen = true; } }
@@ -795,7 +795,7 @@ fb_zones_round :: (z: [] FbZone, b: [] RsBattle) -> int {
     for j: 0..<b[0].n {
       c := b[0].c[j];
       if j == by || c.dead || c.team == b[0].c[by].team { continue; }
-      if rs_feet(z[q].cx, z[q].cy, c.x, c.y) > z[q].r_ft { continue; }
+      if rs_range_ft(b, z[q].cx, z[q].cy, c.x, c.y) > z[q].r_ft { continue; }
       rs_affect_scoped(b, by, j, z[q].part, z[q].slot, -1,scope[..]); ran += 1;
     }
   }

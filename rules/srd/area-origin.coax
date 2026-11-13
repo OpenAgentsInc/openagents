@@ -17,22 +17,34 @@
 
 RS_AREA_STRICT :: 0;
 RS_AREA_SPARE_CASTER :: 1;
+// A world where players can't harm each other (docs/dnd/everglade-combat-profile.md, #13284): an
+// area that can harm leaves out its caster and every creature of the caster's team. An area that
+// only helps reaches them as the SRD has it.
+RS_AREA_SPARE_ALLIES :: 2;
 RsAreaProfile :: struct { kind: int; }
 RS_STRICT_AREAS :: RsAreaProfile.{};
 RS_SPARE_CASTER_AREAS :: RsAreaProfile.{kind=RS_AREA_SPARE_CASTER};
+RS_SPARE_ALLIES_AREAS :: RsAreaProfile.{kind=RS_AREA_SPARE_ALLIES};
 
 #test "strict areas leave out only a caster at an origin or named 'other than you'; the declared house rule spares it everywhere" {
   for area: 0..<8 { for others: 0..<2 {
     #assert rs_area_spares_caster(area,others == 1,RS_STRICT_AREAS) == (area == RS_A_CUBE_SELF || area == RS_A_LINE || others == 1);
     #assert rs_area_spares_caster(area,others == 1,RS_SPARE_CASTER_AREAS);
+    #assert rs_area_spares_caster(area,others == 1,RS_SPARE_ALLIES_AREAS);
   } }
+}
+#test "only the spare-allies profile leaves a caster's own team out, and only of an area that can harm" {
+  for kind: 0..<3 { for same: 0..<2 { for harm: 0..<2 {
+    #assert rs_area_spares_ally(same == 1,harm == 1,RsAreaProfile.{kind=kind}) == (kind == 2 && same == 1 && harm == 1);
+  } } }
+  #assert RS_SPARE_ALLIES_AREAS.kind == 2 && RS_AREA_SPARE_ALLIES == 2;
 }
 #test "a spell seen to work leaves out exactly a Blinded creature" {
   for sight: 0..<2 { for blind: 0..<2 { #assert rs_area_unseen(sight == 1,blind == 1) == (sight == 1 && blind == 1); } }
 }
 #test "area profile admission accepts exactly the two declared profiles before the clock is sealed" {
-  for kind: -2..<4 { for sealed: 0..<2 {
-    #assert rs_area_allowed(RsAreaProfile.{kind=kind},sealed==1) == ((kind==0 || kind==1) && sealed==0);
+  for kind: -2..<5 { for sealed: 0..<2 {
+    #assert rs_area_allowed(RsAreaProfile.{kind=kind},sealed==1) == ((kind==0 || kind==1 || kind==2) && sealed==0);
   } }
 }
 #test "a battle starts strict, takes a declared profile before its clock is sealed and resets to strict" {
@@ -46,11 +58,15 @@ RS_SPARE_CASTER_AREAS :: RsAreaProfile.{kind=RS_AREA_SPARE_CASTER};
 }
 
 rs_area_spares_caster :: (area: int, others: bool, p: RsAreaProfile) -> bool #effects(all) {
-  return area == RS_A_CUBE_SELF || area == RS_A_LINE || others || p.kind == RS_AREA_SPARE_CASTER;
+  return area == RS_A_CUBE_SELF || area == RS_A_LINE || others || p.kind == RS_AREA_SPARE_CASTER || p.kind == RS_AREA_SPARE_ALLIES;
+}
+// Whether a creature of the caster's own team (same_team) is left out of an area that can harm (harm).
+rs_area_spares_ally :: (same_team: bool, harm: bool, p: RsAreaProfile) -> bool #effects(all) {
+  return p.kind == RS_AREA_SPARE_ALLIES && same_team && harm;
 }
 rs_area_unseen :: (sight: bool, blinded: bool) -> bool #effects(all) { return sight && blinded; }
 rs_area_allowed :: (p: RsAreaProfile, sealed: bool) -> bool #effects(all) {
-  return !sealed && (p.kind == RS_AREA_STRICT || p.kind == RS_AREA_SPARE_CASTER);
+  return !sealed && (p.kind == RS_AREA_STRICT || p.kind == RS_AREA_SPARE_CASTER || p.kind == RS_AREA_SPARE_ALLIES);
 }
 // Shares the timing profile's seal: both are chosen before the battle's clock runs.
 rs_set_areas :: (b: [] RsBattle, p: RsAreaProfile) -> bool #effects(all) {

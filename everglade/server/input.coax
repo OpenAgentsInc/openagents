@@ -312,9 +312,10 @@ eg_seat_kind :: (v: [] RmServer, k: int, seat_id: SeatId, kind: string) { seat :
     st[0].familiar=E2Familiar.{last=st[0].familiar.last};
     egb_join(v[0].eg[k].rules[..], seat, st[0].pose.x, st[0].pose.z, wl, lv);
     c[0].healer_kit=kit;
-    if c[0].klass==RS_WIZARD { fb_wizard_familiar_preset(c,ifx st[0].familiar_incense_used then 0 else 1); }
-    if c[0].klass==RS_PALADIN { fb_paladin_protection_preset(c,st[0].protection_water_used); }
-    if c[0].klass==RS_CLERIC { fb_cleric_revivify_preset(c,st[0].revivify_diamond_used); }
+    if c[0].klass==RS_WIZARD { fb_wizard_familiar_preset(c,1); }
+    if c[0].klass==RS_PALADIN { fb_paladin_protection_preset(c,false); }
+    if c[0].klass==RS_CLERIC { fb_cleric_revivify_preset(c,false); }
+    xr_apply(st[0].stock[..],c[0].materials[..]);   // what its casts spent stays spent (#13284)
   }
 }
 // C SEQ SLOT AX AY AZ TGT: a cast at the aim. The checks that need no place here (the slot, the class,

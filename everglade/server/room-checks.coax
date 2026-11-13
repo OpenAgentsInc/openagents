@@ -80,6 +80,8 @@ eg_test_has :: (t: string, part: string) -> bool {
   return false;
 }
 
+// What a seat's reagent stock remembers of component `key` (-1: nothing).
+e2t_stock :: (stock: [] const RsMaterialStock, key: int) -> int { for m: stock { if m.key == key { return m.count; } } return -1; }
 #test "everglade room: a hello on another wire version is refused with its reason, and its socket is closed (#12788)" {
   v: [1] RmServer;
   rm_init(v[..]);
@@ -587,7 +589,7 @@ eg_test_input_on :: (v: [] RmServer, c: int, seq: int, heard: int) {
   msg:[128]u8;
   n:=wire_put_cast(msg[..],0,WireCast.{seq=1,slot=slot,ax=p.x,ay=1,az=p.z});
   rm_heard(v[..],0,cast(string)msg[0..<n]);
-  #assert v[0].eg[k].e2_casts==1 && v[0].eg[k].seat[0].protection_water_used;
+  #assert v[0].eg[k].e2_casts==1 && e2t_stock(v[0].eg[k].seat[0].stock[..],RS_EXEC_SOURCE[SP_PROTECTION_GOOD_EVIL])==0;
   #assert c[0].materials[1].count==0 && c[0].conc==SP_PROTECTION_GOOD_EVIL;
   // a hello again changes nothing (#13259); Change character in the page's own room sits it at 4, and
   // the new preset does not fill the holy water again
@@ -651,7 +653,7 @@ eg_test_input_on :: (v: [] RmServer, c: int, seq: int, heard: int) {
   n=wire_put_cast(msg[..],0,WireCast.{seq=2,slot=slot,ax=p.x,ay=1,az=p.z});
   rm_heard(v[..],0,cast(string)msg[0..<n]);
   #assert !b[0].c[ally].dead && b[0].c[ally].hp==1 && b[0].c[me].slots[3]==slots-1;
-  #assert room[0].seat[0].revivify_diamond_used && b[0].c[me].materials[1].count==0;
+  #assert e2t_stock(room[0].seat[0].stock[..],RS_EXEC_SOURCE[SP_REVIVIFY])==0 && b[0].c[me].materials[1].count==0;
   rm_heard(v[..],0,"V ranger.0.0.0 srd-cleric-6");   // Change character (the page's own room: #13259)
   #assert b[0].c[me].level==6 && b[0].c[me].materials[1].count==0;
 }
@@ -760,4 +762,74 @@ eg_test_input_on :: (v: [] RmServer, c: int, seq: int, heard: int) {
   eg_test_tick(v[..],k); inbox:[1] EgInbox; eg_test_drain(v[..],inbox[..]);
   projected:=eg_test_ent(inbox[..],0,0);
   #assert projected.hp==b[0].c[0].hp && projected.max==b[0].c[0].hp_max && projected.temp==7;
+}
+
+// The combat profile Everglade ships (#13284, docs/dnd/everglade-combat-profile.md), through the room.
+e2pt_cast :: (v: [] RmServer, conn: int, seq: int, slot: int, ax: f32, az: f32) {
+  b: [128] u8;
+  rm_heard(v, conn, cast(string) b[0..<wire_put_cast(b[..], 0, WireCast.{seq = seq, slot = slot, ax = ax, ay = 1, az = az})]);
+}
+e2pt_slot :: (klass: int, level: int, kind: int, sp: int) -> int {
+  bar: [XC_SLOTS] FbAb; n := xk_bar_at(klass, level, bar[..]);
+  for q: 0..<n { if bar[q].kind == kind && (kind != FB_SPELL || bar[q].sp == sp) { return xk_wire(klass, bar[q]); } }
+  return -1;
+}
+#test "everglade II room: a Fireball at a point takes the whole pack and no player, its slot stays spent, and a turn holds one Action and one Bonus Action" #steps 4000000000 #traversal 1073741824 {
+  v: [1] RmServer;
+  rm_init(v[..]);
+  rm_clock(v[..], 0, 1762190000000);
+  ev := "GET /api/room/relay/everglade/pair-e2-profile HTTP/1.1\r\n\r\n";
+  box: [1] EgInbox;
+  #assert rm_join(v[..], 0, ev) == 0 && rm_join(v[..], 1, ev) == 1;
+  k := eg_room_at(v[..], v[0].conns[0].relay);
+  rm_heard(v[..], 0, "H 5 ranger.0.0.0 srd-wizard-5 0 -");
+  rm_heard(v[..], 1, "H 5 ranger.0.0.0 srd-fighter-5 0 -");
+  for q: 0..<3 { rc_test_tick(v[..], k, true); }
+  r := v[0].eg[k].rules[..]; b := r[0].b[..]; ms := v[0].eg[k].monsters[..];
+  #assert b[0].c[EGB_SEAT].level == 5 && b[0].c[EGB_SEAT + 1].level == 5 && rs_world_deviations(rs_world_of(b)) == 61;
+  ball := e2pt_slot(FB_CL_WIZARD, 5, FB_SPELL, SP_FIREBALL); bolt := e2pt_slot(FB_CL_WIZARD, 5, FB_SPELL, SP_FIRE_BOLT);
+  sword := e2pt_slot(FB_CL_FIGHTER, 5, FB_ATTACK, -1); wind := e2pt_slot(FB_CL_FIGHTER, 5, FB_SECOND, -1);
+  #assert ball >= 0 && bolt >= 0 && sword >= 0 && wind >= 0;
+  // the first pack's three wolves within 2 m of one point on the path; the Wizard 15 m north of it, the
+  // Fighter 3 m from it: inside the blast (20 feet: 6.1 m)
+  w := ms[0].mon[0]; cx := e2_road_x(w.z); cz := w.z;
+  for m: 0..<3 { ms[0].mon[m].x = cx + f32(m) - 1; ms[0].mon[m].z = cz; }
+  v[0].eg[k].seat[0].pose.x = e2_road_x(cz + 15); v[0].eg[k].seat[0].pose.z = cz + 15; egb_place(r, 0, v[0].eg[k].seat[0].pose.x, cz + 15);
+  v[0].eg[k].seat[1].pose.x = cx; v[0].eg[k].seat[1].pose.z = cz + 3; egb_place(r, 1, cx, cz + 3);
+  rc_test_tick(v[..], k, true);
+  for m: 0..<3 { ms[0].mon[m].x = cx + f32(m) - 1; ms[0].mon[m].z = cz; b[0].c[EGB_BEAST0 + ms[0].mon[m].q].x = egb_sq(ms[0].mon[m].x); b[0].c[EGB_BEAST0 + ms[0].mon[m].q].y = egb_z_cell(r, cz); }
+  b[0].dice[0].fixed = true;   // each d6 a 3: 24 Fire, 12 on a save: no Wolf's 11 Hit Points stand it
+  slots := b[0].c[EGB_SEAT].slots[3]; mate := b[0].c[EGB_SEAT + 1].hp; me := b[0].c[EGB_SEAT].hp; #assert slots > 0;
+  eg_test_drain(v[..], box[..]);
+  e2pt_cast(v[..], 0, 1, ball, cx, cz);
+  rc_test_tick(v[..], k, true);
+  #assert v[0].eg[k].e2_casts == 1 && b[0].c[EGB_SEAT].slots[3] == slots - 1;
+  for m: 0..<3 { i := EGB_BEAST0 + ms[0].mon[m].q; #assert ms[0].mon[m].q < 0 || b[0].c[i].hp <= 0 || b[0].c[i].dead || ms[0].mon[m].state == E2M_DEAD; }
+  #assert ms[0].mon[0].state == E2M_DEAD && ms[0].mon[1].state == E2M_DEAD && ms[0].mon[2].state == E2M_DEAD;
+  // no player was in it: not the Fighter 3 m off, not the Wizard
+  #assert b[0].c[EGB_SEAT + 1].hp == mate && b[0].c[EGB_SEAT].hp == me;
+  // the Wizard's turn: its Action is spent, so a Fire Bolt at once is refused; when the turn's beat is over it is taken
+  e2pt_cast(v[..], 0, 2, bolt, cx, cz);
+  rc_test_tick(v[..], k, true);
+  eg_test_drain(v[..], box[..]);
+  #assert eg_test_has(eg_test_of(box[..], 0), "r 2 cooldown") && v[0].eg[k].e2_casts == 1;
+  for q: 0..<XP_BEAT { rc_test_tick(v[..], k, true); }
+  e2pt_cast(v[..], 0, 3, bolt, cx, cz);
+  rc_test_tick(v[..], k, true);
+  eg_test_drain(v[..], box[..]);
+  #assert !eg_test_has(eg_test_of(box[..], 0), "r 3") && v[0].eg[k].e2_casts == 2;
+  // the Fighter's turn: the Attack and Second Wind in one turn, each once
+  b[0].c[EGB_SEAT + 1].hp = 1;
+  e2pt_cast(v[..], 1, 4, sword, cx, cz); rc_test_tick(v[..], k, true);
+  e2pt_cast(v[..], 1, 5, wind, cx, cz + 3); rc_test_tick(v[..], k, true);
+  e2pt_cast(v[..], 1, 6, sword, cx, cz); rc_test_tick(v[..], k, true);
+  e2pt_cast(v[..], 1, 7, wind, cx, cz + 3); rc_test_tick(v[..], k, true);
+  eg_test_drain(v[..], box[..]);
+  f := eg_test_of(box[..], 1);
+  #assert !eg_test_has(f, "r 4") && !eg_test_has(f, "r 5") && eg_test_has(f, "r 6 cooldown") && eg_test_has(f, "r 7 cooldown");
+  #assert v[0].eg[k].e2_casts == 4 && b[0].c[EGB_SEAT + 1].hp > 1;
+  #assert v[0].eg[k].seat[1].pace.spent == XP_ACTION + XP_BONUS && v[0].eg[k].seat[1].pace.next == v[0].eg[k].seat[1].pace.last - 1 + XP_BEAT;
+  // no clock gives the slot back: a minute later it is still spent
+  for q: 0..<EG_HZ * 60 { rc_test_tick(v[..], k, true); }
+  #assert b[0].c[EGB_SEAT].slots[3] == slots - 1;
 }

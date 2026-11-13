@@ -8,7 +8,7 @@
 // The encounters: the third wolf pack in the woods (three SRD Wolves, everglade/server/creatures.coax),
 // and the path's guard (an SRD level 10 Fighter, everglade/server/guard.coax). The player stands on the
 // path near them and doesn't move; the wolves notice and come, and the guard turns on the player's first
-// blow. The scripted player, each time the room would take a cast (EG_E2_GAP): below half its Hit Points,
+// blow. The scripted player, every ES_RETRY ticks (the room takes what its turn's pace allows): below half its Hit Points,
 // a heal on itself; else, once a fight, each buff on itself (Rage, Innate Sorcery, Wild Shape, a levelled
 // spell on itself); else its harmful abilities, levelled spells highest first, then the rest in its bar's
 // order, at the nearest foe (a Concentration spell not while it concentrates, nor a spell for
@@ -196,7 +196,7 @@ es_fight :: (v: [] RmServer, enc: int, c: int, level: int, seed: int, trace: boo
     standing := es_foes(v, k, enc, foes[..]);
     if standing == 0 { out.win = true; break; }
     if b[0].c[me].hp <= 0 || b[0].c[me].dead { out.down = true; break; }
-    if t >= next && t - v[0].eg[k].seat[0].last_cast >= EG_E2_GAP {
+    if t >= next {   // the room's pace decides what it takes (everglade/shared/cast-pace.coax): its turn's parts, one each a 1.5 s beat
       // the nearest foe
       fx := px; fz := pz; best: f32 = 1000000; near := -1;
       for j: 0..<ES_PACK_N { if foes[j] >= 0 { p := es_at(v, k, foes[j]); d := (p[0] - px) * (p[0] - px) + (p[1] - pz) * (p[1] - pz); if d < best { best = d; fx = p[0]; fz = p[1]; near = foes[j]; } } }

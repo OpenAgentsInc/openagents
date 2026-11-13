@@ -3,7 +3,7 @@
 #load "battle.coax";
 
 
-#test "removing the world profile gives strict beats, grants, recovery, areas, presses and walking" {
+#test "removing the world profile gives strict beats, grants, recovery, areas, measuring and walking; no world refills a press" {
   for world: 0..<2 {
     b: [1] RsBattle; b[0].w = 30; b[0].h = 8;
     #assert rs_set_world(b[..],ifx world == 1 then RS_EVERGLADE_WORLD else RS_STRICT_WORLD);
@@ -13,13 +13,12 @@
     #assert rs_beat(b[..]) == (ifx world == 1 then 1500000 else 6000000);
     #assert rs_movement_left(b[..],a) == (ifx world == 1 then 10 else 30);
     #assert rs_area_spares_caster(RS_A_SPHERE,false,b[0].areas) == (world == 1);
-    t: [1] RsTurn; t[0] = b[0].turn;
-    #assert rs_press_prepare(b[0].c[a..<a+1],t[..],b[0].press) && b[0].c[a].slots[1] == (ifx world == 1 then 2 else 0);
-    b[0].c[a].slots[1] = 0;
+    #assert rs_area_spares_ally(true,true,b[0].areas) == (world == 1) && b[0].measure == (ifx world == 1 then RS_MEASURE_STRAIGHT else RS_MEASURE_GRID);
     #assert rs_walk_pay(b[..],a,30) == (ifx world == 1 then 30.0f32 else 30*RS_FOOT_M);
     #assert rs_movement_left(b[..],a) == (ifx world == 1 then 10 else 0);
+    // what is spent stays spent in both: Everglade's world has no cooldown recovery (#13284)
     rs_end_turn(b[..],a); rs_tick(b[..],1); rs_tick(b[..],9);
-    #assert b[0].c[a].slots[1] == world;
+    #assert b[0].c[a].slots[1] == 0;
   }
 }
 

@@ -257,6 +257,7 @@ rs_cast_effect_room :: (b: [] RsBattle, i: int, s: RsSpell, sp: int, slot: int, 
       if !chosen { continue; }
     } else {
       if !rs_inside(area,b[0].c[j].x,b[0].c[j].y) || b[0].c[j].dead || (j == i && rs_area_spares_caster(s.area,s.others,b[0].areas)) || rs_area_unseen(s.sight,rs_has(b[0].c[j],RS_BLINDED)) { continue; }
+      if j != i && rs_area_spares_ally(b[0].c[j].team == me.team,rs_spell_harms(s),b[0].areas) { continue; }
       if me.sculpt && s.school == "Evocation" && b[0].c[j].team == me.team && sculpted < 1+s.level { sculpted += 1; continue; }
     }
     if s.humanoid_only && !b[0].c[j].humanoid { continue; }
@@ -273,3 +274,29 @@ rs_cast_effect_room :: (b: [] RsBattle, i: int, s: RsSpell, sp: int, slot: int, 
 // to discover whether the operation can afford authoritative records.
 #load "strike-admission.coax";
 #load "area-origin.coax";
+#test "effect demand: Aid asks one record, counted with the others, and an increase the Hit Point ceiling can't hold asks more than any list has" {
+  c: RsCreature; c.hp_max = 20;
+  aid: RsSpell; aid.steps[0] = rs_step(RS_S_AID, 0, 5, 0, 0); aid.step_n = 1;
+  #assert rs_effect_demand(c, aid, -1, 0, SP_AID) == 1 && RS_S_AID == 31;
+  // the step after Aid's number is no effect's
+  truth: RsSpell; truth.steps[0] = rs_step(RS_S_AID + 1, 0, 5, 0, 0); truth.step_n = 1; #assert rs_effect_demand(c, truth, -1, 0, 0) == 0;
+  both: RsSpell; both.steps[0] = rs_step(RS_S_AID, 0, 5, 0, 0); both.steps[1] = rs_step(RS_S_HEX, 0, 0, 0, 0); both.step_n = 2;
+  #assert rs_effect_demand(c, both, -1, 0, 0) == 2;
+  // the ceiling: an increase of exactly what is left fits; one more does not
+  c.hp_max = 9223372036854775807 - 5; #assert rs_effect_demand(c, aid, -1, 0, SP_AID) == 1;
+  c.hp_max = 9223372036854775807 - 4; #assert rs_effect_demand(c, aid, -1, 0, SP_AID) == RS_EFFECTS + 1 && rs_effect_demand(c, both, -1, 0, 0) == RS_EFFECTS + 1;
+  // an Aid already borne counts against the new one: only the difference is an increase
+  c.eff[0] = RsEffect.{kind = EF_AID, cond = 5}; #assert rs_effect_demand(c, aid, -1, 0, SP_AID) == 1;
+  c.hp_max = 9223372036854775807; #assert rs_effect_demand(c, aid, -1, 0, SP_AID) == 1;   // no increase at the ceiling itself
+  c.eff[0].cond = 9; #assert rs_effect_demand(c, aid, -1, 0, SP_AID) == 1;                // a stronger one borne: none, never a negative
+  c.eff[0].cond = 4; #assert rs_effect_demand(c, aid, -1, 0, SP_AID) == RS_EFFECTS + 1;   // one more Hit Point than the ceiling has
+}
+#test "effect room: a spell that is cast once asks its records once of the creature it is cast at" {
+  b: [1] RsBattle; b[0].w = 12; b[0].h = 12;
+  i := rs_add(b[..], rs_warlock("Vesk", 0, 3, SP_ELDRITCH_BLAST), 2, 2); j := rs_add(b[..], rs_guard("Foe", 1), 4, 2);
+  // one record free on the target: Hex (one record) fits
+  for k: 0..<RS_EFFECTS - 1 { b[0].c[j].eff[k] = RsEffect.{kind = EF_MARK, by = 30 + k, spell = SP_HUNTERS_MARK, until = RS_NO_END}; }
+  #assert rs_cast_effect_room(b[..], i, rs_spell(SP_HEX), SP_HEX, 2, 0, 0, j);
+  b[0].c[j].eff[RS_EFFECTS - 1] = RsEffect.{kind = EF_MARK, by = 99, spell = SP_HUNTERS_MARK, until = RS_NO_END};
+  #assert !rs_cast_effect_room(b[..], i, rs_spell(SP_HEX), SP_HEX, 2, 0, 0, j);
+}

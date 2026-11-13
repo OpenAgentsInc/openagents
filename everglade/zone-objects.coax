@@ -59,7 +59,7 @@ xc_use_object :: (s:[] EgZone,k:int,a:FbAb,i:int)->bool {
   o[0].x=xc_square(p[0]-cr[0].player_x); o[0].y=xc_square(p[1]-cr[0].player_z);
   me:=b[0].c[0..<1]; turn:[1]RsTurn; turn[0]=x[0].seat[0].turn;
   saved:=rs_press_budget(me[0],turn[0]); was_open:=x[0].seat[0].open;
-  prepared:=rs_press_prepare(me,turn[..],b[0].press); x[0].seat[0].turn=turn[0]; x[0].seat[0].open=true;
+  turn[0].action=false; turn[0].bonus=false; turn[0].slot_spent=false; x[0].seat[0].turn=turn[0]; x[0].seat[0].open=true;   // a new turn's parts (zone-combat.coax xc_use)
   hp:=o[0].hp; was_burning:=o[0].burning;
   accepted:=false; switch xc_object_apply(b,x[0].seat[..],o,a) {case none {} case some(ok) {accepted=ok;}}
   if !accepted {

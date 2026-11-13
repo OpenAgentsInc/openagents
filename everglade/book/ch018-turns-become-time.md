@@ -29,7 +29,7 @@ rules still decide what each turn may do.
 
 ## What exists today
 
-A world profile has four fields: timing, areas, press costs and walking.
+A world profile has four fields: timing, areas, measuring and walking.
 `rs_set_world` applies all four or none, before the battle's clock is sealed.
 `rs_world_deviations` names each departure as one bit:
 
@@ -38,8 +38,9 @@ A world profile has four fields: timing, areas, press costs and walking.
 | `RS_DEV_BEATS` | 1.5-second turns | A turn every 1.5 s, with a quarter-round movement grant |
 | `RS_DEV_RECHARGE` | Cooldown recovery | Spent slots, uses and points come back on timers |
 | `RS_DEV_SPARE_CASTER` | Caster spared by its own areas | A caster is never in its own area |
-| `RS_DEV_FREE_PRESS` | Unlimited presses | Each press refills slots, uses, Focus, Rage and the Action budget |
+| `RS_DEV_SPARE_ALLIES` | Team spared by its harmful areas | An area that can harm leaves out the caster's team |
 | `RS_DEV_RATE_WALK` | Unpaid continuous walking | Walking doesn't spend the turn's feet |
+| `RS_DEV_STRAIGHT` | Straight-line ranges | Ranges and areas measure the straight line, not the grid's count |
 
 Three profiles exist:
 
@@ -47,7 +48,7 @@ Three profiles exist:
 | --- | --- | --- |
 | `RS_STRICT_WORLD`, the default | Strict tests, the one-shot table, 5E Lab's SRD rounds | None |
 | `RS_ACTION_WORLD` | Everglade 5E single play, 5E MMO, 5E Lab's action mode | 1.5-second turns, cooldown recovery, caster spared |
-| `RS_EVERGLADE_WORLD` | Everglade Experimental, the Everglade 5E room, Everglade II | All five |
+| `RS_EVERGLADE_WORLD` | Everglade Experimental, the Everglade 5E room, Everglade II | 1.5-second turns with no cooldown recovery, caster and team spared by harmful areas, straight-line ranges, unpaid walking |
 
 ## What follows the SRD exactly
 

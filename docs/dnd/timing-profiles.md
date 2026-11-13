@@ -9,7 +9,7 @@ wire format is introduced.
 
 A world selects its whole rules profile with one `rs_set_world` call before
 play (`rules/srd/world-profile.coax`). The profile carries the timing,
-area-origin, press-budget and walking choices below; it applies all four or
+area-origin, measuring and walking choices below; it applies all four or
 none, the clock seals it, and `rs_reset` restores strict. Shared rules read the
 battle's applied fields. No world passes a literal profile any more.
 
@@ -17,7 +17,7 @@ battle's applied fields. No world passes a literal profile any more.
 | --- | --- | --- |
 | `RS_STRICT_WORLD` (default) | Strict tests, the one-shot table, 5E Lab's SRD rounds | None |
 | `RS_ACTION_WORLD` | Everglade 5E single play, 5E MMO, 5E Lab action mode | 1.5-second turns; cooldown recovery; caster spared by its own areas |
-| `RS_EVERGLADE_WORLD` | Everglade Experimental, the Everglade 5E room, Everglade II | The above, plus unlimited presses and unpaid continuous walking |
+| `RS_EVERGLADE_WORLD` | Everglade Experimental, the Everglade 5E room, Everglade II | 1.5-second turns with no cooldown recovery; caster and its team spared by harmful areas; straight-line ranges; unpaid continuous walking ([everglade-combat-profile.md](everglade-combat-profile.md)) |
 
 Everglade II's harmless social targeting (`everglade/shared/cast-rules.coax`) is a
 targeting rule, not a timing deviation, and stays named in its own file.
@@ -130,21 +130,18 @@ No world-profile editor or general profile text parser ships here.
 
 Evidence: [timing verification](../verification/srd-timing-2026-11-08/README.md).
 
-Experimental now applies the separate shared `press-budget.coax` cost policy:
-`RS_PAID_PRESS` preserves paid state; `RS_UNLIMITED_PRESS` explicitly restores
-slots/ordinary uses/Focus/Rage and clears Action/Bonus Action/slot-spent budgets
-for a press. Refused execution rolls those fields back. This does not advance
-a turn, refresh Reactions, grant access or waive components. It is separate
-from clock timing, and does not qualify the remaining room/world reset paths.
-Evidence: [press-budget verification](../verification/srd-press-budget-2026-11-08/README.md).
+No world refills a press (#13284). `RS_UNLIMITED_PRESS`, which restored
+slots, uses, Focus, Rage and the turn's Action on every press in Experimental
+and the legacy Everglade 5E room, is deleted. `press-budget.coax` keeps only
+the snapshot a single-player zone uses to put back what a refused press
+spent. Everglade's profile, with what a turn, a slot and a rest are in real
+time, is [everglade-combat-profile.md](everglade-combat-profile.md). The
+2026-11-08 press-budget and room-press verification records describe the
+deleted policy.
 
-The legacy Everglade 5E multiplayer room also declares `RS_UNLIMITED_PRESS`
-through its existing public transaction. Presses preserve Reactions and other
-seats; refusal restores the override with the rest of the transaction. Its
-class-feature budget now includes the same Focus/Rage refill as Experimental.
-This is not Everglade II's currently presentation-only cast broadcast path.
-Evidence and full-room failures:
-[room press verification](../verification/srd-room-press-2026-11-08/README.md).
+`RS_BEATS_TIMING` (kind 2) is the third timing identity: the action profile's
+1.5-second turn and movement grant with no timed recovery. Everglade's world
+uses it.
 
 Everglade II's server now commits shared execution under its explicit social
 profile: self/ally entries affect the caster, offensive spells pay shared

@@ -149,13 +149,22 @@ e2a_archer_ok :: (v: [] RmServer, k: int, tag: E2ArrowTag) -> bool {
   r := v[0].eg[k].rules[..];
   return xk_entry_at(r[0].klass[tag.seat] - EGB_CL0, r[0].b[0].c[EGB_SEAT + tag.seat].level, tag.slot).ok;
 }
+// A loosed arrow's Attack, rolled as it lands. Its Action was the turn's it was loosed in (the seat's
+// pace took it then, eg_e2_cast), so the rules open that Action for it, and the turn the seat is in now
+// keeps its own as it stands.
+e2a_attack :: (r: [] EgBattle, s: int, slot: int, x: int, y: int, foe: int) -> bool {
+  seat := r[0].seat[s..<s + 1]; was := seat[0].turn.action;
+  done := e2r_press(r[0].b[..], seat, r[0].klass[s] - EGB_CL0, slot, x, y, foe, XP_ACTION);
+  seat[0].turn.action = was;
+  return done;
+}
 // An arrow reached body b: the SRD Attack on it, rolled now (everglade/shared/cast-rules.coax). Whether it hit.
 e2a_strike :: (v: [] RmServer, k: int, tag: E2ArrowTag, b: int) -> bool {
   foe := e2a_creature(v, k, b);
   if foe < 0 || !e2a_archer_ok(v, k, tag) { return false; }
   r := v[0].eg[k].rules[..]; s := tag.seat; me := v[0].eg[k].seat[s].pose;
   hp := r[0].b[0].c[foe].hp;
-  done := e2r_use_at_on(r[0].b[..], r[0].seat[s..<s + 1], r[0].klass[s] - EGB_CL0, tag.slot, egb_sq(me.x), egb_z_cell(r, me.z), foe);
+  done := e2a_attack(r, s, tag.slot, egb_sq(me.x), egb_z_cell(r, me.z), foe);
   if !done { return false; }
   if b == E2AR_GUARD { e2_guard_struck(v, k, s, hp); } else { e2_monster_struck(v, k, s, foe, hp); }
   e2_kit_tell(v, k, SeatId.{value = s}, false);
@@ -165,7 +174,7 @@ e2a_strike :: (v: [] RmServer, k: int, tag: E2ArrowTag, b: int) -> bool {
 e2a_empty :: (v: [] RmServer, k: int, tag: E2ArrowTag) {
   if !e2a_archer_ok(v, k, tag) { return; }
   r := v[0].eg[k].rules[..]; s := tag.seat; me := v[0].eg[k].seat[s].pose;
-  _ := e2r_use_at_on(r[0].b[..], r[0].seat[s..<s + 1], r[0].klass[s] - EGB_CL0, tag.slot, egb_sq(me.x), egb_z_cell(r, me.z), -1);
+  _ := e2a_attack(r, s, tag.slot, egb_sq(me.x), egb_z_cell(r, me.z), -1);
   e2_kit_tell(v, k, SeatId.{value = s}, false);
 }
 // The tick (after the monsters have moved): this tick's bodies are written down, then every arrow flies to it.
@@ -225,7 +234,7 @@ e2at_shoot :: (v: [] RmServer, k: int, seq: int, to: [3] f32, view_tick: int) {
   #assert stuck && ended.id == 1 && ended.kind == NET_SHOT_STUCK && ended.body == -1 && ticks > 8 && a[0].stuck == 1 && e2a_flying(a) == 0;
   #assert abs(ended.at[0] - to[0]) < 1.5 && abs(ended.at[2] - to[2]) < 8 && ended.dir[1] < 0;
   // the next Attack with no launch before it is the cast it was: no arrow
-  for q: 0..<EG_E2_GAP + 1 { e2mt_tick(v[..], k); }
+  for q: 0..<XP_BEAT { e2mt_tick(v[..], k); }
   b: [96] u8; n := wire_put_cast(b[..], 0, WireCast.{seq = 1000002, slot = e2at_attack(), ax = 0, ay = 1, az = -45});
   rm_heard(v[..], 0, cast(string) b[0..<n]);
   e2mt_tick(v[..], k); h2 := e2rt_heard(v[..], 0, out[..]);   // a cast is told with the tick's frame
@@ -256,16 +265,16 @@ e2at_shoot :: (v: [] RmServer, k: int, seq: int, to: [3] f32, view_tick: int) {
   heard := e2rt_heard(v[..], 0, out[..]);
   #assert eg_test_has(heard, "d ") && eg_test_has(heard, "h3 ");
   // the same shot with no rewind (its page drew the present): the wolf is aside, and the arrow flies past
-  v[0].eg[k].tick += EG_E2_GAP + 1; e2a_remember(v[..], k); hp := b[0].c[foe].hp;
+  v[0].eg[k].tick += XP_BEAT; e2a_remember(v[..], k); hp := b[0].c[foe].hp;
   e2at_shoot(v[..], k, 1000004, chest, v[0].eg[k].tick);
   for q: 0..<6 { v[0].eg[k].tick += 1; e2a_remember(v[..], k); e2a_fly(v[..], k, v[0].eg[k].tick); }
   #assert a[0].loosed == 2 && a[0].rewound_ms == 0 && a[0].hits == 1 && b[0].c[foe].hp == hp;
   // a page that claims a moment far in the past is taken at the bound
-  v[0].eg[k].tick += EG_E2_GAP + 1; e2a_remember(v[..], k);
+  v[0].eg[k].tick += XP_BEAT; e2a_remember(v[..], k);
   e2at_shoot(v[..], k, 1000002, [3] f32.[-8, e2_height(-8, -60), -60], v[0].eg[k].tick - 300);
   #assert a[0].loosed == 3 && a[0].rewound_ms == NET_REWIND_AGE_MS;
   // and one from the future, or from nowhere near the archer, flies from now, from the room's own hand
-  v[0].eg[k].tick += EG_E2_GAP + 1; e2a_remember(v[..], k);
+  v[0].eg[k].tick += XP_BEAT; e2a_remember(v[..], k);
   far: [160] u8; n := net_loose_write(NetLoose.{seq = 1000003, from = [3] f32.[40, 2, -90], to = [3] f32.[-8, 0, -60], strength = 1, view_ms = (v[0].eg[k].tick + 90) * 1000 / EG_HZ}, far[..]);
   rm_heard(v[..], 0, cast(string) far[0..<n]);
   n = wire_put_cast(far[..], 0, WireCast.{seq = 1000003, slot = e2at_attack(), ax = 0, ay = 1, az = -45}); rm_heard(v[..], 0, cast(string) far[0..<n]);

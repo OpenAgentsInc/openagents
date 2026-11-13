@@ -78,12 +78,13 @@ The class rules don't change. Two declared deviations in the world profile
   Points, Sorcery Points and Bardic Inspiration come back one at a time after
   4.5 seconds. The SRD restores them on rests, which a fight that never stops
   doesn't have.
-- **Unlimited presses** (`RS_DEV_FREE_PRESS`). In Everglade's world profile,
-  each press refills slots, uses, Focus, Rage and the turn's Action budget
-  first (`rs_press_prepare` in
-  [`rules/srd/press-budget.coax`](../../rules/srd/press-budget.coax)).
-  The bar's own cooldown paces how often you press. A press doesn't refresh
-  your Reaction or movement, and a refused press rolls everything back.
+- **Every press is paid.** Everglade's world profile no longer refills
+  anything on a press ([the combat profile](../../docs/dnd/everglade-combat-profile.md),
+  #13284). A slot, a use, a Focus Point or a Rage you spend comes back when
+  you rest. Your turn is 1.5 seconds and holds one Action, one Bonus Action
+  and one spell with a slot; each ability's icon sweeps until its part of the
+  turn is back ([`everglade/shared/cast-pace.coax`](../shared/cast-pace.coax)).
+  A refused press rolls everything back.
 
 Everglade II adds one more rule of its own, its social profile
 ([`everglade/shared/cast-rules.coax`](../shared/cast-rules.coax)).

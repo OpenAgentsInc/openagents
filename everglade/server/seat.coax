@@ -126,12 +126,11 @@ EgSeat :: struct {
   // to the API to keep (room-vitals.coax)
   sat_class: bool; class_report: bool;
   last_cast: int = -1000;
+  pace: XpPace;                  // its turn on the room's clock: when the next may open and what this one has spent (everglade/shared/cast-pace.coax)
   loose: NetLoose;               // an arrow's launch its page said, kept for the Attack's request of the same number (everglade/server/arrows.coax)
   aid: E2Aid;
   familiar:E2Familiar;
-  familiar_incense_used:bool;
-  protection_water_used:bool;
-  revivify_diamond_used:bool;
+  stock: [RS_MATERIAL_STOCK] RsMaterialStock;   // the reagents its casts left (everglade/shared/reagent-stock.coax)
   familiar_hash:int; familiar_sent:int; familiar_sense_sent:int;
   guard_hash: int; guard_sent: int;   // the path guard's state it last heard (everglade/server/guard.coax e2_guard_snapshot)
   monster_hash: int; monster_sent: int;   // the monsters it last heard (everglade/server/creatures.coax e2_monsters_snapshot)

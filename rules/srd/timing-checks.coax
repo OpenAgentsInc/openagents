@@ -13,7 +13,7 @@
   b: [1] RsBattle;
   #assert rs_beat(b[..]) == 6000000 && rs_timing_recharge(b[0].timing) == 0;
   #assert rs_set_timing(b[..],RS_ACTION_TIMING);
-  #assert !rs_set_timing(b[..],RsTimingProfile.{kind=2}) && b[0].timing.kind == RS_TIME_ACTION && !b[0].timing_sealed;
+  #assert !rs_set_timing(b[..],RsTimingProfile.{kind=3}) && b[0].timing.kind == RS_TIME_ACTION && !b[0].timing_sealed;
   a := rs_add(b[..],rs_fighter("Actor",0,1),1,1);
   rs_begin(b[..]);
   seq := b[0].book[0].seq; rolled := b[0].dice[0].rolled; due := b[0].c[a].turn_at;

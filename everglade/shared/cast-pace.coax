@@ -1,0 +1,137 @@
+// Everglade's cast pacing (docs/dnd/everglade-combat-profile.md, #13284): the SRD's turn in real time,
+// the same arithmetic on the room and on the page, in whole ticks.
+//
+// A seat's turn is a beat (1.5 s, the rules' rs_timing_beat) that opens on its first press after the
+// last one's beat is over. In a turn it has what the SRD gives a turn: one Action, one Bonus Action
+// and one spell cast with a slot. An ability takes the parts its Ability record names
+// (rules/srd/ability-record.coax: xp_parts); a press whose parts are spent is refused until the turn's
+// beat is over, and the page sweeps its icon for exactly that long. An ability that takes no part of
+// the turn (Action Surge) waits only XP_FREE_GAP after the seat's last press. This replaces the one
+// flat gap every press shared (EG_E2_GAP on the room, XC_COOL on the page).
+//
+// The room allows a press up to XP_LATE ticks early, once: a press held up on its way and the next on
+// time are both taken, and no seat gets more than one turn a beat over any stretch of time.
+#authority;
+
+XP_HZ :: 30;                 // ticks a second: the room's (EG_HZ), and the page's count of its own clock
+XP_BEAT :: 45;               // ticks in a turn: 1.5 s (rs_timing_beat(RS_BEATS_TIMING) at XP_HZ)
+XP_LATE :: 15;               // ticks early the room takes a turn's first press (0.5 s of delay on the way)
+XP_FREE_GAP :: 15;           // ticks between presses of abilities that take no part of the turn
+XP_NEVER :: -1000000;        // before any press
+XP_ACTION :: 1; XP_BONUS :: 2;   // the rules' RS_ACT_ACTION and RS_ACT_BONUS
+XP_SLOT :: 8;                // a spell cast with a slot: one a turn (SRD 5.2.1 p. 104)
+XP_TURN :: XP_ACTION | XP_BONUS | XP_SLOT;
+
+// A seat's pace: the tick its next turn may open, the parts its turn has spent, and its last press.
+XpPace :: struct { next: int = XP_NEVER; spent: int; last: int = XP_NEVER; }
+
+// The parts of the turn an ability takes, from its Ability record: its Action or Bonus Action, and
+// a slot when it is cast with one (lvl > 0).
+xp_parts :: (rec: RsAbility, lvl: int) -> int #effects(all) {
+  return (rec.act & (XP_ACTION | XP_BONUS)) + (ifx rec.cost == RS_COST_SLOT && lvl > 0 then XP_SLOT else 0);
+}
+// Whether a new turn may open at tick t (`late`: XP_LATE on the room, 0 on the page).
+xp_fresh :: (p: XpPace, t: int, late: int) -> bool #effects(all) { return t + late >= p.next; }
+// Ticks until a press taking `parts` can be tried (0: now).
+xp_wait :: (p: XpPace, parts: int, t: int, late: int) -> int #effects(all) {
+  if parts == 0 { return rs_max(p.last + XP_FREE_GAP - t, 0); }
+  if xp_fresh(p, t, late) || (p.spent & parts) == 0 { return 0; }
+  return p.next - late - t;
+}
+// The parts of the turn the clock gives back to a press taking `parts` at t: all of them when it
+// opens a new turn, none inside the turn or for an ability that takes no part.
+xp_opens :: (p: XpPace, parts: int, t: int, late: int) -> int #effects(all) {
+  return ifx parts != 0 && xp_fresh(p, t, late) then XP_TURN else 0;
+}
+// The pace after a press at t that the rules took: `parts` it was to take, `spent` what the seat's
+// turn shows spent after it (xp_spent), `gives` what the ability gave back (Action Surge's Action).
+xp_took :: (p: XpPace, parts: int, spent: int, gives: int, t: int, late: int) -> XpPace #effects(all) {
+  o := p;
+  if xp_opens(p, parts, t, late) != 0 {
+    // the next turn: a beat after this press, or after this turn was due when the press came early
+    from := rs_max(p.next, t);
+    o.next = from + XP_BEAT; o.spent = 0;
+  }
+  o.spent = o.spent | spent;
+  o.spent = o.spent - (o.spent & gives);
+  o.last = t;
+  return o;
+}
+// What a seat's turn shows spent.
+xp_spent :: (action: bool, bonus: bool, slot_spent: bool) -> int #effects(all) {
+  return (ifx action then XP_ACTION else 0) + (ifx bonus then XP_BONUS else 0) + (ifx slot_spent then XP_SLOT else 0);
+}
+
+#test "the pace's numbers are the rules' and the room's" {
+  #assert XP_ACTION == RS_ACT_ACTION && XP_BONUS == RS_ACT_BONUS && XP_SLOT == 8 && XP_TURN == 11;
+  #assert XP_BEAT * RS_TICKS == rs_timing_beat(RS_BEATS_TIMING) * XP_HZ && XP_BEAT == 45 && XP_HZ == 30 && XP_LATE == 15 && XP_FREE_GAP == 15;
+  #assert XP_NEVER == -1000000 && XpPace.{}.next == XP_NEVER && XpPace.{}.last == XP_NEVER && XpPace.{}.spent == 0;
+}
+#test "an ability takes its record's Action or Bonus Action, and a slot only when cast with one" {
+  #assert xp_parts(rs_ability(RS_AB_ATTACK, -1), 0) == XP_ACTION && xp_parts(rs_ability(RS_AB_RAGE, -1), 0) == XP_BONUS;
+  #assert xp_parts(rs_ability(RS_AB_FLURRY, -1), 0) == XP_ACTION + XP_BONUS && xp_parts(rs_ability(RS_AB_SURGE, -1), 0) == 0;
+  #assert xp_parts(rs_ability(RS_AB_SPELL, SP_FIRE_BOLT), 0) == XP_ACTION && xp_parts(rs_ability(RS_AB_SPELL, SP_FIREBALL), 3) == XP_ACTION + XP_SLOT;
+  #assert xp_parts(rs_ability(RS_AB_SPELL, SP_HEALING_WORD), 1) == XP_BONUS + XP_SLOT && xp_parts(rs_ability(RS_AB_SPELL, SP_HEALING_WORD), 0) == XP_BONUS;
+  // a Reaction is no part of your turn; a use is not a slot
+  #assert xp_parts(rs_ability(RS_AB_SPELL, SP_SHIELD), 1) == XP_SLOT && xp_parts(rs_ability(RS_AB_SECOND, -1), 1) == XP_BONUS;
+  #assert xp_parts(RsAbility.{act = 7, cost = RS_COST_SLOT}, 1) == 11 && xp_parts(RsAbility.{act = 4, cost = RS_COST_USE}, 1) == 0;
+}
+#test "a turn opens on a press, holds one of each part for a beat, and the next opens when the beat is over" {
+  p := XpPace.{};
+  // the first press ever opens a turn, on the room and on the page
+  #assert xp_fresh(p, 0, 0) && xp_wait(p, XP_ACTION, 0, 0) == 0 && xp_opens(p, XP_ACTION, 0, 0) == XP_TURN;
+  p = xp_took(p, XP_ACTION, XP_ACTION, 0, 100, 0);
+  #assert p.next == 145 && p.spent == XP_ACTION && p.last == 100;
+  // in the turn: the Action is spent until 145, the Bonus Action and a slot are still there
+  #assert !xp_fresh(p, 144, 0) && xp_fresh(p, 145, 0);
+  #assert xp_wait(p, XP_ACTION, 101, 0) == 44 && xp_wait(p, XP_ACTION, 144, 0) == 1 && xp_wait(p, XP_ACTION, 145, 0) == 0 && xp_wait(p, XP_ACTION, 900, 0) == 0;
+  #assert xp_wait(p, XP_BONUS, 101, 0) == 0 && xp_wait(p, XP_BONUS + XP_SLOT, 101, 0) == 0 && xp_wait(p, XP_ACTION + XP_BONUS, 101, 0) == 44;
+  #assert xp_opens(p, XP_BONUS, 101, 0) == 0 && xp_opens(p, XP_BONUS, 144, 0) == 0 && xp_opens(p, XP_BONUS, 145, 0) == XP_TURN;
+  // a Bonus Action spell with a slot inside the turn: no new turn, its parts added
+  p = xp_took(p, XP_BONUS + XP_SLOT, XP_ACTION + XP_BONUS + XP_SLOT, 0, 110, 0);
+  #assert p.next == 145 && p.spent == XP_TURN && p.last == 110;
+  #assert xp_wait(p, XP_SLOT, 120, 0) == 25 && xp_wait(p, XP_BONUS, 120, 0) == 25;
+  // the next turn opens at its tick, and spends only what its press spent
+  p = xp_took(p, XP_BONUS, XP_BONUS, 0, 150, 0);
+  #assert p.next == 195 && p.spent == XP_BONUS && p.last == 150 && xp_wait(p, XP_ACTION, 151, 0) == 0 && xp_wait(p, XP_BONUS, 151, 0) == 44;
+  // what the turn shows spent beyond the press's own parts counts too (Flurry's strike takes the Action)
+  q := xp_took(XpPace.{}, XP_BONUS, XP_ACTION + XP_BONUS, 0, 10, 0);
+  #assert q.spent == XP_ACTION + XP_BONUS && q.next == 55;
+}
+#test "an ability that takes no part of the turn opens none, waits only the free gap, and can give a part back" {
+  p := xp_took(XpPace.{}, XP_ACTION, XP_ACTION, 0, 100, 0);
+  // Action Surge: no part, and it gives the Action back inside the same turn
+  #assert xp_opens(p, 0, 400, 0) == 0 && xp_wait(p, 0, 100, 0) == 15 && xp_wait(p, 0, 114, 0) == 1 && xp_wait(p, 0, 115, 0) == 0 && xp_wait(p, 0, 500, 0) == 0;
+  s := xp_took(p, 0, XP_ACTION, XP_ACTION, 120, 0);
+  #assert s.next == 145 && s.spent == 0 && s.last == 120 && xp_wait(s, XP_ACTION, 121, 0) == 0 && xp_wait(s, 0, 121, 0) == 14;
+  // giving back only what it gives: the Bonus Action stays spent
+  b := xp_took(XpPace.{next = 145, spent = XP_ACTION + XP_BONUS, last = 100}, 0, XP_ACTION + XP_BONUS, XP_ACTION, 120, 0);
+  #assert b.spent == XP_BONUS && b.next == 145;
+  // long after the turn, a free press still opens no turn and resets nothing
+  late := xp_took(p, 0, 0, 0, 900, 0);
+  #assert late.next == 145 && late.spent == XP_ACTION && late.last == 900;
+  #assert xp_wait(XpPace.{}, 0, 0, 0) == 0;
+}
+#test "the room takes a turn's first press up to XP_LATE early, and never more than one turn a beat over time" {
+  p := xp_took(XpPace.{}, XP_ACTION, XP_ACTION, 0, 100, XP_LATE);
+  // the first press opened the turn at 100: the next is due at 145, taken from 130
+  #assert p.next == 145 && !xp_fresh(p, 129, XP_LATE) && xp_fresh(p, 130, XP_LATE) && !xp_fresh(p, 130, 0);
+  #assert xp_wait(p, XP_ACTION, 110, XP_LATE) == 20 && xp_wait(p, XP_ACTION, 129, XP_LATE) == 1 && xp_wait(p, XP_ACTION, 130, XP_LATE) == 0;
+  #assert xp_opens(p, XP_ACTION, 129, XP_LATE) == 0 && xp_opens(p, XP_ACTION, 130, XP_LATE) == XP_TURN;
+  // taken early, the turn after it is still a beat after this one was due: 190, not 175
+  e := xp_took(p, XP_ACTION, XP_ACTION, 0, 130, XP_LATE);
+  #assert e.next == 190 && e.spent == XP_ACTION;
+  // taken on time or late, it is a beat after the press
+  on := xp_took(p, XP_ACTION, XP_ACTION, 0, 145, XP_LATE); #assert on.next == 190;
+  held := xp_took(p, XP_ACTION, XP_ACTION, 0, 152, XP_LATE); #assert held.next == 197;
+  // so a press held up 7 ticks and the next on time (190) are both taken; one held up 16 is not
+  #assert xp_wait(held, XP_ACTION, 190, XP_LATE) == 0 && xp_wait(xp_took(p, XP_ACTION, XP_ACTION, 0, 161, XP_LATE), XP_ACTION, 190, XP_LATE) == 1;
+  idle := xp_took(p, XP_ACTION, XP_ACTION, 0, 1000, XP_LATE); #assert idle.next == 1045;
+  // pressing as early as the room allows, forty turns take forty beats less the one allowance
+  r := XpPace.{}; t := 0; turns := 0;
+  while turns < 40 { if xp_wait(r, XP_ACTION, t, XP_LATE) == 0 { r = xp_took(r, XP_ACTION, XP_ACTION, 0, t, XP_LATE); turns += 1; } t += 1; }
+  #assert t - 1 == 39 * XP_BEAT - XP_LATE;
+}
+#test "what a turn shows spent, one bit a part" {
+  for a: 0..<2 { for b: 0..<2 { for s: 0..<2 { #assert xp_spent(a == 1, b == 1, s == 1) == a + 2 * b + 8 * s; } } }
+}

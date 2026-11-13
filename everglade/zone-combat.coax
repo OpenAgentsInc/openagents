@@ -1225,12 +1225,14 @@ xc_use_ab :: (s: [] EgZone, k: int, a0: FbAb, on: int) -> bool {
   // an arrow's monster stands on the engine's line at its true distance, so the Longbow's ranges
   // (150/600 ft, one square 5 feet) are the world's even past the grid round you
   if a.kind == FB_SHOOT && foe >= 0 && foe < XC_FOES { rs_place(b, 1 + foe, XC_MID + xc_bow_squares(s, foe), XC_MID); }
-  // Explicit world cost profile, not a new turn or component/access waiver.
+  // Every press is paid (#13284). What it could spend is kept, to put back if the rules refuse it part way.
   me := b[0].c[0..<1];
   saved_budget:=rs_press_budget(me[0],x[0].seat[0].turn);
   was_open:=x[0].seat[0].open;
   press_turn:[1] RsTurn; press_turn[0]=x[0].seat[0].turn;
-  if !via { _:=rs_press_prepare(me,press_turn[..],b[0].press); }
+  // This zone's turn is its press cooldown (XC_COOL, a second): a press it admits opens a new turn's
+  // Action, Bonus Action and slot spell. Slots, uses, Focus and Rage are not given back.
+  if !via { press_turn[0].action=false; press_turn[0].bonus=false; press_turn[0].slot_spent=false; }
   x[0].seat[0].turn=press_turn[0];
   hp_before := me[0].hp; temp_before := me[0].temp;
   x[0].seat[0].open = true;
@@ -3079,16 +3081,20 @@ xc_play_kit :: (c: int) {
   #assert h[0].hits==2 && react.react_held(s[0].xc[0].stops,1,0) && react.react_held(s[0].xc[0].stops,2,0);
 }
 
-#test "experimental combat: refused press restores spent budgets while explicit unlimited casting preserves reactions" {
+#test "experimental combat: a refused press restores what it spent, and a paid press preserves reactions" {
   s:[1] EgZone; xc_test_lab(s[..],FB_CL_CLERIC,0);
   x:=s[0].xc[..]; b:=x[0].b[..]; b[0].c[0].hp=1;
   b[0].c[0].slots[1]=0; b[0].c[0].reacted=true; b[0].c[0].speech_blocked=true;
   x[0].seat[0].open=true; x[0].seat[0].turn.bonus=true; x[0].seat[0].turn.slot_spent=true;
   #assert !xc_use_on(s[..],2,-2);
   #assert b[0].c[0].slots[1]==0 && x[0].seat[0].turn.bonus && x[0].seat[0].turn.slot_spent;
+  // able to speak but with no slot: still refused, nothing given back (every press is paid, #13284)
   b[0].c[0].speech_blocked=false;
+  #assert !xc_use_on(s[..],2,-2) && b[0].c[0].slots[1]==0 && b[0].c[0].hp==1;
+  // with a slot: the heal goes, the slot is spent and the Reaction stays spent
+  b[0].c[0].slots[1]=1;
   #assert xc_use_on(s[..],2,-2) && b[0].c[0].hp>1 && b[0].c[0].reacted;
-  #assert b[0].c[0].slots[1]==b[0].c[0].slots_max[1]-1;
+  #assert b[0].c[0].slots[1]==0;
 }
 
 #test "experimental combat: a spell slot's corner steps its slot level and the cast spends that slot (#13038)" #steps 2000000000 {
@@ -3105,9 +3111,10 @@ xc_play_kit :: (c: int) {
   #assert fb_cast_levels(x[0].b[0].c[0], x[0].bar[0], levels[..]) == 0;
   h := s[0].creator[0].hostiles[..]; h[0].enemies[0].x = 0; h[0].enemies[0].z = 6;
   s[0].creator[0].clock = 5;
+  first := x[0].b[0].c[0].slots[1]; second := x[0].b[0].c[0].slots[2];
   #assert xc_use(s[..], ray);
-  // Experimental presses refill slots first (its world's RS_UNLIMITED_PRESS), so the chosen level is the one spent
-  #assert x[0].whiffs == 0 && x[0].b[0].c[0].slots[1] == x[0].b[0].c[0].slots_max[1] && x[0].b[0].c[0].slots[2] == x[0].b[0].c[0].slots_max[2] - 1;
+  // the chosen level is the one spent, and no other (every press is paid, #13284)
+  #assert x[0].whiffs == 0 && second > 0 && x[0].b[0].c[0].slots[1] == first && x[0].b[0].c[0].slots[2] == second - 1;
 }
 #test "experimental combat: Hex's bottom strip picks its ability, and an option it can't take spends nothing (#13038)" #steps 2000000000 {
   s: [1] EgZone; xc_test_lab(s[..], FB_CL_WARLOCK, 0);

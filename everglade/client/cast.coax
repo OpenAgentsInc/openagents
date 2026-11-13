@@ -37,6 +37,7 @@ E2Cast :: struct {
   klass: int = -1; level: int = 1; bar: [XC_SLOTS] FbAb; bar_n: int;
   wire: [XC_SLOTS] int;                    // each slot's ability on the wire (class-kit.coax xk_wire)
   cool_at: f32 = -100; used: int = -1; hover: int = -1;
+  pace: XpPace; pace_was: XpPace;          // your turn as the room paces it (everglade/shared/cast-pace.coax), and before your last press, for a refusal
   menu: int = -1; side_hover: int = -1; menu_hover: int = -1;   // the class menus' open one (EG_SIDE_*, everglade/hud/class-bar.coax) and what the pointer is over
   puffs: [1] FxPuffs;                      // the casts' effects (aethyr/fx/puff.coax), drawn by everglade/client/gpu/everglade2-fx.coax
   audio: [1] exsound.ExperimentalSound;    // their sounds, for the host (everglade2-face.c coaxial_sounds)
@@ -166,7 +167,7 @@ e2k_ready :: (s: [] E2, i: int) -> bool {
 e2k_press :: (s: [] E2, i: int) -> bool {
   k := s[0].casts[..];
   if !e2k_on(s) || i < 0 || i >= k[0].bar_n { return false; }
-  if s[0].clock - k[0].cool_at < f32(XC_COOL) { return false; }
+  if xp_wait(k[0].pace, xk_parts(k[0].bar[i]), xk_tick(s[0].clock), 0) > 0 { return false; }   // its part of your turn is spent: the icon's sweep says how long
   c := k[0].klass; a := k[0].bar[i];
   // a Ranger's Attack is the Longbow's: its key or its slot draws, and looses at full draw, as the
   // left button does and as Experimental's key does (everglade/client/mouse.coax)
@@ -318,6 +319,9 @@ e2k_cast :: (s: [] E2, i: int, face: f32, px: f32, pz: f32) -> bool {
   if !e2n_open(s[0].net[..]) { _ := deed_answer(k[0].deeds[..], seq, false, tick, 0); return false; }
   k[0].ask = E2kAsk.{seq = seq, slot = i, wire = k[0].wire[i], face = face, net_seq = e2n_cast_next(s[0].net[..])};
   k[0].cool_at = now; k[0].used = i; k[0].pressed += 1;
+  // your turn takes the press now, as the room's will when it takes it; a refusal gives it back
+  k[0].pace_was = k[0].pace;
+  k[0].pace = xp_took(k[0].pace, xk_parts(k[0].bar[i]), xk_parts(k[0].bar[i]), xk_gives(k[0].bar[i]), xk_tick(now), 0);
   // a bow's Attack is its arrow: loosed here now, and the room told of its launch under the same number
   if xc_kit(k[0].klass) == XC_KIT_BOW && k[0].bar[i].kind == FB_ATTACK { _ := e2bw_loose(s, k[0].ask.net_seq); }
   _ := e2n_cast(s[0].net[..], k[0].wire[i], px, ay, pz);
@@ -356,7 +360,7 @@ e2k_step :: (s: [] E2) {
   // again at once
   tick := deed_tick(now);
   if n[0].cast_refused != k[0].refused_seen {
-    k[0].refused_seen = n[0].cast_refused; k[0].cool_at = -100;
+    k[0].refused_seen = n[0].cast_refused; k[0].cool_at = -100; k[0].pace = k[0].pace_was;
     if deed_waiting(k[0].deeds[0], k[0].ask.seq) { _ := deed_answer(k[0].deeds[..], k[0].ask.seq, false, tick, 0); e2k_undo(s); }
   }
   // the room took it: what is playing is confirmed
@@ -463,7 +467,7 @@ e2k_bar_draw :: (s: [] E2, out: [] f32, at: int) -> int {
   k := s[0].casts[..]; w := s[0].width; h := s[0].height; kk := s[0].k;
   now := s[0].clock;
   size := ifx kk > 1.4 then "-128.jpg" else "-72.jpg";
-  left := f32(XC_COOL) - (now - k[0].cool_at);
+  ptick := xk_tick(now);
   tick := deed_tick(now); bar_dim := deed_bar_dim(e2k_bearing(s));
   boxes: [XC_SLOTS * 4] f32;
   for i: 0..<k[0].bar_n { b := e2k_box(k, i, w, h, kk); for q: 0..<4 { boxes[i * 4 + q] = b[q]; } }
@@ -480,7 +484,8 @@ e2k_bar_draw :: (s: [] E2, out: [] f32, at: int) -> int {
       e2k_media(s, "over", xc_url(art), art, size, b, cast(string) tail[0..<tn]);
     }
     // the wait as a sweep on the picture (everglade/hud/parts.coax eg_slot_sweep)
-    if left > 0 { n = cc.eg_slot_sweep(out, n, b[..], left / f32(XC_COOL), kk); }
+    left := xk_sweep(k[0].pace, a, ptick);   // each ability's own wait: its part of your turn
+    if left > 0 { n = cc.eg_slot_sweep(out, n, b[..], left, kk); }
     // the room's count for it (slots at its level, uses, Rages, Focus) and a gold frame while its
     // effect holds (a Rage, Wild Shape's form): the room's word only (#13046)
     kit := e2n_slot(s[0].net[..], i, k[0].bar_n);
