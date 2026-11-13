@@ -426,7 +426,11 @@ mcp_handle :: (line: string, cfg: McpCfg, out: [] u8, run: bool) -> string {
     jo_key(o[..], "protocolVersion"); jo_str(o[..], ifx pn > 0 then cast(string) pv[0..<pn] else MCP_PROTOCOL);
     jo_key(o[..], "capabilities"); jo_obj(o[..]); jo_key(o[..], "tools"); jo_obj(o[..]); jo_end(o[..]); jo_end(o[..]);
     jo_key(o[..], "serverInfo"); jo_obj(o[..]); jo_key(o[..], "name"); jo_str(o[..], "openagents"); jo_key(o[..], "version"); jo_str(o[..], CLI_VERSION); jo_end(o[..]);
-    jo_key(o[..], "instructions"); jo_str(o[..], "Make and edit realms on openagents.com. The tools listed are the common ones: realm_find names the rest by area, effect or a property, and realm_call calls one. A new realm is private; realm_visibility makes it unlisted or public. Edits take rev (the revision you read) and fail with a conflict when the realm changed since. realm_play sits you in a realm as a visitor; realm_look, realm_go, realm_say, realm_use and realm_bye act there and answer with what you see.");
+    ib: [1024] u8; inn := copy("Make and edit realms on openagents.com. ", ib[..]);
+    // the short list says how to reach the rest; --all lists every tool, so there is nothing to find
+    if !cfg.all { inn += copy("The tools listed are the common ones: realm_find names the rest by area, effect or a property, and realm_call calls one. ", ib[inn..<ib.count]); }
+    inn += copy("A new realm is private; realm_visibility makes it unlisted or public. Edits take rev (the revision you read) and fail with a conflict when the realm changed since. realm_play sits you in a realm as a visitor; realm_look, realm_go, realm_say, realm_use and realm_bye act there and answer with what you see.", ib[inn..<ib.count]);
+    jo_key(o[..], "instructions"); jo_str(o[..], cast(string) ib[0..<inn]);
     jo_end(o[..]); jo_end(o[..]);
     return jo_text(o[..]);
   }
@@ -482,6 +486,12 @@ mcp_handle :: (line: string, cfg: McpCfg, out: [] u8, run: bool) -> string {
   #assert acct_has(s, "\"id\":\"a\"") && acct_has(s, "\"result\":{}");
   #assert acct_has(mcp_handle("{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"nope\"}", cfg, out[..], false), "-32601");
   #assert acct_has(mcp_handle("not json", cfg, out[..], false), "-32700");
+  // the instructions name realm_find only where the list is the short one
+  s = mcp_handle("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\"}", cfg, out[..], false);
+  #assert acct_has(s, "realm_find names the rest") && acct_has(s, "realm_play sits you in a realm");
+  cfg.all = true;
+  s = mcp_handle("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\"}", cfg, out[..], false);
+  #assert !acct_has(s, "realm_find") && acct_has(s, "Make and edit realms on openagents.com. A new realm is private") && acct_has(s, "realm_play sits you in a realm");
 }
 #test "mcp: one tool a row, with required arguments and bounds; read-only offers GET rows and shot" {
   out: [262144] u8; cfg := McpCfg.{exe="openagents", all=true};
