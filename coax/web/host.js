@@ -376,6 +376,7 @@ const PACK_CATALOG = 1, PACK_VERTICES = 2, PACK_INDICES = 3, PACK_LAYER = 4, PAC
 // own rgba8unorm array, never sRGB-decoded, bound after the colour layers' sampler for a realm that
 // asks for them (coaxial_data_layers_v1). The realm's catalog names them ("D i NAME lic").
 const PACK_DATA_LAYER = 6;
+const PACK_RIG = 7;   // a pack's rigs (VRG1, metaverse-engine/anim/rig-pack.coax, #13306): handed to the page before its catalog
 function wantsDataLayers() { return !gpu?.renderer && engine?.exports.coaxial_data_layers_v1?.() === 1; }
 let soundDir = "";   // a sounds:/DIR/ asset: sounds played by name from DIR/NAME.ogg
 let packBlocks = [];   // a blocks:TAG,TAG asset: the block builds beside the page's pack (GitHub #13305)
@@ -410,6 +411,15 @@ let packHost=null,packRetirement=Promise.resolve();
 // The character pass: only a world that places a character (coaxial_character_v1) loads anything.
 const characters = characterPass({ gpu: () => gpu, dev, golden, site: /(^|\.)openagents\.com$/.test(location.hostname),
   privatePack: (session, cipher) => privatePack(session, cipher), unpack: (bytes) => unpack(bytes), decode: (bytes, options) => layerBitmap(bytes, options) });
+// A pack's rig entry (kind 7) goes to the page that asks for it (coaxial_pack_rig), before the pack's
+// catalog is delivered: the page's bake reads it. A page that does not ask is told nothing.
+function deliverRig(rigs){
+  const px=engine?.exports;if(!rigs||!px?.coaxial_pack_rig||!px.coaxial_pack_rig_ready)return;
+  const n=rigs.bytes.length,at=Number(px.coaxial_pack_rig(arena.state,n))||0,capacity=Number(px.coaxial_pack_rig_capacity?.(arena.state)??0);
+  const fits=at>0&&n<=capacity&&at+n<=memory.buffer.byteLength;
+  if(fits)new Uint8Array(memory.buffer,at,n).set(rigs.bytes);
+  px.coaxial_pack_rig_ready(arena.state,fits?n:0);loadMark("pack-rig");
+}
 const packGroups=new Map();
 function retirePacks(test=()=>true){
   const selected=[...packGroups.values()].filter(test);
@@ -1876,6 +1886,7 @@ async function loadPack(pack) {
     loadMark("pack-admitted");entries = await unpack(bytes);if (!parts.every(currentAsset) || engine?.exports !== packGate) return;
     const { device } = gpu, of = (kind) => entries.filter((e) => e.kind === kind);
     const [catalog, vertices, indices, layers] = parts;
+    deliverRig(of(PACK_RIG)[0]);
     catalog.bytes = of(PACK_CATALOG)[0].bytes; catalog.size = catalog.bytes.length;
     for (const [a, e] of [[vertices, of(PACK_VERTICES)[0]], [indices, of(PACK_INDICES)[0]]]) {
       if (gpu.renderer) { a.bytes = e.bytes;a.size = e.bytes.length;gpu.renderer.acceptAsset(a);continue; }
@@ -1949,6 +1960,7 @@ async function loadPackV1(pack){
       if(wantsDataLayers())loading.textures(0,2*of(PACK_DATA_LAYER).length);
       const dataTexture=wantsDataLayers()&&of(PACK_DATA_LAYER).length?await layerTexture(of(PACK_DATA_LAYER).map(entry=>entry.bytes),"rgba8unorm"):null;
       await rendererReady();
+      deliverRig(of(PACK_RIG)[0]);
       catalog.bytes=of(PACK_CATALOG)[0].bytes;catalog.size=catalog.bytes.length;mesh=[of(PACK_VERTICES)[0]?.bytes,of(PACK_INDICES)[0]?.bytes];
       for(const [row,entry]of [[vertices,of(PACK_VERTICES)[0]],[indices,of(PACK_INDICES)[0]]]){
         if(gpu.renderer){row.bytes=entry.bytes;row.size=entry.bytes.length;gpu.renderer.acceptAsset(row);}

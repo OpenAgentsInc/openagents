@@ -194,8 +194,11 @@ vpk3s() {
   for vpk3 in "$here"/realms/everglade2/assets/everglade2.vpk3; do
     planted="$here/build/$(basename "${vpk3%.vpk3}")-planted.pack"
     "$here/../../coax/web/tool.sh" "$here/../../metaverse/tools/assets/everglade2_plant.coax" "${vpk3%.vpk3}.pack" "$planted" > /dev/null
-    "$here/../../coax/web/tool.sh" "$here/../../metaverse-engine/tools/page-pack.coax" "$planted" "$vpk3" > /dev/null
-    rm -f "$planted"
+    # ... and the people's rig as its rig entry (everglade/model/tools/rig-pack.coax, #13306): the page bakes from it.
+    rigged="${planted%-planted.pack}-rigged.pack"
+    "$here/../../coax/web/tool.sh" "$here/../../everglade/model/tools/rig-pack.coax" --into "$planted" "$rigged" people > /dev/null
+    "$here/../../coax/web/tool.sh" "$here/../../metaverse-engine/tools/page-pack.coax" "$rigged" "$vpk3" > /dev/null
+    rm -f "$planted" "$rigged"
   done
   # Block builds (GitHub #13305): Everglade's layers as GPU blocks with their mip chains, NAME.TAG.vpk3
   # beside the pack, one a format its blocks: asset lists; host.js loads the one this device's GPU takes.

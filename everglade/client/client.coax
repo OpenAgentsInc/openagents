@@ -101,6 +101,7 @@ E2 :: struct {
   frame: [16] f32;
   move_bodies: [E2_NEAR_BODIES * 7] f32;
   move_hulls: [E2_HULL_ROOM] f32;   // the rocks' hulls round you this step (everglade/shared/move.coax e2m_world)
+  rig_packed: bool;                      // the bake's rig came from the pack's rig entry (probe 179)
   bake: [figs.BD_BAKE_FLOATS] f32;
   orbit: figs.Orbit; look_yaw: f32; look_pitch: f32;
   ml: [1] mlook.Mouselook;   // mouselook (metaverse-engine/cam/mouselook.coax): in the world, not Character Create's studio
@@ -237,8 +238,13 @@ e2_ground :: (s: [] E2) {
 }
 // The clips, baked once into the state's own store, sized by the bodies module so it never falls behind.
 // The clips, once: the shared ones and the bow's draw.
-e2_bake :: (s: [] E2, d: [] figs.People) #export_c #effects(all) {
-  figs.people_load(d); figs.bd_bake(d, s[0].bake[..], false); figs.bd_bake_bow(d, s[0].bake[..]);
+// The people's rig is the pack's (its rig entry, a VRG1 file: everglade/scene/rig-asset.coax,
+// GitHub #13306). A host that does not hand the entry over yet (the desktop and phone apps, which
+// carry the tracked pack) passes no file, and the rig is the generated procedure's, the same words.
+e2_bake :: (s: [] E2, d: [] figs.People, file: [] u8) #export_c #effects(all) {
+  s[0].rig_packed = figs.e2rig_people(file, d);
+  if !s[0].rig_packed { figs.people_load(d); }
+  figs.bd_bake(d, s[0].bake[..], false); figs.bd_bake_bow(d, s[0].bake[..]);
   // the hands' rows of every baked frame, for what a figure holds (cc.held_pieces through figs.bd_hand):
   // without them a bow, a sword and the Guard's blade stand at their owner's feet
   figs.bd_keep_hands(s[0].bodies[..], d, s[0].bake[..]);
@@ -1697,6 +1703,7 @@ e2_probe :: (s: [] E2, field: int) -> int #export_c #effects(all) {
   // 182 drawing, 183 loading, 184 frames you stood in a cell that didn't simulate, 185 loads that waited
   // a round, 186 origin rebases, 187 your cell, 188 and 189 the origin's cell, 190 the most resident,
   // 191 frames off the manifest, 192 loads asked, 193 answers refused
+  if field == 179 { return ifx s[0].rig_packed then 1 else 0; }   // the people's rig came from the pack's rig entry
   if field >= 180 && field < 194 { return e2cv_probe(s[0].cl[..], field - 180); }
   // 160 to 168 the graphics quality (e2_knobs_frame): the rung, its tier, the mode, the knobs as the
   // frame uses them (in hundredths: grass, scenery, shadow, post, crowd), the bloom passes

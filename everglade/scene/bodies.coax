@@ -44,6 +44,7 @@ BD_FPS :: 30.0;
 #load "preview-rig.coax";
 #load "preview-clips.coax";
 #load "two-hand-rig.coax";   // the owned two-handed weapon clips (metaverse/tools/assets/two_hand_clips.py)
+#load "rig-asset.coax";      // the rigs from a pack's rig entry (VRG1, GitHub #13306)
 #load "../../metaverse-engine/action/bow-pose.coax";   // the archer's keyed draw (docs/metaverse/bow-combat.md), baked as clip BD_BOW
 #load "../../metaverse-engine/action/ride-pose.coax";  // a rider's legs astride (everglade/docs/mounts-spec.md), baked as clip BD_RIDE
 BD_CLIPS :: 10;

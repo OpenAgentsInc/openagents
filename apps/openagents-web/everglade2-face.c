@@ -32,6 +32,7 @@ static coax_t_E2Tiles ground_tiles[2];   /* the ground's tile sets, published an
 static coax_t_E2Cells world_cells;   /* the world's cell controller (everglade/client/cells.coax, #13280); the frame reads its levels from the state's view */
 static coax_t_People rig;
 static uint32_t baked;
+static uint8_t rig_file[262144]; static uint32_t rig_bytes;   /* the pack's rig entry (VRG1, #13306): the people's set */
 static uint32_t frames;
 static int64_t draw_n;
 static coax_t_Body player;
@@ -241,7 +242,7 @@ uint32_t coaxial_frame(cx_face_addr state, cx_face_addr vertices, cx_face_addr u
   int64_t n = e2_frame(at(state), out, u, w, h, scale, dt, still != 0);
   draw_n = 0;
   if (e2_at(state)->bodies.e[0].ready) {
-    if (!baked) { e2_bake(at(state), (coax_v_t_People){&rig, 1}); baked = 1; }
+    if (!baked) { e2_bake(at(state), (coax_v_t_People){&rig, 1}, (coax_v_u8){rig_file, rig_bytes}); baked = 1; }
     /* the world's cells round you and the eye, once the woods are in: the pack came whole, so each
        cell's content is here when it is asked for */
     if (e2_cells_due(at(state))) e2cl_page_frame((coax_v_t_E2Cells){&world_cells, 1}, e2_cell_view(at(state)), e2_at(state)->you_x, e2_at(state)->you_z, e2_at(state)->eye.e[0], e2_at(state)->eye.e[2], true);
@@ -265,6 +266,10 @@ uint32_t coaxial_frame(cx_face_addr state, cx_face_addr vertices, cx_face_addr u
 EXPORT("coaxial_asset") cx_face_addr coaxial_asset(cx_face_addr state, int32_t i, uint32_t bytes) {
   (void)state; return i == 0 && bytes <= sizeof catalog ? (cx_face_addr)(uintptr_t)catalog : 0u;
 }
+/* the pack's rig entry (kind 7), handed over before the catalog: the bake reads it */
+EXPORT("coaxial_pack_rig") cx_face_addr coaxial_pack_rig(cx_face_addr state, uint32_t bytes) { (void)state; return bytes <= sizeof rig_file ? (cx_face_addr)(uintptr_t)rig_file : 0u; }
+EXPORT("coaxial_pack_rig_capacity") uint32_t coaxial_pack_rig_capacity(cx_face_addr state) { (void)state; return (uint32_t)sizeof rig_file; }
+EXPORT("coaxial_pack_rig_ready") void coaxial_pack_rig_ready(cx_face_addr state, uint32_t bytes) { (void)state; rig_bytes = bytes <= sizeof rig_file ? bytes : 0u; }
 EXPORT("coaxial_asset_capacity") uint32_t coaxial_asset_capacity(cx_face_addr state, int32_t i) { (void)state; return i == 0 ? (uint32_t)sizeof catalog : 0u; }
 EXPORT("coaxial_asset_ready") void coaxial_asset_ready(cx_face_addr state, int32_t i, uint32_t bytes) {
   if (i == 0 && bytes > 0 && bytes <= sizeof catalog) e2_catalog(at(state), (coax_string){(const char *)catalog, bytes}, (coax_v_u8){ground_record, sizeof ground_record}, (coax_v_u8){catalog_rest, sizeof catalog_rest});

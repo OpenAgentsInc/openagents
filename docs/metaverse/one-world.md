@@ -122,9 +122,13 @@ These are not built. Each is tracked on #13280.
   where f32 keeps 0.06 mm, so nothing is wrong yet. The page keeps the origin; the shaders and the
   pack's vertices are still in world coordinates. The renderer's instance rows are where it goes
   in (#13303).
-- **Holds the hold does not cover.** A throw, a mount's own step and an agent's drive that sets
-  the walker without `e2_move_in` are not held. With the pack whole no cell is ever missing, so
-  this matters only once cells load over the network.
+- **What the hold is not.** Every push the page makes goes through `e2_move_in` and is held: your
+  keys and stick, the run after Character Create, a film stage's walk and an agent's walk-to
+  (`drive.coax`). A mount's input has to go through it too when riding lands (#13268). A move the
+  room makes is not held and cannot be: a blast's throw, or any correction, is the room's own
+  step, and the room holds every cell. If one carries you into a cell that is not in, the page
+  follows the room and counts the frames (probe 184). A page that could refuse the room's step
+  could stall its own character, so the fix for that case is cells that load sooner, not a hold.
 - **Far terrain level of detail** beyond the stitched 1.3 m rows.
 - **The legacy heightfield** (`metaverse-engine/world/terrain.coax`) still has 12 users.
 - **`everglade-parity` and `everglade/features.coax`** stay until every zone is data.
