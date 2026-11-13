@@ -48,8 +48,8 @@
 #include "aethyr-pack-table.h"
 #endif
 
-// The kinds a host sorts entries by (metaverse-engine/host/pack-table.coax PACK_CATALOG to PACK_RIG).
-enum { ENGINE_PACK_CATALOG = 1, ENGINE_PACK_VERTICES = 2, ENGINE_PACK_INDICES = 3, ENGINE_PACK_LAYER = 4, ENGINE_PACK_SOUND = 5, ENGINE_PACK_DATA = 6, ENGINE_PACK_RIG = 7 };
+// The kinds a host sorts entries by (metaverse-engine/host/pack-table.coax PACK_CATALOG to PACK_CELLS).
+enum { ENGINE_PACK_CATALOG = 1, ENGINE_PACK_VERTICES = 2, ENGINE_PACK_INDICES = 3, ENGINE_PACK_LAYER = 4, ENGINE_PACK_SOUND = 5, ENGINE_PACK_DATA = 6, ENGINE_PACK_RIG = 7, ENGINE_PACK_CELLS = 8 };
 
 typedef coax_t_PackTable EnginePack;
 
