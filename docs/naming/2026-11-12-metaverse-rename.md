@@ -2,7 +2,7 @@
 
 **Decided 2026-11-12 (GitHub #13405).** This decision replaces the
 2026-10-31 engine naming decision in
-[docs/verse/engine-name.md](../verse/engine-name.md).
+[docs/metaverse/engine-name.md](../metaverse/engine-name.md).
 
 | Old name | New name | Short form |
 | --- | --- | --- |
@@ -23,6 +23,46 @@ never a brand.
 
 This document is the inventory and the plan. It lists what changes, what
 stays for compatibility, and when each compatibility name retires.
+
+## Status (2026-11-12, end of day)
+
+Done and on main:
+
+| Stage | Commits |
+| --- | --- |
+| Inventory | 4de9b9c538, 9ff5779205 |
+| Names in docs and books | f0a4ec2000 |
+| Names in code comments | d6b0b150f0 |
+| UI text and page metadata | 299f00a840, 067579c4f0, ffe08f604c, 124b6985e0, 469b49fd96, 76f5825832 |
+| `aethyr/` → `metaverse-engine/`, `aethyr/forge/` → `metaverse-engine/editor/` | 2d99d8af62 (tools-check support: 0ff848bd85) |
+| `verse/` → `metaverse/`, `orbit/` → `metaverse/orbit-league/` | 7c56aa759b |
+| `apps/aethyrforge-desktop/` → `apps/metaverse-engine-desktop/` | 073d53e3ae |
+| `docs/verse/` → `docs/metaverse/` | d8a45b1ddb |
+| SQL-served page text (migration 0178) | 173977e2b1 |
+| `/metaverse` routes, redirects and the pack API alias | e0244d4055 |
+
+`verse/everglade/` and `verse/everglade2/` moved into `everglade/` under
+#13269 and #13268 before the `verse/` move, so this rename did not move them.
+One string in `everglade/world/ground.coax`,
+`"verse/everglade2/forest.coax e2_height"`, is hashed into a committed pack
+and keeps its spelling.
+
+Not done yet:
+
+- **Code symbols and module names** (the "Code symbols" section). The
+  rename script exists and a trial passes the local checks; it lands only
+  after the whole pipeline passes on a build host.
+- **Page source file names**: `apps/openagents-web/verse.coax`,
+  `verse-face.c`, `verse.wgsl`, `gpu/verse.*`, `carriers/verse.coax`,
+  `assets/verse/`, `os/verse-*.coax`, `components/skin/verse.coax`,
+  `psionic/.../motion-verse*`. Each is a module or skin name that pages,
+  budgets and saved settings key on, so they change with the symbols.
+- **`~/.openagents/` folders, the app bundle name and the NixOS units.**
+  See the compatibility table.
+- **The project's source path in the database.** `schema.sql` builds a
+  project's path as `'verse/' || slug`. The folders are now under
+  `metaverse/`; a migration changes the stored prefix.
+- **Deploys.** Nothing in this rename is deployed. The order is in Routes.
 
 ## What each name means
 
@@ -88,6 +128,7 @@ service (a different, older product that keeps its name in history), the
 | `aethyr/` | `metaverse-engine/` | The engine, its book, tests and tools |
 | `aethyr/forge/` | `metaverse-engine/editor/` | Stays in the engine folder: `host/`, `world/`, `content/` and `tools/` load it |
 | `verse/` | `metaverse/` | The realms and their content |
+| `orbit/` | `metaverse/orbit-league/` | Orbit League's room server. A realm's code, so it is not a root folder (owner, 2026-11-12) |
 | `verse/everglade2/` | Stays until it moves to `everglade/world/` | Everglade II's live world. AAA P1.2 (#13268) moves it, so this rename does not move it twice |
 | `verse/everglade/` | Stays until it is split or retired | Everglade v1 and pieces still in use (guard AI, rigs, edits). AAA P1.3 (#13269) |
 | `apps/aethyrforge-desktop/` | `apps/metaverse-engine-desktop/` | The desktop app |
@@ -230,7 +271,7 @@ moves in this rename.
 | `bench/` | The voice benchmark (`bench/voice/`) | Maybe. It could sit under `psionic/`, which it measures |
 | `components/` | The one UI component system for every app | Maybe. It is a project with a spec and no book |
 | `docs/` | Documents | No |
-| `orbit/` | Orbit League's room code (`orbit/server/`) | Yes. It is a realm's code, so it belongs under the realms folder |
+| `orbit/` | Orbit League's room code | Moved to `metaverse/orbit-league/` in 7c56aa759b |
 | `os/` | Metaverse OS: the machine's programs and the NixOS modules | Maybe. A project with a spec and no book |
 | `pay/` | The payments context's money rules | Maybe. A bounded context with no book; the Bitcoin book covers its subject |
 | `plans/` | Plan documents | Yes. Plans are documents and fit under `docs/` |
