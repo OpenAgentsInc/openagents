@@ -599,7 +599,8 @@ static char set_cookie[700];   // a rotated or cleared session cookie, sent with
 
 #define SESSION_COOKIE "__Host-oa_session"
 #define PENDING_COOKIE "__Host-oa_pending"
-#define SESSION_MAX_AGE 2592000   // 30 days: the idle limit; every rotation sends it again
+#define SESSION_MAX_AGE 2592000
+#define LOCAL_OUT_COOKIE "oa_local_out"   // the dev server only (OA_LOCAL_SERVE): this browser logged out   // 30 days: the idle limit; every rotation sends it again
 
 static void cookie_header(char *out, size_t cap, const char *name, const char *value, int max_age) {
   snprintf(out, cap, "Set-Cookie: %s=%s; Path=/; Max-Age=%d; HttpOnly; Secure; SameSite=Lax\r\n", name, value, max_age);
@@ -676,6 +677,8 @@ static bool from_session(PGconn *db, const char *sha, bool web, const char *toke
 
 #ifdef OA_LOCAL_SERVE
 static bool local_admin(const request *q, PGconn *db, auth_principal *p);
+static void local_owner_init(PGconn *db);
+static bool local_owner_account(PGconn *db, const char *acct);
 #endif
 // Resolves the request's one credential. false with *status (400 two credentials, 401 a bad
 // credential) when it answered nothing yet but must be refused.
@@ -769,6 +772,10 @@ const auth_principal *auth_principal_of(const request *q) {
   if (resolved && resolved_for == q) return current.refused ? NULL : &current;
   PGconn *db = api_db();
   resolved = true; resolved_for = q;
+#ifdef OA_LOCAL_SERVE
+  static bool owner_ready;   // the dev server: the owner's account and email, before the first answer
+  if (!owner_ready && db) { owner_ready = true; local_owner_init(db); }
+#endif
   int status = 0;
   if (!db || !resolve(q, db, &current, &status)) { current.refused = status ? status : 503; return NULL; }
   return &current;
@@ -921,6 +928,9 @@ void auth_logged_in(const request *q, PGconn *db, const char *acct, const char *
   snprintf(headers, sizeof headers, "Set-Cookie: %s=%s; Path=/; Max-Age=%d; HttpOnly; Secure; SameSite=Lax\r\n"
            "Set-Cookie: %s=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax\r\n%s",
            SESSION_COOKIE, tok, SESSION_MAX_AGE, PENDING_COOKIE, team ? TEAM_COOKIE : "");
+#ifdef OA_LOCAL_SERVE
+  strncat(headers, "Set-Cookie: " LOCAL_OUT_COOKIE "=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax\r\n", sizeof headers - strlen(headers) - 1);
+#endif
   snprintf(json, sizeof json, "{\"state\":\"logged-in\",\"account\":\"%s\",\"new\":%s,\"player\":%s%s}", acct, made ? "true" : "false", pjson, extra_json);
   snprintf(lines, sizeof lines, "state logged-in\naccount %s\nnew %d\n%s", acct, made, extra_lines);
   answer(q, 200, headers, json, lines);
@@ -1004,7 +1014,13 @@ static void email_start(const request *q, PGconn *db, const char *body) {
            "\"text\":\"Your code is %.6s.\\n\\nOr open this link in the same browser:\\n%s\\n\\nIt works for 10 minutes. If you didn't ask for it, ignore this email.\\n\"}",
            to, code, id, code, url);
   char sent_id[128], err[300];
+#ifdef OA_LOCAL_SERVE
+  // The dev server sends no mail: the code goes to its own log, which serve.sh shows in its terminal.
+  int s = 0; (void)sent_id; (void)err;
+  api_log("auth: dev server login code for %s: %.6s (it works 10 minutes)", email, code);
+#else
   int s = email_send(db, message, sent_id, err, sizeof err);
+#endif
   memset(message, 0, sizeof message); memset(code, 0, sizeof code); memset(link_token, 0, sizeof link_token);
   if (s > 1) {
     audit(db, link ? p->account : NULL, NULL, "email.code", "failed", "{\"why\":\"not sent\"}");
@@ -1095,7 +1111,13 @@ static void email_finish(const request *q, PGconn *db, PGresult *r) {
     answer(q, 200, "Set-Cookie: " PENDING_COOKIE "=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax\r\n", "{\"state\":\"linked\"}", "state linked\n");
     return;
   }
-  auth_logged_in(q, db, acct, "email", email_id, "L1", !strcmp(client, "app"), made, "login.email", NULL, NULL);
+  const char *level = "L1";
+#ifdef OA_LOCAL_SERVE
+  // The dev server: the local admin's own account by its email's code is L2, as this computer's requests are
+  // with no login at all (local_admin), so the owner who logged out and back in is its admin again.
+  if (local_owner_account(db, acct)) level = "L2";
+#endif
+  auth_logged_in(q, db, acct, "email", email_id, level, !strcmp(client, "app"), made, "login.email", NULL, NULL);
 }
 
 static void email_verify(const request *q, PGconn *db, const char *body) {
@@ -1313,7 +1335,11 @@ static void refresh(const request *q, PGconn *db, const char *body) {
 // ---- sessions
 static void logout(const request *q, PGconn *db) {
   const auth_principal *p = auth_principal_of(q);
-  char headers[200]; cookie_header(headers, sizeof headers, SESSION_COOKIE, "", 0);
+  char headers[400]; cookie_header(headers, sizeof headers, SESSION_COOKIE, "", 0);
+#ifdef OA_LOCAL_SERVE
+  // The dev server: this browser stays logged out (local_admin reads the mark) until it logs in again.
+  strncat(headers, "Set-Cookie: " LOCAL_OUT_COOKIE "=1; Path=/; Max-Age=31536000; HttpOnly; SameSite=Lax\r\n", sizeof headers - strlen(headers) - 1);
+#endif
   if (p && p->session[0]) {
     const char *v[1] = {p->session};
     PQclear(PQexecParams(db, "SELECT auth.session_end($1)", 1, NULL, v, NULL, NULL, 0));
@@ -1413,9 +1439,12 @@ static void me(const request *q, PGconn *db) {
   size_t j = (size_t)snprintf(json, 16384, "{\"logged_in\":true,\"account\":\"%s\",\"kind\":\"%s\",\"level\":\"L%d\",\"via\":\"%s\",\"session\":\"%s\",\"admin\":%s,\"emails\":[",
                               p->account, PQgetvalue(r, 0, 0), p->level, p->via, p->session, p->admin ? "true" : "false");
   size_t l = (size_t)snprintf(lines, 8192, "logged_in 1\naccount %s\nkind %s\nlevel L%d\nvia %s\nadmin %d\n", p->account, PQgetvalue(r, 0, 0), p->level, p->via, p->admin);
-  // Emails, opened and masked: a•••@example.com. The address itself never leaves.
+  // Emails, opened and masked: a•••@example.com. The list never carries an address whole; the account's
+  // primary email (else its first) comes whole once, as "primary", for the account's own name on the
+  // page (the side's foot shows it, owner 2026-11-13): the caller is that account's own login.
   const char *emails = PQgetvalue(r, 0, 1);
   int count = 0;
+  char primary[300] = ""; bool primary_marked = false;
   for (const char *s = strstr(emails, "\"sealed\": \""); s; s = strstr(s + 1, "\"sealed\": \"")) {
     s += 11;
     const char *e = strchr(s, '"'); if (!e) break;
@@ -1423,12 +1452,22 @@ static void me(const request *q, PGconn *db) {
     snprintf(sealed, sizeof sealed, "%.*s", (int)(e - s), s);
     snprintf(ad, sizeof ad, "auth.emails|sealed|%s", p->account);
     if (!unseal(ad, sealed, email, sizeof email)) continue;
+    const char *close = strchr(e, '}');
+    const char *mark = strstr(e, "\"primary\": true");
+    bool is_primary = mark && close && mark < close;
+    if (!primary[0] || (is_primary && !primary_marked)) { snprintf(primary, sizeof primary, "%s", email); primary_marked = is_primary; }
     mask_email(email, masked, sizeof masked);
     memset(email, 0, sizeof email);
     j += (size_t)snprintf(json + j, 16384 - j, "%s\"%s\"", count++ ? "," : "", masked);
     l += (size_t)snprintf(lines + l, 8192 - l, "email %s\n", masked);
   }
-  j += (size_t)snprintf(json + j, 16384 - j, "],\"keys\":%s}", PQgetvalue(r, 0, 2));
+  if (primary[0]) {
+    char esc[600]; json_esc(primary, esc, sizeof esc);
+    j += (size_t)snprintf(json + j, 16384 - j, "],\"primary\":\"%s\"", esc);
+    l += (size_t)snprintf(lines + l, 8192 - l, "primary %s\n", primary);
+    memset(primary, 0, sizeof primary); memset(esc, 0, sizeof esc);
+  } else j += (size_t)snprintf(json + j, 16384 - j, "]");
+  j += (size_t)snprintf(json + j, 16384 - j, ",\"keys\":%s}", PQgetvalue(r, 0, 2));
   const char *keys = PQgetvalue(r, 0, 2);
   for (const char *s = strstr(keys, "\"pubkey\": \""); s && l < 8000; s = strstr(s + 1, "\"pubkey\": \"")) {
     s += 11;
@@ -1535,10 +1574,73 @@ static bool loopback_host(const request *q) {
   }
   return false;
 }
+// OA_LOCAL_EMAIL (test.sh --serve: this computer's owner's email): the local admin's account carries it, so
+// the page names the account by it and a login by that email's code is the same account as the key. Once a
+// run; an address another account here already has stays that account's, and the log says so.
+static void local_owner_email(PGconn *db, const char *acct) {
+  static bool done;
+  const char *raw = getenv("OA_LOCAL_EMAIL");
+  if (done || !raw || !*raw) return;
+  done = true;
+  char email[300], all[400], lookup[80];
+  int64_t n = as_email_normalize((coax_v_u8){(uint8_t *)raw, (int64_t)strlen(raw)}, (coax_v_u8){(uint8_t *)email, (int64_t)sizeof email - 1});
+  if (n < 0 || !sealing_ready()) { api_log("auth: OA_LOCAL_EMAIL isn't an email address, or sealing isn't set up"); return; }
+  email[n] = 0;
+  if (!lookups(email, all, sizeof all, lookup)) return;
+  const char *lv[1] = {all};
+  PGresult *r = PQexecParams(db, "SELECT account FROM auth.emails WHERE lookup = ANY($1::text[]) LIMIT 1", 1, NULL, lv, NULL, NULL, 0);
+  char other[40] = "";
+  if (PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1) snprintf(other, sizeof other, "%s", PQgetvalue(r, 0, 0));
+  PQclear(r);
+  if (other[0]) {
+    if (strcmp(other, acct)) api_log("auth: %s is account %s's here, not the local admin's (%s): it stays there", email, other, acct);
+    return;
+  }
+  PQclear(PQexec(db, "BEGIN"));
+  const char *v[2] = {acct, lookup};
+  r = PQexecParams(db, "SELECT state, email_id FROM auth.email_attach($1, $2)", 2, NULL, v, NULL, NULL, 0);
+  bool ok = PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1 && !strcmp(PQgetvalue(r, 0, 0), "ok");
+  char email_id[24] = ""; if (ok) snprintf(email_id, sizeof email_id, "%s", PQgetvalue(r, 0, 1));
+  PQclear(r);
+  char sealed[1200], ad[96];
+  snprintf(ad, sizeof ad, "auth.emails|sealed|%s", acct);
+  if (ok) ok = seal(ad, email, sealed, sizeof sealed);
+  if (ok) {
+    const char *w[2] = {email_id, sealed};
+    r = PQexecParams(db, "SELECT auth.email_seal($1::bigint, $2)", 2, NULL, w, NULL, NULL, 0);
+    ok = PQresultStatus(r) == PGRES_TUPLES_OK; PQclear(r);
+  }
+  if (ok) {   // the owner's email is the account's primary: the name the page shows
+    const char *w[2] = {acct, email_id};
+    r = PQexecParams(db, "UPDATE auth.emails SET is_primary = (id = $2::bigint) WHERE account = $1", 2, NULL, w, NULL, NULL, 0);
+    ok = PQresultStatus(r) == PGRES_COMMAND_OK; PQclear(r);
+  }
+  PQclear(PQexec(db, ok ? "COMMIT" : "ROLLBACK"));
+  api_log(ok ? "auth: the local admin's account %s now carries %s" : "auth: %s: %s couldn't be added", acct, email);
+}
+// Whether acct is the local admin's account (its key's).
+static bool local_owner_account(PGconn *db, const char *acct) {
+  const char *pk = getenv("OA_LOCAL_ADMIN");
+  if (!pk || strlen(pk) != 64 || !admin_is(pk)) return false;
+  const char *v[2] = {pk, acct};
+  PGresult *r = PQexecParams(db, "SELECT 1 FROM auth.nostr_keys WHERE pubkey = $1 AND account = $2", 2, NULL, v, NULL, NULL, 0);
+  bool yes = PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1;
+  PQclear(r);
+  return yes;
+}
+// Before anything is asked: the local admin's account and the owner's email on it.
+static void local_owner_init(PGconn *db) {
+  const char *pk = getenv("OA_LOCAL_ADMIN");
+  char acct[40], kid[24]; bool made = false;
+  if (!db || !pk || strlen(pk) != 64 || !admin_is(pk)) return;
+  if (key_account(db, pk, "admin", acct, kid, &made)) local_owner_email(db, acct);
+}
 static bool local_admin(const request *q, PGconn *db, auth_principal *p) {
   const char *pk = getenv("OA_LOCAL_ADMIN");
-  char xff[8], site[32];
+  char xff[8], site[32], out[8];
   if (!pk || strlen(pk) != 64 || !admin_is(pk)) return false;
+  cookie(q, LOCAL_OUT_COOKIE, out, sizeof out);
+  if (out[0]) return false;   // this browser logged out: it logs in again (email code, or Log in as this computer's owner)
   if (api_header(q, "X-Forwarded-For", xff, sizeof xff) || !loopback_peer(q->fd) || !loopback_host(q)) return false;
   if (api_header(q, "Sec-Fetch-Site", site, sizeof site) && strcmp(site, "same-origin") && strcmp(site, "none")) return false;
   char keep[sizeof set_cookie]; memcpy(keep, set_cookie, sizeof keep);

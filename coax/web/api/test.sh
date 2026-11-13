@@ -26,6 +26,8 @@
 #                           OA_SERVE_STATE=DIR keeps the database, its keys and /chat's sessions in DIR across runs
 #                           (serve.sh gives ~/.openagents/dev; --fresh none): a restart opens the same database and
 #                           applies the new migrations on top. Without it everything is gone when it is stopped.
+#                           The account carries your email (OA_SERVE_EMAIL, else git's user.email): the page names
+#                           you by it. Log out sticks in that browser; an email login's code shows in this terminal.
 # On macOS it takes Apple's clang and Homebrew's postgresql@16, secp256k1 and
 # openssl@3; on a Linux build host the system's clang (else gcc, or CC),
 # libpq, libsecp256k1, OpenSSL, curl and zlib, and PGDG's postgresql-16
@@ -132,7 +134,7 @@ if [[ $serve == 1 && -n "${OA_SERVE_STATE:-}" ]]; then
   printf '%s\n' "$$" > "$state/owner.pid"
 fi
 cleanup() {
-  kill ${api_pid:-} ${notice_relay_pid:-} ${runner_pid:-} ${ports_pid:-} ${token_pid:-} ${script_job_pid:-} 2>/dev/null || true
+  kill ${api_pid:-} ${codes_pid:-} ${notice_relay_pid:-} ${runner_pid:-} ${ports_pid:-} ${token_pid:-} ${script_job_pid:-} 2>/dev/null || true
   if [[ -n "$state" ]]; then
     "$pgbin/pg_ctl" -D "$db" -m fast stop >/dev/null 2>&1 || true
     [[ "$(cat "$state/owner.pid" 2>/dev/null)" != "$$" ]] || rm -f "$state/owner.pid"
@@ -306,6 +308,11 @@ if [[ $serve == 1 ]]; then
   else
     me_profile=""; me_says="a throwaway key: no openagents login here"
   fi
+  # The account's email: this computer's owner's (OA_SERVE_EMAIL, else git's user.email; OA_SERVE_EMAIL= none).
+  # The local admin's account carries it (auth.c local_owner_email), so the page names you by it and a login
+  # by its code here is the same account as the key.
+  owner_email="${OA_SERVE_EMAIL-$(git -C "$repo_root" config user.email 2>/dev/null || true)}"
+  export OA_LOCAL_EMAIL="$owner_email"
   api_origin="$serve_origin"
   infer_url="https://aiplatform.us.rep.googleapis.com/v1/projects/openagentsgemini/locations/us/endpoints/openapi/chat/completions"
   infer_token="" infer_daily=500
@@ -468,6 +475,10 @@ if [[ $serve == 1 ]]; then
   if [[ -n "$state" ]]; then echo "serve: the database is $db, kept across restarts (serve.sh --fresh: a throwaway one)"
   else echo "serve: the database is a throwaway one, gone when this stops"; fi
   echo "serve: the model: $model_says"
+  [[ -z "$owner_email" ]] || echo "serve: your account carries $owner_email; after Log out, log in with it: the code shows here (this server sends no mail)"
+  # Email login codes: the API writes them to its log instead of sending mail; this terminal shows them.
+  tail -n 0 -F "$work/api.log" 2>/dev/null \
+    > >(while IFS= read -r l; do [[ "$l" != *"dev server login code"* ]] || printf 'serve: %s\n' "${l#*auth: }"; done) & codes_pid=$!
   echo "serve: from another computer, an admin login good for 60 seconds: $api_origin/api/admin/login?auth=$(python3 -I -c 'import sys, urllib.parse; print(urllib.parse.quote(sys.argv[1], safe=""))' "$login")&next=chat"
   [[ -z "${OA_SERVE_PORT_FILE:-}" ]] || printf '%s\n' "$api_port" > "$OA_SERVE_PORT_FILE"
   wait "$api_pid"

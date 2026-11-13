@@ -222,9 +222,11 @@ al_t_login :: () -> string #effects(all) { return "{\"state\":\"logged-in\",\"ac
   #assert al_token_hash("abc", out[0..<63]) == -1;
 }
 
-#test "who is logged in, from /api/auth/account: a masked email, else a key, else the account" {
+#test "who is logged in, from /api/auth/account: the primary email, else a masked one, else a key, else the account" {
   out: [160] u8;
-  n := al_who("{\"logged_in\":true,\"account\":\"acct_7\",\"emails\":[\"a...@b.co\"],\"keys\":[]}", out[..]);
+  n := al_who("{\"logged_in\":true,\"account\":\"acct_7\",\"emails\":[\"a...@b.co\"],\"primary\":\"ada@b.co\",\"keys\":[]}", out[..]);
+  #assert cast(string) out[0..<n] == "ada@b.co";
+  n = al_who("{\"logged_in\":true,\"account\":\"acct_7\",\"emails\":[\"a...@b.co\"],\"keys\":[]}", out[..]);
   #assert cast(string) out[0..<n] == "a...@b.co";
   n = al_who("{\"logged_in\":true,\"account\":\"acct_7\",\"emails\":[],\"keys\":[{\"pubkey\":\"0123456789abcdef0123\"}]}", out[..]);
   #assert cast(string) out[0..<n] == "key 01234567";
@@ -432,13 +434,15 @@ al_words :: (status: int, answer: string, out: [] u8) -> int #effects(all) {
   return al_put(out, AL_FALLBACK);
 }
 
-// Who /api/auth/account says is logged in, to show: the first masked email, else the first key's
-// first 8 hex digits, else the account's id. -1 when it says nobody.
+// Who /api/auth/account says is logged in, to show: the account's primary email, else the first masked
+// email, else the first key's first 8 hex digits, else the account's id. -1 when it says nobody.
 al_who :: (answer: string, out: [] u8) -> int #effects(all) {
   nodes: [AL_NODES] JvNode; d: [1] Jv;
   _ = jv_parse(d[..], answer, nodes[..]);
   if !jv_bool(d[0], jv_get(d[0], 0, "logged_in")) { return -1; }
-  n := al_first(d[0], jv_get(d[0], 0, "emails"), "", out);
+  n := al_str(d[0], "primary", out);
+  if n != -1 { return n; }
+  n = al_first(d[0], jv_get(d[0], 0, "emails"), "", out);
   if n != -1 { return n; }
   h: [8] u8;
   n = al_first(d[0], jv_get(d[0], 0, "keys"), "pubkey", h[..]);

@@ -89,20 +89,23 @@ ss_hex :: (c: u8) -> int {
   if c >= 'a' && c <= 'f' { return cast(int) (c - 'a') + 10; }
   return -1;
 }
-// The name at the foot from /api/auth/account?as=lines: the first email (masked by the API), else the key
+// The name at the foot from /api/auth/account?as=lines: the account's primary email ("primary", whole), else
+// the first email (masked by the API), else the key
 // it acts as, as a short npub ("npub1abcdefg...uvwxyz"). Its length in out, 0 when the lines say nobody.
 ss_who_read :: (body: string, out: [] u8) -> int {
-  at := 0; key := ""; email := ""; logged := false;
+  at := 0; key := ""; email := ""; primary := ""; logged := false;
   while at < body.count {
     e := at;
     while e < body.count && body[e] != '\n' { e += 1; }
     line := cast(string) body[at..<e];
     if line == "logged_in 1" { logged = true; }
     if email.count == 0 && line.count > 6 && cast(string) line[0..<6] == "email " { email = cast(string) line[6..<line.count]; }
+    if primary.count == 0 && line.count > 8 && cast(string) line[0..<8] == "primary " { primary = cast(string) line[8..<line.count]; }
     if key.count == 0 && line.count == 68 && cast(string) line[0..<4] == "key " { key = cast(string) line[4..<68]; }
     at = e + 1;
   }
   if !logged { return 0; }
+  if primary.count > 0 { return ss_put(out, 0, primary); }
   if email.count > 0 { return ss_put(out, 0, email); }
   n := ss_npub_short(key, out);
   return ifx n > 0 then n else ss_put(out, 0, "Your account");
@@ -200,8 +203,10 @@ SS_NEW_LABELS :: [3] string.["New chat", "New project", "New world"];
   #assert ss_side_place("/side/projects") == SS_PROJECTS && ss_side_place("/side/worlds") == SS_WORLDS && ss_side_place("/side/projects/coax") == SS_PROJECTS;
   #assert ss_side_place("/side") == -2 && ss_side_place("/side/") == -2 && ss_side_place("/side/settings") == -2 && ss_side_place("/projects") == -2 && ss_side_place("/side/chat") == SS_CHATS;
 }
-#test "the name at the foot is the first email, else a short npub of the key, and nothing for nobody" {
+#test "the name at the foot is the primary email, else the first email, else a short npub of the key, and nothing for nobody" {
   out: [SS_WHO] u8;
+  n0 := ss_who_read("logged_in 1\naccount acct_1\nemail c•••@openagents.com\nprimary chris@openagents.com\nkey 7e7e9c42a91bfef19fa929e5fda1b72e0ebc1a4c1141673e2794234d86addf4e\n", out[..]);
+  #assert cast(string) out[0..<n0] == "chris@openagents.com";
   n := ss_who_read("logged_in 1\naccount acct_1\nkind email\nemail a•••@example.com\nemail b@x.com\nkey 7e7e9c42a91bfef19fa929e5fda1b72e0ebc1a4c1141673e2794234d86addf4e\n", out[..]);
   #assert cast(string) out[0..<n] == "a•••@example.com";
   n = ss_who_read("logged_in 1\naccount acct_1\nkey 7e7e9c42a91bfef19fa929e5fda1b72e0ebc1a4c1141673e2794234d86addf4e\n", out[..]);

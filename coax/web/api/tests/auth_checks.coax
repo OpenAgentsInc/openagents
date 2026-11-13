@@ -52,8 +52,9 @@ ac_checks :: (t: [] Ap, dir: string) {
   st = ac_call(t, "POST", "/api/auth/email/verify", sb_text(vb[..]), ac_cookie_header("__Host-oa_pending", P, c1[..]), "", "");
   ap_check(t, "a code logs in once", st == 409 || st == 410, ap_body(t));
   st = ac_call(t, "GET", "/api/auth/account", "", ac_cookie_header("__Host-oa_session", S, c1[..]), "", "");
-  ap_check(t, "/api/auth/account knows the account at L1, the email masked", st == 200 && ap_member(ap_body(t), "account", eb[..]) == acct
-           && ap_has(ap_body(t), "\"level\":\"L1\"") && ap_has(ap_body(t), "a•••@example.com") && !ap_has(ap_body(t), "ada@"), ap_body(t));
+  ap_check(t, "/api/auth/account knows the account at L1, the email list masked, the primary whole for its own name",
+           st == 200 && ap_member(ap_body(t), "account", eb[..]) == acct && ap_has(ap_body(t), "\"level\":\"L1\"")
+           && ap_has(ap_body(t), "\"emails\":[\"a•••@example.com\"]") && ap_has(ap_body(t), "\"primary\":\"ada@example.com\""), ap_body(t));
   q: [1] Sb; sb(q[..], "SELECT count(*) FROM auth.emails WHERE account = '"); sb(q[..], acct); sb(q[..], "' AND sealed ~ '^0[12][0-9a-f]+$' AND verified_at IS NOT NULL");
   ap_check(t, "the email is kept sealed under a key version", ap_sql(t, sb_text(q[..]), out[..]) == "1", "");
   st = ac_call(t, "GET", "/api/auth/sessions", "", ac_cookie_header("__Host-oa_session", S, c1[..]), "", "");
