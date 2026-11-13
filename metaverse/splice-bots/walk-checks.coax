@@ -59,7 +59,7 @@ wc_zone_row :: (g: [] SpGame, id: int) -> int {
   }
   #assert beside == 0 && open > 0;   // open: the scan does reach ground a piece may stand on (north of the boss wall)
 }
-#test "the whole run plays with the fixture layer in, a piece beside every kept-clear zone" #steps 400000000 {
+#test "the whole run plays with the fixture layer in, a piece beside every kept-clear zone" #steps 1200000000 {
   g := [1] SpGame.[SpGame.{}];
   wc_blank(g[..]);
   #assert sl_fixture(g[..]) == SL_FIXTURE_N;

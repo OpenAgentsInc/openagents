@@ -13,6 +13,7 @@ for people and agents who change the code.
 | `front.coax`, `front-checks.coax` | The front door: the title, character creation, the credits, the run this browser keeps, and you drawn as your character |
 | `splice-bots.coax` | The page's frame, the still scenes, and the host's exports |
 | `splice-cast.coax` | The five characters of the slice |
+| `director.coax` | The Director's systems (#13505): the key map, sneaking, Digger picking up parts by his sensor's range, pointing him with a left click, the inventory grid, Heat's sensing range, the health bars, towing and charging Digger, the map and pause |
 | `gpu/splice-bots.coax` | The shaders: Anime Lab's cel pass, the placed pieces' instances, and the ink overlay |
 | `splice-face.c`, `splice-ue-face.c` | The C faces for the browser and for a native host |
 | `content/splice.content`, `content.coax` | The content tables and their reader |
@@ -82,6 +83,39 @@ A run is kept from the mine's gate: each second in the mine the checkpoint's inv
 is open (the rubble, the boss wall, the banned bot, the core) is written as `splice.run.v1` when
 it changed. CONTINUE puts you back at the checkpoint with them. SCENE RESTORED and a new run let
 it go.
+
+## Controls
+
+The key map follows the slice's beat sheet (#13505). The pause screen (Esc) lists the same keys.
+
+| Key | What it does |
+| --- | --- |
+| W A S D, mouse | Walk and look |
+| Space | Jump (on the hoverboard, hop) |
+| Hold Left Shift | Sneak: you walk at 45 % of your speed and Imperial robots sense you from half as far |
+| Q | Hoverboard on and off, casual speed |
+| Hold Ctrl, or double-tap W | Hoverboard very fast |
+| E | Interact: enter the rover, take the core, go through a portal, swap a core, tow a powered-down Digger |
+| Tab | The edit bay, only inside Sniper (the rover) |
+| I | The inventory: six slots. A click on a slot drops what is in it |
+| Left click | Point Digger at what is under the crosshair: he digs it, picks it up or attacks it |
+| F | Stun a robot within 2 m for 4 seconds |
+| 1 to 4 | A bot's battle moves (`d_take_move` hands each press to the battle) |
+| M | The deep-garage map |
+| Esc | Pause; letting go of the pointer pauses too |
+
+Digger follows you and picks up every part within his sensor's range (4 m, 8 m with the better
+sensor that lies in the scrap room); you can't choose, so you make room in the inventory. A part he
+can't fit stays where it is. What you drop he leaves until you have walked away from it. Hardware
+spliced into him and cards on his strip are his, not yours.
+
+Heat never cools below 25 for each banned piece with you (DRILL+, the core), and an Imperial robot
+senses you from its plan's distance plus 0.07 m for each point of Heat; sneaking halves that.
+
+Everyone has a health bar: yours top left (your hearts), Digger's under it and over him, and one
+over each foe. At zero you are back at Sniper with the inventory you had when you last left it;
+banned pieces picked up since are lost. Digger at zero powers down where he is: press E beside him
+to tow him, and Sniper's charger charges him back up. A foe Digger fights strikes back at him.
 
 ## Edit layer
 
@@ -155,16 +189,15 @@ rebuilds and swaps the engine on save and keeps the world's plans and state.
 ### The hoverboard
 
 The table `board` gives the player a hoverboard (#13485): one row, `on` or `off`, and its casual
-and very fast speeds in centimetres a second. As shipped it is off. Turn it on with the realm
-tooling, not in code:
+and very fast speeds in centimetres a second. Turn it on or off with the realm tooling, not in code:
 
 ```sh
 openagents realm world-board splice on --casual 700 --fast 2200 --origin http://127.0.0.1:PORT
 ```
 
-The editor's agent does the same with the `realm_world_board` tool. In play, B calls the board up
-and steps off, Q switches between casual and very fast, W and S speed up and slow, A and D carve,
-and Space hops. The board is the Metaverse Engine's (`metaverse-engine/action/hoverboard.coax`, on
+The editor's agent does the same with the `realm_world_board` tool. As shipped it is on (#13505). In
+play, Q calls the board up and steps off; it rides casual, and very fast while Ctrl is held or after
+a double tap of W (until W lets go). W and S speed up and slow, A and D carve, and Space hops. The board is the Metaverse Engine's (`metaverse-engine/action/hoverboard.coax`, on
 its mount); Splice Bots' own colliders push it, and the camera widens, pulls back and shakes at speed,
 with Anime Lab's speed lines.
 

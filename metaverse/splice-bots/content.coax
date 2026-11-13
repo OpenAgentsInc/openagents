@@ -516,7 +516,7 @@ sc_test_with :: (t: [] ScTemplateTest, row: string) -> string {
   #assert sc_load(c, sc_test_with(t[..], "1|Crate stack|116 -50 0 0 100,117 50 0 90 100"));
   #assert !sc_load(c, sc_test_with(t[..], "1|Crate stack|116 -50 0 0")) && !sc_load(c, sc_test_with(t[..], "1|Crate stack|999 0 0 0 100"));
   #assert !sc_load(c, sc_test_with(t[..], "1|Crate stack|116 0 0 0 150")) && !sc_load(c, sc_test_with(t[..], "1||116 0 0 0 100")) && !sc_load(c, sc_test_with(t[..], "1|Crate stack|"));
-  #assert sc_load(c, SC_SHIPPED) && c[0].rev == 2;
+  #assert sc_load(c, SC_SHIPPED) && c[0].rev == 4;
 }
 
 // Foe i's plan (0 to SC_FOES - 1) at time of day `when` (PH_DAWN to PH_NIGHT, npc-plan.coax NPL_WHEN's order).
@@ -588,19 +588,19 @@ sc_plan :: (c: [] SpContent, i: int, when: int) -> NplPlan {
   before = sc_cut(before, sc_shipped_table(SC_SHIPPED, "plans"), o[..]);
   #assert sc_upgrade(before, up[..]) == SC_SHIPPED;
 }
-#test "the board's row: off as shipped, on with two speeds, and a row that does not hold is refused in words; tables saved before it get it" {
+#test "the board's row: on as shipped (Q calls it, #13505), on with two speeds, and a row that does not hold is refused in words; tables saved before it get it" #steps 60000000 {
   c: [1] SpContent; o: [CT_BODY] u8; w: [300] u8; up: [CT_BODY] u8;
-  #assert sc_load(c[..], SC_SHIPPED) && c[0].board.ok && !c[0].board.on && c[0].board.casual == BOARD_CASUAL && c[0].board.fast == BOARD_FAST;
-  on := sc_swap("\n1|off|700|2200\n", "\n1|on|900|2600\n", o[..]);
+  #assert sc_load(c[..], SC_SHIPPED) && c[0].board.ok && c[0].board.on && c[0].board.casual == BOARD_CASUAL && c[0].board.fast == BOARD_FAST;
+  on := sc_swap("\n1|on|700|2200\n", "\n1|on|900|2600\n", o[..]);
   #assert sc_load(c[..], on) && c[0].board.on && c[0].board.casual == 900 && c[0].board.fast == 2600;
-  bad := sc_swap("\n1|off|700|2200\n", "\n1|on|900|800\n", o[..]);
+  bad := sc_swap("\n1|on|700|2200\n", "\n1|on|900|800\n", o[..]);
   #assert !sc_load(c[..], bad) && sc_plans_words(bad, w[..]) == "the very fast speed is faster than the casual one, and at most 6000 centimetres a second";
-  bad = sc_swap("\n1|off|700|2200\n", "\n1|maybe|900|2600\n", o[..]);
+  bad = sc_swap("\n1|on|700|2200\n", "\n1|maybe|900|2600\n", o[..]);
   #assert !sc_load(c[..], bad) && sc_plans_words(bad, w[..]) == "the board is on or off";
-  bad = sc_swap("\n1|off|700|2200\n", "\n", o[..]);
+  bad = sc_swap("\n1|on|700|2200\n", "\n", o[..]);
   #assert !sc_load(c[..], bad) && sc_plans_words(bad, w[..]) == "the board table has one row, row 1";
   before := sc_cut(SC_SHIPPED, sc_shipped_table(SC_SHIPPED, "board"), o[..]);
-  #assert before.count < SC_SHIPPED.count && sc_upgrade(before, up[..]) == SC_SHIPPED && sc_load(c[..], before) && c[0].board.ok && !c[0].board.on;
+  #assert before.count < SC_SHIPPED.count && sc_upgrade(before, up[..]) == SC_SHIPPED && sc_load(c[..], before) && c[0].board.ok && c[0].board.on;
 }
 #test "a script row names a module by its hash and whom it drives; a row that does not read is refused in words" {
   c: [1] SpContent; o: [CT_BODY] u8; w: [300] u8;

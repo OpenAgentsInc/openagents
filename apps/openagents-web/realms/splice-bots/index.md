@@ -11,10 +11,12 @@ The run follows the Splice Bots game design document, Tier 1 and Tier 2.
 1. **Title.** Click to play.
 2. **Dome village, dawn.** Walk out through the scanner gate: "HEAT: COOL. PASS."
 3. **Rail drive, day.** The rover follows the rail; W and S change its speed. Halfway a sensor
-   ping stops it. Walk to the marker, pick up the Battery, and board again.
-4. **Day mine.** Pick up the Drill Arm, the Treads and the MOVE and DRILL cards.
-5. **Edit bay.** At the rover, drag the parts and cards onto the film-strip timeline and press
-   SPLICE. Once its three parts are in, the Digger is built and follows you everywhere. When you
+   ping stops it. Walk to the marker: the Digger picks up the Battery, and you board again.
+4. **Day mine.** The Digger follows you from the start and picks up every part within his
+   sensor's range: the Drill Arm, the Treads and the MOVE and DRILL cards. A better sensor in the
+   scrap room doubles his range.
+5. **Edit bay.** In the rover (Tab), drag the parts and cards onto the film-strip timeline and press
+   SPLICE. Once its three parts are in, the Digger can dig. When you
    deploy it, it leaves your side and drives to its work. DRILL then MOVE is a bad cut; MOVE then
    DRILL opens the rubble.
 6. **Dusk, then night: the party.** The passage leads to a raiders' party: a hall with a main
@@ -22,30 +24,43 @@ The run follows the Splice Bots game design document, Tier 1 and Tier 2.
    workshop, a vault, and a lounge reached from the catwalk. Raiders dance where they stand and
    only fight if you hit them. Imperial robots patrol; they notice you from further away as Heat
    rises, chase you, and give up at the catwalk.
-7. **Fights.** F hits whoever is in reach. A raider goes down in two hits, an Imperial robot in
-   three. Each one you beat drops a robot piece into your inventory and adds 10 Heat.
+7. **Fights.** F stuns a robot within 2 m for 4 seconds. Point the Digger at a foe with a left
+   click and he fights it: a raider goes down in two strikes, an Imperial robot in three, and each
+   strikes him back. Each one he beats drops a robot piece into your inventory and adds 10 Heat.
 8. **Battery cells.** Four lie in the rooms. Cells and robot pieces are kept to trade for
    battery juice later; nothing spends them yet.
 9. **The one blue piece.** The special part, DRILL+, is in the vault. It adds 25 Heat. Put
-   MOVE, DRILL+ on the strip at the stash crate; only DRILL+ breaks the boss wall.
+   MOVE, DRILL+ on the strip in the rover; only DRILL+ breaks the boss wall.
 10. **The banned bot.** Its arm sweeps round every few seconds. Stun its three weak points with
     F; a stunned point wakes after 12 seconds, so all three must be down together. Take its core.
-11. **The memory.** Splice the core at the crate or the rover. A hologram of the old world plays,
+11. **The memory.** Splice the core in the rover. A hologram of the old world plays,
     then SCENE RESTORED.
 
-Three hearts. At zero hearts or 100 Heat you are back at the checkpoint post by the rover with
-the inventory you had when you last stood there. Heat cools only by the rover or the stash crate.
+You, the Digger and every foe have a health bar. At zero health or 100 Heat you are back at the
+rover with the inventory you had when you last left it; banned pieces picked up since are lost.
+At zero the Digger powers down: press E beside him to tow him to the rover, whose charger fixes
+him. Heat cools by the rover or the stash crate, but never below 25 for each banned piece with
+you, and the more Heat you have, the farther Imperial robots sense you. Your inventory has six
+slots: press I and click a slot to drop what is in it.
 
 ## Controls
 
-- **W, A, S, D** move; the **mouse** looks (click to hold the pointer, Escape frees it). The left
-  and right arrows also turn.
+- **W, A, S, D** move; the **mouse** looks (click to hold the pointer). The left and right arrows
+  also turn.
 - **Space** jumps: over a low piece, or onto its top. On the hoverboard it hops the board.
-- **E** picks up, boards the rover, and opens the edit bay.
-- **TAB** opens and closes the edit bay at the rover or the stash crate.
+- Hold **Left Shift** to sneak: slower, and Imperial robots sense you from half as far.
+- **Q** steps onto the hoverboard and off it. Hold **Ctrl**, or double-tap **W**, to ride very fast.
+- **E** interacts: boards the rover, takes the core, goes through a door, tows a powered-down Digger.
+- **Tab** opens and closes the edit bay, inside the rover only.
 - In the edit bay, drag or click a part or card to place it. Keys also work: **1, 2, 3** cards,
   **4, 5, 6** parts, **C** clears the strip, **Enter** is SPLICE, **X** is SPLICE CORE.
-- **F** stuns a weak point within 2 m, or hits a raider or an Imperial robot in reach.
+- **I** opens the inventory. Click a slot to drop it.
+- **Left click** points the Digger at what is under the crosshair: he digs it, picks it up or
+  attacks it.
+- **F** stuns a robot within 2 m, or a weak point of the banned bot.
+- **1, 2, 3, 4** are a bot's battle moves.
+- **M** shows the deep-garage map.
+- **Esc** pauses and lists the controls.
 - **G** switches graybox on and off: the whole world in grays, with only orange, yellow and cyan
   left in colour. `?gray` in the address opens in it.
 

@@ -92,7 +92,7 @@ fc_answer :: (out: [] u8, status: int, text: string) -> string {
   #assert !fr_run_read("splice.run.v2\nhave 0000000\n").ok;
 }
 
-#test "CONTINUE: shown with a run kept, focused first, and back at the mine's checkpoint with its inventory" #steps 200000000 {
+#test "CONTINUE: shown with a run kept, focused first, and back at Sniper with its inventory" #steps 200000000 {
   g := [1] SpGame.[SpGame.{}]; fc_fresh(g[..]);
   g[0].have[H_BATTERY] = true; g[0].taken[H_BATTERY] = true; g_enter_mine(g[..]);
   g[0].have[H_ARM] = true; g[0].taken[H_ARM] = true; g_keep(g[..]); g[0].rubble_gone = true;
@@ -105,7 +105,7 @@ fc_answer :: (out: [] u8, status: int, text: string) -> string {
   fr_rows_build(h[..]);
   #assert h[0].fr[0].menu[0].shown[0] && scr_focused(h[0].fr[0].menu[..]) == FR_CONTINUE;
   #assert g_key(h[..], -2, true) && h[0].mode == M_PLAY && h[0].zone == Z_MINE && h[0].phase == PH_DUSK;
-  #assert h[0].have[H_ARM] && h[0].rubble_gone && !h[0].have[H_DRILL] && h[0].pz == h[0].at.start_z;
+  #assert h[0].have[H_ARM] && h[0].rubble_gone && !h[0].have[H_DRILL] && h[0].pz == h[0].at.rover_z && h[0].px == h[0].at.rover_x - 3;   // beside Sniper
   // a missing record: no run, and CONTINUE stays hidden
   k := [1] SpGame.[SpGame.{}]; g_reset(k[..]); fr_start(k[..]);
   fr_stored(k[..], 1, fc_answer(a[..], 1, ""));

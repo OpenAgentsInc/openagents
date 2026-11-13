@@ -1,0 +1,527 @@
+// The Director's systems (GitHub #13505, part A): her keys, Digger at her side, what she carries,
+// how far Imperial robots sense her, and the health of everyone.
+//
+//   Sneak       hold Left Shift: slower, and robots sense her from half as far (the engine's stance,
+//               metaverse-engine/move/stance.coax).
+//   Hoverboard  Q on and off, casual; very fast while Ctrl is held or after a double tap of W (the
+//               engine's board, metaverse-engine/action/hoverboard.coax, with the stance's fast).
+//   Digger      follows her and picks up any part in his sensor's range himself; she can't choose. A
+//               better sensor (the landmark LM_SENSOR) widens his range. A left click points him at
+//               what is under the crosshair: he digs it, picks it up or attacks it. At zero health he
+//               powers down; E tows him, and Sniper's charger charges him back up (the engine's
+//               vitals, metaverse-engine/action/vitals.coax).
+//   Inventory   I: a grid of T_ROOM slots (the engine's carry, metaverse-engine/action/carry.coax).
+//               Hardware spliced into Digger and cards on his strip are his, not hers. A click on a
+//               slot drops what is in it at her feet; Digger leaves it until she walks away from it.
+//   Heat        never cools below T_HEAT_PIECE for each banned piece with her; the more Heat, the
+//               farther robots sense her, and sneaking halves it.
+//   Map         M: the deep-garage map.
+//   Pause       Esc, or the pointer let go while she plays: the game stops and lists the controls.
+//   Moves       1 to 4 in play are a bot's battle moves: d_take_move hands the battle each press.
+//
+// Health: her bar is her hearts (T_HEARTS); every bot's bar is drawn over it. At zero she is back
+// at Sniper with the inventory she had when she last left it (g_keep runs while she is at Sniper).
+#load "../../metaverse-engine/move/stance.coax";
+#load "../../metaverse-engine/action/carry.coax";
+#load "../../metaverse-engine/action/vitals.coax";
+
+T_ROOM :: 6;                 // inventory slots
+T_SENSE :: 4.0f32;           // metres: Digger's sensor
+T_SENSE_UP :: 8.0f32;        // metres: with the better sensor
+T_FETCH_REACH :: 0.8f32;     // metres: near enough to pick a part up
+T_STRIKE :: 0.9f32;          // seconds between Digger's strikes, and a foe's back at him
+T_STRIKE_REACH :: 1.4f32;    // metres
+T_DIGGER_HP :: 10.0f32;
+T_FOE_HIT :: 2.0f32;         // an Imperial robot's strike on Digger (a raider's is half)
+T_CHARGE :: 0.2f32;          // the share of his health Sniper's charger gives back a second
+T_CHARGE_RANGE :: 6.0f32;    // metres from Sniper: at the charger
+T_TOW_REACH :: 2.4f32;       // metres: E tows Digger from this near
+T_FOE_STUN :: 4.0f32;        // seconds an F stun holds a robot
+T_POINT_FAR :: 40.0f32;      // metres the pointer reaches
+T_GIVE_UP_FIGHT :: 25.0f32;  // metres from her: Digger lets a fight go
+T_CROUCH :: 0.35f32;         // metres the view sinks while sneaking
+LM_SENSOR :: 31;             // where the better sensor lies (optional: no landmark, no sensor)
+// what a slot holds: the haves (H_*), and these
+DK_CELL :: 7; DK_SCRAP :: 8;
+// Digger's own errands, over the game's BOT_* states
+DJ_NONE :: 0; DJ_FETCH :: 1; DJ_FIGHT :: 2; DJ_TOW :: 3;
+// what the pointer found
+DP_NONE :: 0; DP_PICK :: 1; DP_FOE :: 2; DP_DIG :: 3; DP_SENSOR :: 4;
+// the Director's own lines
+DS_NONE :: 0; DS_FULL :: 1; DS_DOWN :: 2; DS_NOTHING :: 3; DS_TOW :: 4; DS_UP :: 5; DS_SENSOR :: 6; DS_BAY :: 7; DS_DROP :: 8;
+DS_KEEP :: 9; DS_STUN :: 10; DS_FETCH :: 11; DS_FIGHT :: 12; DS_POWERED :: 13; DS_HERE :: 14; DS_DIG :: 15; DS_MOVE :: 16;
+
+SpDir :: struct {
+  st: Stance;
+  bag: bool; map: bool; paused: bool;
+  task: int; task_i: int; task_t: f32;       // Digger's errand, what it is for, and its strike timer
+  hp: Vitals = Vitals.{hp = T_DIGGER_HP, most = T_DIGGER_HP};
+  sensor: bool;                           // the better sensor is fitted
+  left: [PICKS] bool;                     // dropped by her: Digger leaves it until she has walked away
+  full_said: [PICKS] bool;                // "inventory full" said for this part, once until it fits again
+  say: int; say_t: f32;
+  move: int; moves: int;                  // the last battle move key (1 to 4) and presses not yet taken
+  sw: f32 = 1280; sh: f32 = 800;          // the screen at the last frame: the pointer's crosshair
+  bag_x: f32; bag_y: f32; bag_s: f32; bag_gap: f32;   // the grid as last drawn, for a click
+}
+
+d_say :: (g: [] SpGame, m: int) { g[0].dr[0].say = m; g[0].dr[0].say_t = 3.0; }
+d_text :: (m: int) -> string {
+  if m == DS_FULL { return "Inventory full. Press I and drop something."; }
+  if m == DS_DOWN { return "Digger is powered down. Tow him to Sniper with E."; }
+  if m == DS_NOTHING { return "Nothing there to dig, take or fight."; }
+  if m == DS_TOW { return "Towing Digger. Sniper's charger will fix him."; }
+  if m == DS_UP { return "Digger is charged and back on his treads."; }
+  if m == DS_SENSOR { return "Better sensor fitted. Digger senses twice as far."; }
+  if m == DS_BAY { return "The edit bay is inside Sniper."; }
+  if m == DS_DROP { return "Dropped. Digger leaves it until you walk away."; }
+  if m == DS_KEEP { return "That stays with you."; }
+  if m == DS_STUN { return "Stunned."; }
+  if m == DS_FETCH { return "Digger goes for it."; }
+  if m == DS_FIGHT { return "Digger attacks."; }
+  if m == DS_POWERED { return "Digger powered down."; }
+  if m == DS_HERE { return "Drop it where Digger can find it again."; }
+  if m == DS_DIG { return "Digger digs."; }
+  if m == DS_MOVE { return "No battle. Moves 1 to 4 are for bot battles."; }
+  return "";
+}
+
+// ---- what she carries
+d_kind_of :: (pick: int) -> int { return ifx pick >= PICK_CELL then DK_CELL else ifx pick == PICK_PLUS then H_PLUS else pick; }
+d_stack :: (kind: int) -> int { return ifx kind == DK_CELL then 4 else ifx kind == DK_SCRAP then 9 else 1; }
+d_on_strip :: (g: [] SpGame, card: int) -> bool { for i: 0..<g[0].strip_n { if g[0].strip[i] == card { return true; } } return false; }
+// Her inventory as slots, in a fixed order: hardware not spliced in, cards not on Digger's strip,
+// the core, battery cells and robot pieces. Banned: DRILL+ and the core.
+d_carry :: (g: [] SpGame) -> Carry {
+  c := [1] Carry.[carry_make(T_ROOM)];
+  for i: 0..<3 { if g[0].have[i] && !g[0].slot[i] { _ := carry_put(c[..], i, false, 1); } }
+  for i: H_MOVE..<H_CORE { if g[0].have[i] && !d_on_strip(g, i) { _ := carry_put(c[..], i, i == H_PLUS, 1); } }
+  if g[0].have[H_CORE] { _ := carry_put(c[..], H_CORE, true, 1); }
+  for i: 0..<g[0].cells { _ := carry_put(c[..], DK_CELL, false, d_stack(DK_CELL)); }
+  for i: 0..<g[0].scrap { _ := carry_put(c[..], DK_SCRAP, false, d_stack(DK_SCRAP)); }
+  return c[0];
+}
+d_fits :: (g: [] SpGame, kind: int) -> bool { return carry_fits(d_carry(g), kind, d_stack(kind)); }
+d_kind_name :: (kind: int) -> string {
+  if kind == DK_CELL { return "CELLS"; }
+  if kind == DK_SCRAP { return "ROBOT PIECES"; }
+  if kind == H_CORE { return "BANNED CORE"; }
+  return item_name(kind);
+}
+// The banned pieces with her (in her inventory or spliced into Digger): each holds Heat up.
+d_banned :: (g: [] SpGame) -> int { return (ifx g[0].have[H_PLUS] then 1 else 0) + (ifx g[0].have[H_CORE] then 1 else 0); }
+d_heat_floor :: (g: [] SpGame) -> f32 { return lo(T_HEAT_MAX - 1, cast(f32) d_banned(g) * T_HEAT_PIECE); }
+// Drops slot `i` of the grid at her feet. Cells go back on the ground where she stands; robot pieces
+// are left behind; the core stays with her.
+d_drop :: (g: [] SpGame, i: int) -> bool {
+  c := [1] Carry.[d_carry(g)];
+  if i < 0 || i >= c[0].n { return false; }
+  kind := c[0].items[i].kind;
+  if kind == H_CORE { d_say(g, DS_KEEP); return false; }
+  if kind == DK_SCRAP { g[0].scrap = 0; d_say(g, DS_DROP); return true; }
+  if g[0].zone != Z_MINE { d_say(g, DS_HERE); return false; }
+  k := 0;
+  for p: 0..<PICKS {
+    if !g[0].taken[p] || d_kind_of(p) != kind || pick_zone(p) != Z_MINE { continue; }
+    a := cast(f32) k * 2.1;
+    g[0].at.pick_x[p] = g[0].px + sin(g[0].yaw + a) * 0.9; g[0].at.pick_z[p] = g[0].pz + cos(g[0].yaw + a) * 0.9;
+    g[0].taken[p] = false; g[0].dr[0].left[p] = true; k += 1;
+    if kind != DK_CELL { g[0].have[kind] = false; break; }
+  }
+  if kind == DK_CELL { g[0].cells = 0; }
+  if k == 0 { return false; }
+  d_say(g, DS_DROP);
+  return true;
+}
+
+// ---- Digger
+d_down :: (g: [] SpGame) -> bool { return g[0].dr[0].hp.down; }
+d_towing :: (g: [] SpGame) -> bool { return g[0].dr[0].task == DJ_TOW; }
+d_range :: (g: [] SpGame) -> f32 { return ifx g[0].dr[0].sensor then T_SENSE_UP else T_SENSE; }
+// He is on an errand of his own, or powered down: the game's follow leaves him be (g_bot).
+d_busy :: (g: [] SpGame) -> bool { return d_down(g) || g[0].dr[0].task != DJ_NONE; }
+d_sensor_at :: (g: [] SpGame) -> ScMark { return sc_mark(g[0].c[..], LM_SENSOR); }
+d_sensor_here :: (g: [] SpGame) -> bool { m := d_sensor_at(g); return m.id == LM_SENSOR && !g[0].dr[0].sensor && g[0].zone == Z_MINE; }
+// The part nearest Digger within his range that he may take: not one she dropped and still stands
+// by, and one that fits. A part that doesn't fit is said once.
+d_sense :: (g: [] SpGame) -> int {
+  d := g[0].dr[..]; best := -1; bd := d_range(g);
+  for i: 0..<PICKS {
+    if g[0].taken[i] || pick_zone(i) != g[0].zone { continue; }
+    if d[0].left[i] { if dist2(g[0].px, g[0].pz, pick_x(g, i), pick_z(g, i)) > d_range(g) + 1 { d[0].left[i] = false; } continue; }
+    e := dist2(g[0].bot_x, g[0].bot_z, pick_x(g, i), pick_z(g, i));
+    if e >= bd { continue; }
+    if !d_fits(g, d_kind_of(i)) { if !d[0].full_said[i] { d[0].full_said[i] = true; d_say(g, DS_FULL); } continue; }
+    d[0].full_said[i] = false; bd = e; best = i;
+  }
+  if d_sensor_here(g) { m := d_sensor_at(g); if dist2(g[0].bot_x, g[0].bot_z, m.x, m.z) < bd { best = PICKS; } }
+  return best;
+}
+d_fetch_at :: (g: [] SpGame, i: int) -> [2] f32 {
+  if i == PICKS { m := d_sensor_at(g); return [2] f32.[m.x, m.z]; }
+  return [2] f32.[pick_x(g, i), pick_z(g, i)];
+}
+d_task_end :: (g: [] SpGame) { g[0].dr[0].task = DJ_NONE; g[0].dr[0].task_i = -1; g[0].dr[0].task_t = 0; }
+// Digger takes a hit of `points` (a foe's strike, a battle's move): at zero he powers down where he is.
+d_bot_hurt :: (g: [] SpGame, points: f32) {
+  if d_down(g) { return; }
+  g[0].dr[0].hp = vitals_hit(g[0].dr[0].hp, points);
+  if d_down(g) { d_task_end(g); g[0].bot_state = BOT_FOLLOW; d_say(g, DS_POWERED); }
+}
+d_at_charger :: (g: [] SpGame) -> bool {
+  if g[0].zone == Z_RAIL { c := rail_at(g, g[0].rail_s); return dist2(g[0].bot_x, g[0].bot_z, c.x, c.z) < T_CHARGE_RANGE; }
+  return g[0].zone == Z_MINE && dist2(g[0].bot_x, g[0].bot_z, g[0].at.rover_x, g[0].at.rover_z) < T_CHARGE_RANGE;
+}
+// A step of Digger's own: charging at Sniper, being towed, fetching, fighting, or looking for parts.
+d_bot :: (g: [] SpGame, dt: f32) {
+  if !g[0].bot { return; }
+  d := g[0].dr[..];
+  if d_down(g) || d[0].hp.hp < d[0].hp.most {
+    if d_at_charger(g) {
+      was := d_down(g);
+      d[0].hp = vitals_charge(d[0].hp, T_CHARGE, dt);
+      if was && !d_down(g) { d_task_end(g); g[0].bot_state = BOT_FOLLOW; d_say(g, DS_UP); }
+    }
+  }
+  if d[0].task == DJ_TOW {
+    if !d_down(g) { d_task_end(g); return; }
+    tx := g[0].px - sin(g[0].yaw) * 1.3; tz := g[0].pz - cos(g[0].yaw) * 1.3;
+    left := bot_toward(g, tx, tz, T_FOLLOW, dt);
+    if left > 12 { g[0].bot_x = tx; g[0].bot_z = tz; }
+    return;
+  }
+  if d_down(g) || g[0].bot_state != BOT_FOLLOW { return; }
+  if d[0].task == DJ_FETCH {
+    i := d[0].task_i;
+    gone := ifx i == PICKS then !d_sensor_here(g) else g[0].taken[i];
+    if gone || dist2(g[0].px, g[0].pz, g[0].bot_x, g[0].bot_z) > T_GIVE_UP_FIGHT { d_task_end(g); return; }
+    at := d_fetch_at(g, i);
+    if bot_toward(g, at[0], at[1], T_BOT_GO, dt) > T_FETCH_REACH { return; }
+    if i == PICKS { d[0].sensor = true; d_say(g, DS_SENSOR); }
+    else if d_fits(g, d_kind_of(i)) { g_take(g, i); }
+    else { d_say(g, DS_FULL); }
+    d_task_end(g);
+    return;
+  }
+  if d[0].task == DJ_FIGHT {
+    f := d[0].task_i;
+    if f < 0 || f >= FOES || g[0].fhp[f] <= 0 || dist2(g[0].px, g[0].pz, g[0].fx[f], g[0].fz[f]) > T_GIVE_UP_FIGHT { d_task_end(g); return; }
+    if bot_toward(g, g[0].fx[f], g[0].fz[f], T_BOT_GO, dt) > T_STRIKE_REACH { return; }
+    d[0].task_t += dt;
+    if d[0].task_t < T_STRIKE { return; }
+    d[0].task_t = 0;
+    // the foe turns on Digger, not on her: it stops for the exchange and strikes him back
+    g[0].fhp[f] -= 1; g[0].fhost[f] = false; g[0].fstag[f] = hi(g[0].fstag[f], 0.3); g[0].flash = 0.15;
+    if g[0].fhp[f] <= 0 {
+      // down: a robot piece, if there is room for it
+      if d_fits(g, DK_SCRAP) { g[0].scrap += 1; g[0].heat = lo(T_HEAT_MAX, g[0].heat + T_HEAT_SCRAP); g_say(g, MSG_FOE); } else { d_say(g, DS_FULL); }
+      d_task_end(g);
+      return;
+    }
+    if g[0].fstag[f] <= 0.3 { d_bot_hurt(g, ifx f >= F_RAIDERS then T_FOE_HIT else T_FOE_HIT * 0.5); }   // a stunned one can't
+    return;
+  }
+  i := d_sense(g);
+  if i >= 0 { d[0].task = DJ_FETCH; d[0].task_i = i; }
+}
+
+// ---- pointing Digger: the left click, at what is under the crosshair
+d_view :: (g: [] SpGame) -> VpView {
+  c := g_camera(g);
+  return VpView.{ex = c.eye.x, ey = c.eye.y, ez = c.eye.z, ax = c.at.x, ay = c.at.y, az = c.at.z, fov = c.fov, w = g[0].dr[0].sw, h = g[0].dr[0].sh};
+}
+DPoint :: struct { kind: int; i: int; }
+d_aim :: (r: VpRay, x: f32, y: f32, z: f32, size: f32, best: [] f32) -> bool {
+  dx := x - r.o.x; dy := y - r.o.y; dz := z - r.o.z;
+  t := dx * r.d.x + dy * r.d.y + dz * r.d.z;
+  if t < 0 || t > T_POINT_FAR { return false; }
+  ox := dx - r.d.x * t; oy := dy - r.d.y * t; oz := dz - r.d.z * t;
+  off := sqrt(ox * ox + oy * oy + oz * oz) / (size + 0.03 * t);
+  if off > 1 || off >= best[0] { return false; }
+  best[0] = off;
+  return true;
+}
+// What the crosshair is on: a part, a foe, the rubble or the boss wall, the better sensor; or none.
+d_pointed :: (g: [] SpGame) -> DPoint {
+  r := vp_ray(d_view(g), g[0].dr[0].sw * 0.5, g[0].dr[0].sh * 0.5);
+  out := DPoint.{kind = DP_NONE, i = -1};
+  if !r.ok { return out; }
+  best := [1] f32.[2];
+  for i: 0..<PICKS { if !g[0].taken[i] && pick_zone(i) == g[0].zone && d_aim(r, pick_x(g, i), 0.75, pick_z(g, i), 0.9, best[..]) { out = DPoint.{kind = DP_PICK, i = i}; } }
+  if d_sensor_here(g) { m := d_sensor_at(g); if d_aim(r, m.x, 0.75, m.z, 0.9, best[..]) { out = DPoint.{kind = DP_SENSOR, i = PICKS}; } }
+  if g[0].zone == Z_MINE {
+    for i: 0..<FOES { if g[0].fhp[i] > 0 && d_aim(r, g[0].fx[i], 1.0, g[0].fz[i], 1.0, best[..]) { out = DPoint.{kind = DP_FOE, i = i}; } }
+    if !g[0].rubble_gone && d_aim(r, 0, 1.5, g[0].at.rubble_z, 3.0, best[..]) { out = DPoint.{kind = DP_DIG, i = 0}; }
+    if g[0].rubble_gone && !g[0].wall_gone && d_aim(r, 0, 2.0, g[0].at.wall_z, 4.0, best[..]) { out = DPoint.{kind = DP_DIG, i = 1}; }
+  }
+  return out;
+}
+// The left click in play: Digger digs, picks up or attacks what she points at.
+d_point :: (g: [] SpGame) -> int {
+  if !g[0].bot { return DP_NONE; }
+  if d_down(g) { d_say(g, DS_DOWN); return DP_NONE; }
+  p := d_pointed(g); d := g[0].dr[..];
+  if p.kind == DP_NONE { d_say(g, DS_NOTHING); return DP_NONE; }
+  if p.kind == DP_DIG { d_task_end(g); d_say(g, DS_DIG); g_deploy(g); return p.kind; }
+  if g[0].bot_state != BOT_FOLLOW { g[0].bot_state = BOT_FOLLOW; }   // called off his cut
+  if p.kind == DP_FOE { d[0].task = DJ_FIGHT; d[0].task_i = p.i; d[0].task_t = T_STRIKE * 0.5; d_say(g, DS_FIGHT); return p.kind; }
+  if p.kind == DP_PICK && !d_fits(g, d_kind_of(p.i)) { d_say(g, DS_FULL); return DP_NONE; }
+  if p.kind == DP_PICK { d[0].left[p.i] = false; }   // pointed at: no longer left
+  d[0].task = DJ_FETCH; d[0].task_i = p.i; d_say(g, DS_FETCH);
+  return p.kind;
+}
+
+// ---- keys, the pointer and the step
+// Rover: where the edit bay is. Inside Sniper, or at its door until the rover's room is built.
+d_in_rover :: (g: [] SpGame) -> bool { return g[0].zone == Z_MINE && near_rover(g, T_USE_RANGE); }
+d_cursor :: (g: [] SpGame) -> bool { d := g[0].dr[0]; return d.paused || d.bag; }
+d_pause :: (g: [] SpGame) {
+  d := g[0].dr[..]; d[0].paused = true; d[0].bag = false; d[0].map = false;
+  g[0].fwd = false; g[0].back = false; g[0].left = false; g[0].right = false; g[0].turn_l = false; g[0].turn_r = false;
+  d[0].st = Stance.{since = d[0].st.since};
+}
+d_resume :: (g: [] SpGame) { g[0].dr[0].paused = false; g[0].look_free = false; }
+// A battle move key, handed to the battle once (part C's battles take them here).
+d_take_move :: (g: [] SpGame) -> int { d := g[0].dr[..]; if d[0].moves == 0 { return 0; } d[0].moves -= 1; return d[0].move; }
+// A key of the Director's: 1 it is taken, 0 it is ignored, -1 it is the game's.
+d_key :: (g: [] SpGame, key: int, down: bool) -> int {
+  d := g[0].dr[..];
+  if d[0].paused {
+    if down && (key == -1 || key == -2 || key == 'p' || key == 'P') { d_resume(g); }
+    return ifx down then 1 else -1;
+  }
+  if key == -13 { d[0].st = stance_sneak(d[0].st, down); return ifx g[0].mode == M_PLAY then 1 else 0; }
+  if key == -14 { d[0].st = stance_hold(d[0].st, down); return ifx g[0].mode == M_PLAY then 1 else 0; }
+  if key == 'w' || key == 'W' || key == -6 { d[0].st = stance_forward(d[0].st, down); return -1; }
+  if !down || g[0].mode != M_PLAY { return -1; }
+  if key == 'q' || key == 'Q' { if g_board_given(g) { g_board_key(g); return 1; } return 0; }
+  if key == 'i' || key == 'I' { d[0].bag = !d[0].bag; d[0].map = false; return 1; }
+  if key == 'm' || key == 'M' { d[0].map = !d[0].map; d[0].bag = false; return 1; }
+  if key == -1 { if d[0].bag || d[0].map { d[0].bag = false; d[0].map = false; g[0].look_free = false; } else { d_pause(g); } return 1; }
+  if key >= '1' && key <= '4' {
+    d[0].move = key - '0'; d[0].moves = ifx d[0].moves < 8 then d[0].moves + 1 else 8;
+    return 1;
+  }
+  if key == -15 && !d_in_rover(g) { d_say(g, DS_BAY); return 1; }
+  return -1;
+}
+// E at a powered-down Digger: tow him (or let him go).
+d_use :: (g: [] SpGame) -> bool {
+  if !g[0].bot || !d_down(g) || dist2(g[0].px, g[0].pz, g[0].bot_x, g[0].bot_z) > T_TOW_REACH { return false; }
+  d := g[0].dr[..];
+  if d[0].task == DJ_TOW { d_task_end(g); } else { d[0].task = DJ_TOW; d_say(g, DS_TOW); }
+  return true;
+}
+// The pointer in play: true when the Director's systems took it.
+d_pointer :: (g: [] SpGame, x: f32, y: f32, phase: int) -> bool {
+  if g[0].mode != M_PLAY { return false; }
+  d := g[0].dr[..];
+  if d[0].paused { if phase == 0 { d_resume(g); } return true; }
+  if d[0].bag {
+    if phase != 0 { return true; }
+    i := carry_hit(T_ROOM, 3, d[0].bag_x, d[0].bag_y, d[0].bag_s, d[0].bag_gap, x, y);
+    if i >= 0 { _ := d_drop(g, i); }
+    return true;
+  }
+  if phase == 0 && !g[0].look_free { _ := d_point(g); return true; }
+  return false;
+}
+// The pointer let go while she plays (Escape frees it in a browser): pause.
+d_lock :: (g: [] SpGame, status: int) {
+  d := g[0].dr[0];
+  if status == 0 && g[0].mode == M_PLAY && !g[0].look_free && !d.bag && !d.map { d_pause(g); }
+}
+// A step in play, before the walk: the stance's time, the board's speed, the toast.
+d_pre :: (g: [] SpGame, dt: f32) {
+  d := g[0].dr[..];
+  d[0].st = stance_tick(d[0].st, dt);
+  if g_riding(g) { g[0].board[0].fast = stance_fast(d[0].st); }
+  if d[0].say_t > 0 { d[0].say_t -= dt; if d[0].say_t <= 0 { d[0].say = DS_NONE; } }
+}
+// After the walk: Heat's floor and Digger.
+d_post :: (g: [] SpGame, dt: f32) {
+  if g[0].heat < d_heat_floor(g) { g[0].heat = d_heat_floor(g); }
+  d_bot(g, dt);
+}
+d_pace :: (g: [] SpGame) -> f32 { return stance_pace(g[0].dr[0].st); }
+d_sneaking :: (g: [] SpGame) -> bool { return g[0].dr[0].st.sneak && g[0].mode == M_PLAY && !g_riding(g); }
+// How far a foe that notices from `see` metres senses her: grown by Heat, halved while she sneaks.
+d_noticed :: (g: [] SpGame, see: f32) -> f32 { return stance_noticed(g[0].dr[0].st, see, g[0].heat * T_NOTICE_HEAT); }
+d_crouch :: (g: [] SpGame) -> f32 { return ifx d_sneaking(g) then T_CROUCH else 0.0f32; }
+d_respawn :: (g: [] SpGame) {
+  d := g[0].dr[..];
+  d_task_end(g); d[0].bag = false; d[0].map = false;
+  for i: 0..<PICKS { d[0].left[i] = false; d[0].full_said[i] = false; }
+}
+
+// ---- drawing
+// The better sensor, where it lies, and Digger out on the rail stop.
+d_live :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
+  t := g[0].t;
+  if d_sensor_here(g) {
+    m := d_sensor_at(g);
+    f := frame_at(v3(m.x, 0.8 + sin(t * 2.2) * 0.12, m.z), t * 1.4);
+    kit_pen(p, 240, MAT_SKIN, t3(0.93, 0.88, 0.76)); box(buf, p, f, 0.22, 0.12, 0.22);
+    kit_pen(p, 241, MAT_GLOW, t3(1.0, 0.72, 0.30)); ball(buf, p, v3(m.x, 1.0 + sin(t * 2.2) * 0.12, m.z), 0.12, 8);
+  }
+}
+d_tint :: (g: [] SpGame, c: KitTint) -> KitTint { return ifx d_down(g) then t3(0.30, 0.28, 0.27) else c; }
+// A bar: an ink outline, filled `share` of the way in `c`, cut into `cuts` segments when above 1.
+d_bar :: (out: [] f32, n: int, x0: f32, y0: f32, x1: f32, y1: f32, share: f32, cuts: int, c: KitTint, k: f32) -> int {
+  m := n;
+  if share > 0.001 { m = ui_seg(out, m, x0 + 2 * k, (y0 + y1) * 0.5, x0 + 2 * k + (x1 - x0 - 4 * k) * lo(share, 1), (y0 + y1) * 0.5, (y1 - y0) * 0.5 - 2 * k, c, 1); }
+  m = ui_box(out, m, x0, y0, x1, y1, 1.5 * k, INK());
+  for i: 1..<cuts { x := x0 + (x1 - x0) * cast(f32) i / cast(f32) cuts; m = ui_seg(out, m, x, y0, x, y1, 0.8 * k, INK(), 1); }
+  return m;
+}
+// Her health, Digger's, her inventory's room and his sensor, top left. The height it takes.
+d_vitals :: (g: [] SpGame, out: [] f32, u: [] f32, q: Ui, at: int) -> int {
+  n := at; k := q.k; pad := 18 * k; ink := INK(); paper := PAPER(); buf: [64] u8;
+  x1 := pad + 272 * k; y1 := pad + 92 * k; d := g[0].dr[0];
+  ui_panel(g, u, pad, pad, x1, y1, paper, 0.96);
+  n = ui_box(out, n, pad, pad, x1, y1, 3 * k, ink);
+  n = ui_text(out, n, "YOU", pad + 12 * k, pad + 22 * k, 8.5 * k, ink);
+  n = d_bar(out, n, pad + 86 * k, pad + 11 * k, x1 - 12 * k, pad + 27 * k, cast(f32) g[0].hearts / cast(f32) T_HEARTS, T_HEARTS, HEAT(), k);
+  n = ui_text(out, n, "DIGGER", pad + 12 * k, pad + 46 * k, 8.5 * k, ink);
+  if d.hp.down { n = ui_text(out, n, "DOWN", pad + 62 * k, pad + 46 * k, 7.5 * k, HEAT()); }
+  n = d_bar(out, n, pad + 86 * k, pad + 35 * k, x1 - 12 * k, pad + 51 * k, vitals_share(d.hp), 1, ifx d.hp.down then HEAT() else GLOW_INK(), k);
+  c := d_carry(g);
+  n = ui_text(out, n, num(buf[..], "I BAG ", c.n, ""), pad + 12 * k, pad + 76 * k, 7.5 * k, ink);
+  n = ui_text(out, n, num(buf[..], "/ ", T_ROOM, ""), pad + 66 * k, pad + 76 * k, 7.5 * k, ink);
+  n = ui_text(out, n, num(buf[..], "SENSOR ", cast(int) d_range(g), " M"), pad + 104 * k, pad + 76 * k, 7.5 * k, ifx d.sensor then GLOW_INK() else ink);
+  if d_sneaking(g) { n = ui_right(out, n, "SNEAKING", x1 - 12 * k, pad + 76 * k, 7.5 * k, HEAT()); }
+  return n;
+}
+// Health bars over every bot in sight: the foes and Digger.
+d_plates :: (g: [] SpGame, out: [] f32, q: Ui, at: int) -> int {
+  n := at; k := q.k;
+  if g[0].zone != Z_MINE && g[0].zone != Z_RAIL { return n; }
+  v := d_view(g);
+  for i: 0..<FOES + 1 {
+    x := 0.0f32; z := 0.0f32; share := 0.0f32; c := HEAT(); top := 2.3f32;
+    if i < FOES {
+      if g[0].zone != Z_MINE || g[0].fhp[i] <= 0 { continue; }
+      x = g[0].fx[i]; z = g[0].fz[i]; share = cast(f32) g[0].fhp[i] / cast(f32) (ifx i < F_RAIDERS then T_RAIDER_HP else T_IMPERIAL_HP);
+      top = ifx i < F_RAIDERS then 2.3f32 else 2.0f32;
+    } else {
+      if !g[0].bot { continue; }
+      x = g[0].bot_x; z = g[0].bot_z; share = vitals_share(g[0].dr[0].hp); c = ifx d_down(g) then HEAT() else GLOW_INK(); top = 1.7;
+    }
+    if dist2(v.ex, v.ez, x, z) > 28 { continue; }
+    s := vp_project(v, x, top, z);
+    if !s.ok || s.x < 0 || s.x > q.w || s.y < 0 || s.y > q.h { continue; }
+    half := 26 * k;
+    n = ui_seg(out, n, s.x - half, s.y, s.x + half, s.y, 4.5 * k, PAPER(), 0.9);
+    n = d_bar(out, n, s.x - half, s.y - 4 * k, s.x + half, s.y + 4 * k, share, 1, c, k);
+  }
+  return n;
+}
+// The inventory grid, in the middle of the screen.
+d_bag :: (g: [] SpGame, out: [] f32, u: [] f32, q: Ui, at: int) -> int {
+  n := at; k := q.k; ink := INK(); paper := PAPER(); buf: [64] u8; d := g[0].dr[..];
+  s := 104 * k; gap := 10 * k; cols := 3; rows := (T_ROOM + cols - 1) / cols;
+  gw := cast(f32) cols * s + cast(f32) (cols - 1) * gap; gh := cast(f32) rows * s + cast(f32) (rows - 1) * gap;
+  x0 := q.w * 0.5 - gw * 0.5; y0 := q.h * 0.5 - gh * 0.5 + 10 * k;
+  d[0].bag_x = x0; d[0].bag_y = y0; d[0].bag_s = s; d[0].bag_gap = gap;
+  ui_panel(g, u, x0 - 24 * k, y0 - 70 * k, x0 + gw + 24 * k, y0 + gh + 74 * k, paper, 0.98);
+  n = ui_box(out, n, x0 - 24 * k, y0 - 70 * k, x0 + gw + 24 * k, y0 + gh + 74 * k, 3 * k, ink);
+  c := d_carry(g);
+  n = ui_title(out, n, "INVENTORY", x0, y0 - 34 * k, 13 * k, ink);
+  b2: [32] u8;
+  n = ui_right(out, n, num(buf[..], "", c.n, num(b2[..], " / ", T_ROOM, "")), x0 + gw, y0 - 34 * k, 10 * k, ink);
+  for i: 0..<T_ROOM {
+    b := carry_cell(i, cols, x0, y0, s, gap);
+    if i >= c.n { n = ui_box(out, n, b.x0, b.y0, b.x1, b.y1, 1.5 * k, SHADE()); continue; }
+    one := c.items[i]; col := ifx one.banned then GLOW_INK() else ink;
+    n = ui_box(out, n, b.x0, b.y0, b.x1, b.y1, 2.5 * k, col);
+    icon := ifx one.kind == H_TREADS then 1 else ifx one.kind == H_BATTERY || one.kind == DK_CELL then 2 else ifx one.kind == H_CORE then 4 else ifx one.kind == DK_SCRAP then 3 else 0;
+    n = ui_icon(out, n, icon, (b.x0 + b.x1) * 0.5, b.y0 + 36 * k, 30 * k, col, k);
+    n = ui_mid(out, n, d_kind_name(one.kind), (b.x0 + b.x1) * 0.5, b.y1 - 26 * k, 7 * k, col);
+    if one.count > 1 { n = ui_right(out, n, num(buf[..], "x", one.count, ""), b.x1 - 8 * k, b.y1 - 9 * k, 8 * k, col); }
+  }
+  n = ui_mid(out, n, "Click a slot to drop it. I or Esc closes.", q.w * 0.5, y0 + gh + 30 * k, 8 * k, ink);
+  n = ui_mid(out, n, num(buf[..], "Digger picks up every part within ", cast(int) d_range(g), " m of him."), q.w * 0.5, y0 + gh + 52 * k, 8 * k, ink);
+  return n;
+}
+// The deep-garage map: the walls from above, Sniper, Digger, her, and what is still in the way.
+d_map :: (g: [] SpGame, out: [] f32, u: [] f32, q: Ui, at: int) -> int {
+  n := at; k := q.k; ink := INK(); paper := PAPER();
+  if g[0].zone != Z_MINE {
+    ui_panel(g, u, q.w * 0.5 - 220 * k, q.h * 0.5 - 40 * k, q.w * 0.5 + 220 * k, q.h * 0.5 + 40 * k, paper, 0.98);
+    return ui_mid(out, n, "The map shows the garage. You're not there yet.", q.w * 0.5, q.h * 0.5 + 4 * k, 9 * k, ink);
+  }
+  // the bounds: every wall but the map's edge
+  lx := 1e9f32; hx := -1e9f32; lz := 1e9f32; hz := -1e9f32;
+  for i: 0..<g[0].wall_n { o := i * 5; if g[0].walls[o + 4] <= 0 && (g[0].walls[o + 1] - g[0].walls[o] > 30 || g[0].walls[o + 3] - g[0].walls[o + 2] > 30) { continue; } lx = lo(lx, g[0].walls[o]); hx = hi(hx, g[0].walls[o + 1]); lz = lo(lz, g[0].walls[o + 2]); hz = hi(hz, g[0].walls[o + 3]); }
+  if hx <= lx || hz <= lz { return n; }
+  bh := q.h - 200 * k; sc := lo(bh / (hz - lz), (q.w * 0.6) / (hx - lx)); mw := (hx - lx) * sc; mh := (hz - lz) * sc;
+  x0 := q.w * 0.5 - mw * 0.5; y0 := q.h * 0.5 - mh * 0.5 + 16 * k;
+  ui_panel(g, u, x0 - 30 * k, y0 - 70 * k, x0 + mw + 30 * k, y0 + mh + 50 * k, paper, 0.98);
+  n = ui_box(out, n, x0 - 30 * k, y0 - 70 * k, x0 + mw + 30 * k, y0 + mh + 50 * k, 3 * k, ink);
+  n = ui_title(out, n, "DEEP GARAGE MAP", x0, y0 - 36 * k, 13 * k, ink);
+  // north (lower z) is up: x right, z down the page reversed
+  for i: 0..<g[0].wall_n {
+    o := i * 5; if g[0].walls[o + 4] <= 0 { continue; }
+    a := x0 + (g[0].walls[o] - lx) * sc; b := x0 + (g[0].walls[o + 1] - lx) * sc;
+    c := y0 + (hz - g[0].walls[o + 3]) * sc; e := y0 + (hz - g[0].walls[o + 2]) * sc;
+    n = ui_box(out, n, a, c, b, e, 1.5 * k, ink);
+  }
+  px := x0 + (g[0].px - lx) * sc; pz := y0 + (hz - g[0].pz) * sc;
+  rx := x0 + (g[0].at.rover_x - lx) * sc; rz := y0 + (hz - g[0].at.rover_z) * sc;
+  n = ui_box(out, n, rx - 6 * k, rz - 9 * k, rx + 6 * k, rz + 9 * k, 3 * k, ink); n = ui_text(out, n, "SNIPER", rx + 10 * k, rz + 4 * k, 7 * k, ink);
+  if !g[0].rubble_gone { yy := y0 + (hz - g[0].at.rubble_z) * sc; n = ui_seg(out, n, x0 + (-3 - lx) * sc, yy, x0 + (3 - lx) * sc, yy, 3 * k, t3(0.56, 0.36, 0.28), 1); }
+  if !g[0].wall_gone { yy := y0 + (hz - g[0].at.wall_z) * sc; n = ui_seg(out, n, x0 + (-4 - lx) * sc, yy, x0 + (4 - lx) * sc, yy, 3 * k, GLOW_INK(), 1); }
+  bz := y0 + (hz - g[0].at.boss_z) * sc; bx := x0 + (g[0].at.boss_x - lx) * sc;
+  n = ui_mid(out, n, "DEEPER", bx, bz + 4 * k, 8 * k, GLOW_INK());
+  if g[0].bot { n = ui_seg(out, n, x0 + (g[0].bot_x - lx) * sc, y0 + (hz - g[0].bot_z) * sc, x0 + (g[0].bot_x - lx) * sc, y0 + (hz - g[0].bot_z) * sc, 4 * k, GLOW_INK(), 1); }
+  n = ui_seg(out, n, px, pz, px, pz, 6 * k, HEAT(), 1);
+  n = ui_seg(out, n, px, pz, px - sin(g[0].yaw) * 14 * k, pz - cos(g[0].yaw) * 14 * k, 1.5 * k, HEAT(), 1);
+  n = ui_mid(out, n, "You (orange) · Digger (blue) · M closes", q.w * 0.5, y0 + mh + 32 * k, 8 * k, ink);
+  return n;
+}
+// The controls, as the sheet maps them: shown on the pause screen.
+D_KEYS :: 15;
+d_controls :: () -> [D_KEYS * 2] string {
+  return [D_KEYS * 2] string.[
+    "W A S D", "Walk", "Mouse", "Look", "Space", "Jump", "Hold Shift", "Sneak: slower, harder to sense",
+    "Q", "Hoverboard on and off", "Hold Ctrl or W W", "Hoverboard very fast",
+    "E", "Interact, enter the rover, swap a core, tow Digger", "Tab", "Edit bay, inside Sniper", "I", "Inventory",
+    "Left click", "Point Digger: dig, pick up, attack", "F", "Stun a robot within 2 m", "1 2 3 4", "Battle moves",
+    "M", "Map", "Esc", "Pause", "G", "Graybox"];
+}
+d_pause_screen :: (g: [] SpGame, out: [] f32, u: [] f32, q: Ui, at: int) -> int {
+  n := at; k := q.k; ink := INK(); paper := PAPER();
+  ui_panel(g, u, -20, -20, q.w + 20, q.h + 20, ink, 0.86);
+  n = ui_title_mid(out, n, "PAUSED", q.w * 0.5, q.h * 0.16, 30 * k, paper);
+  n = ui_mid(out, n, "Click or press Esc to play", q.w * 0.5, q.h * 0.16 + 32 * k, 10 * k, GLOW());
+  keys := d_controls();
+  y := q.h * 0.16 + 80 * k; kx := q.w * 0.5 - 260 * k;
+  for i: 0..<D_KEYS {
+    n = ui_right(out, n, keys[i * 2], kx + 150 * k, y, 10 * k, GLOW());
+    n = ui_text(out, n, keys[i * 2 + 1], kx + 172 * k, y, 10 * k, paper);
+    y += 27 * k;
+  }
+  return n;
+}
+// The Director's HUD: her panel top left, the bars over the bots, her line, and the grid, the map
+// or the pause screen when one is open. The game's HUD draws the rest.
+d_hud :: (g: [] SpGame, out: [] f32, u: [] f32, q: Ui, at: int) -> int {
+  n := at; d := g[0].dr[0];
+  g[0].dr[0].sw = q.w; g[0].dr[0].sh = q.h;
+  n = d_plates(g, out, q, n);
+  // the crosshair Digger is pointed with
+  if g[0].mode == M_PLAY && !d.paused && !d.bag && !d.map && g[0].bot {
+    k := q.k; cx := q.w * 0.5; cy := q.h * 0.5; c := ifx d_pointed(g).kind != DP_NONE then HEAT() else PAPER();
+    n = ui_seg(out, n, cx - 9 * k, cy, cx - 3 * k, cy, 1.2 * k, c, 0.9); n = ui_seg(out, n, cx + 3 * k, cy, cx + 9 * k, cy, 1.2 * k, c, 0.9);
+    n = ui_seg(out, n, cx, cy - 9 * k, cx, cy - 3 * k, 1.2 * k, c, 0.9); n = ui_seg(out, n, cx, cy + 3 * k, cx, cy + 9 * k, 1.2 * k, c, 0.9);
+  }
+  if d.say != DS_NONE && !d.paused {
+    t := d_text(d.say); k := q.k; mw := ui_w(F_MONO, t, 10 * k) + 40 * k; y0 := q.h * 0.3 + 60 * k;
+    n = ui_seg(out, n, q.w * 0.5 - mw * 0.5 + 18 * k, y0, q.w * 0.5 + mw * 0.5 - 18 * k, y0, 18 * k, INK(), 0.92);
+    n = ui_mid(out, n, t, q.w * 0.5, y0 + 4 * k, 10 * k, PAPER());
+  }
+  if d.bag { n = d_bag(g, out, u, q, n); }
+  if d.map { n = d_map(g, out, u, q, n); }
+  if d.paused { n = d_pause_screen(g, out, u, q, n); }
+  return n;
+}
