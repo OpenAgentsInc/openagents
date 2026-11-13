@@ -527,13 +527,15 @@ live_deps() {
   } > "$dir/$module.deps.$$" && mv -f "$dir/$module.deps.$$" "$dir/$module.deps" || { rm -f "$dir/$module.deps.$$"; echo "wasm.sh: $module: no dependency list for coax serve" >&2; }
 }
 if [[ -n "${COAX_FAST_EDIT:-}" && "${COAX_FAST_EDIT_ORACLE:-0}" != 1 ]]; then units+=("coax/web/fast-edit-offer.coax:fast-edit-policy"); fi
+# The state layout (coax drive, and the dev module's state table) runs beside Coax to C: a dev
+# module waits for it before it goes into place, so it must not start after (#13410, #13411).
+layout_job=""
+if [[ "${COAXIAL_DRIVE:-1}" != 0 ]]; then drive_dir="$(dirname "$out")/.drive"; mkdir -p "$drive_dir"; drive_layout & layout_job=$!; fi
 for unit in "${units[@]}"; do
   emit "${unit%%:*}" "${unit##*:}" & gen+=($!)
 done
 for pid in "${gen[@]}"; do wait "$pid"; done
 [[ "$mode" == dev ]] || headroom_check || exit 1
-layout_job=""
-if [[ "${COAXIAL_DRIVE:-1}" != 0 ]]; then mkdir -p "$(dirname "$out")/.drive"; drive_dir="$(dirname "$out")/.drive"; drive_layout & layout_job=$!; fi
 drive_files & drive_job=$!
 live_job=""
 trap 'kill "$drive_job" $layout_job $live_job 2> /dev/null || true; rm -rf "$work"' EXIT
