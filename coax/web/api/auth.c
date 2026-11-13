@@ -55,6 +55,7 @@
 #include "auth-policy.generated.h"
 #include "auth-seal.generated.h"
 #include "auth-internal.h"
+#include "auth-wire.generated.h"
 
 #include <ctype.h>
 #include <stdarg.h>
@@ -368,42 +369,11 @@ static void visitor(const request *q, char ip[128]) {
 }
 static void visitor_key(const request *q, char out[65]) { char ip[128]; visitor(q, ip); char s[160]; snprintf(s, sizeof s, "ip:%s", ip); sha_hex(s, out); }
 
-// A JSON string's value for a top-level key (flat bodies only), unescaped for \" and \\, or NULL.
-static const char *json_str(const char *body, size_t n, const char *key, char *out, size_t cap) {
-  char want[80]; snprintf(want, sizeof want, "\"%s\"", key);
-  const char *end = body + n;
-  for (const char *p = body; p && p < end; p++) {
-    p = strstr(p, want);
-    if (!p || p >= end) break;
-    const char *v = p + strlen(want);
-    while (v < end && (*v == ' ' || *v == '\t' || *v == '\n' || *v == '\r')) v++;
-    if (v >= end || *v != ':') continue;
-    v++;
-    while (v < end && (*v == ' ' || *v == '\t' || *v == '\n' || *v == '\r')) v++;
-    if (v >= end || *v != '"') return NULL;
-    v++;
-    size_t k = 0;
-    while (v < end && *v != '"' && k + 1 < cap) {
-      if (*v == '\\' && v + 1 < end) { v++; if (*v != '"' && *v != '\\' && *v != '/') return NULL; }
-      if ((unsigned char)*v < 0x20) return NULL;
-      out[k++] = *v++;
-    }
-    if (v >= end || *v != '"') return NULL;
-    out[k] = 0;
-    return out;
-  }
-  if (cap) out[0] = 0;
-  return NULL;
-}
-static bool json_true(const char *body, size_t n, const char *key) {
-  char want[80]; snprintf(want, sizeof want, "\"%s\"", key);
-  char *b = strndup(body, n); if (!b) return false;
-  const char *p = strstr(b, want);
-  bool yes = false;
-  if (p) { p += strlen(want); while (*p == ' ' || *p == ':') p++; yes = !strncmp(p, "true", 4); }
-  free(b);
-  return yes;
-}
+// Every body this file writes or reads is auth-wire.coax's: a string for it, a buffer for a body
+// (room kept for the 0 after it), and a buffer for a request body's member (its 0 included).
+static coax_string cs(const char *s) { return (coax_string){s ? s : "", s ? (int64_t)strlen(s) : 0}; }
+#define OUT(b) ((coax_v_u8){(uint8_t *)(b), (int64_t)sizeof (b) - 1})
+#define ASK(b) ((coax_v_u8){(uint8_t *)(b), (int64_t)sizeof (b)})
 // A string as a JSON string's inside (quotes and controls escaped), bounded.
 static void json_esc(const char *s, char *out, size_t cap) {
   size_t k = 0;
@@ -422,19 +392,41 @@ static void answer(const request *q, int status, const char *headers, const char
   if (as_lines(q) && lines) api_respond(q->fd, status, "text/plain; charset=utf-8", headers, lines, strlen(lines));
   else api_respond(q->fd, status, "application/json", headers, json, strlen(json));
 }
+static void refuse(const request *q, int status, const char *words);
+// The same for bodies auth-wire.coax wrote: their lengths, -1 for one that didn't fit its buffer.
+// Only the form that was asked for has to fit.
+static void answer_n(const request *q, int status, const char *headers, const char *json, int64_t jn, const char *lines, int64_t ln) {
+  bool as = as_lines(q) && lines;
+  if (as ? ln < 0 : jn < 0) { refuse(q, 500, "That didn't work. Try again."); return; }
+  if (as) api_respond(q->fd, status, "text/plain; charset=utf-8", headers, lines, (size_t)ln);
+  else api_respond(q->fd, status, "application/json", headers, json, (size_t)jn);
+}
 static void refuse(const request *q, int status, const char *words) {
   char json[600], lines[500];
   api_error_text(json, sizeof json, words);
-  snprintf(lines, sizeof lines, "error %s\n", words);
-  answer(q, status, NULL, json, lines);
+  answer_n(q, status, NULL, json, (int64_t)strlen(json), lines, auw_refusal_lines(cs(words), OUT(lines)));
+}
+// A one-word answer: linked, approved, waiting, logged-out, removed, frozen.
+static void answer_state(const request *q, int status, const char *headers, const char *state) {
+  char json[64], lines[64];
+  answer_n(q, status, headers, json, auw_state_write(cs(state), OUT(json)), lines, auw_state_lines(cs(state), OUT(lines)));
 }
 
-// One audit row (auth.audit). detail: a JSON object of fixed keys, never secrets or PII.
+// One audit row (auth.audit). detail: a JSON object of fixed keys, never secrets or PII (NULL: the
+// empty object).
+static const char *detail_of(char *d, int64_t n) { if (n < 0) return NULL; d[n] = 0; return d; }
 static void audit(PGconn *db, const char *acct, const char *actor, const char *action, const char *result, const char *detail) {
-  const char *v[5] = {acct && *acct ? acct : NULL, actor && *actor ? actor : NULL, action, result, detail ? detail : "{}"};
+  char none[8];
+  if (!detail) detail = detail_of(none, auw_none_write(OUT(none)));
+  const char *v[5] = {acct && *acct ? acct : NULL, actor && *actor ? actor : NULL, action, result, detail};
   PGresult *r = PQexecParams(db, "SELECT auth.log($1, $2, $3, $4, $5::jsonb)", 5, NULL, v, NULL, NULL, 0);
   if (PQresultStatus(r) != PGRES_TUPLES_OK) api_log("auth: audit %s: %s", action, PQerrorMessage(db));
   PQclear(r);
+}
+// The row whose detail is why it was refused or failed.
+static void audit_why(PGconn *db, const char *acct, const char *actor, const char *action, const char *result, const char *why) {
+  char d[64];
+  audit(db, acct, actor, action, result, detail_of(d, auw_why_write(cs(why), OUT(d))));
 }
 
 // One limit's hit, counted. True when allowed; else until_ms is when the window lifts.
@@ -481,14 +473,11 @@ static void refuse_limit(const request *q, int which, long long until_ms) {
   if (left < 90000) snprintf(when, sizeof when, "in %lld seconds", (left + 999) / 1000);
   else if (left < 5400000) snprintf(when, sizeof when, "in %lld minutes", (left + 59999) / 60000);
   else snprintf(when, sizeof when, "in %lld hours", (left + 3599999) / 3600000);
-  char words[300], e[400], json[700], lines[500];
+  char words[300], json[700], lines[500];
   snprintf(words, sizeof words, "%s Try again %s.", LIMITS[which].words, when);
-  json_esc(words, e, sizeof e);
-  snprintf(json, sizeof json, "{\"error\":\"%s\",\"limit\":\"%s\",\"max\":%d,\"per\":\"%s\",\"until_ms\":%lld}",
-           e, LIMITS[which].name, LIMITS[which].max, LIMITS[which].per, until_ms);
-  snprintf(lines, sizeof lines, "error %s\nlimit %s\nuntil_ms %lld\n", words, LIMITS[which].name, until_ms);
   char retry[64]; snprintf(retry, sizeof retry, "Retry-After: %lld\r\n", (left + 999) / 1000);
-  answer(q, 429, retry, json, lines);
+  answer_n(q, 429, retry, json, auw_limit_write(cs(words), cs(LIMITS[which].name), LIMITS[which].max, cs(LIMITS[which].per), until_ms, OUT(json)),
+           lines, auw_limit_lines(cs(words), cs(LIMITS[which].name), until_ms, OUT(lines)));
 }
 
 // ---- for agents.c: the same answers, audit rows, tokens, addresses and limits as this file's
@@ -881,7 +870,7 @@ void auth_logged_in(const request *q, PGconn *db, const char *acct, const char *
   if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1 || PQgetisnull(r, 0, 0)) {
     api_log("auth: session for %s: %s", action, PQerrorMessage(db));
     PQclear(r);
-    audit(db, acct, NULL, action, "refused", "{\"why\":\"deleted\"}");
+    audit_why(db, acct, NULL, action, "refused", "deleted");
     refuse(q, 410, "This account was deleted.");
     return;
   }
@@ -901,13 +890,12 @@ void auth_logged_in(const request *q, PGconn *db, const char *acct, const char *
   if (device.bind && !auth_device_bind(db, acct, sid, &device)) {
     const char *e[1] = {sid};
     PQclear(PQexecParams(db, "SELECT auth.session_end($1)", 1, NULL, e, NULL, NULL, 0));
-    audit(db, acct, NULL, action, "failed", "{\"why\":\"device\"}");
+    audit_why(db, acct, NULL, action, "failed", "device");
     refuse(q, 500, "That didn't work. Try again.");
     return;
   }
-  char detail[200]; snprintf(detail, sizeof detail, "{\"via\":\"%s\",\"client\":\"%s\",\"new\":%s,\"device\":%s}", via_kind, app ? "app" : "web",
-                             made ? "true" : "false", device.bind ? "true" : "false");
-  audit(db, acct, sid, action, "ok", detail);
+  char detail[200];
+  audit(db, acct, sid, action, "ok", detail_of(detail, auw_login_detail_write(cs(via_kind), cs(app ? "app" : "web"), made, device.bind, OUT(detail))));
   if (!strcmp(level, "L2")) auth_recover_strong_login(db, acct, sid);   // a pending recovery ends (#13213)
   if (!extra_json) extra_json = "";
   if (!extra_lines) extra_lines = "";
@@ -917,10 +905,8 @@ void auth_logged_in(const request *q, PGconn *db, const char *acct, const char *
     if (!new_token("oa_rt_", rt, sizeof rt, rtd) || !new_token("oa_at_", at, sizeof at, atd) || !random_hex(fam, 16)) { refuse(q, 503, "No randomness here. Try again."); return; }
     const char *w[4] = {sid, fam, rtd, atd};
     PQclear(PQexecParams(db, "SELECT auth.app_pair($1, $2, $3, $4)", 4, NULL, w, NULL, NULL, 0));
-    snprintf(json, sizeof json, "{\"state\":\"logged-in\",\"account\":\"%s\",\"new\":%s,\"access_token\":\"%s\",\"refresh_token\":\"%s\",\"expires_in\":3600,\"device_bound\":%s,\"player\":%s%s}",
-             acct, made ? "true" : "false", at, rt, device.bind ? "true" : "false", pjson, extra_json);
-    snprintf(lines, sizeof lines, "state logged-in\naccount %s\nnew %d\naccess_token %s\nrefresh_token %s\nexpires_in 3600\ndevice_bound %d\n%s", acct, made, at, rt, device.bind, extra_lines);
-    answer(q, 200, NULL, json, lines);
+    answer_n(q, 200, NULL, json, auw_login_app_write(cs(acct), made, cs(at), cs(rt), device.bind, cs(pjson), cs(extra_json), OUT(json)),
+             lines, auw_login_app_lines(cs(acct), made, cs(at), cs(rt), device.bind, cs(extra_lines), OUT(lines)));
     return;
   }
   set_cookie[0] = 0;   // this answer's own cookie replaces a cleared or rotated one
@@ -930,9 +916,8 @@ void auth_logged_in(const request *q, PGconn *db, const char *acct, const char *
 #ifdef OA_LOCAL_SERVE
   strncat(headers, "Set-Cookie: " LOCAL_OUT_COOKIE "=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax\r\n", sizeof headers - strlen(headers) - 1);
 #endif
-  snprintf(json, sizeof json, "{\"state\":\"logged-in\",\"account\":\"%s\",\"new\":%s,\"player\":%s%s}", acct, made ? "true" : "false", pjson, extra_json);
-  snprintf(lines, sizeof lines, "state logged-in\naccount %s\nnew %d\n%s", acct, made, extra_lines);
-  answer(q, 200, headers, json, lines);
+  answer_n(q, 200, headers, json, auw_login_web_write(cs(acct), made, cs(pjson), cs(extra_json), OUT(json)),
+           lines, auw_login_web_lines(cs(acct), made, cs(extra_lines), OUT(lines)));
 }
 
 // Our Origin on a cookie write (as every route here); apps and tools send no Origin.
@@ -960,11 +945,11 @@ static void code_of(const char *link_token, char code[7]) {
 
 static void email_start(const request *q, PGconn *db, const char *body) {
   char raw[400], email[300], client[16] = "web";
-  json_str(body, strlen(body), "client", client, sizeof client);
+  auw_ask_client(cs(body), ASK(client));
   bool app = !strcmp(client, "app");
-  bool link = json_true(body, strlen(body), "link");
-  bool merge = json_true(body, strlen(body), "merge");   // the other account's email proves it to a merge (auth-life.c)
-  if (!json_str(body, strlen(body), "email", raw, sizeof raw)) { refuse(q, 400, "Type your email address."); return; }
+  bool link = auw_ask_link(cs(body));
+  bool merge = auw_ask_merge(cs(body));   // the other account's email proves it to a merge (auth-life.c)
+  if (auw_ask_email(cs(body), ASK(raw)) < 0) { refuse(q, 400, "Type your email address."); return; }
   int64_t n = as_email_normalize((coax_v_u8){(uint8_t *)raw, (int64_t)strlen(raw)}, (coax_v_u8){(uint8_t *)email, (int64_t)sizeof email - 1});
   if (n < 0) { refuse(q, 400, "That isn't an email address."); return; }
   email[n] = 0;
@@ -1005,13 +990,11 @@ static void email_start(const request *q, PGconn *db, const char *body) {
   if (!ok) { refuse(q, 500, "That didn't work. Try again."); return; }
   // One message: the code, and the link for the same browser. Short, plain. The code is six digits
   // unbroken, so a double click or a tap selects all of it (owner, 2026-11-13).
-  char message[2400], to[600], url[400];
-  json_esc(email, to, sizeof to);
+  char message[2400], url[400];
   snprintf(url, sizeof url, "%s/login/email#t=%s", origin(), link_token);
-  snprintf(message, sizeof message,
-           "{\"to\":\"%s\",\"subject\":\"Your OpenAgents code: %.6s\",\"idempotency_key\":\"login-%s\","
-           "\"text\":\"Your code is %.6s.\\n\\nOr open this link in the same browser:\\n%s\\n\\nIt works for 10 minutes. If you didn't ask for it, ignore this email.\\n\"}",
-           to, code, id, code, url);
+  int64_t mn = auw_mail_write(cs(email), cs(code), cs(id), cs(url), OUT(message));
+  if (mn < 0) { memset(message, 0, sizeof message); memset(code, 0, sizeof code); memset(link_token, 0, sizeof link_token); refuse(q, 500, "That didn't work. Try again."); return; }
+  message[mn] = 0;
   char sent_id[128], err[300];
 #ifdef OA_LOCAL_SERVE
   // The dev server sends no mail: the code goes to its own log, which serve.sh shows in its terminal.
@@ -1022,29 +1005,24 @@ static void email_start(const request *q, PGconn *db, const char *body) {
 #endif
   memset(message, 0, sizeof message); memset(code, 0, sizeof code); memset(link_token, 0, sizeof link_token);
   if (s > 1) {
-    audit(db, link ? p->account : NULL, NULL, "email.code", "failed", "{\"why\":\"not sent\"}");
+    audit_why(db, link ? p->account : NULL, NULL, "email.code", "failed", "not sent");
     refuse(q, s == 400 ? 400 : 502, s == 400 ? "We can't send email to that address." : "The email didn't send. Try again.");
     return;
   }
+  char purpose[64];
   audit(db, link || merge ? p->account : NULL, link || merge ? p->session : NULL, "email.code", "ok",
-        merge ? "{\"purpose\":\"merge\"}" : link ? "{\"purpose\":\"link\"}" : "{\"purpose\":\"login\"}");
+        detail_of(purpose, auw_purpose_write(cs(merge ? "merge" : link ? "link" : "login"), OUT(purpose))));
   char headers[300] = "", json[400], lines[300];
-  if (app) {
-    snprintf(json, sizeof json, "{\"state\":\"sent\",\"expires_in\":600,\"tries\":5,\"pending\":\"%s\"}", pending);
-    snprintf(lines, sizeof lines, "state sent\nexpires_in 600\ntries 5\npending %s\n", pending);
-  } else {
-    snprintf(headers, sizeof headers, "Set-Cookie: %s=%s; Path=/; Max-Age=600; HttpOnly; Secure; SameSite=Lax\r\n", PENDING_COOKIE, pending);
-    snprintf(json, sizeof json, "{\"state\":\"sent\",\"expires_in\":600,\"tries\":5}");
-    snprintf(lines, sizeof lines, "state sent\nexpires_in 600\ntries 5\n");
-  }
-  answer(q, 200, headers, json, lines);
+  // An app gets the pending value in the answer; a browser gets it as a cookie.
+  if (!app) snprintf(headers, sizeof headers, "Set-Cookie: %s=%s; Path=/; Max-Age=600; HttpOnly; Secure; SameSite=Lax\r\n", PENDING_COOKIE, pending);
+  answer_n(q, 200, headers, json, auw_sent_write(cs(app ? pending : ""), OUT(json)), lines, auw_sent_lines(cs(app ? pending : ""), OUT(lines)));
 }
 
 // The pending value: the cookie in a browser, the body's "pending" from an app.
 static bool pending_sha(const request *q, const char *body, char out[65]) {
   char v[80];
   cookie(q, PENDING_COOKIE, v, sizeof v);
-  if (!v[0]) json_str(body, strlen(body), "pending", v, sizeof v);
+  if (!v[0]) auw_ask_pending(cs(body), ASK(v));
   if (strlen(v) != 64) return false;
   sha_hex(v, out);
   return true;
@@ -1079,8 +1057,8 @@ static void email_finish(const request *q, PGconn *db, PGresult *r) {
     PQclear(x);
     if (!ok || strcmp(state, "ok")) {
       PQclear(PQexec(db, "ROLLBACK"));
-      audit(db, link_acct, NULL, "email.link", "refused", "{\"why\":\"another account's\"}");
-      if (!strcmp(state, "already")) { answer(q, 200, NULL, "{\"state\":\"linked\"}", "state linked\n"); return; }
+      audit_why(db, link_acct, NULL, "email.link", "refused", "another account's");
+      if (!strcmp(state, "already")) { answer_state(q, 200, NULL, "linked"); return; }
       refuse(q, 409, "This email already has an account. Log in to it to merge.");
       return;
     }
@@ -1105,9 +1083,9 @@ static void email_finish(const request *q, PGconn *db, PGresult *r) {
   PQclear(PQexec(db, "COMMIT"));
   memset(email, 0, sizeof email);
   if (!strcmp(purpose, "link")) {
-    audit(db, acct, NULL, "email.link", "ok", "{}");
+    audit(db, acct, NULL, "email.link", "ok", NULL);
     auth_recover_linked_email(db, acct, NULL);
-    answer(q, 200, "Set-Cookie: " PENDING_COOKIE "=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax\r\n", "{\"state\":\"linked\"}", "state linked\n");
+    answer_state(q, 200, "Set-Cookie: " PENDING_COOKIE "=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax\r\n", "linked");
     return;
   }
   const char *level = "L1";
@@ -1121,7 +1099,7 @@ static void email_finish(const request *q, PGconn *db, PGresult *r) {
 
 static void email_verify(const request *q, PGconn *db, const char *body) {
   char code[16], psha[65];
-  json_str(body, strlen(body), "code", code, sizeof code);
+  auw_ask_code(cs(body), ASK(code));
   // "482 913" as typed: the space goes.
   char c[8]; size_t k = 0;
   for (const char *s = code; *s && k < 7; s++) if (*s != ' ') c[k++] = *s;
@@ -1135,20 +1113,20 @@ static void email_verify(const request *q, PGconn *db, const char *body) {
   if (!strcmp(state, "ok")) { email_finish(q, db, r); PQclear(r); return; }
   if (!strcmp(state, "wrong")) {
     int left = atoi(PQgetvalue(r, 0, 7)); PQclear(r);
-    audit(db, NULL, NULL, "login.email", "refused", "{\"why\":\"wrong code\"}");
+    audit_why(db, NULL, NULL, "login.email", "refused", "wrong code");
     char words[120]; snprintf(words, sizeof words, "That code isn't right. %d %s left.", left, left == 1 ? "try" : "tries");
     refuse(q, 401, words);
     return;
   }
   bool dead = !strcmp(state, "dead");
   PQclear(r);
-  audit(db, NULL, NULL, "login.email", "refused", dead ? "{\"why\":\"code spent\"}" : "{\"why\":\"no code\"}");
+  audit_why(db, NULL, NULL, "login.email", "refused", dead ? "code spent" : "no code");
   refuse(q, dead ? 410 : 409, dead ? "That code has ended: 5 tries or 10 minutes. Ask for a new one." : "Ask for a code in this browser first.");
 }
 
 static void email_link(const request *q, PGconn *db, const char *body) {
   char t[80], tsha[65], psha[65] = "";
-  if (!json_str(body, strlen(body), "t", t, sizeof t) || strlen(t) != 64) { refuse(q, 400, "That link isn't whole. Type the code instead."); return; }
+  if (auw_ask_t(cs(body), ASK(t)) < 0 || strlen(t) != 64) { refuse(q, 400, "That link isn't whole. Type the code instead."); return; }
   sha_hex(t, tsha);
   pending_sha(q, body, psha);
   const char *v[2] = {tsha, psha[0] ? psha : NULL};
@@ -1160,9 +1138,7 @@ static void email_link(const request *q, PGconn *db, const char *body) {
     PQclear(r);
     char code[7], json[200], lines[200];
     code_of(t, code);
-    snprintf(json, sizeof json, "{\"state\":\"elsewhere\",\"code\":\"%.6s\",\"error\":\"Type this code in the window where you asked: %.6s\"}", code, code);
-    snprintf(lines, sizeof lines, "state elsewhere\ncode %.6s\n", code);
-    answer(q, 409, NULL, json, lines);
+    answer_n(q, 409, NULL, json, auw_elsewhere_write(cs(code), OUT(json)), lines, auw_elsewhere_lines(cs(code), OUT(lines)));
     return;
   }
   bool dead = !strcmp(state, "dead");
@@ -1173,7 +1149,7 @@ static void email_link(const request *q, PGconn *db, const char *body) {
 // ---- Nostr
 static void nostr_challenge(const request *q, PGconn *db, const char *body) {
   char client[16] = "web", id[33], ch[65], chsha[65];
-  json_str(body, strlen(body), "client", client, sizeof client);
+  auw_ask_client(cs(body), ASK(client));
   if (!random_hex(id, 16) || !random_hex(ch, 32)) { refuse(q, 503, "No randomness here. Try again."); return; }
   sha_hex(ch, chsha);
   const char *v[3] = {id, chsha, !strcmp(client, "app") ? "app" : "web"};
@@ -1181,9 +1157,7 @@ static void nostr_challenge(const request *q, PGconn *db, const char *body) {
   bool ok = PQresultStatus(r) == PGRES_TUPLES_OK; PQclear(r);
   if (!ok) { refuse(q, 500, "That didn't work. Try again."); return; }
   char json[400], lines[300];
-  snprintf(json, sizeof json, "{\"challenge\":\"%s\",\"url\":\"%s/api/auth/nostr\",\"method\":\"POST\",\"body\":\"{\\\"challenge\\\":\\\"%s\\\"}\",\"expires_in\":300}", ch, origin(), ch);
-  snprintf(lines, sizeof lines, "challenge %s\nurl %s/api/auth/nostr\nexpires_in 300\n", ch, origin());
-  answer(q, 200, NULL, json, lines);
+  answer_n(q, 200, NULL, json, auw_challenge_write(cs(ch), cs(origin()), OUT(json)), lines, auw_challenge_lines(cs(ch), cs(origin()), OUT(lines)));
 }
 
 // The account a key logs in to (made on first login, D8) and its key row's id. A second statement
@@ -1225,7 +1199,7 @@ static void nostr_login(const request *q, PGconn *db, const char *body) {
   if (p->credential != AUTH_NOSTR) { refuse(q, 401, "Sign the challenge with your key (NIP-98)."); return; }
   if (!p->payload) { refuse(q, 401, "Sign the body too (a payload tag)."); return; }
   if (p->kind == AP_AGENT) { refuse(q, 403, "An agent signs each request with its key; it doesn't log in."); return; }
-  if (!json_str(body, strlen(body), "challenge", ch, sizeof ch) || strlen(ch) != 64) { refuse(q, 400, "Ask for a challenge first."); return; }
+  if (auw_ask_challenge(cs(body), ASK(ch)) < 0 || strlen(ch) != 64) { refuse(q, 400, "Ask for a challenge first."); return; }
   sha_hex(ch, chsha);
   const char *v[2] = {chsha, p->event_id};
   PGresult *r = PQexecParams(db, "SELECT state, client FROM auth.nostr_spend($1, $2)", 2, NULL, v, NULL, NULL, 0);
@@ -1233,12 +1207,12 @@ static void nostr_login(const request *q, PGconn *db, const char *body) {
   if (PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1) { snprintf(state, sizeof state, "%s", PQgetvalue(r, 0, 0)); snprintf(client, sizeof client, "%s", PQgetvalue(r, 0, 1)); }
   PQclear(r);
   if (strcmp(state, "ok")) {
-    audit(db, p->account, NULL, "login.nostr", "refused", !strcmp(state, "replay") ? "{\"why\":\"replay\"}" : "{\"why\":\"no challenge\"}");
+    audit_why(db, p->account, NULL, "login.nostr", "refused", !strcmp(state, "replay") ? "replay" : "no challenge");
     refuse(q, 401, !strcmp(state, "replay") ? "That signature was used already." : "That challenge has ended. Ask for a new one.");
     return;
   }
   char label[32] = "";
-  json_str(body, strlen(body), "label", label, sizeof label);
+  auw_ask_label(cs(body), ASK(label));
   if (strcmp(label, "extension") && strcmp(label, "bunker") && strcmp(label, "phone") && strcmp(label, "app")) label[0] = 0;
   char pk[65]; memcpy(pk, p->pubkey, 65);
   key_login(q, db, pk, label, !strcmp(client, "app"), "login.nostr");
@@ -1255,9 +1229,7 @@ static void phone_start(const request *q, PGconn *db) {
   if (!ok) { refuse(q, 500, "That didn't work. Try again."); return; }
   char headers[300], json[600], lines[500];
   snprintf(headers, sizeof headers, "Set-Cookie: %s=%s; Path=/; Max-Age=300; HttpOnly; Secure; SameSite=Lax\r\n", PENDING_COOKIE, pend);
-  snprintf(json, sizeof json, "{\"challenge\":\"%s\",\"poll\":\"%s\",\"url\":\"%s/login#c=%s\",\"expires_in\":300}", ch, poll, origin(), ch);
-  snprintf(lines, sizeof lines, "challenge %s\npoll %s\nurl %s/login#c=%s\nexpires_in 300\n", ch, poll, origin(), ch);
-  answer(q, 200, headers, json, lines);
+  answer_n(q, 200, headers, json, auw_phone_write(cs(ch), cs(poll), cs(origin()), OUT(json)), lines, auw_phone_lines(cs(ch), cs(poll), cs(origin()), OUT(lines)));
 }
 static void phone_approve(const request *q, PGconn *db, const char *body) {
   const auth_principal *p = auth_principal_of(q);
@@ -1268,18 +1240,18 @@ static void phone_approve(const request *q, PGconn *db, const char *body) {
   PQclear(r);
   if (!once) { refuse(q, 401, "That signature was used already."); return; }
   char ch[80], chsha[65];
-  if (!json_str(body, strlen(body), "challenge", ch, sizeof ch) || strlen(ch) != 64) { refuse(q, 400, "Scan the code on the page again."); return; }
+  if (auw_ask_challenge(cs(body), ASK(ch)) < 0 || strlen(ch) != 64) { refuse(q, 400, "Scan the code on the page again."); return; }
   sha_hex(ch, chsha);
   const char *v[2] = {chsha, p->pubkey};
   r = PQexecParams(db, "SELECT auth.phone_approve($1, $2)", 2, NULL, v, NULL, NULL, 0);
   char state[16] = ""; if (PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1) snprintf(state, sizeof state, "%s", PQgetvalue(r, 0, 0));
   PQclear(r);
-  if (!strcmp(state, "ok")) { audit(db, p->account, NULL, "login.phone_approve", "ok", "{}"); answer(q, 200, NULL, "{\"state\":\"approved\"}", "state approved\n"); return; }
+  if (!strcmp(state, "ok")) { audit(db, p->account, NULL, "login.phone_approve", "ok", NULL); answer_state(q, 200, NULL, "approved"); return; }
   refuse(q, !strcmp(state, "already") ? 409 : 410, !strcmp(state, "already") ? "That code was approved already." : "That code has ended. Show a new one on the page.");
 }
 static void phone_poll(const request *q, PGconn *db, const char *body) {
   char poll[80], pollsha[65], psha[65];
-  if (!json_str(body, strlen(body), "poll", poll, sizeof poll) || strlen(poll) != 64) { refuse(q, 400, "Show a code first."); return; }
+  if (auw_ask_poll(cs(body), ASK(poll)) < 0 || strlen(poll) != 64) { refuse(q, 400, "Show a code first."); return; }
   if (!pending_sha(q, body, psha)) { refuse(q, 409, "Show a code in this browser first."); return; }
   sha_hex(poll, pollsha);
   const char *v[2] = {pollsha, psha};
@@ -1287,7 +1259,7 @@ static void phone_poll(const request *q, PGconn *db, const char *body) {
   char state[16] = "", pk[65] = "";
   if (PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1) { snprintf(state, sizeof state, "%s", PQgetvalue(r, 0, 0)); snprintf(pk, sizeof pk, "%s", PQgetvalue(r, 0, 1)); }
   PQclear(r);
-  if (!strcmp(state, "waiting")) { answer(q, 200, NULL, "{\"state\":\"waiting\"}", "state waiting\n"); return; }
+  if (!strcmp(state, "waiting")) { answer_state(q, 200, NULL, "waiting"); return; }
   if (!strcmp(state, "ok")) { key_login(q, db, pk, "phone", false, "login.phone"); return; }
   refuse(q, 410, "That code has ended. Show a new one.");
 }
@@ -1295,7 +1267,7 @@ static void phone_poll(const request *q, PGconn *db, const char *body) {
 // ---- app tokens
 static void refresh(const request *q, PGconn *db, const char *body) {
   char rt[200], dig[65];
-  if (!json_str(body, strlen(body), "refresh_token", rt, sizeof rt) || !token_ok(rt, TOKEN_REFRESH, dig)) { refuse(q, 401, "Log in again."); return; }
+  if (auw_ask_refresh_token(cs(body), ASK(rt)) < 0 || !token_ok(rt, TOKEN_REFRESH, dig)) { refuse(q, 401, "Log in again."); return; }
   long long until = 0;
   // Limit per family: the family is found from the token; a digest stands in until then.
   char nrt[160], nrtd[65], nat[160], natd[65];
@@ -1315,16 +1287,15 @@ static void refresh(const request *q, PGconn *db, const char *body) {
   PQclear(r);
   if (!strcmp(state, "ok")) {
     char json[600], lines[500];
-    snprintf(json, sizeof json, "{\"access_token\":\"%s\",\"refresh_token\":\"%s\",\"expires_in\":3600}", nat, nrt);
-    snprintf(lines, sizeof lines, "access_token %s\nrefresh_token %s\nexpires_in 3600\n", nat, nrt);
-    answer(q, 200, NULL, json, lines);
+    answer_n(q, 200, NULL, json, auw_pair_write(cs(nat), cs(nrt), OUT(json)), lines, auw_pair_lines(cs(nat), cs(nrt), OUT(lines)));
     return;
   }
   if (!strcmp(state, "proof")) { auth_device_refuse_unproved(q); return; }   // the database's own refusal: a bound token, no proved device
   if (!strcmp(state, "reused")) {
     // Someone copied a refresh token: the whole login ended. The notice to the account's other
     // ways in comes with linking notices (#13213); the audit row is here now.
-    audit(db, acct, NULL, "refresh.reused", "refused", "{\"ended\":\"family\"}");
+    char ended[64];
+    audit(db, acct, NULL, "refresh.reused", "refused", detail_of(ended, auw_ended_write(cs("family"), OUT(ended))));
     refuse(q, 401, "This login was ended because its token was used twice. Log in again.");
     return;
   }
@@ -1342,10 +1313,10 @@ static void logout(const request *q, PGconn *db) {
   if (p && p->session[0]) {
     const char *v[1] = {p->session};
     PQclear(PQexecParams(db, "SELECT auth.session_end($1)", 1, NULL, v, NULL, NULL, 0));
-    audit(db, p->account, p->session, "logout", "ok", "{}");
+    audit(db, p->account, p->session, "logout", "ok", NULL);
   }
   set_cookie[0] = 0;
-  answer(q, 200, headers, "{\"state\":\"logged-out\"}", "state logged-out\n");
+  answer_state(q, 200, headers, "logged-out");
 }
 static void logout_everywhere(const request *q, PGconn *db, const char *body) {
   const auth_principal *p = auth_principal_of(q);
@@ -1354,14 +1325,12 @@ static void logout_everywhere(const request *q, PGconn *db, const char *body) {
   int n = PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1 ? atoi(PQgetvalue(r, 0, 0)) : 0;
   PQclear(r);
   // {"agents": true}: every agent of the account is paused too, until resumed (agents.c).
-  int paused = json_true(body, strlen(body), "agents") ? agents_pause_all(db, p->account) : 0;
-  char d[64]; snprintf(d, sizeof d, "{\"ended\":%d,\"agents_paused\":%d}", n, paused);
-  audit(db, p->account, p->session, "logout.everywhere", "ok", d);
+  int paused = auw_ask_agents(cs(body)) ? agents_pause_all(db, p->account) : 0;
+  char d[64];
+  audit(db, p->account, p->session, "logout.everywhere", "ok", detail_of(d, auw_ended_all_write(n, paused, OUT(d))));
   char headers[200], json[80], lines[80]; cookie_header(headers, sizeof headers, SESSION_COOKIE, "", 0);
   set_cookie[0] = 0;
-  snprintf(json, sizeof json, "{\"state\":\"logged-out\",\"ended\":%d}", n);
-  snprintf(lines, sizeof lines, "state logged-out\nended %d\n", n);
-  answer(q, 200, headers, json, lines);
+  answer_n(q, 200, headers, json, auw_logout_all_write(n, OUT(json)), lines, auw_logout_all_lines(n, OUT(lines)));
 }
 static void sessions(const request *q, PGconn *db) {
   const auth_principal *p = auth_principal_of(q);
@@ -1370,7 +1339,7 @@ static void sessions(const request *q, PGconn *db) {
   if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) { PQclear(r); refuse(q, 500, "That didn't work. Try again."); return; }
   size_t n = PQgetlength(r, 0, 0) + 32;
   char *json = malloc(n);
-  if (json) { snprintf(json, n, "{\"sessions\":%s}", PQgetvalue(r, 0, 0)); answer(q, 200, NULL, json, NULL); free(json); }
+  if (json) { answer_n(q, 200, NULL, json, auw_sessions_write(cs(PQgetvalue(r, 0, 0)), (coax_v_u8){(uint8_t *)json, (int64_t)n - 1}), NULL, -1); free(json); }
   PQclear(r);
 }
 static void session_remove(const request *q, PGconn *db) {
@@ -1382,12 +1351,12 @@ static void session_remove(const request *q, PGconn *db) {
   bool gone = PQresultStatus(r) == PGRES_COMMAND_OK && !strcmp(PQcmdTuples(r), "1");
   PQclear(r);
   if (!gone) { refuse(q, 404, "No such session."); return; }
-  audit(db, p->account, p->session, "session.remove", "ok", "{}");
-  answer(q, 200, NULL, "{\"state\":\"removed\"}", "state removed\n");
+  audit(db, p->account, p->session, "session.remove", "ok", NULL);
+  answer_state(q, 200, NULL, "removed");
 }
 static void freeze(const request *q, PGconn *db, const char *body) {
   char t[80] = "", tsha[65], acct[40] = "";
-  if (json_str(body, strlen(body), "t", t, sizeof t) && strlen(t) == 64) {
+  if (auw_ask_t(cs(body), ASK(t)) >= 0 && strlen(t) == 64) {
     sha_hex(t, tsha);
     const char *v[1] = {tsha};
     PGresult *r = PQexecParams(db, "SELECT auth.freeze_by_link($1)", 1, NULL, v, NULL, NULL, 0);
@@ -1402,11 +1371,11 @@ static void freeze(const request *q, PGconn *db, const char *body) {
     const char *v[1] = {acct};
     PQclear(PQexecParams(db, "SELECT auth.freeze($1)", 1, NULL, v, NULL, NULL, 0));
   }
-  audit(db, acct, NULL, "freeze", "ok", "{}");
+  audit(db, acct, NULL, "freeze", "ok", NULL);
   auth_life_froze(db, acct, t[0] != 0 && strlen(t) == 64);   // its agents pause; every way in is told (#13214)
   char headers[200]; cookie_header(headers, sizeof headers, SESSION_COOKIE, "", 0);
   set_cookie[0] = 0;
-  answer(q, 200, headers, "{\"state\":\"frozen\"}", "state frozen\n");
+  answer_state(q, 200, headers, "frozen");
 }
 // "This wasn't me": a new link for acct (for notices). The token goes into the notice only.
 bool auth_freeze_link(PGconn *db, const char *acct, char token[65]) {
@@ -1427,7 +1396,8 @@ static void me(const request *q, PGconn *db) {
   if (!p && api_header(q, "Authorization", authz, sizeof authz) && !strncmp(authz, "Nostr ", 6)) { refuse(q, 401, "That signature isn't good. Sign this request again."); return; }
   if (!p || !p->account[0]) {
     // A key that signs without an account, or nobody: not logged in (a 200, so pages ask without a console error).
-    answer(q, 200, NULL, "{\"logged_in\":false}", "logged_in 0\n");
+    char json[32], lines[32];
+    answer_n(q, 200, NULL, json, auw_nobody_write(OUT(json)), lines, auw_nobody_lines(OUT(lines)));
     return;
   }
   const char *v[1] = {p->account};
@@ -1435,20 +1405,20 @@ static void me(const request *q, PGconn *db) {
   if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) { PQclear(r); refuse(q, 500, "That didn't work. Try again."); return; }
   char *json = malloc(16384), *lines = malloc(8192);
   if (!json || !lines) { free(json); free(lines); PQclear(r); refuse(q, 500, "Out of memory."); return; }
-  size_t j = (size_t)snprintf(json, 16384, "{\"logged_in\":true,\"account\":\"%s\",\"kind\":\"%s\",\"level\":\"L%d\",\"via\":\"%s\",\"session\":\"%s\",\"admin\":%s,\"emails\":[",
-                              p->account, PQgetvalue(r, 0, 0), p->level, p->via, p->session, p->admin ? "true" : "false");
-  size_t l = (size_t)snprintf(lines, 8192, "logged_in 1\naccount %s\nkind %s\nlevel L%d\nvia %s\nadmin %d\n", p->account, PQgetvalue(r, 0, 0), p->level, p->via, p->admin);
+  coax_v_u8 jv = {(uint8_t *)json, 16383}, lv = {(uint8_t *)lines, 8191};
+  int64_t j = auw_me_head_write(cs(p->account), cs(PQgetvalue(r, 0, 0)), p->level, cs(p->via), cs(p->session), p->admin, jv);
+  int64_t l = auw_me_head_lines(cs(p->account), cs(PQgetvalue(r, 0, 0)), p->level, cs(p->via), p->admin, lv);
   // Emails, opened and masked: a•••@example.com. The list never carries an address whole; the account's
   // primary email (else its first) comes whole once, as "primary", for the account's own name on the
   // page (the side's foot shows it, owner 2026-11-13): the caller is that account's own login.
   const char *emails = PQgetvalue(r, 0, 1);
   int count = 0;
   char primary[300] = ""; bool primary_marked = false;
-  for (const char *s = strstr(emails, "\"sealed\": \""); s; s = strstr(s + 1, "\"sealed\": \"")) {
-    s += 11;
-    const char *e = strchr(s, '"'); if (!e) break;
+  for (int64_t at = auw_me_sealed_at(cs(emails), 0); at >= 0; at = auw_me_sealed_at(cs(emails), at + 1)) {
+    int64_t len = auw_me_sealed_len(cs(emails), at); if (len < 0) break;
+    const char *e = emails + at + len;   // the sealed value's closing quote
     char sealed[1200], email[300], masked[320], ad[96];
-    snprintf(sealed, sizeof sealed, "%.*s", (int)(e - s), s);
+    snprintf(sealed, sizeof sealed, "%.*s", (int)len, emails + at);
     snprintf(ad, sizeof ad, "auth.emails|sealed|%s", p->account);
     if (!unseal(ad, sealed, email, sizeof email)) continue;
     const char *close = strchr(e, '}');
@@ -1457,23 +1427,17 @@ static void me(const request *q, PGconn *db) {
     if (!primary[0] || (is_primary && !primary_marked)) { snprintf(primary, sizeof primary, "%s", email); primary_marked = is_primary; }
     mask_email(email, masked, sizeof masked);
     memset(email, 0, sizeof email);
-    j += (size_t)snprintf(json + j, 16384 - j, "%s\"%s\"", count++ ? "," : "", masked);
-    l += (size_t)snprintf(lines + l, 8192 - l, "email %s\n", masked);
+    j = auw_me_email_write(cs(masked), count++ == 0, jv, j);
+    l = auw_me_email_lines(cs(masked), lv, l);
   }
-  if (primary[0]) {
-    char esc[600]; json_esc(primary, esc, sizeof esc);
-    j += (size_t)snprintf(json + j, 16384 - j, "],\"primary\":\"%s\"", esc);
-    l += (size_t)snprintf(lines + l, 8192 - l, "primary %s\n", primary);
-    memset(primary, 0, sizeof primary); memset(esc, 0, sizeof esc);
-  } else j += (size_t)snprintf(json + j, 16384 - j, "]");
-  j += (size_t)snprintf(json + j, 16384 - j, ",\"keys\":%s}", PQgetvalue(r, 0, 2));
   const char *keys = PQgetvalue(r, 0, 2);
-  for (const char *s = strstr(keys, "\"pubkey\": \""); s && l < 8000; s = strstr(s + 1, "\"pubkey\": \"")) {
-    s += 11;
-    l += (size_t)snprintf(lines + l, 8192 - l, "key %.64s\n", s);
-  }
+  if (primary[0]) l = auw_me_primary_lines(cs(primary), lv, l);
+  j = auw_me_tail_write(cs(primary), cs(keys), jv, j);
+  memset(primary, 0, sizeof primary);
+  for (int64_t at = auw_me_pubkey_at(cs(keys), 0); at >= 0 && l >= 0 && l < 8000; at = auw_me_pubkey_at(cs(keys), at + 1))
+    l = auw_me_key_lines((coax_string){keys + at, (int64_t)strnlen(keys + at, 64)}, lv, l);
+  answer_n(q, 200, NULL, json, j, lines, l);
   PQclear(r);
-  answer(q, 200, NULL, json, lines);
   free(json); free(lines);
 }
 
@@ -1485,7 +1449,7 @@ static void me(const request *q, PGconn *db) {
 static void viewer(const request *q, PGconn *db, bool quiet) {
   const auth_principal *p = auth_principal_of(q);
   const char *head = "Cache-Control: no-store\r\nVary: Cookie, Authorization\r\n";
-  char *out = NULL;
+  char *out = NULL; int64_t on = 0;
   if (p && p->pubkey[0]) {
     const char *v[1] = {p->pubkey};
     PGresult *r = PQexecParams(db, "SELECT auth.viewer_lines($1)", 1, NULL, v, NULL, NULL, 0);
@@ -1494,29 +1458,33 @@ static void viewer(const request *q, PGconn *db, bool quiet) {
     }
     size_t n = strlen(PQgetvalue(r, 0, 0));
     out = malloc(n + 8);
-    if (out) { memcpy(out, PQgetvalue(r, 0, 0), n + 1); if (p->admin) strcat(out, "A|1\n"); }
+    if (out) on = auw_viewer_lines(cs(PQgetvalue(r, 0, 0)), p->admin, (coax_v_u8){(uint8_t *)out, (int64_t)n + 7});
     PQclear(r);
     if (!out) { refuse(q, 500, "Out of memory."); return; }
   } else if (p && p->account[0]) {
     out = malloc(64);
     if (!out) { refuse(q, 500, "Out of memory."); return; }
-    snprintf(out, 64, "U|%s\n", p->account);
+    on = auw_viewer_account_lines(cs(p->account), (coax_v_u8){(uint8_t *)out, 63});
   }
-  if (!out && !quiet) { api_respond(q->fd, 401, "text/plain; charset=utf-8", head, "not logged in\n", 14); return; }
-  api_respond(q->fd, 200, "text/plain; charset=utf-8", head, out ? out : "", out ? strlen(out) : 0);
+  if (out && on < 0) { free(out); refuse(q, 500, "That didn't work. Try again."); return; }
+  if (!out && !quiet) {
+    char nobody[32]; int64_t nn = auw_viewer_nobody_lines(OUT(nobody));
+    api_respond(q->fd, 401, "text/plain; charset=utf-8", head, nobody, nn < 0 ? 0 : (size_t)nn);
+    return;
+  }
+  api_respond(q->fd, 200, "text/plain; charset=utf-8", head, out ? out : "", out ? (size_t)on : 0);
   free(out);
 }
 
 static void limits(const request *q) {
-  char json[4096], lines[3000]; size_t j = 0, l = 0;
-  j += (size_t)snprintf(json + j, sizeof json - j, "{\"limits\":[");
+  char json[4096], lines[3000];
+  int64_t j = auw_limits_open_write(OUT(json)), l = 0;
   for (int i = 0; i < L_COUNT; i++) {
-    j += (size_t)snprintf(json + j, sizeof json - j, "%s{\"name\":\"%s\",\"what\":\"%s\",\"max\":%d,\"per\":\"%s\",\"window_ms\":%lld}",
-                          i ? "," : "", LIMITS[i].name, LIMITS[i].what, LIMITS[i].max, LIMITS[i].per, LIMITS[i].window_ms);
-    l += (size_t)snprintf(lines + l, sizeof lines - l, "limit %s|%d|%s|%s\n", LIMITS[i].name, LIMITS[i].max, LIMITS[i].per, LIMITS[i].what);
+    j = auw_limits_row_write(i == 0, cs(LIMITS[i].name), cs(LIMITS[i].what), LIMITS[i].max, cs(LIMITS[i].per), LIMITS[i].window_ms, OUT(json), j);
+    l = auw_limits_row_lines(cs(LIMITS[i].name), LIMITS[i].max, cs(LIMITS[i].per), cs(LIMITS[i].what), OUT(lines), l);
   }
-  snprintf(json + j, sizeof json - j, "]}");
-  answer(q, 200, "Cache-Control: public, max-age=300\r\n", json, lines);
+  j = auw_limits_close_write(OUT(json), j);
+  answer_n(q, 200, "Cache-Control: public, max-age=300\r\n", json, j, lines, l);
 }
 
 // A key's login for another file's route (the admin page's signed GET, admin.c): a web session
@@ -1534,7 +1502,7 @@ bool auth_login_key_redirect(const request *q, PGconn *db, const char *pk, const
   char sid[32] = ""; if (ok) snprintf(sid, sizeof sid, "%s", PQgetvalue(r, 0, 0));
   PQclear(r);
   if (!ok) { api_error(q->fd, 410, "this account was deleted"); return false; }
-  audit(db, acct, sid, "admin.login", "ok", "{}");
+  audit(db, acct, sid, "admin.login", "ok", NULL);
   set_cookie[0] = 0;
   char headers[900];
   snprintf(headers, sizeof headers, "Location: %s\r\nSet-Cookie: %s=%s; Path=/; Max-Age=%d; HttpOnly; Secure; SameSite=Lax\r\n" TEAM_COOKIE,
@@ -1714,7 +1682,11 @@ bool auth_random_hex(char *out, size_t bytes) { return random_hex(out, bytes); }
 void auth_hex(const unsigned char *b, size_t n, char *out) { hex_of(b, n, out); }
 bool auth_unhex(const char *s, unsigned char *out, size_t n) { return unhex(s, out, n); }
 void auth_sha_hex(const char *s, char out[65]) { sha_hex(s, out); }
-const char *auth_json_str(const char *body, size_t n, const char *key, char *out, size_t cap) { return json_str(body, n, key, out, cap); }
+// A JSON string's value for a key, unescaped for \" and \\, or NULL: auth-wire.coax's scan, with the
+// member named by the caller (the other auth files' reads).
+const char *auth_json_str(const char *body, size_t n, const char *key, char *out, size_t cap) {
+  return auw_body_str((coax_string){body, (int64_t)strnlen(body, n)}, cs(key), (coax_v_u8){(uint8_t *)out, (int64_t)cap}) >= 0 ? out : NULL;
+}
 void auth_json_esc(const char *s, char *out, size_t cap) { json_esc(s, out, cap); }
 bool auth_limit_hit(const request *q, PGconn *db, int which, const char *key) {
   long long until = 0;

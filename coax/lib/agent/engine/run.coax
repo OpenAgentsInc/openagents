@@ -1190,47 +1190,48 @@ tr_micro_poll :: (r: [] TrRun) -> bool {
   return changed;
 }
 
-tr_mc_str :: (r: [] TrRun, json: string, path: string) -> string { return mcw_str(r[0].mcw, json, path); }
-
+// One line of the worker's, read through its codec (mcworker-wire.coax, Protocol C11).
 tr_micro_line :: (r: [] TrRun, line: string) {
   r[0].mcw[0].ar[0].at = 0; r[0].mcw[0].ar[0].full = false;
   l := r[0].log;
-  kind := tr_mc_str(r, line, "kind");
+  ev: [1] MwwLine;
+  kind := mcw_line(r[0].mcw, line, ev[..]);
   if !r[0].running || !tr_is_micro(r[0].engine) { return; }
-  if kind == "journal" { n := json_raw(l[0].line[..], 0, line); sw_put(l, n); return; }
-  if kind == "reply" { tr_reply(r, tr_mc_str(r, line, "text")); return; }
-  if kind == "attempt" {
+  if kind == MWW_JOURNAL { n := json_raw(l[0].line[..], 0, line); sw_put(l, n); return; }
+  if kind == MWW_REPLY { tr_reply(r, ev[0].text); return; }
+  if kind == MWW_ATTEMPT {
     count := mo_relay(line, ifx r[0].engine == TR_PSIONIC then "psionic" else "micro", l[0].line[..]);
     if count > 0 { sw_put(l, count); }
-    usd := cl_int(line, "usd_micros");
+    usd := ev[0].usd_micros;
     if usd.ok && usd.value > 0 { r[0].cost += cast(f64) usd.value / 1000000.0; }
     return;
   }
-  if kind == "command" || kind == "view" {
+  if kind == MWW_COMMAND || kind == MWW_VIEW {
+    view := kind == MWW_VIEW;
     lb: [1024] u8;
-    pb: [1024] u8; pn := tr_cat(pb[..], 0, tr_mc_str(r, line, ifx kind == "view" then "path" else "command"));
-    tr_tool(r, tr_label(r, ifx kind == "view" then "Read" else "Bash", cast(string) pb[0..<pn], lb[..]));
-    if kind == "view" {
-      found := cl_bool(line, "found");
+    pb: [1024] u8; pn := tr_cat(pb[..], 0, ifx view then ev[0].path else ev[0].command);
+    tr_tool(r, tr_label(r, ifx view then "Read" else "Bash", cast(string) pb[0..<pn], lb[..]));
+    if view {
+      found := ev[0].found;
       if !(found.ok && found.value) { tr_result(r, "not found", true); }
       return;
     }
-    exit := cl_int(line, "exit");
-    late := cl_bool(line, "timed_out");
+    exit := ev[0].exit;
+    late := ev[0].timed_out;
     timed_out := late.ok && late.value;
-    tr_result(r, ifx timed_out then "timed out" else tr_mc_str(r, line, "output"), timed_out || (exit.ok && exit.value != 0));
+    tr_result(r, ifx timed_out then "timed out" else ev[0].output, timed_out || (exit.ok && exit.value != 0));
     return;
   }
-  if kind == "ask" {
-    ticket := cl_int(line, "ticket");
+  if kind == MWW_ASK {
+    ticket := ev[0].ticket;
     if !ticket.ok || ticket.value <= 0 { tr_micro_close(r); tr_finish(r, TR_FAILED, "worker proposal has no owner ticket"); return; }
     r[0].mcw[0].ticket = ticket.value;
     tr_micro_answer(r, true, "");      // an unattended run's commands run
     return;
   }
-  if kind == "ended" {
-    eb: [64] u8; en := tr_cat(eb[..], 0, tr_mc_str(r, line, "ending")); ending := cast(string) eb[0..<en];
-    text := tr_mc_str(r, line, "text");
+  if kind == MWW_ENDED {
+    eb: [64] u8; en := tr_cat(eb[..], 0, ev[0].ending); ending := cast(string) eb[0..<en];
+    text := ev[0].text;
     r[0].stopping = false;
     if ending == "finished" || ending == "asked" {
       if r[0].nrep == 0 && text.count > 0 { tr_reply(r, text); }

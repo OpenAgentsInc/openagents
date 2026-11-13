@@ -218,7 +218,32 @@ ads_selection_rows :: (source: string, out: [] u8) -> int {
   }
   jo_end(o[..]); jo_end(o[..]); return ifx o[0].bad then -1 else o[0].n;
 }
+// The animation director's route (/api/playtest/labs/anim/direct) asks the same selector. Its
+// answer is one anim.direction.v1 as the candidate's text, and it requires a finishReason of STOP.
+ADS_ANIM_MODES :: [2] string.["anim-speed","anim-unmatched"];
+ADS_ANIM_ANSWERS :: [2] string.[
+  "{\"schema\":\"anim.direction.v1\",\"kind\":\"speed\",\"actor\":0,\"row\":0,\"option\":0,\"at\":0,\"end\":0,\"value\":0.5,\"point\":[0,0,0],\"confidence\":{\"kind\":950,\"actor\":940,\"row\":930,\"option\":920,\"at\":910,\"end\":900,\"value\":890,\"point\":880}}",
+  "{\"schema\":\"anim.direction.v1\",\"kind\":\"unmatched\",\"actor\":0,\"row\":0,\"option\":0,\"at\":0,\"end\":0,\"value\":0,\"point\":[0,0,0],\"confidence\":{\"kind\":1000,\"actor\":1000,\"row\":1000,\"option\":1000,\"at\":1000,\"end\":1000,\"value\":1000,\"point\":1000}}"
+];
+ads_anim_answer :: (mode: string) -> string { for i: 0..<ADS_ANIM_MODES.count { if ADS_ANIM_MODES[i] == mode { return ADS_ANIM_ANSWERS[i]; } } return ""; }
+ads_anim_body :: (text: string, out: [] u8) -> int {
+  o: [1] Jo; jo_start(o[..],out); jo_obj(o[..]); jo_key(o[..],"candidates"); jo_arr(o[..]); jo_obj(o[..]);
+  jo_key(o[..],"finishReason"); jo_str(o[..],"STOP"); jo_key(o[..],"content"); jo_obj(o[..]); jo_key(o[..],"parts"); jo_arr(o[..]);
+  jo_obj(o[..]); jo_key(o[..],"text"); jo_str(o[..],text); jo_end(o[..]); jo_end(o[..]); jo_end(o[..]); jo_end(o[..]); jo_end(o[..]); jo_end(o[..]);
+  return ifx o[0].bad then -1 else o[0].n;
+}
+#test "anime fake selector answers the animation director with one direction under a STOP candidate" {
+  out: [8192] u8; nodes: [256] JvNode; d: [1] Jv; text: [4096] u8;
+  for mode: ADS_ANIM_MODES {
+    n := ads_body(mode,out[..]); #assert n > 0 && jv_parse(d[..],cast(string)out[0..<n],nodes[..]);
+    #assert jv_len(d[0],jv_get(d[0],0,"candidates")) == 1 && jv_raw(d[0],jv_path(d[0],0,"candidates[0].finishReason")) == "STOP";
+    tn := jv_str(d[0],jv_path(d[0],0,"candidates[0].content.parts[0].text"),text[..]); #assert tn > 0 && cast(string)text[0..<tn] == ads_anim_answer(mode);
+    #assert jv_parse(d[..],cast(string)text[0..<tn],nodes[..]) && jv_raw(d[0],jv_get(d[0],0,"schema")) == "anim.direction.v1" && jv_len(d[0],jv_get(d[0],0,"confidence")) == 8;
+  }
+  #assert ads_anim_answer("stock") == "" && ads_anim_answer("anim-speed") != ads_anim_answer("anim-unmatched") && ads_anim_body("x",out[0..<3]) == -1;
+}
 ads_body :: (mode: string, out: [] u8) -> int {
+  if ads_anim_answer(mode) != "" { return ads_anim_body(ads_anim_answer(mode),out); }
   o: [1] Jo; jo_start(o[..],out); jo_obj(o[..]); jo_key(o[..],"candidates");
   if mode == "candidates-object" { jo_obj(o[..]); jo_key(o[..],"only"); } else { jo_arr(o[..]); }
   if mode != "bad-envelope" {

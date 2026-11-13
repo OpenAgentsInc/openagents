@@ -1,0 +1,357 @@
+// Hold the Coder CLI's --json fixture (proto/coder/cli-json-v1.json, compliance plan step C8,
+// GitHub #13250) to its codec, coax/lib/agent/cli/json-output.coax. Every body in the fixture is
+// what the built CLI printed in a throwaway home. For each body this check
+//   - holds its objects' keys to the profile's member lists for its kind: only listed names, in
+//     the listed order, and every name not marked "?" present;
+//   - reads it through the codec's readers and writes it again with the codec's writers, for the
+//     same bytes.
+// It never writes a body to compare with itself. Every kind the profile lists needs a golden.
+//   coax/web/tool.sh coax/lib/agent/cli/cli-json-goldens.coax proto/coder/cli-json-v1.json
+#import "Basic";
+#load "json-output.coax";
+#load "../../sys/tool.coax";
+#load "../../sys/args.coax";
+#load "../../sys/fs.coax";
+
+CG_FILE :: 262144;
+CG_BODY :: 16384;
+CG_PATH :: "proto/coder/cli-json-v1.json";
+CG_CHECK :: "coax/web/tool.sh coax/lib/agent/cli/cli-json-goldens.coax proto/coder/cli-json-v1.json";
+CG_CODEC :: "coax/lib/agent/cli/json-output.coax";
+CG_N :: 24;
+CG_KINDS :: [CG_N] string.["usage", "sessions", "session", "import", "detached", "stop", "replay", "bench", "plugins",
+                           "credential-stored", "credential-removed", "credentials", "queued", "job-handled", "beat", "jobs", "host-list",
+                           "decide", "policy-result", "policy-list", "router-line", "consent", "remembered", "recall"];
+
+CgWork :: struct {
+  file: [CG_FILE] u8; nodes: [16384] JvNode; body_nodes: [2048] JvNode;
+  name: [256] u8; kind: [64] u8; body: [CG_BODY] u8; back: [CG_BODY] u8; row: [8400] u8; entry: [8192] u8; joined: [1024] u8; arena: [CG_BODY] u8;
+  seen: [CG_N] int;
+}
+
+cg_str :: (d: Jv, at: int, out: [] u8) -> string {
+  n := jv_str(d, at, out);
+  return ifx n >= 0 then cast(string) out[0..<n] else "";
+}
+
+// The keys of every object under `at` against the kind's member lists. `under` is the name of the
+// member that holds the object ("top" for the body itself and for a row of a body that is a list).
+cg_keys :: (b: Jv, at: int, p: Jv, members: int, under: string) -> bool {
+  if jv_kind(b, at) == JV_ARRAY {
+    for i: 0..<jv_len(b, at) { if !cg_keys(b, jv_at(b, at, i), p, members, under) { return false; } }
+    return true;
+  }
+  if jv_kind(b, at) != JV_OBJECT { return true; }
+  list := jv_get(p, members, under);
+  if jv_kind(p, list) != JV_ARRAY { print("  an object under % that the profile does not list\n", under); return false; }
+  k := 0; total := jv_len(p, list);
+  // ["*"]: the keys are names the person chose (a policy's sources); each value is an `entry`
+  if total == 1 && jv_raw(p, jv_at(p, list, 0)) == "*" {
+    for i: 0..<jv_len(b, at) { if !cg_keys(b, jv_at(b, at, i), p, members, "entry") { return false; } }
+    return true;
+  }
+  for i: 0..<jv_len(b, at) {
+    child := jv_at(b, at, i);
+    key := jv_key(b, child);
+    found := false;
+    while k < total && !found {
+      want := jv_raw(p, jv_at(p, list, k));
+      optional := want.count > 0 && want[want.count - 1] == '?';
+      if optional { want = cast(string) want[0..<want.count - 1]; }
+      k += 1;
+      if want == key { found = true; }
+      else if !optional { print("  % is missing before % (under %)\n", want, key, under); return false; }
+    }
+    if !found { print("  the key % is not listed, or is out of order (under %)\n", key, under); return false; }
+    if !cg_keys(b, child, p, members, key) { return false; }
+  }
+  while k < total {
+    want := jv_raw(p, jv_at(p, list, k));
+    if want.count == 0 || want[want.count - 1] != '?' { print("  % is missing (under %)\n", want, under); return false; }
+    k += 1;
+  }
+  return true;
+}
+
+cg_arena :: (w: [] CgWork, ar: [] ClArena) { ar[0] = ClArena.{buf = w[0].arena[..]}; }
+
+// A body read through the codec and written again from what was read: the text, or "" when a
+// reader refuses it.
+cg_rewrite :: (kind: string, body: string, w: [] CgWork) -> string {
+  o := w[0].back[..]; ar: [1] ClArena; cg_arena(w, ar[..]);
+  n := 0;
+  if kind == "usage" {
+    rows := cl_count(body);
+    if rows < 0 { return ""; }
+    n = json_raw(o, 0, CJ_LIST_OPEN);
+    for i: 0..<rows {
+      cg_arena(w, ar[..]);
+      row := cl_json(body, cl_item(body, i));
+      a := cj_read_usage_agent(ar[..], row);
+      if !a.ok { return ""; }
+      n = cj_usage_agent(o, n, i == 0, a.agent, a.plan);
+      for k: 0..<a.windows {
+        x := cj_read_usage_window(ar[..], row, k);
+        if !x.ok { return ""; }
+        n = cj_usage_window(o, n, k == 0, x.label, x.used_percent, x.resets_at);
+      }
+      n = cj_usage_agent_end(o, n, a.error);
+    }
+    n = json_raw(o, n, CJ_LIST_CLOSE);
+  } else if kind == "sessions" {
+    rows := cj_sessions_count(body);
+    if rows < 0 { return ""; }
+    n = json_raw(o, 0, CJ_LIST_OPEN);
+    for i: 0..<rows {
+      cg_arena(w, ar[..]);
+      row := cj_sessions_row(body, i);
+      s := cj_read_session(ar[..], row);
+      if !s.ok || s.cut != -1 { return ""; }
+      // the consumers' readers give the same members
+      if cj_session_id(ar[..], row) != s.id || cj_session_engine(ar[..], row) != s.engine || cj_session_state(ar[..], row) != s.state || cj_session_task(ar[..], row) != s.task { return ""; }
+      if cj_sessions_str(ar[..], body, i, "id") != s.id || cj_sessions_str(ar[..], body, i, "state") != s.state || cj_session_started(row).value != s.started_us { return ""; }
+      if i > 0 { n = json_raw(o, n, CJ_LIST_NEXT); }
+      n = json_raw(o, n, cj_session(w[0].row[..], s.id, s.engine, s.state, s.turns, s.steps, s.started_us, s.cwd, s.task));
+    }
+    n = json_raw(o, n, CJ_LIST_CLOSE);
+  } else if kind == "session" {
+    s := cj_read_session(ar[..], body);
+    if !s.ok { return ""; }
+    row := cj_session(w[0].row[..], s.id, s.engine, s.state, s.turns, s.steps, s.started_us, s.cwd, s.task);
+    return ifx s.cut == -1 then row else cj_session_cut(o, row, s.cut);
+  } else if kind == "import" {
+    s := cj_read_import(ar[..], body);
+    if !s.ok { return ""; }
+    n = cj_import(o, 0, s.id, s.n);
+  } else if kind == "detached" {
+    s := cj_read_detached(ar[..], body);
+    if !s.ok { return ""; }
+    n = cj_detached(o, 0, s.id, s.n);
+  } else if kind == "stop" {
+    return cj_read_stop(body);
+  } else if kind == "replay" {
+    r := cj_read_replay(body);
+    if !r.ok { return ""; }
+    n = json_raw(o, 0, CJ_REPLAY_OPEN);
+    for i: 0..<r.requests {
+      q := cj_read_replay_request(ar[..], body, i);
+      if !q.ok { return ""; }
+      n = cj_replay_request(o, n, i == 0, q.turn, q.bytes, q.sha256, q.same);
+    }
+    n = cj_replay_close(o, n, r.matched, r.total);
+  } else if kind == "bench" {
+    r := cj_read_bench(ar[..], body);
+    if !r.ok { return ""; }
+    n = cj_bench(o, 0, r.suite, r.passed, r.ms, r.at_us, r.last);
+  } else if kind == "plugins" {
+    rows := cl_count(body); lists := CJ_PLUGIN_LISTS;
+    if rows < 0 { return ""; }
+    n = json_raw(o, 0, CJ_LIST_OPEN);
+    for i: 0..<rows {
+      cg_arena(w, ar[..]);
+      row := cl_json(body, cl_item(body, i));
+      p := cj_read_plugin(ar[..], row);
+      if !p.ok { return ""; }
+      if i > 0 { n = json_raw(o, n, CJ_LIST_NEXT); }
+      n = cj_plugin(o, n, p.name, p.state, p.sealed, p.why);
+      for k: 0..<4 {
+        n = cj_plugin_list(o, n, lists[k]);
+        for j: 0..<cj_items(row, lists[k]) { n = cj_plugin_item(o, n, j == 0, cj_plugin_item_at(ar[..], row, lists[k], j)); }
+        n = cj_plugin_list_end(o, n);
+      }
+      n = cj_plugin_end(o, n);
+    }
+    n = json_raw(o, n, CJ_LIST_CLOSE);
+  } else if kind == "credential-stored" {
+    c := cj_read_credential(ar[..], body);
+    if !c.ok || !c.stored { return ""; }
+    n = cj_credential_stored(o, 0, c.name, c.var);
+  } else if kind == "credential-removed" {
+    ok: [1] bool; ok[0] = true;
+    return ifx cj_need_b(body, "removed", ok[..]) && ok[0] then CJ_CREDENTIAL_REMOVED else "";
+  } else if kind == "credentials" {
+    rows := cl_count(body);
+    if rows < 0 { return ""; }
+    n = json_raw(o, 0, CJ_LIST_OPEN);
+    for i: 0..<rows {
+      c := cj_read_credential(ar[..], cl_json(body, cl_item(body, i)));
+      if !c.ok || c.stored { return ""; }
+      n = cj_credential_row(o, n, i == 0, c.name, c.var);
+    }
+    n = json_raw(o, n, CJ_LIST_CLOSE);
+  } else if kind == "queued" {
+    q := cj_read_queued(ar[..], body);
+    if !q.ok { return ""; }
+    n = ifx q.held then cj_held(o, 0, q.id, q.dest) else cj_queued(o, 0, q.id);
+  } else if kind == "job-handled" {
+    j := cj_read_job(ar[..], body);
+    if !j.ok || !j.handled { return ""; }
+    m := cj_job(w[0].row[..], 0, j.id, j.task, j.engine, j.cwd, j.credentials, j.at_us);
+    if m < 0 { return ""; }
+    n = cj_job_handled(o, 0, cast(string) w[0].row[0..<m], j.session, j.refused, j.handled_us);
+    return ifx n < 1 then "" else cast(string) o[0..<n - 1];     // stdout has the file's line less its line feed
+  } else if kind == "beat" {
+    h := cj_read_beat(ar[..], body);
+    if !h.ok || h.has_up { return ""; }
+    n = cj_beat(o, 0, h.name, h.host, h.engines, h.roots, h.credentials, h.at_us);
+    return ifx n < 1 then "" else cast(string) o[0..<n - 1];     // the fixture holds the file's line less its line feed
+  } else if kind == "jobs" {
+    daemon := cl_raw(body, "daemon"); beat := ""; up := false;
+    if daemon != "null" {
+      h := cj_read_beat(ar[..], daemon);
+      if !h.ok || !h.has_up { return ""; }
+      m := cj_beat(w[0].row[..], 0, h.name, h.host, h.engines, h.roots, h.credentials, h.at_us);
+      if m < 0 { return ""; }
+      beat = cast(string) w[0].row[0..<m]; up = h.up;
+    }
+    rows := cj_items(body, "jobs");
+    if rows < 0 { return ""; }
+    n = cj_jobs_open(o, 0, beat, up);
+    for i: 0..<rows {
+      cg_arena(w, ar[..]);
+      r := cj_read_jobs_row(ar[..], cj_item(body, "jobs", i));
+      if !r.ok { return ""; }
+      n = cj_jobs_row(o, n, i == 0, r.id, r.state, r.task, r.session, r.why, r.dest, r.remote_job, r.failed, r.exit);
+    }
+    n = cj_jobs_close(o, n);
+  } else if kind == "host-list" {
+    jo: [1] Jo; jo_start(jo[..], o);
+    waiting := cj_items(body, "waiting"); browsers := cj_items(body, "browsers");
+    if waiting < 0 || browsers < 0 { return ""; }
+    cj_host_open(jo[..]);
+    for i: 0..<waiting {
+      r := cj_read_host_waiting(ar[..], cj_item(body, "waiting", i));
+      if !r.ok { return ""; }
+      cj_host_waiting(jo[..], r.id, r.key, r.label, r.at);
+    }
+    cj_host_allowed(jo[..]);
+    for i: 0..<browsers {
+      r := cj_read_host_browser(ar[..], cj_item(body, "browsers", i));
+      if !r.ok { return ""; }
+      cj_host_browser(jo[..], r.id, r.key, r.label, r.at);
+    }
+    cj_host_close(jo[..]);
+    return ifx jo[0].bad then "" else jo_text(jo[..]);
+  } else if kind == "decide" {
+    d := cj_read_decide(ar[..], body);
+    if !d.ok { return ""; }
+    n = ifx d.decided then cj_decided(o, 0, d.choice, d.thousandths) else cj_decide_error(o, 0, d.error);
+  } else if kind == "policy-result" {
+    ok: [1] bool; ok[0] = true;
+    if cj_has(body, "saved") { return ifx cj_need_b(body, "saved", ok[..]) && ok[0] && !cj_has(body, "removed") then CJ_POLICY_SAVED else ""; }
+    return ifx cj_need_b(body, "removed", ok[..]) && ok[0] then CJ_POLICY_REMOVED else "";
+  } else if kind == "policy-list" {
+    rows := cl_count(body);
+    if rows < 0 { return ""; }
+    if rows == 0 { return CJ_POLICY_NONE; }
+    n = json_raw(o, 0, "{");
+    for i: 0..<rows {
+      cg_arena(w, ar[..]);
+      e := cj_read_policy(ar[..], cl_json(body, cl_item(body, i)), w[0].joined[..]);
+      if !e.ok { return ""; }
+      entry := cj_policy_entry(w[0].entry[..], e.mode, e.authors, e.engine, e.label, e.channel, e.deliver, e.ci, e.policy);
+      if entry.count == 0 { return ""; }
+      if e.to.count > 0 || e.send { m := cj_policy_entry_mail(w[0].row[..], entry, e.to, e.send); if m < 0 { return ""; } entry = cast(string) w[0].row[0..<m]; }
+      n = cj_sources_member(o, n, i == 0, cl_text(ar[..], body, cl_key(body, i)), entry);
+    }
+    n = json_raw(o, n, "}");
+  } else if kind == "router-line" {
+    r := cj_read_router_line(ar[..], body);
+    if !r.ok { return ""; }
+    if r.kind == "trigger" { n = cj_router_trigger(o, 0, r.id, r.source, r.thread, r.fate, r.session, r.note, r.at_us); }
+    else if r.kind == "batch" { n = cj_router_batch(o, 0, r.events, r.ms, r.decided, r.at_us); }
+    else { n = cj_router_recall(o, 0, r.id, r.sessions, r.hops, r.bytes); }
+    // the Router's own reader of its log gives the same members
+    if cj_router_id(ar[..], body) != r.id || cj_router_session(ar[..], body) != r.session { return ""; }
+    return ifx n < 1 then "" else cast(string) o[0..<n - 1];     // a body is the line less its line feed
+  } else if kind == "consent" {
+    ok: [1] bool; ok[0] = true;
+    events := cj_need_i(body, "events", ok[..]); rows := cj_items(body, "grants");
+    if !ok[0] || rows < 0 { return ""; }
+    n = cj_consent_open(o, 0, events);
+    for i: 0..<rows {
+      g := cj_read_consent_grant(ar[..], cj_item(body, "grants", i));
+      if !g.ok { return ""; }
+      n = cj_consent_grant(o, n, i == 0, g.grant, g.engine, g.classes, g.state, g.sends, g.bytes);
+    }
+    n = cj_consent_close(o, n);
+  } else if kind == "remembered" {
+    r := cj_read_remembered(ar[..], body);
+    if !r.ok { return ""; }
+    n = cj_remembered(o, 0, r.key, r.scope, r.event, r.state);
+  } else if kind == "recall" {
+    r := cj_read_recall(body);
+    if !r.ok { return ""; }
+    n = cj_recall_open(o, 0, r.events, r.ranked);
+    for i: 0..<r.facts {
+      cg_arena(w, ar[..]);
+      f := cj_read_recall_fact(ar[..], cj_item(body, "facts", i));
+      if !f.ok || f.has_score != r.ranked { return ""; }
+      n = cj_recall_fact(o, n, i == 0, f.key, f.text, f.scope, f.version, r.ranked, f.score);
+      if f.said { n = cj_recall_said(o, n, f.session, f.line, f.state); }
+      n = cj_recall_fact_end(o, n);
+    }
+    n = cj_recall_close(o, n);
+  } else { return ""; }
+  return cj_text(o, n);
+}
+
+cg_kind :: (kind: string) -> int {
+  kinds := CG_KINDS;
+  for k: 0..<CG_N { if kinds[k] == kind { return k; } }
+  return -1;
+}
+
+cg_check :: (w: [] CgWork, d: Jv, path: string) -> bool {
+  tb: [256] u8; kinds := CG_KINDS;
+  if jv_kind(d, 0) != JV_OBJECT || cg_str(d, jv_get(d, 0, "identity"), tb[..]) != "coder-cli-json-v1" { print("identity\n"); return false; }
+  file := CG_PATH;
+  if path.count < file.count || path[path.count - file.count..<path.count] != file { print("identity: not the file's name\n"); return false; }
+  if cg_str(d, jv_get(d, 0, "check"), tb[..]) != CG_CHECK { print("check: not this program\n"); return false; }
+  if cg_str(d, jv_get(d, 0, "codec"), tb[..]) != CG_CODEC { print("codec: not the codec\n"); return false; }
+  shapes := jv_get(d, 0, "shapes");
+  if jv_kind(d, shapes) != JV_OBJECT || jv_len(d, shapes) != CG_N { print("shapes: % kinds, one each\n", CG_N); return false; }
+  for k: 0..<CG_N { if jv_kind(d, jv_get(d, jv_get(d, shapes, kinds[k]), "members")) != JV_OBJECT { print("shapes: no members for %\n", kinds[k]); return false; } }
+  goldens := jv_get(d, 0, "goldens");
+  if jv_kind(d, goldens) != JV_ARRAY || jv_len(d, goldens) == 0 { print("no goldens\n"); return false; }
+  bad := 0;
+  for i: 0..<jv_len(d, goldens) {
+    item := jv_at(d, goldens, i);
+    name := cg_str(d, jv_get(d, item, "name"), w[0].name[..]);
+    kind := cg_str(d, jv_get(d, item, "kind"), w[0].kind[..]);
+    body := cg_str(d, jv_get(d, item, "body"), w[0].body[..]);
+    k := cg_kind(kind);
+    if body.count == 0 || k < 0 || jv_kind(d, jv_get(d, item, "from")) != JV_STRING { print("FAIL  %: no body, no kind % or no `from`\n", name, kind); bad += 1; continue; }
+    b: [1] Jv;
+    if !jv_parse(b[..], body, w[0].body_nodes[..]) { print("FAIL  % (%): the body is not JSON\n", name, kind); bad += 1; continue; }
+    if !cg_keys(b[0], 0, d, jv_get(d, jv_get(d, shapes, kind), "members"), "top") { print("FAIL  % (%): its keys are not the profile's\n", name, kind); bad += 1; continue; }
+    if cg_rewrite(kind, body, w) != body { print("FAIL  % (%): read through the codec and written back, it is not the same bytes\n", name, kind); bad += 1; continue; }
+    w[0].seen[k] += 1;
+    print("ok    % (%)\n", name, kind);
+  }
+  for k: 0..<CG_N { if w[0].seen[k] == 0 { print("FAIL  no golden of kind %\n", kinds[k]); bad += 1; } }
+  // what a reader refuses, by kind
+  refused := jv_get(d, 0, "refused");
+  if jv_kind(d, refused) != JV_ARRAY || jv_len(d, refused) < 3 { print("refused: three bodies at least\n"); return false; }
+  for i: 0..<jv_len(d, refused) {
+    item := jv_at(d, refused, i);
+    kind := cg_str(d, jv_get(d, item, "kind"), w[0].kind[..]);
+    body := cg_str(d, jv_get(d, item, "body"), w[0].body[..]);
+    if cg_kind(kind) < 0 || cg_rewrite(kind, body, w) != "" { print("FAIL  refused % (%): taken\n", i, kind); bad += 1; }
+  }
+  if bad == 0 { print("ok    refused % bodies\n", jv_len(d, refused)); }
+  return bad == 0;
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) != 1 { tool_errln("usage: cli-json-goldens PROFILE.json"); return 2; }
+  work: [1] CgWork; w := work[..];
+  path := args_at(a[..], 0);
+  n := fs_read(path, w[0].file[..]);
+  d: [1] Jv;
+  if n <= 0 || !jv_parse(d[..], cast(string) w[0].file[0..<n], w[0].nodes[..]) { tool_errln("cli-json-goldens: cannot parse JSON"); return 2; }
+  if !cg_check(w, d[0], path) { print("%: profile fails\n", path); return 1; }
+  print("%: profile holds\n", path);
+  return 0;
+}

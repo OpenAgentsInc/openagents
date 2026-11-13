@@ -30,6 +30,7 @@
 // turn_end) in the session's folder; see cd_hooks in coder.coax.
 
 #load "../../coax/lib/nostr/event.coax";
+#load "../../coax/lib/agent/cli/json-output.coax";   // what --json prints (cj_*)
 
 PL_DIR :: "/.openagents/coder/plugins";     // under $HOME
 PL_MAX :: 16; PL_CMDS :: 64; PL_HOOKS :: 32; PL_CAPS :: 64;
@@ -436,22 +437,19 @@ pl_line :: (r: [] PlRegistry, k: int, out: [] u8) -> string {
 }
 
 pl_json :: (r: [] PlRegistry, k: int, out: [] u8) -> string {
-  n := json_raw(out, 0, "{\"name\":"); n = json_write_string(out, n, pl_name(r, k));
-  n = json_raw(out, n, ",\"state\":"); n = json_write_string(out, n, pl_state_name(r[0].p[k].state));
-  n = json_raw(out, n, ifx r[0].p[k].sealed then ",\"signed\":true" else ",\"signed\":false");
-  if r[0].p[k].state == PL_FAILED { n = json_raw(out, n, ",\"why\":"); n = json_write_string(out, n, cast(string) r[0].p[k].why[0..<r[0].p[k].nwhy]); }
-  n = json_raw(out, n, ",\"commands\":[");
+  lists := CJ_PLUGIN_LISTS;     // commands, then PL_ROLES' three in order
+  n := cj_plugin(out, 0, pl_name(r, k), pl_state_name(r[0].p[k].state), r[0].p[k].sealed, cast(string) r[0].p[k].why[0..<r[0].p[k].nwhy]);
+  n = cj_plugin_list(out, n, lists[0]);
   first := true;
-  for i: 0..<r[0].ncmds { if r[0].cmds[i].owner == k { if !first { n = json_raw(out, n, ","); } first = false; n = json_write_string(out, n, cast(string) r[0].cmds[i].name[0..<r[0].cmds[i].nname]); } }
-  n = json_raw(out, n, "]");
-  roles := PL_ROLES;
+  for i: 0..<r[0].ncmds { if r[0].cmds[i].owner == k { n = cj_plugin_item(out, n, first, cast(string) r[0].cmds[i].name[0..<r[0].cmds[i].nname]); first = false; } }
+  n = cj_plugin_list_end(out, n);
   for role: 0..<3 {
-    n = json_raw(out, n, ",\""); n = json_raw(out, n, roles[role]); n = json_raw(out, n, "\":[");
+    n = cj_plugin_list(out, n, lists[role + 1]);
     f := true;
-    for i: 0..<r[0].ncaps { if r[0].caps[i].owner == k && r[0].caps[i].role == role { if !f { n = json_raw(out, n, ","); } f = false; n = json_write_string(out, n, pl_cap_name(r, i)); } }
-    n = json_raw(out, n, "]");
+    for i: 0..<r[0].ncaps { if r[0].caps[i].owner == k && r[0].caps[i].role == role { n = cj_plugin_item(out, n, f, pl_cap_name(r, i)); f = false; } }
+    n = cj_plugin_list_end(out, n);
   }
-  n = json_raw(out, n, "}");
+  n = cj_plugin_end(out, n);
   return ifx n < 0 then "" else cast(string) out[0..<n];
 }
 

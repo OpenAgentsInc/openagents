@@ -26,3 +26,12 @@ ads_finish :: (input:[]u8,response:[]u8,out:[]u8)->int #export_c #effects(all) {
  if !ads_input(cast(string)input) {return -1;}text:[4096]u8;got:=ads_model_text(response,text[..]);if !got.ok {return -3;}n:=got.n;e:[1]AnimDirection;if ad_read(cast(string)text[0..<n],e[..])!=0 {return -3;}
  request_nodes:[4096]JvNode;request:[1]Jv;#assert anim_json(cast(string)input,request[..],request_nodes[..])==0;buffer:[8192]u8;o:[1]Jo;jo_start(o[..],buffer[..]);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],"anim.direct.reply.v1");jo_key(o[..],"base");jv_write(request[0],jv_get(request[0],0,"base"),o[..]);jo_key(o[..],"direction");jo_raw(o[..],cast(string)text[0..<n]);jo_end(o[..]);#assert !o[0].bad;if o[0].n>out.count {return -4;}for c,k:buffer[0..<o[0].n] {out[k]=c;}return o[0].n;
 }
+// The reply's reader: every reader of anim.direct.reply.v1 comes through here (the CLI and the
+// Animation Lab page by ads_reply in direction.coax). code is ANIM_OK when the envelope is the
+// reply's; base_n is the base's length unescaped into base (-1: no string, or more than base
+// holds); direction and confidence are the direction and its scores as they came.
+AdsReply :: struct {code:int;base_n:int;direction:string;confidence:string;}
+ads_reply_read :: (text:string,base:[]u8)->AdsReply #effects(all) {
+ nodes:[1024]JvNode;d:[1]Jv;if anim_json(text,d[..],nodes[..])!=0 || !anim_schema(d[0],"anim.direct.reply.v1") || !anim_keys(d[0],0,anim_field_keys("anim.direct.reply")) {return AdsReply.{code=ANIM_SCHEMA};}
+ direction:=jv_get(d[0],0,"direction");return AdsReply.{code=ANIM_OK,base_n=jv_str(d[0],jv_get(d[0],0,"base"),base),direction=jv_raw(d[0],direction),confidence=jv_raw(d[0],jv_get(d[0],direction,"confidence"))};
+}

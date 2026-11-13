@@ -1,0 +1,155 @@
+// The Codex app-server's JSON-RPC, as a fixture (Protocol, GitHub #13250, step C13):
+// proto/external/codex-app-server-json-rpc.json names each recorded session in
+// fixtures/session.jsonl (the sessions are separated by a blank line) with where
+// it came from, the requests the recorder had sent before each of the server's
+// lines, the answers the host gave to approvals, and the values our own record
+// type must hold. For each fixture this tool sends those requests through the
+// client (cx_initialize, cx_model_list, cx_thread_start, cx_turn_start,
+// cx_interrupt), feeds every server line to cx_feed, answers each approval with
+// cx_approve, and compares the CxEvents and the client's state with `want`.
+// Nothing here parses the format itself.
+//   coax/web/tool.sh coax/lib/agent/codex/codex-external-profile.coax [proto/external/codex-app-server-json-rpc.json]
+#import "Basic";
+#load "client.coax";
+#load "../../json/json.coax";
+#load "../../sys/tool.coax";
+#load "../../sys/args.coax";
+#load "../../sys/fs.coax";
+
+XEP_FIXTURE :: "proto/external/codex-app-server-json-rpc.json";
+XEP_FILE :: 262144;
+XEP_VALUES :: 48;
+XepWork :: struct { nodes: [8192] JvNode; file: [XEP_FILE] u8; line: [8] u8; arena: [65536] u8; out: [65536] u8; answers: [4096] u8; answers_n: int; s: [8192] u8; name: [512] u8; path: [512] u8; }
+
+XepValue :: struct { key: string; text: bool; n: int; s: string; }
+XepGot :: struct { v: [XEP_VALUES] XepValue; count: int; }
+xep_n :: (g: [] XepGot, key: string, n: int) { if g[0].count < XEP_VALUES { g[0].v[g[0].count] = XepValue.{key = key, n = n}; g[0].count += 1; } }
+xep_s :: (g: [] XepGot, key: string, s: string) { if g[0].count < XEP_VALUES { g[0].v[g[0].count] = XepValue.{key = key, text = true, s = s}; g[0].count += 1; } }
+xep_str :: (d: Jv, at: int, out: [] u8) -> string {
+  n := jv_str(d, at, out);
+  return ifx n < 0 then "" else cast(string) out[0..<n];
+}
+
+// The request named `what`, sent through the client: false when the name is not one of ours.
+xep_send :: (c: [] CxClient, what: string) -> bool {
+  st := CxSettings.{cwd = "/tmp/demo/work", model = "gpt-6-luna", approval_policy = "never", sandbox = "danger-full-access"};
+  none: [1] string;
+  if what == "initialize" { return cx_initialize(c, "openagents-desktop", "OpenAgents", "0.1.0") > 0; }
+  if what == "model/list" { return cx_model_list(c, "") > 0; }
+  if what == "thread/start" { return cx_thread_start(c, st) > 0; }
+  if what == "turn/start" { return cx_turn_start(c, "next", none[0..<0], st) > 0; }
+  if what == "turn/interrupt" { return cx_interrupt(c) > 0; }
+  return false;
+}
+
+// Session `session` of the file's m bytes through the client. Returns what went wrong, or "".
+xep_read :: (w: [] XepWork, c: [] CxClient, m: int, session: int, d: Jv, sent: int, approve: int, g: [] XepGot) -> string {
+  cx_init(c, w[0].line[..], w[0].arena[..], w[0].out[..]);
+  w[0].answers_n = 0;
+  lines := 0; group := 0; from := 0; next := 0; asked := 0;
+  initialized := 0; answered := 0; refused := 0; notes := 0; approvals := 0; tools := 0; invalid := 0; inside := 0; failed := 0;
+  deltas := 0; items := 0; started := 0; completed := 0; failed_turns := 0; thread_answers := 0; turn_answers := 0; interrupts := 0; lists := 0;
+  for at: 0..<m + 1 {
+    if at < m && w[0].file[at] != 10 { continue; }
+    line := cast(string) w[0].file[from..<at]; from = at + 1;
+    if line.count == 0 { group += 1; continue; }
+    if group != session { continue; }
+    // the requests the recorder had sent by now
+    while next < jv_len(d, sent) && jv_int(d, jv_get(d, jv_at(d, sent, next), "before"), -1) <= lines {
+      rb: [32] u8;
+      if !xep_send(c, xep_str(d, jv_get(d, jv_at(d, sent, next), "request"), rb[..])) { return "a sent request is not one the client writes, or it could not be written yet"; }
+      next += 1;
+    }
+    cx_outbox_clear(c);
+    ev := cx_feed(c, line);
+    lines += 1;
+    if ev.kind == CxEventKind.initialized { initialized += 1; }
+    else if ev.kind == CxEventKind.answered {
+      answered += 1;
+      if ev.of == CX_THREAD_START { thread_answers += 1; }
+      if ev.of == CX_TURN_START { turn_answers += 1; }
+      if ev.of == CX_TURN_INTERRUPT { interrupts += 1; }
+      if ev.of == CX_MODEL_LIST { lists += 1; }
+    }
+    else if ev.kind == CxEventKind.refused { refused += 1; }
+    else if ev.kind == CxEventKind.approval {
+      approvals += 1;
+      cx_outbox_clear(c);
+      cx_approve(c, asked < jv_len(d, approve) && jv_bool(d, jv_at(d, approve, asked)));
+      asked += 1;
+      a := cx_outbox(c);
+      if w[0].answers_n + a.count <= w[0].answers.count { for i: 0..<a.count { w[0].answers[w[0].answers_n + i] = a[i]; } w[0].answers_n += a.count; }
+    }
+    else if ev.kind == CxEventKind.tool_call { tools += 1; }
+    else if ev.kind == CxEventKind.invalid { invalid += 1; }
+    else if ev.kind == CxEventKind.failed { failed += 1; }
+    else if ev.kind == CxEventKind.none { inside += 1; }
+    else if ev.kind == CxEventKind.notification {
+      notes += 1;
+      if ev.method == "item/agentMessage/delta" { deltas += 1; }
+      if ev.method == "item/started" || ev.method == "item/completed" { items += 1; }
+      if ev.method == "turn/started" { started += 1; }
+      if ev.method == "turn/completed" { completed += 1; }
+    }
+  }
+  if next < jv_len(d, sent) { return "a sent request is placed after the session's last line"; }
+  xep_n(g, "lines", lines); xep_n(g, "initialized", initialized); xep_n(g, "answered", answered); xep_n(g, "refused", refused);
+  xep_n(g, "notifications", notes); xep_n(g, "approvals", approvals); xep_n(g, "tool_calls", tools); xep_n(g, "invalid", invalid);
+  xep_n(g, "answered_inside", inside); xep_n(g, "failed", failed);
+  xep_n(g, "model_list_answers", lists); xep_n(g, "thread_answers", thread_answers); xep_n(g, "turn_answers", turn_answers); xep_n(g, "interrupt_answers", interrupts);
+  xep_n(g, "message_deltas", deltas); xep_n(g, "items", items); xep_n(g, "turns_started", started); xep_n(g, "turns_completed", completed);
+  xep_n(g, "pending", c[0].npend); xep_n(g, "asking", c[0].asking);
+  xep_s(g, "user_agent", cx_user_agent(c)); xep_s(g, "thread", cx_thread_id(c)); xep_s(g, "last_turn", cx_turn_id(c));
+  xep_s(g, "approval_answers", cast(string) w[0].answers[0..<w[0].answers_n]);
+  return "";
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  args: [1] Args;
+  loaded := args_load(args[..]);
+  path := ifx loaded && args_count(args[..]) >= 1 then args_at(args[..], 0) else XEP_FIXTURE;
+  buf: [65536] u8; j: [1] Jv; w: [1] XepWork;
+  n := fs_read(path, buf[..]);
+  if n <= 0 { tool_errln("codex external profile: cannot read the fixture"); return 2; }
+  if !jv_parse(j[..], cast(string) buf[0..<n], w[0].nodes[..]) || jv_kind(j[0], 0) != JV_OBJECT { print("FAIL  cannot parse the fixture\n"); return 1; }
+  d := j[0]; bad := 0;
+  list := jv_get(d, 0, "fixtures");
+  if jv_len(d, list) < 1 { print("FAIL  no fixtures\n"); bad += 1; }
+  for i: 0..<jv_len(d, list) {
+    row := jv_at(d, list, i);
+    name := xep_str(d, jv_get(d, row, "name"), w[0].name[..]);
+    file := xep_str(d, jv_get(d, row, "file"), w[0].path[..]);
+    source_n := jv_str(d, jv_get(d, row, "source"), w[0].s[..]);
+    want := jv_get(d, row, "want");
+    session := jv_int(d, jv_get(d, row, "session"), -1);
+    if name == "" || file == "" || source_n < 8 || session < 0 || jv_kind(d, jv_get(d, row, "sent")) != JV_ARRAY || jv_kind(d, want) != JV_OBJECT || jv_len(d, want) < 4 {
+      print("FAIL  fixture %: it needs a name, a file, a session, a source, the sent requests and a want of four values or more\n", i); bad += 1; continue;
+    }
+    m := fs_read(file, w[0].file[..]);
+    if m <= 0 || m == XEP_FILE { print("FAIL  %: cannot read % whole\n", name, file); bad += 1; continue; }
+    g: [1] XepGot; c: [1] CxClient;
+    why := xep_read(w[..], c[..], m, session, d, jv_get(d, row, "sent"), jv_get(d, row, "approve"), g[..]);
+    if why != "" { print("FAIL  %: %\n", name, why); bad += 1; continue; }
+    wrong := 0;
+    for k: 0..<jv_len(d, want) {
+      v := jv_at(d, want, k);
+      key := jv_key(d, v);
+      at := -1;
+      for q: 0..<g[0].count { if g[0].v[q].key == key { at = q; } }
+      if at < 0 { print("FAIL  %: want names %, which is no value of ours\n", name, key); wrong += 1; continue; }
+      got := g[0].v[at];
+      if got.text {
+        ws := xep_str(d, v, w[0].s[..]);
+        if jv_kind(d, v) != JV_STRING || got.s != ws { print("FAIL  %: % is \"%\", wanted %\n", name, key, got.s, jv_raw(d, v)); wrong += 1; }
+      } else if jv_kind(d, v) != JV_NUMBER || got.n != jv_int(d, v, -999999) { print("FAIL  %: % is %, wanted %\n", name, key, got.n, jv_raw(d, v)); wrong += 1; }
+    }
+    if wrong > 0 {
+      print("  got:");
+      for q: 0..<g[0].count { if g[0].v[q].text { print(" \"%\":\"%\"", g[0].v[q].key, g[0].v[q].s); } else { print(" \"%\":%", g[0].v[q].key, g[0].v[q].n); } }
+      print("\n"); bad += 1;
+    }
+    else { print("ok    % (% lines, % values)\n", name, g[0].v[0].n, jv_len(d, want)); }
+  }
+  print("%\n", ifx bad == 0 then "codex-app-server-json-rpc external profile holds" else "codex-app-server-json-rpc external profile fails");
+  return ifx bad == 0 then 0 else 1;
+}

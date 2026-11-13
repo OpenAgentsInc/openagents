@@ -1,0 +1,208 @@
+// /chat's API on the wire, one codec for what chat.c writes and reads by hand (Protocol E11,
+// GitHub #13250): proto/openagents/api/v1alpha1/chat.proto (profile api-routes) names the members.
+// chat.c calls the #export_c functions below through chat-wire.generated.c and builds no body of
+// its own:
+//   chw_who_write          who is asking, chat.api's third argument (jsonb)
+//   chw_ask_write          chat.api's second argument for a GET: {"c":"ID"}, or {} (also an empty POST's body)
+//   chw_key_set_write      chat.api's body for key_set: the kind, the last four, the sealed bytes
+//   chw_credential_write   the body POSTed to the runner's /credential
+//   chw_wake_write         the body POSTed to the runner's /wake
+//   chw_error_write        a refusal of a turn's attachments (api-wire.coax, ErrorReply)
+//   chw_reply_ok, chw_reply_reason, chw_reply_sealed, chw_reply_last4
+//                          the runner's answer to /credential
+//   chw_credential_read    the "credential" of POST /api/chat/key's body
+//   chw_asks_attachments   whether a POST /api/chat/complete body names attachments
+// What chat.api answers goes out as SQL made it. The bytes written are the ones chat.c wrote before
+// this file; proto/verse/api-routes-v1alpha1.json holds what a running API answered and
+// routes-goldens.coax checks it. Strings are written as JSON strings: a pubkey, a kind, a
+// conversation's number and a credential ([A-Za-z0-9_-]) hold nothing to escape; the daily cap
+// (OA_CHAT_DAILY_USD, cut to 16 bytes as before), the runner's last4 and sealed, and a refusal's
+// words would now be escaped if one ever held a quote, a backslash or a control byte, where chat.c
+// wrote invalid JSON. The readers are chat.c's scanners as they were, byte for byte in what they
+// take and refuse (they are not JSON parsers: a key is found anywhere in the text, and a backslash
+// in the runner's answer only makes the next byte literal). A writer returns the body's length, or
+// -1 when it does not fit; a reader the count of bytes it put in out.
+//   coax/bin/coax test coax/web/api/chat-wire.coax --library
+#load "api-wire.coax";
+
+CHW_CAP :: 16;   // the daily cap's text, at most
+
+chw_bool :: (b: bool) -> string #effects(all) { return ifx b then "true" else "false"; }
+// Where pat first stands in text at or after from, or -1.
+chw_find :: (text: string, pat: string, from: int) -> int #effects(all) {
+  i := from;
+  while i + pat.count <= text.count {
+    same := true;
+    for k: 0..<pat.count { if text[i + k] != pat[k] { same = false; break; } }
+    if same { return i; }
+    i += 1;
+  }
+  return -1;
+}
+
+// {"pubkey":"HEX","may":true,"runner":false,"cap_usd":"10"}
+chw_who_write :: (pubkey: string, may: bool, runner: bool, cap_usd: string, out: [] u8) -> int #export_c #effects(all) {
+  cut := ifx cap_usd.count > CHW_CAP then CHW_CAP else cap_usd.count;
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "{\"pubkey\":"); jo_quoted(o[..], pubkey); jo_put(o[..], ",\"may\":"); jo_put(o[..], chw_bool(may));
+  jo_put(o[..], ",\"runner\":"); jo_put(o[..], chw_bool(runner)); jo_put(o[..], ",\"cap_usd\":"); jo_quoted(o[..], cap_usd[0..<cut]); jo_put(o[..], "}");
+  return aw_len(o[..]);
+}
+// {"c":"12"} when c is digits, else {}.
+chw_ask_write :: (c: string, out: [] u8) -> int #export_c #effects(all) {
+  digits := c.count > 0;
+  for ch: c { if ch < '0' || ch > '9' { digits = false; } }
+  o: [1] Jo; aw_at(o[..], out, 0);
+  if digits { jo_put(o[..], "{\"c\":"); jo_quoted(o[..], c); jo_put(o[..], "}"); } else { jo_put(o[..], "{}"); }
+  return aw_len(o[..]);
+}
+// {"kind":"api","last4":"wxyz","sealed":"..."}
+chw_key_set_write :: (kind: string, last4: string, sealed: string, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "{\"kind\":"); jo_quoted(o[..], kind); jo_put(o[..], ",\"last4\":"); jo_quoted(o[..], last4);
+  jo_put(o[..], ",\"sealed\":"); jo_quoted(o[..], sealed); jo_put(o[..], "}");
+  return aw_len(o[..]);
+}
+// {"credential":"sk-ant-...","owner":"HEX","kind":"api"}
+chw_credential_write :: (credential: string, owner: string, kind: string, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "{\"credential\":"); jo_quoted(o[..], credential); jo_put(o[..], ",\"owner\":"); jo_quoted(o[..], owner);
+  jo_put(o[..], ",\"kind\":"); jo_quoted(o[..], kind); jo_put(o[..], "}");
+  return aw_len(o[..]);
+}
+// {"chat":true}
+chw_wake_write :: (out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0); jo_put(o[..], "{\"chat\":true}"); return aw_len(o[..]);
+}
+chw_error_write :: (text: string, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0); aw_error(o[..], text); return aw_len(o[..]);
+}
+
+// ---- the runner's answer to /credential
+// Whether it says "ok":true, written just so.
+chw_reply_ok :: (body: string) -> bool #export_c #effects(all) { return chw_find(body, "\"ok\":true", 0) >= 0; }
+// The string after the first `pat` ("key":), spaces allowed before its quote: its bytes up to the
+// closing quote or out's end, a backslash making the next byte literal. 0 when there is none.
+chw_reply_string :: (body: string, pat: string, out: [] u8) -> int #effects(all) {
+  at := chw_find(body, pat, 0);
+  if at < 0 { return 0; }
+  p := at + pat.count;
+  while p < body.count && body[p] == ' ' { p += 1; }
+  if p >= body.count || body[p] != '"' { return 0; }
+  p += 1;
+  n := 0;
+  while p < body.count && body[p] != '"' && n < out.count {
+    if body[p] == '\\' && p + 1 < body.count { p += 1; }
+    out[n] = body[p]; n += 1; p += 1;
+  }
+  return n;
+}
+chw_reply_reason :: (body: string, out: [] u8) -> int #export_c #effects(all) { return chw_reply_string(body, "\"reason\":", out); }
+chw_reply_sealed :: (body: string, out: [] u8) -> int #export_c #effects(all) { return chw_reply_string(body, "\"sealed\":", out); }
+chw_reply_last4 :: (body: string, out: [] u8) -> int #export_c #effects(all) { return chw_reply_string(body, "\"last4\":", out); }
+
+// ---- a caller's body
+// The "credential" string of a body, only when it is a plain string with no escapes that fits out:
+// its length, else -1 (out may then hold part of it: the caller clears it).
+chw_credential_read :: (body: string, out: [] u8) -> int #export_c #effects(all) {
+  pat := "\"credential\"";
+  at := chw_find(body, pat, 0);
+  if at < 0 || at + pat.count >= body.count { return -1; }
+  k := at + pat.count;
+  while k < body.count && (body[k] == ' ' || body[k] == ':' || body[k] == 9 || body[k] == 10) { k += 1; }
+  if k >= body.count || body[k] != '"' { return -1; }
+  k += 1;
+  n := 0;
+  while k < body.count && body[k] != '"' && body[k] != '\\' && n < out.count { out[n] = body[k]; n += 1; k += 1; }
+  if k < body.count && body[k] == '"' { return n; }
+  return -1;
+}
+// Whether the body holds "attachments" anywhere.
+chw_asks_attachments :: (body: string) -> bool #export_c #effects(all) { return chw_find(body, "\"attachments\"", 0) >= 0; }
+
+#test "what chat.api is given: who asks, a GET's ask, a key to keep" {
+  b: [512] u8;
+  key := "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d";
+  n := chw_who_write(key, true, false, "10", b[..]);
+  #assert cast(string) b[0..<n] == "{\"pubkey\":\"3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d\",\"may\":true,\"runner\":false,\"cap_usd\":\"10\"}" && chw_who_write(key, true, false, "10", b[0..<n - 1]) == -1;
+  n = chw_who_write("", false, true, "", b[..]);
+  #assert cast(string) b[0..<n] == "{\"pubkey\":\"\",\"may\":false,\"runner\":true,\"cap_usd\":\"\"}";
+  n = chw_who_write("", false, false, "12345678901234567890", b[..]);
+  #assert cast(string) b[0..<n] == "{\"pubkey\":\"\",\"may\":false,\"runner\":false,\"cap_usd\":\"1234567890123456\"}";
+  n = chw_who_write("", false, false, "2.50", b[..]);
+  #assert cast(string) b[0..<n] == "{\"pubkey\":\"\",\"may\":false,\"runner\":false,\"cap_usd\":\"2.50\"}";
+  n = chw_ask_write("12", b[..]);
+  #assert cast(string) b[0..<n] == "{\"c\":\"12\"}" && chw_ask_write("12", b[0..<n - 1]) == -1;
+  n = chw_ask_write("0", b[..]);
+  #assert cast(string) b[0..<n] == "{\"c\":\"0\"}";
+  n = chw_ask_write("", b[..]);
+  #assert cast(string) b[0..<n] == "{}" && chw_ask_write("", b[0..<2]) == 2 && chw_ask_write("", b[0..<1]) == -1;
+  n = chw_ask_write("1x", b[..]);
+  #assert cast(string) b[0..<n] == "{}";
+  n = chw_ask_write("-1", b[..]);
+  #assert cast(string) b[0..<n] == "{}";
+  n = chw_key_set_write("api", "wxyz", "c2VhbGVk", b[..]);
+  #assert cast(string) b[0..<n] == "{\"kind\":\"api\",\"last4\":\"wxyz\",\"sealed\":\"c2VhbGVk\"}" && chw_key_set_write("api", "wxyz", "c2VhbGVk", b[0..<n - 1]) == -1;
+  n = chw_key_set_write("oauth", "", "", b[..]);
+  #assert cast(string) b[0..<n] == "{\"kind\":\"oauth\",\"last4\":\"\",\"sealed\":\"\"}";
+}
+
+#test "what the runner is sent, and a refusal" {
+  b: [512] u8;
+  n := chw_credential_write("sk-ant-api03-abc_DEF-0123456789", "3bf0", "api", b[..]);
+  #assert cast(string) b[0..<n] == "{\"credential\":\"sk-ant-api03-abc_DEF-0123456789\",\"owner\":\"3bf0\",\"kind\":\"api\"}" && chw_credential_write("sk-ant-api03-abc_DEF-0123456789", "3bf0", "api", b[0..<n - 1]) == -1;
+  n = chw_credential_write("", "", "oauth", b[..]);
+  #assert cast(string) b[0..<n] == "{\"credential\":\"\",\"owner\":\"\",\"kind\":\"oauth\"}";
+  n = chw_wake_write(b[..]);
+  #assert cast(string) b[0..<n] == "{\"chat\":true}" && chw_wake_write(b[0..<n - 1]) == -1;
+  n = chw_error_write("attachments is {world, ids: at most 8}", b[..]);
+  #assert cast(string) b[0..<n] == "{\"error\":\"attachments is {world, ids: at most 8}\"}" && chw_error_write("memory", b[0..<5]) == -1;
+  n = chw_error_write("", b[..]);
+  #assert cast(string) b[0..<n] == "{\"error\":\"\"}";
+}
+
+#test "the runner's answer is read as chat.c's scanner read it" {
+  o: [64] u8; small: [3] u8;
+  good := "{\"ok\":true,\"kind\":\"api\",\"last4\":\"wxyz\",\"sealed\":\"c2VhbGVk\"}";
+  #assert chw_reply_ok(good) && !chw_reply_ok("{\"ok\":false,\"reason\":\"no\"}") && !chw_reply_ok("{\"ok\": true}") && !chw_reply_ok("") && chw_reply_ok("x\"ok\":truely");
+  n := chw_reply_last4(good, o[..]);
+  #assert cast(string) o[0..<n] == "wxyz";
+  n = chw_reply_sealed(good, o[..]);
+  #assert cast(string) o[0..<n] == "c2VhbGVk";
+  #assert chw_reply_reason(good, o[..]) == 0 && chw_reply_reason("", o[..]) == 0;
+  // spaces before the quote, not before the colon
+  n = chw_reply_reason("{\"ok\":false,\"reason\":  \"the key was refused\"}", o[..]);
+  #assert cast(string) o[0..<n] == "the key was refused";
+  #assert chw_reply_reason("{\"reason\" : \"x\"}", o[..]) == 0 && chw_reply_reason("{\"reason\":7}", o[..]) == 0 && chw_reply_reason("{\"reason\":null}", o[..]) == 0 && chw_reply_reason("{\"reason\":", o[..]) == 0 && chw_reply_reason("{\"reason\":\t\"x\"}", o[..]) == 0;
+  // a backslash makes the next byte literal: \" is a quote, \n is an n, \\ a backslash
+  n = chw_reply_reason("{\"reason\":\"a \\\"b\\\" c\\nd\\\\e\"}", o[..]);
+  #assert cast(string) o[0..<n] == "a \"b\" cnd\\e";
+  // a backslash at the very end is kept; an open string runs to the end
+  n = chw_reply_reason("{\"reason\":\"ab\\", o[..]);
+  #assert cast(string) o[0..<n] == "ab\\";
+  n = chw_reply_reason("{\"reason\":\"abc", o[..]);
+  #assert cast(string) o[0..<n] == "abc";
+  // cut at out's end; the first place the key stands, nested or not
+  n = chw_reply_reason("{\"reason\":\"abcdef\"}", small[..]);
+  #assert n == 3 && cast(string) small[0..<n] == "abc";
+  n = chw_reply_reason("{\"error\":{\"reason\":\"in\"},\"reason\":\"out\"}", o[..]);
+  #assert cast(string) o[0..<n] == "in";
+  n = chw_reply_reason("{\"reason\":\"\"}", o[..]);
+  #assert n == 0;
+}
+
+#test "a caller's body: its credential, and whether it names attachments" {
+  o: [64] u8; small: [4] u8;
+  n := chw_credential_read("{\"credential\":\"sk-ant-api03-abc\"}", o[..]);
+  #assert cast(string) o[0..<n] == "sk-ant-api03-abc";
+  n = chw_credential_read("{ \"credential\" :\t\n \"sk-ant-oat01-x\" , \"more\": 1}", o[..]);
+  #assert cast(string) o[0..<n] == "sk-ant-oat01-x";
+  n = chw_credential_read("{\"credential\":\"\"}", o[..]);
+  #assert n == 0;
+  #assert chw_credential_read("{}", o[..]) == -1 && chw_credential_read("", o[..]) == -1 && chw_credential_read("{\"credential\":7}", o[..]) == -1 && chw_credential_read("{\"credential\":null}", o[..]) == -1;
+  #assert chw_credential_read("{\"credential\":\"sk\\u002dant\"}", o[..]) == -1 && chw_credential_read("{\"credential\":\"sk-ant", o[..]) == -1 && chw_credential_read("{\"credential\":", o[..]) == -1 && chw_credential_read("\"credential\"", o[..]) == -1;
+  #assert chw_credential_read("{\"credential\":\r\"x\"}", o[..]) == -1;
+  // one that does not fit is refused; one that just fits is taken
+  #assert chw_credential_read("{\"credential\":\"abcde\"}", small[..]) == -1 && chw_credential_read("{\"credential\":\"abcd\"}", small[..]) == 4;
+  #assert chw_asks_attachments("{\"model\":\"m\",\"attachments\":{\"world\":\"w\",\"ids\":[1]}}") && chw_asks_attachments("\"attachments\"") && !chw_asks_attachments("{\"attachment\":1}") && !chw_asks_attachments("") && !chw_asks_attachments("\"attachments");
+}

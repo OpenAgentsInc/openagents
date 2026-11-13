@@ -1,0 +1,123 @@
+{
+ "profile": "external-codex-app-server-json-rpc",
+ "about": "The Codex app-server's JSON-RPC: the lines `codex app-server` writes on stdout (answers, notifications and its own requests). coax/lib/agent/codex/ is the only folder that parses them; what comes out is our own CxEvent and the client's state (thread, turn, user agent, the answer owed to an approval). Each fixture names one recorded session, the requests the recorder had sent (`sent`: before which line, by method), the host's answers to approvals (`approve`), and the values the client must give: how many events of each kind, which requests were answered, the ids kept, and the approval answers it wrote. Checked by coax/lib/agent/codex/codex-external-profile.coax.",
+ "fixtures": [
+  {
+   "name": "full access: the model list, a thread, two turns",
+   "source": "codex-cli 0.163.0 (`codex app-server`, JSON-RPC on stdio) on a ChatGPT login, recorded with coax/lib/agent/codex/fixtures/record.py and kept at coax/lib/agent/codex/fixtures/session.jsonl, session 0 (lines 1 to 150). These are the server's stdout lines. Scrubbed by fixtures/fixture.py: the scratch folder is /tmp/demo, the home folder /Users/me, account ids dropped; MCP startup, hook, moderation, read-state and warning notifications are left out and each message stream is cut to its first 40 deltas. The initialize answer keeps two members and the model list six a model, written again as compact JSON; every other line is as the server wrote it. The recorder's own lines were not kept, so `sent` places each request just before the line that answers it.",
+   "file": "coax/lib/agent/codex/fixtures/session.jsonl",
+   "session": 0,
+   "sent": [
+    {
+     "before": 0,
+     "request": "initialize"
+    },
+    {
+     "before": 1,
+     "request": "model/list"
+    },
+    {
+     "before": 2,
+     "request": "thread/start"
+    },
+    {
+     "before": 3,
+     "request": "turn/start"
+    },
+    {
+     "before": 63,
+     "request": "turn/start"
+    }
+   ],
+   "approve": [],
+   "want": {
+    "lines": 150,
+    "initialized": 1,
+    "answered": 4,
+    "refused": 0,
+    "notifications": 145,
+    "approvals": 0,
+    "tool_calls": 0,
+    "invalid": 0,
+    "answered_inside": 0,
+    "failed": 0,
+    "model_list_answers": 1,
+    "thread_answers": 1,
+    "turn_answers": 2,
+    "interrupt_answers": 0,
+    "message_deltas": 105,
+    "items": 20,
+    "turns_started": 2,
+    "turns_completed": 2,
+    "pending": 0,
+    "asking": 0,
+    "user_agent": "openagents-desktop/0.163.0 (Mac OS 26.4.0; arm64) rex/0.0.1792088193-g7a93ec (openagents-desktop; 0.1.0)",
+    "thread": "01a18a24-f0c2-79a0-9871-f63b21f8ac2a",
+    "last_turn": "01a18a25-07cd-7e82-86ec-b76d16214cc8",
+    "approval_answers": ""
+   }
+  },
+  {
+   "name": "supervised: a patch approval accepted, a command declined, the third turn interrupted",
+   "source": "codex-cli 0.163.0 (`codex app-server`, JSON-RPC on stdio) on a ChatGPT login, recorded with coax/lib/agent/codex/fixtures/record.py and kept at coax/lib/agent/codex/fixtures/session.jsonl, session 1 (after the blank line, 162 lines). These are the server's stdout lines. Scrubbed by fixtures/fixture.py: the scratch folder is /tmp/demo, the home folder /Users/me, account ids dropped; MCP startup, hook, moderation, read-state and warning notifications are left out and each message stream is cut to its first 40 deltas. The initialize answer keeps two members and the model list six a model, written again as compact JSON; every other line is as the server wrote it. The recorder's own lines were not kept, so `sent` places each request just before the line that answers it.",
+   "file": "coax/lib/agent/codex/fixtures/session.jsonl",
+   "session": 1,
+   "sent": [
+    {
+     "before": 0,
+     "request": "initialize"
+    },
+    {
+     "before": 1,
+     "request": "thread/start"
+    },
+    {
+     "before": 2,
+     "request": "turn/start"
+    },
+    {
+     "before": 63,
+     "request": "turn/start"
+    },
+    {
+     "before": 112,
+     "request": "turn/start"
+    },
+    {
+     "before": 160,
+     "request": "turn/interrupt"
+    }
+   ],
+   "approve": [
+    true,
+    false
+   ],
+   "want": {
+    "lines": 162,
+    "initialized": 1,
+    "answered": 5,
+    "refused": 0,
+    "notifications": 154,
+    "approvals": 2,
+    "tool_calls": 0,
+    "invalid": 0,
+    "answered_inside": 0,
+    "failed": 0,
+    "model_list_answers": 0,
+    "thread_answers": 1,
+    "turn_answers": 3,
+    "interrupt_answers": 1,
+    "message_deltas": 109,
+    "items": 17,
+    "turns_started": 3,
+    "turns_completed": 2,
+    "pending": 0,
+    "asking": 0,
+    "user_agent": "openagents-desktop/0.163.0 (Mac OS 26.4.0; arm64) rex/0.0.1792088193-g7a93ec (openagents-desktop; 0.1.0)",
+    "thread": "01a18a25-666c-79b2-a2cf-a3c2b984c9a7",
+    "last_turn": "01a18a25-876b-7f62-aa19-70d5669057d6",
+    "approval_answers": "{\"jsonrpc\":\"2.0\",\"id\":0,\"result\":{\"decision\":\"accept\"}}\n{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"decision\":\"decline\"}}\n"
+   }
+  }
+ ]
+}

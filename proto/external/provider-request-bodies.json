@@ -1,0 +1,282 @@
+{
+ "profile": "external-provider-request-bodies",
+ "about": "The model providers' reply bodies: Open Responses, Chat Completions and Gemini native streams, and one whole Chat Completions body, as the providers sent them. coax/lib/gateway/ is the only folder that parses them (sse.coax, gateway.coax, chat.coax); what comes out is our own GwEvent and GwUsage. Each fixture names a recording under coax/lib/gateway/fixtures/ (its README.md says where each came from; all were carried over from crates/coder/fixtures/gateway/ at 0b401561a0^) and the values the gateway must give for it: the answer's text and its length, how many text and reasoning deltas, one done, no refusal, the reason, the provider OpenRouter names, and the usage. The request bodies are our own writing (gw_translate) and are held byte for byte by the gateway's tests, not here. Not here: fixtures/anthropic-text.sse and anthropic-tool.sse, which are written by hand from Anthropic's documentation and are no recording; the Anthropic Messages wire has no fixture of real bytes yet. Checked by coax/lib/gateway/gateway-external-profile.coax.",
+ "fixtures": [
+  {
+   "name": "google-gemini-3.8-flash.sse",
+   "source": "Vercel AI Gateway, POST /v1/responses (Open Responses), model google/gemini-3.8-flash, streamed, recorded 2026-09-19; kept at coax/lib/gateway/fixtures/google-gemini-3.8-flash.sse",
+   "file": "coax/lib/gateway/fixtures/google-gemini-3.8-flash.sse",
+   "wire": "responses",
+   "want": {
+    "text": "One\nTwo\nThree\nFour\nFive",
+    "text_bytes": 23,
+    "deltas": 2,
+    "reasoning_deltas": 0,
+    "reasoning_bytes": 0,
+    "done": 1,
+    "refused": 0,
+    "reason": "stop",
+    "input_tokens": 25,
+    "output_tokens": 130,
+    "cached_tokens": 0,
+    "reasoning_tokens": 121,
+    "done_at_end": true
+   }
+  },
+  {
+   "name": "zai-glm-5.3-flash.sse",
+   "source": "Vercel AI Gateway, POST /v1/responses (Open Responses), model zai/glm-5.3-flash, streamed, recorded 2026-09-19; kept at coax/lib/gateway/fixtures/zai-glm-5.3-flash.sse",
+   "file": "coax/lib/gateway/fixtures/zai-glm-5.3-flash.sse",
+   "wire": "responses",
+   "want": {
+    "text": "one\ntwo\nthree\nfour\nfive",
+    "text_bytes": 23,
+    "deltas": 9,
+    "reasoning_deltas": 34,
+    "reasoning_bytes": 122,
+    "done": 1,
+    "refused": 0,
+    "reason": "stop",
+    "input_tokens": 38,
+    "output_tokens": 45,
+    "cached_tokens": 0,
+    "reasoning_tokens": 34,
+    "done_at_end": true
+   }
+  },
+  {
+   "name": "openrouter-gemini-3.8-flash.sse",
+   "source": "OpenRouter, POST /v1/responses (Open Responses, no event: lines), model google/gemini-3.8-flash, streamed; kept at coax/lib/gateway/fixtures/openrouter-gemini-3.8-flash.sse",
+   "file": "coax/lib/gateway/fixtures/openrouter-gemini-3.8-flash.sse",
+   "wire": "responses",
+   "want": {
+    "text": "One\nTwo\nThree\nFour\nFive",
+    "text_bytes": 23,
+    "deltas": 2,
+    "reasoning_deltas": 0,
+    "reasoning_bytes": 0,
+    "done": 1,
+    "refused": 0,
+    "reason": "stop",
+    "input_tokens": 25,
+    "output_tokens": 130,
+    "cached_tokens": 0,
+    "reasoning_tokens": 121,
+    "cost_usd_micros": 506,
+    "done_at_end": true
+   }
+  },
+  {
+   "name": "vertex-gemini-3.8-flash.sse",
+   "source": "Google Vertex AI, streamGenerateContent?alt=sse (Gemini native), model gemini-3.8-flash, recorded 2026-10-10; kept at coax/lib/gateway/fixtures/vertex-gemini-3.8-flash.sse",
+   "file": "coax/lib/gateway/fixtures/vertex-gemini-3.8-flash.sse",
+   "wire": "gemini",
+   "want": {
+    "text": "One\nTwo\nThree\nFour\nFive",
+    "text_bytes": 23,
+    "deltas": 2,
+    "reasoning_deltas": 0,
+    "reasoning_bytes": 0,
+    "done": 1,
+    "refused": 0,
+    "reason": "stop",
+    "input_tokens": 15,
+    "output_tokens": 9,
+    "cached_tokens": 0,
+    "reasoning_tokens": 0,
+    "done_at_end": true
+   }
+  },
+  {
+   "name": "vertex-openai-gemini-3.8-flash.sse",
+   "source": "Google Vertex AI's OpenAI endpoint (endpoints/openapi/chat/completions, Chat Completions), model google/gemini-3.8-flash, streamed, recorded 2026-10-30; kept at coax/lib/gateway/fixtures/vertex-openai-gemini-3.8-flash.sse",
+   "file": "coax/lib/gateway/fixtures/vertex-openai-gemini-3.8-flash.sse",
+   "wire": "chat",
+   "want": {
+    "text": "One\nTwo\nThree\nFour\nFive",
+    "text_bytes": 23,
+    "deltas": 2,
+    "reasoning_deltas": 0,
+    "reasoning_bytes": 0,
+    "done": 1,
+    "refused": 0,
+    "reason": "stop",
+    "input_tokens": 25,
+    "output_tokens": 9,
+    "cached_tokens": 0,
+    "reasoning_tokens": 0,
+    "done_at_end": true
+   }
+  },
+  {
+   "name": "openrouter-chat-gemini-3.8-flash.sse",
+   "source": "OpenRouter, POST /api/v1/chat/completions (Chat Completions), model google/gemini-3.8-flash, streamed with usage, recorded 2026-10-30; kept at coax/lib/gateway/fixtures/openrouter-chat-gemini-3.8-flash.sse",
+   "file": "coax/lib/gateway/fixtures/openrouter-chat-gemini-3.8-flash.sse",
+   "wire": "chat",
+   "want": {
+    "text": "One\nTwo\nThree\nFour\nFive",
+    "text_bytes": 23,
+    "deltas": 1,
+    "reasoning_deltas": 1,
+    "reasoning_bytes": 164,
+    "done": 1,
+    "refused": 0,
+    "reason": "stop",
+    "provider": "Google",
+    "input_tokens": 25,
+    "output_tokens": 139,
+    "cached_tokens": 0,
+    "reasoning_tokens": 130,
+    "cost_usd_micros": 540,
+    "done_at_end": true
+   }
+  },
+  {
+   "name": "openrouter-chat-gemini-3.8-flash.json",
+   "source": "OpenRouter, POST /api/v1/chat/completions, the same request unstreamed: one chat.completion after OpenRouter's keep-alive whitespace, recorded 2026-10-30; kept at coax/lib/gateway/fixtures/openrouter-chat-gemini-3.8-flash.json",
+   "file": "coax/lib/gateway/fixtures/openrouter-chat-gemini-3.8-flash.json",
+   "wire": "chat",
+   "whole": true,
+   "want": {
+    "text": "One\nTwo\nThree\nFour\nFive",
+    "text_bytes": 23,
+    "deltas": 1,
+    "reasoning_deltas": 0,
+    "reasoning_bytes": 0,
+    "done": 1,
+    "refused": 0,
+    "reason": "stop",
+    "provider": "Google",
+    "input_tokens": 25,
+    "output_tokens": 9,
+    "cached_tokens": 0,
+    "reasoning_tokens": 0,
+    "cost_usd_micros": 53,
+    "done_at_end": true
+   }
+  },
+  {
+   "name": "vertex-gemini-4-carbon.sse",
+   "source": "Google Vertex AI, streamGenerateContent?alt=sse, model gemini-4-carbon, thinking level low, recorded 2026-11-11; kept at coax/lib/gateway/fixtures/vertex-gemini-4-carbon.sse",
+   "file": "coax/lib/gateway/fixtures/vertex-gemini-4-carbon.sse",
+   "wire": "gemini",
+   "want": {
+    "text": "One\nTwo\nThree\nFour\nFive",
+    "text_bytes": 23,
+    "deltas": 1,
+    "reasoning_deltas": 0,
+    "reasoning_bytes": 0,
+    "done": 1,
+    "refused": 0,
+    "reason": "stop",
+    "input_tokens": 61,
+    "output_tokens": 13,
+    "cached_tokens": 0,
+    "reasoning_tokens": 0,
+    "done_at_end": true
+   }
+  },
+  {
+   "name": "vertex-gemini-4-carbon-high.sse",
+   "source": "Google Vertex AI, streamGenerateContent?alt=sse, model gemini-4-carbon, thinking level high, recorded 2026-11-11; kept at coax/lib/gateway/fixtures/vertex-gemini-4-carbon-high.sse",
+   "file": "coax/lib/gateway/fixtures/vertex-gemini-4-carbon-high.sse",
+   "wire": "gemini",
+   "want": {
+    "text": "One\nTwo\nThree\nFour\nFive",
+    "text_bytes": 23,
+    "deltas": 1,
+    "reasoning_deltas": 0,
+    "reasoning_bytes": 0,
+    "done": 1,
+    "refused": 0,
+    "reason": "stop",
+    "input_tokens": 61,
+    "output_tokens": 269,
+    "cached_tokens": 0,
+    "reasoning_tokens": 256,
+    "done_at_end": true
+   }
+  },
+  {
+   "name": "vertex-openai-gemini-4-carbon.sse",
+   "source": "Google Vertex AI's OpenAI endpoint, model google/gemini-4-carbon, reasoning_effort low, streamed, recorded 2026-11-11; kept at coax/lib/gateway/fixtures/vertex-openai-gemini-4-carbon.sse",
+   "file": "coax/lib/gateway/fixtures/vertex-openai-gemini-4-carbon.sse",
+   "wire": "chat",
+   "want": {
+    "text": "One\nTwo\nThree\nFour\nFive",
+    "text_bytes": 23,
+    "deltas": 2,
+    "reasoning_deltas": 0,
+    "reasoning_bytes": 0,
+    "done": 1,
+    "refused": 0,
+    "reason": "stop",
+    "input_tokens": 61,
+    "output_tokens": 13,
+    "cached_tokens": 0,
+    "reasoning_tokens": 0,
+    "done_at_end": true
+   }
+  },
+  {
+   "name": "vertex-gemini-4-argon-action.sse",
+   "source": "Google Vertex AI (location us), streamGenerateContent?alt=sse, model gemini-4-argon, thinking level low: Microcoder's first next_action for a one-file task, recorded through Coder's microcoder engine with GW_RECORD, 2026-11-11 (#13231); kept at coax/lib/gateway/fixtures/vertex-gemini-4-argon-action.sse",
+   "file": "coax/lib/gateway/fixtures/vertex-gemini-4-argon-action.sse",
+   "wire": "gemini",
+   "want": {
+    "text_bytes": 156,
+    "deltas": 3,
+    "reasoning_deltas": 0,
+    "reasoning_bytes": 0,
+    "done": 1,
+    "refused": 0,
+    "reason": "stop",
+    "input_tokens": 665,
+    "output_tokens": 62,
+    "cached_tokens": 0,
+    "reasoning_tokens": 0,
+    "done_at_end": true
+   }
+  },
+  {
+   "name": "vertex-gemini-3.8-flash-action.sse",
+   "source": "Google Vertex AI (location us), streamGenerateContent?alt=sse, model gemini-3.8-flash: the same next_action request, recorded with GW_RECORD, 2026-11-11 (#13231); kept at coax/lib/gateway/fixtures/vertex-gemini-3.8-flash-action.sse",
+   "file": "coax/lib/gateway/fixtures/vertex-gemini-3.8-flash-action.sse",
+   "wire": "gemini",
+   "want": {
+    "text_bytes": 161,
+    "deltas": 3,
+    "reasoning_deltas": 0,
+    "reasoning_bytes": 0,
+    "done": 1,
+    "refused": 0,
+    "reason": "stop",
+    "input_tokens": 541,
+    "output_tokens": 91,
+    "cached_tokens": 0,
+    "reasoning_tokens": 28,
+    "done_at_end": true
+   }
+  },
+  {
+   "name": "vertex-gemini-4-carbon-action.sse",
+   "source": "Google Vertex AI (location us), streamGenerateContent?alt=sse, model gemini-4-carbon: the same next_action request, recorded with GW_RECORD, 2026-11-11 (#13231); kept at coax/lib/gateway/fixtures/vertex-gemini-4-carbon-action.sse",
+   "file": "coax/lib/gateway/fixtures/vertex-gemini-4-carbon-action.sse",
+   "wire": "gemini",
+   "want": {
+    "text_bytes": 227,
+    "deltas": 3,
+    "reasoning_deltas": 0,
+    "reasoning_bytes": 0,
+    "done": 1,
+    "refused": 0,
+    "reason": "stop",
+    "input_tokens": 671,
+    "output_tokens": 81,
+    "cached_tokens": 0,
+    "reasoning_tokens": 0,
+    "done_at_end": true
+   }
+  }
+ ]
+}

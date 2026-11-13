@@ -1,0 +1,27 @@
+// The Model Context Protocol's fixture (Protocol, GitHub #13250, step C13):
+// proto/external/model-context-protocol.json holds the specification's own
+// example messages (MCP 2025-06-18, the tools page) and the line coder mcp
+// must answer each with. The same bytes are the constants below (a Coax test
+// reads no file); they are fed to cd_mcp_answer, mcp.coax's one reader, and
+// its answer is compared whole. Keep the two in step.
+//   coax/bin/coax test coder/tui/mcp-external-checks.coax
+#run_steps 1000000;
+#load "coder.coax";
+main :: () {}
+
+MXC_SPEC_CALL :: "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\",\"params\":{\"name\":\"get_weather\",\"arguments\":{\"location\":\"New York\"}}}";
+MXC_SPEC_LIST :: "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"tools\":[{\"name\":\"get_weather\",\"title\":\"Weather Information Provider\",\"description\":\"Get current weather information for a location\",\"inputSchema\":{\"type\":\"object\",\"properties\":{\"location\":{\"type\":\"string\",\"description\":\"City name or zip code\"}},\"required\":[\"location\"]}}],\"nextCursor\":\"next-page-cursor\"}}";
+MXC_SPEC_ERROR :: "{\"jsonrpc\":\"2.0\",\"id\":3,\"error\":{\"code\":-32602,\"message\":\"Unknown tool: invalid_tool_name\"}}";
+MXC_SPEC_FAILED :: "{\"jsonrpc\":\"2.0\",\"id\":4,\"result\":{\"content\":[{\"type\":\"text\",\"text\":\"Failed to fetch weather data: API rate limit exceeded\"}],\"isError\":true}}";
+
+#test "MCP external fixture: the specification's tools/call for a tool Coder lacks is refused under its id" {
+  out: [4096] u8;
+  #assert cd_mcp_answer(MXC_SPEC_CALL, out[..]) == "{\"jsonrpc\":\"2.0\",\"id\":2,\"error\":{\"code\":-32602,\"message\":\"Unknown tool.\"}}";
+}
+
+#test "MCP external fixture: the specification's responses and errors get no answer" {
+  out: [4096] u8;
+  #assert cd_mcp_answer(MXC_SPEC_LIST, out[..]) == "";
+  #assert cd_mcp_answer(MXC_SPEC_ERROR, out[..]) == "";
+  #assert cd_mcp_answer(MXC_SPEC_FAILED, out[..]) == "";
+}

@@ -1,0 +1,928 @@
+// What the Coder CLI prints for --json (and --stream-json, the same flag for these verbs), one codec
+// (compliance plan step C8, GitHub #13250; proto/coder/cli-json-v1.json; docs/protocol/coder-cli-json-v1.md):
+//   coder usage --json                      CJ usage: an array, one object an agent, its plan windows
+//   coder ls --json, coder status ID --json a session row (ls: an array of them, newest first)
+//   coder import claude --json              the new session and its turns
+//   coder run|fork ... --detach --json      the job's session and process
+//   coder stop ID --json                    one of three answers
+//   coder replay ID --json                  each request line rebuilt, and the totals
+//   coder bench SUITE --json                the report (also kept in ~/.openagents/coder/bench/SUITE-ID.json)
+//   coder plugins --json                    an array, one object a plugin
+//   coder credential add|ls|rm --json       handles and their variables, never a value
+//   coder queue --json                      the job queued here, or held for a machine that did not answer
+//   coder daemon --json                     one line a job it handled: the job's file with its ending
+//   coder jobs --json                       the daemon's heartbeat and the jobs
+//   coder host list --json                  waiting browsers and allowed ones
+//   coder decide --json                     System One's choice, or why there is none
+//   coder policy list|add|rm --json         the Router's sources
+//   coder router --json                     one line an event (the same lines are router/log.jsonl)
+//   coder consent --json                    the grants
+//   coder remember|revise|forget --json     the fact's state; coder recall --json: the facts
+// Each is compact JSON: no space between tokens, members in the order given here, a member marked
+// "when" written only then. A writer appends to `out` from `at` and returns the new length, or -1
+// when the text does not fit (json_raw's rule: -1 stays -1 down a chain). The host list is written
+// with a Jo, as coder/tui/host.coax always wrote it.
+// The writers: coder/tui/coder.coax, daemon.coax, credential.coax, plugins.coax, host.coax, route.coax,
+// router.coax, gate.coax and memory.coax.
+// The readers: coder/tui/mcp.coax (MCP resources), mcp_http.coax (the local sessions route),
+// remote.coax (a remote status line), router.coax (its own log) and apps/openagents-web/chat-web.coax
+// (the chat's session list).
+// `coder run --json`, `log --json` and `attach --json` print session log lines (openagents.session.v1,
+// coax/lib/agent/session/log.coax); `coder route --json` prints coder.route.v2 (session/stream.coax);
+// `coder agents --json` prints openagents.coder.agents.v1 (coax/lib/local/inventory-wire.coax).
+// proto/coder/cli-json-v1.json holds outputs as the built CLI printed them; cli-json-goldens.coax
+// reads each through this file and writes it back for the same bytes.
+//   coax/bin/coax test coax/lib/agent/cli/json-output.coax --library
+#load "../../nostr/json.coax";
+#load "../../json/json.coax";
+#load "../claude/fields.coax";
+
+// An array of rows is "[", rows with "," between them, "]". ls and plugins print it piece by piece.
+CJ_LIST_OPEN :: "[";
+CJ_LIST_NEXT :: ",";
+CJ_LIST_CLOSE :: "]";
+
+cj_bool :: (out: [] u8, at: int, b: bool) -> int { return json_raw(out, at, ifx b then "true" else "false"); }
+cj_text :: (out: [] u8, n: int) -> string { return ifx n < 0 then "" else cast(string) out[0..<n]; }
+
+// ---- usage: [{"agent":A,"plan":P,"windows":[{"label":L,"used_percent":N,"resets_at":S},...],"error":WHY when it failed},...]
+
+cj_usage_agent :: (out: [] u8, at: int, first: bool, agent: string, plan: string) -> int {
+  n := json_raw(out, at, ifx first then "" else ",");
+  n = json_raw(out, n, "{\"agent\":"); n = json_write_string(out, n, agent);
+  n = json_raw(out, n, ",\"plan\":"); n = json_write_string(out, n, plan);
+  return json_raw(out, n, ",\"windows\":[");
+}
+// resets_at: Unix seconds, 0 when unknown.
+cj_usage_window :: (out: [] u8, at: int, first: bool, label: string, used_percent: int, resets_at: int) -> int {
+  n := json_raw(out, at, ifx first then "" else ",");
+  n = json_raw(out, n, "{\"label\":"); n = json_write_string(out, n, label);
+  n = json_raw(out, n, ",\"used_percent\":"); n = json_write_int(out, n, used_percent);
+  n = json_raw(out, n, ",\"resets_at\":"); n = json_write_int(out, n, resets_at);
+  return json_raw(out, n, "}");
+}
+cj_usage_agent_end :: (out: [] u8, at: int, error: string) -> int {
+  n := json_raw(out, at, "]");
+  if error.count > 0 { n = json_raw(out, n, ",\"error\":"); n = json_write_string(out, n, error); }
+  return json_raw(out, n, "}");
+}
+
+// ---- a session row (ls, status):
+// {"id":ID,"engine":E,"state":S,"effect_outcome":"unknown" when S is running,"turns":N,"steps":N,"started_us":T,"cwd":DIR,"task":TEXT}
+
+CJ_RUNNING :: "running";
+
+cj_session :: (out: [] u8, id: string, engine: string, state: string, turns: int, steps: int, started_us: int, cwd: string, task: string) -> string {
+  n := json_raw(out, 0, "{\"id\":"); n = json_write_string(out, n, id);
+  n = json_raw(out, n, ",\"engine\":"); n = json_write_string(out, n, engine);
+  n = json_raw(out, n, ",\"state\":"); n = json_write_string(out, n, state);
+  if state == CJ_RUNNING { n = json_raw(out, n, ",\"effect_outcome\":\"unknown\""); }
+  n = json_raw(out, n, ",\"turns\":"); n = json_write_int(out, n, turns);
+  n = json_raw(out, n, ",\"steps\":"); n = json_write_int(out, n, steps);
+  n = json_raw(out, n, ",\"started_us\":"); n = json_write_int(out, n, started_us);
+  n = json_raw(out, n, ",\"cwd\":"); n = json_write_string(out, n, cwd);
+  n = json_raw(out, n, ",\"task\":"); n = json_write_string(out, n, task);
+  n = json_raw(out, n, "}");
+  return cj_text(out, n);
+}
+// status of a log that ends in a partial line of `cut` bytes: the row with ,"cut":N as its last member.
+cj_session_cut :: (out: [] u8, row: string, cut: int) -> string {
+  if row.count == 0 { return ""; }
+  n := json_raw(out, 0, cast(string) row[0..<row.count - 1]);
+  n = json_raw(out, n, ",\"cut\":"); n = json_write_int(out, n, cut);
+  n = json_raw(out, n, "}");
+  return cj_text(out, n);
+}
+
+// Readers of a row. A string member that is absent or no string reads as "".
+cj_session_id :: (ar: [] ClArena, row: string) -> string { return cl_str(ar, row, "id"); }
+cj_session_engine :: (ar: [] ClArena, row: string) -> string { return cl_str(ar, row, "engine"); }
+cj_session_state :: (ar: [] ClArena, row: string) -> string { return cl_str(ar, row, "state"); }
+cj_session_task :: (ar: [] ClArena, row: string) -> string { return cl_str(ar, row, "task"); }
+cj_session_cwd :: (ar: [] ClArena, row: string) -> string { return cl_str(ar, row, "cwd"); }
+cj_session_started :: (row: string) -> JsonInt { return cl_int(row, "started_us"); }
+// Readers of the list. Rows: how many (-1 when the text is no list), and row i's JSON ("" past the end).
+cj_sessions_count :: (list: string) -> int { return cl_count(list); }
+cj_sessions_row :: (list: string, i: int) -> string { return cl_json(list, cl_item(list, i)); }
+// Row i's string member `name` straight from the list, for a reader with no room to hold a row
+// (the chat page); "" when the list has no row i. name: "id", "engine", "state", "task" or "cwd".
+cj_sessions_str :: (ar: [] ClArena, list: string, i: int, name: string) -> string {
+  path: [48] u8; tmp: [24] u8; k := 0; x := i;
+  while true { tmp[k] = cast(u8) ('0' + x % 10); k += 1; x /= 10; if x == 0 { break; } }
+  n := 0;
+  for j: 0..<k { path[n] = tmp[k - 1 - j]; n += 1; }
+  path[n] = '.'; n += 1;
+  for c: name { if n < path.count { path[n] = c; n += 1; } }
+  return cl_str(ar, list, cast(string) path[0..<n]);
+}
+
+// ---- import: {"id":ID,"turns":N}
+
+cj_import :: (out: [] u8, at: int, id: string, turns: int) -> int {
+  n := json_raw(out, at, "{\"id\":"); n = json_write_string(out, n, id);
+  n = json_raw(out, n, ",\"turns\":"); n = json_write_int(out, n, turns);
+  return json_raw(out, n, "}");
+}
+
+// ---- run --detach, fork --detach: {"id":ID,"pid":N}
+
+cj_detached :: (out: [] u8, at: int, id: string, pid: int) -> int {
+  n := json_raw(out, at, "{\"id\":"); n = json_write_string(out, n, id);
+  n = json_raw(out, n, ",\"pid\":"); n = json_write_int(out, n, pid);
+  return json_raw(out, n, "}");
+}
+
+// ---- stop: the session was not running; it stopped; it did not stop, so its process was ended.
+
+CJ_STOP_NOT_RUNNING :: "{\"stopped\":false,\"why\":\"not running\"}";
+CJ_STOP_STOPPED :: "{\"stopped\":true}";
+CJ_STOP_KILLED :: "{\"stopped\":true,\"killed\":true}";
+
+// ---- replay: {"requests":[{"turn":N,"bytes":N,"sha256":HEX,"same":B},...],"matched":N,"total":N}
+
+CJ_REPLAY_OPEN :: "{\"requests\":[";
+cj_replay_request :: (out: [] u8, at: int, first: bool, turn: int, bytes: int, sha256: string, same: bool) -> int {
+  n := json_raw(out, at, ifx first then "{\"turn\":" else ",{\"turn\":"); n = json_write_int(out, n, turn);
+  n = json_raw(out, n, ",\"bytes\":"); n = json_write_int(out, n, bytes);
+  n = json_raw(out, n, ",\"sha256\":"); n = json_write_string(out, n, sha256);
+  return json_raw(out, n, ifx same then ",\"same\":true}" else ",\"same\":false}");
+}
+cj_replay_close :: (out: [] u8, at: int, matched: int, total: int) -> int {
+  n := json_raw(out, at, "],\"matched\":"); n = json_write_int(out, n, matched);
+  n = json_raw(out, n, ",\"total\":"); n = json_write_int(out, n, total);
+  return json_raw(out, n, "}");
+}
+
+// ---- bench: {"suite":S,"passed":B,"ms":N,"at_us":T,"last":TEXT}; last is the run's last line, its first 2000 bytes.
+
+CJ_BENCH_LAST :: 2000;
+cj_bench :: (out: [] u8, at: int, suite: string, passed: bool, ms: int, at_us: int, last: string) -> int {
+  n := json_raw(out, at, "{\"suite\":"); n = json_write_string(out, n, suite);
+  n = json_raw(out, n, ifx passed then ",\"passed\":true" else ",\"passed\":false");
+  n = json_raw(out, n, ",\"ms\":"); n = json_write_int(out, n, ms);
+  n = json_raw(out, n, ",\"at_us\":"); n = json_write_int(out, n, at_us);
+  n = json_raw(out, n, ",\"last\":"); n = json_write_string(out, n, cast(string) last[0..<ifx last.count > CJ_BENCH_LAST then CJ_BENCH_LAST else last.count]);
+  return json_raw(out, n, "}");
+}
+
+// ---- plugins: [{"name":N,"state":S,"signed":B,"why":TEXT when S is failed,"commands":[..],"defines":[..],"provides":[..],"uses":[..]},...]
+// A row is cj_plugin, then each list in order (cj_plugin_list, its cj_plugin_item's, cj_plugin_list_end), then cj_plugin_end.
+
+CJ_PLUGIN_FAILED :: "failed";
+CJ_PLUGIN_LISTS :: [4] string.["commands", "defines", "provides", "uses"];
+cj_plugin :: (out: [] u8, at: int, name: string, state: string, signed: bool, why: string) -> int {
+  n := json_raw(out, at, "{\"name\":"); n = json_write_string(out, n, name);
+  n = json_raw(out, n, ",\"state\":"); n = json_write_string(out, n, state);
+  n = json_raw(out, n, ifx signed then ",\"signed\":true" else ",\"signed\":false");
+  if state == CJ_PLUGIN_FAILED { n = json_raw(out, n, ",\"why\":"); n = json_write_string(out, n, why); }
+  return n;
+}
+cj_plugin_list :: (out: [] u8, at: int, list: string) -> int {
+  n := json_raw(out, at, ",\""); n = json_raw(out, n, list);
+  return json_raw(out, n, "\":[");
+}
+cj_plugin_item :: (out: [] u8, at: int, first: bool, item: string) -> int {
+  n := json_raw(out, at, ifx first then "" else ",");
+  return json_write_string(out, n, item);
+}
+cj_plugin_list_end :: (out: [] u8, at: int) -> int { return json_raw(out, at, "]"); }
+cj_plugin_end :: (out: [] u8, at: int) -> int { return json_raw(out, at, "}"); }
+
+// ---- credential add: {"name":N,"var":V,"stored":true}; rm: {"removed":true}; ls: [{"name":N,"var":V},...]
+
+CJ_CREDENTIAL_REMOVED :: "{\"removed\":true}";
+cj_credential_stored :: (out: [] u8, at: int, name: string, var: string) -> int {
+  n := json_raw(out, at, "{\"name\":"); n = json_write_string(out, n, name);
+  n = json_raw(out, n, ",\"var\":"); n = json_write_string(out, n, var);
+  return json_raw(out, n, ",\"stored\":true}");
+}
+cj_credential_row :: (out: [] u8, at: int, first: bool, name: string, var: string) -> int {
+  n := json_raw(out, at, ifx first then "" else ",");
+  n = json_raw(out, n, "{\"name\":"); n = json_write_string(out, n, name);
+  n = json_raw(out, n, ",\"var\":"); n = json_write_string(out, n, var);
+  return json_raw(out, n, "}");
+}
+
+// ---- queue: {"job":ID,"state":"queued"}, or {"job":ID,"state":"held","dest":DEST} when its machine did not answer
+
+cj_queued :: (out: [] u8, at: int, id: string) -> int {
+  n := json_raw(out, at, "{\"job\":"); n = json_write_string(out, n, id);
+  return json_raw(out, n, ",\"state\":\"queued\"}");
+}
+cj_held :: (out: [] u8, at: int, id: string, dest: string) -> int {
+  n := json_raw(out, at, "{\"job\":"); n = json_write_string(out, n, id);
+  n = json_raw(out, n, ",\"state\":\"held\",\"dest\":"); n = json_write_string(out, n, dest);
+  return json_raw(out, n, "}");
+}
+
+// ---- daemon: a queued job's file, and the line `coder daemon --json` prints when it handled the job.
+// The file (daemon/jobs/ID.json): {"id":ID,"task":T,"engine":E,"cwd":DIR,"credentials":C when it names any,"at":T} and a line feed.
+// Handled (daemon/done/ID.json, and stdout less the line feed): the same members, then
+// "session":ID when it started or "refused":WHY when it did not, then "handled":T, and a line feed.
+
+cj_job :: (out: [] u8, at: int, id: string, task: string, engine: string, cwd: string, credentials: string, at_us: int) -> int {
+  n := json_raw(out, at, "{\"id\":"); n = json_write_string(out, n, id);
+  n = json_raw(out, n, ",\"task\":"); n = json_write_string(out, n, task);
+  n = json_raw(out, n, ",\"engine\":"); n = json_write_string(out, n, engine);
+  n = json_raw(out, n, ",\"cwd\":"); n = json_write_string(out, n, cwd);
+  if credentials.count > 0 { n = json_raw(out, n, ",\"credentials\":"); n = json_write_string(out, n, credentials); }
+  n = json_raw(out, n, ",\"at\":"); n = json_write_int(out, n, at_us);
+  return json_raw(out, n, "}\n");
+}
+// job: the job file's text, at least its closing brace. session "" when it was refused, for `refused`.
+cj_job_handled :: (out: [] u8, at: int, record: string, session: string, refused: string, handled_us: int) -> int {
+  n := json_raw(out, at, cast(string) record[0..<record.count - (ifx record[record.count - 1] == 10 then 2 else 1)]);
+  if session.count > 0 { n = json_raw(out, n, ",\"session\":"); n = json_write_string(out, n, session); }
+  else { n = json_raw(out, n, ",\"refused\":"); n = json_write_string(out, n, refused); }
+  n = json_raw(out, n, ",\"handled\":"); n = json_write_int(out, n, handled_us);
+  return json_raw(out, n, "}\n");
+}
+
+// ---- jobs: {"daemon":null or {"name":N,"host":H,"engines":E,"roots":R,"credentials":C,"at":T,"up":B},
+//             "jobs":[{"job":ID,"state":S,"task":T,"session":ID,"why":WHY,"dest":DEST,"remote_job":ID,"exit":N},...]}
+// The heartbeat (daemon/daemon.json) is the daemon object less "up", and a line feed. A job row's
+// members after task are each written only when the job has one; state is queued, held, started,
+// refused, sent or failed.
+
+cj_beat :: (out: [] u8, at: int, name: string, host: string, engines: string, roots: string, credentials: string, at_us: int) -> int {
+  n := json_raw(out, at, "{\"name\":"); n = json_write_string(out, n, name);
+  n = json_raw(out, n, ",\"host\":"); n = json_write_string(out, n, host);
+  n = json_raw(out, n, ",\"engines\":"); n = json_write_string(out, n, engines);
+  n = json_raw(out, n, ",\"roots\":"); n = json_write_string(out, n, roots);
+  n = json_raw(out, n, ",\"credentials\":"); n = json_write_string(out, n, credentials);
+  n = json_raw(out, n, ",\"at\":"); n = json_write_int(out, n, at_us);
+  return json_raw(out, n, "}\n");
+}
+// beat: the heartbeat file's text, "" when no daemon has run here.
+cj_jobs_open :: (out: [] u8, at: int, beat0: string, up: bool) -> int {
+  n := json_raw(out, at, "{\"daemon\":");
+  beat := beat0;
+  if beat.count > 0 {
+    while beat.count > 0 && beat[beat.count - 1] == 10 { beat = cast(string) beat[0..<beat.count - 1]; }
+    n = json_raw(out, n, cast(string) beat[0..<beat.count - 1]); n = json_raw(out, n, ifx up then ",\"up\":true}" else ",\"up\":false}");
+  } else { n = json_raw(out, n, "null"); }
+  return json_raw(out, n, ",\"jobs\":[");
+}
+cj_jobs_row :: (out: [] u8, at: int, first: bool, id: string, state: string, task: string, session: string, why: string, dest: string, remote_job: string, failed: bool, exit: int) -> int {
+  n := json_raw(out, at, ifx first then "" else ",");
+  n = json_raw(out, n, "{\"job\":"); n = json_write_string(out, n, id);
+  n = json_raw(out, n, ",\"state\":"); n = json_write_string(out, n, state);
+  n = json_raw(out, n, ",\"task\":"); n = json_write_string(out, n, task);
+  if session.count > 0 { n = json_raw(out, n, ",\"session\":"); n = json_write_string(out, n, session); }
+  if why.count > 0 { n = json_raw(out, n, ",\"why\":"); n = json_write_string(out, n, why); }
+  if dest.count > 0 { n = json_raw(out, n, ",\"dest\":"); n = json_write_string(out, n, dest); }
+  if remote_job.count > 0 { n = json_raw(out, n, ",\"remote_job\":"); n = json_write_string(out, n, remote_job); }
+  if failed { n = json_raw(out, n, ",\"exit\":"); n = json_write_int(out, n, exit); }
+  return json_raw(out, n, "}");
+}
+cj_jobs_close :: (out: [] u8, at: int) -> int { return json_raw(out, at, "]}"); }
+
+// ---- host list: {"waiting":[{"id":HEX,"key":HEX,"label":L,"asked_at":S},...],"browsers":[{"grant":HEX,"key":HEX,"label":L,"expires_at":S},...]}
+// cj_host_open, each waiting browser, cj_host_allowed, each allowed browser, cj_host_close.
+
+cj_host_open :: (o: [] Jo) { jo_obj(o); jo_key(o, "waiting"); jo_arr(o); }
+cj_host_waiting :: (o: [] Jo, id: string, key: string, label: string, asked_at: int) {
+  jo_obj(o); jo_key(o, "id"); jo_str(o, id); jo_key(o, "key"); jo_str(o, key);
+  jo_key(o, "label"); jo_str(o, label); jo_key(o, "asked_at"); jo_int(o, asked_at); jo_end(o);
+}
+cj_host_allowed :: (o: [] Jo) { jo_end(o); jo_key(o, "browsers"); jo_arr(o); }
+cj_host_browser :: (o: [] Jo, grant: string, key: string, label: string, expires_at: int) {
+  jo_obj(o); jo_key(o, "grant"); jo_str(o, grant); jo_key(o, "key"); jo_str(o, key);
+  jo_key(o, "label"); jo_str(o, label); jo_key(o, "expires_at"); jo_int(o, expires_at); jo_end(o);
+}
+cj_host_close :: (o: [] Jo) { jo_end(o); jo_end(o); }
+
+// ---- decide: {"choice":C,"probability":P} when System One decided, P with three decimals; else {"error":WHY}
+
+// probability in thousandths (0.9624 is 962), written as 0.962, the form of coder.route.v2's probability.
+cj_decided :: (out: [] u8, at: int, choice: string, thousandths: int) -> int {
+  n := json_raw(out, at, "{\"choice\":"); n = json_write_string(out, n, choice);
+  n = json_raw(out, n, ",\"probability\":"); n = json_write_int(out, n, thousandths / 1000); n = json_raw(out, n, ".");
+  n = json_raw(out, n, ifx thousandths % 1000 < 10 then "00" else ifx thousandths % 1000 < 100 then "0" else "");
+  n = json_write_int(out, n, thousandths % 1000);
+  return json_raw(out, n, "}");
+}
+cj_decide_error :: (out: [] u8, at: int, why: string) -> int {
+  n := json_raw(out, at, "{\"error\":"); n = json_write_string(out, n, why);
+  return json_raw(out, n, "}");
+}
+// Reader: why there is no choice, "" when there is one.
+cj_decide_why :: (ar: [] ClArena, text: string) -> string { return cl_str(ar, text, "error"); }
+
+// ---- policy add: {"saved":true}; rm: {"removed":true}; list: the sources, as router/sources.json holds them.
+// The file is {"sources":{ then a line a source ("\n  " before each, a comma after all but the last) then }} and a line feed;
+// list prints the object after "sources": {} when there is none, else {, the same lines, }. A source is
+// NAME:{"mode":M,"authors":[A,...],"engine":E,"label":L,"channel":C,"deliver":true,"ci":true,"policy":TEXT,"to":ADDRESS,"send":true},
+// each member after authors only when it is set. A file a person wrote by hand is printed as it stands.
+
+CJ_POLICY_SAVED :: "{\"saved\":true}";
+CJ_POLICY_REMOVED :: "{\"removed\":true}";
+CJ_POLICY_NONE :: "{}";
+CJ_SOURCES_OPEN :: "{\"sources\":{";
+CJ_SOURCES_CLOSE :: "}}\n";
+// entry: the source's JSON, written by cj_policy_entry or kept from the file.
+cj_sources_member :: (out: [] u8, at: int, first: bool, name: string, entry: string) -> int {
+  n := json_raw(out, at, ifx first then "\n  " else ",\n  "); n = json_write_string(out, n, name); n = json_raw(out, n, ":");
+  return json_raw(out, n, entry);
+}
+// authors: a comma-separated list ("*" for anyone); an empty name between commas is left out.
+cj_policy_entry :: (out: [] u8, mode: string, authors: string, engine: string, label: string, channel: string, deliver: bool, ci: bool, policy: string) -> string {
+  n := json_raw(out, 0, "{\"mode\":"); n = json_write_string(out, n, mode);
+  n = json_raw(out, n, ",\"authors\":[");
+  at := 0; k := 0;
+  while at <= authors.count {
+    e := at; while e < authors.count && authors[e] != ',' { e += 1; }
+    if e > at { n = json_raw(out, n, ifx k > 0 then "," else ""); n = json_write_string(out, n, cast(string) authors[at..<e]); k += 1; }
+    at = e + 1;
+  }
+  n = json_raw(out, n, "]");
+  if engine.count > 0 { n = json_raw(out, n, ",\"engine\":"); n = json_write_string(out, n, engine); }
+  if label.count > 0 { n = json_raw(out, n, ",\"label\":"); n = json_write_string(out, n, label); }
+  if channel.count > 0 { n = json_raw(out, n, ",\"channel\":"); n = json_write_string(out, n, channel); }
+  if deliver { n = json_raw(out, n, ",\"deliver\":true"); }
+  if ci { n = json_raw(out, n, ",\"ci\":true"); }
+  if policy.count > 0 { n = json_raw(out, n, ",\"policy\":"); n = json_write_string(out, n, policy); }
+  n = json_raw(out, n, "}");
+  return cj_text(out, n);
+}
+// A mail source's entry: the entry with its recipient (when to is not "") and whether replies are sent.
+cj_policy_entry_mail :: (out: [] u8, entry: string, to: string, send: bool) -> int {
+  n := json_raw(out, 0, cast(string) entry[0..<entry.count - 1]);
+  if to.count > 0 { n = json_raw(out, n, ",\"to\":"); n = json_write_string(out, n, to); }
+  if send { n = json_raw(out, n, ",\"send\":true"); }
+  return json_raw(out, n, "}");
+}
+
+// ---- router: one line an event, each ending in a line feed; the same lines are router/log.jsonl.
+// {"kind":"trigger","id":ID,"source":S,"thread":T,"fate":F,"session":ID when it has a worker,"note":TEXT when there is one,"at_us":T}
+// {"kind":"batch","events":N,"ms":N,"decided":B,"at_us":T}    one request to System One for a pass's candidates
+// {"kind":"recall","id":ID,"sessions":N,"hops":N,"bytes":N}    the sessions an event named, put ahead of its task
+// note is its first 2000 bytes.
+
+CJ_ROUTER_NOTE :: 2000;
+cj_router_trigger :: (out: [] u8, at: int, id: string, source: string, thread: string, fate: string, session: string, note: string, at_us: int) -> int {
+  n := json_raw(out, at, "{\"kind\":\"trigger\",\"id\":"); n = json_write_string(out, n, id);
+  n = json_raw(out, n, ",\"source\":"); n = json_write_string(out, n, source);
+  n = json_raw(out, n, ",\"thread\":"); n = json_write_string(out, n, thread);
+  n = json_raw(out, n, ",\"fate\":"); n = json_write_string(out, n, fate);
+  if session.count > 0 { n = json_raw(out, n, ",\"session\":"); n = json_write_string(out, n, session); }
+  if note.count > 0 { n = json_raw(out, n, ",\"note\":"); n = json_write_string(out, n, cast(string) note[0..<ifx note.count > CJ_ROUTER_NOTE then CJ_ROUTER_NOTE else note.count]); }
+  n = json_raw(out, n, ",\"at_us\":"); n = json_write_int(out, n, at_us);
+  return json_raw(out, n, "}\n");
+}
+cj_router_batch :: (out: [] u8, at: int, events: int, ms: int, decided: bool, at_us: int) -> int {
+  n := json_raw(out, at, "{\"kind\":\"batch\",\"events\":"); n = json_write_int(out, n, events);
+  n = json_raw(out, n, ",\"ms\":"); n = json_write_int(out, n, ms);
+  n = json_raw(out, n, ",\"decided\":"); n = cj_bool(out, n, decided);
+  n = json_raw(out, n, ",\"at_us\":"); n = json_write_int(out, n, at_us);
+  return json_raw(out, n, "}\n");
+}
+cj_router_recall :: (out: [] u8, at: int, id: string, sessions: int, hops: int, bytes: int) -> int {
+  n := json_raw(out, at, "{\"kind\":\"recall\",\"id\":"); n = json_write_string(out, n, id);
+  n = json_raw(out, n, ",\"sessions\":"); n = json_write_int(out, n, sessions);
+  n = json_raw(out, n, ",\"hops\":"); n = json_write_int(out, n, hops);
+  n = json_raw(out, n, ",\"bytes\":"); n = json_write_int(out, n, bytes);
+  return json_raw(out, n, "}\n");
+}
+// Readers of a log line: the event's ID and the session it names, "" when it has none.
+cj_router_id :: (ar: [] ClArena, line: string) -> string { return cl_str(ar, line, "id"); }
+cj_router_session :: (ar: [] ClArena, line: string) -> string { return cl_str(ar, line, "session"); }
+
+// ---- consent: {"events":N,"grants":[{"grant":N,"engine":E,"classes":C,"state":S,"sends":N,"bytes":N},...]}
+// state is active, revoked or expired; classes is a comma-separated list. (The ledger itself is
+// coder-consent-ledger-v1, coax/lib/agent/engine/consent-gate.coax.)
+
+cj_consent_open :: (out: [] u8, at: int, events: int) -> int {
+  n := json_raw(out, at, "{\"events\":"); n = json_write_int(out, n, events);
+  return json_raw(out, n, ",\"grants\":[");
+}
+cj_consent_grant :: (out: [] u8, at: int, first: bool, grant: int, engine: string, classes: string, state: string, sends: int, bytes: int) -> int {
+  n := json_raw(out, at, ifx first then "{\"grant\":" else ",{\"grant\":"); n = json_write_int(out, n, grant);
+  n = json_raw(out, n, ",\"engine\":"); n = json_write_string(out, n, engine);
+  n = json_raw(out, n, ",\"classes\":"); n = json_write_string(out, n, classes);
+  n = json_raw(out, n, ",\"state\":\""); n = json_raw(out, n, state);
+  n = json_raw(out, n, "\",\"sends\":"); n = json_write_int(out, n, sends);
+  n = json_raw(out, n, ",\"bytes\":"); n = json_write_int(out, n, bytes);
+  return json_raw(out, n, "}");
+}
+cj_consent_close :: (out: [] u8, at: int) -> int { return json_raw(out, at, "]}"); }
+
+// ---- remember, revise, forget: {"key":K,"scope":S,"event":N,"state":S}
+// scope is user or project; state is current, conflict or forgotten; event is the fact's line in
+// the memory log (coder-memory-log-v1, coax/lib/agent/engine/memory-log.coax).
+
+cj_remembered :: (out: [] u8, at: int, key: string, scope: string, event: int, state: string) -> int {
+  n := json_raw(out, at, "{\"key\":"); n = json_write_string(out, n, key);
+  n = json_raw(out, n, ",\"scope\":\""); n = json_raw(out, n, scope);
+  n = json_raw(out, n, "\",\"event\":"); n = json_write_int(out, n, event);
+  n = json_raw(out, n, ",\"state\":\""); n = json_raw(out, n, state);
+  return json_raw(out, n, "\"}");
+}
+
+// ---- recall: {"verified":true,"events":N,"ranked":B,"facts":[{"key":K,"text":T,"scope":S,"version":N,
+//                "score":N when ranked,"said_in":{"session":ID,"line":N,"state":S} when the fact names where it was said},...]}
+// score is the similarity to the query in thousandths; said_in's state is held, changed or gone.
+// A fact is cj_recall_fact, cj_recall_said when it has one, then cj_recall_fact_end.
+
+cj_recall_open :: (out: [] u8, at: int, events: int, ranked: bool) -> int {
+  n := json_raw(out, at, "{\"verified\":true,\"events\":"); n = json_write_int(out, n, events);
+  n = json_raw(out, n, ",\"ranked\":"); n = cj_bool(out, n, ranked);
+  return json_raw(out, n, ",\"facts\":[");
+}
+cj_recall_fact :: (out: [] u8, at: int, first: bool, key: string, text: string, scope: string, version: int, ranked: bool, score: int) -> int {
+  n := json_raw(out, at, ifx first then "{\"key\":" else ",{\"key\":"); n = json_write_string(out, n, key);
+  n = json_raw(out, n, ",\"text\":"); n = json_write_string(out, n, text);
+  n = json_raw(out, n, ",\"scope\":\""); n = json_raw(out, n, scope);
+  n = json_raw(out, n, "\",\"version\":"); n = json_write_int(out, n, version);
+  if ranked { n = json_raw(out, n, ",\"score\":"); n = json_write_int(out, n, score); }
+  return n;
+}
+cj_recall_said :: (out: [] u8, at: int, session: string, line: int, state: string) -> int {
+  n := json_raw(out, at, ",\"said_in\":{\"session\":"); n = json_write_string(out, n, session);
+  n = json_raw(out, n, ",\"line\":"); n = json_write_int(out, n, line);
+  n = json_raw(out, n, ",\"state\":\""); n = json_raw(out, n, state);
+  return json_raw(out, n, "\"}");
+}
+cj_recall_fact_end :: (out: [] u8, at: int) -> int { return json_raw(out, at, "}"); }
+cj_recall_close :: (out: [] u8, at: int) -> int { return json_raw(out, at, "]}"); }
+
+// ---- reading an output back, whole. Each reader takes one object's JSON text and gives its members;
+// ok is false when a member the writer always writes is absent or of another type. Strings with an
+// escape are decoded into the arena. The goldens check reads every fixture body through these and
+// writes it again with the writers above.
+
+cj_need_s :: (ar: [] ClArena, text: string, key: string, ok: [] bool) -> string {
+  v := cl_at(text, key);
+  if !v.ok || v.tok != JSON_STRING { ok[0] = false; return ""; }
+  return cl_text(ar, text, v);
+}
+cj_need_i :: (text: string, key: string, ok: [] bool) -> int {
+  v := cl_int(text, key);
+  if !v.ok { ok[0] = false; return 0; }
+  return v.value;
+}
+cj_need_b :: (text: string, key: string, ok: [] bool) -> bool {
+  v := cl_bool(text, key);
+  if !v.ok { ok[0] = false; return false; }
+  return v.value;
+}
+cj_has :: (text: string, key: string) -> bool { return cl_at(text, key).ok; }
+// Element i of the array that is member `key` of text, as JSON; how many it has (-1 when it is no array).
+cj_items :: (text: string, key: string) -> int {
+  v := cl_at(text, key);
+  if !v.ok || v.tok != JSON_ARRAY { return -1; }
+  return cl_count(cl_json(text, v));
+}
+cj_item :: (text: string, key: string, i: int) -> string { return cl_json(cl_raw(text, key), cl_item(cl_raw(text, key), i)); }
+
+CjUsageAgent :: struct { ok: bool; agent: string; plan: string; windows: int; error: string; }
+CjUsageWindow :: struct { ok: bool; label: string; used_percent: int; resets_at: int; }
+cj_read_usage_agent :: (ar: [] ClArena, row: string) -> CjUsageAgent {
+  ok: [1] bool; ok[0] = true; r: CjUsageAgent;
+  r.agent = cj_need_s(ar, row, "agent", ok[..]); r.plan = cj_need_s(ar, row, "plan", ok[..]);
+  r.windows = cj_items(row, "windows");
+  if cj_has(row, "error") { r.error = cj_need_s(ar, row, "error", ok[..]); }
+  r.ok = ok[0] && r.windows >= 0;
+  return r;
+}
+cj_read_usage_window :: (ar: [] ClArena, row: string, i: int) -> CjUsageWindow {
+  ok: [1] bool; ok[0] = true; r: CjUsageWindow; w := cj_item(row, "windows", i);
+  r.label = cj_need_s(ar, w, "label", ok[..]); r.used_percent = cj_need_i(w, "used_percent", ok[..]); r.resets_at = cj_need_i(w, "resets_at", ok[..]);
+  r.ok = ok[0];
+  return r;
+}
+
+// cut: -1 when the row has none.
+CjSession :: struct { ok: bool; id: string; engine: string; state: string; turns: int; steps: int; started_us: int; cwd: string; task: string; cut: int; }
+cj_read_session :: (ar: [] ClArena, row: string) -> CjSession {
+  ok: [1] bool; ok[0] = true; r: CjSession;
+  r.id = cj_need_s(ar, row, "id", ok[..]); r.engine = cj_need_s(ar, row, "engine", ok[..]); r.state = cj_need_s(ar, row, "state", ok[..]);
+  r.turns = cj_need_i(row, "turns", ok[..]); r.steps = cj_need_i(row, "steps", ok[..]); r.started_us = cj_need_i(row, "started_us", ok[..]);
+  r.cwd = cj_need_s(ar, row, "cwd", ok[..]); r.task = cj_need_s(ar, row, "task", ok[..]);
+  r.cut = ifx cj_has(row, "cut") then cj_need_i(row, "cut", ok[..]) else -1;
+  // a running session says its effects are unknown, and no other does
+  r.ok = ok[0] && (r.state == CJ_RUNNING) == (cl_str(ar, row, "effect_outcome") == "unknown") && (r.state == CJ_RUNNING) == cj_has(row, "effect_outcome");
+  return r;
+}
+
+// import's and --detach's object: n is turns or pid.
+CjStarted :: struct { ok: bool; id: string; n: int; }
+cj_read_import :: (ar: [] ClArena, text: string) -> CjStarted {
+  ok: [1] bool; ok[0] = true; r: CjStarted;
+  r.id = cj_need_s(ar, text, "id", ok[..]); r.n = cj_need_i(text, "turns", ok[..]); r.ok = ok[0];
+  return r;
+}
+cj_read_detached :: (ar: [] ClArena, text: string) -> CjStarted {
+  ok: [1] bool; ok[0] = true; r: CjStarted;
+  r.id = cj_need_s(ar, text, "id", ok[..]); r.n = cj_need_i(text, "pid", ok[..]); r.ok = ok[0];
+  return r;
+}
+
+// stop's answer as the writer's own text, "" when it is none of the three.
+cj_read_stop :: (text: string) -> string {
+  ok: [1] bool; ok[0] = true;
+  stopped := cj_need_b(text, "stopped", ok[..]);
+  if !ok[0] { return ""; }
+  if !stopped { return ifx cl_raw(text, "why") == "\"not running\"" then CJ_STOP_NOT_RUNNING else ""; }
+  if !cj_has(text, "killed") { return CJ_STOP_STOPPED; }
+  return ifx cj_need_b(text, "killed", ok[..]) && ok[0] then CJ_STOP_KILLED else "";
+}
+
+CjReplay :: struct { ok: bool; requests: int; matched: int; total: int; }
+CjReplayRequest :: struct { ok: bool; turn: int; bytes: int; sha256: string; same: bool; }
+cj_read_replay :: (text: string) -> CjReplay {
+  ok: [1] bool; ok[0] = true; r: CjReplay;
+  r.requests = cj_items(text, "requests"); r.matched = cj_need_i(text, "matched", ok[..]); r.total = cj_need_i(text, "total", ok[..]);
+  r.ok = ok[0] && r.requests >= 0;
+  return r;
+}
+cj_read_replay_request :: (ar: [] ClArena, text: string, i: int) -> CjReplayRequest {
+  ok: [1] bool; ok[0] = true; r: CjReplayRequest; q := cj_item(text, "requests", i);
+  r.turn = cj_need_i(q, "turn", ok[..]); r.bytes = cj_need_i(q, "bytes", ok[..]); r.sha256 = cj_need_s(ar, q, "sha256", ok[..]); r.same = cj_need_b(q, "same", ok[..]);
+  r.ok = ok[0];
+  return r;
+}
+
+CjBench :: struct { ok: bool; suite: string; passed: bool; ms: int; at_us: int; last: string; }
+cj_read_bench :: (ar: [] ClArena, text: string) -> CjBench {
+  ok: [1] bool; ok[0] = true; r: CjBench;
+  r.suite = cj_need_s(ar, text, "suite", ok[..]); r.passed = cj_need_b(text, "passed", ok[..]); r.ms = cj_need_i(text, "ms", ok[..]);
+  r.at_us = cj_need_i(text, "at_us", ok[..]); r.last = cj_need_s(ar, text, "last", ok[..]);
+  r.ok = ok[0];
+  return r;
+}
+
+// A plugin row. Its four lists are read with cj_items and cj_plugin_item_at, by CJ_PLUGIN_LISTS' names.
+CjPlugin :: struct { ok: bool; name: string; state: string; sealed: bool; why: string; }
+cj_read_plugin :: (ar: [] ClArena, row: string) -> CjPlugin {
+  ok: [1] bool; ok[0] = true; r: CjPlugin; lists := CJ_PLUGIN_LISTS;
+  r.name = cj_need_s(ar, row, "name", ok[..]); r.state = cj_need_s(ar, row, "state", ok[..]); r.sealed = cj_need_b(row, "signed", ok[..]);
+  if r.state == CJ_PLUGIN_FAILED { r.why = cj_need_s(ar, row, "why", ok[..]); } else if cj_has(row, "why") { ok[0] = false; }
+  for k: 0..<4 { if cj_items(row, lists[k]) < 0 { ok[0] = false; } }
+  r.ok = ok[0];
+  return r;
+}
+cj_plugin_item_at :: (ar: [] ClArena, row: string, list: string, i: int) -> string { return cl_text(ar, cl_raw(row, list), cl_item(cl_raw(row, list), i)); }
+
+// A credential: add's object (stored) or a row of ls.
+CjCredential :: struct { ok: bool; name: string; var: string; stored: bool; }
+cj_read_credential :: (ar: [] ClArena, row: string) -> CjCredential {
+  ok: [1] bool; ok[0] = true; r: CjCredential;
+  r.name = cj_need_s(ar, row, "name", ok[..]); r.var = cj_need_s(ar, row, "var", ok[..]);
+  if cj_has(row, "stored") { r.stored = cj_need_b(row, "stored", ok[..]); if !r.stored { ok[0] = false; } }
+  r.ok = ok[0];
+  return r;
+}
+
+// queue's object: state is "queued" or "held", and only a held job has a dest.
+CjQueued :: struct { ok: bool; id: string; held: bool; dest: string; }
+cj_read_queued :: (ar: [] ClArena, text: string) -> CjQueued {
+  ok: [1] bool; ok[0] = true; r: CjQueued;
+  r.id = cj_need_s(ar, text, "job", ok[..]);
+  state := cj_need_s(ar, text, "state", ok[..]);
+  r.held = state == "held";
+  if r.held { r.dest = cj_need_s(ar, text, "dest", ok[..]); }
+  r.ok = ok[0] && (r.held || state == "queued") && r.held == cj_has(text, "dest");
+  return r;
+}
+
+// A job's file, or the line the daemon prints when it handled it (handled: it has session or refused, and when).
+CjJob :: struct { ok: bool; id: string; task: string; engine: string; cwd: string; credentials: string; at_us: int; handled: bool; session: string; refused: string; handled_us: int; }
+cj_read_job :: (ar: [] ClArena, text: string) -> CjJob {
+  ok: [1] bool; ok[0] = true; r: CjJob;
+  r.id = cj_need_s(ar, text, "id", ok[..]); r.task = cj_need_s(ar, text, "task", ok[..]); r.engine = cj_need_s(ar, text, "engine", ok[..]);
+  r.cwd = cj_need_s(ar, text, "cwd", ok[..]); r.at_us = cj_need_i(text, "at", ok[..]);
+  if cj_has(text, "credentials") { r.credentials = cj_need_s(ar, text, "credentials", ok[..]); }
+  r.handled = cj_has(text, "handled");
+  if r.handled {
+    r.handled_us = cj_need_i(text, "handled", ok[..]);
+    if cj_has(text, "session") { r.session = cj_need_s(ar, text, "session", ok[..]); if r.session.count == 0 || cj_has(text, "refused") { ok[0] = false; } }
+    else { r.refused = cj_need_s(ar, text, "refused", ok[..]); }
+  }
+  r.ok = ok[0];
+  return r;
+}
+
+// The heartbeat, or jobs' daemon object (has_up).
+CjBeat :: struct { ok: bool; name: string; host: string; engines: string; roots: string; credentials: string; at_us: int; has_up: bool; up: bool; }
+cj_read_beat :: (ar: [] ClArena, text: string) -> CjBeat {
+  ok: [1] bool; ok[0] = true; r: CjBeat;
+  r.name = cj_need_s(ar, text, "name", ok[..]); r.host = cj_need_s(ar, text, "host", ok[..]); r.engines = cj_need_s(ar, text, "engines", ok[..]);
+  r.roots = cj_need_s(ar, text, "roots", ok[..]); r.credentials = cj_need_s(ar, text, "credentials", ok[..]); r.at_us = cj_need_i(text, "at", ok[..]);
+  r.has_up = cj_has(text, "up");
+  if r.has_up { r.up = cj_need_b(text, "up", ok[..]); }
+  r.ok = ok[0];
+  return r;
+}
+// jobs: whether a daemon has run (its object is at "daemon"), and the rows at "jobs".
+CjJobRow :: struct { ok: bool; id: string; state: string; task: string; session: string; why: string; dest: string; remote_job: string; failed: bool; exit: int; }
+cj_read_jobs_row :: (ar: [] ClArena, row: string) -> CjJobRow {
+  ok: [1] bool; ok[0] = true; r: CjJobRow;
+  r.id = cj_need_s(ar, row, "job", ok[..]); r.state = cj_need_s(ar, row, "state", ok[..]); r.task = cj_need_s(ar, row, "task", ok[..]);
+  if cj_has(row, "session") { r.session = cj_need_s(ar, row, "session", ok[..]); }
+  if cj_has(row, "why") { r.why = cj_need_s(ar, row, "why", ok[..]); }
+  if cj_has(row, "dest") { r.dest = cj_need_s(ar, row, "dest", ok[..]); }
+  if cj_has(row, "remote_job") { r.remote_job = cj_need_s(ar, row, "remote_job", ok[..]); }
+  r.failed = cj_has(row, "exit");
+  if r.failed { r.exit = cj_need_i(row, "exit", ok[..]); }
+  r.ok = ok[0];
+  return r;
+}
+
+// host list: a waiting browser (`at` is asked_at) or an allowed one (`at` is expires_at; id is its grant).
+CjHostRow :: struct { ok: bool; id: string; key: string; label: string; at: int; }
+cj_read_host_waiting :: (ar: [] ClArena, row: string) -> CjHostRow {
+  ok: [1] bool; ok[0] = true; r: CjHostRow;
+  r.id = cj_need_s(ar, row, "id", ok[..]); r.key = cj_need_s(ar, row, "key", ok[..]); r.label = cj_need_s(ar, row, "label", ok[..]); r.at = cj_need_i(row, "asked_at", ok[..]);
+  r.ok = ok[0];
+  return r;
+}
+cj_read_host_browser :: (ar: [] ClArena, row: string) -> CjHostRow {
+  ok: [1] bool; ok[0] = true; r: CjHostRow;
+  r.id = cj_need_s(ar, row, "grant", ok[..]); r.key = cj_need_s(ar, row, "key", ok[..]); r.label = cj_need_s(ar, row, "label", ok[..]); r.at = cj_need_i(row, "expires_at", ok[..]);
+  r.ok = ok[0];
+  return r;
+}
+
+// decide: decided, with the probability in thousandths; or its error.
+CjDecide :: struct { ok: bool; decided: bool; choice: string; thousandths: int; error: string; }
+cj_read_decide :: (ar: [] ClArena, text: string) -> CjDecide {
+  ok: [1] bool; ok[0] = true; r: CjDecide;
+  r.decided = cj_has(text, "choice");
+  if !r.decided { r.error = cj_need_s(ar, text, "error", ok[..]); r.ok = ok[0]; return r; }
+  r.choice = cj_need_s(ar, text, "choice", ok[..]);
+  p := cl_raw(text, "probability");     // D.DDD
+  dot := 0; while dot < p.count && p[dot] != '.' { dot += 1; }
+  if dot == 0 || p.count != dot + 4 || cj_has(text, "error") { return r; }
+  for c, i: p { if i != dot && (c < '0' || c > '9') { return r; } if i != dot { r.thousandths = r.thousandths * 10 + cast(int) (c - '0'); } }
+  r.ok = ok[0];
+  return r;
+}
+
+// A source's policy entry. authors: the list joined with commas, as cj_policy_entry takes it.
+CjPolicy :: struct { ok: bool; mode: string; authors: string; engine: string; label: string; channel: string; deliver: bool; ci: bool; policy: string; to: string; send: bool; }
+cj_opt_s :: (ar: [] ClArena, text: string, key: string, ok: [] bool) -> string { return ifx cj_has(text, key) then cj_need_s(ar, text, key, ok) else ""; }
+// A member the writer writes only as true.
+cj_opt_true :: (text: string, key: string, ok: [] bool) -> bool {
+  if !cj_has(text, key) { return false; }
+  if !cj_need_b(text, key, ok) { ok[0] = false; }
+  return true;
+}
+cj_read_policy :: (ar: [] ClArena, entry: string, joined: [] u8) -> CjPolicy {
+  ok: [1] bool; ok[0] = true; r: CjPolicy;
+  r.mode = cj_need_s(ar, entry, "mode", ok[..]);
+  count := cj_items(entry, "authors"); n := 0;
+  if count < 0 { return r; }
+  for i: 0..<count {
+    a := cl_text(ar, cl_raw(entry, "authors"), cl_item(cl_raw(entry, "authors"), i));
+    if a.count == 0 || n + a.count + 1 > joined.count { return r; }
+    if i > 0 { joined[n] = ','; n += 1; }
+    for c: a { if c == ',' { return r; } joined[n] = c; n += 1; }
+  }
+  r.authors = cast(string) joined[0..<n];
+  r.engine = cj_opt_s(ar, entry, "engine", ok[..]); r.label = cj_opt_s(ar, entry, "label", ok[..]); r.channel = cj_opt_s(ar, entry, "channel", ok[..]);
+  r.deliver = cj_opt_true(entry, "deliver", ok[..]); r.ci = cj_opt_true(entry, "ci", ok[..]);
+  r.policy = cj_opt_s(ar, entry, "policy", ok[..]); r.to = cj_opt_s(ar, entry, "to", ok[..]); r.send = cj_opt_true(entry, "send", ok[..]);
+  r.ok = ok[0];
+  return r;
+}
+
+// A router line: kind is trigger, batch or recall, and the members are that kind's.
+CjRouterLine :: struct { ok: bool; kind: string; id: string; source: string; thread: string; fate: string; session: string; note: string; at_us: int;
+                         events: int; ms: int; decided: bool; sessions: int; hops: int; bytes: int; }
+cj_read_router_line :: (ar: [] ClArena, line: string) -> CjRouterLine {
+  ok: [1] bool; ok[0] = true; r: CjRouterLine;
+  r.kind = cj_need_s(ar, line, "kind", ok[..]);
+  if r.kind == "trigger" {
+    r.id = cj_need_s(ar, line, "id", ok[..]); r.source = cj_need_s(ar, line, "source", ok[..]); r.thread = cj_need_s(ar, line, "thread", ok[..]);
+    r.fate = cj_need_s(ar, line, "fate", ok[..]); r.session = cj_opt_s(ar, line, "session", ok[..]); r.note = cj_opt_s(ar, line, "note", ok[..]);
+    r.at_us = cj_need_i(line, "at_us", ok[..]);
+  } else if r.kind == "batch" {
+    r.events = cj_need_i(line, "events", ok[..]); r.ms = cj_need_i(line, "ms", ok[..]); r.decided = cj_need_b(line, "decided", ok[..]); r.at_us = cj_need_i(line, "at_us", ok[..]);
+  } else if r.kind == "recall" {
+    r.id = cj_need_s(ar, line, "id", ok[..]); r.sessions = cj_need_i(line, "sessions", ok[..]); r.hops = cj_need_i(line, "hops", ok[..]); r.bytes = cj_need_i(line, "bytes", ok[..]);
+  } else { ok[0] = false; }
+  r.ok = ok[0];
+  return r;
+}
+
+// consent: how many events, and each grant at "grants".
+CjConsentGrant :: struct { ok: bool; grant: int; engine: string; classes: string; state: string; sends: int; bytes: int; }
+cj_read_consent_grant :: (ar: [] ClArena, row: string) -> CjConsentGrant {
+  ok: [1] bool; ok[0] = true; r: CjConsentGrant;
+  r.grant = cj_need_i(row, "grant", ok[..]); r.engine = cj_need_s(ar, row, "engine", ok[..]); r.classes = cj_need_s(ar, row, "classes", ok[..]);
+  r.state = cj_need_s(ar, row, "state", ok[..]); r.sends = cj_need_i(row, "sends", ok[..]); r.bytes = cj_need_i(row, "bytes", ok[..]);
+  r.ok = ok[0] && (r.state == "active" || r.state == "revoked" || r.state == "expired");
+  return r;
+}
+
+CjRemembered :: struct { ok: bool; key: string; scope: string; event: int; state: string; }
+cj_read_remembered :: (ar: [] ClArena, text: string) -> CjRemembered {
+  ok: [1] bool; ok[0] = true; r: CjRemembered;
+  r.key = cj_need_s(ar, text, "key", ok[..]); r.scope = cj_need_s(ar, text, "scope", ok[..]); r.event = cj_need_i(text, "event", ok[..]); r.state = cj_need_s(ar, text, "state", ok[..]);
+  r.ok = ok[0] && (r.scope == "user" || r.scope == "project") && (r.state == "current" || r.state == "conflict" || r.state == "forgotten");
+  return r;
+}
+
+// recall: its head, and each fact at "facts" (said: it has a said_in).
+CjRecall :: struct { ok: bool; events: int; ranked: bool; facts: int; }
+CjRecallFact :: struct { ok: bool; key: string; text: string; scope: string; version: int; has_score: bool; score: int; said: bool; session: string; line: int; state: string; }
+cj_read_recall :: (text: string) -> CjRecall {
+  ok: [1] bool; ok[0] = true; r: CjRecall;
+  verified := cj_need_b(text, "verified", ok[..]);
+  r.events = cj_need_i(text, "events", ok[..]); r.ranked = cj_need_b(text, "ranked", ok[..]); r.facts = cj_items(text, "facts");
+  r.ok = ok[0] && verified && r.facts >= 0;
+  return r;
+}
+cj_read_recall_fact :: (ar: [] ClArena, row: string) -> CjRecallFact {
+  ok: [1] bool; ok[0] = true; r: CjRecallFact;
+  r.key = cj_need_s(ar, row, "key", ok[..]); r.text = cj_need_s(ar, row, "text", ok[..]); r.scope = cj_need_s(ar, row, "scope", ok[..]); r.version = cj_need_i(row, "version", ok[..]);
+  r.has_score = cj_has(row, "score");
+  if r.has_score { r.score = cj_need_i(row, "score", ok[..]); }
+  r.said = cj_has(row, "said_in");
+  if r.said {
+    said := cl_raw(row, "said_in");
+    r.session = cj_need_s(ar, said, "session", ok[..]); r.line = cj_need_i(said, "line", ok[..]); r.state = cj_need_s(ar, said, "state", ok[..]);
+    if r.state != "held" && r.state != "changed" && r.state != "gone" { ok[0] = false; }
+  }
+  r.ok = ok[0] && (r.scope == "user" || r.scope == "project");
+  return r;
+}
+
+// ---- checks
+
+#test "cli json: a session row, running and cut, and its readers" {
+  b: [512] u8; c: [512] u8; ab: [512] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+  row := cj_session(b[..], "20261113-180734-900", "echo", "running", 1, 0, 5, "/w", "say \"hi\"");
+  #assert row == "{\"id\":\"20261113-180734-900\",\"engine\":\"echo\",\"state\":\"running\",\"effect_outcome\":\"unknown\",\"turns\":1,\"steps\":0,\"started_us\":5,\"cwd\":\"/w\",\"task\":\"say \\\"hi\\\"\"}";
+  #assert cj_session_id(ar[..], row) == "20261113-180734-900" && cj_session_engine(ar[..], row) == "echo" && cj_session_state(ar[..], row) == CJ_RUNNING;
+  #assert cj_session_task(ar[..], row) == "say \"hi\"" && cj_session_cwd(ar[..], row) == "/w" && cj_session_started(row).ok && cj_session_started(row).value == 5;
+  done := cj_session(c[..], "x", "codex", "finished", 2, 3, 7, "/w", "t");
+  #assert done == "{\"id\":\"x\",\"engine\":\"codex\",\"state\":\"finished\",\"turns\":2,\"steps\":3,\"started_us\":7,\"cwd\":\"/w\",\"task\":\"t\"}";
+  d: [512] u8;
+  #assert cj_session_cut(d[..], done, 18) == "{\"id\":\"x\",\"engine\":\"codex\",\"state\":\"finished\",\"turns\":2,\"steps\":3,\"started_us\":7,\"cwd\":\"/w\",\"task\":\"t\",\"cut\":18}";
+  #assert cj_session_cut(d[..], "", 18) == "";
+  small: [16] u8;
+  #assert cj_session(small[..], "x", "codex", "finished", 2, 3, 7, "/w", "t") == "";
+}
+
+#test "cli json: the sessions list's readers" {
+  ab: [512] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+  list := "[{\"id\":\"a\",\"engine\":\"echo\",\"state\":\"finished\",\"task\":\"one\"},{\"id\":\"b\",\"engine\":\"claude\",\"state\":\"running\",\"task\":\"two\"}]";
+  #assert cj_sessions_count(list) == 2 && cj_sessions_count("[]") == 0 && cj_sessions_count("nope") == -1;
+  #assert cj_session_id(ar[..], cj_sessions_row(list, 1)) == "b" && cj_sessions_row(list, 2) == "";
+  #assert cj_sessions_str(ar[..], list, 0, "id") == "a" && cj_sessions_str(ar[..], list, 1, "state") == "running" && cj_sessions_str(ar[..], list, 2, "id") == "";
+  #assert cj_sessions_str(ar[..], list, 1, "engine") == "claude" && cj_sessions_str(ar[..], list, 0, "task") == "one";
+  #assert cj_sessions_str(ar[..], "{\"a\":{\"id\":\"x\"}}", 0, "id") == "" && cj_sessions_str(ar[..], "", 0, "id") == "";
+}
+
+#test "cli json: usage, import, detached, replay, bench" {
+  b: [1024] u8;
+  n := json_raw(b[..], 0, CJ_LIST_OPEN);
+  n = cj_usage_agent(b[..], n, true, "claude", "Claude Max");
+  n = cj_usage_window(b[..], n, true, "Session", 12, 1793631600); n = cj_usage_window(b[..], n, false, "Week", 84, 0);
+  n = cj_usage_agent_end(b[..], n, "");
+  n = cj_usage_agent(b[..], n, false, "codex", ""); n = cj_usage_agent_end(b[..], n, "Codex isn't signed in here");
+  n = json_raw(b[..], n, CJ_LIST_CLOSE);
+  #assert cj_text(b[..], n) == "[{\"agent\":\"claude\",\"plan\":\"Claude Max\",\"windows\":[{\"label\":\"Session\",\"used_percent\":12,\"resets_at\":1793631600},{\"label\":\"Week\",\"used_percent\":84,\"resets_at\":0}]},{\"agent\":\"codex\",\"plan\":\"\",\"windows\":[],\"error\":\"Codex isn't signed in here\"}]";
+  #assert cj_text(b[..], cj_import(b[..], 0, "20261102-120000-000", 1)) == "{\"id\":\"20261102-120000-000\",\"turns\":1}";
+  #assert cj_text(b[..], cj_detached(b[..], 0, "20261113-180734-900", 42)) == "{\"id\":\"20261113-180734-900\",\"pid\":42}";
+  n = json_raw(b[..], 0, CJ_REPLAY_OPEN); n = cj_replay_request(b[..], n, true, 1, 6, "ab", true); n = cj_replay_request(b[..], n, false, 2, 7, "cd", false); n = cj_replay_close(b[..], n, 1, 2);
+  #assert cj_text(b[..], n) == "{\"requests\":[{\"turn\":1,\"bytes\":6,\"sha256\":\"ab\",\"same\":true},{\"turn\":2,\"bytes\":7,\"sha256\":\"cd\",\"same\":false}],\"matched\":1,\"total\":2}";
+  n = json_raw(b[..], 0, CJ_REPLAY_OPEN); n = cj_replay_close(b[..], n, 0, 0);
+  #assert cj_text(b[..], n) == "{\"requests\":[],\"matched\":0,\"total\":0}";
+  #assert cj_text(b[..], cj_bench(b[..], 0, "harness", true, 4530, 9, "ok")) == "{\"suite\":\"harness\",\"passed\":true,\"ms\":4530,\"at_us\":9,\"last\":\"ok\"}";
+  long: [2100] u8; for i: 0..<long.count { long[i] = 'x'; }
+  big: [4096] u8;
+  #assert cj_bench(big[..], 0, "checks", false, 1, 2, cast(string) long[..]) == 58 + CJ_BENCH_LAST + 2;
+  tiny: [8] u8;
+  #assert cj_import(tiny[..], 0, "20261102-120000-000", 1) == -1;
+}
+
+#test "cli json: plugins, credentials, queue, daemon, jobs" {
+  b: [1024] u8; lists := CJ_PLUGIN_LISTS;
+  n := cj_plugin(b[..], 0, "tidy", "failed", false, "uses format, which no active plugin provides");
+  for k: 0..<4 { n = cj_plugin_list(b[..], n, lists[k]); if k == 3 { n = cj_plugin_item(b[..], n, true, "format"); n = cj_plugin_item(b[..], n, false, "lint"); } n = cj_plugin_list_end(b[..], n); }
+  n = cj_plugin_end(b[..], n);
+  #assert cj_text(b[..], n) == "{\"name\":\"tidy\",\"state\":\"failed\",\"signed\":false,\"why\":\"uses format, which no active plugin provides\",\"commands\":[],\"defines\":[],\"provides\":[],\"uses\":[\"format\",\"lint\"]}";
+  n = cj_plugin(b[..], 0, "demo", "active", true, "ignored");
+  #assert cj_text(b[..], n) == "{\"name\":\"demo\",\"state\":\"active\",\"signed\":true";
+  #assert cj_text(b[..], cj_credential_stored(b[..], 0, "gh", "GH_TOKEN")) == "{\"name\":\"gh\",\"var\":\"GH_TOKEN\",\"stored\":true}";
+  n = json_raw(b[..], 0, CJ_LIST_OPEN); n = cj_credential_row(b[..], n, true, "gh", "GH_TOKEN"); n = cj_credential_row(b[..], n, false, "npm", "NPM_TOKEN"); n = json_raw(b[..], n, CJ_LIST_CLOSE);
+  #assert cj_text(b[..], n) == "[{\"name\":\"gh\",\"var\":\"GH_TOKEN\"},{\"name\":\"npm\",\"var\":\"NPM_TOKEN\"}]";
+  #assert cj_text(b[..], cj_queued(b[..], 0, "j1")) == "{\"job\":\"j1\",\"state\":\"queued\"}";
+  #assert cj_text(b[..], cj_held(b[..], 0, "j1", "box")) == "{\"job\":\"j1\",\"state\":\"held\",\"dest\":\"box\"}";
+  jb: [256] u8;
+  record := cj_text(jb[..], cj_job(jb[..], 0, "j1", "$ echo ok", "echo", "/w", "", 5));
+  #assert record == "{\"id\":\"j1\",\"task\":\"$ echo ok\",\"engine\":\"echo\",\"cwd\":\"/w\",\"at\":5}\n";
+  #assert cj_text(b[..], cj_job(b[..], 0, "j1", "t", "echo", "/w", "gh,npm", 5)) == "{\"id\":\"j1\",\"task\":\"t\",\"engine\":\"echo\",\"cwd\":\"/w\",\"credentials\":\"gh,npm\",\"at\":5}\n";
+  #assert cj_text(b[..], cj_job_handled(b[..], 0, record, "s1", "", 9)) == "{\"id\":\"j1\",\"task\":\"$ echo ok\",\"engine\":\"echo\",\"cwd\":\"/w\",\"at\":5,\"session\":\"s1\",\"handled\":9}\n";
+  #assert cj_text(b[..], cj_job_handled(b[..], 0, cast(string) record[0..<record.count - 1], "", "its engine is outside this machine's grant", 9)) == "{\"id\":\"j1\",\"task\":\"$ echo ok\",\"engine\":\"echo\",\"cwd\":\"/w\",\"at\":5,\"refused\":\"its engine is outside this machine's grant\",\"handled\":9}\n";
+  hb: [256] u8;
+  beat := cj_text(hb[..], cj_beat(hb[..], 0, "c8", "c8-host", "any", "/home/x", "", 7));
+  #assert beat == "{\"name\":\"c8\",\"host\":\"c8-host\",\"engines\":\"any\",\"roots\":\"/home/x\",\"credentials\":\"\",\"at\":7}\n";
+  n = cj_jobs_open(b[..], 0, beat, true);
+  n = cj_jobs_row(b[..], n, true, "j2", "failed", "t2", "", "", "box", "", true, 3);
+  n = cj_jobs_row(b[..], n, false, "j1", "started", "t1", "s1", "", "", "", false, 0);
+  n = cj_jobs_row(b[..], n, false, "j0", "sent", "t0", "", "", "box", "r9", false, 0);
+  n = cj_jobs_row(b[..], n, false, "j9", "refused", "t9", "", "no", "", "", false, 0);
+  n = cj_jobs_close(b[..], n);
+  #assert cj_text(b[..], n) == "{\"daemon\":{\"name\":\"c8\",\"host\":\"c8-host\",\"engines\":\"any\",\"roots\":\"/home/x\",\"credentials\":\"\",\"at\":7,\"up\":true},\"jobs\":[{\"job\":\"j2\",\"state\":\"failed\",\"task\":\"t2\",\"dest\":\"box\",\"exit\":3},{\"job\":\"j1\",\"state\":\"started\",\"task\":\"t1\",\"session\":\"s1\"},{\"job\":\"j0\",\"state\":\"sent\",\"task\":\"t0\",\"dest\":\"box\",\"remote_job\":\"r9\"},{\"job\":\"j9\",\"state\":\"refused\",\"task\":\"t9\",\"why\":\"no\"}]}";
+  n = cj_jobs_open(b[..], 0, "", false); n = cj_jobs_close(b[..], n);
+  #assert cj_text(b[..], n) == "{\"daemon\":null,\"jobs\":[]}";
+}
+
+#test "cli json: the host list" {
+  o: [1] Jo; b: [512] u8; jo_start(o[..], b[..]);
+  cj_host_open(o[..]); cj_host_waiting(o[..], "aa", "bb", "A \"quoted\" browser", 5); cj_host_allowed(o[..]); cj_host_browser(o[..], "cc", "dd", "Mine", 9); cj_host_close(o[..]);
+  #assert !o[0].bad && jo_text(o[..]) == "{\"waiting\":[{\"id\":\"aa\",\"key\":\"bb\",\"label\":\"A \\\"quoted\\\" browser\",\"asked_at\":5}],\"browsers\":[{\"grant\":\"cc\",\"key\":\"dd\",\"label\":\"Mine\",\"expires_at\":9}]}";
+  jo_start(o[..], b[..]); cj_host_open(o[..]); cj_host_allowed(o[..]); cj_host_close(o[..]);
+  #assert jo_text(o[..]) == "{\"waiting\":[],\"browsers\":[]}";
+}
+
+#test "cli json: the whole-output readers take what the writers wrote and refuse what they did not" {
+  ab: [2048] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]}; b: [512] u8;
+  s := cj_read_session(ar[..], cj_session(b[..], "x", "codex", "running", 2, 3, 7, "/w", "a \"task\""));
+  #assert s.ok && s.id == "x" && s.engine == "codex" && s.state == "running" && s.turns == 2 && s.steps == 3 && s.started_us == 7 && s.cwd == "/w" && s.task == "a \"task\"" && s.cut == -1;
+  #assert !cj_read_session(ar[..], "{\"id\":\"x\",\"engine\":\"codex\",\"state\":\"running\",\"turns\":2,\"steps\":3,\"started_us\":7,\"cwd\":\"/w\",\"task\":\"t\"}").ok;
+  #assert !cj_read_session(ar[..], "{\"id\":\"x\",\"engine\":\"codex\",\"state\":\"finished\",\"turns\":\"2\",\"steps\":3,\"started_us\":7,\"cwd\":\"/w\",\"task\":\"t\"}").ok;
+  #assert cj_read_session(ar[..], "{\"id\":\"x\",\"engine\":\"codex\",\"state\":\"finished\",\"turns\":2,\"steps\":3,\"started_us\":7,\"cwd\":\"/w\",\"task\":\"t\",\"cut\":18}").cut == 18;
+  #assert cj_read_stop(CJ_STOP_NOT_RUNNING) == CJ_STOP_NOT_RUNNING && cj_read_stop(CJ_STOP_STOPPED) == CJ_STOP_STOPPED && cj_read_stop(CJ_STOP_KILLED) == CJ_STOP_KILLED;
+  #assert cj_read_stop("{\"stopped\":false}") == "" && cj_read_stop("{}") == "" && cj_read_stop("{\"stopped\":true,\"killed\":false}") == "";
+  #assert cj_read_import(ar[..], "{\"id\":\"a\",\"turns\":1}").n == 1 && !cj_read_import(ar[..], "{\"id\":\"a\",\"pid\":1}").ok && cj_read_detached(ar[..], "{\"id\":\"a\",\"pid\":9}").n == 9;
+  q := cj_read_queued(ar[..], "{\"job\":\"j\",\"state\":\"held\",\"dest\":\"box\"}");
+  #assert q.ok && q.held && q.dest == "box" && cj_read_queued(ar[..], "{\"job\":\"j\",\"state\":\"queued\"}").ok && !cj_read_queued(ar[..], "{\"job\":\"j\",\"state\":\"queued\",\"dest\":\"box\"}").ok && !cj_read_queued(ar[..], "{\"job\":\"j\",\"state\":\"done\"}").ok;
+  j := cj_read_job(ar[..], "{\"id\":\"j1\",\"task\":\"t\",\"engine\":\"echo\",\"cwd\":\"/w\",\"credentials\":\"gh\",\"at\":5,\"refused\":\"no\",\"handled\":9}");
+  #assert j.ok && j.handled && j.refused == "no" && j.session == "" && j.credentials == "gh" && j.handled_us == 9;
+  #assert !cj_read_job(ar[..], "{\"id\":\"j1\",\"task\":\"t\",\"engine\":\"echo\",\"cwd\":\"/w\",\"at\":5,\"handled\":9}").ok;
+  p := cj_read_plugin(ar[..], "{\"name\":\"fmt\",\"state\":\"active\",\"signed\":false,\"commands\":[],\"defines\":[\"format\"],\"provides\":[\"format\"],\"uses\":[]}");
+  #assert p.ok && p.name == "fmt" && cj_items("{\"defines\":[\"format\"]}", "defines") == 1 && cj_plugin_item_at(ar[..], "{\"defines\":[\"format\"]}", "defines", 0) == "format";
+  #assert !cj_read_plugin(ar[..], "{\"name\":\"fmt\",\"state\":\"failed\",\"signed\":false,\"commands\":[],\"defines\":[],\"provides\":[],\"uses\":[]}").ok;
+  #assert !cj_read_plugin(ar[..], "{\"name\":\"fmt\",\"state\":\"active\",\"signed\":false,\"commands\":[],\"defines\":[],\"provides\":[]}").ok;
+  u := cj_read_usage_agent(ar[..], "{\"agent\":\"codex\",\"plan\":\"\",\"windows\":[{\"label\":\"Week\",\"used_percent\":4,\"resets_at\":9}],\"error\":\"why\"}");
+  w := cj_read_usage_window(ar[..], "{\"agent\":\"codex\",\"plan\":\"\",\"windows\":[{\"label\":\"Week\",\"used_percent\":4,\"resets_at\":9}]}", 0);
+  #assert u.ok && u.windows == 1 && u.error == "why" && w.ok && w.label == "Week" && w.used_percent == 4 && w.resets_at == 9;
+  #assert !cj_read_usage_agent(ar[..], "{\"agent\":\"codex\",\"plan\":\"\"}").ok;
+  h := cj_read_host_browser(ar[..], "{\"grant\":\"cc\",\"key\":\"dd\",\"label\":\"Mine\",\"expires_at\":9}");
+  #assert h.ok && h.id == "cc" && h.at == 9 && !cj_read_host_waiting(ar[..], "{\"grant\":\"cc\",\"key\":\"dd\",\"label\":\"Mine\",\"expires_at\":9}").ok;
+}
+
+#test "cli json: decide, policy, router, consent, memory" {
+  b: [2048] u8; ab: [2048] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+  #assert cj_text(b[..], cj_decided(b[..], 0, "yes", 962)) == "{\"choice\":\"yes\",\"probability\":0.962}";
+  #assert cj_text(b[..], cj_decided(b[..], 0, "no", 1000)) == "{\"choice\":\"no\",\"probability\":1.000}";
+  #assert cj_text(b[..], cj_decided(b[..], 0, "a", 7)) == "{\"choice\":\"a\",\"probability\":0.007}" && cj_text(b[..], cj_decided(b[..], 0, "a", 40)) == "{\"choice\":\"a\",\"probability\":0.040}";
+  #assert cj_text(b[..], cj_decide_error(b[..], 0, "needs a question")) == "{\"error\":\"needs a question\"}";
+  d := cj_read_decide(ar[..], "{\"choice\":\"yes\",\"probability\":0.962}");
+  #assert d.ok && d.decided && d.choice == "yes" && d.thousandths == 962 && cj_read_decide(ar[..], "{\"choice\":\"no\",\"probability\":1.000}").thousandths == 1000;
+  #assert !cj_read_decide(ar[..], "{\"choice\":\"yes\",\"probability\":0.96}").ok && !cj_read_decide(ar[..], "{\"choice\":\"yes\"}").ok && !cj_read_decide(ar[..], "{}").ok;
+  e := cj_read_decide(ar[..], "{\"error\":\"needs a question\"}");
+  #assert e.ok && !e.decided && e.error == "needs a question" && cj_decide_why(ar[..], "{\"error\":\"needs a question\"}") == "needs a question" && cj_decide_why(ar[..], "{\"choice\":\"yes\",\"probability\":0.962}") == "";
+  eb: [512] u8; mb: [512] u8; jb: [128] u8;
+  entry := cj_policy_entry(eb[..], "candidate", "kim,,lee", "echo", "agent", "issue", true, true, "work on requests");
+  #assert entry == "{\"mode\":\"candidate\",\"authors\":[\"kim\",\"lee\"],\"engine\":\"echo\",\"label\":\"agent\",\"channel\":\"issue\",\"deliver\":true,\"ci\":true,\"policy\":\"work on requests\"}";
+  plain := cj_policy_entry(mb[..], "ignore", "*", "", "", "", false, false, "");
+  #assert plain == "{\"mode\":\"ignore\",\"authors\":[\"*\"]}";
+  n := cj_policy_entry_mail(b[..], plain, "kim@example.com", true);
+  #assert cj_text(b[..], n) == "{\"mode\":\"ignore\",\"authors\":[\"*\"],\"to\":\"kim@example.com\",\"send\":true}";
+  pr := cj_read_policy(ar[..], cj_text(b[..], n), jb[..]);
+  #assert pr.ok && pr.mode == "ignore" && pr.authors == "*" && pr.to == "kim@example.com" && pr.send && !pr.deliver && !pr.ci && pr.engine == "";
+  pe := cj_read_policy(ar[..], entry, jb[..]);
+  #assert pe.ok && pe.authors == "kim,lee" && pe.deliver && pe.ci && pe.policy == "work on requests" && pe.channel == "issue" && pe.label == "agent";
+  #assert !cj_read_policy(ar[..], "{\"mode\":\"ignore\"}", jb[..]).ok && !cj_read_policy(ar[..], "{\"mode\":\"ignore\",\"authors\":[\"*\"],\"deliver\":false}", jb[..]).ok;
+  n = json_raw(b[..], 0, CJ_SOURCES_OPEN); n = cj_sources_member(b[..], n, true, "local", plain); n = cj_sources_member(b[..], n, false, "team", entry); n = json_raw(b[..], n, CJ_SOURCES_CLOSE);
+  #assert cj_text(b[..], n) == "{\"sources\":{\n  \"local\":{\"mode\":\"ignore\",\"authors\":[\"*\"]},\n  \"team\":{\"mode\":\"candidate\",\"authors\":[\"kim\",\"lee\"],\"engine\":\"echo\",\"label\":\"agent\",\"channel\":\"issue\",\"deliver\":true,\"ci\":true,\"policy\":\"work on requests\"}}}\n";
+  n = cj_router_trigger(b[..], 0, "t1", "local", "ci", "addressed to the agent: new worker", "s1", "", 5);
+  #assert cj_text(b[..], n) == "{\"kind\":\"trigger\",\"id\":\"t1\",\"source\":\"local\",\"thread\":\"ci\",\"fate\":\"addressed to the agent: new worker\",\"session\":\"s1\",\"at_us\":5}\n";
+  #assert cj_router_id(ar[..], cast(string) b[0..<n - 1]) == "t1" && cj_router_session(ar[..], cast(string) b[0..<n - 1]) == "s1";
+  t := cj_read_router_line(ar[..], cast(string) b[0..<n - 1]);
+  #assert t.ok && t.kind == "trigger" && t.fate == "addressed to the agent: new worker" && t.session == "s1" && t.note == "" && t.at_us == 5;
+  n = cj_router_trigger(b[..], 0, "t2", "team", "", "dropped: no decision", "", "why", 6);
+  #assert cj_text(b[..], n) == "{\"kind\":\"trigger\",\"id\":\"t2\",\"source\":\"team\",\"thread\":\"\",\"fate\":\"dropped: no decision\",\"note\":\"why\",\"at_us\":6}\n";
+  #assert cj_router_session(ar[..], cast(string) b[0..<n - 1]) == "";
+  long: [2100] u8; for i: 0..<long.count { long[i] = 'x'; }
+  big: [4096] u8;
+  #assert cj_router_trigger(big[..], 0, "t", "s", "h", "f", "", cast(string) long[..], 1) == 85 + CJ_ROUTER_NOTE;
+  n = cj_router_batch(b[..], 0, 8, 12, false, 7);
+  #assert cj_text(b[..], n) == "{\"kind\":\"batch\",\"events\":8,\"ms\":12,\"decided\":false,\"at_us\":7}\n" && cj_read_router_line(ar[..], cast(string) b[0..<n - 1]).events == 8;
+  n = cj_router_recall(b[..], 0, "t1", 1, 2, 438);
+  #assert cj_text(b[..], n) == "{\"kind\":\"recall\",\"id\":\"t1\",\"sessions\":1,\"hops\":2,\"bytes\":438}\n" && cj_read_router_line(ar[..], cast(string) b[0..<n - 1]).hops == 2;
+  #assert !cj_read_router_line(ar[..], "{\"kind\":\"other\"}").ok && !cj_read_router_line(ar[..], "{\"kind\":\"batch\",\"events\":8}").ok;
+  n = cj_consent_open(b[..], 0, 3); n = cj_consent_grant(b[..], n, true, 0, "microcoder", "user", "revoked", 0, 0); n = cj_consent_grant(b[..], n, false, 1, "system-one", "session,project", "active", 2, 74); n = cj_consent_close(b[..], n);
+  #assert cj_text(b[..], n) == "{\"events\":3,\"grants\":[{\"grant\":0,\"engine\":\"microcoder\",\"classes\":\"user\",\"state\":\"revoked\",\"sends\":0,\"bytes\":0},{\"grant\":1,\"engine\":\"system-one\",\"classes\":\"session,project\",\"state\":\"active\",\"sends\":2,\"bytes\":74}]}";
+  g := cj_read_consent_grant(ar[..], cj_item(cj_text(b[..], n), "grants", 1));
+  #assert g.ok && g.grant == 1 && g.engine == "system-one" && g.classes == "session,project" && g.sends == 2 && g.bytes == 74;
+  #assert !cj_read_consent_grant(ar[..], "{\"grant\":0,\"engine\":\"x\",\"classes\":\"user\",\"state\":\"paused\",\"sends\":0,\"bytes\":0}").ok;
+  n = cj_remembered(b[..], 0, "build", "user", 2, "conflict");
+  #assert cj_text(b[..], n) == "{\"key\":\"build\",\"scope\":\"user\",\"event\":2,\"state\":\"conflict\"}" && cj_read_remembered(ar[..], cj_text(b[..], n)).event == 2;
+  #assert !cj_read_remembered(ar[..], "{\"key\":\"build\",\"scope\":\"team\",\"event\":2,\"state\":\"current\"}").ok;
+  n = cj_recall_open(b[..], 0, 6, true);
+  n = cj_recall_fact(b[..], n, true, "deploy", "Ship it.", "project", 1, true, 718); n = cj_recall_fact_end(b[..], n);
+  n = cj_recall_fact(b[..], n, false, "build", "make", "user", 3, true, 637); n = cj_recall_said(b[..], n, "s1", 2, "held"); n = cj_recall_fact_end(b[..], n);
+  n = cj_recall_close(b[..], n);
+  #assert cj_text(b[..], n) == "{\"verified\":true,\"events\":6,\"ranked\":true,\"facts\":[{\"key\":\"deploy\",\"text\":\"Ship it.\",\"scope\":\"project\",\"version\":1,\"score\":718},{\"key\":\"build\",\"text\":\"make\",\"scope\":\"user\",\"version\":3,\"score\":637,\"said_in\":{\"session\":\"s1\",\"line\":2,\"state\":\"held\"}}]}";
+  rc := cj_read_recall(cj_text(b[..], n)); f := cj_read_recall_fact(ar[..], cj_item(cj_text(b[..], n), "facts", 1));
+  #assert rc.ok && rc.events == 6 && rc.ranked && rc.facts == 2 && f.ok && f.has_score && f.score == 637 && f.said && f.session == "s1" && f.line == 2 && f.state == "held";
+  n = cj_recall_open(b[..], 0, 0, false); n = cj_recall_close(b[..], n);
+  #assert cj_text(b[..], n) == "{\"verified\":true,\"events\":0,\"ranked\":false,\"facts\":[]}";
+}

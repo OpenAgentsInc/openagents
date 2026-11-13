@@ -1,0 +1,96 @@
+// Makers, tips and payouts on the wire, what coax/web/api/makers.c writes itself (Protocol, GitHub
+// #13250): proto/openagents/api/v1alpha1/makers.proto (profile api-routes) names the members.
+// Most of the makers' answers are built in SQL and carried as they came; the wallet service's
+// answers are read in SQL too. makers.c calls the #export_c writers below through
+// makers-wire.generated.c and builds no body of its own:
+//   mkw_claim_link_write    POST /api/admin/makers/<realm>/code 200: the code and its claim link
+//   mkw_running_write       POST /api/admin/makers/payouts/run 200
+//   mkw_invoice_write       to the wallet service, /sent and /paid: the invoice asked about
+//   mkw_quote_bonus_write   to the wallet service, /quote: a first tip's bonus for a maker's address
+//   mkw_quote_gift_write    the same for a gift
+//   mkw_quote_tip_write     the same for a player's tip (and an upgrade)
+//   mkw_send_write          to the wallet service, /send: the invoice and the most fee on top
+//   mkw_empty_write         {}: a request with no body, a wallet answer that did not come, to SQL
+// The bytes are the ones makers.c wrote before this file: proto/verse/api-routes-v1alpha1.json
+// holds what a running API answered and routes-goldens.coax holds each to its message. Strings
+// are escaped as JSON, where the C wrote them raw: a realm is a slug, a code is hex, an invoice is
+// bech32, and the origin is ours, so no byte differs for them; a maker's Lightning Address is the
+// one value that comes from a person, and a quote or backslash in one (were SQL ever to keep it)
+// is now escaped where the C sent the wallet broken JSON. The sats of a quote are the number as
+// SQL printed it. A writer returns the body's length, or -1 when it does not fit.
+//   coax/bin/coax test coax/web/api/makers-wire.coax --library
+#load "api-wire.coax";
+
+// {"realm":"my-world","code":"00ff..","link":"https://openagents.com/worlds/my-world/claim#code=00ff.."}
+mkw_claim_link_write :: (realm: string, code: string, origin: string, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "{\"realm\":"); jo_quoted(o[..], realm); jo_put(o[..], ",\"code\":"); jo_quoted(o[..], code);
+  jo_put(o[..], ",\"link\":\""); jo_escape_bytes(o[..], origin); jo_put(o[..], "/worlds/"); jo_escape_bytes(o[..], realm);
+  jo_put(o[..], "/claim#code="); jo_escape_bytes(o[..], code); jo_put(o[..], "\"}");
+  return aw_len(o[..]);
+}
+// {"running":true}
+mkw_running_write :: (out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0); jo_put(o[..], "{\"running\":true}"); return aw_len(o[..]);
+}
+// {}
+mkw_empty_write :: (out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0); jo_put(o[..], "{}"); return aw_len(o[..]);
+}
+// {"invoice":"lnbc1.."}
+mkw_invoice_write :: (invoice: string, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "{\"invoice\":"); jo_quoted(o[..], invoice); jo_put(o[..], "}");
+  return aw_len(o[..]);
+}
+// {"address":"maker@wallet.example","sats":1000,"comment":"BEFORE my-world AFTER"}
+mkw_quote :: (address: string, sats: string, before: string, realm: string, after: string, out: [] u8) -> int #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "{\"address\":"); jo_quoted(o[..], address); jo_put(o[..], ",\"sats\":"); jo_put(o[..], sats);
+  jo_put(o[..], ",\"comment\":\""); jo_put(o[..], before); jo_escape_bytes(o[..], realm); jo_put(o[..], after); jo_put(o[..], "\"}");
+  return aw_len(o[..]);
+}
+mkw_quote_bonus_write :: (address: string, sats: string, realm: string, out: [] u8) -> int #export_c #effects(all) {
+  return mkw_quote(address, sats, "Your first tip on ", realm, ": a bonus from OpenAgents", out);
+}
+mkw_quote_gift_write :: (address: string, sats: string, realm: string, out: [] u8) -> int #export_c #effects(all) {
+  return mkw_quote(address, sats, "A gift from OpenAgents for ", realm, "", out);
+}
+mkw_quote_tip_write :: (address: string, sats: string, realm: string, out: [] u8) -> int #export_c #effects(all) {
+  return mkw_quote(address, sats, "A tip from a player of ", realm, " on OpenAgents", out);
+}
+// {"invoice":"lnbc1..","max_fee_sats":30}
+mkw_send_write :: (invoice: string, max_fee_sats: int, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "{\"invoice\":"); jo_quoted(o[..], invoice); jo_put(o[..], ",\"max_fee_sats\":"); jo_int(o[..], max_fee_sats); jo_put(o[..], "}");
+  return aw_len(o[..]);
+}
+
+#test "the claim link, running, {} and the wallet service's bodies, byte for byte; too small a buffer is -1" {
+  b: [512] u8;
+  n := mkw_claim_link_write("my-world", "00ff", "https://openagents.com", b[..]);
+  #assert cast(string) b[0..<n] == "{\"realm\":\"my-world\",\"code\":\"00ff\",\"link\":\"https://openagents.com/worlds/my-world/claim#code=00ff\"}";
+  #assert mkw_claim_link_write("my-world", "00ff", "https://openagents.com", b[0..<n - 1]) == -1;
+  n = mkw_claim_link_write("", "", "", b[..]); #assert cast(string) b[0..<n] == "{\"realm\":\"\",\"code\":\"\",\"link\":\"/worlds//claim#code=\"}";
+  n = mkw_running_write(b[..]); #assert cast(string) b[0..<n] == "{\"running\":true}" && mkw_running_write(b[0..<15]) == -1;
+  n = mkw_empty_write(b[..]); #assert cast(string) b[0..<n] == "{}" && mkw_empty_write(b[0..<1]) == -1;
+  n = mkw_invoice_write("lnbc10n1pexample", b[..]);
+  #assert cast(string) b[0..<n] == "{\"invoice\":\"lnbc10n1pexample\"}" && mkw_invoice_write("lnbc10n1pexample", b[0..<n - 1]) == -1;
+  n = mkw_invoice_write("", b[..]); #assert cast(string) b[0..<n] == "{\"invoice\":\"\"}";
+  n = mkw_quote_bonus_write("maker@wallet.example", "1000", "my-world", b[..]);
+  #assert cast(string) b[0..<n] == "{\"address\":\"maker@wallet.example\",\"sats\":1000,\"comment\":\"Your first tip on my-world: a bonus from OpenAgents\"}";
+  #assert mkw_quote_bonus_write("maker@wallet.example", "1000", "my-world", b[0..<n - 1]) == -1;
+  n = mkw_quote_gift_write("maker@wallet.example", "0", "my-world", b[..]);
+  #assert cast(string) b[0..<n] == "{\"address\":\"maker@wallet.example\",\"sats\":0,\"comment\":\"A gift from OpenAgents for my-world\"}";
+  #assert mkw_quote_gift_write("maker@wallet.example", "0", "my-world", b[0..<n - 1]) == -1;
+  n = mkw_quote_tip_write("maker@wallet.example", "21", "my-world", b[..]);
+  #assert cast(string) b[0..<n] == "{\"address\":\"maker@wallet.example\",\"sats\":21,\"comment\":\"A tip from a player of my-world on OpenAgents\"}";
+  #assert mkw_quote_tip_write("maker@wallet.example", "21", "my-world", b[0..<n - 1]) == -1;
+  n = mkw_quote_tip_write("", "", "", b[..]);
+  #assert cast(string) b[0..<n] == "{\"address\":\"\",\"sats\":,\"comment\":\"A tip from a player of  on OpenAgents\"}";
+  n = mkw_send_write("lnbc10n1pexample", 30, b[..]);
+  #assert cast(string) b[0..<n] == "{\"invoice\":\"lnbc10n1pexample\",\"max_fee_sats\":30}" && mkw_send_write("lnbc10n1pexample", 30, b[0..<n - 1]) == -1;
+  n = mkw_send_write("", 1000, b[..]); #assert cast(string) b[0..<n] == "{\"invoice\":\"\",\"max_fee_sats\":1000}";
+  n = mkw_send_write("x", -5, b[..]); #assert cast(string) b[0..<n] == "{\"invoice\":\"x\",\"max_fee_sats\":-5}";
+  n = mkw_send_write("x", 0, b[..]); #assert cast(string) b[0..<n] == "{\"invoice\":\"x\",\"max_fee_sats\":0}";
+}

@@ -23,6 +23,8 @@ message AuthAccount {
   optional bool admin = 7 [json_name = "admin"];
   repeated string emails = 8 [json_name = "emails"];
   repeated AuthAccountKeys keys = 9 [json_name = "keys"];
+  // The account's primary email (else its first), whole; written after emails, when it has one.
+  optional string primary = 10 [json_name = "primary"];
 }
 
 message AuthAccountKeys {

@@ -1,0 +1,118 @@
+syntax = "proto3";
+
+package openagents.api.v1alpha1;
+
+// What coax/web/api/worldbuilder.c reads and answers, route by route (Protocol E12, GitHub
+// #13250; profile api-routes; docs/protocol/api-routes-v1alpha1.md). Each message names the
+// members of one body as they ship: json_name is the key on the wire (for a lines body, the
+// line's first word), a `bytes` member is JSON carried as it came, and a member may be absent
+// or null. proto/verse/api-routes-v1alpha1.json holds real answers and their routes, and
+// coax/web/api/routes-goldens.coax holds each answer to its message here. The route answers
+// text lines, never JSON: a refusal is plain words ("too long", "resting", "busy", "no answer",
+// "unknown"). What the C writes goes through coax/web/api/worldbuilder-wire.coax; the 200 of
+// POST /api/worldbuilder/act is SQL's (worldbuilder.lines, migrations/0159_worldbuilder_layer.sql).
+
+// POST /api/worldbuilder/act, the request: the page's turn (apps/openagents-web/worldbuilder.coax
+// build_act). The route never reads it; it is handed to the model as the user's turn.
+message WorldbuilderActRequest {
+  optional string text = 1 [json_name = "text"];
+  optional bool walking = 2 [json_name = "walking"];
+  // [x, z], or null when no spot was tapped
+  repeated double here = 3 [json_name = "here"];
+  optional WorldbuilderActRequestCam cam = 4 [json_name = "cam"];
+  // an object: each asset name in the world and how many
+  optional bytes present = 5 [json_name = "present"];
+  repeated WorldbuilderActRequestRecent recent = 6 [json_name = "recent"];
+  repeated string last = 7 [json_name = "last"];
+}
+
+message WorldbuilderActRequestCam {
+  optional double x = 1 [json_name = "x"];
+  optional double z = 2 [json_name = "z"];
+  repeated double looks = 3 [json_name = "looks"];
+}
+
+message WorldbuilderActRequestRecent {
+  optional int64 id = 1 [json_name = "id"];
+  optional string asset = 2 [json_name = "asset"];
+  optional double x = 3 [json_name = "x"];
+  optional double z = 4 [json_name = "z"];
+  optional double size = 5 [json_name = "size"];
+}
+
+// POST /api/worldbuilder/act 200: text lines. "S WORDS" is the line to show; each "A ..." is one
+// edit, thirteen fields joined by "|": op, asset (a ground edit's layer), count, targets, names,
+// anchor, anchor_names, side, distance, spread, size, factor, degrees (a list's items joined by
+// ",", an absent number empty).
+message WorldbuilderActPostLines {
+  optional string say = 1 [json_name = "S"];
+  repeated string action = 2 [json_name = "A"];
+}
+
+// POST /api/worldbuilder/act 429: one line. "flood WAIT_MS": this address sent too many at
+// once. "resting": the day's spend is at its cap, until midnight Chicago time.
+message WorldbuilderActPostRefusalLines {
+  optional int64 flood = 1 [json_name = "flood"];
+  optional string resting = 2 [json_name = "resting"];
+}
+
+// GET /api/worldbuilder/status 200: one line, "ok SPENT_MICROS CAP_MICROS" or
+// "resting SPENT_MICROS CAP_MICROS" (the day's spend and its cap, in millionths of a dollar).
+message WorldbuilderStatusLines {
+  optional string ok = 1 [json_name = "ok"];
+  optional string resting = 2 [json_name = "resting"];
+}
+
+// What the route sends the model (Gemini generateContent on Vertex), written by
+// wbw_request_write: the members in this order, compact.
+message WorldbuilderModelRequest {
+  optional WorldbuilderModelContent system_instruction = 1 [json_name = "systemInstruction"];
+  repeated WorldbuilderModelContent contents = 2 [json_name = "contents"];
+  optional WorldbuilderModelConfig generation_config = 3 [json_name = "generationConfig"];
+}
+
+message WorldbuilderModelContent {
+  // "user" on the page's turn; absent on the system turn
+  optional string role = 1 [json_name = "role"];
+  repeated WorldbuilderModelPart parts = 2 [json_name = "parts"];
+}
+
+message WorldbuilderModelPart {
+  optional string text = 1 [json_name = "text"];
+}
+
+message WorldbuilderModelConfig {
+  optional double temperature = 1 [json_name = "temperature"];
+  optional int64 max_output_tokens = 2 [json_name = "maxOutputTokens"];
+  optional string response_mime_type = 3 [json_name = "responseMimeType"];
+  // the JSON Schema of WorldbuilderModelAnswer, as wbw_schema writes it
+  optional bytes response_json_schema = 4 [json_name = "responseJsonSchema"];
+  optional WorldbuilderModelThinking thinking_config = 5 [json_name = "thinkingConfig"];
+}
+
+message WorldbuilderModelThinking {
+  optional string thinking_level = 1 [json_name = "thinkingLevel"];
+}
+
+// The model's answer under that schema, read in SQL (worldbuilder.lines) into the lines above.
+message WorldbuilderModelAnswer {
+  optional string say = 1 [json_name = "say"];
+  repeated WorldbuilderModelAction actions = 2 [json_name = "actions"];
+}
+
+message WorldbuilderModelAction {
+  optional string op = 1 [json_name = "op"];
+  optional string asset = 2 [json_name = "asset"];
+  optional string layer = 3 [json_name = "layer"];
+  optional int64 count = 4 [json_name = "count"];
+  optional string targets = 5 [json_name = "targets"];
+  repeated string names = 6 [json_name = "names"];
+  optional string anchor = 7 [json_name = "anchor"];
+  repeated string anchor_names = 8 [json_name = "anchor_names"];
+  optional string side = 9 [json_name = "side"];
+  optional double distance = 10 [json_name = "distance"];
+  optional double spread = 11 [json_name = "spread"];
+  optional double size = 12 [json_name = "size"];
+  optional double factor = 13 [json_name = "factor"];
+  optional double degrees = 14 [json_name = "degrees"];
+}

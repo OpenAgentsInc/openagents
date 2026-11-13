@@ -62,6 +62,8 @@
 #include "item-policy.generated.h"
 #include "moderation-policy.generated.h"
 #include "character-policy.generated.h"
+#include "player-wire.generated.h"
+#include "ticket-sign.generated.h"   /* the room reports' readers (metaverse-engine/session/room-report.coax, #13250) */
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -70,17 +72,10 @@
 
 #define PREFIX "/api/playtest/"
 
-// A JSON string's contents, escaped, into out.
-static size_t esc(char *out, size_t cap, const char *v) {
-  size_t n = 0;
-  for (const unsigned char *p = (const unsigned char *)v; *p && n + 8 < cap; p++) {
-    if (*p == '"' || *p == '\\') { out[n++] = '\\'; out[n++] = (char)*p; }
-    else if (*p < 0x20) n += (size_t)snprintf(out + n, cap - n, "\\u%04x", *p);
-    else out[n++] = (char)*p;
-  }
-  out[n] = 0;
-  return n;
-}
+// The bodies this file writes itself are player-wire.coax's (Protocol, #13250): a string for it,
+// and its buffer.
+static coax_string cs(const char *s) { return (coax_string){s ? s : "", s ? (int64_t)strlen(s) : 0}; }
+#define PLW_OUT(buf) ((coax_v_u8){(uint8_t *)(buf), (int64_t)sizeof(buf) - 1})
 
 static uint32_t crc32_of(const unsigned char *b, size_t n) {
   uint32_t c = 0xFFFFFFFFu;
@@ -188,7 +183,8 @@ static void progress_save(const request *q, PGconn *db, const char *parts, const
   if (status != 0) {
     char *out = strdup(PQgetvalue(f, 0, 1));
     PQclear(f); progress_run(db, "ROLLBACK");
-    api_json(q->fd, status, out ? out : "{}"); free(out);
+    char none[8]; int64_t nn = plw_none_write(PLW_OUT(none)); none[nn > 0 ? nn : 0] = 0;
+    api_json(q->fd, status, out ? out : none); free(out);
     return;
   }
   int64_t rev = atoll(PQgetvalue(f, 0, 4)), sent = atoll(PQgetvalue(f, 0, 6));
@@ -367,7 +363,8 @@ static bool character_outbox(PGconn *db, const char *who, const char *before, co
   return ok;
 }
 static int ticket_character(PGconn *db, const char *pid, const char *klass, int xp, int start, char *rec, size_t cap) {
-  const char *pv[1] = {pid}; PGresult *r = NULL; char who[96], kept[4097] = "", items[1024] = "[]"; long long inv = 0;
+  const char *pv[1] = {pid}; PGresult *r = NULL; char who[96], kept[4097] = "", items[1024]; long long inv = 0;
+  { int64_t nn = plw_list_none_write(PLW_OUT(items)); items[nn > 0 ? nn : 0] = 0; }
   if (!progress_run(db, "BEGIN")) return -1;
   r = PQexecParams(db, "SELECT coalesce(account,id) FROM verse.players WHERE id=$1 FOR SHARE", 1, NULL, pv, NULL, NULL, 0);
   if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1 || strlen(PQgetvalue(r, 0, 0)) >= sizeof who) goto fail;
@@ -494,7 +491,8 @@ static void room_ticket(const request *q, PGconn *db, const char *key, bool site
     char why[161]; long long until = 0;
     if (flags_maintenance(db, why, sizeof why, &until)) {
       char out[512];
-      int on = snprintf(out, sizeof out, "{\"error\":\"maintenance%s%s\",\"maintenance\":\"%s\",\"until_ms\":%lld,\"retry_ms\":30000}", why[0] ? ": " : "", why, why, until);
+      int64_t on = plw_maintenance_write(cs(why), (int64_t)until, PLW_OUT(out));
+      if (on < 0) { api_error(q->fd, 500, "no ticket"); return; }
       api_respond(q->fd, 503, "application/json", "Retry-After: 30\r\n", out, (size_t)on);
       return;
     }
@@ -548,9 +546,8 @@ static void room_ticket(const request *q, PGconn *db, const char *key, bool site
       /* more waiting, longer apart: W waiting pages ask W / (5 + 0.2 W) times a second, under 5, up to 1475 waiting */
       long long retry = 5000 + (waiting * 200 < 295000 ? waiting * 200 : 295000);
       char out[192], hdr[48];
-      int on = snprintf(out, sizeof out, "{\"error\":\"every room is full: try again in a minute\",\"waiting\":%lld,\"retry_ms\":%lld%s", waiting, retry, last >= 0 ? ",\"last_wait_ms\":" : "");
-      if (last >= 0) on += snprintf(out + on, sizeof out - (size_t)on, "%lld", last);
-      on += snprintf(out + on, sizeof out - (size_t)on, "}");
+      int64_t on = plw_full_write((int64_t)waiting, (int64_t)retry, (int64_t)last, PLW_OUT(out));
+      if (on < 0) { api_error(q->fd, 500, "no ticket"); return; }
       snprintf(hdr, sizeof hdr, "Retry-After: %lld\r\n", (retry + 999) / 1000);
       api_respond(q->fd, 503, "application/json", hdr, out, (size_t)on);
       return;
@@ -626,40 +623,24 @@ static void room_ticket(const request *q, PGconn *db, const char *key, bool site
     /* v2 (shard 0: no directory) or v3, wrapped in the v4 envelope with the character's capture when it resumes one */
     api_error(q->fd, resume == 1 ? 503 : 500, resume == 1 ? "character recovery unavailable" : "no ticket"); return;
   }
-  /* the answer's tail: every part is added whole or the answer is refused, never cut short (#13300) */
-  char out[8192], en[48], st[2048] = "";
-  bool st_whole = true;
-#define ST_ADD(...) do { int k_ = snprintf(st + sn, sizeof st - (size_t)sn, __VA_ARGS__); if (k_ < 0 || k_ >= (int)sizeof st - sn) { st_whole = false; st[sn] = 0; } else sn += k_; } while (0)
-  esc(en, sizeof en, name);
-  int sn = 0;
-  if (hp >= 0) ST_ADD(",\"hp\":%d", hp);
-  if (wanted >= 0) ST_ADD(",\"wanted\":%d", wanted);
-  if (xp > 0) ST_ADD(",\"xp\":%d", xp);
-  if (look[0]) ST_ADD(",\"look\":\"%s\"", look);
-  if (klass[0]) ST_ADD(",\"class\":\"%s\"", klass);
-  if (unclassed) ST_ADD(",\"unclassed\":true");
-  if (shard > 0) ST_ADD(",\"room\":\"%s\",\"shard\":%d%s", room, shard, full ? ",\"full\":true" : "");
+  /* the answer, every byte of it player-wire.coax's (plw_ticket_write): every part is written whole or
+     the answer is refused, never cut short (#13300) */
+  char out[8192], ep[200] = "";
   /* the shard's own endpoint when it names one (a room VM, #13179): the page opens it in place of the
      load balancer's /api/room/sK/ */
-  { char ep[200]; if (shard > 0 && rooms_endpoint(db, shard, ep, sizeof ep)) ST_ADD(",\"endpoint\":\"%s\"", ep); }
-  if (shard > 0 && party_full) ST_ADD(",\"party_full\":\"%s\"", party_room);
-  if (shard > 0 && party_away) ST_ADD(",\"party_away\":true");
+  bool has_ep = shard > 0 && rooms_endpoint(db, shard, ep, sizeof ep);
   /* the room asked was full: which, and whose it was when an invite named them (the page says so, #12795) */
-  if (shard > 0 && full) {
-    char by[32] = "", eb[48] = "";
-    if (via[0]) {
-      const char *bv[1] = {via};
-      PGresult *br = PQexecParams(db, "SELECT verse.player_name($1)", 1, NULL, bv, NULL, NULL, 0);
-      if (PQresultStatus(br) == PGRES_TUPLES_OK && PQntuples(br) == 1 && !PQgetisnull(br, 0, 0)) ticket_name(by, sizeof by, PQgetvalue(br, 0, 0));
-      PQclear(br);
-    }
-    esc(eb, sizeof eb, by);
-    ST_ADD(",\"asked\":\"%s\"%s%s%s", asked, by[0] ? ",\"by\":\"" : "", eb, by[0] ? "\"" : "");
+  char by[32] = "";
+  if (shard > 0 && full && via[0]) {
+    const char *bv[1] = {via};
+    PGresult *br = PQexecParams(db, "SELECT verse.player_name($1)", 1, NULL, bv, NULL, NULL, 0);
+    if (PQresultStatus(br) == PGRES_TUPLES_OK && PQntuples(br) == 1 && !PQgetisnull(br, 0, 0)) ticket_name(by, sizeof by, PQgetvalue(br, 0, 0));
+    PQclear(br);
   }
-  if (blocked[0]) ST_ADD(",\"blocked\":\"%s\"", blocked);
-#undef ST_ADD
-  int on = snprintf(out, sizeof out, "{\"ticket\":\"%s\",\"id\":\"%s\",\"account\":%s,\"admin\":%s,\"name\":\"%s\",\"expires\":%lld%s}", ticket, pid, account ? "true" : "false", acct == 2 ? "true" : "false", en, expires, st);
-  if (!st_whole || on < 0 || on >= (int)sizeof out) { api_log("room-ticket: the answer did not fit (%d)", on); api_error(q->fd, 500, "no ticket"); return; }
+  int64_t on = plw_ticket_write(cs(ticket), cs(pid), account, acct == 2, cs(name), (int64_t)expires, hp, wanted, xp, cs(look), cs(klass), unclassed,
+                                cs(room), shard, full, has_ep, cs(ep), party_full, cs(party_room), party_away, cs(asked), cs(by), cs(blocked), PLW_OUT(out));
+  if (on < 0) { api_log("room-ticket: the answer did not fit (%d)", (int)on); api_error(q->fd, 500, "no ticket"); return; }
+  out[on] = 0;
   api_json(q->fd, 200, out);
 }
 
@@ -678,7 +659,9 @@ static void room_invite(const request *q, PGconn *db, const char *key, const cha
   if (got == 1) { api_error(q->fd, 403, "not in it"); return; }
   if (got == 2) { api_error(q->fd, 409, "full"); return; }
   if (got < 0) { api_error(q->fd, 500, "no invite"); return; }
-  char out[96]; snprintf(out, sizeof out, "{\"room\":\"%s\",\"until\":%lld}", room, until);
+  char out[96]; int64_t on = plw_invite_write(cs(room), (int64_t)until, PLW_OUT(out));
+  if (on < 0) { api_error(q->fd, 500, "no invite"); return; }
+  out[on] = 0;
   api_json(q->fd, 200, out);
 }
 
@@ -748,7 +731,10 @@ static void room_state(const request *q, PGconn *db, const char *key, const char
   PQclear(r);
   if (!known) { api_error(q->fd, 403, "unknown player key"); return; }
   if (!kept && wanted) { api_error_word(q->fd, 403, "WANTED is the room server's", "refused", "wanted"); return; }
-  api_json(q->fd, 200, wanted ? "{\"kept\":true,\"refused\":\"wanted\"}" : "{\"kept\":true}");
+  char out[48]; int64_t on = plw_state_write(wanted, PLW_OUT(out));
+  if (on < 0) { api_error(q->fd, 500, "not kept"); return; }
+  out[on] = 0;
+  api_json(q->fd, 200, out);
 }
 // A vitals post with operation IDs (#12793; room-vitals.coax rm_vitals_due, migrations/0124): each line
 // "PID HP MAX XP WANTED REV AT [OWNER] [c=CLASS]" applied once by (SHARD, GEN, PID, REV) in verse.room_vital_apply, its
@@ -758,22 +744,21 @@ static void room_state(const request *q, PGconn *db, const char *key, const char
 // applied answer d. AT is when the room changed the values; it orders HP and WANTED, and is taken
 // within the outbox's 15 minutes before the post's time.
 // The room reports' codec (metaverse-engine/session/room-report.coax, through ticket-sign-unit.c): the receipts
-// this file answers a room's vitals post and checkpoint post with (Protocol E7 and E8, #13250).
+// this file answers a room's vitals post and checkpoint post with (Protocol E7 and E8, #13250), and the
+// vitals post's readers (room_report_vitals_head_read, room_report_vitals_line_read): they take from every
+// text what sscanf took here before, and this file keeps only what it does with the values.
 int room_report_receipt_c(long long gen, long long batch, const char *codes, char *out, size_t cap);
 int room_report_checkpoint_receipt_c(int v, const char *status, size_t status_n, long long owner, long long process, long long rev, long long accepted_at, char *out, size_t cap);
-static void room_vitals_receipt(const request *q, PGconn *db, const char *o, int shard, long long gen, long long batch, long long at) {
+static void room_vitals_receipt(const request *q, PGconn *db, coax_string post, int64_t lines, int shard, long long gen, long long batch, long long at) {
   char codes[128]; size_t cn = 0;
   if (shard < 1 || shard > 99 || gen <= 0) { api_error(q->fd, 400, "bad owner"); return; }
-  char *line = strchr(o + 1, '\n');
-  while (line && *++line && cn + 1 < sizeof codes) {
-    char *next = strchr(line, '\n');
-    char one[160]; size_t ol = next ? (size_t)(next - line) : strlen(line);
-    if (ol >= sizeof one) ol = sizeof one - 1;
-    memcpy(one, line, ol); one[ol] = 0;
-    char pid[48]; int hp, max, xp, wanted; long long rev, when, owner = -1;
+  coax_t_RoomVitalsLine l;
+  for (int64_t from = lines; cn + 1 < sizeof codes && room_report_vitals_line_read(post, from, true, (coax_v_t_RoomVitalsLine){&l, 1}); from = l.next) {
+    /* the line's fields are the codec's; an 8th: the seat ticket's owner generation (#12834, migrations/0127) */
+    const char *pid = (const char *)l.pid.e;
+    int got = (int)l.got, hp = (int)l.hp, max = (int)l.max, xp = (int)l.xp, wanted = (int)l.wanted;
+    long long rev = l.rev, when = l.when, owner = l.owner;
     char code = 'x';
-    /* an 8th field: the seat ticket's owner generation (#12834, migrations/0127) */
-    int got = sscanf(one, "%47s %d %d %d %d %lld %lld %lld", pid, &hp, &max, &xp, &wanted, &rev, &when, &owner);
     if ((got == 7 || (got == 8 && owner > 0)) && hp >= 0 && max > 0 && hp <= max && max < 100000 &&
         xp >= 0 && xp <= 9999999 && wanted >= 0 && wanted <= 5 && rev > 0 && when <= at && when >= at - 900000) {
       char ss[8], gs[24], hs[16], ms[16], xs[16], ws[8], rs[24], as[24], os[24];
@@ -792,16 +777,14 @@ static void room_vitals_receipt(const request *q, PGconn *db, const char *o, int
       PQclear(r);
       /* " c=CLASS": the class the character's first hello chose, its ticket naming none (#13259): kept
          once (0160), so a later one changes nothing; not for an older owner's line */
-      const char *cl = strstr(one, " c=");
-      if (cl && code != 'f') {
-        const char *cv[2] = {pid, cl + 3};
+      if (l.has_class && code != 'f') {
+        const char *cv[2] = {pid, (const char *)l.klass.e};
         PGresult *cr = PQexecParams(db, "SELECT verse.room_class_once($1, $2)", 2, NULL, cv, NULL, NULL, 0);
         if (PQresultStatus(cr) != PGRES_TUPLES_OK) api_log("room-class: %s", PQerrorMessage(db));
         PQclear(cr);
       }
     }
     codes[cn++] = code;
-    line = next;
   }
   codes[cn] = 0;
   char out[192];
@@ -857,7 +840,8 @@ static int64_t item_int(const char *s, int64_t none) { return s ? atoll(s) : non
    have one), the content kind of each item in the bag, and the inventory version. False when the
    database failed. */
 static bool item_view(PGconn *db, const char *who, char *rec, size_t rec_cap, char *kinds, size_t kinds_cap, long long *ver) {
-  rec[0] = 0; snprintf(kinds, kinds_cap, "[]"); *ver = 0;
+  rec[0] = 0; *ver = 0;
+  { int64_t nn = kinds_cap ? plw_list_none_write((coax_v_u8){(uint8_t *)kinds, (int64_t)kinds_cap - 1}) : -1; if (kinds_cap) kinds[nn > 0 ? nn : 0] = 0; }
   if (!who) return true;
   const char *wv[1] = {who};
   PGresult *r = PQexecParams(db, "SELECT coalesce((SELECT body::text FROM verse.characters WHERE who=$1),''),"
@@ -1146,33 +1130,28 @@ static void room_vitals(const request *q, PGconn *db) {
   if (q->body_len == 0 || q->body_len > 8192) { api_error(q->fd, 401, "unsigned"); return; }
   int signer = room_write_signed(q, "vitals", q->body, q->body_len);   /* this shard's write key, or the shared key (#13260) */
   if (signer < 0) return;
-  char *b = malloc(q->body_len + 1);
-  if (!b) { api_error(q->fd, 503, "memory"); return; }
-  memcpy(b, q->body, q->body_len); b[q->body_len] = 0;
-  long long at = 0;
+  /* the post's head and lines are read by the codec (room-report.coax): "t MS", then
+     "o SHARD GEN BATCH" (#12793): every line has an operation ID, and the answer is a receipt */
+  coax_string post = {q->body, (int64_t)q->body_len};
+  coax_t_RoomVitalsHead h;
+  room_report_vitals_head_read(post, (coax_v_t_RoomVitalsHead){&h, 1});
+  long long at = h.at;
   struct timespec ts; clock_gettime(CLOCK_REALTIME, &ts);
   long long now = (long long)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
-  if (sscanf(b, "t %lld", &at) != 1 || at < now - 120000 || at > now + 120000) { free(b); api_error(q->fd, 400, "stale"); return; }
-  /* "o SHARD GEN BATCH" (#12793): every line has an operation ID, and the answer is a receipt */
-  char *o = strchr(b, '\n');
-  int oshard = 0; long long ogen = 0, obatch = 0;
-  bool owned = o && sscanf(o + 1, "o %d %lld %lld", &oshard, &ogen, &obatch) == 3;
+  if (!h.stamped || at < now - 120000 || at > now + 120000) { api_error(q->fd, 400, "stale"); return; }
+  bool owned = h.owned;
+  int oshard = (int)h.shard;
   /* a shard's own key posts its own vitals only, with their operation IDs (#13260) */
-  if (signer > 0 && (!owned || oshard != signer)) { free(b); api_error(q->fd, 403, "another shard's vitals"); return; }
+  if (signer > 0 && (!owned || oshard != signer)) { api_error(q->fd, 403, "another shard's vitals"); return; }
   if (owned) {
-    room_vitals_receipt(q, db, o, oshard, ogen, obatch, at);
-    free(b);
+    room_vitals_receipt(q, db, post, h.lines, oshard, h.gen, h.batch, at);
     return;
   }
   int kept = 0;
-  char *line = strchr(b, '\n');
-  while (line && *++line) {
-    char pid[48]; int hp, max, xp = -1;
-    char *next = strchr(line, '\n');
-    char one[128]; size_t ol = next ? (size_t)(next - line) : strlen(line);
-    if (ol >= sizeof one) ol = sizeof one - 1;
-    memcpy(one, line, ol); one[ol] = 0;
-    int got = sscanf(one, "%47s %d %d %d", pid, &hp, &max, &xp);
+  coax_t_RoomVitalsLine l;
+  for (int64_t from = h.lines; room_report_vitals_line_read(post, from, false, (coax_v_t_RoomVitalsLine){&l, 1}); from = l.next) {
+    const char *pid = (const char *)l.pid.e;
+    int got = (int)l.got, hp = (int)l.hp, max = (int)l.max, xp = (int)l.xp;
     if (got < 4 || xp < 0 || xp > 9999999) xp = -1;
     if (got >= 3 && hp >= 0 && max > 0 && hp <= max && max < 100000) {
       char hs[16], ms[16], as[24], xs[16];
@@ -1185,10 +1164,10 @@ static void room_vitals(const request *q, PGconn *db) {
       else api_log("room-vitals: %s", PQerrorMessage(db));
       PQclear(r);
     }
-    line = next;
   }
-  free(b);
-  char out[64]; snprintf(out, sizeof out, "{\"kept\":%d}", kept);
+  char out[64]; int64_t on = plw_vitals_kept_write(kept, PLW_OUT(out));
+  if (on < 0) { api_error(q->fd, 500, "not kept"); return; }
+  out[on] = 0;
   api_json(q->fd, 200, out);
 }
 
@@ -1347,7 +1326,10 @@ static void room_kick(const request *q, PGconn *db, const char *key, bool site, 
     return;
   }
   if (!room_mod_asked(q, db, key, site, rec, n, &done)) return;
-  api_json(q->fd, 200, back ? "{\"kicked\":false}" : "{\"kicked\":true,\"hours\":24}");
+  char out[48]; int64_t on = plw_kick_write(back, PLW_OUT(out));
+  if (on < 0) { api_error(q->fd, 500, "not kept"); return; }
+  out[on] = 0;
+  api_json(q->fd, 200, out);
 }
 // POST /api/playtest/room-mod: one of Everglade's admins acts on a player. The body is the record's line,
 // "VERB PID MINUTES REASON" (kick, mute, ban, unkick, unmute, unban; look and move are a room's). The
@@ -1380,7 +1362,9 @@ static void room_mod(const request *q, PGconn *db, const char *key, bool site, c
   if (!room_mod_asked(q, db, key, site, body, n, &done)) return;
   coax_string vw = mod_verb_word(done.verb);
   char out[192];
-  snprintf(out, sizeof out, "{\"ok\":true,\"verb\":\"%.*s\",\"player\":\"%s\",\"until\":%lld}", (int)vw.count, vw.data, done.pid, done.until);
+  int64_t on = plw_mod_write(vw, cs(done.pid), (int64_t)done.until, PLW_OUT(out));
+  if (on < 0) { api_error(q->fd, 500, "not kept"); return; }
+  out[on] = 0;
   api_json(q->fd, 200, out);
 }
 // POST /api/playtest/room-mod-log: a room's report of what its moderators did (room-mod.coax; a seat
@@ -1568,16 +1552,14 @@ bool player_route(const request *q) {
   // who: what verse.api needs to know about the asker.
   size_t wcap = 1024 + (b64 ? strlen(b64) : 0);
   char *who = malloc(wcap);
-  char ek[400], ea[160];
-  esc(ek, sizeof ek, key); esc(ea, sizeof ea, autom);
   char after[24] = "";
   if (api_query(q, "after", after, sizeof after))
     for (char *c = after; *c; c++) if (*c < '0' || *c > '9') { after[0] = 0; break; }
-  size_t wn = (size_t)snprintf(who, wcap, "{\"key\":\"%s\",\"auto\":\"%s\",\"npub\":\"%s\",\"site\":%s,\"good\":%s,\"after\":\"%s\"", ek, ea, npub,
-                               site ? "true" : "false", good ? "true" : "false", after);
-  if (b64 && good) wn += (size_t)snprintf(who + wn, wcap - wn, ",\"bytes\":\"%s\"", b64);   // base64 needs no escaping
-  snprintf(who + wn, wcap - wn, "}");
+  /* the body is player-wire.coax's (plw_who_write); the base64 is carried as it came */
+  int64_t wn = plw_who_write(cs(key), cs(autom), cs(npub), site, good, cs(after), b64 && good, cs(b64), (coax_v_u8){(uint8_t *)who, (int64_t)wcap - 1});
   if (dec) PQclear(dec);
+  if (wn < 0) { free(body); free(who); api_error(q->fd, 500, "not kept"); return true; }
+  who[wn] = 0;
 
   if (progress_post && good) { progress_save(q, db, parts, body, who); free(body); free(who); return true; }
   const char *v[4] = {q->method, parts, body, who};

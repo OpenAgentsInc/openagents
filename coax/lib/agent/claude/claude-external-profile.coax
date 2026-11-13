@@ -1,0 +1,158 @@
+// Claude Code's stream-json, as a fixture (Protocol, GitHub #13250, step C13):
+// proto/external/claude-code-stream-json.json names each recorded stream with
+// where it came from and the values our own record types must hold after this
+// folder reads it. For each fixture this tool reads the file's lines, classifies
+// every one with cl_classify, reads the init frame with cl_init_of, every
+// assistant frame with cl_assistant_of and the result with cl_result_of and
+// cl_model_usage, and compares what came with `want`. Nothing here parses the
+// format itself.
+//   coax/web/tool.sh coax/lib/agent/claude/claude-external-profile.coax [proto/external/claude-code-stream-json.json]
+#import "Basic";
+#load "messages.coax";
+#load "../../json/json.coax";
+#load "../../sys/tool.coax";
+#load "../../sys/args.coax";
+#load "../../sys/fs.coax";
+
+CEP_FIXTURE :: "proto/external/claude-code-stream-json.json";
+CEP_FILE :: 262144;
+CEP_VALUES :: 64;
+CepWork :: struct { nodes: [8192] JvNode; file: [CEP_FILE] u8; arena: [65536] u8; keep: [8192] u8; kept: int; s: [8192] u8; name: [512] u8; path: [512] u8; }
+
+// What the adapter gave, by the name `want` uses: a number or a text.
+CepValue :: struct { key: string; text: bool; n: int; s: string; }
+CepGot :: struct { v: [CEP_VALUES] CepValue; count: int; }
+cep_n :: (g: [] CepGot, key: string, n: int) { if g[0].count < CEP_VALUES { g[0].v[g[0].count] = CepValue.{key = key, n = n}; g[0].count += 1; } }
+cep_s :: (g: [] CepGot, key: string, s: string) { if g[0].count < CEP_VALUES { g[0].v[g[0].count] = CepValue.{key = key, text = true, s = s}; g[0].count += 1; } }
+// A text that must outlive the arena's next line.
+cep_keep :: (w: [] CepWork, s: string) -> string {
+  if w[0].kept + s.count > w[0].keep.count { return ""; }
+  for i: 0..<s.count { w[0].keep[w[0].kept + i] = s[i]; }
+  r := cast(string) w[0].keep[w[0].kept..<w[0].kept + s.count]; w[0].kept += s.count;
+  return r;
+}
+cep_str :: (d: Jv, at: int, out: [] u8) -> string {
+  n := jv_str(d, at, out);
+  return ifx n < 0 then "" else cast(string) out[0..<n];
+}
+
+// One recorded stream through the adapter.
+cep_read :: (w: [] CepWork, m: int, g: [] CepGot) {
+  ar: [1] ClArena; ar[0] = ClArena.{buf = w[0].arena[..]};
+  lines := 0; invalid := 0; unknown := 0; control := 0;
+  kinds: [13] int;
+  assistant_errors := 0; assistant_empty := 0; sessions_differ := 0;
+  session := ""; got_init := false; got_result := false;
+  from := 0;
+  for at: 0..<m + 1 {
+    if at < m && w[0].file[at] != 10 { continue; }
+    line := cast(string) w[0].file[from..<at]; from = at + 1;
+    if line.count == 0 { continue; }
+    lines += 1;
+    ar[0].at = 0; ar[0].full = false;
+    msg := cl_classify(ar[..], line);
+    if msg.frame == ClFrame.invalid { invalid += 1; continue; }
+    if msg.frame != ClFrame.message { control += 1; continue; }
+    kinds[cast(int) msg.kind] += 1;
+    if msg.kind == ClKind.unknown { unknown += 1; continue; }
+    if session == "" { session = cep_keep(w, msg.session_id); }
+    else if msg.session_id != session { sessions_differ += 1; }
+    if msg.kind == ClKind.system && msg.system == ClSystem.init && !got_init {
+      got_init = true;
+      i := cl_init_of(ar[..], msg);
+      cep_s(g, "init.claude_code_version", cep_keep(w, i.claude_code_version));
+      cep_s(g, "init.model", cep_keep(w, i.model));
+      cep_s(g, "init.cwd", cep_keep(w, i.cwd));
+      cep_s(g, "init.permission_mode", cep_keep(w, i.permission_mode));
+      cep_s(g, "init.api_key_source", cep_keep(w, i.api_key_source));
+      cep_s(g, "init.output_style", cep_keep(w, i.output_style));
+      cep_n(g, "init.tool_count", i.tool_count);
+    }
+    if msg.kind == ClKind.assistant {
+      a := cl_assistant_of(ar[..], msg);
+      if a.error != ClAssistantError.none { assistant_errors += 1; }
+      if a.message.count < 2 { assistant_empty += 1; }
+    }
+    if msg.kind == ClKind.result && !got_result {
+      got_result = true;
+      r := cl_result_of(ar[..], msg);
+      results := CL_RESULT_SUBTYPES; reasons := CL_TERMINAL_REASONS;
+      rk := cast(int) r.kind; tr := cast(int) r.terminal_reason;
+      cep_s(g, "result.kind", ifx rk >= 1 && rk <= results.count then results[rk - 1] else "none");
+      cep_s(g, "result.terminal_reason", ifx tr >= 1 && tr <= reasons.count then reasons[tr - 1] else ifx tr == 0 then "none" else "unknown");
+      cep_n(g, "result.is_error", ifx r.is_error then 1 else 0);
+      cep_n(g, "result.num_turns", r.num_turns);
+      cep_n(g, "result.duration_ms", r.duration_ms);
+      cep_n(g, "result.duration_api_ms", r.duration_api_ms);
+      cep_n(g, "result.input_tokens", r.usage.input_tokens);
+      cep_n(g, "result.output_tokens", r.usage.output_tokens);
+      cep_n(g, "result.cache_read_input_tokens", ifx r.usage.cache_read_input_tokens.has then r.usage.cache_read_input_tokens.value else -1);
+      cep_n(g, "result.cache_creation_input_tokens", ifx r.usage.cache_creation_input_tokens.has then r.usage.cache_creation_input_tokens.value else -1);
+      cep_n(g, "result.text_bytes", r.result.count);
+      cep_n(g, "result.queued_turn_count", ifx r.queued_turn_count.has then r.queued_turn_count.value else -1);
+      model := "";
+      for k: 0..<g[0].count { if g[0].v[k].key == "init.model" { model = g[0].v[k].s; } }
+      u := cl_model_usage(ar[..], r.model_usage, model);
+      cep_n(g, "result.model.found", ifx u.found then 1 else 0);
+      cep_n(g, "result.model.output_tokens", u.output_tokens);
+      cep_n(g, "result.model.context_window", u.context_window);
+      cep_n(g, "result.model.thinking_tokens", ifx u.thinking_tokens.has then u.thinking_tokens.value else -1);
+      cep_s(g, "result.model.provider", cep_keep(w, u.provider));
+    }
+  }
+  cep_n(g, "lines", lines); cep_n(g, "invalid", invalid); cep_n(g, "unknown", unknown); cep_n(g, "control", control);
+  cep_n(g, "system", kinds[cast(int) ClKind.system]); cep_n(g, "stream_event", kinds[cast(int) ClKind.stream_event]);
+  cep_n(g, "assistant", kinds[cast(int) ClKind.assistant]); cep_n(g, "user", kinds[cast(int) ClKind.user]);
+  cep_n(g, "result", kinds[cast(int) ClKind.result]); cep_n(g, "rate_limit_event", kinds[cast(int) ClKind.rate_limit_event]);
+  cep_n(g, "assistant_errors", assistant_errors); cep_n(g, "assistant_empty", assistant_empty);
+  cep_n(g, "sessions_differ", sessions_differ);
+  cep_s(g, "session_id", session);
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  args: [1] Args;
+  loaded := args_load(args[..]);
+  path := ifx loaded && args_count(args[..]) >= 1 then args_at(args[..], 0) else CEP_FIXTURE;
+  buf: [65536] u8; j: [1] Jv; w: [1] CepWork;
+  n := fs_read(path, buf[..]);
+  if n <= 0 { tool_errln("claude external profile: cannot read the fixture"); return 2; }
+  if !jv_parse(j[..], cast(string) buf[0..<n], w[0].nodes[..]) || jv_kind(j[0], 0) != JV_OBJECT { print("FAIL  cannot parse the fixture\n"); return 1; }
+  d := j[0]; bad := 0;
+  list := jv_get(d, 0, "fixtures");
+  if jv_len(d, list) < 1 { print("FAIL  no fixtures\n"); bad += 1; }
+  for i: 0..<jv_len(d, list) {
+    row := jv_at(d, list, i);
+    name := cep_str(d, jv_get(d, row, "name"), w[0].name[..]);
+    file := cep_str(d, jv_get(d, row, "file"), w[0].path[..]);
+    source_n := jv_str(d, jv_get(d, row, "source"), w[0].s[..]);
+    want := jv_get(d, row, "want");
+    if name == "" || file == "" || source_n < 8 || jv_kind(d, want) != JV_OBJECT || jv_len(d, want) < 4 {
+      print("FAIL  fixture %: it needs a name, a file, a source and a want of four values or more\n", i); bad += 1; continue;
+    }
+    m := fs_read(file, w[0].file[..]);
+    if m <= 0 || m == CEP_FILE { print("FAIL  %: cannot read % whole\n", name, file); bad += 1; continue; }
+    g: [1] CepGot; w[0].kept = 0;
+    cep_read(w[..], m, g[..]);
+    wrong := 0;
+    for k: 0..<jv_len(d, want) {
+      v := jv_at(d, want, k);
+      key := jv_key(d, v);
+      at := -1;
+      for q: 0..<g[0].count { if g[0].v[q].key == key { at = q; } }
+      if at < 0 { print("FAIL  %: want names %, which is no value of ours\n", name, key); wrong += 1; continue; }
+      got := g[0].v[at];
+      if got.text {
+        ws := cep_str(d, v, w[0].s[..]);
+        if jv_kind(d, v) != JV_STRING || got.s != ws { print("FAIL  %: % is \"%\", wanted %\n", name, key, got.s, jv_raw(d, v)); wrong += 1; }
+      } else if jv_kind(d, v) != JV_NUMBER || got.n != jv_int(d, v, -999999) { print("FAIL  %: % is %, wanted %\n", name, key, got.n, jv_raw(d, v)); wrong += 1; }
+    }
+    if wrong > 0 {
+      print("  got:");
+      for q: 0..<g[0].count { if g[0].v[q].text { print(" \"%\":\"%\"", g[0].v[q].key, g[0].v[q].s); } else { print(" \"%\":%", g[0].v[q].key, g[0].v[q].n); } }
+      print("\n"); bad += 1;
+    }
+    else { print("ok    % (% bytes, % values)\n", name, m, jv_len(d, want)); }
+  }
+  print("%\n", ifx bad == 0 then "claude-code-stream-json external profile holds" else "claude-code-stream-json external profile fails");
+  return ifx bad == 0 then 0 else 1;
+}

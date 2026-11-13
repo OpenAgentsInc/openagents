@@ -86,16 +86,11 @@ cd_cmd_queue :: (task: string, engine: string, cwd: string, creds: string, json:
   if !dm_init(p[..]) { tool_errln("coder queue: no $HOME"); return 1; }
   ib: [32] u8; id := cs_make_id(cxproc_wall_us(), ib[..]);
   o: [65536] u8;
-  n := json_raw(o[..], 0, "{\"id\":"); n = json_write_string(o[..], n, id);
-  n = json_raw(o[..], n, ",\"task\":"); n = json_write_string(o[..], n, task);
-  n = json_raw(o[..], n, ",\"engine\":"); n = json_write_string(o[..], n, engine);
-  n = json_raw(o[..], n, ",\"cwd\":"); n = json_write_string(o[..], n, cwd);
-  if creds.count > 0 { n = json_raw(o[..], n, ",\"credentials\":"); n = json_write_string(o[..], n, creds); }
-  n = json_raw(o[..], n, ",\"at\":"); n = json_write_int(o[..], n, cxproc_wall_us()); n = json_raw(o[..], n, "}\n");
+  n := cj_job(o[..], 0, id, task, engine, cwd, creds, cxproc_wall_us());
   nb: [64] u8; nn := cd_cat(nb[..], cd_cat(nb[..], 0, id), ".json");
   pb: [1500] u8;
   if n < 0 || !fs_write(dm_file(p[..], "/daemon/jobs", cast(string) nb[0..<nn], pb[..]), cast(string) o[0..<n]) { tool_errln("coder queue: could not write the queue"); return 1; }
-  if json { jb: [128] u8; k := json_raw(jb[..], 0, "{\"job\":"); k = json_write_string(jb[..], k, id); k = json_raw(jb[..], k, ",\"state\":\"queued\"}"); cd_outln(cast(string) jb[0..<k]); }
+  if json { jb: [128] u8; k := cj_queued(jb[..], 0, id); cd_outln(cast(string) jb[0..<k]); }
   else { cd_outln(id); }
   return 0;
 }
@@ -119,7 +114,7 @@ dm_hold :: (r: [] CdRoute2, args: [] string, json: bool) -> int {
   pb: [1500] u8;
   if n < 0 || !fs_write(dm_file(p[..], "/daemon/held", cast(string) nb[0..<nn], pb[..]), cast(string) o[0..<n]) { tool_errln("coder queue: could not hold the job"); return 1; }
   dest := cd_r2_s(r[0].dest[..], r[0].ndest);
-  if json { jb: [512] u8; k := json_raw(jb[..], 0, "{\"job\":"); k = json_write_string(jb[..], k, id); k = json_raw(jb[..], k, ",\"state\":\"held\",\"dest\":"); k = json_write_string(jb[..], k, dest); k = json_raw(jb[..], k, "}"); cd_outln(cast(string) jb[0..<k]); }
+  if json { jb: [512] u8; k := cj_held(jb[..], 0, id, dest); cd_outln(cast(string) jb[0..<k]); }
   else { tool_err("coder: "); tool_err(dest); tool_errln(" did not answer; the job is held here, and `coder daemon` here sends it when it does"); cd_outln(id); }
   return 0;
 }
@@ -170,10 +165,7 @@ dm_pass :: (p: [] RtPaths, engines: string, roots: string, creds: string, json: 
       if sid.count == 0 { why = "its session did not start"; }
     }
     o: [70000] u8;
-    k := json_raw(o[..], 0, cast(string) jtext[0..<jtext.count - (ifx jtext[jtext.count - 1] == 10 then 2 else 1)]);
-    if sid.count > 0 { k = json_raw(o[..], k, ",\"session\":"); k = json_write_string(o[..], k, sid); }
-    else { k = json_raw(o[..], k, ",\"refused\":"); k = json_write_string(o[..], k, why); }
-    k = json_raw(o[..], k, ",\"handled\":"); k = json_write_int(o[..], k, cxproc_wall_us()); k = json_raw(o[..], k, "}\n");
+    k := cj_job_handled(o[..], 0, jtext, sid, why, cxproc_wall_us());
     db: [1500] u8;
     if k > 0 { x := fs_write(dm_file(p, "/daemon/done", name, db[..]), cast(string) o[0..<k]); }
     y := fs_remove(path);
@@ -225,12 +217,7 @@ dm_send_held :: (p: [] RtPaths, json: bool) -> int {
 // The heartbeat: who this daemon is, what it admits and when it last passed.
 dm_beat :: (p: [] RtPaths, name: string, host: string, engines: string, roots: string, creds: string) -> bool {
   o: [8192] u8;
-  n := json_raw(o[..], 0, "{\"name\":"); n = json_write_string(o[..], n, name);
-  n = json_raw(o[..], n, ",\"host\":"); n = json_write_string(o[..], n, host);
-  n = json_raw(o[..], n, ",\"engines\":"); n = json_write_string(o[..], n, ifx engines.count > 0 then engines else "any");
-  n = json_raw(o[..], n, ",\"roots\":"); n = json_write_string(o[..], n, roots);
-  n = json_raw(o[..], n, ",\"credentials\":"); n = json_write_string(o[..], n, creds);
-  n = json_raw(o[..], n, ",\"at\":"); n = json_write_int(o[..], n, cxproc_wall_us()); n = json_raw(o[..], n, "}\n");
+  n := cj_beat(o[..], 0, name, host, ifx engines.count > 0 then engines else "any", roots, creds, cxproc_wall_us());
   b: [1300] u8;
   return n > 0 && fs_write(rt_path(p, "/daemon/daemon.json", b[..]), cast(string) o[0..<n]);
 }
@@ -279,12 +266,7 @@ cd_cmd_jobs :: (json: bool) -> int {
   up := at.ok && age <= DM_STALE_S;
   o: [262144] u8; n := 0;
   if json {
-    n = json_raw(o[..], 0, "{\"daemon\":");
-    if hn > 0 {
-      while beat.count > 0 && beat[beat.count - 1] == 10 { beat = cast(string) beat[0..<beat.count - 1]; }
-      n = json_raw(o[..], n, cast(string) beat[0..<beat.count - 1]); n = json_raw(o[..], n, ifx up then ",\"up\":true}" else ",\"up\":false}");
-    } else { n = json_raw(o[..], n, "null"); }
-    n = json_raw(o[..], n, ",\"jobs\":[");
+    n = cj_jobs_open(o[..], 0, beat, up);
   } else {
     tb: [24] u8;
     if hn <= 0 { n = cd_cat(o[..], 0, "no daemon has run here (coder daemon)\n"); }
@@ -323,16 +305,7 @@ cd_cmd_jobs :: (json: bool) -> int {
       failed := ex.ok && ex.value != 0;
       state := ifx s < 2 then states[s] else (ifx refused.count > 0 then "refused" else (ifx session.count > 0 then "started" else (ifx failed then "failed" else "sent")));
       if json {
-        n = json_raw(o[..], n, ifx rows > 0 then "," else "");
-        n = json_raw(o[..], n, "{\"job\":"); n = json_write_string(o[..], n, id);
-        n = json_raw(o[..], n, ",\"state\":"); n = json_write_string(o[..], n, state);
-        n = json_raw(o[..], n, ",\"task\":"); n = json_write_string(o[..], n, task);
-        if session.count > 0 { n = json_raw(o[..], n, ",\"session\":"); n = json_write_string(o[..], n, session); }
-        if refused.count > 0 { n = json_raw(o[..], n, ",\"why\":"); n = json_write_string(o[..], n, refused); }
-        if dest.count > 0 { n = json_raw(o[..], n, ",\"dest\":"); n = json_write_string(o[..], n, dest); }
-        if rjob.count > 0 { n = json_raw(o[..], n, ",\"remote_job\":"); n = json_write_string(o[..], n, rjob); }
-        if failed { n = json_raw(o[..], n, ",\"exit\":"); n = json_write_int(o[..], n, ex.value); }
-        n = json_raw(o[..], n, "}");
+        n = cj_jobs_row(o[..], n, rows == 0, id, state, task, session, refused, dest, rjob, failed, ex.value);
       } else {
         n = cd_cat(o[..], n, id); n = cd_cat(o[..], n, "  "); n = cd_cat(o[..], n, state);
         if session.count > 0 { n = cd_cat(o[..], n, " "); n = cd_cat(o[..], n, session); }
@@ -345,7 +318,7 @@ cd_cmd_jobs :: (json: bool) -> int {
       rows += 1;
     }
   }
-  if json { n = json_raw(o[..], n, "]}"); cd_outln(cast(string) o[0..<n]); }
+  if json { n = cj_jobs_close(o[..], n); cd_outln(cast(string) o[0..<n]); }
   else { while n > 0 && o[n - 1] == 10 { n -= 1; } if n > 0 { cd_outln(cast(string) o[0..<n]); } }
   return 0;
 }

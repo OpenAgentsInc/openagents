@@ -46,7 +46,7 @@ began=$SECONDS
 # build host (oa-build-1, 2026-11-11, seconds): longest first, each to the part
 # with the least so far, so the parts take about as long as each other.
 API_PARTS="checks:20 py:721 room_checks:25 checkpoint2_checks:4 verse_packs:3 auth_checks:4 auth_recover_checks:9 agent_checks:8
-  auth_life_checks:8 passkey_checks:8 lnaddr_checks:11 auth_device_checks:5 wallet_checks:6 realm_doc_checks:3 realm_record_checks:3 world_checks:8 script_checks:8 script_cli_checks:60 workers_checks:95 cli-auth:17 anime:13 realms:8 audit:1"
+  auth_life_checks:8 passkey_checks:8 lnaddr_checks:11 auth_device_checks:5 wallet_checks:6 realm_doc_checks:3 realm_record_checks:3 world_checks:8 worldbuilder_checks:8 script_checks:8 script_cli_checks:60 workers_checks:95 cli-auth:17 anime:13 realms:8 audit:1"
 part=""
 if [[ "${1:-}" == --part ]]; then part="${2:-}"; shift 2 || true; fi
 if [[ -n "$part" ]]; then
@@ -190,7 +190,7 @@ fi
 # (test_zchat.py's fake on CHAT_PORT + 1 and runner on + 2).
 "$here/../tool.sh" "$here/port_locks.coax" "$work/ports" $$ API_PORT:7000:1 NPC_PORT:7800:1 PIECE_PORT:8600:1 BUILDER_PORT:9400:1 \
   GCS_PORT:10200:1 RELAY_PORT:11000:1 NOTICE_RELAY_PORT:11800:1 WAKE_PORT:12600:8 INFER_PORT:13400:1 SPARK_PORT:14200:1 \
-  RESEND_PORT:15000:1 TOKENINFO_PORT:15800:1 CHAT_PORT:16600:3 METAVERSE_GCS_PORT:17400:1 ANIME_PORT:18200:1 SCRIPT_JOB_PORT:19000:1 \
+  RESEND_PORT:15000:1 TOKENINFO_PORT:15800:1 CHAT_PORT:16600:3 METAVERSE_GCS_PORT:17400:1 ANIME_PORT:18200:1 SCRIPT_JOB_PORT:19000:1 WORLDBUILDER_PORT:19800:1 \
   > /dev/null 2> "$work/ports.err" & ports_pid=$!
 for _ in $(seq 1200); do [[ -s "$work/ports" ]] && break; kill -0 "$ports_pid" 2>/dev/null || break; sleep 0.1; done
 [[ -s "$work/ports" ]] || { echo "test.sh: no ports for the fake services" >&2; cat "$work/ports.err" >&2; exit 1; }
@@ -252,6 +252,8 @@ export NPC_PORT
 export PIECE_PORT
 # Build your own realm asks its own fake model (test_realm_builder.py serves it).
 export BUILDER_PORT
+# WorldBuilder asks its own fake model (tests/worldbuilder_checks.coax serves it).
+export WORLDBUILDER_PORT
 # Drops go to a fake bucket (test_project_drops.py serves it).
 export GCS_PORT
 # Publishing a project from a drop (rc-publish): a fake relay (test_project_drops.py) and the fake bucket.
@@ -411,7 +413,7 @@ OA_FCM_PROJECT=test-project OA_FCM_URL="http://127.0.0.1:$RESEND_PORT/fcm" OA_FC
 OA_AUTH_NOTICE_NSEC="$k_notice" OA_AUTH_NOTICE_RELAY="ws://127.0.0.1:$NOTICE_RELAY_PORT" OA_LNADDR_PROFILE_RELAYS="ws://127.0.0.1:$NOTICE_RELAY_PORT" OA_AUTH_NOTICE_SYNC=1 OA_AUTH_SCRYPT_LOG_N=10 \
 OA_TOKENINFO_URL="http://127.0.0.1:$TOKENINFO_PORT/tokeninfo" OA_JOBS_CALLER=jobs@example.iam.gserviceaccount.com OA_ALERT_TO=owner@example.com OA_DEVICE_TTL_MS=4000 \
 OA_NPC_URL="http://127.0.0.1:$NPC_PORT/model" OA_NPC_TOKEN=test-token OA_NPC_DAILY_CAP=5 OA_NPC_KEY_10M=3 OA_NPC_ADDR_10M=5 OA_NPC_RUNNING=3 OA_NPC_RUNNING_KEY=1 OA_PIECE_URL="http://127.0.0.1:$PIECE_PORT/model" OA_PIECE_DAILY_CAP=40 OA_EDIT_URL="http://127.0.0.1:$PIECE_PORT/edit-model" OA_EDIT_TIMEOUT_MS=1500 OA_BUILDER_URL="http://127.0.0.1:$BUILDER_PORT/model" OA_BUILDER_TIMEOUT_MS=1200 OA_BUILDER_PER_DAY=6 \
-OA_ANIME_URL="http://127.0.0.1:$ANIME_PORT/model" OA_ANIME_TIMEOUT_MS=500 \
+OA_ANIME_URL="http://127.0.0.1:$ANIME_PORT/model" OA_ANIME_TIMEOUT_MS=500 OA_WORLDBUILDER_URL="http://127.0.0.1:$WORLDBUILDER_PORT/model" \
   OA_BUILD_SHA=1111111111111111111111111111111111111111 OA_RELEASE_ID=123e4567-e89b-42d3-a456-426614174000 K_SERVICE=oa-api-staging K_REVISION=oa-api-staging-00002-new \
   OA_ROOM_CHECKPOINTS=1 OA_API_ORIGIN="$api_origin" env ${local_model[@]+"${local_model[@]}"} "$work/api" --listen 127.0.0.1:$api_port --migrations "$here/migrations" 2>"$work/api.log" & api_pid=$!
 # The API listens once its migrations are in, and on a busy host they take longer than any fixed wait
@@ -505,7 +507,7 @@ if [[ -x "$cli_coax" ]]; then
   coax_failed=0
   # tests/script_cli_checks.coax drives the built CLI (#13467): built here when that check runs.
   realm_cli="$repo_root/apps/openagents-cli/build/openagents"
-  for f in room_checks checkpoint2_checks verse_packs auth_checks auth_recover_checks agent_checks auth_life_checks passkey_checks lnaddr_checks auth_device_checks wallet_checks realm_doc_checks realm_record_checks world_checks script_checks script_cli_checks workers_checks; do
+  for f in room_checks checkpoint2_checks verse_packs auth_checks auth_recover_checks agent_checks auth_life_checks passkey_checks lnaddr_checks auth_device_checks wallet_checks realm_doc_checks realm_record_checks world_checks worldbuilder_checks script_checks script_cli_checks workers_checks; do
     [[ -z "${API_TESTS_ONLY:-}" || ",$API_TESTS_ONLY," == *",$f.coax,"* ]] || continue
     runs "$f" || continue
     if [[ $f == script_cli_checks ]]; then
@@ -551,6 +553,8 @@ if [[ -x "$cli_coax" ]]; then
   done
   API="http://127.0.0.1:$api_port" ORIGIN="http://127.0.0.1:$api_port" PGURL="$OA_API_DATABASE" PSQL="$pgbin/psql" \
     ANIME_ONLY= ANIME_ISOLATED_DB=oa_analytics ANIME_SELECTOR_BIN="$work/anime_direct_selector" "$work/anime_direct" || { cat "$work/api.log"; exit 1; }
+  # Every anime answer of this run, held to the two directors' codecs (anime-director-profile.coax; Protocol, #13250).
+  (cd "$repo_root" && COAX="$cli_coax" coax/web/tool.sh coax/web/api/anime-director-profile.coax --read-all "$API_CAPTURE") || { echo "the anime answers are not the codecs'" >&2; exit 1; }
   lap "anime_direct"
   fi
   # A made realm's engine pins, shapes and edit log, and the realm editor's whole route checked end to end (#12629).

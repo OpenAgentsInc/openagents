@@ -5,6 +5,7 @@
 // when no --engine is given; --engine always overrides it.
 
 #load "../../coax/lib/agent/engine/route.coax";
+#load "../../coax/lib/agent/cli/json-output.coax";   // what --json prints (cj_*)
 
 // Asks System One on Coder's consent ledger; r says what it chose, or why there is no decision.
 cd_route :: (task: string, local: bool, r: [] AgRoute) { pb: [1400] u8; cg_route(task, local, r, gt_path(pb[..])); }
@@ -58,8 +59,7 @@ cd_decide :: (question: string, options: string, state: string, out: [] u8, ok: 
           c := so_choice_of(ar[..], res.body, "decision");
           if !c.ok { why = "System One's answer has no choice"; }
           else {
-            n := json_raw(out, 0, "{\"choice\":"); n = json_write_string(out, n, c.choice);
-            n = json_raw(out, n, ",\"probability\":"); n = cd_prob3(out, n, c.probability); n = json_raw(out, n, "}");
+            n := cj_decided(out, 0, c.choice, cast(int) (c.probability * 1000.0 + 0.5));
             ok[0] = n > 0;
             return ifx n < 0 then "" else cast(string) out[0..<n];
           }
@@ -67,7 +67,7 @@ cd_decide :: (question: string, options: string, state: string, out: [] u8, ok: 
       }
     }
   }
-  n := json_raw(out, 0, "{\"error\":"); n = json_write_string(out, n, why); n = json_raw(out, n, "}");
+  n := cj_decide_error(out, 0, why);
   return ifx n < 0 then "" else cast(string) out[0..<n];
 }
 

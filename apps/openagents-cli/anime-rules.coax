@@ -69,18 +69,9 @@ an_context :: (t:[]AnimeTake,o:[]Jo) #effects(all) {
 }
 anime_direct_request :: (old:[]u8,exists:bool,words:string,out:[]u8)->int #effects(all) {
   t:[1]AnimeTake;code:=an_ready(old,exists,words,t[..]);if code!=0 {return code;}
-  buf:[16384]u8;o:[1]Jo;jo_start(o[..],buf[..]);jo_obj(o[..]);jo_key(o[..],"v");jo_int(o[..],1);jo_key(o[..],"words");jo_str(o[..],words);jo_key(o[..],"state");an_context(t[..],o[..]);jo_end(o[..]);return an_emit(o[..],out);
+  buf:[16384]u8;o:[1]Jo;jo_start(o[..],buf[..]);an_context(t[..],o[..]);if o[0].bad {return ANIME_CLI_CAPACITY;}return aap_request(words,jo_text(o[..]),out);
 }
 
-an_reply :: (d:Jv,words:string)->bool #effects(all) {
-  if !aap_unique(d) || !aap_keys(d,0,"v|heard|answers") || jv_int(d,jv_get(d,0,"v"),0)!=1 {return false;}
-  heard:=jv_get(d,0,"heard");if jv_kind(d,heard)!=JV_STRING || !jv_raw_eq(jv_raw(d,heard),words) {return false;}
-  answers:=jv_get(d,0,"answers");if jv_kind(d,answers)!=JV_ARRAY || jv_len(d,answers)>8 {return false;}
-  core:[2048]u8;
-  for i:0..<jv_len(d,answers) {at:=jv_at(d,answers,i);for key:[6]string.["p","timing","confidence","stock","render_supported","decision"] {if jv_get(d,at,key)==-1 {return false;}}
-    if !aap_direction(d,at,true,core[..]).ok {return false;}
-  }return true;
-}
 // A finite nonnegative time written on a nanosecond decimal grid. Both derived
 // and explicit endpoints round upward onto the grid, preserving interval order.
 an_seconds :: (o:[]Jo,ns:int) #effects(all) {
@@ -89,9 +80,7 @@ an_seconds :: (o:[]Jo,ns:int) #effects(all) {
 }
 anime_direct_append :: (old:[]u8,exists:bool,words:string,reply:[]u8,out:[]u8)->int #effects(all) {
   t:[1]AnimeTake;code:=an_ready(old,exists,words,t[..]);if code!=0 {return code;}
-  if reply.count>65536 || !aap_utf8(cast(string)reply,true) {return ANIME_CLI_REPLY;}
-  nodes:[2048]JvNode;d:[1]Jv;if !jv_parse(d[..],cast(string)reply,nodes[..]) || !an_reply(d[0],words) {return ANIME_CLI_REPLY;}
-  answers:=jv_get(d[0],0,"answers");
+  nodes:[2048]JvNode;d:[1]Jv;answers:=aap_reply(cast(string)reply,words,d[..],nodes[..]);if answers==-1 {return ANIME_CLI_REPLY;}
   old_nodes:[4096]JvNode;old_doc:[1]Jv;if exists {parsed:=jv_parse(old_doc[..],cast(string)old,old_nodes[..]);}
   start:=cast(f64)t[0].length;length_node:=jv_get(old_doc[0],0,"length");if length_node!=-1 {start=at_time(old_doc[0],length_node);}ns:=cast(int)(-floor(-start*1000000000));
   buf:[32768]u8;o:[1]Jo;jo_start(o[..],buf[..]);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],"anime.v1");jo_key(o[..],"stage");jo_str(o[..],"courtyard");jo_key(o[..],"auto");jo_bool(o[..],t[0].auto_camera);jo_key(o[..],"lines");jo_arr(o[..]);

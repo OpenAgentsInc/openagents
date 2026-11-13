@@ -1,0 +1,38 @@
+{
+ "profile": "external-model-context-protocol",
+ "about": "MCP JSON-RPC messages as coder mcp receives them on stdio, one a line. coder/tui/mcp.coax is the only file that parses them (cd_mcp_answer); what comes out is the reply line Coder writes, or no line for a response or a notification. The bytes are the specification's own published examples, as the repository already held them in psionic/tests/harness-protocols-fixtures.coax (PR_FX_SPEC_*; Coder book chapter 16, Independent checks). `want.reply` is the whole line cd_mcp_answer gives: Coder has no get_weather tool, so the specification's call gets JSON-RPC error -32602 under the request's id; a response gets no answer. Not here yet: an initialize, a tools/list and a tools/call for one of Coder's own tools as a real client (Claude Code, Codex) sends them; no such recording is in the repository. Checked by coder/tui/mcp-external-checks.coax, which holds the same bytes as constants (a Coax test reads no file).",
+ "fixtures": [
+  {
+   "name": "the specification's tools/call request (get_weather, which coder mcp does not have)",
+   "source": "the Model Context Protocol specification, version 2025-06-18, server/tools page, its own example of a tools/call request; kept at psionic/tests/harness-protocols-fixtures.coax as PR_FX_SPEC_CALL",
+   "body": "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\",\"params\":{\"name\":\"get_weather\",\"arguments\":{\"location\":\"New York\"}}}",
+   "want": {
+    "reply": "{\"jsonrpc\":\"2.0\",\"id\":2,\"error\":{\"code\":-32602,\"message\":\"Unknown tool.\"}}"
+   }
+  },
+  {
+   "name": "the specification's tools/list response",
+   "source": "the Model Context Protocol specification, version 2025-06-18, server/tools page, its own example of a tools/list response; kept at psionic/tests/harness-protocols-fixtures.coax as PR_FX_SPEC_LIST",
+   "body": "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"tools\":[{\"name\":\"get_weather\",\"title\":\"Weather Information Provider\",\"description\":\"Get current weather information for a location\",\"inputSchema\":{\"type\":\"object\",\"properties\":{\"location\":{\"type\":\"string\",\"description\":\"City name or zip code\"}},\"required\":[\"location\"]}}],\"nextCursor\":\"next-page-cursor\"}}",
+   "want": {
+    "reply": ""
+   }
+  },
+  {
+   "name": "the specification's protocol error response",
+   "source": "the Model Context Protocol specification, version 2025-06-18, server/tools page, its own example of a protocol error; kept at psionic/tests/harness-protocols-fixtures.coax as PR_FX_SPEC_ERROR",
+   "body": "{\"jsonrpc\":\"2.0\",\"id\":3,\"error\":{\"code\":-32602,\"message\":\"Unknown tool: invalid_tool_name\"}}",
+   "want": {
+    "reply": ""
+   }
+  },
+  {
+   "name": "the specification's tool execution error result",
+   "source": "the Model Context Protocol specification, version 2025-06-18, server/tools page, its own example of a tool execution error; kept at psionic/tests/harness-protocols-fixtures.coax as PR_FX_SPEC_FAILED",
+   "body": "{\"jsonrpc\":\"2.0\",\"id\":4,\"result\":{\"content\":[{\"type\":\"text\",\"text\":\"Failed to fetch weather data: API rate limit exceeded\"}],\"isError\":true}}",
+   "want": {
+    "reply": ""
+   }
+  }
+ ]
+}

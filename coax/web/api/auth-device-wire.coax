@@ -1,0 +1,215 @@
+// Device keys on the wire, one codec for what auth-device.c writes itself (Protocol E11, GitHub
+// #13250): proto/openagents/api/v1alpha1/auth_device.proto (profile api-routes) names the members.
+// auth-device.c calls the #export_c writers below through auth-device-wire.generated.c and builds
+// no body of its own. Each answer has two forms, JSON and the ?as=lines text:
+//   adw_refusal_write / adw_refusal_lines    a refused proof or key: {"error","device_proof"} and, for a
+//                                            clock that is off, our "now_ms"
+//   adw_devices_open_write, adw_devices_row_write, adw_devices_close_write
+//   adw_devices_open_lines, adw_devices_row_lines
+//                                            GET /api/auth/devices 200, a row at a time into one buffer
+//   adw_removed_write / adw_removed_lines    POST /api/auth/devices/<id>/remove 200
+//   adw_push_on_write / adw_push_on_lines    POST /api/auth/devices/push 200
+//   adw_push_off_write / adw_push_off_lines  POST /api/auth/devices/push/off 200
+// Audit details (auth.log's jsonb):
+//   adw_why_detail_write, adw_bound_detail_write, adw_bind_failed_detail_write, adw_proof_detail_write,
+//   adw_removed_detail_write, adw_push_detail_write, adw_push_off_detail_write, adw_push_gone_detail_write
+// The bytes are the ones auth-device.c wrote before this file: proto/verse/api-routes-v1alpha1.json
+// holds what a running API answered and routes-goldens.coax holds each answer's keys to its
+// message. A device's name and a refusal's words are escaped as auth.c's json_esc escaped them; the
+// other strings (a platform, a store, a push service, a reason: fixed words the policy admitted)
+// are written as JSON strings and hold nothing to escape, so no byte moved. Numbers SQL wrote
+// (a device's id, its times, its logins) go in as they came. A writer returns the body's length
+// (the row writers: the body's new end), or -1 when it does not fit.
+//   coax/bin/coax test coax/web/api/auth-device-wire.coax --library
+#load "api-wire.coax";
+
+ADW_WORDS :: 300;   // a refusal's escaped words: auth-device.c's buffer before this file
+ADW_NAME :: 200;    // a device's escaped name, the same
+
+adw_bit :: (o: [] Jo, b: bool) #effects(all) { jo_put(o, ifx b then "1" else "0"); }
+// auth.c's json_esc into a buffer of cap bytes: a quote and a backslash get a backslash, a control
+// byte is \u00XX, and the text is cut where fewer than 8 bytes of the buffer were left.
+adw_esc :: (o: [] Jo, s: string, cap: int) #effects(all) {
+  hex := "0123456789abcdef"; k := 0;
+  for c: s {
+    if k + 7 < cap {
+      if c == '"' || c == '\\' { jo_byte(o, '\\'); jo_byte(o, c); k += 2; }
+      else if c < 32 { jo_put(o, "\\u00"); jo_byte(o, hex[c >> 4]); jo_byte(o, hex[c & 15]); k += 6; }
+      else { jo_byte(o, c); k += 1; }
+    } else { k = cap; }
+  }
+}
+
+// A refusal with its reason; clock: the device's clock is off, so our time goes with it.
+adw_refusal_write :: (words: string, why: string, clock: bool, now_ms: int, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "{\"error\":\""); adw_esc(o[..], words, ADW_WORDS); jo_put(o[..], "\",\"device_proof\":"); jo_quoted(o[..], why);
+  if clock { jo_put(o[..], ",\"now_ms\":"); jo_int(o[..], now_ms); }
+  jo_put(o[..], "}");
+  return aw_len(o[..]);
+}
+adw_refusal_lines :: (words: string, why: string, clock: bool, now_ms: int, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "error "); jo_put(o[..], words); jo_put(o[..], "\ndevice_proof "); jo_put(o[..], why); jo_put(o[..], "\n");
+  if clock { jo_put(o[..], "now_ms "); jo_int(o[..], now_ms); jo_put(o[..], "\n"); }
+  return aw_len(o[..]);
+}
+
+// The devices list, into one buffer: open, a row for each device (index from 0, at: the end so
+// far), close. id, the times and sessions are SQL's numbers as they came.
+adw_devices_open_write :: (now_ms: int, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0); jo_put(o[..], "{\"now_ms\":"); jo_int(o[..], now_ms); jo_put(o[..], ",\"devices\":["); return aw_len(o[..]);
+}
+adw_devices_row_write :: (at: int, index: int, id: string, name: string, platform: string, store: string, created_ms: string,
+                          last_seen_ms: string, sessions: string, this: bool, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, at);
+  if index > 0 { jo_put(o[..], ","); }
+  jo_put(o[..], "{\"id\":"); jo_put(o[..], id); jo_put(o[..], ",\"name\":\""); adw_esc(o[..], name, ADW_NAME);
+  jo_put(o[..], "\",\"platform\":"); jo_quoted(o[..], platform); jo_put(o[..], ",\"store\":"); jo_quoted(o[..], store);
+  jo_put(o[..], ",\"created_ms\":"); jo_put(o[..], created_ms); jo_put(o[..], ",\"last_seen_ms\":"); jo_put(o[..], last_seen_ms);
+  jo_put(o[..], ",\"sessions\":"); jo_put(o[..], sessions); jo_put(o[..], ",\"this\":"); jo_put(o[..], ifx this then "true" else "false"); jo_put(o[..], "}");
+  return aw_len(o[..]);
+}
+adw_devices_close_write :: (at: int, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, at); jo_put(o[..], "]}"); return aw_len(o[..]);
+}
+adw_devices_open_lines :: (now_ms: int, count: int, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0); jo_put(o[..], "now_ms "); jo_int(o[..], now_ms); jo_put(o[..], "\ncount "); jo_int(o[..], count); jo_put(o[..], "\n"); return aw_len(o[..]);
+}
+// device <id> <platform> <store> <last_seen_ms> <logins> <this> <name to the line's end>
+adw_devices_row_lines :: (at: int, id: string, platform: string, store: string, last_seen_ms: string, sessions: string, this: bool,
+                          name: string, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, at);
+  jo_put(o[..], "device "); jo_put(o[..], id); jo_put(o[..], " "); jo_put(o[..], platform); jo_put(o[..], " "); jo_put(o[..], store);
+  jo_put(o[..], " "); jo_put(o[..], last_seen_ms); jo_put(o[..], " "); jo_put(o[..], sessions); jo_put(o[..], " "); adw_bit(o[..], this);
+  jo_put(o[..], " "); jo_put(o[..], name); jo_put(o[..], "\n");
+  return aw_len(o[..]);
+}
+
+// A device was removed: how many logins ended with it.
+adw_removed_write :: (ended: int, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0); jo_put(o[..], "{\"state\":\"removed\",\"ended\":"); jo_int(o[..], ended); jo_put(o[..], "}"); return aw_len(o[..]);
+}
+adw_removed_lines :: (ended: int, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0); jo_put(o[..], "state removed\nended "); jo_int(o[..], ended); jo_put(o[..], "\n"); return aw_len(o[..]);
+}
+// Notices as push are on for this login's device (its id as SQL wrote it), or off.
+adw_push_on_write :: (device: string, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0); jo_put(o[..], "{\"state\":\"on\",\"device\":"); jo_put(o[..], device); jo_put(o[..], "}"); return aw_len(o[..]);
+}
+adw_push_on_lines :: (device: string, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0); jo_put(o[..], "state on\ndevice "); jo_put(o[..], device); jo_put(o[..], "\n"); return aw_len(o[..]);
+}
+adw_push_off_write :: (out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0); jo_put(o[..], "{\"state\":\"off\"}"); return aw_len(o[..]);
+}
+adw_push_off_lines :: (out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0); jo_put(o[..], "state off\n"); return aw_len(o[..]);
+}
+
+// Audit details. A device's id is SQL's number as it came.
+adw_why_detail_write :: (why: string, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0); jo_put(o[..], "{\"why\":"); jo_quoted(o[..], why); jo_put(o[..], "}"); return aw_len(o[..]);
+}
+adw_bound_detail_write :: (device: string, platform: string, store: string, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "{\"device\":"); jo_put(o[..], device); jo_put(o[..], ",\"platform\":"); jo_quoted(o[..], platform);
+  jo_put(o[..], ",\"store\":"); jo_quoted(o[..], store); jo_put(o[..], "}");
+  return aw_len(o[..]);
+}
+adw_bind_failed_detail_write :: (out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0); jo_put(o[..], "{\"why\":\"bind\"}"); return aw_len(o[..]);
+}
+// A refused refresh: device is "" (null on the wire) for a login bound to none.
+adw_proof_detail_write :: (why: string, device: string, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "{\"why\":"); jo_quoted(o[..], why); jo_put(o[..], ",\"device\":"); jo_put(o[..], ifx device.count > 0 then device else "null"); jo_put(o[..], "}");
+  return aw_len(o[..]);
+}
+adw_removed_detail_write :: (device: string, ended: int, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "{\"device\":"); jo_put(o[..], device); jo_put(o[..], ",\"ended\":"); jo_int(o[..], ended); jo_put(o[..], "}");
+  return aw_len(o[..]);
+}
+adw_push_detail_write :: (device: string, service: string, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "{\"device\":"); jo_put(o[..], device); jo_put(o[..], ",\"service\":"); jo_quoted(o[..], service); jo_put(o[..], "}");
+  return aw_len(o[..]);
+}
+adw_push_off_detail_write :: (out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0); jo_put(o[..], "{\"off\":true}"); return aw_len(o[..]);
+}
+adw_push_gone_detail_write :: (device: string, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0); jo_put(o[..], "{\"device\":"); jo_put(o[..], device); jo_put(o[..], ",\"gone\":true}"); return aw_len(o[..]);
+}
+
+#test "a refusal with its reason, as JSON and as lines; our time only for a clock that is off" {
+  b: [500] u8;
+  n := adw_refusal_write("No such device.", "unknown", false, 0, b[..]);
+  #assert cast(string) b[0..<n] == "{\"error\":\"No such device.\",\"device_proof\":\"unknown\"}" && adw_refusal_write("No such device.", "unknown", false, 0, b[0..<n - 1]) == -1;
+  n = adw_refusal_write("This device's clock is off by more than a minute. Set the time and try again.", "clock", true, 1800000000000, b[..]);
+  #assert cast(string) b[0..<n] == "{\"error\":\"This device's clock is off by more than a minute. Set the time and try again.\",\"device_proof\":\"clock\",\"now_ms\":1800000000000}";
+  n = adw_refusal_write("", "", true, 0, b[..]); #assert cast(string) b[0..<n] == "{\"error\":\"\",\"device_proof\":\"\",\"now_ms\":0}";
+  n = adw_refusal_write("", "", false, 7, b[..]); #assert cast(string) b[0..<n] == "{\"error\":\"\",\"device_proof\":\"\"}";
+  odd := [5] u8.['"', '\\', 10, 9, 1];
+  n = adw_refusal_write(cast(string) odd[..], "none", true, -1, b[..]);
+  #assert cast(string) b[0..<n] == "{\"error\":\"\\\"\\\\\\u000a\\u0009\\u0001\",\"device_proof\":\"none\",\"now_ms\":-1}";
+  n = adw_refusal_lines("No such device.", "unknown", false, 0, b[..]);
+  #assert cast(string) b[0..<n] == "error No such device.\ndevice_proof unknown\n" && adw_refusal_lines("No such device.", "unknown", false, 0, b[0..<n - 1]) == -1;
+  n = adw_refusal_lines("Set the time.", "clock", true, 1800000000000, b[..]);
+  #assert cast(string) b[0..<n] == "error Set the time.\ndevice_proof clock\nnow_ms 1800000000000\n" && adw_refusal_lines("Set the time.", "clock", true, 1800000000000, b[0..<n - 1]) == -1;
+  n = adw_refusal_lines("", "", true, 0, b[..]); #assert cast(string) b[0..<n] == "error \ndevice_proof \nnow_ms 0\n";
+}
+
+#test "the devices list, a row at a time: none, one, two; a name escaped as auth.c escaped it" {
+  b: [1400] u8; small: [60] u8;
+  n := adw_devices_open_write(1800000000000, b[..]);
+  #assert cast(string) b[0..<n] == "{\"now_ms\":1800000000000,\"devices\":[" && adw_devices_open_write(1800000000000, b[0..<n - 1]) == -1;
+  e := adw_devices_close_write(n, b[..]);
+  #assert cast(string) b[0..<e] == "{\"now_ms\":1800000000000,\"devices\":[]}" && adw_devices_close_write(n, b[0..<n + 1]) == -1;
+  n = adw_devices_row_write(n, 0, "7", "Ada's \"phone\" \\ 1", "ios", "enclave", "1799990000000", "1799999000000", "2", true, b[..]);
+  #assert cast(string) b[0..<n] == "{\"now_ms\":1800000000000,\"devices\":[{\"id\":7,\"name\":\"Ada's \\\"phone\\\" \\\\ 1\",\"platform\":\"ios\",\"store\":\"enclave\",\"created_ms\":1799990000000,\"last_seen_ms\":1799999000000,\"sessions\":2,\"this\":true}";
+  #assert adw_devices_row_write(35, 0, "7", "x", "ios", "enclave", "1", "2", "3", true, small[..]) == -1;
+  n = adw_devices_row_write(n, 1, "12", "", "android", "tee", "0", "0", "0", false, b[..]);
+  n = adw_devices_close_write(n, b[..]);
+  #assert cast(string) b[0..<n] == "{\"now_ms\":1800000000000,\"devices\":[{\"id\":7,\"name\":\"Ada's \\\"phone\\\" \\\\ 1\",\"platform\":\"ios\",\"store\":\"enclave\",\"created_ms\":1799990000000,\"last_seen_ms\":1799999000000,\"sessions\":2,\"this\":true},{\"id\":12,\"name\":\"\",\"platform\":\"android\",\"store\":\"tee\",\"created_ms\":0,\"last_seen_ms\":0,\"sessions\":0,\"this\":false}]}";
+  // a name's cut: 193 bytes kept, as a 200-byte buffer kept them
+  long: [300] u8; for i: 0..<300 { long[i] = 'n'; }
+  n = adw_devices_row_write(0, 0, "1", cast(string) long[..], "", "", "1", "1", "1", false, b[..]);
+  #assert n == adw_devices_row_write(0, 0, "1", cast(string) long[0..<193], "", "", "1", "1", "1", false, b[..]) && n == 1 + adw_devices_row_write(0, 0, "1", cast(string) long[0..<192], "", "", "1", "1", "1", false, b[..]);
+  n = adw_devices_open_lines(1800000000000, 2, b[..]);
+  #assert cast(string) b[0..<n] == "now_ms 1800000000000\ncount 2\n" && adw_devices_open_lines(1800000000000, 2, b[0..<n - 1]) == -1;
+  n = adw_devices_row_lines(n, "7", "ios", "enclave", "1799999000000", "2", true, "Ada's \"phone\" \\ 1", b[..]);
+  n = adw_devices_row_lines(n, "12", "android", "tee", "0", "0", false, "", b[..]);
+  #assert cast(string) b[0..<n] == "now_ms 1800000000000\ncount 2\ndevice 7 ios enclave 1799999000000 2 1 Ada's \"phone\" \\ 1\ndevice 12 android tee 0 0 0 \n";
+  #assert adw_devices_row_lines(10, "7", "ios", "enclave", "1", "2", true, "x", b[0..<30]) == -1 && adw_devices_row_lines(-1, "7", "ios", "enclave", "1", "2", true, "x", b[..]) == -1;
+  n = adw_devices_open_lines(0, 0, b[..]); #assert cast(string) b[0..<n] == "now_ms 0\ncount 0\n";
+}
+
+#test "removed, push on and off, as JSON and as lines" {
+  b: [120] u8;
+  n := adw_removed_write(3, b[..]); #assert cast(string) b[0..<n] == "{\"state\":\"removed\",\"ended\":3}" && adw_removed_write(3, b[0..<n - 1]) == -1;
+  n = adw_removed_write(0, b[..]); #assert cast(string) b[0..<n] == "{\"state\":\"removed\",\"ended\":0}";
+  n = adw_removed_lines(3, b[..]); #assert cast(string) b[0..<n] == "state removed\nended 3\n" && adw_removed_lines(3, b[0..<n - 1]) == -1;
+  n = adw_removed_lines(-1, b[..]); #assert cast(string) b[0..<n] == "state removed\nended -1\n";
+  n = adw_push_on_write("7", b[..]); #assert cast(string) b[0..<n] == "{\"state\":\"on\",\"device\":7}" && adw_push_on_write("7", b[0..<n - 1]) == -1;
+  n = adw_push_on_lines("7", b[..]); #assert cast(string) b[0..<n] == "state on\ndevice 7\n" && adw_push_on_lines("7", b[0..<n - 1]) == -1;
+  n = adw_push_off_write(b[..]); #assert cast(string) b[0..<n] == "{\"state\":\"off\"}" && adw_push_off_write(b[0..<n - 1]) == -1;
+  n = adw_push_off_lines(b[..]); #assert cast(string) b[0..<n] == "state off\n" && adw_push_off_lines(b[0..<n - 1]) == -1;
+}
+
+#test "audit details: fixed keys, a device's id as it came and null for none" {
+  b: [120] u8;
+  n := adw_why_detail_write("platform", b[..]); #assert cast(string) b[0..<n] == "{\"why\":\"platform\"}" && adw_why_detail_write("platform", b[0..<n - 1]) == -1;
+  n = adw_why_detail_write("", b[..]); #assert cast(string) b[0..<n] == "{\"why\":\"\"}";
+  n = adw_bound_detail_write("7", "ios", "enclave", b[..]);
+  #assert cast(string) b[0..<n] == "{\"device\":7,\"platform\":\"ios\",\"store\":\"enclave\"}" && adw_bound_detail_write("7", "ios", "enclave", b[0..<n - 1]) == -1;
+  n = adw_bind_failed_detail_write(b[..]); #assert cast(string) b[0..<n] == "{\"why\":\"bind\"}" && adw_bind_failed_detail_write(b[0..<n - 1]) == -1;
+  n = adw_proof_detail_write("signature", "7", b[..]); #assert cast(string) b[0..<n] == "{\"why\":\"signature\",\"device\":7}" && adw_proof_detail_write("signature", "7", b[0..<n - 1]) == -1;
+  n = adw_proof_detail_write("none", "", b[..]); #assert cast(string) b[0..<n] == "{\"why\":\"none\",\"device\":null}";
+  n = adw_removed_detail_write("7", 2, b[..]); #assert cast(string) b[0..<n] == "{\"device\":7,\"ended\":2}" && adw_removed_detail_write("7", 2, b[0..<n - 1]) == -1;
+  n = adw_removed_detail_write("123456789012345678", 0, b[..]); #assert cast(string) b[0..<n] == "{\"device\":123456789012345678,\"ended\":0}";
+  n = adw_push_detail_write("7", "apns_sandbox", b[..]); #assert cast(string) b[0..<n] == "{\"device\":7,\"service\":\"apns_sandbox\"}" && adw_push_detail_write("7", "apns_sandbox", b[0..<n - 1]) == -1;
+  n = adw_push_off_detail_write(b[..]); #assert cast(string) b[0..<n] == "{\"off\":true}" && adw_push_off_detail_write(b[0..<n - 1]) == -1;
+  n = adw_push_gone_detail_write("7", b[..]); #assert cast(string) b[0..<n] == "{\"device\":7,\"gone\":true}" && adw_push_gone_detail_write("7", b[0..<n - 1]) == -1;
+}

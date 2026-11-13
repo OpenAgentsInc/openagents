@@ -1,9 +1,9 @@
 // Hold the room reports' profile (proto/verse/room-reports-v1.json, Protocol E7 and E8, #13250) to
 // the one codec the room and the API use: metaverse-engine/session/room-report.coax. Each entry
 // names its values and its exact text. The codec's writer gives that text from the values, and,
-// where the codec has a reader (the receipts and the control answer), the reader gives the values
-// back from the text. A vitals post and a directory post are read by the API in C, so only their
-// writer is held here. Every "refused" text is refused by its reader.
+// the reader gives the values back from the text: the room's readers (the receipts and the control
+// answer) and the API's (a vitals post's head and lines, a directory post's shard, endpoint, health
+// and the post without them). Every "refused" text is refused by its reader.
 //   coax/web/tool.sh coax/web/room/report-profile.coax proto/verse/room-reports-v1.json
 #import "Basic";
 #load "../../../metaverse-engine/session/room-report.coax";
@@ -38,7 +38,24 @@ rpp_vitals :: (d: Jv, row: int, text: string) -> bool {
     if pid == "" || rpp_int(d, l, "hp") == RPP_NONE || rpp_int(d, l, "max") == RPP_NONE || rpp_int(d, l, "xp") == RPP_NONE || rpp_int(d, l, "wanted") == RPP_NONE || rpp_int(d, l, "rev") == RPP_NONE || rpp_int(d, l, "at") == RPP_NONE { return false; }
     n = room_report_vitals_line(out[..], n, pid, rpp_int(d, l, "hp"), rpp_int(d, l, "max"), rpp_int(d, l, "xp"), rpp_int(d, l, "wanted"), rpp_int(d, l, "rev"), rpp_int(d, l, "at"), rpp_opt(d, l, "owner", 0), klass);
   }
-  return n > 0 && cast(string) out[0..<n] == text;
+  if !(n > 0 && cast(string) out[0..<n] == text) { return false; }
+  // the same text, as the API reads it (room_report_vitals_head_read, room_report_vitals_line_read)
+  h: [1] RoomVitalsHead; g: [1] RoomVitalsLine;
+  room_report_vitals_head_read(text, h[..]);
+  if !h[0].stamped || h[0].at != rpp_int(d, row, "t") || !h[0].owned || h[0].shard != rpp_int(d, row, "shard") || h[0].gen != rpp_int(d, row, "gen") || h[0].batch != rpp_int(d, row, "batch") { return false; }
+  from := h[0].lines;
+  for i: 0..<jv_len(d, lines) {
+    l := jv_at(d, lines, i);
+    pid := rpp_str(d, jv_get(d, l, "pid"), pb[..]); klass := rpp_str(d, jv_get(d, l, "class"), cb[..]);
+    if !room_report_vitals_line_read(text, from, true, g[..]) { return false; }
+    owner := rpp_opt(d, l, "owner", 0);
+    if g[0].got != (ifx owner > 0 then 8 else 7) || pid.count >= ROOM_VITALS_PID || cast(string) g[0].pid[0..<pid.count] != pid || g[0].pid[pid.count] != 0 { return false; }
+    if g[0].hp != rpp_int(d, l, "hp") || g[0].max != rpp_int(d, l, "max") || g[0].xp != rpp_int(d, l, "xp") || g[0].wanted != rpp_int(d, l, "wanted") || g[0].rev != rpp_int(d, l, "rev") || g[0].when != rpp_int(d, l, "at") { return false; }
+    if (owner > 0 && g[0].owner != owner) || (owner <= 0 && g[0].owner != -1) { return false; }
+    if g[0].has_class != (klass.count > 0) || cast(string) g[0].klass[0..<klass.count] != klass || g[0].klass[klass.count] != 0 { return false; }
+    from = g[0].next;
+  }
+  return !room_report_vitals_line_read(text, from, true, g[..]);
 }
 // A receipt: {"gen","batch","codes","text"}
 rpp_receipt :: (d: Jv, row: int, text: string) -> bool {
@@ -67,7 +84,28 @@ rpp_directory :: (d: Jv, row: int, text: string) -> bool {
   }
   h := jv_get(d, row, "health");
   if h >= 0 { n = room_report_dir_health(out[..], n, rpp_int(d, h, "players"), rpp_int(d, h, "tick_us")); }
-  return n > 0 && cast(string) out[0..<n] == text;
+  if !(n > 0 && cast(string) out[0..<n] == text) { return false; }
+  // the same text, as the API reads it (room_report_dir_read, room_report_dir_names_shard): the shard,
+  // the endpoint and the health, and the post without its e and h lines
+  kept: [RPP_TEXT] u8; g: [1] RoomDirPost;
+  kn := room_report_dir_read(text, kept[..], g[..]);
+  shard := rpp_int(d, row, "shard");
+  if kn < 0 || g[0].shard != shard || !room_report_dir_names_shard(text, shard) || room_report_dir_names_shard(text, shard + 1) { return false; }
+  endpoint := ifx jv_get(d, row, "endpoint") >= 0 then rpp_str(d, jv_get(d, row, "endpoint"), sb[..]) else "";
+  if g[0].endpoint_n != endpoint.count || cast(string) g[0].endpoint[0..<g[0].endpoint_n] != endpoint { return false; }
+  if g[0].players != (ifx h >= 0 then rpp_int(d, h, "players") else -1) || g[0].tick_us != (ifx h >= 0 then rpp_int(d, h, "tick_us") else -1) { return false; }
+  // what is left: the text the writers give without the endpoint and the health
+  m := room_report_put(out[..], room_report_stamp(out[..], 0, rpp_int(d, row, "t")), "\n");
+  m = room_report_dir_shard(out[..], m, shard, rpp_int(d, row, "free"));
+  if jv_get(d, row, "gen") >= 0 { m = room_report_dir_gen(out[..], m, rpp_int(d, row, "gen"), jv_bool(d, jv_get(d, row, "draining"))); }
+  for i: 0..<jv_len(d, rooms) {
+    r := jv_at(d, rooms, i);
+    m = room_report_dir_room(out[..], m, rpp_str(d, jv_get(d, r, "code"), sb[..]), rpp_int(d, r, "players"));
+    pids := jv_get(d, r, "pids");
+    for j: 0..<jv_len(d, pids) { m = room_report_dir_pid(out[..], m, rpp_str(d, jv_at(d, pids, j), sb[..])); }
+    m = room_report_dir_end(out[..], m);
+  }
+  return m > 0 && cast(string) kept[0..<kn] == cast(string) out[0..<m];
 }
 // A drain's signed text: {"shard","at","wait","text"}
 rpp_drain :: (d: Jv, row: int, text: string) -> bool {

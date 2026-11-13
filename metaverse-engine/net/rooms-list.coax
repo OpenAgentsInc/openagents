@@ -5,7 +5,7 @@
 // "with_full":"SLUG-N" (it is full, so "join" names another).
 // Writers: a room server (coax/web/room/room-relay.coax rm_rooms) through rooms_list_open, _room and
 // _close; the API, in SQL (verse.room_list), whose members come in another order and which adds
-// "rooms" entries' "shard". Reader: the page (apps/openagents-web/everglade-join.coax) through
+// "rooms" entries' "shard". Reader: the page (apps/openagents-web/old/v1/everglade-join.coax) through
 // rooms_list_join and rooms_list_with_full, which read either writer's bytes.
 // Goldens: proto/verse/api-routes-v1alpha1.json, checked by coax/web/api/routes-goldens.coax.
 //   coax/bin/coax test metaverse-engine/net/rooms-list.coax

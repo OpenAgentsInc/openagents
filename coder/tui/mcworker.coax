@@ -23,6 +23,9 @@
 //        {"kind":"aware","intel":{...},"memory":{...}}   after "ended", for a run with intel or memory (aware.coax mc_aw_report)
 //        {"kind":"embedding","values":[...]} or {"kind":"embedding","error":"..."}
 //
+// Every line each way is written and read by coax/lib/agent/engine/mcworker-wire.coax, the one
+// codec the owners load too (Protocol C11, GitHub #13250; proto/coder/microcoder-worker-lines-v1.json).
+//
 // Each run's facts carry the earlier turns as "conversation". A command's long output is saved whole
 // in the folder beside the journal (worker-N.out/RUN-STEP-K.txt), which the run's views may read. Credentials as
 // the desktop Lab reads them (microcoder_keys.coax): into curl's and gcloud's
@@ -37,7 +40,7 @@
 #import "Basic";
 #load "../../coax/lib/sys/tool.coax";
 #load "microcoder_keys.coax";
-#load "../../coax/lib/agent/engine/micro-observation.coax";
+#load "../../coax/lib/agent/engine/mcworker-wire.coax";
 #load "../../coax/lib/sys/fs.coax";
 cxproc_wall_us :: ()->int #foreign #effects(all);
 
@@ -54,9 +57,8 @@ mw_send :: (o: [] u8, n: int) {
 
 mw_event :: (e: McRunEvent, o: [] u8) {
   n := 0;
-  if e.kind == MR_REPLY {
-    n = json_raw(o, 0, "{\"kind\":\"reply\",\"text\":"); n = json_write_string(o, n, e.text); n = json_raw(o, n, "}");
-  } else if e.kind == MR_ATTEMPT {
+  if e.kind == MR_REPLY { n = mww_reply(o, e.text); }
+  else if e.kind == MR_ATTEMPT {
     u := e.log.usage;
     values := [7] int.[
       ifx (u.observed & 1) != 0 then u.input_tokens else -1,
@@ -65,31 +67,17 @@ mw_event :: (e: McRunEvent, o: [] u8) {
       ifx (u.observed & 8) != 0 then u.reasoning_tokens else -1,
       ifx (u.observed & 16) != 0 then u.cache_write_tokens else -1,
       e.log.cost_usd_micros, e.log.card_usd_micros];
-    n = mo_attempt("", e.log.gateway, e.log.model, e.log.requested_effort, gw_outcome_name(e.log.outcome), e.log.status, values[..], o);
-  } else if e.kind == MR_COMMAND {
-    n = json_raw(o, 0, "{\"kind\":\"command\",\"command\":"); n = json_write_string(o, n, e.text);
-    n = json_raw(o, n, ",\"exit\":"); n = json_write_int(o, n, e.exit);
-    n = json_raw(o, n, ifx e.timed_out then ",\"timed_out\":true" else ",\"timed_out\":false");
-    n = json_raw(o, n, ",\"output\":"); n = json_write_string(o, n, e.output);
-    n = json_raw(o, n, "}");
-  } else if e.kind == MR_VIEW {
-    n = json_raw(o, 0, "{\"kind\":\"view\",\"path\":"); n = json_write_string(o, n, e.text);
-    n = json_raw(o, n, ifx e.found then ",\"found\":true}" else ",\"found\":false}");
-  } else if e.kind == MR_ASK {
-    n = json_raw(o, 0, "{\"kind\":\"ask\",\"command\":"); n = json_write_string(o, n, e.text);n=json_raw(o,n,",\"ticket\":");n=json_write_int(o,n,e.ticket); n = json_raw(o, n, "}");
-  } else if e.kind == MR_ENDED {
-    n = json_raw(o, 0, "{\"kind\":\"ended\",\"ending\":"); n = json_write_string(o, n, mc_ending_name(e.ending));
-    n = json_raw(o, n, ",\"text\":"); n = json_write_string(o, n, e.text);
-    n = json_raw(o, n, "}");
-  } else { return; }
+    n = mww_attempt(o, e.log.gateway, e.log.model, e.log.requested_effort, gw_outcome_name(e.log.outcome), e.log.status, values[..]);
+  }
+  else if e.kind == MR_COMMAND { n = mww_command(o, e.text, e.exit, e.timed_out, e.output); }
+  else if e.kind == MR_VIEW { n = mww_view(o, e.text, e.found); }
+  else if e.kind == MR_ASK { n = mww_ask(o, e.text, e.ticket); }
+  else if e.kind == MR_ENDED { n = mww_ended(o, mc_ending_name(e.ending), e.text); }
+  else { return; }
   mw_send(o, n);
 }
 
-mw_ended :: (o: [] u8, ending: string, text: string) {
-  n := json_raw(o, 0, "{\"kind\":\"ended\",\"ending\":"); n = json_write_string(o, n, ending);
-  n = json_raw(o, n, ",\"text\":"); n = json_write_string(o, n, text); n = json_raw(o, n, "}");
-  mw_send(o, n);
-}
+mw_ended :: (o: [] u8, ending: string, text: string) { mw_send(o, mww_ended(o, ending, text)); }
 
 // An embedding from Vertex (gemini-embedding-001, 256 dimensions) for
 // Coder's memory (chapter 19): {"kind":"embedding","values":[...]}, or
@@ -101,11 +89,7 @@ MW_EMBED_DIMENSIONS :: 256;
 mw_embed :: (k: [] MkKeys, text: string, query: bool, o: [] u8) {
   rb: [1024] u8; replaying := gw_env("GW_REPLAY", rb[..]).count > 0;
   why := ifx replaying then "" else mk_vertex(k);
-  n := 0;
-  if why.count > 0 {
-    n = json_raw(o, 0, "{\"kind\":\"embedding\",\"error\":"); n = json_write_string(o, n, why); n = json_raw(o, n, "}");
-    mw_send(o, n); return;
-  }
+  if why.count > 0 { mw_send(o, mww_embedding_error(o, why)); return; }
   ub: [512] u8;
   u := mk_cat(ub[..], 0, "https://"); u = mk_cat(ub[..], u, MW_EMBED_LOCATION); u = mk_cat(ub[..], u, "-aiplatform.googleapis.com/v1/projects/");
   u = mk_cat(ub[..], u, GW_VERTEX_PROJECT); u = mk_cat(ub[..], u, "/locations/"); u = mk_cat(ub[..], u, MW_EMBED_LOCATION);
@@ -134,14 +118,10 @@ mw_embed :: (k: [] MkKeys, text: string, query: bool, o: [] u8) {
   if e.count > 0 || status != 200 || values.count < 2 || values[0] != '[' {
     eb: [600] u8; m := mk_cat(eb[..], 0, ifx e.count > 0 then e else "Vertex gave no embedding");
     if e.count == 0 { tb: [24] u8; m = mk_cat(eb[..], m, " (status "); m = mk_cat(eb[..], m, gw_digits(tb[..], status)); m = mk_cat(eb[..], m, ")"); }
-    n = json_raw(o, 0, "{\"kind\":\"embedding\",\"error\":"); n = json_write_string(o, n, cast(string) eb[0..<m]); n = json_raw(o, n, "}");
-    mw_send(o, n); return;
+    mw_send(o, mww_embedding_error(o, cast(string) eb[0..<m])); return;
   }
   // one line: Vertex pretty-prints the list
-  vb: [16384] u8; vn := 0;
-  for ch: values { if ch != 32 && ch != 10 && ch != 13 && ch != 9 && vn < vb.count { vb[vn] = ch; vn += 1; } }
-  n = json_raw(o, 0, "{\"kind\":\"embedding\",\"values\":"); n = json_raw(o, n, cast(string) vb[0..<vn]); n = json_raw(o, n, "}");
-  mw_send(o, n);
+  mw_send(o, mww_embedding(o, values));
 }
 
 // After a run's end: its compiler and memory counts, when it had a mode on.
@@ -171,9 +151,10 @@ tool_main :: () -> int #export_c #effects(all) {
   // long outputs are saved whole beside the journal, one file each, for the model to view by range (GitHub #13325)
   spill:[4096]u8;sn:=json_raw(spill[..],0,cast(string)jp[0..<jn-4]);sn=json_raw(spill[..],sn,".out");
   run[0].spill_dir=ifx sn<0 then "" else cast(string)spill[0..<sn];
-  notice:=json_raw(out[..],0,"{\"kind\":\"journal\",\"path\":");notice=json_write_string(out[..],notice,cast(string)jp[0..<jn]);notice=json_raw(out[..],notice,"}");mw_send(out[..],notice);
+  mw_send(out[..], mww_journal(out[..], cast(string) jp[0..<jn]));
   running := false;
-  mw_send(out[..], json_raw(out[..], 0, "{\"kind\":\"ready\"}"));
+  req: [1] MwwRequest;
+  mw_send(out[..], mww_ready(out[..]));
   while true {
     // the run's events first, then whatever stdin has
     if running {
@@ -201,7 +182,8 @@ tool_main :: () -> int #export_c #effects(all) {
     msg := cast(string) line[0..<nl];
     nl = 0;
     ar[0].at = 0; ar[0].full = false;
-    if cl_bool(msg, "stop").ok {
+    what := mww_request(ar[..], msg, req[..]);
+    if what == MWW_STOP {
       if running {
         ev: [32] McRunEvent;
         n := mc_run_stop(run[..], ev[..]);
@@ -210,19 +192,17 @@ tool_main :: () -> int #export_c #effects(all) {
       }
       continue;
     }
-    if cl_bool(msg, "forget").ok { h[0].turns = 0; continue; }
-    if cl_raw(msg, "embed").count > 0 {
+    if what == MWW_FORGET { h[0].turns = 0; continue; }
+    if what == MWW_EMBED {
       mk_keys(k[..]);
-      eq := cl_bool(msg, "query");
-      mw_embed(k[..], cl_str(ar[..], msg, "embed"), eq.ok && eq.value, out[..]);
+      mw_embed(k[..], req[0].text, req[0].query, out[..]);
       continue;
     }
-    ans := cl_bool(msg, "answer");
-    if ans.ok {
+    if what == MWW_ANSWER {
       if running {
         ev: [32] McRunEvent;
-        ticket:=cl_int(msg,"ticket");
-        n := mc_run_answer_owned(run[..], ifx ticket.ok then ticket.value else 0, ans.value, cl_str(ar[..], msg, "why"), ev[..]);
+        ticket := req[0].ticket;
+        n := mc_run_answer_owned(run[..], ifx ticket.ok then ticket.value else 0, req[0].allow, req[0].why, ev[..]);
         for i: 0..<n {
           if ev[i].kind == MR_ENDED {
             running = false;
@@ -234,33 +214,32 @@ tool_main :: () -> int #export_c #effects(all) {
       }
       continue;
     }
-    t := cl_str(ar[..], msg, "task");
-    if t.count == 0 || running { continue; }
-    incoming_cwd:=cl_str(ar[..],msg,"cwd");
+    t := req[0].task;
+    if what != MWW_TASK || running { continue; }
+    incoming_cwd := req[0].cwd;
     if t.count>task.count || incoming_cwd.count==0 || incoming_cwd.count>cwd.count {mw_ended(out[..],"failed","task or workspace exceeds the declared worker bounds");continue;}
     tn := mk_keep(task[..], t);
     cn := mk_keep(cwd[..], incoming_cwd);
     tk := cast(string) task[0..<tn]; cd := cast(string) cwd[0..<cn];
     mk_keys(k[..]);
-    local := cl_bool(msg, "local");
-    if local.ok && local.value {
+    local := req[0].local;
+    if local {
       wb: [512] u8; why := mk_plan_local(k[..], plan[..], pb[..], wb[..]);
       if why.count > 0 { mw_ended(out[..], "no_capacity", why); continue; }
-    } else if mk_plan(k[..], plan[..], pb[..], cl_str(ar[..], msg, "model")) == 0 {
+    } else if mk_plan(k[..], plan[..], pb[..], req[0].model) == 0 {
       mw_ended(out[..], "no_capacity", "Microcoder has no model to call here: add ~/work/.secrets/vertex-sa-inference.json (with gcloud installed), openagents-gemini-provider.env or openrouter.env.");
       continue;
     }
     h[0].ncur = mk_keep(h[0].cur[..], tk);
     fx := mk_facts(h[..], ifx tool_os() == TOOL_LINUX then "Linux" else "macOS", cd, MK_COMMAND_SECONDS, facts[..]);
     mc_init(run[0].l[..], sb[..], lb[..], fx, tk, "{\"route\":\"other\",\"difficulty\":\"easy\",\"effort\":\"low\",\"local_work\":0.9}", 0.9);
-    gated := cl_bool(msg, "gated");
-    run[0].gated = gated.ok && gated.value; run[0].asking = false;
-    profile:=cl_str(ar[..],msg,"sandbox");
+    run[0].gated = req[0].gated; run[0].asking = false;
+    profile := req[0].sandbox;
     if profile.count==0 {profile="danger-full-access";}
     np:=mk_keep(profilebuf[..],profile);run[0].profile=cast(string)profilebuf[0..<np];
-    run[0].ceiling=3;policy_on:=cl_bool(msg,"policy.enabled");
-    if policy_on.ok && policy_on.value {
-      ceiling:=cl_int(msg,"policy.ceiling");
+    run[0].ceiling=3;
+    if req[0].policy_on {
+      ceiling := req[0].ceiling;
       if !ceiling.ok || ceiling.value<0 || ceiling.value>3 {mw_ended(out[..],"failed","invalid frozen effect ceiling");continue;}
       run[0].ceiling=ceiling.value;
     }
@@ -281,19 +260,19 @@ tool_main :: () -> int #export_c #effects(all) {
       run[0].aw = aw[..];
     }
     context:[32768]u8;nc:=json_raw(context[..],0,"{\"profile\":\"coder-owned-v1\",\"cwd\":");nc=json_write_string(context[..],nc,cd);
-    nc=json_raw(context[..],nc,",\"session\":");nc=json_write_string(context[..],nc,cl_str(ar[..],msg,"session"));
-    nc=json_raw(context[..],nc,",\"policy\":");policy:=cl_raw(msg,"policy");nc=json_raw(context[..],nc,ifx policy.count>0 then policy else "null");
+    nc=json_raw(context[..],nc,",\"session\":");nc=json_write_string(context[..],nc,req[0].session);
+    nc=json_raw(context[..],nc,",\"policy\":");policy:=req[0].policy;nc=json_raw(context[..],nc,ifx policy.count>0 then policy else "null");
     nc=json_raw(context[..],nc,",\"sandbox\":");nc=json_write_string(context[..],nc,run[0].profile);
     nc=json_raw(context[..],nc,",\"system\":");nc=json_write_string(context[..],nc,run[0].l[0].system);
     nc=json_raw(context[..],nc,",\"schema\":");nc=json_write_string(context[..],nc,run[0].l[0].schema);
     nc=json_raw(context[..],nc,ifx run[0].gated then ",\"gated\":true}" else ",\"gated\":false}");
     if nc<0 || !jf_context(journal[..],cast(string)context[0..<nc]) {mw_ended(out[..],"failed","durable context failed; no request or tool started");continue;}
     plan[0].journal=journal[..];
-    effort := cl_str(ar[..], msg, "effort");
+    effort := req[0].effort;
     if effort != "medium" && effort != "high" { effort = "low"; }
     mk_plan_limits(plan[..], effort);
     // before the first call, what the task names is looked up: its files viewed, its code names found (GitHub #13325)
-    run[0].seed = !(local.ok && local.value);
+    run[0].seed = !local;
     run[0].command_seconds = MK_COMMAND_SECONDS;
     mc_run_start(run[..], plan[..], bench[..], cd, effort);
     running = true;

@@ -5,7 +5,7 @@
 // ORIGIN may differ from the loopback transport API (the ordinary API test.sh).
 // tool.sh: tls
 #run_steps 250000000;   // the secp256k1 base-point table is built at compile time
-#import "Basic";
+#load "api_harness.coax";   // imports Basic; ap_capture records each call and its answer for the route goldens (API_CAPTURE, #13250)
 #load "../../../lib/sys/tool.coax";
 #load "../../../lib/sys/proc.coax";
 #load "../../../lib/sys/fs.coax";
@@ -161,11 +161,21 @@ aid_call :: (t: [] Aid, method: string, path: string, body: string, auth: bool, 
   if proc_now_ms() >= t[0].end_ms { t[0].n = 0; t[0].code = -98; return -98; }
   left := t[0].end_ms-proc_now_ms(); wait_ms := ifx left < t[0].http_ms then left else t[0].http_ms;
   got := http_do(t[0].w[..],method,target,hs[0..<hn],body,wait_ms,0,t[0].out[..]);
-  t[0].n = got.n; t[0].code = ifx got.error == HTTP_OK then got.code else -got.error; return t[0].code;
+  t[0].n = got.n; t[0].code = ifx got.error == HTTP_OK then got.code else -got.error;
+  // The suite's record of every request and answer (API_CAPTURE): the route goldens are read from it.
+  if got.error == HTTP_OK {
+    head := cast(string)t[0].w[0].head[0..<t[0].w[0].head_n];
+    ap_capture("coax.jsonl",method,path,body,got.code,http_header(head,"Content-Type"),http_header(head,"X-OA-Route"),aid_body(t));
+  }
+  return t[0].code;
 }
 aid_post :: (t: [] Aid, body: string) -> int {
   if !aid_sign(t,"POST",AI_ROUTE,body,true) { t[0].code = -100; return -100; }
   return aid_call(t,"POST",AI_ROUTE,body,true,false,false,"","application/json");
+}
+aid_post_at :: (t: [] Aid, route: string, body: string) -> int {
+  if !aid_sign(t,"POST",route,body,true) { t[0].code = -100; return -100; }
+  return aid_call(t,"POST",route,body,true,false,false,"","application/json");
 }
 aid_sql :: (t: [] Aid, sql: string, out: [] u8) -> int {
   a := [8] string.[t[0].psql,"-XAt","-v","ON_ERROR_STOP=1","--dbname",t[0].db,"-c",sql]; err: [8192] u8;
@@ -319,6 +329,58 @@ aid_invalid_tests :: (t: [] Aid, body: string) {
   aid_check(t,"wrong method is 405",aid_call(t,"GET",AI_ROUTE,"",false,false,false,"","application/json") == 405);
 }
 
+// The animation director, POST /api/playtest/labs/anim/direct (#13250): the same route function,
+// identity, quota and selector, with metaverse-engine/anim/direction-select.coax's bodies. The
+// replies are required byte for byte; the route goldens are read from these calls.
+AI_ANIM_ROUTE :: "/api/playtest/labs/anim/direct";
+AI_ANIM_ANIME :: "{\"v\":1,\"words\":\"Draconia casts a fireball.\",\"state\":{\"cast\":[],\"shot\":{\"framing\":\"wide\",\"place\":\"courtyard\"},\"last\":[]}}";
+AI_ANIM_REQUEST :: "{\"schema\":\"anim.direct.request.v1\",\"base\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"words\":\"Walk more slowly\",\"stock\":{}}";
+AI_ANIM_SPEED :: "{\"schema\":\"anim.direct.reply.v1\",\"base\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"direction\":{\"schema\":\"anim.direction.v1\",\"kind\":\"speed\",\"actor\":0,\"row\":0,\"option\":0,\"at\":0,\"end\":0,\"value\":0.5,\"point\":[0,0,0],\"confidence\":{\"kind\":950,\"actor\":940,\"row\":930,\"option\":920,\"at\":910,\"end\":900,\"value\":890,\"point\":880}}}";
+AI_ANIM_UNMATCHED :: "{\"schema\":\"anim.direct.reply.v1\",\"base\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"direction\":{\"schema\":\"anim.direction.v1\",\"kind\":\"unmatched\",\"actor\":0,\"row\":0,\"option\":0,\"at\":0,\"end\":0,\"value\":0,\"point\":[0,0,0],\"confidence\":{\"kind\":1000,\"actor\":1000,\"row\":1000,\"option\":1000,\"at\":1000,\"end\":1000,\"value\":1000,\"point\":1000}}}";
+#test "animation director fixtures are one request and the two replies its fake answers lead to" {
+  nodes: [128] JvNode; d: [1] Jv; base: [64] u8;
+  #assert jv_parse(d[..],AI_ANIM_REQUEST,nodes[..]) && jv_raw(d[0],jv_get(d[0],0,"schema")) == "anim.direct.request.v1" && jv_str(d[0],jv_get(d[0],0,"base"),base[..]) == 64;
+  for reply: [2] string.[AI_ANIM_SPEED,AI_ANIM_UNMATCHED] {
+    #assert jv_parse(d[..],reply,nodes[..]) && jv_raw(d[0],jv_get(d[0],0,"schema")) == "anim.direct.reply.v1" && jv_raw(d[0],jv_path(d[0],0,"direction.schema")) == "anim.direction.v1";
+    #assert jv_raw(d[0],jv_get(d[0],0,"base")) == cast(string)base[..] && aid_error_word(reply) == "";
+  }
+  #assert AI_ANIM_SPEED != AI_ANIM_UNMATCHED && aid_error_word("{\"v\":1,\"error\":\"invalid_input\"}") == "invalid_input" && aid_error_word("{\"error\":\"invalid_input\"}") == "" && aid_error_word("{") == "";
+}
+// A refusal's word when the body is exactly {"v":1,"error":WORD}, else "".
+aid_error_word :: (s: string) -> string {
+  nodes: [64] JvNode; d: [1] Jv;
+  if !jv_parse(d[..],s,nodes[..]) || jv_kind(d[0],0) != JV_OBJECT || jv_len(d[0],0) != 2 || jv_int(d[0],jv_get(d[0],0,"v"),0) != 1 { return ""; }
+  word := jv_get(d[0],0,"error"); return ifx jv_kind(d[0],word) == JV_STRING then jv_raw(d[0],word) else "";
+}
+aid_anim_refused :: (t: [] Aid, name: string, body: string, status: int, word: string) {
+  ready := aid_reset(t) && aid_mode(t,"anim-speed"); before := aid_model_calls(t);
+  aid_check(t,name,ready && aid_post_at(t,AI_ANIM_ROUTE,body) == status && aid_error_word(aid_body(t)) == word && aid_count(t) == 0 && aid_model_calls(t) == before);
+}
+aid_anim_tests :: (t: [] Aid) {
+  ready := aid_reset(t) && aid_mode(t,"anim-speed"); before := aid_model_calls(t);
+  aid_check(t,"animation director answers the exact reply its model's direction leads to",ready && aid_post_at(t,AI_ANIM_ROUTE,AI_ANIM_REQUEST) == 200 && aid_body(t) == AI_ANIM_SPEED && aid_finished(t,200) && aid_model_calls(t) == before+1);
+  ready = aid_reset(t) && aid_mode(t,"anim-unmatched");
+  aid_check(t,"animation director passes an unmatched direction as a 200 reply",ready && aid_post_at(t,AI_ANIM_ROUTE,AI_ANIM_REQUEST) == 200 && aid_body(t) == AI_ANIM_UNMATCHED && aid_finished(t,200));
+  // an anime answer is no animation direction, and carries no finishReason
+  ready = aid_reset(t) && aid_mode(t,"stock");
+  aid_check(t,"animation director refuses a model answer that is no direction",ready && aid_post_at(t,AI_ANIM_ROUTE,AI_ANIM_REQUEST) == 502 && aid_error_word(aid_body(t)) == "invalid_model" && aid_finished(t,502));
+  ready = aid_reset(t) && aid_mode(t,"status500");
+  aid_check(t,"animation director maps an upstream failure to one refusal",ready && aid_post_at(t,AI_ANIM_ROUTE,AI_ANIM_REQUEST) == 502 && aid_error_word(aid_body(t)) == "invalid_model" && aid_finished(t,502));
+  aid_anim_refused(t,"animation director refuses malformed input before quota/model","{",400,"invalid_input");
+  aid_anim_refused(t,"animation director refuses an object that is no request","{}",400,"invalid_input");
+  aid_anim_refused(t,"animation director refuses a base that is no content id","{\"schema\":\"anim.direct.request.v1\",\"base\":\"bad\",\"words\":\"Walk more slowly\",\"stock\":{}}",400,"invalid_input");
+  aid_anim_refused(t,"animation director refuses the anime director's request",AI_ANIM_ANIME,400,"invalid_input");
+  aid_anim_refused(t,"animation director refuses an empty raw request","",413,"input_limit");
+  oversized: [16385] u8; for i: 0..<oversized.count { oversized[i] = ' '; } for c, i: AI_ANIM_REQUEST { oversized[i] = c; }
+  aid_anim_refused(t,"animation director refuses raw byte 16385",cast(string)oversized[..],413,"input_limit");
+  ready = aid_reset(t) && aid_mode(t,"anim-speed"); before = aid_model_calls(t);
+  signed := aid_sign(t,"POST",AI_ANIM_ROUTE,AI_ANIM_REQUEST,true);
+  aid_check(t,"animation director wrong media is 415",ready && signed && aid_call(t,"POST",AI_ANIM_ROUTE,AI_ANIM_REQUEST,true,false,false,"","text/plain") == 415 && aid_error_word(aid_body(t)) == "application_json_required" && aid_count(t) == 0);
+  aid_check(t,"animation director wrong method is 405",aid_call(t,"GET",AI_ANIM_ROUTE,"",false,false,false,"","application/json") == 405 && aid_error_word(aid_body(t)) == "method_not_allowed");
+  aid_check(t,"animation director needs an identity",aid_call(t,"POST",AI_ANIM_ROUTE,AI_ANIM_REQUEST,false,false,false,"","application/json") == 401 && aid_error_word(aid_body(t)) == "authentication_required" && aid_count(t) == 0);
+  signed = aid_sign(t,"POST",AI_ANIM_ROUTE,AI_ANIM_REQUEST,true);
+  aid_check(t,"animation director refuses a foreign Origin",signed && aid_call(t,"POST",AI_ANIM_ROUTE,AI_ANIM_REQUEST,true,false,false,"https://outside.invalid","application/json") == 403 && aid_error_word(aid_body(t)) == "cross_site" && aid_count(t) == 0 && aid_model_calls(t) == before);
+}
 aid_quota_seed :: (t: [] Aid, mode: string) -> bool {
   out: [256] u8;
   if mode == "global-day" { return aid_sql(t,"INSERT INTO anime.calls(identity,started,lease_until,finished,status) SELECT 'anime-global-'||g,(date_trunc('day',clock_timestamp() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC')+interval '1 second',clock_timestamp()-interval '1 second',true,200 FROM generate_series(1,1200) g",out[..]) >= 0; }
@@ -498,7 +560,7 @@ tool_main :: () -> int #export_c #effects(all) {
     self_buf: [4096] u8; aid_lock_race(t[..],aid_self(self_buf[..]));
   }
   else {
-    aid_auth_tests(t[..],body); aid_invalid_tests(t[..],body); aid_model_tests(t[..],body); aid_quota_tests(t[..],body);
+    aid_auth_tests(t[..],body); aid_invalid_tests(t[..],body); aid_model_tests(t[..],body); aid_anim_tests(t[..]); aid_quota_tests(t[..],body);
     self_buf: [4096] u8; self := aid_self(self_buf[..]); aid_lock_race(t[..],self); aid_overlap(t[..],self,body,false); aid_overlap(t[..],self,body,true); aid_timeout_test(t[..],body);
   }
   ledger: [8192] u8; ln := aid_sql(t[..],"SELECT coalesce(json_agg(json_build_object('id',id,'started',started,'lease_until',lease_until,'finished',finished,'status',status)),'[]'::json) FROM anime.calls",ledger[..]);

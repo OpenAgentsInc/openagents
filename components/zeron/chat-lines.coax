@@ -1,0 +1,223 @@
+// The /chat page's lines (compliance plan step C9, GitHub #13250): what GET /api/chat/state
+// answers, text, one line each, cells split by "|". SQL writes them in production (chat.lines,
+// coax/web/api/migrations/0139_chat_folders_tabs.sql, with chat.v and chat.vv of 0021_chat.sql);
+// this file is the one reader, and the one writer in Coax. The page (apps/openagents-web/chat.coax)
+// and the older HUD (apps/openagents-web/chat-hud.coax) read every line through it.
+//   Z|spent|cap|credential|last4|expired|busy|shown|record     the head: one, first
+//   C|id|title|model|updated|busy|folder|tab                   a conversation, newest first
+//   S|id|title|model|resumes                                   the conversation shown: none or one
+//   U|id|status|at|model|credential|text|answer|error|working|cost   a turn of it, oldest first
+//   T|turn|name|detail                                         a tool the turn used, after its U
+// A cell holds no "|" and no line end. Short texts (titles, a folder, an error, the working
+// note, a tool's name and detail) have each bar, tab and line end written as a space
+// (chl_clean, SQL chat.v). The two long texts, a turn's text and answer, are escaped
+// (chl_escape, SQL chat.vv): "\\" for a backslash, "\p" for a bar, "\n" for a line end; a
+// carriage return is dropped and a tab is two spaces. chl_unescape undoes it.
+// An older API writes fewer cells (0021: no record on Z, no folder or tab on C). The reader
+// gives "" for a cell a line doesn't have, so a page reads both.
+// proto/coder/chat-page-lines-v2.json names every line and cell and holds answers a running
+// API gave; components/zeron/chat-lines-profile.coax reads them through this file and writes
+// the same bytes back.
+//   coax/bin/coax test components/zeron/chat-lines.coax --library
+
+// The kinds.
+CHL_Z :: 'Z'; CHL_C :: 'C'; CHL_S :: 'S'; CHL_U :: 'U'; CHL_T :: 'T';
+// The cells of each kind, by column (column 0 is the kind's letter).
+CHL_Z_SPENT :: 1;        // today's spend on OpenAgents' key, dollars with two decimals
+CHL_Z_CAP :: 2;          // the day's cap, the same way
+CHL_Z_CREDENTIAL :: 3;   // the asker's saved credential's kind (api, oauth), or empty
+CHL_Z_LAST4 :: 4;        // its last four characters, or empty
+CHL_Z_EXPIRED :: 5;      // 1 when it has expired, else 0
+CHL_Z_BUSY :: 6;         // 1 when a turn of the conversation shown waits or runs, else 0
+CHL_Z_SHOWN :: 7;        // the conversation shown, or 0
+CHL_Z_RECORD :: 8;       // 2: the API keeps folders and tabs
+CHL_C_ID :: 1;
+CHL_C_TITLE :: 2;        // at most 80 characters, cleaned
+CHL_C_MODEL :: 3;
+CHL_C_UPDATED :: 4;      // "Mon DD HH24:MI", Chicago time
+CHL_C_BUSY :: 5;         // 1 or 0
+CHL_C_FOLDER :: 6;       // cleaned
+CHL_C_TAB :: 7;          // its place among the open tabs from 1, or empty
+CHL_S_ID :: 1;
+CHL_S_TITLE :: 2;
+CHL_S_MODEL :: 3;
+CHL_S_RESUMES :: 4;      // 1 once a turn of it has started, else 0
+CHL_U_ID :: 1;
+CHL_U_STATUS :: 2;       // queued, running, done, failed, stopped or refused
+CHL_U_AT :: 3;           // when it was asked, as C's updated
+CHL_U_MODEL :: 4;
+CHL_U_CREDENTIAL :: 5;   // openagents, own, or empty until the turn starts
+CHL_U_TEXT :: 6;         // the message, at most 8000 characters, escaped
+CHL_U_ANSWER :: 7;       // the answer, at most 24000 characters, escaped
+CHL_U_ERROR :: 8;        // at most 400 characters, cleaned
+CHL_U_WORKING :: 9;      // at most 160 characters, cleaned
+CHL_U_COST :: 10;        // dollars with four decimals
+CHL_T_TURN :: 1;         // the U line's id
+CHL_T_NAME :: 2;         // at most 40 characters, cleaned
+CHL_T_DETAIL :: 3;       // at most 200 characters, cleaned
+
+// How many cells a line of this kind has as the API writes it today, its letter among them.
+// 0 for a letter that is no kind.
+chl_cells :: (kind: u8) -> int {
+  if kind == CHL_Z { return 9; }
+  if kind == CHL_C { return 8; }
+  if kind == CHL_S { return 5; }
+  if kind == CHL_U { return 11; }
+  if kind == CHL_T { return 4; }
+  return 0;
+}
+
+// ---------------------------------------------------------------- reading
+
+// An answer's lines: where each starts and ends (its line end left out). A line counts when it
+// has a letter and then a bar; any other is passed over. How many, at most at.count.
+chl_index :: (data: string, at: [] int, end: [] int) -> int {
+  n := 0; from := 0;
+  while from < data.count {
+    stop := from;
+    while stop < data.count && data[stop] != '\n' { stop += 1; }
+    if stop > from + 1 && data[from + 1] == '|' && n < at.count && n < end.count {
+      at[n] = from; end[n] = stop; n += 1;
+    }
+    from = stop + 1;
+  }
+  return n;
+}
+// A line's kind: its first byte (0 for an empty line).
+chl_kind :: (line: string) -> u8 { return ifx line.count > 0 then line[0] else 0; }
+// A line's cell at a column; "" when the line has no such column.
+chl_cell :: (line: string, col: int) -> string {
+  k := 0; c := 0;
+  while c < col && k < line.count { if line[k] == '|' { c += 1; } k += 1; }
+  if c < col { return ""; }
+  j := k;
+  while j < line.count && line[j] != '|' { j += 1; }
+  return line[k..<j];
+}
+// How many cells a line has.
+chl_count :: (line: string) -> int {
+  n := 1;
+  for c: line { if c == '|' { n += 1; } }
+  return n;
+}
+// A long text's escapes undone into out: "\n" is written as nl (a line end, or a space for one
+// line of text), "\p" as a bar, and any other escaped byte as itself. n is how many bytes it
+// wrote; whole is false when out filled before the text ended.
+ChlText :: struct { n: int; whole: bool; }
+chl_unescape :: (text: string, out: [] u8, nl: u8) -> ChlText {
+  n := 0; i := 0;
+  while i < text.count {
+    if n >= out.count { return ChlText.{n = n, whole = false}; }
+    c := text[i];
+    if c == '\\' && i + 1 < text.count {
+      e := text[i + 1];
+      out[n] = ifx e == 'n' then nl else ifx e == 'p' then '|' else e;
+      n += 1; i += 2; continue;
+    }
+    out[n] = c; n += 1; i += 1;
+  }
+  return ChlText.{n = n, whole = true};
+}
+
+// ---------------------------------------------------------------- writing
+
+// A long text as its cell (SQL chat.vv), into out from at: the end, or -1 when it doesn't fit.
+chl_escape :: (out: [] u8, at: int, text: string) -> int {
+  n := at;
+  if n < 0 { return -1; }
+  for c: text {
+    if c == '\r' { continue; }
+    if n + 2 > out.count { return -1; }
+    if c == '\\' { out[n] = '\\'; out[n + 1] = '\\'; n += 2; }
+    else if c == '|' { out[n] = '\\'; out[n + 1] = 'p'; n += 2; }
+    else if c == '\n' { out[n] = '\\'; out[n + 1] = 'n'; n += 2; }
+    else if c == '\t' { out[n] = ' '; out[n + 1] = ' '; n += 2; }
+    else { out[n] = c; n += 1; }
+  }
+  return n;
+}
+// A short text as its cell (SQL chat.v): a bar, a tab and a line end are each a space.
+chl_clean :: (out: [] u8, at: int, text: string) -> int {
+  n := at;
+  if n < 0 || n + text.count > out.count { return -1; }
+  for c: text { out[n] = ifx c == '|' || c == '\r' || c == '\n' || c == '\t' then ' ' else c; n += 1; }
+  return n;
+}
+// A line from its cells, the kind's letter first, with its line end, into out from at: the end.
+// -1 when the first cell is no kind, the kind has another number of cells, a cell holds a bar
+// or a line end, or the line doesn't fit.
+chl_put :: (out: [] u8, at: int, cells: [] string) -> int {
+  if at < 0 || cells.count < 1 || cells[0].count != 1 || chl_cells(cells[0][0]) != cells.count { return -1; }
+  n := at;
+  for k: 0..<cells.count {
+    if k > 0 { if n >= out.count { return -1; } out[n] = '|'; n += 1; }
+    for c: cells[k] {
+      if c == '|' || c == '\n' || n >= out.count { return -1; }
+      out[n] = c; n += 1;
+    }
+  }
+  if n >= out.count { return -1; }
+  out[n] = '\n';
+  return n + 1;
+}
+
+#test "an answer's lines index, and each cell reads by its column" {
+  text := "Z|0.06|1.00|||0|1|1|2\nC|1|What?|claude-opus-5-5|Nov 13 01:45|1|openagents|1\nS|1|What?|claude-opus-5-5|1\nU|4|running|Nov 13 01:45|claude-opus-5-5|openagents|slow one|||getting the latest code|0.0000\nT|4|Read|README.md\n";
+  at: [8] int; end: [8] int;
+  n := chl_index(text, at[..], end[..]);
+  #assert n == 5;
+  z := text[at[0]..<end[0]]; c := text[at[1]..<end[1]]; u := text[at[3]..<end[3]]; t := text[at[4]..<end[4]];
+  #assert chl_kind(z) == CHL_Z && chl_kind(c) == CHL_C && chl_kind(text[at[2]..<end[2]]) == CHL_S && chl_kind(u) == CHL_U && chl_kind(t) == CHL_T;
+  #assert chl_cell(z, CHL_Z_SPENT) == "0.06" && chl_cell(z, CHL_Z_CAP) == "1.00" && chl_cell(z, CHL_Z_CREDENTIAL) == "" && chl_cell(z, CHL_Z_BUSY) == "1";
+  #assert chl_cell(z, CHL_Z_SHOWN) == "1" && chl_cell(z, CHL_Z_RECORD) == "2" && chl_cell(z, 9) == "" && chl_cell(z, 0) == "Z";
+  #assert chl_cell(c, CHL_C_TITLE) == "What?" && chl_cell(c, CHL_C_UPDATED) == "Nov 13 01:45" && chl_cell(c, CHL_C_FOLDER) == "openagents" && chl_cell(c, CHL_C_TAB) == "1";
+  #assert chl_cell(u, CHL_U_STATUS) == "running" && chl_cell(u, CHL_U_TEXT) == "slow one" && chl_cell(u, CHL_U_ANSWER) == "" && chl_cell(u, CHL_U_WORKING) == "getting the latest code" && chl_cell(u, CHL_U_COST) == "0.0000";
+  #assert chl_cell(t, CHL_T_TURN) == "4" && chl_cell(t, CHL_T_NAME) == "Read" && chl_cell(t, CHL_T_DETAIL) == "README.md";
+  #assert chl_count(z) == chl_cells(CHL_Z) && chl_count(c) == chl_cells(CHL_C) && chl_count(u) == chl_cells(CHL_U) && chl_count(t) == chl_cells(CHL_T) && chl_cells('Q') == 0;
+}
+#test "the index passes over a line with no letter and bar, stops at its room, and takes a last line with no line end" {
+  at: [2] int; end: [2] int;
+  #assert chl_index("", at[..], end[..]) == 0 && chl_index("\n\nZ\nhello\n", at[..], end[..]) == 0;
+  #assert chl_index("x\nZ|1\n\nC|2", at[..], end[..]) == 2 && at[0] == 2 && end[0] == 5 && at[1] == 7 && end[1] == 10;
+  #assert chl_index("Z|1\nC|2\nC|3\n", at[..], end[..]) == 2 && at[1] == 4;
+  // an older API's shorter lines: the cells they lack read as empty
+  #assert chl_cell("Z|0.00|10.00|||0|0|7", CHL_Z_RECORD) == "" && chl_cell("C|7|Seven|m|Nov 11 09:00|0", CHL_C_TAB) == "" && chl_cell("", 1) == "" && chl_kind("") == 0;
+  #assert chl_cell("T|4|Read|", CHL_T_DETAIL) == "" && chl_cell("T|4|Read", CHL_T_DETAIL) == "";
+}
+#test "a long text escapes as SQL's chat.vv does and comes back; a short text is cleaned as chat.v does" {
+  raw := "a|b\\c\nd\te\r\nf";
+  buf: [64] u8; back: [64] u8;
+  n := chl_escape(buf[..], 0, raw);
+  #assert n > 0 && cast(string) buf[0..<n] == "a\\pb\\\\c\\nd  e\\nf";
+  r := chl_unescape(cast(string) buf[0..<n], back[..], '\n');
+  #assert r.whole && cast(string) back[0..<r.n] == "a|b\\c\nd  e\nf";
+  one := chl_unescape("a\\nb \\p c \\\\ d", back[..], ' ');
+  #assert one.whole && cast(string) back[0..<one.n] == "a b | c \\ d";
+  // a backslash at the end stays; out too small says so and keeps what fit
+  end := chl_unescape("x\\", back[..], '\n');
+  #assert end.whole && cast(string) back[0..<end.n] == "x\\";
+  small: [3] u8;
+  cut := chl_unescape("ab\\ncd", small[..], '\n');
+  #assert !cut.whole && cut.n == 3 && cast(string) small[0..<3] == "ab\n";
+  fits := chl_unescape("ab\\n", small[..], '\n');
+  #assert fits.whole && fits.n == 3;
+  #assert chl_escape(small[..], 0, "ab") == 2 && chl_escape(small[..], 0, "abc") == -1 && chl_escape(small[..], 0, "a|b") == -1 && chl_escape(small[..], -1, "a") == -1;
+  m := chl_clean(buf[..], 0, "a|b\tc\nd\re");
+  #assert m == 9 && cast(string) buf[0..<m] == "a b c d e";
+  #assert chl_clean(small[..], 0, "abcd") == -1 && chl_clean(small[..], 0, "abc") == 3;
+}
+#test "a line is written from its cells; a wrong count, an unknown kind, a bar in a cell or no room is refused" {
+  out: [128] u8;
+  t := [4] string.["T", "4", "Read", "README.md"];
+  n := chl_put(out[..], 0, t[..]);
+  #assert n == 19 && cast(string) out[0..<n] == "T|4|Read|README.md\n";
+  s := [5] string.["S", "2", "", "claude-haiku-5-5", "0"];
+  m := chl_put(out[..], n, s[..]);
+  #assert m > n && cast(string) out[0..<m] == "T|4|Read|README.md\nS|2||claude-haiku-5-5|0\n";
+  #assert chl_put(out[..], 0, t[0..<3]) == -1 && chl_put(out[..], 0, s[0..<4]) == -1;
+  q := [4] string.["Q", "4", "Read", "x"];
+  #assert chl_put(out[..], 0, q[..]) == -1;
+  bar := [4] string.["T", "4", "Re|ad", "x"]; nl := [4] string.["T", "4", "Read", "x\ny"]; two := [4] string.["TT", "4", "Read", "x"];
+  #assert chl_put(out[..], 0, bar[..]) == -1 && chl_put(out[..], 0, nl[..]) == -1 && chl_put(out[..], 0, two[..]) == -1;
+  #assert chl_put(out[0..<18], 0, t[..]) == -1 && chl_put(out[0..<19], 0, t[..]) == 19 && chl_put(out[..], -1, t[..]) == -1;
+}

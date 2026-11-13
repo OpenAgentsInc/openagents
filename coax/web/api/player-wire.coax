@@ -1,0 +1,250 @@
+// The playtest routes on the wire, one codec for what player.c writes itself (Protocol, GitHub
+// #13250): proto/openagents/api/v1alpha1/player.proto (profile api-routes) names the members.
+// player.c calls the #export_c writers below through player-wire.generated.c and builds no body of
+// its own:
+//   plw_maintenance_write   503 from POST /api/playtest/room-ticket/<room> while maintenance is on
+//   plw_full_write          503 from the same route when every room is full
+//   plw_ticket_write        200 from the same route: the ticket and what the page needs with it
+//   plw_invite_write        200 from POST /api/playtest/room-invite/<room>: {"room":"...","until":N}
+//   plw_state_write         200 from POST /api/playtest/room-state: {"kept":true[,"refused":"wanted"]}
+//   plw_vitals_kept_write   200 from POST /api/playtest/room-vitals with no operation IDs: {"kept":N}
+//   plw_kick_write          200 from POST /api/playtest/room-kick and room-unkick
+//   plw_mod_write           200 from POST /api/playtest/room-mod: what was done, to whom, until when
+//   plw_who_write           to SQL (verse.api, verse.progress_facts): who asks
+//   plw_none_write          {}: a refusal's body that could not be copied
+//   plw_list_none_write     []: no items, no kinds (to character-policy.coax and item-op.coax)
+// The seat ticket, the receipts, the item answer and the character record have their own codecs
+// (metaverse-engine/session/seat-ticket.coax and room-report.coax through ticket-sign-unit.c,
+// item-policy.coax, character-policy.coax); most answers are SQL's, carried as they came. The
+// vitals post is read through room-report.coax too (room_report_vitals_head_read and
+// room_report_vitals_line_read, exported by the ticket-sign unit).
+//
+// The bytes are the ones player.c wrote before this file: proto/verse/api-routes-v1alpha1.json
+// holds what a running API answered and routes-goldens.coax holds each answer's keys to its
+// message. A string is written escaped as JSON; every value but three is of a set with no quote,
+// backslash or control byte (ids, room codes, looks, classes, hex, digits, a ticket's text, a
+// flag's plain words), so the bytes are as they were. The three: a display name and the asker's key
+// and automation word, which player.c escaped itself (esc: a quote and a backslash behind a
+// backslash, a control byte as \u00XX, cut where the escaped text nears its old buffer); plw_esc
+// does the same to the byte. The upload's base64 in plw_who_write is carried as it came, as before.
+// A writer returns the body's length, or -1 when it does not fit.
+//   coax/bin/coax test coax/web/api/player-wire.coax --library
+#load "api-wire.coax";
+
+PLW_NAME :: 48;    // a display name escaped, player.c's buffer before this file
+PLW_KEY :: 400;    // the asker's key escaped
+PLW_AUTO :: 160;   // the automation word escaped
+PLW_TAIL :: 2047;  // the ticket answer's members after "expires", at most (player.c's st before this file)
+
+// A string's contents as player.c's esc wrote them into a buffer of cap bytes: a quote and a
+// backslash behind a backslash, a control byte as \u00XX, and nothing more once fewer than 9 bytes
+// of the buffer are left.
+plw_esc :: (o: [] Jo, v: string, cap: int) #effects(all) {
+  hex := "0123456789abcdef"; n := 0;
+  for c: v {
+    if n + 8 >= cap { return; }
+    if c == '"' || c == '\\' { jo_byte(o, '\\'); jo_byte(o, c); n += 2; }
+    else if c < 32 { jo_put(o, "\\u00"); jo_byte(o, hex[cast(int) c / 16]); jo_byte(o, hex[cast(int) c % 16]); n += 6; }
+    else { jo_byte(o, c); n += 1; }
+  }
+}
+plw_bool :: (o: [] Jo, b: bool) #effects(all) { jo_put(o, ifx b then "true" else "false"); }
+
+// {"error":"maintenance: WHY","maintenance":"WHY","until_ms":N,"retry_ms":30000}; with no words the
+// error is "maintenance" alone. until_ms 0: until it is cleared.
+plw_maintenance_write :: (why: string, until_ms: int, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "{\"error\":\"maintenance");
+  if why.count > 0 { jo_put(o[..], ": "); jo_escape_bytes(o[..], why); }
+  jo_put(o[..], "\",\"maintenance\":"); jo_quoted(o[..], why);
+  jo_put(o[..], ",\"until_ms\":"); jo_int(o[..], until_ms); jo_put(o[..], ",\"retry_ms\":30000}");
+  return aw_len(o[..]);
+}
+// {"error":"every room is full: try again in a minute","waiting":N,"retry_ms":N,"last_wait_ms":N};
+// last_wait_ms below 0: nobody has waited yet and the member is left out.
+plw_full_write :: (waiting: int, retry_ms: int, last_wait_ms: int, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "{\"error\":\"every room is full: try again in a minute\",\"waiting\":"); jo_int(o[..], waiting);
+  jo_put(o[..], ",\"retry_ms\":"); jo_int(o[..], retry_ms);
+  if last_wait_ms >= 0 { jo_put(o[..], ",\"last_wait_ms\":"); jo_int(o[..], last_wait_ms); }
+  jo_put(o[..], "}");
+  return aw_len(o[..]);
+}
+// {"ticket":"...","id":"...","account":B,"admin":B,"name":"...","expires":N, then, each only when
+// it has something to say: "hp":N (0 or more), "wanted":N (0 or more), "xp":N (above 0),
+// "look":"...", "class":"...", "unclassed":true, and with a shard (above 0) "room":"...","shard":N,
+// "full":true, "endpoint":"..." (the shard names one), "party_full":"ROOM", "party_away":true and,
+// when the room asked was full, "asked":"ROOM" and "by":"NAME" (an invite named them); last
+// "blocked":"ID,ID". -1 too when those members pass PLW_TAIL bytes.
+plw_ticket_write :: (ticket: string, id: string, account: bool, admin: bool, name: string, expires: int,
+                     hp: int, wanted: int, xp: int, look: string, klass: string, unclassed: bool,
+                     room: string, shard: int, full: bool, has_endpoint: bool, endpoint: string,
+                     party_full: bool, party_room: string, party_away: bool, asked: string, by: string,
+                     blocked: string, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "{\"ticket\":"); jo_quoted(o[..], ticket); jo_put(o[..], ",\"id\":"); jo_quoted(o[..], id);
+  jo_put(o[..], ",\"account\":"); plw_bool(o[..], account); jo_put(o[..], ",\"admin\":"); plw_bool(o[..], admin);
+  jo_put(o[..], ",\"name\":\""); plw_esc(o[..], name, PLW_NAME); jo_put(o[..], "\",\"expires\":"); jo_int(o[..], expires);
+  tail := o[0].n;
+  if hp >= 0 { jo_put(o[..], ",\"hp\":"); jo_int(o[..], hp); }
+  if wanted >= 0 { jo_put(o[..], ",\"wanted\":"); jo_int(o[..], wanted); }
+  if xp > 0 { jo_put(o[..], ",\"xp\":"); jo_int(o[..], xp); }
+  if look.count > 0 { jo_put(o[..], ",\"look\":"); jo_quoted(o[..], look); }
+  if klass.count > 0 { jo_put(o[..], ",\"class\":"); jo_quoted(o[..], klass); }
+  if unclassed { jo_put(o[..], ",\"unclassed\":true"); }
+  if shard > 0 {
+    jo_put(o[..], ",\"room\":"); jo_quoted(o[..], room); jo_put(o[..], ",\"shard\":"); jo_int(o[..], shard);
+    if full { jo_put(o[..], ",\"full\":true"); }
+    if has_endpoint { jo_put(o[..], ",\"endpoint\":"); jo_quoted(o[..], endpoint); }
+    if party_full { jo_put(o[..], ",\"party_full\":"); jo_quoted(o[..], party_room); }
+    if party_away { jo_put(o[..], ",\"party_away\":true"); }
+    if full {
+      jo_put(o[..], ",\"asked\":"); jo_quoted(o[..], asked);
+      if by.count > 0 { jo_put(o[..], ",\"by\":\""); plw_esc(o[..], by, PLW_NAME); jo_put(o[..], "\""); }
+    }
+  }
+  if blocked.count > 0 { jo_put(o[..], ",\"blocked\":"); jo_quoted(o[..], blocked); }
+  if o[0].n - tail > PLW_TAIL { return -1; }
+  jo_put(o[..], "}");
+  return aw_len(o[..]);
+}
+// {"room":"everglade-1","until":1762190120000}: the held seat's room and its end.
+plw_invite_write :: (room: string, until: int, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "{\"room\":"); jo_quoted(o[..], room); jo_put(o[..], ",\"until\":"); jo_int(o[..], until); jo_put(o[..], "}");
+  return aw_len(o[..]);
+}
+// {"kept":true}, or {"kept":true,"refused":"wanted"} when the body also named WANTED, which is the room's.
+plw_state_write :: (refused_wanted: bool, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], ifx refused_wanted then "{\"kept\":true,\"refused\":\"wanted\"}" else "{\"kept\":true}");
+  return aw_len(o[..]);
+}
+// {"kept":2}: the lines of a vitals post from before operation IDs that were kept.
+plw_vitals_kept_write :: (kept: int, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "{\"kept\":"); jo_int(o[..], kept); jo_put(o[..], "}");
+  return aw_len(o[..]);
+}
+// {"kicked":true,"hours":24}, or {"kicked":false} when the kick was taken back.
+plw_kick_write :: (back: bool, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], ifx back then "{\"kicked\":false}" else "{\"kicked\":true,\"hours\":24}");
+  return aw_len(o[..]);
+}
+// {"ok":true,"verb":"mute","player":"p-a","until":1762191800000}; until 0: no end.
+plw_mod_write :: (verb: string, player: string, until: int, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "{\"ok\":true,\"verb\":"); jo_quoted(o[..], verb); jo_put(o[..], ",\"player\":"); jo_quoted(o[..], player);
+  jo_put(o[..], ",\"until\":"); jo_int(o[..], until); jo_put(o[..], "}");
+  return aw_len(o[..]);
+}
+// {"key":"...","auto":"...","npub":"...","site":B,"good":B,"after":"...","bytes":"..."}: who asks, as
+// verse.api reads it. bytes (with_bytes) is an upload's base64 as the body carried it.
+plw_who_write :: (key: string, automation: string, npub: string, site: bool, good: bool, after: string, with_bytes: bool, bytes: string, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "{\"key\":\""); plw_esc(o[..], key, PLW_KEY); jo_put(o[..], "\",\"auto\":\""); plw_esc(o[..], automation, PLW_AUTO);
+  jo_put(o[..], "\",\"npub\":"); jo_quoted(o[..], npub);
+  jo_put(o[..], ",\"site\":"); plw_bool(o[..], site); jo_put(o[..], ",\"good\":"); plw_bool(o[..], good);
+  jo_put(o[..], ",\"after\":"); jo_quoted(o[..], after);
+  if with_bytes { jo_put(o[..], ",\"bytes\":\""); jo_put(o[..], bytes); jo_put(o[..], "\""); }
+  jo_put(o[..], "}");
+  return aw_len(o[..]);
+}
+// {}
+plw_none_write :: (out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0); jo_put(o[..], "{}"); return aw_len(o[..]);
+}
+// []
+plw_list_none_write :: (out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0); jo_put(o[..], "[]"); return aw_len(o[..]);
+}
+
+#test "the two refusals with members: maintenance with and without words, every room full with and without a last wait" {
+  b: [512] u8;
+  n := plw_maintenance_write("Moving the rooms: back in 10 minutes.", 1762190600000, b[..]);
+  #assert cast(string) b[0..<n] == "{\"error\":\"maintenance: Moving the rooms: back in 10 minutes.\",\"maintenance\":\"Moving the rooms: back in 10 minutes.\",\"until_ms\":1762190600000,\"retry_ms\":30000}";
+  #assert plw_maintenance_write("Moving the rooms: back in 10 minutes.", 1762190600000, b[0..<n - 1]) == -1;
+  n = plw_maintenance_write("", 0, b[..]);
+  #assert cast(string) b[0..<n] == "{\"error\":\"maintenance\",\"maintenance\":\"\",\"until_ms\":0,\"retry_ms\":30000}";
+  w: [160] u8; for i: 0..<160 { w[i] = 'a'; }
+  n = plw_maintenance_write(cast(string) w[..], 999999999999999, b[0..<511]);
+  #assert n == 2 * 160 + 86;
+  n = plw_full_write(0, 5000, -1, b[..]);
+  #assert cast(string) b[0..<n] == "{\"error\":\"every room is full: try again in a minute\",\"waiting\":0,\"retry_ms\":5000}" && plw_full_write(0, 5000, -1, b[0..<n - 1]) == -1;
+  n = plw_full_write(12, 7400, 0, b[..]);
+  #assert cast(string) b[0..<n] == "{\"error\":\"every room is full: try again in a minute\",\"waiting\":12,\"retry_ms\":7400,\"last_wait_ms\":0}";
+  n = plw_full_write(2000, 300000, 41250, b[0..<191]);
+  #assert cast(string) b[0..<n] == "{\"error\":\"every room is full: try again in a minute\",\"waiting\":2000,\"retry_ms\":300000,\"last_wait_ms\":41250}";
+}
+#test "the ticket answer: the least, every member, a full room with and without an invite's name, and what does not fit" {
+  b: [8192] u8;
+  n := plw_ticket_write("v5.abc.SIG", "p-a", false, false, "", 1762190060000, -1, -1, 0, "", "", false, "everglade", 0, false, false, "", false, "", false, "everglade", "", "", b[0..<8191]);
+  #assert cast(string) b[0..<n] == "{\"ticket\":\"v5.abc.SIG\",\"id\":\"p-a\",\"account\":false,\"admin\":false,\"name\":\"\",\"expires\":1762190060000}";
+  #assert plw_ticket_write("v5.abc.SIG", "p-a", false, false, "", 1762190060000, -1, -1, 0, "", "", false, "everglade", 0, false, false, "", false, "", false, "everglade", "", "", b[0..<n - 1]) == -1;
+  // no shard: nothing of the room, though the rest says so
+  n = plw_ticket_write("t", "p-a", true, false, "Ada L", 5, 0, 0, 1, "", "", false, "everglade", 0, true, true, "wss://x/", true, "pr", true, "everglade", "Bo", "", b[0..<8191]);
+  #assert cast(string) b[0..<n] == "{\"ticket\":\"t\",\"id\":\"p-a\",\"account\":true,\"admin\":false,\"name\":\"Ada L\",\"expires\":5,\"hp\":0,\"wanted\":0,\"xp\":1}";
+  n = plw_ticket_write("v5.abc.SIG", "p-a", true, true, "Ada_L-2", 1762190060000, 17, 2, 120, "red.2", "wizard", true, "everglade-2", 3, true, true, "wss://room.openagents.com/api/room/s3/", true, "everglade-1", true, "everglade-1", "Bo", "p-b,p-c", b[0..<8191]);
+  #assert cast(string) b[0..<n] == "{\"ticket\":\"v5.abc.SIG\",\"id\":\"p-a\",\"account\":true,\"admin\":true,\"name\":\"Ada_L-2\",\"expires\":1762190060000,\"hp\":17,\"wanted\":2,\"xp\":120,\"look\":\"red.2\",\"class\":\"wizard\",\"unclassed\":true,\"room\":\"everglade-2\",\"shard\":3,\"full\":true,\"endpoint\":\"wss://room.openagents.com/api/room/s3/\",\"party_full\":\"everglade-1\",\"party_away\":true,\"asked\":\"everglade-1\",\"by\":\"Bo\",\"blocked\":\"p-b,p-c\"}";
+  n = plw_ticket_write("t", "p-a", true, false, "Ada", 5, -1, -1, 0, "", "", false, "everglade-2", 1, true, false, "", false, "", false, "everglade-1", "", "", b[0..<8191]);
+  #assert cast(string) b[0..<n] == "{\"ticket\":\"t\",\"id\":\"p-a\",\"account\":true,\"admin\":false,\"name\":\"Ada\",\"expires\":5,\"room\":\"everglade-2\",\"shard\":1,\"full\":true,\"asked\":\"everglade-1\"}";
+  n = plw_ticket_write("t", "p-a", false, false, "Ada", 5, -1, -1, 0, "", "", false, "everglade-2", 1, false, false, "", false, "", false, "everglade-2", "Bo", "", b[0..<8191]);
+  #assert cast(string) b[0..<n] == "{\"ticket\":\"t\",\"id\":\"p-a\",\"account\":false,\"admin\":false,\"name\":\"Ada\",\"expires\":5,\"room\":\"everglade-2\",\"shard\":1}";
+  // the tail's most: 2047 bytes of members after "expires" fit, 2048 do not
+  long: [2100] u8; for i: 0..<2100 { long[i] = 'a'; }
+  n = plw_ticket_write("t", "p", false, false, "", 5, -1, -1, 0, "", "", false, "", 0, false, false, "", false, "", false, "", "", cast(string) long[0..<2034], b[0..<8191]);
+  #assert n == 74 + 2047 + 1;
+  #assert plw_ticket_write("t", "p", false, false, "", 5, -1, -1, 0, "", "", false, "", 0, false, false, "", false, "", false, "", "", cast(string) long[0..<2035], b[0..<8191]) == -1;
+}
+#test "an invite, the state kept, the vitals kept, a kick and a moderator's act" {
+  b: [192] u8;
+  n := plw_invite_write("everglade-1", 1762190120000, b[0..<95]);
+  #assert cast(string) b[0..<n] == "{\"room\":\"everglade-1\",\"until\":1762190120000}" && plw_invite_write("everglade-1", 1762190120000, b[0..<n - 1]) == -1;
+  n = plw_invite_write("", 0, b[..]);
+  #assert cast(string) b[0..<n] == "{\"room\":\"\",\"until\":0}";
+  n = plw_state_write(false, b[..]);
+  #assert cast(string) b[0..<n] == "{\"kept\":true}" && plw_state_write(false, b[0..<n - 1]) == -1;
+  n = plw_state_write(true, b[..]);
+  #assert cast(string) b[0..<n] == "{\"kept\":true,\"refused\":\"wanted\"}";
+  n = plw_vitals_kept_write(0, b[..]);
+  #assert cast(string) b[0..<n] == "{\"kept\":0}" && plw_vitals_kept_write(0, b[0..<n - 1]) == -1;
+  n = plw_vitals_kept_write(37, b[..]);
+  #assert cast(string) b[0..<n] == "{\"kept\":37}";
+  n = plw_kick_write(false, b[..]);
+  #assert cast(string) b[0..<n] == "{\"kicked\":true,\"hours\":24}" && plw_kick_write(false, b[0..<n - 1]) == -1;
+  n = plw_kick_write(true, b[..]);
+  #assert cast(string) b[0..<n] == "{\"kicked\":false}";
+  n = plw_mod_write("mute", "p-a", 1762191800000, b[0..<191]);
+  #assert cast(string) b[0..<n] == "{\"ok\":true,\"verb\":\"mute\",\"player\":\"p-a\",\"until\":1762191800000}" && plw_mod_write("mute", "p-a", 1762191800000, b[0..<n - 1]) == -1;
+  n = plw_mod_write("", "", 0, b[..]);
+  #assert cast(string) b[0..<n] == "{\"ok\":true,\"verb\":\"\",\"player\":\"\",\"until\":0}";
+  n = plw_mod_write("unban", "p-a", -1, b[..]);
+  #assert cast(string) b[0..<n] == "{\"ok\":true,\"verb\":\"unban\",\"player\":\"p-a\",\"until\":-1}";
+  n = plw_none_write(b[..]);
+  #assert cast(string) b[0..<n] == "{}" && plw_none_write(b[0..<1]) == -1;
+  n = plw_list_none_write(b[..]);
+  #assert cast(string) b[0..<n] == "[]" && plw_list_none_write(b[0..<1]) == -1;
+}
+#test "who asks: nobody, a key and a login, an upload; a key's quote, backslash and control bytes as player.c wrote them, cut where it cut" {
+  b: [2048] u8;
+  n := plw_who_write("", "", "", false, false, "", false, "", b[..]);
+  #assert cast(string) b[0..<n] == "{\"key\":\"\",\"auto\":\"\",\"npub\":\"\",\"site\":false,\"good\":false,\"after\":\"\"}" && plw_who_write("", "", "", false, false, "", false, "", b[0..<n - 1]) == -1;
+  n = plw_who_write("k-1", "bot", "00ff", true, true, "42", true, "QUJD+/8=", b[..]);
+  #assert cast(string) b[0..<n] == "{\"key\":\"k-1\",\"auto\":\"bot\",\"npub\":\"00ff\",\"site\":true,\"good\":true,\"after\":\"42\",\"bytes\":\"QUJD+/8=\"}";
+  n = plw_who_write("k-1", "", "", false, true, "", false, "QUJD", b[..]);
+  #assert cast(string) b[0..<n] == "{\"key\":\"k-1\",\"auto\":\"\",\"npub\":\"\",\"site\":false,\"good\":true,\"after\":\"\"}";
+  odd := [8] u8.['a', '"', '\\', 9, 10, 31, 0xc3, 0xa9];
+  n = plw_who_write(cast(string) odd[..], cast(string) odd[0..<3], "", false, false, "", false, "", b[..]);
+  #assert cast(string) b[0..<n] == "{\"key\":\"a\\\"\\\\\\u0009\\u000a\\u001fé\",\"auto\":\"a\\\"\\\\\",\"npub\":\"\",\"site\":false,\"good\":false,\"after\":\"\"}";
+  // esc stopped once 8 more bytes would reach its buffer's end: 152 plain bytes of 159 into 160, 66 control bytes (396) of 159 into 400
+  long: [159] u8; for i: 0..<159 { long[i] = 'a'; }
+  n = plw_who_write("", cast(string) long[..], "", false, false, "", false, "", b[..]);
+  #assert n == 67 + 152;
+  for i: 0..<159 { long[i] = 1; }
+  n = plw_who_write(cast(string) long[..], "", "", false, false, "", false, "", b[..]);
+  #assert n == 67 + 396;
+  // a name's escape the same way
+  n = plw_ticket_write("t", "p", false, false, cast(string) odd[0..<3], 5, -1, -1, 0, "", "", false, "", 0, false, false, "", false, "", false, "", "", "", b[..]);
+  #assert cast(string) b[0..<n] == "{\"ticket\":\"t\",\"id\":\"p\",\"account\":false,\"admin\":false,\"name\":\"a\\\"\\\\\",\"expires\":5}";
+}

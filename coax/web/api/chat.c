@@ -39,6 +39,7 @@
 // child process that forgets it.
 #include "api.h"
 #include "nostr.h"
+#include "chat-wire.generated.h"
 #include <ctype.h>
 #include <curl/curl.h>
 #include <signal.h>
@@ -55,6 +56,11 @@ static const char *cap_usd(void) { const char *c = getenv("OA_CHAT_DAILY_USD"); 
 static void reply(int fd, int status, const char *json) { api_respond(fd, status, "application/json", CHAT_HEADERS, json, strlen(json)); }
 // A refusal: the API's ErrorReply through error-wire.coax (api_error_with), with this file's headers.
 static void refuse(int fd, int status, const char *words) { api_error_with(fd, status, CHAT_HEADERS, words); }
+// Every body here is chat-wire.coax's: a C string for it (NULL: ""), a buffer for it to fill (its
+// last byte kept for the NUL), and what it wrote or read as a C string ("" when there is none).
+static coax_string cs(const char *s) { return (coax_string){s ? s : "", s ? (int64_t)strlen(s) : 0}; }
+#define OUT(b) ((coax_v_u8){(uint8_t *)(b), (int64_t)sizeof(b) - 1})
+static const char *fin(char *b, int64_t n) { b[n < 0 ? 0 : n] = 0; return b; }
 
 // ---- how fast: a fixed window a minute per key (an address or a pubkey), counted in Postgres
 // (api_limit) so the limit is one for every worker and instance (#13300)
@@ -132,8 +138,7 @@ static bool keys_for_member;
 // chat.api: its status into *status, its body (a string for state, else JSON) and whether to wake the runner.
 static char *call(PGconn *db, const char *op, const char *body, const char *pubkey, bool runner, int *status, bool *wake) {
   char who[400];
-  snprintf(who, sizeof who, "{\"pubkey\":\"%s\",\"may\":%s,\"runner\":%s,\"cap_usd\":\"%.16s\"}",
-           pubkey, pubkey[0] && (admin_is(pubkey) || keys_for_member) ? "true" : "false", runner ? "true" : "false", cap_usd());
+  fin(who, chw_who_write(cs(pubkey), pubkey[0] && (admin_is(pubkey) || keys_for_member), runner, cs(cap_usd()), OUT(who)));
   const char *v[3] = {op, body, who};
   PGresult *r = PQexecParams(db, "SELECT (x->>'status')::int, CASE WHEN jsonb_typeof(x->'body') = 'string' THEN x->>'body' ELSE (x->'body')::text END, "
                                  "coalesce(x->>'wake', 'false') = 'true' FROM chat.api($1, $2::jsonb, $3::jsonb) x", 3, NULL, v, NULL, NULL, 0);
@@ -162,50 +167,30 @@ static const char *credential_kind(const char *c) {
   if (!strncmp(c, "sk-ant-", 7)) return "api";   // sk-ant-api…, and other Anthropic keys: the models list decides
   return NULL;
 }
-// The "credential" string of a JSON body, only when it is a plain string with no escapes.
+// The "credential" string of a JSON body, only when it is a plain string with no escapes (chat-wire.coax).
 static bool credential_of(const char *body, size_t len, char *out, size_t cap) {
-  const char *k = NULL;
-  for (size_t i = 0; i + 12 < len; i++) if (!strncmp(body + i, "\"credential\"", 12)) { k = body + i + 12; break; }
-  if (!k) return false;
-  const char *end = body + len;
-  while (k < end && (*k == ' ' || *k == ':' || *k == '\t' || *k == '\n')) k++;
-  if (k >= end || *k != '"') return false;
-  k++;
-  size_t n = 0;
-  while (k < end && *k != '"' && *k != '\\' && n + 1 < cap) out[n++] = *k++;
+  int64_t n = chw_credential_read((coax_string){body, (int64_t)len}, (coax_v_u8){(uint8_t *)out, (int64_t)cap - 1});
+  if (n < 0) { memset(out, 0, cap); return false; }
   out[n] = 0;
-  bool ok = k < end && *k == '"';
-  if (!ok) memset(out, 0, cap);
-  return ok;
-}
-// A JSON string's contents from the runner's answer (no escapes expected), or "".
-static void jfield(const char *json, const char *key, char *out, size_t cap) {
-  char pat[64]; snprintf(pat, sizeof pat, "\"%s\":", key);
-  out[0] = 0;
-  const char *p = json ? strstr(json, pat) : NULL;
-  if (!p) return;
-  p += strlen(pat);
-  while (*p == ' ') p++;
-  if (*p != '"') return;
-  p++;
-  size_t n = 0;
-  while (*p && *p != '"' && n + 1 < cap) { if (*p == '\\' && p[1]) p++; out[n++] = *p++; }
-  out[n] = 0;
+  return true;
 }
 
 // Runs in a child: the runner checks and seals it; the sealed bytes are kept. Answers the page.
 static void save_key(const request *q, const char *pubkey, char *cred, const char *kind) {
   char body[700];
-  snprintf(body, sizeof body, "{\"credential\":\"%s\",\"owner\":\"%s\",\"kind\":\"%s\"}", cred, pubkey, kind);
+  int64_t bn = chw_credential_write(cs(cred), cs(pubkey), cs(kind), OUT(body));
   memset(cred, 0, strlen(cred));
+  if (bn < 0) { memset(body, 0, sizeof body); refuse(q->fd, 400, "That key didn't work: paste the whole key"); return; }
+  body[bn] = 0;
   wbuf out = {0};
   long st = to_runner("/credential", body, 120, &out);
   memset(body, 0, sizeof body);
   char reason[400], sealed[4096], last4[8];
-  bool good = st == 200 && out.p && strstr(out.p, "\"ok\":true");
-  jfield(out.p, "reason", reason, sizeof reason);
-  jfield(out.p, "sealed", sealed, sizeof sealed);
-  jfield(out.p, "last4", last4, sizeof last4);
+  // The runner's answer, read by chat-wire.coax (a JSON string's contents, no escapes expected, or "").
+  bool good = st == 200 && out.p && chw_reply_ok(cs(out.p));
+  fin(reason, chw_reply_reason(cs(out.p), OUT(reason)));
+  fin(sealed, chw_reply_sealed(cs(out.p), OUT(sealed)));
+  fin(last4, chw_reply_last4(cs(out.p), OUT(last4)));
   free(out.p);
   if (!good) {
     char msg[600];
@@ -217,7 +202,9 @@ static void save_key(const request *q, const char *pubkey, char *cred, const cha
   PGconn *db = api_db_new();
   if (!db) { refuse(q->fd, 503, "no database"); return; }
   char set[4400];
-  snprintf(set, sizeof set, "{\"kind\":\"%s\",\"last4\":\"%s\",\"sealed\":\"%s\"}", kind, last4, sealed);
+  int64_t sn = chw_key_set_write(cs(kind), cs(last4), cs(sealed), OUT(set));
+  if (sn < 0) { refuse(q->fd, 400, "not json"); PQfinish(db); return; }
+  set[sn] = 0;
   int status = 0;
   char *answer = call(db, "key_set", set, pubkey, false, &status, NULL);
   api_log("chat key: saved %s %d", kind, status);
@@ -313,11 +300,15 @@ bool chat_route(const request *q) {
   // A world turn that asked to open attachments (the editor's Gemini turn, #13468) names them; worlds.c joins each to
   // the request's last message, under the Files pane's access and a turn's byte limit.
   bool opens = false;
-  for (size_t k = 0; !strcmp(op, "complete") && !opens && k + 13 <= q->body_len; k++) opens = !memcmp(q->body + k, "\"attachments\"", 13);
+  if (!strcmp(op, "complete")) opens = chw_asks_attachments((coax_string){q->body, (int64_t)q->body_len});
   if (opens) {
     char *joined = NULL, words[200], out[260];
     int s = world_files_turn(q, db, &joined, words, sizeof words);
-    if (s != 200) { snprintf(out, sizeof out, "{\"error\":\"%s\"}", words); reply(q->fd, s, out); return true; }
+    if (s != 200) {
+      int64_t n = chw_error_write(cs(words), OUT(out));
+      if (n < 0) refuse(q->fd, s, words); else reply(q->fd, s, fin(out, n));
+      return true;
+    }
     request with = *q;
     with.body = joined; with.body_len = strlen(joined);
     bool done = inference_ask(&with, pubkey, true);
@@ -345,13 +336,11 @@ bool chat_route(const request *q) {
   if (post) {
     body = malloc(q->body_len + 3);
     if (!body) { refuse(q->fd, 503, "memory"); return true; }
-    if (q->body_len) { memcpy(body, q->body, q->body_len); body[q->body_len] = 0; } else strcpy(body, "{}");
+    if (q->body_len) { memcpy(body, q->body, q->body_len); body[q->body_len] = 0; } else fin(body, chw_ask_write(cs(""), (coax_v_u8){(uint8_t *)body, 2}));
   } else {
     char c[24]; api_query(q, "c", c, sizeof c);
     body = malloc(64);
-    bool digits = c[0] != 0;
-    for (const char *p = c; *p; p++) if (!isdigit((unsigned char)*p)) digits = false;
-    snprintf(body, 64, digits ? "{\"c\":\"%s\"}" : "{}", c);
+    fin(body, chw_ask_write(cs(c), (coax_v_u8){(uint8_t *)body, 63}));   // {"c"} when c is digits, else {}
   }
   int status = 0; bool wake = false;
   char *out = call(db, op, body, pubkey, runner, &status, &wake);
@@ -362,7 +351,8 @@ bool chat_route(const request *q) {
     pid_t pid = fork();
     if (pid == 0) {
       wbuf w = {0};
-      long ws = to_runner("/wake", "{\"chat\":true}", 20, &w);
+      char ask[32];
+      long ws = to_runner("/wake", fin(ask, chw_wake_write(OUT(ask))), 20, &w);
       free(w.p);
       api_log("chat wake %ld", ws);
       reply(q->fd, status, out);

@@ -1,0 +1,130 @@
+// WorldBuilder on the wire, one codec for what worldbuilder.c writes (Protocol E12, GitHub #13250):
+// proto/openagents/api/v1alpha1/worldbuilder.proto (profile api-routes) names the members.
+// worldbuilder.c calls the #export_c writers below through worldbuilder-wire.generated.c
+// (api-sources.sh, deploy.sh, the Dockerfile) and builds no body of its own:
+//   wbw_request_write   to the model (Gemini generateContent on Vertex): the system turn with the
+//                       catalogue, the page's JSON as the user's turn, the answer's schema, low
+//                       thinking (WorldbuilderModelRequest)
+//   wbw_request_room    the most bytes that request can take, for the caller's buffer
+//   wbw_status_write    200 from GET /api/worldbuilder/status: "ok SPENT CAP" or "resting SPENT CAP"
+//   wbw_flood_write     429 from POST /api/worldbuilder/act: "flood WAIT_MS"
+// The 200 of POST /api/worldbuilder/act is SQL's (worldbuilder.lines), carried as it came. The
+// limits are worldbuilder-policy.coax's (#authority); nothing is decided here.
+//
+// The request is not coax/lib/gateway/gemini.coax's: that adapter writes contents first and no
+// temperature, and this route's request must stay the bytes worldbuilder.c wrote before this
+// file (the order systemInstruction, contents, generationConfig; temperature 0.3). Text is
+// escaped as worldbuilder.c escaped it: a quote and a backslash with a backslash, a line break
+// as \n, every other byte under 0x20 as \u00XX (a tab is \u0009, not \t), the rest as it came.
+// Goldens: proto/verse/api-routes-v1alpha1.json (the route's answers, checked by
+// routes-goldens.coax). A writer returns the body's length, or -1 when it does not fit.
+//   coax/bin/coax test coax/web/api/worldbuilder-wire.coax --library
+#load "api-wire.coax";
+
+WBW_FIXED :: 4096;   // the request without its two texts (the schema and the members), at most
+
+// Text as a JSON string, the way worldbuilder.c always wrote it for the model.
+wbw_escape :: (o: [] Jo, s: string) #effects(all) {
+  hex := "0123456789abcdef";
+  for c: s {
+    if c == '"' { jo_put(o, "\\\""); }
+    else if c == '\\' { jo_put(o, "\\\\"); }
+    else if c == 10 { jo_put(o, "\\n"); }
+    else if c < 32 { jo_put(o, "\\u00"); jo_byte(o, hex[c >> 4]); jo_byte(o, hex[c & 15]); }
+    else { jo_byte(o, c); }
+  }
+}
+// The answer's schema (responseJsonSchema): `say` and `actions`, the edits the page carries out.
+// migrations/0159_worldbuilder_layer.sql reads an answer under it (worldbuilder.lines).
+wbw_schema :: (o: [] Jo) #effects(all) {
+  jo_put(o, "{\"type\":\"object\",\"properties\":{\"say\":{\"type\":\"string\"},\"actions\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{");
+  jo_put(o, "\"op\":{\"type\":\"string\",\"enum\":[\"place\",\"move\",\"rotate\",\"scale\",\"delete\",\"duplicate\",\"undo\",\"redo\",\"clear\",\"paint\",\"raise\",\"lower\",\"smooth\",\"flatten\"]},");
+  jo_put(o, "\"asset\":{\"type\":\"string\"},\"layer\":{\"type\":\"string\",\"enum\":[\"grass\",\"dirt\",\"sand\",\"stone\",\"snow\",\"water\",\"grid\"]},\"count\":{\"type\":\"integer\"},");
+  jo_put(o, "\"targets\":{\"type\":\"string\",\"enum\":[\"last\",\"names\",\"nearest\",\"all\"]},");
+  jo_put(o, "\"names\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}},");
+  jo_put(o, "\"anchor\":{\"type\":\"string\",\"enum\":[\"here\",\"view\",\"last\",\"named\",\"origin\",\"self\",\"edge\"]},");
+  jo_put(o, "\"anchor_names\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}},");
+  jo_put(o, "\"side\":{\"type\":\"string\",\"enum\":[\"at\",\"left\",\"right\",\"front\",\"behind\",\"around\"]},");
+  jo_put(o, "\"distance\":{\"type\":\"number\"},\"spread\":{\"type\":\"number\"},\"size\":{\"type\":\"number\"},");
+  jo_put(o, "\"factor\":{\"type\":\"number\"},\"degrees\":{\"type\":\"number\"}},\"required\":[\"op\",\"layer\"]}}},\"required\":[\"say\",\"actions\"]}");
+}
+// The request to the model. The system turn is system, buildings and catalogue, one after the
+// other; page is the page's request, never read, handed over as the user's turn.
+wbw_request_write :: (system: string, buildings: string, catalogue: string, page: string, max_output: int, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "{\"systemInstruction\":{\"parts\":[{\"text\":\"");
+  wbw_escape(o[..], system); wbw_escape(o[..], buildings); wbw_escape(o[..], catalogue);
+  jo_put(o[..], "\"}]},\"contents\":[{\"role\":\"user\",\"parts\":[{\"text\":\"");
+  wbw_escape(o[..], page);
+  jo_put(o[..], "\"}]}],\"generationConfig\":{\"temperature\":0.3,\"maxOutputTokens\":"); jo_int(o[..], max_output);
+  jo_put(o[..], ",\"responseMimeType\":\"application/json\",\"responseJsonSchema\":");
+  wbw_schema(o[..]);
+  jo_put(o[..], ",\"thinkingConfig\":{\"thinkingLevel\":\"LOW\"}}}");
+  return aw_len(o[..]);
+}
+// The most bytes a request with text_bytes of text (the system turn and the page's request
+// together) can take: a byte is six at most (\u00XX).
+wbw_request_room :: (text_bytes: int) -> int #export_c #effects(all) {
+  if text_bytes < 0 || text_bytes > 16777216 { return -1; }
+  return text_bytes * 6 + WBW_FIXED;
+}
+// "ok 1200 50000000" or "resting 50000000 50000000": the day's spend and its cap, in micro-dollars.
+wbw_status_write :: (resting: bool, spent: int, cap: int, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], ifx resting then "resting " else "ok "); jo_int(o[..], spent); jo_put(o[..], " "); jo_int(o[..], cap);
+  return aw_len(o[..]);
+}
+// "flood 1500": this address sent too many at once; the milliseconds to wait.
+wbw_flood_write :: (wait_ms: int, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "flood "); jo_int(o[..], wait_ms);
+  return aw_len(o[..]);
+}
+
+WBW_TEST_HEAD :: "{\"systemInstruction\":{\"parts\":[{\"text\":\"Sys.\\nhouse/cottage|5.51,7.25,5.56|house\\ntree/birch-1|1.00,4.00,1.00|tree\\n\"}]},\"contents\":[{\"role\":\"user\",\"parts\":[{\"text\":\"{\\\"text\\\":\\\"a birch\\\",\\\"here\\\":null}\"}]}],\"generationConfig\":{\"temperature\":0.3,\"maxOutputTokens\":2048,\"responseMimeType\":\"application/json\",\"responseJsonSchema\":{\"type\":\"object\",\"properties\":{\"say\":{\"type\":\"string\"},\"actions\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{\"op\":{\"type\":\"string\",\"enum\":[\"place\",\"move\",\"rotate\",\"scale\",\"delete\",\"duplicate\",\"undo\",\"redo\",\"clear\",\"paint\",\"raise\",\"lower\",\"smooth\",\"flatten\"]},\"asset\":{\"type\":\"string\"},\"layer\":{\"type\":\"string\",\"enum\":[\"grass\",\"dirt\",\"sand\",\"stone\",\"snow\",\"water\",\"grid\"]},\"count\":{\"type\":\"integer\"},";
+WBW_TEST_TAIL :: "\"factor\":{\"type\":\"number\"},\"degrees\":{\"type\":\"number\"}},\"required\":[\"op\",\"layer\"]}}},\"required\":[\"say\",\"actions\"]},\"thinkingConfig\":{\"thinkingLevel\":\"LOW\"}}}";
+
+#test "the model's request: the three parts of the system turn as one text, the page's JSON as the user's, the schema, low thinking" {
+  b: [8192] u8; c: [2048] u8; nodes: [512] JvNode; d: [1] Jv; t: [512] u8;
+  n := wbw_request_write("Sys.\n", "house/cottage|5.51,7.25,5.56|house\n", "tree/birch-1|1.00,4.00,1.00|tree\n", "{\"text\":\"a birch\",\"here\":null}", 2048, b[..]);
+  body := cast(string) b[0..<n];
+  #assert n == 1321;   // 1209 bytes round the two texts, as worldbuilder.c wrote them
+  #assert body[0..<WBW_TEST_HEAD.count] == WBW_TEST_HEAD && body[n - WBW_TEST_TAIL.count..<n] == WBW_TEST_TAIL;
+  #assert wbw_request_write("", "", "", "", 2048, c[0..<1209]) == 1209 && wbw_request_write("", "", "", "", 2048, c[0..<1208]) == -1 && wbw_request_write("", "", "", "", 2048, c[0..<10]) == -1;
+  #assert jv_parse(d[..], body, nodes[..]) && jv_kind(d[0], 0) == JV_OBJECT && jv_len(d[0], 0) == 3;
+  #assert jv_key(d[0], jv_at(d[0], 0, 0)) == "systemInstruction" && jv_key(d[0], jv_at(d[0], 0, 1)) == "contents" && jv_key(d[0], jv_at(d[0], 0, 2)) == "generationConfig";
+  tn := jv_str(d[0], jv_path(d[0], 0, "contents[0].parts[0].text"), t[..]);
+  #assert cast(string) t[0..<tn] == "{\"text\":\"a birch\",\"here\":null}";
+  tn = jv_str(d[0], jv_path(d[0], 0, "systemInstruction.parts[0].text"), t[..]);
+  #assert cast(string) t[0..<tn] == "Sys.\nhouse/cottage|5.51,7.25,5.56|house\ntree/birch-1|1.00,4.00,1.00|tree\n";
+  #assert jv_int(d[0], jv_path(d[0], 0, "generationConfig.maxOutputTokens"), 0) == 2048;
+  #assert jv_len(d[0], jv_path(d[0], 0, "generationConfig.responseJsonSchema.properties.actions.items.properties")) == 14;
+  tn = jv_str(d[0], jv_path(d[0], 0, "generationConfig.thinkingConfig.thinkingLevel"), t[..]);
+  #assert cast(string) t[0..<tn] == "LOW";
+}
+#test "text is escaped as worldbuilder.c escaped it: \\u00XX for a tab, a return and a NUL, \\n for a line break, UTF-8 as it came" {
+  b: [8192] u8; raw: [16] u8;
+  raw[0] = 'a'; raw[1] = 9; raw[2] = 13; raw[3] = 10; raw[4] = 0; raw[5] = 7; raw[6] = 31; raw[7] = '"'; raw[8] = '\\'; raw[9] = 0xc3; raw[10] = 0xa9; raw[11] = 8; raw[12] = 12; raw[13] = ' ';
+  n := wbw_request_write("", "", "", cast(string) raw[0..<14], 7, b[..]);
+  want := "{\"systemInstruction\":{\"parts\":[{\"text\":\"\"}]},\"contents\":[{\"role\":\"user\",\"parts\":[{\"text\":\"a\\u0009\\u000d\\n\\u0000\\u0007\\u001f\\\"\\\\é\\u0008\\u000c \"}]}],\"generationConfig\":{\"temperature\":0.3,\"maxOutputTokens\":7,";
+  #assert n > want.count && cast(string) b[0..<want.count] == want;
+  // the room is enough for the worst text: every byte six
+  for i: 0..<16 { raw[i] = 1; }
+  n = wbw_request_write(cast(string) raw[0..<8], "", "", cast(string) raw[0..<8], 2048, b[..]);
+  #assert n > 0 && n <= wbw_request_room(16) && wbw_request_room(16) == 96 + WBW_FIXED && wbw_request_room(-1) == -1;
+  n = wbw_request_write("", "", "", "", 2048, b[..]);
+  #assert n == 1209 && n <= WBW_FIXED;
+}
+#test "the status line and the flood line, as snprintf wrote them" {
+  b: [96] u8;
+  n := wbw_status_write(false, 0, 50000000, b[..]);
+  #assert cast(string) b[0..<n] == "ok 0 50000000";
+  n = wbw_status_write(false, 16680, 50000000, b[..]);
+  #assert cast(string) b[0..<n] == "ok 16680 50000000";
+  n = wbw_status_write(true, 50000123, 50000000, b[..]);
+  #assert cast(string) b[0..<n] == "resting 50000123 50000000" && wbw_status_write(true, 50000123, 50000000, b[0..<n - 1]) == -1;
+  n = wbw_flood_write(1500, b[..]);
+  #assert cast(string) b[0..<n] == "flood 1500" && wbw_flood_write(1500, b[0..<9]) == -1;
+  n = wbw_flood_write(1, b[..]);
+  #assert cast(string) b[0..<n] == "flood 1";
+}

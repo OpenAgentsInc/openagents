@@ -1,0 +1,663 @@
+// Step-up, linking and recovery on the wire, one codec for what auth-recover.c writes and reads
+// (Protocol E11, GitHub #13250): proto/openagents/api/v1alpha1/auth_recover.proto (profile
+// api-routes) names the members. auth-recover.c calls the #export_c functions below through
+// auth-recover-wire.generated.c and builds no body of its own. Each answer has two forms, the JSON
+// (..._write) and the lines of ?as=lines (..._lines):
+//   arw_recovery_write, arw_recovery_lines     GET /api/auth/recovery; the "recovery" member elsewhere
+//   arw_methods_none_write, arw_methods_key_write   "methods" when the database names none; for a login with no account
+//   arw_step_up_write, arw_step_up_lines       the gate's refusal that asks for a step-up
+//   arw_challenge_write, arw_challenge_lines   POST /api/auth/proof/challenge
+//   arw_stepped_write, arw_stepped_lines       POST /api/auth/step-up (with the new recovery code when one was spent)
+//   arw_linked_write, arw_linked_lines         POST /api/auth/link/nostr
+//   arw_removed_write, arw_removed_lines       POST /api/auth/unlink
+//   arw_pending_write, arw_pending_lines       POST /api/auth/recovery/start
+//   arw_cancelled_write, arw_cancelled_lines   POST /api/auth/recovery/cancel
+//   arw_recovered_write, arw_recovered_lines   POST /api/auth/recovery/finish
+//   arw_code_write, arw_code_lines             POST /api/auth/recovery-code
+//   arw_code_member_write                      ,"recovery_code":"..." that POST /api/auth/recovery-code/login adds to
+//                                              the login's answer (its line is arw_code_lines)
+//   arw_ways_head_write, arw_ways_email_write, arw_ways_keys_write, arw_ways_key_write, arw_ways_passkeys_write,
+//   arw_ways_tail_write and arw_ways_head_lines, arw_ways_email_line, arw_ways_key_line, arw_ways_tail_lines
+//                                              GET /api/auth/ways, piece by piece at `at` (passkeys.c writes the passkeys)
+//   arw_notices_write, arw_notice_line         GET /api/auth/notices
+//   arw_mail_write                             a notice's email, as email.c's email_send takes it
+//   arw_sent_write, arw_notice_detail_write    a notice's deliveries: auth.notice_sent's jsonb, the audit row's detail
+//   arw_why_write, arw_via_write, arw_kind_write, arw_unlinked_write, arw_wait_write   audit details
+// and two readers, each the scan auth-recover.c made by hand, byte for byte (no JSON parser: they
+// take and refuse exactly what it did, malformed text included):
+//   arw_unlink_id    the id of POST /api/auth/unlink's {kind, id}: a number, or a string of digits
+//   arw_event_id     the id of the gift wrap auth-recover-crypto.coax made (relay.c's relay_send wants it)
+// The bytes are the ones auth-recover.c wrote before this file; proto/verse/api-routes-v1alpha1.json
+// holds what a running API answered and routes-goldens.coax checks it. A string is written as
+// JSON (quote, backslash and control bytes escaped); none of them here can hold such a byte (fixed
+// words, hex, account ids, BIP-39 words, an address auth-seal.coax's as_email_normalize passed),
+// so no byte changes. Free text (a refusal's words, a key's label, a notice's address, subject and
+// text) keeps auth.c's json_esc: a control byte as \u00XX, and cut where the old buffer ended
+// (arw_esc). What the database printed (an id, a time, a list, an object) is put as it came, an
+// empty value too. A function returns the body's length (a piece's: its end in out), or -1 when it
+// does not fit.
+//   coax/bin/coax test coax/web/api/auth-recover-wire.coax --library
+#load "api-wire.coax";
+
+ARW_ID :: 23;      // an id's digits, at most (auth-recover.c's buffer before this file)
+
+// Where part first stands in s[from..<to], or -1 (C's strstr).
+arw_find :: (s: string, from: int, to: int, part: string) -> int #effects(all) {
+  i := from;
+  while i + part.count <= to {
+    if s[i..<i + part.count] == part { return i; }
+    i += 1;
+  }
+  return -1;
+}
+// A C string's end: the first 0 byte, or the text's own end.
+arw_end :: (s: string) -> int #effects(all) {
+  for i: 0..<s.count { if s[i] == 0 { return i; } }
+  return s.count;
+}
+// auth.c's json_esc into a buffer of cap bytes, as auth-recover.c called it: a quote and a
+// backslash behind a backslash, a control byte as \u00XX, and nothing more once fewer than eight
+// bytes of the buffer were left.
+arw_esc :: (o: [] Jo, s: string, cap: int) #effects(all) {
+  hex := "0123456789abcdef"; k := 0; open := true;
+  for c: s {
+    if k + 7 >= cap { open = false; }
+    if open {
+      if c == '"' || c == '\\' { jo_byte(o, '\\'); jo_byte(o, c); k += 2; }
+      else if c < 32 { jo_put(o, "\\u00"); jo_byte(o, hex[c >> 4]); jo_byte(o, hex[c & 15]); k += 6; }
+      else { jo_byte(o, c); k += 1; }
+    }
+  }
+}
+// "L2": a level.
+arw_level :: (o: [] Jo, level: int) #effects(all) { jo_put(o, "\"L"); jo_int(o, level); jo_put(o, "\""); }
+// A line's "NAME N\n".
+arw_line_int :: (o: [] Jo, name: string, v: int) #effects(all) { jo_put(o, name); jo_int(o, v); jo_put(o, "\n"); }
+// ["email","nostr"] as email,nostr: the methods on one line.
+arw_flat :: (o: [] Jo, methods: string) #effects(all) {
+  for c: methods { if c != '[' && c != ']' && c != '"' && c != ' ' { jo_byte(o, c); } }
+}
+
+// ---------------------------------------------------------------- recovery's state
+// {"state":"pending","asked_ms":1,"ready_ms":2,"cancelled_ms":0,"done_ms":0,"now_ms":3,"wait_hours":72};
+// ,"cancelled_via":"link" after it when via is not "".
+arw_recovery_write :: (state: string, asked: int, ready: int, cancelled: int, done: int, now: int, via: string, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "{\"state\":"); jo_quoted(o[..], state);
+  jo_put(o[..], ",\"asked_ms\":"); jo_int(o[..], asked); jo_put(o[..], ",\"ready_ms\":"); jo_int(o[..], ready);
+  jo_put(o[..], ",\"cancelled_ms\":"); jo_int(o[..], cancelled); jo_put(o[..], ",\"done_ms\":"); jo_int(o[..], done);
+  jo_put(o[..], ",\"now_ms\":"); jo_int(o[..], now); jo_put(o[..], ",\"wait_hours\":72");
+  if via.count > 0 { jo_put(o[..], ",\"cancelled_via\":"); jo_quoted(o[..], via); }
+  jo_put(o[..], "}");
+  return aw_len(o[..]);
+}
+arw_recovery_lines :: (state: string, asked: int, ready: int, now: int, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "state "); jo_put(o[..], state); jo_put(o[..], "\n");
+  arw_line_int(o[..], "asked_ms ", asked); arw_line_int(o[..], "ready_ms ", ready); arw_line_int(o[..], "now_ms ", now);
+  return aw_len(o[..]);
+}
+// []: the database named no methods.
+arw_methods_none_write :: (out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0); jo_put(o[..], "[]"); return aw_len(o[..]);
+}
+// ["nostr"]: an admin page's old key-made login has no account; its key is its one way in.
+arw_methods_key_write :: (out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0); jo_put(o[..], "[\"nostr\"]"); return aw_len(o[..]);
+}
+
+// ---------------------------------------------------------------- the gate's step-up answer
+// {"error":"WORDS","step_up":"L2","methods":[...],"limited":false,"level":"L1","recovery":{...}}:
+// methods and recovery are JSON as they came (the database's, arw_recovery_write's); the words as
+// json_esc left them in 400 bytes.
+arw_step_up_write :: (words: string, step_up: string, methods: string, limited: bool, level: int, recovery: string, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "{\"error\":\""); arw_esc(o[..], words, 400); jo_put(o[..], "\",\"step_up\":"); jo_quoted(o[..], step_up);
+  jo_put(o[..], ",\"methods\":"); jo_put(o[..], methods);
+  jo_put(o[..], ",\"limited\":"); jo_put(o[..], ifx limited then "true" else "false");
+  jo_put(o[..], ",\"level\":"); arw_level(o[..], level);
+  jo_put(o[..], ",\"recovery\":"); jo_put(o[..], recovery); jo_put(o[..], "}");
+  return aw_len(o[..]);
+}
+arw_step_up_lines :: (words: string, step_up: string, methods: string, limited: bool, state: string, ready: int, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "error "); jo_put(o[..], words); jo_put(o[..], "\nstep_up "); jo_put(o[..], step_up);
+  jo_put(o[..], "\nmethods "); arw_flat(o[..], methods);
+  jo_put(o[..], "\nlimited "); jo_put(o[..], ifx limited then "1" else "0");
+  jo_put(o[..], "\nrecovery "); jo_put(o[..], state); jo_put(o[..], "\n");
+  arw_line_int(o[..], "ready_ms ", ready);
+  return aw_len(o[..]);
+}
+
+// ---------------------------------------------------------------- the routes' answers
+// {"challenge":"C","url":"ORIGIN/ROUTE?c=C","method":"POST","expires_in":300}
+arw_challenge_write :: (challenge: string, origin: string, route: string, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "{\"challenge\":"); jo_quoted(o[..], challenge);
+  jo_put(o[..], ",\"url\":\""); jo_escape_bytes(o[..], origin); jo_escape_bytes(o[..], route); jo_put(o[..], "?c="); jo_escape_bytes(o[..], challenge);
+  jo_put(o[..], "\",\"method\":\"POST\",\"expires_in\":300}");
+  return aw_len(o[..]);
+}
+arw_challenge_lines :: (challenge: string, origin: string, route: string, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "challenge "); jo_put(o[..], challenge);
+  jo_put(o[..], "\nurl "); jo_put(o[..], origin); jo_put(o[..], route); jo_put(o[..], "?c="); jo_put(o[..], challenge);
+  jo_put(o[..], "\nexpires_in 300\n");
+  return aw_len(o[..]);
+}
+// {"state":"stepped-up","level":"L2"}; ,"recovery_code":"WORDS" in it when a code was spent (code not "").
+arw_stepped_write :: (code: string, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "{\"state\":\"stepped-up\",\"level\":\"L2\"");
+  if code.count > 0 { jo_put(o[..], ",\"recovery_code\":"); jo_quoted(o[..], code); }
+  jo_put(o[..], "}");
+  return aw_len(o[..]);
+}
+arw_stepped_lines :: (code: string, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "state stepped-up\nlevel L2\n");
+  if code.count > 0 { jo_put(o[..], "recovery_code "); jo_put(o[..], code); jo_put(o[..], "\n"); }
+  return aw_len(o[..]);
+}
+// {"state":"linked","id":7,"pubkey":"HEX"}: the id as the database printed it.
+arw_linked_write :: (id: string, pubkey: string, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "{\"state\":\"linked\",\"id\":"); jo_put(o[..], id); jo_put(o[..], ",\"pubkey\":"); jo_quoted(o[..], pubkey); jo_put(o[..], "}");
+  return aw_len(o[..]);
+}
+arw_linked_lines :: (id: string, pubkey: string, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "state linked\nid "); jo_put(o[..], id); jo_put(o[..], "\npubkey "); jo_put(o[..], pubkey); jo_put(o[..], "\n");
+  return aw_len(o[..]);
+}
+// {"state":"removed","ended":2}: the sessions that ended with the way in.
+arw_removed_write :: (ended: int, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "{\"state\":\"removed\",\"ended\":"); jo_int(o[..], ended); jo_put(o[..], "}");
+  return aw_len(o[..]);
+}
+arw_removed_lines :: (ended: int, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "state removed\n"); arw_line_int(o[..], "ended ", ended);
+  return aw_len(o[..]);
+}
+// {"state":"pending","asked_ms":1,"ready_ms":2,"wait_hours":72}
+arw_pending_write :: (asked: int, ready: int, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "{\"state\":\"pending\",\"asked_ms\":"); jo_int(o[..], asked); jo_put(o[..], ",\"ready_ms\":"); jo_int(o[..], ready);
+  jo_put(o[..], ",\"wait_hours\":72}");
+  return aw_len(o[..]);
+}
+arw_pending_lines :: (asked: int, ready: int, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "state pending\n"); arw_line_int(o[..], "asked_ms ", asked); arw_line_int(o[..], "ready_ms ", ready);
+  return aw_len(o[..]);
+}
+// {"state":"cancelled"}
+arw_cancelled_write :: (out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0); jo_put(o[..], "{\"state\":\"cancelled\"}"); return aw_len(o[..]);
+}
+arw_cancelled_lines :: (out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0); jo_put(o[..], "state cancelled\n"); return aw_len(o[..]);
+}
+// {"state":"recovered","level":"L2","pubkey":"HEX"}
+arw_recovered_write :: (pubkey: string, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "{\"state\":\"recovered\",\"level\":\"L2\",\"pubkey\":"); jo_quoted(o[..], pubkey); jo_put(o[..], "}");
+  return aw_len(o[..]);
+}
+arw_recovered_lines :: (pubkey: string, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "state recovered\nlevel L2\npubkey "); jo_put(o[..], pubkey); jo_put(o[..], "\n");
+  return aw_len(o[..]);
+}
+// {"recovery_code":"WORDS","words":24}
+arw_code_write :: (code: string, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "{\"recovery_code\":"); jo_quoted(o[..], code); jo_put(o[..], ",\"words\":24}");
+  return aw_len(o[..]);
+}
+arw_code_lines :: (code: string, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "recovery_code "); jo_put(o[..], code); jo_put(o[..], "\n");
+  return aw_len(o[..]);
+}
+// ,"recovery_code":"WORDS": what a login by the code adds to the login's answer (auth.c's auth_logged_in).
+arw_code_member_write :: (code: string, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], ",\"recovery_code\":"); jo_quoted(o[..], code);
+  return aw_len(o[..]);
+}
+
+// ---------------------------------------------------------------- GET /api/auth/ways, in pieces
+// {"account":"A","level":"L1","via":"email","l2_age_ms":0,"limited":false,"emails":[
+arw_ways_head_write :: (account: string, level: int, via: string, l2_age_ms: int, limited: bool, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "{\"account\":"); jo_quoted(o[..], account); jo_put(o[..], ",\"level\":"); arw_level(o[..], level);
+  jo_put(o[..], ",\"via\":"); jo_quoted(o[..], via); jo_put(o[..], ",\"l2_age_ms\":"); jo_int(o[..], l2_age_ms);
+  jo_put(o[..], ",\"limited\":"); jo_put(o[..], ifx limited then "true" else "false"); jo_put(o[..], ",\"emails\":[");
+  return aw_len(o[..]);
+}
+arw_ways_head_lines :: (account: string, level: int, via: string, l2_age_ms: int, limited: bool, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "account "); jo_put(o[..], account); jo_put(o[..], "\n");
+  jo_put(o[..], "level L"); jo_int(o[..], level); jo_put(o[..], "\nvia "); jo_put(o[..], via); jo_put(o[..], "\n");
+  arw_line_int(o[..], "l2_age_ms ", l2_age_ms);
+  jo_put(o[..], "limited "); jo_put(o[..], ifx limited then "1" else "0"); jo_put(o[..], "\n");
+  return aw_len(o[..]);
+}
+// {"id":1,"email":"a•••@example.com","added_ms":2}, a comma before every one but the first.
+arw_ways_email_write :: (first: bool, id: string, masked: string, added_ms: string, out: [] u8, at: int) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, at);
+  jo_put(o[..], ifx first then "{\"id\":" else ",{\"id\":"); jo_put(o[..], id);
+  jo_put(o[..], ",\"email\":"); jo_quoted(o[..], masked); jo_put(o[..], ",\"added_ms\":"); jo_put(o[..], added_ms); jo_put(o[..], "}");
+  return aw_len(o[..]);
+}
+arw_ways_email_line :: (id: string, masked: string, out: [] u8, at: int) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, at);
+  jo_put(o[..], "email "); jo_put(o[..], id); jo_put(o[..], " "); jo_put(o[..], masked); jo_put(o[..], "\n");
+  return aw_len(o[..]);
+}
+// ],"keys":[
+arw_ways_keys_write :: (out: [] u8, at: int) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, at); jo_put(o[..], "],\"keys\":["); return aw_len(o[..]);
+}
+// {"id":1,"pubkey":"HEX","label":"phone","added_ms":2}; the label as json_esc left it in 100 bytes.
+arw_ways_key_write :: (first: bool, id: string, pubkey: string, label: string, added_ms: string, out: [] u8, at: int) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, at);
+  jo_put(o[..], ifx first then "{\"id\":" else ",{\"id\":"); jo_put(o[..], id);
+  jo_put(o[..], ",\"pubkey\":"); jo_quoted(o[..], pubkey);
+  jo_put(o[..], ",\"label\":\""); arw_esc(o[..], label, 100); jo_put(o[..], "\",\"added_ms\":"); jo_put(o[..], added_ms); jo_put(o[..], "}");
+  return aw_len(o[..]);
+}
+arw_ways_key_line :: (id: string, pubkey: string, out: [] u8, at: int) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, at);
+  jo_put(o[..], "key "); jo_put(o[..], id); jo_put(o[..], " "); jo_put(o[..], pubkey); jo_put(o[..], "\n");
+  return aw_len(o[..]);
+}
+// ],"passkeys":[
+arw_ways_passkeys_write :: (out: [] u8, at: int) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, at); jo_put(o[..], "],\"passkeys\":["); return aw_len(o[..]);
+}
+// ],"methods":[...],"recovery":{...},"counts":{...}}: each JSON as it came; counts "" is {}.
+arw_ways_tail_write :: (methods: string, recovery: string, counts: string, out: [] u8, at: int) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, at);
+  jo_put(o[..], "],\"methods\":"); jo_put(o[..], methods); jo_put(o[..], ",\"recovery\":"); jo_put(o[..], recovery);
+  jo_put(o[..], ",\"counts\":"); jo_put(o[..], ifx counts.count > 0 then counts else "{}"); jo_put(o[..], "}");
+  return aw_len(o[..]);
+}
+arw_ways_tail_lines :: (methods: string, codes: string, passkeys: string, state: string, asked: int, ready: int, now: int, out: [] u8, at: int) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, at);
+  jo_put(o[..], "methods "); arw_flat(o[..], methods);
+  jo_put(o[..], "\nrecovery_code "); jo_put(o[..], codes); jo_put(o[..], "\npasskeys "); jo_put(o[..], passkeys);
+  jo_put(o[..], "\nrecovery "); jo_put(o[..], state); jo_put(o[..], "\n");
+  arw_line_int(o[..], "asked_ms ", asked); arw_line_int(o[..], "ready_ms ", ready); arw_line_int(o[..], "now_ms ", now);
+  return aw_len(o[..]);
+}
+
+// ---------------------------------------------------------------- GET /api/auth/notices
+// {"notices":[...]}: the list as auth.notices_of made it.
+arw_notices_write :: (notices: string, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "{\"notices\":"); jo_put(o[..], notices); jo_put(o[..], "}");
+  return aw_len(o[..]);
+}
+// notice AT_MS WHAT
+arw_notice_line :: (at_ms: string, what: string, out: [] u8, at: int) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, at);
+  jo_put(o[..], "notice "); jo_put(o[..], at_ms); jo_put(o[..], " "); jo_put(o[..], what); jo_put(o[..], "\n");
+  return aw_len(o[..]);
+}
+
+// ---------------------------------------------------------------- a notice's deliveries
+// {"to":"TO","subject":"OpenAgents security: SUBJECT","idempotency_key":"notice-ACCT-ID-I","text":"TEXT"}
+// for email_send: the address, the subject and the text as json_esc left them in 600, 200 and 2400 bytes.
+arw_mail_write :: (to: string, subject: string, account: string, notice: int, i: int, text: string, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "{\"to\":\""); arw_esc(o[..], to, 600);
+  jo_put(o[..], "\",\"subject\":\"OpenAgents security: "); arw_esc(o[..], subject, 200);
+  jo_put(o[..], "\",\"idempotency_key\":\"notice-"); jo_escape_bytes(o[..], account); jo_put(o[..], "-"); jo_int(o[..], notice); jo_put(o[..], "-"); jo_int(o[..], i);
+  jo_put(o[..], "\",\"text\":\""); arw_esc(o[..], text, 2400); jo_put(o[..], "\"}");
+  return aw_len(o[..]);
+}
+arw_counts :: (o: [] Jo, email: int, nostr: int, push: int, failed: int) #effects(all) {
+  jo_put(o, "\"email\":"); jo_int(o, email); jo_put(o, ",\"nostr\":"); jo_int(o, nostr);
+  jo_put(o, ",\"push\":"); jo_int(o, push); jo_put(o, ",\"failed\":"); jo_int(o, failed); jo_put(o, "}");
+}
+// {"email":1,"nostr":2,"push":0,"failed":0}: what auth.notice_sent keeps on the notice's row.
+arw_sent_write :: (email: int, nostr: int, push: int, failed: int, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "{"); arw_counts(o[..], email, nostr, push, failed);
+  return aw_len(o[..]);
+}
+// {"what":"link.nostr","email":1,"nostr":2,"push":0,"failed":0}: the audit row's detail.
+arw_notice_detail_write :: (what: string, email: int, nostr: int, push: int, failed: int, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "{\"what\":"); jo_quoted(o[..], what); jo_put(o[..], ","); arw_counts(o[..], email, nostr, push, failed);
+  return aw_len(o[..]);
+}
+
+// ---------------------------------------------------------------- audit details
+// {"why":"replay"}
+arw_why_write :: (why: string, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "{\"why\":"); jo_quoted(o[..], why); jo_put(o[..], "}");
+  return aw_len(o[..]);
+}
+// {"via":"nostr"}, or {"via":"nostr","why":"not this account's key"} when why is not "".
+arw_via_write :: (via: string, why: string, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "{\"via\":"); jo_quoted(o[..], via);
+  if why.count > 0 { jo_put(o[..], ",\"why\":"); jo_quoted(o[..], why); }
+  jo_put(o[..], "}");
+  return aw_len(o[..]);
+}
+// {"kind":"nostr"}, or {"kind":"nostr","why":"already"} when why is not "".
+arw_kind_write :: (kind: string, why: string, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "{\"kind\":"); jo_quoted(o[..], kind);
+  if why.count > 0 { jo_put(o[..], ",\"why\":"); jo_quoted(o[..], why); }
+  jo_put(o[..], "}");
+  return aw_len(o[..]);
+}
+// {"kind":"email","ended":2}
+arw_unlinked_write :: (kind: string, ended: int, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "{\"kind\":"); jo_quoted(o[..], kind); jo_put(o[..], ",\"ended\":"); jo_int(o[..], ended); jo_put(o[..], "}");
+  return aw_len(o[..]);
+}
+// {"wait_hours":72}
+arw_wait_write :: (out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0); jo_put(o[..], "{\"wait_hours\":72}"); return aw_len(o[..]);
+}
+
+// ---------------------------------------------------------------- readers
+// The id of {"kind":"nostr","id":7} or {"kind":"nostr","id":"7"}: its digits in out (at most
+// ARW_ID) and their count, 0 for none. The scan auth-recover.c always made, on any text: the first
+// "id" (quotes and all) wherever it stands, the first colon after it, then spaces and quotes
+// passed over, then the digits.
+arw_unlink_id :: (body: string, out: [] u8) -> int #export_c #effects(all) {
+  end := arw_end(body);
+  at := arw_find(body, 0, end, "\"id\"");
+  if at < 0 { return 0; }
+  i := arw_find(body, at + 4, end, ":");
+  if i < 0 { return 0; }
+  i += 1; n := 0;
+  while i < end && (body[i] == ' ' || body[i] == '"') { i += 1; }
+  while i < end && n < ARW_ID && n < out.count && body[i] >= '0' && body[i] <= '9' { out[n] = body[i]; n += 1; i += 1; }
+  return n;
+}
+// A signed event's id in out: 64, or 0 (out is then untouched). The read auth-recover.c always
+// made: the 64 bytes after the first "id":" in the text, whatever they are; 0 when the text has no
+// "id":" or ends sooner.
+arw_event_id :: (event: string, out: [] u8) -> int #export_c #effects(all) {
+  end := arw_end(event);
+  at := arw_find(event, 0, end, "\"id\":\"");
+  if at < 0 || at + 6 + 64 > end || out.count < 64 { return 0; }
+  for i: 0..<64 { out[i] = event[at + 6 + i]; }
+  return 64;
+}
+
+#test "recovery's state: with and without who cancelled it, its lines, the two fixed method lists" {
+  b: [512] u8;
+  n := arw_recovery_write("none", 0, 0, 0, 0, 0, "", b[..]);
+  #assert cast(string) b[0..<n] == "{\"state\":\"none\",\"asked_ms\":0,\"ready_ms\":0,\"cancelled_ms\":0,\"done_ms\":0,\"now_ms\":0,\"wait_hours\":72}";
+  #assert arw_recovery_write("none", 0, 0, 0, 0, 0, "", b[0..<n - 1]) == -1;
+  n = arw_recovery_write("cancelled", 1762900000000, 1763159200000, 1762900500000, 0, 1762900600000, "link", b[..]);
+  #assert cast(string) b[0..<n] == "{\"state\":\"cancelled\",\"asked_ms\":1762900000000,\"ready_ms\":1763159200000,\"cancelled_ms\":1762900500000,\"done_ms\":0,\"now_ms\":1762900600000,\"wait_hours\":72,\"cancelled_via\":\"link\"}";
+  n = arw_recovery_write("pending", -1, 2, 0, 0, 3, "", b[..]);
+  #assert cast(string) b[0..<n] == "{\"state\":\"pending\",\"asked_ms\":-1,\"ready_ms\":2,\"cancelled_ms\":0,\"done_ms\":0,\"now_ms\":3,\"wait_hours\":72}";
+  n = arw_recovery_lines("pending", 1, 2, 3, b[..]);
+  #assert cast(string) b[0..<n] == "state pending\nasked_ms 1\nready_ms 2\nnow_ms 3\n" && arw_recovery_lines("pending", 1, 2, 3, b[0..<n - 1]) == -1;
+  n = arw_recovery_lines("none", 0, 0, 0, b[..]);
+  #assert cast(string) b[0..<n] == "state none\nasked_ms 0\nready_ms 0\nnow_ms 0\n";
+  n = arw_methods_none_write(b[..]);
+  #assert cast(string) b[0..<n] == "[]" && arw_methods_none_write(b[0..<1]) == -1;
+  n = arw_methods_key_write(b[..]);
+  #assert cast(string) b[0..<n] == "[\"nostr\"]" && arw_methods_key_write(b[0..<8]) == -1;
+}
+#test "the step-up refusal: words escaped as json_esc did, methods and recovery as they came, its lines" {
+  b: [1400] u8;
+  rec := "{\"state\":\"none\",\"asked_ms\":0,\"ready_ms\":0,\"cancelled_ms\":0,\"done_ms\":0,\"now_ms\":0,\"wait_hours\":72}";
+  n := arw_step_up_write("Confirm it's you first.", "L2", "[\"nostr\",\"recovery_code\"]", true, 1, rec, b[..]);
+  #assert cast(string) b[0..<n] == "{\"error\":\"Confirm it's you first.\",\"step_up\":\"L2\",\"methods\":[\"nostr\",\"recovery_code\"],\"limited\":true,\"level\":\"L1\",\"recovery\":{\"state\":\"none\",\"asked_ms\":0,\"ready_ms\":0,\"cancelled_ms\":0,\"done_ms\":0,\"now_ms\":0,\"wait_hours\":72}}";
+  #assert arw_step_up_write("Confirm it's you first.", "L2", "[\"nostr\",\"recovery_code\"]", true, 1, rec, b[0..<n - 1]) == -1;
+  n = arw_step_up_write("a \"b\" \\ c\nd", "L2-fresh", "[\"nostr\"]", false, 2, "{}", b[..]);
+  #assert cast(string) b[0..<n] == "{\"error\":\"a \\\"b\\\" \\\\ c\\u000ad\",\"step_up\":\"L2-fresh\",\"methods\":[\"nostr\"],\"limited\":false,\"level\":\"L2\",\"recovery\":{}}";
+  n = arw_step_up_write("", "L2", "[]", false, 0, "{}", b[..]);
+  #assert cast(string) b[0..<n] == "{\"error\":\"\",\"step_up\":\"L2\",\"methods\":[],\"limited\":false,\"level\":\"L0\",\"recovery\":{}}";
+  // an empty list or object from the database goes out as it came
+  n = arw_step_up_write("x", "L2", "", false, 0, "", b[..]);
+  #assert cast(string) b[0..<n] == "{\"error\":\"x\",\"step_up\":\"L2\",\"methods\":,\"limited\":false,\"level\":\"L0\",\"recovery\":}";
+  // words past the old 400-byte buffer are cut: 393 plain bytes stay
+  long: [500] u8; for i: 0..<500 { long[i] = 'a'; }
+  n = arw_step_up_write(cast(string) long[..], "L2", "[]", false, 0, "{}", b[..]);
+  #assert n == 393 + 83;
+  n = arw_step_up_lines("Confirm it's you first.", "L2", "[\"nostr\", \"recovery_code\"]", true, "pending", 1763159200000, b[..]);
+  #assert cast(string) b[0..<n] == "error Confirm it's you first.\nstep_up L2\nmethods nostr,recovery_code\nlimited 1\nrecovery pending\nready_ms 1763159200000\n";
+  #assert arw_step_up_lines("Confirm it's you first.", "L2", "[\"nostr\", \"recovery_code\"]", true, "pending", 1763159200000, b[0..<n - 1]) == -1;
+  n = arw_step_up_lines("x", "L2-fresh", "[]", false, "none", 0, b[..]);
+  #assert cast(string) b[0..<n] == "error x\nstep_up L2-fresh\nmethods \nlimited 0\nrecovery none\nready_ms 0\n";
+}
+#test "the routes' answers, JSON and lines" {
+  b: [700] u8;
+  n := arw_challenge_write("c0ffee", "https://openagents.com", "/api/auth/step-up", b[..]);
+  #assert cast(string) b[0..<n] == "{\"challenge\":\"c0ffee\",\"url\":\"https://openagents.com/api/auth/step-up?c=c0ffee\",\"method\":\"POST\",\"expires_in\":300}";
+  #assert arw_challenge_write("c0ffee", "https://openagents.com", "/api/auth/step-up", b[0..<n - 1]) == -1;
+  n = arw_challenge_lines("c0ffee", "https://openagents.com", "/api/auth/link/nostr", b[..]);
+  #assert cast(string) b[0..<n] == "challenge c0ffee\nurl https://openagents.com/api/auth/link/nostr?c=c0ffee\nexpires_in 300\n" && arw_challenge_lines("c", "o", "/r", b[0..<10]) == -1;
+  n = arw_stepped_write("", b[..]);
+  #assert cast(string) b[0..<n] == "{\"state\":\"stepped-up\",\"level\":\"L2\"}" && arw_stepped_write("", b[0..<n - 1]) == -1;
+  n = arw_stepped_write("abandon ability able", b[..]);
+  #assert cast(string) b[0..<n] == "{\"state\":\"stepped-up\",\"level\":\"L2\",\"recovery_code\":\"abandon ability able\"}";
+  n = arw_stepped_lines("", b[..]);
+  #assert cast(string) b[0..<n] == "state stepped-up\nlevel L2\n" && arw_stepped_lines("", b[0..<n - 1]) == -1;
+  n = arw_stepped_lines("abandon ability able", b[..]);
+  #assert cast(string) b[0..<n] == "state stepped-up\nlevel L2\nrecovery_code abandon ability able\n";
+  n = arw_linked_write("7", "79be667e", b[..]);
+  #assert cast(string) b[0..<n] == "{\"state\":\"linked\",\"id\":7,\"pubkey\":\"79be667e\"}" && arw_linked_write("7", "79be667e", b[0..<n - 1]) == -1;
+  n = arw_linked_write("", "", b[..]);
+  #assert cast(string) b[0..<n] == "{\"state\":\"linked\",\"id\":,\"pubkey\":\"\"}";
+  n = arw_linked_lines("7", "79be667e", b[..]);
+  #assert cast(string) b[0..<n] == "state linked\nid 7\npubkey 79be667e\n" && arw_linked_lines("7", "79be667e", b[0..<n - 1]) == -1;
+  n = arw_linked_lines("", "x", b[..]);
+  #assert cast(string) b[0..<n] == "state linked\nid \npubkey x\n";
+  n = arw_removed_write(0, b[..]);
+  #assert cast(string) b[0..<n] == "{\"state\":\"removed\",\"ended\":0}" && arw_removed_write(0, b[0..<n - 1]) == -1;
+  n = arw_removed_write(12, b[..]);
+  #assert cast(string) b[0..<n] == "{\"state\":\"removed\",\"ended\":12}";
+  n = arw_removed_lines(12, b[..]);
+  #assert cast(string) b[0..<n] == "state removed\nended 12\n" && arw_removed_lines(12, b[0..<n - 1]) == -1;
+  n = arw_pending_write(1762900000000, 1763159200000, b[..]);
+  #assert cast(string) b[0..<n] == "{\"state\":\"pending\",\"asked_ms\":1762900000000,\"ready_ms\":1763159200000,\"wait_hours\":72}" && arw_pending_write(1, 2, b[0..<20]) == -1;
+  n = arw_pending_write(0, 0, b[..]);
+  #assert cast(string) b[0..<n] == "{\"state\":\"pending\",\"asked_ms\":0,\"ready_ms\":0,\"wait_hours\":72}";
+  n = arw_pending_lines(1762900000000, 1763159200000, b[..]);
+  #assert cast(string) b[0..<n] == "state pending\nasked_ms 1762900000000\nready_ms 1763159200000\n" && arw_pending_lines(1, 2, b[0..<20]) == -1;
+  n = arw_cancelled_write(b[..]);
+  #assert cast(string) b[0..<n] == "{\"state\":\"cancelled\"}" && arw_cancelled_write(b[0..<n - 1]) == -1;
+  n = arw_cancelled_lines(b[..]);
+  #assert cast(string) b[0..<n] == "state cancelled\n" && arw_cancelled_lines(b[0..<n - 1]) == -1;
+  n = arw_recovered_write("79be667e", b[..]);
+  #assert cast(string) b[0..<n] == "{\"state\":\"recovered\",\"level\":\"L2\",\"pubkey\":\"79be667e\"}" && arw_recovered_write("79be667e", b[0..<n - 1]) == -1;
+  n = arw_recovered_lines("79be667e", b[..]);
+  #assert cast(string) b[0..<n] == "state recovered\nlevel L2\npubkey 79be667e\n" && arw_recovered_lines("79be667e", b[0..<n - 1]) == -1;
+  n = arw_code_write("abandon ability able", b[..]);
+  #assert cast(string) b[0..<n] == "{\"recovery_code\":\"abandon ability able\",\"words\":24}" && arw_code_write("abandon ability able", b[0..<n - 1]) == -1;
+  n = arw_code_lines("abandon ability able", b[..]);
+  #assert cast(string) b[0..<n] == "recovery_code abandon ability able\n" && arw_code_lines("abandon ability able", b[0..<n - 1]) == -1;
+  n = arw_code_member_write("abandon ability able", b[..]);
+  #assert cast(string) b[0..<n] == ",\"recovery_code\":\"abandon ability able\"" && arw_code_member_write("abandon ability able", b[0..<n - 1]) == -1;
+}
+#test "the ways in, piece by piece: each goes on where the last ended" {
+  b: [1200] u8; l: [600] u8;
+  n := arw_ways_head_write("acct_1", 1, "email", 0, false, b[..]);
+  #assert cast(string) b[0..<n] == "{\"account\":\"acct_1\",\"level\":\"L1\",\"via\":\"email\",\"l2_age_ms\":0,\"limited\":false,\"emails\":[";
+  #assert arw_ways_head_write("acct_1", 1, "email", 0, false, b[0..<n - 1]) == -1;
+  n = arw_ways_email_write(true, "1", "a•••@example.com", "1762900000000", b[..], n);
+  n = arw_ways_email_write(false, "2", "•••", "1762900000001", b[..], n);
+  n = arw_ways_keys_write(b[..], n);
+  n = arw_ways_key_write(true, "3", "79be667e", "phone", "1762900000002", b[..], n);
+  n = arw_ways_key_write(false, "4", "c6047f94", "", "1762900000003", b[..], n);
+  n = arw_ways_passkeys_write(b[..], n);
+  n = arw_ways_tail_write("[\"nostr\"]", "{\"state\":\"none\"}", "{\"passkeys\" : 0, \"recovery_code\" : false, \"ways\" : 4, \"strong\" : 2}", b[..], n);
+  #assert cast(string) b[0..<n] == "{\"account\":\"acct_1\",\"level\":\"L1\",\"via\":\"email\",\"l2_age_ms\":0,\"limited\":false,\"emails\":[{\"id\":1,\"email\":\"a•••@example.com\",\"added_ms\":1762900000000},{\"id\":2,\"email\":\"•••\",\"added_ms\":1762900000001}],\"keys\":[{\"id\":3,\"pubkey\":\"79be667e\",\"label\":\"phone\",\"added_ms\":1762900000002},{\"id\":4,\"pubkey\":\"c6047f94\",\"label\":\"\",\"added_ms\":1762900000003}],\"passkeys\":[],\"methods\":[\"nostr\"],\"recovery\":{\"state\":\"none\"},\"counts\":{\"passkeys\" : 0, \"recovery_code\" : false, \"ways\" : 4, \"strong\" : 2}}";
+  // no rows, no counts, a limited L2 session with an age
+  n = arw_ways_head_write("", 2, "nostr", 123456, true, b[..]);
+  n = arw_ways_keys_write(b[..], n); n = arw_ways_passkeys_write(b[..], n);
+  n = arw_ways_tail_write("[]", "{}", "", b[..], n);
+  #assert cast(string) b[0..<n] == "{\"account\":\"\",\"level\":\"L2\",\"via\":\"nostr\",\"l2_age_ms\":123456,\"limited\":true,\"emails\":[],\"keys\":[],\"passkeys\":[],\"methods\":[],\"recovery\":{},\"counts\":{}}";
+  // a label with a quote keeps json_esc's form; a piece that does not fit, a piece after one that did not, a value that is no number
+  n = arw_ways_key_write(true, "3", "79", "my \"own\"", "5", b[..], 0);
+  #assert cast(string) b[0..<n] == "{\"id\":3,\"pubkey\":\"79\",\"label\":\"my \\\"own\\\"\",\"added_ms\":5}";
+  #assert arw_ways_key_write(true, "3", "79", "", "5", b[0..<20], 0) == -1 && arw_ways_key_write(true, "3", "79", "", "5", b[..], -1) == -1;
+  #assert arw_ways_email_write(true, "1", "a", "5", b[..], 1195) == -1 && arw_ways_keys_write(b[..], 1195) == -1 && arw_ways_passkeys_write(b[..], -1) == -1;
+  // an empty value from the database goes out as it came, as %s wrote it
+  n = arw_ways_key_write(true, "", "79", "", "", b[..], 0);
+  #assert cast(string) b[0..<n] == "{\"id\":,\"pubkey\":\"79\",\"label\":\"\",\"added_ms\":}";
+  n = arw_ways_email_write(false, "", "a", "", b[..], 0);
+  #assert cast(string) b[0..<n] == ",{\"id\":,\"email\":\"a\",\"added_ms\":}";
+  n = arw_ways_tail_write("", "", "", b[..], 0);
+  #assert cast(string) b[0..<n] == "],\"methods\":,\"recovery\":,\"counts\":{}}";
+  m := arw_ways_head_lines("acct_1", 1, "email", 0, false, l[..]);
+  #assert cast(string) l[0..<m] == "account acct_1\nlevel L1\nvia email\nl2_age_ms 0\nlimited 0\n" && arw_ways_head_lines("acct_1", 1, "email", 0, false, l[0..<m - 1]) == -1;
+  m = arw_ways_email_line("1", "a•••@example.com", l[..], m);
+  m = arw_ways_key_line("3", "79be667e", l[..], m);
+  m = arw_ways_tail_lines("[\"email\", \"nostr\"]", "1", "0", "pending", 1, 2, 3, l[..], m);
+  #assert cast(string) l[0..<m] == "account acct_1\nlevel L1\nvia email\nl2_age_ms 0\nlimited 0\nemail 1 a•••@example.com\nkey 3 79be667e\nmethods email,nostr\nrecovery_code 1\npasskeys 0\nrecovery pending\nasked_ms 1\nready_ms 2\nnow_ms 3\n";
+  m = arw_ways_head_lines("", 2, "nostr", 123456, true, l[..]);
+  #assert cast(string) l[0..<m] == "account \nlevel L2\nvia nostr\nl2_age_ms 123456\nlimited 1\n";
+  #assert arw_ways_email_line("1", "a", l[..], -1) == -1 && arw_ways_key_line("3", "79", l[..], 595) == -1;
+  m = arw_ways_email_line("", "a", l[..], 0);
+  #assert cast(string) l[0..<m] == "email  a\n";
+  m = arw_ways_key_line("", "79", l[..], 0);
+  #assert cast(string) l[0..<m] == "key  79\n";
+  #assert arw_ways_tail_lines("[]", "0", "0", "none", 0, 0, 0, l[..], 590) == -1;
+}
+#test "notices: the list as it came, a line for each" {
+  b: [200] u8;
+  n := arw_notices_write("[{\"what\" : \"link.nostr\", \"at_ms\" : 5}]", b[..]);
+  #assert cast(string) b[0..<n] == "{\"notices\":[{\"what\" : \"link.nostr\", \"at_ms\" : 5}]}" && arw_notices_write("[]", b[0..<13]) == -1;
+  n = arw_notices_write("", b[..]);
+  #assert cast(string) b[0..<n] == "{\"notices\":}";
+  n = arw_notices_write("[]", b[..]);
+  #assert cast(string) b[0..<n] == "{\"notices\":[]}";
+  n = arw_notice_line("1762900000000", "link.nostr", b[..], 0);
+  n = arw_notice_line("1762800000000", "unlink", b[..], n);
+  #assert cast(string) b[0..<n] == "notice 1762900000000 link.nostr\nnotice 1762800000000 unlink\n" && arw_notice_line("1", "unlink", b[..], 195) == -1 && arw_notice_line("1", "unlink", b[..], -1) == -1;
+}
+#test "a notice's email, its deliveries and the audit details" {
+  b: [3600] u8;
+  n := arw_mail_write("ada@example.com", "a Nostr key was added", "acct_1", 12, 0, "A key was added.\n\nThis is a security notice.\n", b[..]);
+  #assert cast(string) b[0..<n] == "{\"to\":\"ada@example.com\",\"subject\":\"OpenAgents security: a Nostr key was added\",\"idempotency_key\":\"notice-acct_1-12-0\",\"text\":\"A key was added.\\u000a\\u000aThis is a security notice.\\u000a\"}";
+  #assert arw_mail_write("ada@example.com", "a Nostr key was added", "acct_1", 12, 0, "A key was added.\n\nThis is a security notice.\n", b[0..<n - 1]) == -1;
+  n = arw_mail_write("", "say \"hi\" \\ now", "", 0, 3, "tab\there", b[..]);
+  #assert cast(string) b[0..<n] == "{\"to\":\"\",\"subject\":\"OpenAgents security: say \\\"hi\\\" \\\\ now\",\"idempotency_key\":\"notice--0-3\",\"text\":\"tab\\u0009here\"}";
+  // a subject past the old 200-byte buffer is cut where json_esc cut it: 193 plain bytes, or 97 quotes (an escape is never split)
+  long: [300] u8; for i: 0..<300 { long[i] = 's'; }
+  n = arw_mail_write("a", cast(string) long[..], "x", 1, 1, "t", b[..]);
+  #assert n == 193 + 88;
+  for i: 0..<300 { long[i] = '"'; }
+  n = arw_mail_write("a", cast(string) long[..], "x", 1, 1, "t", b[..]);
+  #assert n == 194 + 88;
+  n = arw_sent_write(1, 2, 0, 0, b[..]);
+  #assert cast(string) b[0..<n] == "{\"email\":1,\"nostr\":2,\"push\":0,\"failed\":0}" && arw_sent_write(1, 2, 0, 0, b[0..<n - 1]) == -1;
+  n = arw_notice_detail_write("link.nostr", 0, 0, 3, 11, b[..]);
+  #assert cast(string) b[0..<n] == "{\"what\":\"link.nostr\",\"email\":0,\"nostr\":0,\"push\":3,\"failed\":11}" && arw_notice_detail_write("link.nostr", 0, 0, 3, 11, b[0..<n - 1]) == -1;
+  n = arw_why_write("bad signature", b[..]);
+  #assert cast(string) b[0..<n] == "{\"why\":\"bad signature\"}" && arw_why_write("bad signature", b[0..<n - 1]) == -1;
+  n = arw_why_write("another account's key", b[..]);
+  #assert cast(string) b[0..<n] == "{\"why\":\"another account's key\"}";
+  n = arw_via_write("nostr", "", b[..]);
+  #assert cast(string) b[0..<n] == "{\"via\":\"nostr\"}" && arw_via_write("nostr", "", b[0..<n - 1]) == -1;
+  n = arw_via_write("recovery_code", "wrong code", b[..]);
+  #assert cast(string) b[0..<n] == "{\"via\":\"recovery_code\",\"why\":\"wrong code\"}";
+  n = arw_via_write("nostr", "not this account's key", b[..]);
+  #assert cast(string) b[0..<n] == "{\"via\":\"nostr\",\"why\":\"not this account's key\"}";
+  n = arw_kind_write("nostr", "", b[..]);
+  #assert cast(string) b[0..<n] == "{\"kind\":\"nostr\"}" && arw_kind_write("nostr", "", b[0..<n - 1]) == -1;
+  n = arw_kind_write("nostr", "another account's", b[..]);
+  #assert cast(string) b[0..<n] == "{\"kind\":\"nostr\",\"why\":\"another account's\"}";
+  n = arw_unlinked_write("passkey", 2, b[..]);
+  #assert cast(string) b[0..<n] == "{\"kind\":\"passkey\",\"ended\":2}" && arw_unlinked_write("passkey", 2, b[0..<n - 1]) == -1;
+  n = arw_unlinked_write("email", 0, b[..]);
+  #assert cast(string) b[0..<n] == "{\"kind\":\"email\",\"ended\":0}";
+  n = arw_wait_write(b[..]);
+  #assert cast(string) b[0..<n] == "{\"wait_hours\":72}" && arw_wait_write(b[0..<n - 1]) == -1;
+}
+#test "an unlink's id: the old scan, on good bodies and bad" {
+  o: [24] u8;
+  n := arw_unlink_id("{\"kind\":\"nostr\",\"id\":1}", o[..]);
+  #assert cast(string) o[0..<n] == "1";
+  n = arw_unlink_id("{\"kind\":\"email\",\"id\":\"4821\"}", o[..]);
+  #assert cast(string) o[0..<n] == "4821";
+  n = arw_unlink_id(" { \"id\" : \" 77\" , \"kind\" : \"passkey\" } ", o[..]);
+  #assert cast(string) o[0..<n] == "77";
+  n = arw_unlink_id("{\"id\":12.5}", o[..]);
+  #assert cast(string) o[0..<n] == "12";
+  n = arw_unlink_id("{\"id\":\"12abc\"}", o[..]);
+  #assert cast(string) o[0..<n] == "12";
+  n = arw_unlink_id("{\"id\":123456789012345678901234567890}", o[..]);
+  #assert n == ARW_ID && cast(string) o[0..<n] == "12345678901234567890123";
+  // text that is not JSON, an id that is nested, an "id" that is a value: the scan takes them as it always did
+  n = arw_unlink_id("{\"id\":1", o[..]);
+  #assert cast(string) o[0..<n] == "1";
+  n = arw_unlink_id("\"id\" junk : \"\" \" 9", o[..]);
+  #assert cast(string) o[0..<n] == "9";
+  n = arw_unlink_id("{\"way\":{\"id\":31}}", o[..]);
+  #assert cast(string) o[0..<n] == "31";
+  n = arw_unlink_id("[{\"id\":5}]", o[..]);
+  #assert cast(string) o[0..<n] == "5";
+  n = arw_unlink_id("{\"kind\":\"id\",\"id\":6}", o[..]);
+  #assert cast(string) o[0..<n] == "6";
+  n = arw_unlink_id("{\"way\":{\"id\":3},\"id\":5}", o[..]);
+  #assert cast(string) o[0..<n] == "3";
+  n = arw_unlink_id("{\"id\":7,\"id\":8}", o[..]);
+  #assert cast(string) o[0..<n] == "7";
+  // the colon is the first after "id", not the next byte: here it is the one before 2
+  n = arw_unlink_id("{\"id\" 1, \"x\":2}", o[..]);
+  #assert cast(string) o[0..<n] == "2";
+  // no digits where they should start: none
+  #assert arw_unlink_id("{\"kind\":\"nostr\"}", o[..]) == 0 && arw_unlink_id("{\"id\":-1}", o[..]) == 0 && arw_unlink_id("{\"id\":\"x1\"}", o[..]) == 0;
+  #assert arw_unlink_id("{\"id\":null}", o[..]) == 0 && arw_unlink_id("{\"id\":true}", o[..]) == 0 && arw_unlink_id("{\"id\":[1]}", o[..]) == 0 && arw_unlink_id("{\"id\":\"\"}", o[..]) == 0;
+  #assert arw_unlink_id("", o[..]) == 0 && arw_unlink_id("\"id\"", o[..]) == 0 && arw_unlink_id("\"id\":", o[..]) == 0 && arw_unlink_id("{id:1}", o[..]) == 0 && arw_unlink_id("{\"id\":\t1}", o[..]) == 0;
+  // a 0 byte ends the text, as it ended the C string
+  z: [12] u8; zt := "{\"id\":4"; for i: 0..<zt.count { z[i] = zt[i]; } z[7] = 0; z[8] = '5';
+  n = arw_unlink_id(cast(string) z[0..<9], o[..]);
+  #assert cast(string) o[0..<n] == "4";
+  z[2] = 0;
+  #assert arw_unlink_id(cast(string) z[0..<9], o[..]) == 0;
+}
+#test "a signed event's id: the 64 bytes after the first \"id\":\", as the old read took them" {
+  id: [64] u8; e: [300] u8; eo: [1] Jo;
+  hex := "4a5b6c7d8e9f00112233445566778899aabbccddeeff00112233445566778899";
+  jo_start(eo[..], e[..]);
+  jo_put(eo[..], "{\"id\":\""); jo_put(eo[..], hex); jo_put(eo[..], "\",\"pubkey\":\"79be\",\"created_at\":1762900000,\"kind\":1059,\"tags\":[[\"p\",\"c604\"]],\"content\":\"AgB\",\"sig\":\"00\"}");
+  #assert arw_event_id(jo_text(eo[..]), id[..]) == 64 && cast(string) id[..] == hex && arw_event_id(jo_text(eo[..]), id[0..<63]) == 0;
+  // wherever it stands, nested or not, in text that is not JSON
+  jo_start(eo[..], e[..]);
+  jo_put(eo[..], "junk {\"kind\":1059,\"e\":{\"id\":\""); jo_put(eo[..], hex);
+  for i: 0..<64 { id[i] = 0; }
+  #assert arw_event_id(jo_text(eo[..]), id[..]) == 64 && cast(string) id[..] == hex;
+  // a longer id: its first 64 bytes; the first "id":" wins over a later one
+  jo_start(eo[..], e[..]);
+  jo_put(eo[..], "{\"id\":\""); jo_put(eo[..], hex[1..<64]); jo_put(eo[..], "zz\",\"id\":\""); jo_put(eo[..], hex); jo_put(eo[..], "\"}");
+  #assert arw_event_id(jo_text(eo[..]), id[..]) == 64 && cast(string) id[0..<63] == hex[1..<64] && id[63] == 'z';
+  // a short id still gives 64 bytes when the text goes on that far: the quote and what follows are taken too
+  jo_start(eo[..], e[..]);
+  jo_put(eo[..], "{\"id\":\"4a5b\",\"pubkey\":\""); jo_put(eo[..], hex); jo_put(eo[..], "\"}");
+  #assert arw_event_id(jo_text(eo[..]), id[..]) == 64 && cast(string) id[0..<16] == "4a5b\",\"pubkey\":\"" && cast(string) id[16..<64] == hex[0..<48];
+  // fewer than 64 bytes after it, no "id":" at all (a space after the colon is not it), a number: none
+  jo_start(eo[..], e[..]);
+  jo_put(eo[..], "{\"id\":\""); jo_put(eo[..], hex[0..<63]);
+  #assert arw_event_id(jo_text(eo[..]), id[..]) == 0;
+  jo_start(eo[..], e[..]);
+  jo_put(eo[..], "{\"id\": \""); jo_put(eo[..], hex); jo_put(eo[..], "\"}");
+  #assert arw_event_id(jo_text(eo[..]), id[..]) == 0;
+  #assert arw_event_id("{\"id\":\"4a5b\"}", id[..]) == 0 && arw_event_id("{\"kind\":1059}", id[..]) == 0 && arw_event_id("", id[..]) == 0 && arw_event_id("{\"id\":7}", id[..]) == 0;
+  // a 0 byte ends the text
+  jo_start(eo[..], e[..]);
+  jo_put(eo[..], "{\"id\":\""); jo_put(eo[..], hex); jo_put(eo[..], "\"}");
+  e[40] = 0;
+  #assert arw_event_id(jo_text(eo[..]), id[..]) == 0;
+}

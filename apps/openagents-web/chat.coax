@@ -26,6 +26,7 @@
 
 #load "../../components/zeron/picker.coax";
 #load "../../components/zeron/chrome.coax";   // the page's buttons, field and notice
+#load "../../components/zeron/chat-lines.coax";   // the state's lines: the one reader (Z C S U T)
 #load "../../components/skin/all.coax";       // every skin, in pixels (uiskin_pixels)
 
 WC_MAX_VERTICES :: 120000;
@@ -157,28 +158,12 @@ coaxial_chat_bind :: (h: [] WcHost) #export_c #effects(all) {
 
 // ---------------------------------------------------------------- the lines
 
-wc_kind :: (s: [] WcState, i: int) -> u8 { return s[0].data[s[0].line_at[i]]; }
-wc_cell :: (s: [] WcState, i: int, col: int) -> string {
-  from := s[0].line_at[i]; to := s[0].line_end[i];
-  k := from; c := 0;
-  while c < col && k < to { if s[0].data[k] == '|' { c += 1; } k += 1; }
-  if c < col { return ""; }
-  j := k;
-  while j < to && s[0].data[j] != '|' { j += 1; }
-  return cast(string) s[0].data[k..<j];
-}
-wc_index :: (s: [] WcState) {
-  s[0].line_n = 0;
-  at := 0; n := s[0].data_n;
-  while at < n {
-    stop := at;
-    while stop < n && s[0].data[stop] != '\n' { stop += 1; }
-    if stop > at + 1 && s[0].data[at + 1] == '|' && s[0].line_n < WC_LINES {
-      s[0].line_at[s[0].line_n] = at; s[0].line_end[s[0].line_n] = stop; s[0].line_n += 1;
-    }
-    at = stop + 1;
-  }
-}
+// The lines are chat-lines.coax's to read (compliance plan step C9): where each is, its kind
+// and its cells by the codec's columns (CHL_U_TEXT and the rest).
+wc_line :: (s: [] WcState, i: int) -> string { return cast(string) s[0].data[s[0].line_at[i]..<s[0].line_end[i]]; }
+wc_kind :: (s: [] WcState, i: int) -> u8 { return chl_kind(wc_line(s, i)); }
+wc_cell :: (s: [] WcState, i: int, col: int) -> string { return chl_cell(wc_line(s, i), col); }
+wc_index :: (s: [] WcState) { s[0].line_n = chl_index(cast(string) s[0].data[0..<s[0].data_n], s[0].line_at[..], s[0].line_end[..]); }
 wc_first :: (s: [] WcState, kind: u8) -> int {
   for i: 0..<s[0].line_n { if wc_kind(s, i) == kind { return i; } }
   return -1;
@@ -194,9 +179,9 @@ wc_nth :: (s: [] WcState, kind: u8, k: int) -> int {
   return -1;
 }
 wc_z :: (s: [] WcState, col: int) -> string { z := wc_first(s, 'Z'); return ifx z < 0 then "" else wc_cell(s, z, col); }
-wc_has_key :: (s: [] WcState) -> bool { return wc_z(s, 3).count > 0; }
+wc_has_key :: (s: [] WcState) -> bool { return wc_z(s, CHL_Z_CREDENTIAL).count > 0; }
 // oa-api keeps folders and tabs (migrations/0139: Z's ninth field is 2); an older one keeps neither.
-wc_tabbed :: (s: [] WcState) -> bool { return wc_z(s, 8) == "2"; }
+wc_tabbed :: (s: [] WcState) -> bool { return wc_z(s, CHL_Z_RECORD) == "2"; }
 // The open tabs in order, as the C lines' places among the conversations (wc_nth's k). How many.
 wc_tabs :: (s: [] WcState, out: [] int) -> int {
   for j: 0..<out.count { out[j] = -1; }
@@ -204,7 +189,7 @@ wc_tabs :: (s: [] WcState, out: [] int) -> int {
   k := 0;
   for i: 0..<s[0].line_n {
     if wc_kind(s, i) != 'C' { continue; }
-    p := wc_int(wc_cell(s, i, 7));
+    p := wc_int(wc_cell(s, i, CHL_C_TAB));
     if p >= 1 && p <= out.count { out[p - 1] = k; }
     k += 1;
   }
@@ -215,7 +200,7 @@ wc_tabs :: (s: [] WcState, out: [] int) -> int {
 // Today's spend on OpenAgents' key has reached the cap, and no key of the asker's is saved.
 wc_capped :: (s: [] WcState) -> bool {
   if wc_has_key(s) || wc_first(s, 'Z') < 0 { return false; }
-  return wc_cents(wc_z(s, 1)) >= wc_cents(wc_z(s, 2)) && wc_cents(wc_z(s, 2)) >= 0;
+  return wc_cents(wc_z(s, CHL_Z_SPENT)) >= wc_cents(wc_z(s, CHL_Z_CAP)) && wc_cents(wc_z(s, CHL_Z_CAP)) >= 0;
 }
 // "1.07" as 107; -1 for nothing.
 wc_cents :: (t: string) -> int {
@@ -238,13 +223,13 @@ wc_model_index :: (id: string) -> int {
   return -1;
 }
 wc_model_name :: (id: string) -> string { k := wc_model_index(id); names := WC_MODEL_NAMES; return ifx k < 0 then id else names[k]; }
-wc_shown_id :: (s: [] WcState) -> string { si := wc_first(s, 'S'); return ifx si < 0 then "" else wc_cell(s, si, 1); }
+wc_shown_id :: (s: [] WcState) -> string { si := wc_first(s, 'S'); return ifx si < 0 then "" else wc_cell(s, si, CHL_S_ID); }
 wc_showing :: (s: [] WcState) -> bool { return s[0].shown != 0 && wc_shown_id(s).count > 0; }
 // The model the next turn uses: the one chosen here, else the conversation's, else Opus.
 wc_model :: (s: [] WcState) -> int {
   if s[0].model >= 0 && s[0].model < 3 { return s[0].model; }
   si := wc_first(s, 'S');
-  if si >= 0 && wc_showing(s) { k := wc_model_index(wc_cell(s, si, 3)); if k >= 0 { return k; } }
+  if si >= 0 && wc_showing(s) { k := wc_model_index(wc_cell(s, si, CHL_S_MODEL)); if k >= 0 { return k; } }
   return WC_MODEL_DEFAULT;
 }
 // The shown conversation's last turn waits or runs (or a message is on its way).
@@ -253,25 +238,17 @@ wc_busy :: (s: [] WcState) -> bool {
   if !wc_showing(s) { return false; }
   n := wc_count(s, 'U');
   if n == 0 { return false; }
-  st := wc_cell(s, wc_nth(s, 'U', n - 1), 2);
+  st := wc_cell(s, wc_nth(s, 'U', n - 1), CHL_U_STATUS);
   return st == "running" || st == "queued";
 }
 
 // A long text's escapes (\n, \\, \p) undone, into the pool; "" once it is full.
 wc_decode :: (s: [] WcState, text: string) -> string {
-  from := s[0].pool_n; n := from; i := 0;
-  while i < text.count {
-    if n >= s[0].pool.count { s[0].pool_n = from; return ""; }
-    c := text[i];
-    if c == '\\' && i + 1 < text.count {
-      e := text[i + 1];
-      s[0].pool[n] = ifx e == 'n' then '\n' else ifx e == 'p' then '|' else e;
-      n += 1; i += 2; continue;
-    }
-    s[0].pool[n] = c; n += 1; i += 1;
-  }
-  s[0].pool_n = n;
-  return cast(string) s[0].pool[from..<n];
+  from := s[0].pool_n;
+  r := chl_unescape(text, s[0].pool[from..<s[0].pool.count], '\n');
+  if !r.whole { return ""; }
+  s[0].pool_n = from + r.n;
+  return cast(string) s[0].pool[from..<from + r.n];
 }
 wc_keep :: (s: [] WcState, text: string) -> string {
   from := s[0].pool_n;
@@ -494,15 +471,15 @@ wc_summary :: (kinds: [] int, n: int, out: [] u8) -> int {
 }
 // Under an answer: the model, the credential and what it cost ("Opus 5.5 · OpenAgents key · $0.0123").
 wc_meta :: (s: [] WcState, i: int, out: [] u8) -> int {
-  k := wc_word(out, 0, wc_model_name(wc_cell(s, i, 4)));
-  cred := wc_cell(s, i, 5);
+  k := wc_word(out, 0, wc_model_name(wc_cell(s, i, CHL_U_MODEL)));
+  cred := wc_cell(s, i, CHL_U_CREDENTIAL);
   if cred == "own" { k = wc_word(out, k, " · Your key"); }
   else if cred == "openagents" {
     k = wc_word(out, k, " · OpenAgents key");
-    cost := wc_cell(s, i, 10);
+    cost := wc_cell(s, i, CHL_U_COST);
     if cost.count > 0 { k = wc_word(out, k, " · $"); k = wc_word(out, k, cost); }
   }
-  at := wc_cell(s, i, 3);
+  at := wc_cell(s, i, CHL_U_AT);
   if at.count > 0 { k = wc_word(out, k, " · "); k = wc_word(out, k, at); }
   return k;
 }
@@ -518,27 +495,27 @@ wc_build :: (s: [] WcState) {
   live := false;
   for k: s[0].first..<n {
     i := wc_nth(s, 'U', k);
-    id := wc_cell(s, i, 1);
-    status := wc_cell(s, i, 2);
+    id := wc_cell(s, i, CHL_U_ID);
+    status := wc_cell(s, i, CHL_U_STATUS);
     running := status == "running" || status == "queued";
     live = running && k + 1 == n;
-    t_user(t, wc_decode(s, wc_cell(s, i, 6)));
+    t_user(t, wc_decode(s, wc_cell(s, i, CHL_U_TEXT)));
     t_entry(t);
     // its tools, newest first in the state (the last 12): one group, oldest first
     tl: [16] int; nt := 0;
     j := i + 1;
-    while j < s[0].line_n && wc_kind(s, j) == 'T' { if wc_cell(s, j, 1) == id && nt < 16 { tl[nt] = j; nt += 1; } j += 1; }
+    while j < s[0].line_n && wc_kind(s, j) == 'T' { if wc_cell(s, j, CHL_T_TURN) == id && nt < 16 { tl[nt] = j; nt += 1; } j += 1; }
     if nt > 0 {
       kinds: [16] int;
-      for q: 0..<nt { kinds[q] = wc_tool_kind(wc_cell(s, tl[nt - 1 - q], 2)); }
+      for q: 0..<nt { kinds[q] = wc_tool_kind(wc_cell(s, tl[nt - 1 - q], CHL_T_NAME)); }
       words: [256] u8;
       wn := wc_summary(kinds[..], nt, words[..]);
       g := t_group(t, t_pool(t, cast(string) words[0..<wn]));
       if g < 0 { break; }
       for q: 0..<nt {
         line := tl[nt - 1 - q];
-        name := wc_decode(s, wc_cell(s, line, 2));
-        detail := wc_decode(s, wc_cell(s, line, 3));
+        name := wc_decode(s, wc_cell(s, line, CHL_T_NAME));
+        detail := wc_decode(s, wc_cell(s, line, CHL_T_DETAIL));
         tool := Tool.{kind = kinds[q], arg = ifx detail.count > 0 then detail else name, name = name, resolved = !(live && q + 1 == nt)};
         ti := t_tool(t, g, tool);
         if ti < 0 { break; }
@@ -551,9 +528,9 @@ wc_build :: (s: [] WcState) {
       t[0].groups[g].open = ifx u == 0 then live else u == 1;
       s[0].g_set[g] = t[0].groups[g].open;
     }
-    answer := wc_cell(s, i, 7);
+    answer := wc_cell(s, i, CHL_U_ANSWER);
     if answer.count > 0 { t_text(t, wc_decode(s, answer)); }
-    err := wc_decode(s, wc_cell(s, i, 8));
+    err := wc_decode(s, wc_cell(s, i, CHL_U_ERROR));
     if status == "stopped" { q := t_notice(t, N_STOPPED, err); }
     else if status == "failed" { q := t_notice(t, N_ERROR, ifx err.count > 0 then err else "Failed."); }
     else if status == "refused" { q := t_notice(t, N_ERROR, ifx err.count > 0 then err else "Not run."); }
@@ -716,11 +693,11 @@ wc_new :: (s: [] WcState) {
 wc_open_conv :: (s: [] WcState, k: int) {
   i := wc_nth(s, 'C', k);
   if i < 0 { return; }
-  id := wc_int(wc_cell(s, i, 1));
+  id := wc_int(wc_cell(s, i, CHL_C_ID));
   s[0].listing = false;
   // its tab, if it has none yet
-  if wc_tabbed(s) && wc_cell(s, i, 7).count == 0 && s[0].post_n == 0 && s[0].post_id < 0 {
-    wc_post(s, "tab", POST_TAB, "c", wc_cell(s, i, 1), "open", "true", "", "");
+  if wc_tabbed(s) && wc_cell(s, i, CHL_C_TAB).count == 0 && s[0].post_n == 0 && s[0].post_id < 0 {
+    wc_post(s, "tab", POST_TAB, "c", wc_cell(s, i, CHL_C_ID), "open", "true", "", "");
   }
   if id == s[0].shown { return; }
   s[0].shown = id; s[0].model = -1;
@@ -732,12 +709,12 @@ wc_close_tab :: (s: [] WcState, place: int) {
   tabs: [WC_TABS] int; n := wc_tabs(s, tabs[..]);
   if place < 0 || place >= n || s[0].post_n > 0 || s[0].post_id >= 0 { return; }
   i := wc_nth(s, 'C', tabs[place]);
-  id := wc_int(wc_cell(s, i, 1));
-  wc_post(s, "tab", POST_TAB, "c", wc_cell(s, i, 1), "open", "false", "", "");
+  id := wc_int(wc_cell(s, i, CHL_C_ID));
+  wc_post(s, "tab", POST_TAB, "c", wc_cell(s, i, CHL_C_ID), "open", "false", "", "");
   if id != s[0].shown { return; }
   next := ifx place + 1 < n then place + 1 else place - 1;
   if next < 0 { wc_new(s); return; }
-  s[0].shown = wc_int(wc_cell(s, wc_nth(s, 'C', tabs[next]), 1)); s[0].model = -1;
+  s[0].shown = wc_int(wc_cell(s, wc_nth(s, 'C', tabs[next]), CHL_C_ID)); s[0].model = -1;
   wc_forget_view(s);
 }
 
@@ -817,7 +794,7 @@ wc_paint_failure :: (out: [] f32, at: int, s: [] WcState, d: f32, x: f32, compos
 wc_failure_text :: (s: [] WcState, buf: [] u8) -> int {
   if s[0].note_n > 0 { return wc_put(buf, 0, cast(string) s[0].note[0..<s[0].note_n]); }
   if wc_capped(s) {
-    m := wc_put(buf, 0, "Today's $"); m = wc_put(buf, m, wc_z(s, 2));
+    m := wc_put(buf, 0, "Today's $"); m = wc_put(buf, m, wc_z(s, CHL_Z_CAP));
     return wc_put(buf, m, " for /chat is used up. Save your own key under Key, or come back tomorrow.");
   }
   return 0;
@@ -827,11 +804,11 @@ wc_credential :: (s: [] WcState, buf: [] u8) -> int {
   if wc_first(s, 'Z') < 0 { return 0; }
   if wc_has_key(s) {
     m := wc_put(buf, 0, "Your key · ");
-    m = wc_put(buf, m, ifx wc_z(s, 3) == "oauth" then "Claude subscription" else "Anthropic API key");
-    if wc_z(s, 5) == "1" { m = wc_put(buf, m, " · expired: make a new one under Key"); }
+    m = wc_put(buf, m, ifx wc_z(s, CHL_Z_CREDENTIAL) == "oauth" then "Claude subscription" else "Anthropic API key");
+    if wc_z(s, CHL_Z_EXPIRED) == "1" { m = wc_put(buf, m, " · expired: make a new one under Key"); }
     return m;
   }
-  m := wc_put(buf, 0, "OpenAgents key · $"); m = wc_put(buf, m, wc_z(s, 1)); m = wc_put(buf, m, " of $"); m = wc_put(buf, m, wc_z(s, 2));
+  m := wc_put(buf, 0, "OpenAgents key · $"); m = wc_put(buf, m, wc_z(s, CHL_Z_SPENT)); m = wc_put(buf, m, " of $"); m = wc_put(buf, m, wc_z(s, CHL_Z_CAP));
   return wc_put(buf, m, " today");
 }
 
@@ -858,7 +835,7 @@ wc_paint_list :: (out: [] f32, at: int, s: [] WcState, d: f32, x: f32, top: f32,
   folders: [WC_FOLDERS] string; nf := 0;
   if wc_tabbed(s) {
     for k: 0..<n {
-      f := wc_cell(s, wc_nth(s, 'C', k), 6);
+      f := wc_cell(s, wc_nth(s, 'C', k), CHL_C_FOLDER);
       known := false;
       for j: 0..<nf { if folders[j] == f { known = true; } }
       if !known && nf < WC_FOLDERS { folders[nf] = f; nf += 1; }
@@ -872,7 +849,7 @@ wc_paint_list :: (out: [] f32, at: int, s: [] WcState, d: f32, x: f32, top: f32,
     for j: 0..<nf {
       head_y[j] = yy; yy += WC_FOLDER_ROW;
       for k: 0..<n {
-        if no < 256 && wc_cell(s, wc_nth(s, 'C', k), 6) == folders[j] { order[no] = k; row_y[no] = yy; no += 1; yy += WC_ROW; }
+        if no < 256 && wc_cell(s, wc_nth(s, 'C', k), CHL_C_FOLDER) == folders[j] { order[no] = k; row_y[no] = yy; no += 1; yy += WC_ROW; }
       }
     }
   }
@@ -892,19 +869,19 @@ wc_paint_list :: (out: [] f32, at: int, s: [] WcState, d: f32, x: f32, top: f32,
     y := ly + row_y[r] - s[0].side_scroll;
     if y + WC_ROW <= ly || y >= bottom { continue; }
     i := wc_nth(s, 'C', k);
-    on := wc_int(wc_cell(s, i, 1)) == s[0].shown;
+    on := wc_int(wc_cell(s, i, CHL_C_ID)) == s[0].shown;
     h := s[0].hot == WH_CONV + k;
     if (on || h) && y >= ly - 1 && y + WC_ROW - 4 <= bottom + 1 { v = paint_quad(out, v, d, x + 8, y, w - 16, WC_ROW - 4, sk.radius_control, 0, ifx on then sk.row_shown else sk.row_hover, sk.clear); }
-    title := wc_cell(s, i, 2);
+    title := wc_cell(s, i, CHL_C_TITLE);
     tb: [400] u8;
     title = wc_decode_into(title, tb[..]);
     if title.count == 0 { title = "(no words)"; }
     fb: [400] u8;
     if y >= ly - 2 { v = paint_text(out, v, a, d, sk.menu.face, pk_fit(a, sk.menu.face, title, w - 36, fb[..]), x + 18, y + 6, 20, ifx on then sk.ink else sk.muted); }
     mb: [120] u8;
-    m := wc_put(mb[..], 0, wc_model_name(wc_cell(s, i, 3)));
-    m = wc_put(mb[..], m, " · "); m = wc_put(mb[..], m, wc_cell(s, i, 4));
-    if wc_cell(s, i, 5) == "1" { m = wc_put(mb[..], m, " · Working"); }
+    m := wc_put(mb[..], 0, wc_model_name(wc_cell(s, i, CHL_C_MODEL)));
+    m = wc_put(mb[..], m, " · "); m = wc_put(mb[..], m, wc_cell(s, i, CHL_C_UPDATED));
+    if wc_cell(s, i, CHL_C_BUSY) == "1" { m = wc_put(mb[..], m, " · Working"); }
     gb: [160] u8;
     if y + 26 + 18 <= bottom + 2 { v = paint_text(out, v, a, d, sk.menu_small.face, pk_fit(a, sk.menu_small.face, cast(string) mb[0..<m], w - 36, gb[..]), x + 18, y + 26, 18, sk.faint); }
     wc_hit(s, WH_CONV + k, x + 8, ifx y < ly then ly else y, w - 16, WC_ROW - 4);
@@ -927,11 +904,11 @@ wc_paint_tabs :: (out: [] f32, at: int, s: [] WcState, d: f32, x0: f32, w0: f32)
     x := x0 + WC_TAB_PAD + cast(f32) t * (tw + WC_TAB_GAP);
     if x + tw > x0 + w0 - WC_TAB_PAD + 1 { break; }   // more than fit: the sidebar lists every one
     i := wc_nth(s, 'C', tabs[t]);
-    shown := wc_int(wc_cell(s, i, 1)) == s[0].shown;
+    shown := wc_int(wc_cell(s, i, CHL_C_ID)) == s[0].shown;
     hot := s[0].hot == WH_TAB + t || s[0].hot == WH_TAB_CLOSE + t;
     if shown || hot { v = paint_quad(out, v, d, x, y, tw, WC_TAB_H, sk.radius_control, 0, ifx shown then sk.row_shown else sk.tab_hover, sk.clear); }
     tb: [400] u8;
-    title := wc_decode_into(wc_cell(s, i, 2), tb[..]);
+    title := wc_decode_into(wc_cell(s, i, CHL_C_TITLE), tb[..]);
     if title.count == 0 { title = "New chat"; }
     fb: [400] u8;
     v = paint_text(out, v, a, d, sk.menu_small.face, pk_fit(a, sk.menu_small.face, title, tw - 2 * WC_TAB_PAD - WC_TAB_X, fb[..]), x + WC_TAB_PAD, y + 4, 20, ifx shown then sk.ink else sk.muted);
@@ -943,14 +920,10 @@ wc_paint_tabs :: (out: [] f32, at: int, s: [] WcState, d: f32, x0: f32, w0: f32)
   }
   return v;
 }
+// A title on one line: its escapes undone (a line end is a space), as much as buf holds.
 wc_decode_into :: (text: string, buf: [] u8) -> string {
-  n := 0; i := 0;
-  while i < text.count && n < buf.count {
-    c := text[i];
-    if c == '\\' && i + 1 < text.count { e := text[i + 1]; buf[n] = ifx e == 'n' then ' ' else ifx e == 'p' then '|' else e; n += 1; i += 2; continue; }
-    buf[n] = c; n += 1; i += 1;
-  }
-  return cast(string) buf[0..<n];
+  r := chl_unescape(text, buf, ' ');
+  return cast(string) buf[0..<r.n];
 }
 // The sidebar (a wide window): the list, then whose key the turns run on and Key.
 wc_paint_sidebar :: (out: [] f32, at: int, s: [] WcState, d: f32, h: f32) -> int {
@@ -966,7 +939,7 @@ wc_paint_sidebar :: (out: [] f32, at: int, s: [] WcState, d: f32, h: f32) -> int
   v = wc_paint_list(out, v, s, d, 0, TITLEBAR_HEIGHT - 6, w, foot - 8);
   v = paint_quad(out, v, d, 12, foot, w - 24, 1, 0, 0, sk.field_edge, sk.field_edge);
   cb: [200] u8; cn := wc_credential(s, cb[..]);
-  r := wc_words(out, WcFlow.{v = v, y = foot + 10}, s, d, cast(string) cb[0..<cn], 18, w - 36, true, 18, ifx wc_has_key(s) && wc_z(s, 5) == "1" then sk.danger_muted else sk.faint, 2);
+  r := wc_words(out, WcFlow.{v = v, y = foot + 10}, s, d, cast(string) cb[0..<cn], 18, w - 36, true, 18, ifx wc_has_key(s) && wc_z(s, CHL_Z_EXPIRED) == "1" then sk.danger_muted else sk.faint, 2);
   b := wc_button(out, r.v, s, d, "Key", 10, h - 40, WH_KEY, s[0].keying);
   return wc_button(out, b.v, s, d, "Theme", 10 + b.w + 4, h - 40, WH_THEME, wc_theming(s)).v;
 }
@@ -1002,13 +975,13 @@ wc_paint_key :: (out: [] f32, at: int, s: [] WcState, d: f32, x0: f32, w0: f32, 
   r = wc_words(out, r, s, d, "Use your own Anthropic API key or Claude subscription. Turns on it cost you, not us, and have no daily limit here. It is checked, then kept encrypted; only the agent's runner can open it, and it is never shown again.", ix, iw, true, 19.416408, sk.muted, 8);
   r.y += 12;
   if wc_has_key(s) && !s[0].replacing {
-    kind := wc_z(s, 3);
+    kind := wc_z(s, CHL_Z_CREDENTIAL);
     kb: [120] u8;
     m := wc_put(kb[..], 0, ifx kind == "oauth" then "Claude subscription token" else "Anthropic API key");
-    m = wc_put(kb[..], m, " …"); m = wc_put(kb[..], m, wc_z(s, 4));
+    m = wc_put(kb[..], m, " …"); m = wc_put(kb[..], m, wc_z(s, CHL_Z_LAST4));
     r.v = paint_text(out, r.v, a, d, sk.body.face, cast(string) kb[0..<m], ix, r.y, 22, sk.ink);
     r.y += 26;
-    if wc_z(s, 5) == "1" { r = wc_words(out, r, s, d, "Expired: make a new one with claude setup-token and replace it.", ix, iw, true, 19.416408, sk.danger_muted, 2); }
+    if wc_z(s, CHL_Z_EXPIRED) == "1" { r = wc_words(out, r, s, d, "Expired: make a new one with claude setup-token and replace it.", ix, iw, true, 19.416408, sk.danger_muted, 2); }
     r.y += 6;
     b1 := wc_button(out, r.v, s, d, "Replace", ix - sk.cmp.chip_pad, r.y, WH_REPLACE, false);
     r.v = wc_button(out, b1.v, s, d, "Remove", ix - sk.cmp.chip_pad + b1.w + 4, r.y, WH_REMOVE, false).v;

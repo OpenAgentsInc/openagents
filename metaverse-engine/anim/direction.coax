@@ -97,6 +97,8 @@ ad_request :: (p:[]SceneProject,words:string,out:[]u8)->int #effects(all) {
  jo_key(o[..],"cut");text:[ANIM_DOCUMENT_BYTES]u8;n:=ad_cut_write(p[0].cut[0],s,text[..]);jo_raw(o[..],cast(string)text[0..<n]);jo_end(o[..]);jo_end(o[..]);return ifx ads_input(jo_text(o[..])) then o[0].n else -1;
 }
 
+// The reply bound to the project it was asked about. The envelope is read by its codec
+// (ads_reply_read, direction-select.coax) and the direction by its own (ad_read).
 ads_reply :: (source:[]u8,text:string,out:[]AnimDirection)->int #effects(all) {
- nodes:[1024]JvNode;d:[1]Jv;if anim_json(text,d[..],nodes[..])!=0 || !anim_schema(d[0],"anim.direct.reply.v1") || !anim_keys(d[0],0,anim_field_keys("anim.direct.reply")) {return ANIM_SCHEMA;}id:[1]AssetId;if !anim_hash(d[0],jv_get(d[0],0,"base"),id[..]) || !asset_same(id[0],asset_id(cast(string)source)) {return ANIM_REFERENCE;}return ad_read(jv_raw(d[0],jv_get(d[0],0,"direction")),out);
+ base:[64]u8;r:=ads_reply_read(text,base[..]);if r.code!=ANIM_OK {return r.code;}id:[1]AssetId;if r.base_n!=64 || !asset_parse(cast(string)base[..],id[..]) || !asset_same(id[0],asset_id(cast(string)source)) {return ANIM_REFERENCE;}return ad_read(r.direction,out);
 }

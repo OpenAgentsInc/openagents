@@ -226,14 +226,14 @@ cd_mcp_resources :: (ar: [] ClArena, out: [] u8) -> string {
   lb: [1048576] u8; ok: [1] bool;
   list := cd_mcp_coder(b[0..<2], lb[..], ok[..]);
   n := json_raw(out, 0, "{\"resources\":[");
-  k := cl_count(list);
+  k := cj_sessions_count(list);
   for i: 0..<ifx k > CD_MCP_RESOURCES then CD_MCP_RESOURCES else k {
-    item := cl_json(list, cl_item(list, i));
-    id := cl_str(ar, item, "id");
+    item := cj_sessions_row(list, i);
+    id := cj_session_id(ar, item);
     if id.count == 0 { continue; }
     ub: [256] u8; un := cd_cat(ub[..], cd_cat(ub[..], 0, CD_MCP_SESSION_URI), id);
-    task := cl_str(ar, item, "task");
-    db: [256] u8; dn := cd_cat(db[..], 0, cl_str(ar, item, "state")); dn = cd_cat(db[..], dn, " · "); dn = cd_cat(db[..], dn, cl_str(ar, item, "engine"));
+    task := cj_session_task(ar, item);
+    db: [256] u8; dn := cd_cat(db[..], 0, cj_session_state(ar, item)); dn = cd_cat(db[..], dn, " · "); dn = cd_cat(db[..], dn, cj_session_engine(ar, item));
     n = json_raw(out, n, ifx i > 0 then ",{\"uri\":" else "{\"uri\":"); n = json_write_string(out, n, cast(string) ub[0..<un]);
     n = json_raw(out, n, ",\"name\":"); n = json_write_string(out, n, id);
     n = json_raw(out, n, ",\"title\":"); n = json_write_string(out, n, cast(string) task[0..<ifx task.count > 200 then 200 else task.count]);

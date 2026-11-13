@@ -1,0 +1,324 @@
+// An account's life on the wire, one codec for what auth-life.c writes and reads itself (Protocol
+// E11, GitHub #13250): proto/openagents/api/v1alpha1/auth_life.proto (profile api-routes) names the
+// members. auth-life.c calls the #export_c functions below through auth-life-wire.generated.c and
+// builds no body of its own. Each answer has two forms, JSON and the ?as=lines text:
+//   alw_state_write / alw_state_lines        {"state":"unfrozen"}, kept, ready
+//   alw_asked_write / alw_asked_lines        POST /api/auth/merge/start 200
+//   alw_deleting_write / alw_deleting_lines  POST /api/auth/delete 200
+//   alw_life_write / alw_life_lines          GET /api/auth/life 200
+//   alw_proved_write / alw_proved_lines      POST /api/auth/merge/prove 200 (and the email proof)
+//   alw_merged_write / alw_merged_lines      POST /api/auth/merge/confirm 200; result is SQL's JSON as it came
+// The export's rows (GET /api/auth/export, one JSON object a line; the other rows are SQL's):
+//   alw_export_head_write, alw_export_email_write, alw_export_agents_write
+// Audit details (auth.log's jsonb):
+//   alw_purge_detail_write, alw_via_detail_write, alw_bytes_detail_write, alw_proved_detail_write,
+//   alw_has_key_detail_write, alw_verdict_detail_write, alw_merged_detail_write, alw_into_detail_write
+// Read: alw_money, whether POST /api/auth/merge/confirm's body says "money":true, found as
+// auth-life.c always found it (see below).
+// The bytes are the ones auth-life.c wrote before this file: proto/verse/api-routes-v1alpha1.json
+// holds what a running API answered and routes-goldens.coax holds each answer's keys to its
+// message. Strings are written as JSON strings (jo_quoted); the ones here are account ids, kinds,
+// fixed words, a date and the site's origin, none of which holds a quote, a backslash or a control
+// byte, so no byte moved. An export's email address is escaped as auth.c's json_esc escaped it
+// (\u00XX for every control byte). A writer returns the body's length, or -1 when it does not fit.
+//   coax/bin/coax test coax/web/api/auth-life-wire.coax --library
+#load "api-wire.coax";
+
+ALW_OTHER :: 39;    // an account id in an audit detail, at most ("%.39s")
+ALW_VIA :: 16;      // a way in, at most ("%.16s")
+ALW_EMAIL :: 400;   // the escaped address's buffer in auth-life.c before this file
+
+alw_cut :: (s: string, n: int) -> string #effects(all) { return ifx s.count > n then s[0..<n] else s; }
+alw_bool :: (o: [] Jo, b: bool) #effects(all) { jo_put(o, ifx b then "true" else "false"); }
+alw_bit :: (o: [] Jo, b: bool) #effects(all) { jo_put(o, ifx b then "1" else "0"); }
+// name, then a number.
+alw_num :: (o: [] Jo, name: string, v: int) #effects(all) { jo_put(o, name); jo_int(o, v); }
+// auth.c's json_esc into a buffer of cap bytes: a quote and a backslash get a backslash, a control
+// byte is \u00XX, and the text is cut where fewer than 8 bytes of the buffer were left.
+alw_esc :: (o: [] Jo, s: string, cap: int) #effects(all) {
+  hex := "0123456789abcdef"; k := 0;
+  for c: s {
+    if k + 7 < cap {
+      if c == '"' || c == '\\' { jo_byte(o, '\\'); jo_byte(o, c); k += 2; }
+      else if c < 32 { jo_put(o, "\\u00"); jo_byte(o, hex[c >> 4]); jo_byte(o, hex[c & 15]); k += 6; }
+      else { jo_byte(o, c); k += 1; }
+    } else { k = cap; }
+  }
+}
+alw_state_ok :: (state: string) -> bool #effects(all) { return state == "unfrozen" || state == "kept" || state == "ready"; }
+
+// {"state":"unfrozen"}; state is unfrozen, kept or ready.
+alw_state_write :: (state: string, out: [] u8) -> int #export_c #effects(all) {
+  if !alw_state_ok(state) { return -1; }
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "{\"state\":"); jo_quoted(o[..], state); jo_put(o[..], "}");
+  return aw_len(o[..]);
+}
+alw_state_lines :: (state: string, out: [] u8) -> int #export_c #effects(all) {
+  if !alw_state_ok(state) { return -1; }
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "state "); jo_put(o[..], state); jo_put(o[..], "\n");
+  return aw_len(o[..]);
+}
+// A merge was asked for: ten minutes to prove the other account.
+alw_asked_write :: (out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0); jo_put(o[..], "{\"state\":\"asked\",\"expires_in\":600}"); return aw_len(o[..]);
+}
+alw_asked_lines :: (out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0); jo_put(o[..], "state asked\nexpires_in 600\n"); return aw_len(o[..]);
+}
+// A deletion was asked for: when the purge is, as a number and as words.
+alw_deleting_write :: (purge_ms: int, purge_at: string, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  alw_num(o[..], "{\"state\":\"deleting\",\"purge_ms\":", purge_ms); jo_put(o[..], ",\"purge_at\":"); jo_quoted(o[..], purge_at); jo_put(o[..], "}");
+  return aw_len(o[..]);
+}
+alw_deleting_lines :: (purge_ms: int, purge_at: string, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  alw_num(o[..], "state deleting\npurge_ms ", purge_ms); jo_put(o[..], "\npurge_at "); jo_put(o[..], purge_at); jo_put(o[..], "\n");
+  return aw_len(o[..]);
+}
+
+// GET /api/auth/life: the account's state. frozen is "", freeze or delete; purge_at is "" with no purge.
+alw_life_write :: (account: string, kind: string, frozen: string, frozen_ms: int, delete_asked_ms: int, purge_ms: int, now_ms: int,
+                   strong: int, emails: int, keys: int, agents: int, agents_paused: int, credit_msat: int, worlds: int, saves: int,
+                   merged_from: int, purge_at: string, level: int, limited: bool, fresh: bool, proved: bool, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "{\"account\":"); jo_quoted(o[..], account); jo_put(o[..], ",\"kind\":"); jo_quoted(o[..], kind);
+  jo_put(o[..], ",\"frozen\":"); jo_quoted(o[..], frozen);
+  alw_num(o[..], ",\"frozen_ms\":", frozen_ms); alw_num(o[..], ",\"delete_asked_ms\":", delete_asked_ms); alw_num(o[..], ",\"purge_ms\":", purge_ms);
+  alw_num(o[..], ",\"now_ms\":", now_ms); alw_num(o[..], ",\"strong\":", strong); alw_num(o[..], ",\"emails\":", emails); alw_num(o[..], ",\"keys\":", keys);
+  alw_num(o[..], ",\"agents\":", agents); alw_num(o[..], ",\"agents_paused\":", agents_paused); alw_num(o[..], ",\"credit_msat\":", credit_msat);
+  alw_num(o[..], ",\"worlds\":", worlds); alw_num(o[..], ",\"saves\":", saves); alw_num(o[..], ",\"merged_from\":", merged_from);
+  jo_put(o[..], ",\"purge_at\":"); jo_quoted(o[..], purge_at);
+  alw_num(o[..], ",\"level\":\"L", level); jo_put(o[..], "\",\"limited\":"); alw_bool(o[..], limited);
+  jo_put(o[..], ",\"fresh\":"); alw_bool(o[..], fresh); jo_put(o[..], ",\"proved\":"); alw_bool(o[..], proved);
+  jo_put(o[..], ",\"purge_days\":30,\"backup_days\":35,\"backups_gone_days\":40}");
+  return aw_len(o[..]);
+}
+// The same as lines: frozen is "no" when it is not, purge_at "-" with no purge.
+alw_life_lines :: (account: string, kind: string, frozen: string, frozen_ms: int, delete_asked_ms: int, purge_ms: int, now_ms: int,
+                   strong: int, emails: int, keys: int, agents: int, agents_paused: int, credit_msat: int, worlds: int, saves: int,
+                   merged_from: int, purge_at: string, level: int, limited: bool, fresh: bool, proved: bool, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "account "); jo_put(o[..], account); jo_put(o[..], "\nkind "); jo_put(o[..], kind);
+  jo_put(o[..], "\nfrozen "); jo_put(o[..], ifx frozen.count > 0 then frozen else "no");
+  alw_num(o[..], "\nfrozen_ms ", frozen_ms); alw_num(o[..], "\ndelete_asked_ms ", delete_asked_ms); alw_num(o[..], "\npurge_ms ", purge_ms);
+  alw_num(o[..], "\nnow_ms ", now_ms); alw_num(o[..], "\nstrong ", strong); alw_num(o[..], "\nemails ", emails); alw_num(o[..], "\nkeys ", keys);
+  alw_num(o[..], "\nagents ", agents); alw_num(o[..], "\nagents_paused ", agents_paused); alw_num(o[..], "\ncredit_msat ", credit_msat);
+  alw_num(o[..], "\nworlds ", worlds); alw_num(o[..], "\nsaves ", saves); alw_num(o[..], "\nmerged_from ", merged_from);
+  jo_put(o[..], "\npurge_at "); jo_put(o[..], ifx purge_at.count > 0 then purge_at else "-");
+  alw_num(o[..], "\nlevel ", level); jo_put(o[..], "\nlimited "); alw_bit(o[..], limited);
+  jo_put(o[..], "\nfresh "); alw_bit(o[..], fresh); jo_put(o[..], "\nproved "); alw_bit(o[..], proved); jo_put(o[..], "\n");
+  return aw_len(o[..]);
+}
+
+// The export's first row.
+alw_export_head_write :: (account: string, made_ms: int, origin: string, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "{\"type\":\"export\",\"format\":\"openagents.export.v1\",\"account\":"); jo_quoted(o[..], account);
+  alw_num(o[..], ",\"made_ms\":", made_ms); jo_put(o[..], ",\"docs\":\""); jo_escape_bytes(o[..], origin);
+  jo_put(o[..], "/docs/auth/data-and-backups#the-export\"}");
+  return aw_len(o[..]);
+}
+// One email of the export: id is SQL's number as it came, the address opened from its seal.
+alw_export_email_write :: (id: string, address: string, added_at: string, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "{\"type\":\"email\",\"id\":"); jo_put(o[..], id); jo_put(o[..], ",\"address\":\""); alw_esc(o[..], address, ALW_EMAIL);
+  jo_put(o[..], "\",\"added_at\":"); jo_quoted(o[..], added_at); jo_put(o[..], "}");
+  return aw_len(o[..]);
+}
+// The export's agents: their AgentList message as base64.
+alw_export_agents_write :: (base64: string, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "{\"type\":\"agents\",\"message\":\"openagents.account.v1alpha1.AgentList\",\"base64\":"); jo_quoted(o[..], base64); jo_put(o[..], "}");
+  return aw_len(o[..]);
+}
+
+// Audit details.
+alw_purge_detail_write :: (purge_ms: int, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0); alw_num(o[..], "{\"purge_ms\":", purge_ms); jo_put(o[..], "}"); return aw_len(o[..]);
+}
+alw_via_detail_write :: (via: string, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0); jo_put(o[..], "{\"via\":"); jo_quoted(o[..], alw_cut(via, ALW_VIA)); jo_put(o[..], "}"); return aw_len(o[..]);
+}
+alw_bytes_detail_write :: (bytes: int, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0); alw_num(o[..], "{\"bytes\":", bytes); jo_put(o[..], "}"); return aw_len(o[..]);
+}
+alw_proved_detail_write :: (other: string, via: string, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "{\"other\":"); jo_quoted(o[..], alw_cut(other, ALW_OTHER)); jo_put(o[..], ",\"via\":"); jo_quoted(o[..], via); jo_put(o[..], "}");
+  return aw_len(o[..]);
+}
+alw_has_key_detail_write :: (out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0); jo_put(o[..], "{\"why\":\"has a key\"}"); return aw_len(o[..]);
+}
+alw_verdict_detail_write :: (verdict: int, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0); alw_num(o[..], "{\"verdict\":", verdict); jo_put(o[..], "}"); return aw_len(o[..]);
+}
+alw_merged_detail_write :: (merged: string, money: bool, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "{\"merged\":"); jo_quoted(o[..], alw_cut(merged, ALW_OTHER)); jo_put(o[..], ",\"money\":"); alw_bool(o[..], money); jo_put(o[..], "}");
+  return aw_len(o[..]);
+}
+alw_into_detail_write :: (into: string, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0); jo_put(o[..], "{\"into\":"); jo_quoted(o[..], alw_cut(into, ALW_OTHER)); jo_put(o[..], "}"); return aw_len(o[..]);
+}
+
+// The other account proved itself: what would move.
+alw_proved_write :: (other: string, emails: int, keys: int, agents: int, worlds: int, saves: int, credit_msat: int,
+                     frozen: bool, deleting: bool, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "{\"state\":\"proved\",\"other\":"); jo_quoted(o[..], other);
+  alw_num(o[..], ",\"emails\":", emails); alw_num(o[..], ",\"keys\":", keys); alw_num(o[..], ",\"agents\":", agents); alw_num(o[..], ",\"worlds\":", worlds);
+  alw_num(o[..], ",\"saves\":", saves); alw_num(o[..], ",\"credit_msat\":", credit_msat);
+  jo_put(o[..], ",\"frozen\":"); alw_bool(o[..], frozen); jo_put(o[..], ",\"deleting\":"); alw_bool(o[..], deleting); jo_put(o[..], "}");
+  return aw_len(o[..]);
+}
+alw_proved_lines :: (other: string, emails: int, keys: int, agents: int, worlds: int, saves: int, credit_msat: int,
+                     frozen: bool, deleting: bool, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "state proved\nother "); jo_put(o[..], other);
+  alw_num(o[..], "\nemails ", emails); alw_num(o[..], "\nkeys ", keys); alw_num(o[..], "\nagents ", agents); alw_num(o[..], "\nworlds ", worlds);
+  alw_num(o[..], "\nsaves ", saves); alw_num(o[..], "\ncredit_msat ", credit_msat);
+  jo_put(o[..], "\nfrozen "); alw_bit(o[..], frozen); jo_put(o[..], "\ndeleting "); alw_bit(o[..], deleting); jo_put(o[..], "\n");
+  return aw_len(o[..]);
+}
+// Two accounts became one: result is auth.merge's JSON as it came.
+alw_merged_write :: (merged: string, result: string, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "{\"state\":\"merged\",\"merged\":"); jo_quoted(o[..], merged); jo_put(o[..], ",\"result\":"); jo_put(o[..], result); jo_put(o[..], "}");
+  return aw_len(o[..]);
+}
+alw_merged_lines :: (merged: string, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0); jo_put(o[..], "state merged\nmerged "); jo_put(o[..], merged); jo_put(o[..], "\n"); return aw_len(o[..]);
+}
+
+// Whether a merge's confirmation says the other account's credit moves. As auth-life.c always
+// read it: the body's first 399 bytes that are not a space, a newline or a tab, searched for
+// "money":true anywhere. Kept byte for byte (a JSON parse would refuse bodies this accepts).
+alw_money :: (body: string) -> bool #export_c #effects(all) {
+  pat := "\"money\":true";
+  flat: [399] u8; k := 0;
+  for c: body { if k < 399 && c != ' ' && c != 10 && c != 9 { flat[k] = c; k += 1; } }
+  i := 0;
+  while i + pat.count <= k {
+    if cast(string) flat[i..<i + pat.count] == pat { return true; }
+    i += 1;
+  }
+  return false;
+}
+
+#test "the one-word states, the merge's start and a deletion, as JSON and as lines" {
+  b: [256] u8;
+  n := alw_state_write("unfrozen", b[..]);
+  #assert cast(string) b[0..<n] == "{\"state\":\"unfrozen\"}" && alw_state_write("unfrozen", b[0..<n - 1]) == -1;
+  n = alw_state_write("kept", b[..]); #assert cast(string) b[0..<n] == "{\"state\":\"kept\"}";
+  n = alw_state_write("ready", b[..]); #assert cast(string) b[0..<n] == "{\"state\":\"ready\"}";
+  #assert alw_state_write("gone", b[..]) == -1 && alw_state_write("", b[..]) == -1 && alw_state_lines("gone", b[..]) == -1;
+  n = alw_state_lines("unfrozen", b[..]); #assert cast(string) b[0..<n] == "state unfrozen\n" && alw_state_lines("unfrozen", b[0..<n - 1]) == -1;
+  n = alw_state_lines("kept", b[..]); #assert cast(string) b[0..<n] == "state kept\n";
+  n = alw_state_lines("ready", b[..]); #assert cast(string) b[0..<n] == "state ready\n";
+  n = alw_asked_write(b[..]); #assert cast(string) b[0..<n] == "{\"state\":\"asked\",\"expires_in\":600}" && alw_asked_write(b[0..<n - 1]) == -1;
+  n = alw_asked_lines(b[..]); #assert cast(string) b[0..<n] == "state asked\nexpires_in 600\n" && alw_asked_lines(b[0..<n - 1]) == -1;
+  n = alw_deleting_write(1802592000000, "2027-02-11 00:00 UTC", b[..]);
+  #assert cast(string) b[0..<n] == "{\"state\":\"deleting\",\"purge_ms\":1802592000000,\"purge_at\":\"2027-02-11 00:00 UTC\"}";
+  #assert alw_deleting_write(1802592000000, "2027-02-11 00:00 UTC", b[0..<n - 1]) == -1;
+  n = alw_deleting_write(0, "", b[..]); #assert cast(string) b[0..<n] == "{\"state\":\"deleting\",\"purge_ms\":0,\"purge_at\":\"\"}";
+  n = alw_deleting_lines(1802592000000, "2027-02-11 00:00 UTC", b[..]);
+  #assert cast(string) b[0..<n] == "state deleting\npurge_ms 1802592000000\npurge_at 2027-02-11 00:00 UTC\n" && alw_deleting_lines(1, "x", b[0..<10]) == -1;
+  n = alw_deleting_lines(-1, "", b[..]); #assert cast(string) b[0..<n] == "state deleting\npurge_ms -1\npurge_at \n";
+}
+
+#test "the account's state, as JSON and as lines: every member in its place, empty and negative values" {
+  b: [1500] u8;
+  n := alw_life_write("acct_1", "person", "", 0, 0, 0, 1800000000000, 1, 2, 1, 3, 0, -5, 4, 6, 0, "", 2, false, true, true, b[..]);
+  #assert cast(string) b[0..<n] == "{\"account\":\"acct_1\",\"kind\":\"person\",\"frozen\":\"\",\"frozen_ms\":0,\"delete_asked_ms\":0,\"purge_ms\":0,\"now_ms\":1800000000000,\"strong\":1,\"emails\":2,\"keys\":1,\"agents\":3,\"agents_paused\":0,\"credit_msat\":-5,\"worlds\":4,\"saves\":6,\"merged_from\":0,\"purge_at\":\"\",\"level\":\"L2\",\"limited\":false,\"fresh\":true,\"proved\":true,\"purge_days\":30,\"backup_days\":35,\"backups_gone_days\":40}";
+  #assert alw_life_write("acct_1", "person", "", 0, 0, 0, 1800000000000, 1, 2, 1, 3, 0, -5, 4, 6, 0, "", 2, false, true, true, b[0..<n - 1]) == -1;
+  n = alw_life_write("acct_2", "person", "delete", 11, 12, 13, 14, 0, 1, 0, 2, 2, 21000, 0, 0, 3, "2027-02-11 00:00 UTC", 1, true, false, false, b[..]);
+  #assert cast(string) b[0..<n] == "{\"account\":\"acct_2\",\"kind\":\"person\",\"frozen\":\"delete\",\"frozen_ms\":11,\"delete_asked_ms\":12,\"purge_ms\":13,\"now_ms\":14,\"strong\":0,\"emails\":1,\"keys\":0,\"agents\":2,\"agents_paused\":2,\"credit_msat\":21000,\"worlds\":0,\"saves\":0,\"merged_from\":3,\"purge_at\":\"2027-02-11 00:00 UTC\",\"level\":\"L1\",\"limited\":true,\"fresh\":false,\"proved\":false,\"purge_days\":30,\"backup_days\":35,\"backups_gone_days\":40}";
+  n = alw_life_lines("acct_1", "person", "", 0, 0, 0, 1800000000000, 1, 2, 1, 3, 0, -5, 4, 6, 0, "", 2, false, true, true, b[..]);
+  #assert cast(string) b[0..<n] == "account acct_1\nkind person\nfrozen no\nfrozen_ms 0\ndelete_asked_ms 0\npurge_ms 0\nnow_ms 1800000000000\nstrong 1\nemails 2\nkeys 1\nagents 3\nagents_paused 0\ncredit_msat -5\nworlds 4\nsaves 6\nmerged_from 0\npurge_at -\nlevel 2\nlimited 0\nfresh 1\nproved 1\n";
+  #assert alw_life_lines("acct_1", "person", "", 0, 0, 0, 1800000000000, 1, 2, 1, 3, 0, -5, 4, 6, 0, "", 2, false, true, true, b[0..<n - 1]) == -1;
+  n = alw_life_lines("acct_2", "person", "freeze", 11, 12, 13, 14, 0, 1, 0, 2, 2, 21000, 0, 0, 3, "2027-02-11 00:00 UTC", 1, true, false, false, b[..]);
+  #assert cast(string) b[0..<n] == "account acct_2\nkind person\nfrozen freeze\nfrozen_ms 11\ndelete_asked_ms 12\npurge_ms 13\nnow_ms 14\nstrong 0\nemails 1\nkeys 0\nagents 2\nagents_paused 2\ncredit_msat 21000\nworlds 0\nsaves 0\nmerged_from 3\npurge_at 2027-02-11 00:00 UTC\nlevel 1\nlimited 1\nfresh 0\nproved 0\n";
+}
+
+#test "the export's rows: the head, an email escaped as auth.c escaped it, the agents" {
+  b: [800] u8;
+  n := alw_export_head_write("acct_1", 1800000000000, "https://openagents.com", b[..]);
+  #assert cast(string) b[0..<n] == "{\"type\":\"export\",\"format\":\"openagents.export.v1\",\"account\":\"acct_1\",\"made_ms\":1800000000000,\"docs\":\"https://openagents.com/docs/auth/data-and-backups#the-export\"}";
+  #assert alw_export_head_write("acct_1", 1800000000000, "https://openagents.com", b[0..<n - 1]) == -1;
+  n = alw_export_head_write("", 0, "", b[..]);
+  #assert cast(string) b[0..<n] == "{\"type\":\"export\",\"format\":\"openagents.export.v1\",\"account\":\"\",\"made_ms\":0,\"docs\":\"/docs/auth/data-and-backups#the-export\"}";
+  n = alw_export_email_write("7", "a@b.example", "2026-11-13 10:00:00.123456+00", b[..]);
+  #assert cast(string) b[0..<n] == "{\"type\":\"email\",\"id\":7,\"address\":\"a@b.example\",\"added_at\":\"2026-11-13 10:00:00.123456+00\"}";
+  #assert alw_export_email_write("7", "a@b.example", "2026-11-13 10:00:00.123456+00", b[0..<n - 1]) == -1;
+  odd := [8] u8.['"', 'a', '\\', 10, 9, 1, 0xc3, 0xa9];
+  n = alw_export_email_write("12", cast(string) odd[..], "", b[..]);
+  #assert cast(string) b[0..<n] == "{\"type\":\"email\",\"id\":12,\"address\":\"\\\"a\\\\\\u000a\\u0009\\u0001é\",\"added_at\":\"\"}";
+  // the cut: 393 bytes of a long address are kept, as a 400-byte buffer kept them
+  long: [500] u8; for i: 0..<500 { long[i] = 'a'; }
+  n = alw_export_email_write("1", cast(string) long[..], "", b[..]);
+  #assert n == 393 + 50 && alw_export_email_write("1", cast(string) long[0..<393], "", b[..]) == n && alw_export_email_write("1", cast(string) long[0..<392], "", b[..]) == n - 1;
+  n = alw_export_agents_write("CgV4eXo+/w==", b[..]);
+  #assert cast(string) b[0..<n] == "{\"type\":\"agents\",\"message\":\"openagents.account.v1alpha1.AgentList\",\"base64\":\"CgV4eXo+/w==\"}";
+  #assert alw_export_agents_write("CgV4eXo+/w==", b[0..<n - 1]) == -1;
+  n = alw_export_agents_write("", b[..]);
+  #assert cast(string) b[0..<n] == "{\"type\":\"agents\",\"message\":\"openagents.account.v1alpha1.AgentList\",\"base64\":\"\"}";
+}
+
+#test "audit details: fixed keys, an account id cut at 39 bytes and a way in at 16" {
+  b: [200] u8;
+  n := alw_purge_detail_write(1802592000000, b[..]); #assert cast(string) b[0..<n] == "{\"purge_ms\":1802592000000}" && alw_purge_detail_write(1, b[0..<13]) == -1;
+  n = alw_via_detail_write("email", b[..]); #assert cast(string) b[0..<n] == "{\"via\":\"email\"}" && alw_via_detail_write("email", b[0..<n - 1]) == -1;
+  n = alw_via_detail_write("", b[..]); #assert cast(string) b[0..<n] == "{\"via\":\"\"}";
+  n = alw_via_detail_write("0123456789abcdefXYZ", b[..]); #assert cast(string) b[0..<n] == "{\"via\":\"0123456789abcdef\"}";
+  n = alw_bytes_detail_write(0, b[..]); #assert cast(string) b[0..<n] == "{\"bytes\":0}";
+  n = alw_bytes_detail_write(67108864, b[..]); #assert cast(string) b[0..<n] == "{\"bytes\":67108864}" && alw_bytes_detail_write(67108864, b[0..<n - 1]) == -1;
+  n = alw_proved_detail_write("acct_2", "nostr", b[..]); #assert cast(string) b[0..<n] == "{\"other\":\"acct_2\",\"via\":\"nostr\"}" && alw_proved_detail_write("acct_2", "nostr", b[0..<n - 1]) == -1;
+  n = alw_proved_detail_write("0123456789012345678901234567890123456789", "email", b[..]);
+  #assert cast(string) b[0..<n] == "{\"other\":\"012345678901234567890123456789012345678\",\"via\":\"email\"}";
+  n = alw_has_key_detail_write(b[..]); #assert cast(string) b[0..<n] == "{\"why\":\"has a key\"}" && alw_has_key_detail_write(b[0..<n - 1]) == -1;
+  n = alw_verdict_detail_write(11, b[..]); #assert cast(string) b[0..<n] == "{\"verdict\":11}" && alw_verdict_detail_write(11, b[0..<n - 1]) == -1;
+  n = alw_merged_detail_write("acct_2", true, b[..]); #assert cast(string) b[0..<n] == "{\"merged\":\"acct_2\",\"money\":true}" && alw_merged_detail_write("acct_2", true, b[0..<n - 1]) == -1;
+  n = alw_merged_detail_write("0123456789012345678901234567890123456789", false, b[..]);
+  #assert cast(string) b[0..<n] == "{\"merged\":\"012345678901234567890123456789012345678\",\"money\":false}";
+  n = alw_into_detail_write("acct_1", b[..]); #assert cast(string) b[0..<n] == "{\"into\":\"acct_1\"}" && alw_into_detail_write("acct_1", b[0..<n - 1]) == -1;
+  n = alw_into_detail_write("0123456789012345678901234567890123456789", b[..]); #assert cast(string) b[0..<n] == "{\"into\":\"012345678901234567890123456789012345678\"}";
+}
+
+#test "a merge: the other account proved, and the two made one with SQL's result carried as it came" {
+  b: [600] u8;
+  n := alw_proved_write("acct_2", 1, 0, 2, 3, 4, 21000, false, false, b[..]);
+  #assert cast(string) b[0..<n] == "{\"state\":\"proved\",\"other\":\"acct_2\",\"emails\":1,\"keys\":0,\"agents\":2,\"worlds\":3,\"saves\":4,\"credit_msat\":21000,\"frozen\":false,\"deleting\":false}";
+  #assert alw_proved_write("acct_2", 1, 0, 2, 3, 4, 21000, false, false, b[0..<n - 1]) == -1;
+  n = alw_proved_write("", 0, 0, 0, 0, 0, -1, true, true, b[..]);
+  #assert cast(string) b[0..<n] == "{\"state\":\"proved\",\"other\":\"\",\"emails\":0,\"keys\":0,\"agents\":0,\"worlds\":0,\"saves\":0,\"credit_msat\":-1,\"frozen\":true,\"deleting\":true}";
+  n = alw_proved_lines("acct_2", 1, 0, 2, 3, 4, 21000, false, true, b[..]);
+  #assert cast(string) b[0..<n] == "state proved\nother acct_2\nemails 1\nkeys 0\nagents 2\nworlds 3\nsaves 4\ncredit_msat 21000\nfrozen 0\ndeleting 1\n";
+  #assert alw_proved_lines("acct_2", 1, 0, 2, 3, 4, 21000, false, true, b[0..<n - 1]) == -1;
+  n = alw_merged_write("acct_2", "{\"kept\": {}, \"moved\": {\"emails\": 1}}", b[..]);
+  #assert cast(string) b[0..<n] == "{\"state\":\"merged\",\"merged\":\"acct_2\",\"result\":{\"kept\": {}, \"moved\": {\"emails\": 1}}}";
+  #assert alw_merged_write("acct_2", "{}", b[0..<10]) == -1;
+  n = alw_merged_lines("acct_2", b[..]); #assert cast(string) b[0..<n] == "state merged\nmerged acct_2\n" && alw_merged_lines("acct_2", b[0..<n - 1]) == -1;
+  n = alw_merged_lines("", b[..]); #assert cast(string) b[0..<n] == "state merged\nmerged \n";
+}
+
+#test "money: \"money\":true anywhere in the body's first 399 bytes that are not spaces, as the C scan found it" {
+  #assert alw_money("{\"money\":true}") && alw_money("{ \"money\" :\n\ttrue }") && alw_money("{\"a\":1,\"money\":true,\"b\":2}");
+  #assert !alw_money("{\"money\":false}") && !alw_money("{}") && !alw_money("") && !alw_money("{\"money\":\"true\"}") && !alw_money("{\"Money\":true}");
+  #assert !alw_money("{\"money\":tru") && alw_money("\"money\":true") && alw_money("{\"x\":{\"money\":true}}") && alw_money("{\"money\":trueish}");
+  cr := [15] u8.['{', '"', 'm', 'o', 'n', 'e', 'y', '"', ':', 13, 't', 'r', 'u', 'e', '}'];
+  #assert !alw_money(cast(string) cr[..]);   // a carriage return is not skipped
+  // the scan stops at 399 kept bytes: a pattern that ends at byte 399 is seen, one byte later it is not
+  long: [600] u8; for i: 0..<600 { long[i] = 'a'; }
+  pat := "\"money\":true";
+  for i: 0..<12 { long[387 + i] = pat[i]; }
+  #assert alw_money(cast(string) long[..]);
+  for i: 0..<600 { long[i] = 'a'; }
+  for i: 0..<12 { long[388 + i] = pat[i]; }
+  #assert !alw_money(cast(string) long[..]);
+  for i: 0..<200 { long[i] = ' '; }   // spaces do not count toward the 399
+  #assert alw_money(cast(string) long[..]);
+}

@@ -1,0 +1,379 @@
+// Microcoder's worker lines, one codec for both ends (compliance plan step C11, GitHub #13250;
+// proto/coder/microcoder-worker-lines-v1.json). The worker (coder/tui/mcworker.coax) and its
+// owners (mcworker-client.coax for Coder's terminal and the turn runner, coder/tui/memory.coax for
+// embeddings) speak one JSON object a line each way. Every line is written and read here.
+//
+//   the owner writes, the worker reads (mww_request):
+//     {"task":T,"session":S,"cwd":D[,"local":true],"sandbox":P,"policy":{"enabled":B,"allow":N,"ceiling":N,"roots":R}
+//      [,"gated":true][,"model":M][,"effort":E]}                                   mww_task
+//     {"answer":true,"ticket":N}  {"answer":false,"ticket":N,"why":W}              mww_answer
+//     {"stop":true}  {"forget":true}                                               MWW_STOP_LINE, MWW_FORGET_LINE
+//     {"embed":TEXT}  {"embed":TEXT,"query":true}                                  mww_embed
+//   the worker writes, the owner reads (mww_read):
+//     {"kind":"journal","path":P}                                                  mww_journal
+//     {"kind":"ready"}                                                             mww_ready
+//     {"kind":"reply","text":T}                                                    mww_reply
+//     {"kind":"attempt","schema":...}   coder.observability.v2 with a null engine  mww_attempt (stream.coax's cst_attempt)
+//     {"kind":"command","command":C,"exit":N,"timed_out":B,"output":O}             mww_command
+//     {"kind":"view","path":P,"found":B}                                           mww_view
+//     {"kind":"ask","command":C,"ticket":N}                                        mww_ask
+//     {"kind":"ended","ending":E,"text":T}                                         mww_ended
+//     {"kind":"embedding","values":[...]}  {"kind":"embedding","error":W}          mww_embedding, mww_embedding_error
+//
+// A worker's line has no newline here (the worker adds it when it sends); an owner's line ends
+// with one, as the client always wrote it. A writer gives the line's length, or -1 when it does
+// not fit. The readers look members up by name, in any order, and take what the two ends always
+// took: a member of another type reads as absent.
+//   coax/bin/coax test coax/lib/agent/engine/mcworker-wire.coax --library
+//   coax/web/tool.sh coax/lib/agent/engine/mcworker-profile.coax proto/coder/microcoder-worker-lines-v1.json
+#load "../claude/fields.coax";
+#load "../session/stream.coax";
+
+MWW_NONE :: 0;
+// a worker's line
+MWW_JOURNAL :: 1; MWW_READY :: 2; MWW_REPLY :: 3; MWW_ATTEMPT :: 4; MWW_COMMAND :: 5;
+MWW_VIEW :: 6; MWW_ASK :: 7; MWW_ENDED :: 8; MWW_EMBEDDING :: 9;
+// an owner's line
+MWW_TASK :: 11; MWW_ANSWER :: 12; MWW_STOP :: 13; MWW_FORGET :: 14; MWW_EMBED :: 15;
+
+MWW_STOP_LINE :: "{\"stop\":true}\n";
+MWW_FORGET_LINE :: "{\"forget\":true}\n";
+MWW_EMBED_MOST :: 16384;       // the most bytes of an embedding's list a line carries
+
+// ---- the owner's lines
+
+// A message as the worker reads it: the task, the session it belongs to, the folder, the model
+// server on this machine (local), the sandbox, the owner's policy, whether each command
+// waits for an answer (gated), and the owner's model and effort when given.
+McTask :: struct {
+  task: string; session: string; cwd: string; local: bool; sandbox: string;
+  policy: bool; allow: int; ceiling: int; roots: string; gated: bool;
+  model: string;                 // the owner's --model ("" for the worker's default)
+  effort: string;                // low, medium or high ("" for the worker's default, low)
+}
+mww_task :: (o: [] u8, t: McTask) -> int {
+  n := json_raw(o, 0, "{\"task\":"); n = json_write_string(o, n, t.task);
+  n = json_raw(o, n, ",\"session\":"); n = json_write_string(o, n, t.session);
+  n = json_raw(o, n, ",\"cwd\":"); n = json_write_string(o, n, t.cwd);
+  if t.local { n = json_raw(o, n, ",\"local\":true"); }
+  n = json_raw(o, n, ",\"sandbox\":"); n = json_write_string(o, n, t.sandbox);
+  n = json_raw(o, n, ",\"policy\":{\"enabled\":"); n = json_raw(o, n, ifx t.policy then "true" else "false");
+  n = json_raw(o, n, ",\"allow\":"); n = json_write_int(o, n, t.allow);
+  n = json_raw(o, n, ",\"ceiling\":"); n = json_write_int(o, n, t.ceiling);
+  n = json_raw(o, n, ",\"roots\":"); n = json_write_string(o, n, t.roots); n = json_raw(o, n, "}");
+  if t.gated { n = json_raw(o, n, ",\"gated\":true"); }
+  if t.model.count > 0 { n = json_raw(o, n, ",\"model\":"); n = json_write_string(o, n, t.model); }
+  if t.effort.count > 0 { n = json_raw(o, n, ",\"effort\":"); n = json_write_string(o, n, t.effort); }
+  n = json_raw(o, n, "}\n");
+  return n;
+}
+// The answer for the waiting command; refused with why ("refused" when empty).
+mww_answer :: (o: [] u8, allow: bool, ticket: int, why: string) -> int {
+  n := json_raw(o, 0, ifx allow then "{\"answer\":true" else "{\"answer\":false");
+  n = json_raw(o, n, ",\"ticket\":"); n = json_write_int(o, n, ticket);
+  if !allow { n = json_raw(o, n, ",\"why\":"); n = json_write_string(o, n, ifx why.count > 0 then why else "refused"); }
+  n = json_raw(o, n, "}\n");
+  return n;
+}
+// A text to embed: a query's when query is set, else a document's.
+mww_embed :: (o: [] u8, text: string, query: bool) -> int {
+  n := json_raw(o, 0, "{\"embed\":"); n = json_write_string(o, n, text);
+  return json_raw(o, n, ifx query then ",\"query\":true}\n" else "}\n");
+}
+
+// An owner's line as the worker takes it. The worker tries the kinds in this order and takes the
+// first that fits: stop and forget when the member is a boolean (either value), embed when the
+// member is there, answer when it is a boolean, task when it is a string that is not empty.
+// Anything else is MWW_NONE, which the worker skips.
+MwwRequest :: struct {
+  kind: int;
+  text: string;                  // embed: the text
+  query: bool;                   // embed: a query's embedding
+  allow: bool; ticket: JsonInt; why: string;       // answer
+  task: string; cwd: string; session: string; sandbox: string; model: string; effort: string;
+  local: bool; gated: bool;
+  policy: string;                // the policy member's JSON text, "" when there is none
+  policy_on: bool;               // policy.enabled is true
+  ceiling: JsonInt;              // policy.ceiling
+}
+// The strings are in msg or in ar; they hold until either changes. model is read only for a task
+// that is not local, as the worker always did.
+mww_request :: (ar: [] ClArena, msg: string, r: [] MwwRequest) -> int {
+  r[0] = MwwRequest.{};
+  if cl_bool(msg, "stop").ok { r[0].kind = MWW_STOP; return MWW_STOP; }
+  if cl_bool(msg, "forget").ok { r[0].kind = MWW_FORGET; return MWW_FORGET; }
+  if cl_raw(msg, "embed").count > 0 {
+    q := cl_bool(msg, "query");
+    r[0].query = q.ok && q.value;
+    r[0].text = cl_str(ar, msg, "embed");
+    r[0].kind = MWW_EMBED; return MWW_EMBED;
+  }
+  ans := cl_bool(msg, "answer");
+  if ans.ok {
+    r[0].allow = ans.value;
+    r[0].ticket = cl_int(msg, "ticket");
+    r[0].why = cl_str(ar, msg, "why");
+    r[0].kind = MWW_ANSWER; return MWW_ANSWER;
+  }
+  r[0].task = cl_str(ar, msg, "task");
+  if r[0].task.count == 0 { return MWW_NONE; }
+  r[0].cwd = cl_str(ar, msg, "cwd");
+  local := cl_bool(msg, "local");
+  r[0].local = local.ok && local.value;
+  if !r[0].local { r[0].model = cl_str(ar, msg, "model"); }
+  gated := cl_bool(msg, "gated");
+  r[0].gated = gated.ok && gated.value;
+  r[0].sandbox = cl_str(ar, msg, "sandbox");
+  on := cl_bool(msg, "policy.enabled");
+  r[0].policy_on = on.ok && on.value;
+  r[0].ceiling = cl_int(msg, "policy.ceiling");
+  r[0].session = cl_str(ar, msg, "session");
+  r[0].policy = cl_raw(msg, "policy");
+  r[0].effort = cl_str(ar, msg, "effort");
+  r[0].kind = MWW_TASK; return MWW_TASK;
+}
+
+// A task line read whole, as mww_task wrote it: every member, the policy's too (the worker reads
+// only what it uses, mww_request). false when the line has no task or no whole policy.
+mww_task_read :: (ar: [] ClArena, msg: string, t: [] McTask) -> bool {
+  t[0] = McTask.{};
+  t[0].task = cl_str(ar, msg, "task");
+  on := cl_bool(msg, "policy.enabled"); allow := cl_int(msg, "policy.allow"); ceiling := cl_int(msg, "policy.ceiling");
+  if t[0].task.count == 0 || !on.ok || !allow.ok || !ceiling.ok || cl_at(msg, "policy.roots").tok != JSON_STRING { return false; }
+  t[0].session = cl_str(ar, msg, "session"); t[0].cwd = cl_str(ar, msg, "cwd"); t[0].sandbox = cl_str(ar, msg, "sandbox");
+  local := cl_bool(msg, "local"); gated := cl_bool(msg, "gated");
+  t[0].local = local.ok && local.value; t[0].gated = gated.ok && gated.value;
+  t[0].policy = on.value; t[0].allow = allow.value; t[0].ceiling = ceiling.value; t[0].roots = cl_str(ar, msg, "policy.roots");
+  t[0].model = cl_str(ar, msg, "model"); t[0].effort = cl_str(ar, msg, "effort");
+  return !ar[0].full;
+}
+
+// ---- the worker's lines
+
+mww_journal :: (o: [] u8, path: string) -> int {
+  n := json_raw(o, 0, "{\"kind\":\"journal\",\"path\":"); n = json_write_string(o, n, path);
+  return json_raw(o, n, "}");
+}
+mww_ready :: (o: [] u8) -> int { return json_raw(o, 0, "{\"kind\":\"ready\"}"); }
+mww_reply :: (o: [] u8, text: string) -> int {
+  n := json_raw(o, 0, "{\"kind\":\"reply\",\"text\":"); n = json_write_string(o, n, text);
+  return json_raw(o, n, "}");
+}
+// One request attempt: coder.observability.v2's line with no engine (the owner names it when it
+// relays the line to the session log, micro-observation.coax). values: the seven counts of
+// CST_ATTEMPT_COUNTS, -1 for one that was not observed.
+mww_attempt :: (o: [] u8, gateway: string, model: string, effort: string, outcome: string, status: int, values: [] int) -> int {
+  return cst_attempt(o, "", gateway, model, effort, outcome, status, values);
+}
+mww_command :: (o: [] u8, command: string, exit: int, timed_out: bool, output: string) -> int {
+  n := json_raw(o, 0, "{\"kind\":\"command\",\"command\":"); n = json_write_string(o, n, command);
+  n = json_raw(o, n, ",\"exit\":"); n = json_write_int(o, n, exit);
+  n = json_raw(o, n, ifx timed_out then ",\"timed_out\":true" else ",\"timed_out\":false");
+  n = json_raw(o, n, ",\"output\":"); n = json_write_string(o, n, output);
+  return json_raw(o, n, "}");
+}
+mww_view :: (o: [] u8, path: string, found: bool) -> int {
+  n := json_raw(o, 0, "{\"kind\":\"view\",\"path\":"); n = json_write_string(o, n, path);
+  return json_raw(o, n, ifx found then ",\"found\":true}" else ",\"found\":false}");
+}
+mww_ask :: (o: [] u8, command: string, ticket: int) -> int {
+  n := json_raw(o, 0, "{\"kind\":\"ask\",\"command\":"); n = json_write_string(o, n, command);
+  n = json_raw(o, n, ",\"ticket\":"); n = json_write_int(o, n, ticket);
+  return json_raw(o, n, "}");
+}
+// ending: finished, asked, stopped, failed, no_capacity, bad_replies or idle (mc_ending_name).
+mww_ended :: (o: [] u8, ending: string, text: string) -> int {
+  n := json_raw(o, 0, "{\"kind\":\"ended\",\"ending\":"); n = json_write_string(o, n, ending);
+  n = json_raw(o, n, ",\"text\":"); n = json_write_string(o, n, text);
+  return json_raw(o, n, "}");
+}
+// values: a JSON list of numbers as the embedding service gave it. It goes on one line: spaces,
+// tabs and line ends are dropped, and bytes after MWW_EMBED_MOST are cut.
+mww_embedding :: (o: [] u8, values: string) -> int {
+  n := json_raw(o, 0, "{\"kind\":\"embedding\",\"values\":");
+  if n < 0 { return -1; }
+  kept := 0;
+  for ch: values {
+    if ch != 32 && ch != 10 && ch != 13 && ch != 9 && kept < MWW_EMBED_MOST {
+      if n >= o.count { return -1; }
+      o[n] = ch; n += 1; kept += 1;
+    }
+  }
+  return json_raw(o, n, "}");
+}
+mww_embedding_error :: (o: [] u8, why: string) -> int {
+  n := json_raw(o, 0, "{\"kind\":\"embedding\",\"error\":"); n = json_write_string(o, n, why);
+  return json_raw(o, n, "}");
+}
+
+// A worker's line as its owner takes it. Only the members of the line's kind are read.
+MwwLine :: struct {
+  kind: int;
+  text: string;                  // reply: more of the reply. ended: the reply, or why it ended
+  command: string;               // command, ask
+  path: string;                  // journal: the journal file. view: the file viewed
+  output: string;                // command
+  ending: string;                // ended
+  exit: JsonInt;                 // command
+  timed_out: ClBool;             // command
+  found: ClBool;                 // view
+  ticket: JsonInt;               // ask
+  gateway: string; outcome: string; status: JsonInt; usd_micros: JsonInt;   // attempt, what an owner shows
+  values: string;                // embedding: the list's JSON text, "" when there is none
+  error: string;                 // embedding: the error member's JSON text, "" when there is none
+  why: string;                   // embedding: the error's words
+}
+// The line's kind, MWW_NONE for a kind that is not a worker's. The strings are in line or in ar;
+// they hold until either changes. A string that does not fit in ar reads as "".
+mww_read :: (ar: [] ClArena, line: string, l: [] MwwLine) -> int {
+  l[0] = MwwLine.{};
+  kind := cl_str(ar, line, "kind");
+  k := MWW_NONE;
+  if kind == "journal" { k = MWW_JOURNAL; l[0].path = cl_str(ar, line, "path"); }
+  else if kind == "ready" { k = MWW_READY; }
+  else if kind == "reply" { k = MWW_REPLY; l[0].text = cl_str(ar, line, "text"); }
+  else if kind == "attempt" {
+    k = MWW_ATTEMPT;
+    l[0].usd_micros = cl_int(line, "usd_micros");
+    l[0].outcome = cl_str(ar, line, "outcome");
+    l[0].gateway = cl_str(ar, line, "gateway");
+    l[0].status = cl_int(line, "status");
+  }
+  else if kind == "command" {
+    k = MWW_COMMAND;
+    l[0].command = cl_str(ar, line, "command");
+    l[0].exit = cl_int(line, "exit");
+    l[0].timed_out = cl_bool(line, "timed_out");
+    l[0].output = cl_str(ar, line, "output");
+  }
+  else if kind == "view" { k = MWW_VIEW; l[0].path = cl_str(ar, line, "path"); l[0].found = cl_bool(line, "found"); }
+  else if kind == "ask" { k = MWW_ASK; l[0].ticket = cl_int(line, "ticket"); l[0].command = cl_str(ar, line, "command"); }
+  else if kind == "ended" { k = MWW_ENDED; l[0].ending = cl_str(ar, line, "ending"); l[0].text = cl_str(ar, line, "text"); }
+  else if kind == "embedding" { k = MWW_EMBEDDING; l[0].error = cl_raw(line, "error"); l[0].values = cl_raw(line, "values"); l[0].why = cl_str(ar, line, "error"); }
+  l[0].kind = k;
+  return k;
+}
+// An attempt line read whole and written again, its engine kept (null when it has none): the
+// line's length in out, or -1 when the line is not an attempt of coder.observability.v2.
+mww_attempt_again :: (ar: [] ClArena, line: string, out: [] u8) -> int {
+  if !json_valid(line) || cl_str(ar, line, "kind") != "attempt" || cl_str(ar, line, "schema") != CST_OBSERVABILITY_V2 { return -1; }
+  status := cl_int(line, "status");
+  if !status.ok { return -1; }
+  values: [7] int; keys := CST_ATTEMPT_COUNTS;
+  for i: 0..<7 { v := cl_int(line, keys[i]); values[i] = ifx v.ok then v.value else -1; }
+  return cst_attempt(out, cl_str(ar, line, "engine"), cl_str(ar, line, "gateway"), cl_str(ar, line, "model"),
+                     cl_str(ar, line, "requested_effort"), cl_str(ar, line, "outcome"), status.value, values[..]);
+}
+
+#test "microcoder worker lines: a message and an answer as the worker reads them" {
+  o: [1024] u8;
+  t := McTask.{task = "say \"hi\"", session = "s-1", cwd = "/w", sandbox = "read-only", policy = true, allow = 0, ceiling = 3, roots = "/w\n", gated = true};
+  n := mww_task(o[..], t);
+  #assert cast(string) o[0..<n] == "{\"task\":\"say \\\"hi\\\"\",\"session\":\"s-1\",\"cwd\":\"/w\",\"sandbox\":\"read-only\",\"policy\":{\"enabled\":true,\"allow\":0,\"ceiling\":3,\"roots\":\"/w\\n\"},\"gated\":true}\n";
+  ab: [1024] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+  r: [1] MwwRequest;
+  #assert mww_request(ar[..], cast(string) o[0..<n - 1], r[..]) == MWW_TASK;
+  #assert r[0].task == "say \"hi\"" && r[0].session == "s-1" && r[0].cwd == "/w" && r[0].sandbox == "read-only";
+  #assert !r[0].local && r[0].gated && r[0].policy_on && r[0].ceiling.ok && r[0].ceiling.value == 3 && r[0].model == "" && r[0].effort == "";
+  #assert r[0].policy == "{\"enabled\":true,\"allow\":0,\"ceiling\":3,\"roots\":\"/w\\n\"}";
+  t.local = true; t.policy = false; t.gated = false;
+  n = mww_task(o[..], t);
+  #assert cast(string) o[0..<n] == "{\"task\":\"say \\\"hi\\\"\",\"session\":\"s-1\",\"cwd\":\"/w\",\"local\":true,\"sandbox\":\"read-only\",\"policy\":{\"enabled\":false,\"allow\":0,\"ceiling\":3,\"roots\":\"/w\\n\"}}\n";
+  t.model = "gemini-4-argon"; t.effort = "medium";
+  n = mww_task(o[..], t);
+  #assert cast(string) o[0..<n] == "{\"task\":\"say \\\"hi\\\"\",\"session\":\"s-1\",\"cwd\":\"/w\",\"local\":true,\"sandbox\":\"read-only\",\"policy\":{\"enabled\":false,\"allow\":0,\"ceiling\":3,\"roots\":\"/w\\n\"},\"model\":\"gemini-4-argon\",\"effort\":\"medium\"}\n";
+  // read whole, it is written back the same
+  ar[0].at = 0; back: [1] McTask; o2: [1024] u8;
+  #assert mww_task_read(ar[..], cast(string) o[0..<n - 1], back[..]) && back[0].model == "gemini-4-argon" && back[0].roots == "/w\n" && back[0].allow == 0;
+  #assert mww_task(o2[..], back[0]) == n && cast(string) o2[0..<n] == cast(string) o[0..<n];
+  #assert !mww_task_read(ar[..], "{\"task\":\"t\",\"cwd\":\"/w\"}", back[..]) && !mww_task_read(ar[..], "{\"task\":\"t\",\"policy\":{\"enabled\":true,\"ceiling\":0}}", back[..]);
+  // a local task's model is not read
+  ar[0].at = 0;
+  #assert mww_request(ar[..], cast(string) o[0..<n - 1], r[..]) == MWW_TASK && r[0].local && r[0].model == "" && r[0].effort == "medium" && !r[0].policy_on;
+  n = mww_answer(o[..], true, 7, "ignored");
+  #assert cast(string) o[0..<n] == "{\"answer\":true,\"ticket\":7}\n";
+  #assert mww_request(ar[..], cast(string) o[0..<n - 1], r[..]) == MWW_ANSWER && r[0].allow && r[0].ticket.ok && r[0].ticket.value == 7 && r[0].why == "";
+  n = mww_answer(o[..], false, 8, "");
+  #assert cast(string) o[0..<n] == "{\"answer\":false,\"ticket\":8,\"why\":\"refused\"}\n";
+  #assert mww_request(ar[..], cast(string) o[0..<n - 1], r[..]) == MWW_ANSWER && !r[0].allow && r[0].ticket.value == 8 && r[0].why == "refused";
+  n = mww_embed(o[..], "a \"fact\"", false);
+  #assert cast(string) o[0..<n] == "{\"embed\":\"a \\\"fact\\\"\"}\n";
+  ar[0].at = 0;
+  #assert mww_request(ar[..], cast(string) o[0..<n - 1], r[..]) == MWW_EMBED && r[0].text == "a \"fact\"" && !r[0].query;
+  n = mww_embed(o[..], "q", true);
+  #assert cast(string) o[0..<n] == "{\"embed\":\"q\",\"query\":true}\n";
+  #assert mww_request(ar[..], cast(string) o[0..<n - 1], r[..]) == MWW_EMBED && r[0].text == "q" && r[0].query;
+}
+#test "microcoder worker lines: what the worker takes and skips" {
+  ab: [256] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+  r: [1] MwwRequest;
+  #assert mww_request(ar[..], "{\"stop\":true}", r[..]) == MWW_STOP && mww_request(ar[..], "{\"forget\":true}", r[..]) == MWW_FORGET;
+  // a boolean of either value stops or forgets; stop comes before every other member
+  #assert mww_request(ar[..], "{\"stop\":false,\"task\":\"t\"}", r[..]) == MWW_STOP && mww_request(ar[..], "{\"forget\":false}", r[..]) == MWW_FORGET;
+  #assert mww_request(ar[..], "{\"stop\":1,\"task\":\"t\",\"cwd\":\"/w\"}", r[..]) == MWW_TASK;
+  // an embed member of any type is an embedding request; one that is no string has no text
+  #assert mww_request(ar[..], "{\"embed\":7}", r[..]) == MWW_EMBED && r[0].text == "";
+  #assert mww_request(ar[..], "{\"answer\":true}", r[..]) == MWW_ANSWER && !r[0].ticket.ok;
+  #assert mww_request(ar[..], "{\"answer\":\"yes\",\"task\":\"t\"}", r[..]) == MWW_TASK && r[0].cwd == "";
+  #assert mww_request(ar[..], "{\"task\":\"\"}", r[..]) == MWW_NONE && mww_request(ar[..], "{\"task\":7}", r[..]) == MWW_NONE;
+  #assert mww_request(ar[..], "{}", r[..]) == MWW_NONE && mww_request(ar[..], "not json", r[..]) == MWW_NONE && mww_request(ar[..], "", r[..]) == MWW_NONE;
+  #assert mww_request(ar[..], "{\"task\":\"t\",\"policy\":{\"enabled\":true,\"ceiling\":0}}", r[..]) == MWW_TASK && r[0].policy_on && r[0].ceiling.ok && r[0].ceiling.value == 0;
+  #assert mww_request(ar[..], "{\"task\":\"t\",\"policy\":{\"enabled\":true}}", r[..]) == MWW_TASK && r[0].policy_on && !r[0].ceiling.ok;
+  #assert mww_request(ar[..], "{\"task\":\"t\"}", r[..]) == MWW_TASK && r[0].policy == "" && !r[0].policy_on && !r[0].gated && !r[0].local;
+}
+#test "microcoder worker lines: each of the worker's lines, written and read" {
+  o: [2048] u8; ab: [2048] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+  l: [1] MwwLine;
+  n := mww_journal(o[..], "/h/worker-1.ajr");
+  #assert cast(string) o[0..<n] == "{\"kind\":\"journal\",\"path\":\"/h/worker-1.ajr\"}";
+  #assert mww_read(ar[..], cast(string) o[0..<n], l[..]) == MWW_JOURNAL && l[0].path == "/h/worker-1.ajr";
+  n = mww_ready(o[..]);
+  #assert cast(string) o[0..<n] == "{\"kind\":\"ready\"}" && mww_read(ar[..], cast(string) o[0..<n], l[..]) == MWW_READY;
+  n = mww_reply(o[..], "a\nb");
+  #assert cast(string) o[0..<n] == "{\"kind\":\"reply\",\"text\":\"a\\nb\"}";
+  #assert mww_read(ar[..], cast(string) o[0..<n], l[..]) == MWW_REPLY && l[0].text == "a\nb";
+  n = mww_command(o[..], "ls \"x\"", 3, false, "out\n");
+  #assert cast(string) o[0..<n] == "{\"kind\":\"command\",\"command\":\"ls \\\"x\\\"\",\"exit\":3,\"timed_out\":false,\"output\":\"out\\n\"}";
+  #assert mww_read(ar[..], cast(string) o[0..<n], l[..]) == MWW_COMMAND && l[0].command == "ls \"x\"" && l[0].exit.ok && l[0].exit.value == 3;
+  #assert l[0].timed_out.ok && !l[0].timed_out.value && l[0].output == "out\n";
+  n = mww_command(o[..], "sleep 9", -1, true, "");
+  #assert cast(string) o[0..<n] == "{\"kind\":\"command\",\"command\":\"sleep 9\",\"exit\":-1,\"timed_out\":true,\"output\":\"\"}";
+  #assert mww_read(ar[..], cast(string) o[0..<n], l[..]) == MWW_COMMAND && l[0].timed_out.value && l[0].exit.value == -1;
+  n = mww_view(o[..], "a.txt", true);
+  #assert cast(string) o[0..<n] == "{\"kind\":\"view\",\"path\":\"a.txt\",\"found\":true}";
+  #assert mww_read(ar[..], cast(string) o[0..<n], l[..]) == MWW_VIEW && l[0].path == "a.txt" && l[0].found.ok && l[0].found.value;
+  n = mww_view(o[..], "b.txt", false);
+  #assert cast(string) o[0..<n] == "{\"kind\":\"view\",\"path\":\"b.txt\",\"found\":false}";
+  #assert mww_read(ar[..], cast(string) o[0..<n], l[..]) == MWW_VIEW && l[0].found.ok && !l[0].found.value;
+  n = mww_ask(o[..], "rm -rf build", 4);
+  #assert cast(string) o[0..<n] == "{\"kind\":\"ask\",\"command\":\"rm -rf build\",\"ticket\":4}";
+  #assert mww_read(ar[..], cast(string) o[0..<n], l[..]) == MWW_ASK && l[0].command == "rm -rf build" && l[0].ticket.ok && l[0].ticket.value == 4;
+  n = mww_ended(o[..], "finished", "done");
+  #assert cast(string) o[0..<n] == "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"done\"}";
+  #assert mww_read(ar[..], cast(string) o[0..<n], l[..]) == MWW_ENDED && l[0].ending == "finished" && l[0].text == "done";
+  n = mww_embedding(o[..], "[\n  0.5,\n\t-1e-3 , 2\r\n]");
+  #assert cast(string) o[0..<n] == "{\"kind\":\"embedding\",\"values\":[0.5,-1e-3,2]}";
+  #assert mww_read(ar[..], cast(string) o[0..<n], l[..]) == MWW_EMBEDDING && l[0].values == "[0.5,-1e-3,2]" && l[0].error == "";
+  n = mww_embedding_error(o[..], "no Vertex key file");
+  #assert cast(string) o[0..<n] == "{\"kind\":\"embedding\",\"error\":\"no Vertex key file\"}";
+  #assert mww_read(ar[..], cast(string) o[0..<n], l[..]) == MWW_EMBEDDING && l[0].error == "\"no Vertex key file\"" && l[0].why == "no Vertex key file" && l[0].values == "";
+  values := [7] int.[10, 2, 0, -1, -1, -1, 12];
+  n = mww_attempt(o[..], "vertex", "m", "low", "rate_limited", 429, values[..]);
+  #assert n > 0 && mww_read(ar[..], cast(string) o[0..<n], l[..]) == MWW_ATTEMPT;
+  #assert l[0].gateway == "vertex" && l[0].outcome == "rate_limited" && l[0].status.value == 429 && l[0].usd_micros.ok && l[0].usd_micros.value == 12;
+  back: [2048] u8;
+  m := mww_attempt_again(ar[..], cast(string) o[0..<n], back[..]);
+  #assert m == n && cast(string) back[0..<m] == cast(string) o[0..<n] && cl_raw(cast(string) back[0..<m], "engine") == "null";
+  #assert mww_attempt_again(ar[..], "{\"kind\":\"attempt\",\"schema\":\"coder.observability.v1\",\"status\":200}", back[..]) < 0;
+  #assert mww_attempt_again(ar[..], "{\"kind\":\"reply\",\"text\":\"x\"}", back[..]) < 0;
+  // not a worker's line; a writer whose line does not fit
+  #assert mww_read(ar[..], "{\"kind\":\"session\"}", l[..]) == MWW_NONE && mww_read(ar[..], "{}", l[..]) == MWW_NONE && mww_read(ar[..], "x", l[..]) == MWW_NONE;
+  small: [20] u8;
+  #assert mww_reply(small[..], "a reply that is long") < 0 && mww_embedding(small[..], "[1,2,3]") < 0 && mww_ready(small[..]) == 16;
+}
+#test "microcoder worker lines: an embedding's list is cut at its bound" {
+  big: [MWW_EMBED_MOST + 64] u8; for i: 0..<big.count { big[i] = '1'; }
+  o: [MWW_EMBED_MOST + 128] u8;
+  n := mww_embedding(o[..], cast(string) big[..]);
+  #assert n == 29 + MWW_EMBED_MOST + 1 && o[n - 1] == 125 && o[n - 2] == 49;
+}

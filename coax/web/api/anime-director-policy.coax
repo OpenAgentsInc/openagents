@@ -421,7 +421,28 @@ aap_status :: (error:int)->int #export_c #effects(all) {
   if error==AAP_INVALID {return 400;}if error==AAP_LIMIT {return 413;}if error==AAP_MODEL {return 502;}if error==AAP_CAPACITY {return 503;}return 500;
 }
 aap_error :: (error:int,out:[]u8)->int #export_c #effects(all) {
-  buffer:[128]u8;o:[1]Jo;jo_start(o[..],buffer[..]);jo_obj(o[..]);jo_key(o[..],"v");jo_int(o[..],1);jo_key(o[..],"error");
-  jo_str(o[..],ifx error==AAP_INVALID then "invalid_input" else ifx error==AAP_LIMIT then "input_limit" else ifx error==AAP_MODEL then "invalid_model" else ifx error==AAP_CAPACITY then "output_capacity" else "internal_error");jo_end(o[..]);
-  return aap_copy(jo_text(o[..]),out);
+  // One writer for both routes' refusal: aar_error_write (anime-route-policy.coax).
+  buffer:[128]u8;n:=aar_error_write(ifx error==AAP_INVALID then "invalid_input" else ifx error==AAP_LIMIT then "input_limit" else ifx error==AAP_MODEL then "invalid_model" else ifx error==AAP_CAPACITY then "output_capacity" else "internal_error",buffer[..]);
+  return aap_copy(cast(string)buffer[0..<n],out);
+}
+
+// The request and the public answer as a client holds them. Every writer of the request and
+// every reader of the answer comes through here (openagents labs anime direct,
+// apps/openagents-cli/anime-rules.coax), so the route and its callers share one codec.
+// The request: {"v":1,"words":WORDS,"state":STATE}. state is the stage summary, already JSON.
+aap_request :: (words:string,state:string,out:[]u8)->int #effects(all) {
+  buffer:[AAP_INPUT_MAX]u8;o:[1]Jo;jo_start(o[..],buffer[..]);jo_obj(o[..]);jo_key(o[..],"v");jo_int(o[..],1);jo_key(o[..],"words");jo_str(o[..],words);jo_key(o[..],"state");jo_raw(o[..],state);jo_end(o[..]);
+  return aap_publish(o[..],out);
+}
+// The answer, read into d: the node of its answers when it is a complete answer to words
+// whose every direction the catalogue holds, else -1.
+aap_reply :: (reply:string,words:string,d:[]Jv,nodes:[]JvNode)->int #effects(all) {
+  if reply.count>AAP_RESULT_MAX || !aap_utf8(reply,true) || !jv_parse(d,reply,nodes) {return -1;}
+  if !aap_unique(d[0]) || !aap_keys(d[0],0,"v|heard|answers") || jv_int(d[0],jv_get(d[0],0,"v"),0)!=1 {return -1;}
+  heard:=jv_get(d[0],0,"heard");if jv_kind(d[0],heard)!=JV_STRING || !jv_raw_eq(jv_raw(d[0],heard),words) {return -1;}
+  answers:=jv_get(d[0],0,"answers");if jv_kind(d[0],answers)!=JV_ARRAY || jv_len(d[0],answers)>8 {return -1;}
+  core:[2048]u8;
+  for i:0..<jv_len(d[0],answers) {at:=jv_at(d[0],answers,i);for key:[6]string.["p","timing","confidence","stock","render_supported","decision"] {if jv_get(d[0],at,key)==-1 {return -1;}}
+    if !aap_direction(d[0],at,true,core[..]).ok {return -1;}
+  }return answers;
 }

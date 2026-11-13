@@ -25,6 +25,7 @@
 
 #load "../projects.coax";
 #load "../../../components/core/markdown.coax";   // the one Markdown parser (GitHub #13153)
+#load "../../../components/zeron/chat-lines.coax";   // the state's lines: the one reader (Z C S U T)
 
 CH_MAX_VERTICES :: 240000;
 CH_INBOX :: 1048576;
@@ -111,28 +112,13 @@ coaxial_chat_bind :: (h: [] ChatHost) #export_c #effects(all) {
 
 // ---------------------------------------------------------------- the lines
 
-ch_kind :: (s: [] ChatState, i: int) -> u8 { return s[0].data[s[0].line_at[i]]; }
-ch_cell :: (s: [] ChatState, i: int, col: int) -> string {
-  from := s[0].line_at[i]; to := s[0].line_end[i];
-  k := from; c := 0;
-  while c < col && k < to { if s[0].data[k] == '|' { c += 1; } k += 1; }
-  if c < col { return ""; }
-  j := k;
-  while j < to && s[0].data[j] != '|' { j += 1; }
-  return cast(string) s[0].data[k..<j];
-}
-ch_index :: (s: [] ChatState) {
-  s[0].line_n = 0;
-  at := 0; n := s[0].data_n;
-  while at < n {
-    stop := at;
-    while stop < n && s[0].data[stop] != '\n' { stop += 1; }
-    if stop > at + 1 && s[0].data[at + 1] == '|' && s[0].line_n < CH_LINES {
-      s[0].line_at[s[0].line_n] = at; s[0].line_end[s[0].line_n] = stop; s[0].line_n += 1;
-    }
-    at = stop + 1;
-  }
-}
+// The lines are chat-lines.coax's to read (compliance plan step C9). The columns here are
+// numbers, not the codec's names: the Mac app's backend wrote its own Z line (column 7 "lab",
+// column 8 the reasoning effort).
+ch_line :: (s: [] ChatState, i: int) -> string { return cast(string) s[0].data[s[0].line_at[i]..<s[0].line_end[i]]; }
+ch_kind :: (s: [] ChatState, i: int) -> u8 { return chl_kind(ch_line(s, i)); }
+ch_cell :: (s: [] ChatState, i: int, col: int) -> string { return chl_cell(ch_line(s, i), col); }
+ch_index :: (s: [] ChatState) { s[0].line_n = chl_index(cast(string) s[0].data[0..<s[0].data_n], s[0].line_at[..], s[0].line_end[..]); }
 ch_first :: (s: [] ChatState, kind: u8) -> int {
   for i: 0..<s[0].line_n { if ch_kind(s, i) == kind { return i; } }
   return -1;
@@ -196,18 +182,9 @@ ch_shown_id :: (s: [] ChatState) -> string { si := ch_first(s, 'S'); return ifx 
 
 // A long text's escapes (\n, \\, \p) undone into md.
 ch_decode :: (s: [] ChatState, text: string) -> string {
-  n := 0; i := 0;
-  while i < text.count && n < CH_MD {
-    c := text[i];
-    if c == '\\' && i + 1 < text.count {
-      e := text[i + 1];
-      s[0].md[n] = ifx e == 'n' then '\n' else ifx e == 'p' then '|' else e;
-      n += 1; i += 2; continue;
-    }
-    s[0].md[n] = c; n += 1; i += 1;
-  }
-  s[0].md_n = n;
-  return cast(string) s[0].md[0..<n];
+  r := chl_unescape(text, s[0].md[..], '\n');
+  s[0].md_n = r.n;
+  return cast(string) s[0].md[0..<r.n];
 }
 
 // ---------------------------------------------------------------- asking oa-api

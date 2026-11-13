@@ -48,3 +48,14 @@ ads_test_model :: (text:string,out:[]u8)->int {o:[1]Jo;jo_start(o[..],out);jo_pu
  jo_start(o[..],model[..]);jo_put(o[..],"{\"candidates\":{\"only\":{\"finishReason\":\"STOP\",\"content\":{\"parts\":[{\"text\":");jo_str(o[..],AD_TEST);jo_put(o[..],"}]}}}}");#assert !ads_model_text(model[0..<o[0].n],out[..]).ok;
  jo_start(o[..],model[..]);jo_put(o[..],"{\"candidates\":[{\"finishReason\":\"STOP\",\"content\":{\"parts\":{\"only\":{\"text\":");jo_str(o[..],AD_TEST);jo_put(o[..],"}}}}]}");#assert !ads_model_text(model[0..<o[0].n],out[..]).ok;
 }
+#test "the reply reader takes exactly the writer's envelope and hands back its base, direction and scores as they came" #steps 400000000 {
+ request:[16384]u8;n:=ads_test_request(request[..]);model:[8192]u8;mn:=ads_test_model(AD_TEST,model[..]);reply:[8192]u8;rn:=ads_finish(request[0..<n],model[0..<mn],reply[..]);#assert rn>0;
+ #assert cast(string)reply[0..<rn]=="{\"schema\":\"anim.direct.reply.v1\",\"base\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"direction\":{\"schema\":\"anim.direction.v1\",\"kind\":\"speed\",\"actor\":0,\"row\":0,\"option\":0,\"at\":0,\"end\":0,\"value\":0.5,\"point\":[0,0,0],\"confidence\":{\"kind\":950,\"actor\":940,\"row\":930,\"option\":920,\"at\":910,\"end\":900,\"value\":890,\"point\":880}}}";
+ base:[64]u8;r:=ads_reply_read(cast(string)reply[0..<rn],base[..]);#assert r.code==ANIM_OK && r.base_n==64 && r.direction==AD_TEST;for c:base {#assert c=='0';}
+ #assert r.confidence=="{\"kind\":950,\"actor\":940,\"row\":930,\"option\":920,\"at\":910,\"end\":900,\"value\":890,\"point\":880}";
+ e:[1]AnimDirection;#assert ad_read(r.direction,e[..])==ANIM_OK && ad_confidence(e[0])==880;
+ small:[63]u8;#assert ads_reply_read(cast(string)reply[0..<rn],small[..]).code==ANIM_OK && ads_reply_read(cast(string)reply[0..<rn],small[..]).base_n== -1;
+ for bad:[5]string.["","{}","[]","{\"schema\":\"anim.direct.request.v1\",\"base\":\"x\",\"direction\":{}}","{\"schema\":\"anim.direct.reply.v1\",\"base\":\"x\",\"direction\":{},\"more\":1}"] {#assert ads_reply_read(bad,base[..]).code==ANIM_SCHEMA;}
+ loose:=ads_reply_read("{\"schema\":\"anim.direct.reply.v1\",\"base\":7,\"direction\":[]}",base[..]);#assert loose.code==ANIM_OK && loose.base_n== -1 && loose.direction=="[]" && loose.confidence=="";
+ bare:=ads_reply_read("{\"schema\":\"anim.direct.reply.v1\"}",base[..]);#assert bare.code==ANIM_OK && bare.base_n== -1 && bare.direction=="" && bare.confidence=="";
+}

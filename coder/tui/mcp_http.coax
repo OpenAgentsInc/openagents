@@ -204,13 +204,12 @@ cd_local_sessions :: (now_us: int, out: [] u8, ok: [] bool) -> string {
   if !ok[0] { return ""; }
   ab: [4096] u8; ar: [1] ClArena;
   n := cd_cat(out, 0, "["); kept := 0;
-  for i: 0..<cl_count(all) {
-    el := cl_item(all, i);
-    if !el.ok { continue; }
-    one := cast(string) all[el.from..<el.to];
+  for i: 0..<cj_sessions_count(all) {
+    one := cj_sessions_row(all, i);
+    if one.count == 0 { continue; }
     ar[0] = ClArena.{buf = ab[..]};
-    started := cl_int(one, "started_us");
-    if !cd_local_listed(cl_str(ar[..], one, "state"), ifx started.ok then started.value else 0, now_us, cd_local_imported(cl_str(ar[..], one, "id"))) { continue; }
+    started := cj_session_started(one);
+    if !cd_local_listed(cj_session_state(ar[..], one), ifx started.ok then started.value else 0, now_us, cd_local_imported(cj_session_id(ar[..], one))) { continue; }
     if kept > 0 { n = cd_cat(out, n, ","); }
     n = cd_cat(out, n, one); kept += 1;
   }

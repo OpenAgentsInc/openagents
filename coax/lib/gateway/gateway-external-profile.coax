@@ -1,0 +1,123 @@
+// The providers' reply bodies, as fixtures (Protocol, GitHub #13250, step C13):
+// proto/external/provider-request-bodies.json names each recorded provider
+// stream under fixtures/ with where it came from, the wire it speaks and the
+// values our own record types must hold after the gateway reads it. For each
+// fixture this tool reads the file's bytes, runs them through the SSE reader
+// and the wire's parser (gw_replay: gw_sse_line, gw_parse, gw_parse_end) or,
+// for a whole unstreamed body, gw_parse_whole, and compares the GwEvents and
+// the GwUsage with `want`. Nothing here parses a provider's format itself.
+//   coax/web/tool.sh coax/lib/gateway/gateway-external-profile.coax [proto/external/provider-request-bodies.json]
+#import "Basic";
+#load "gateway.coax";
+#load "../json/json.coax";
+#load "../sys/tool.coax";
+#load "../sys/args.coax";
+#load "../sys/fs.coax";
+
+GXP_FIXTURE :: "proto/external/provider-request-bodies.json";
+GXP_FILE :: 262144;
+GXP_LINES :: 4096;
+GxpWork :: struct { nodes: [16384] JvNode; file: [GXP_FILE] u8; lines: [GXP_LINES] string; s: [8192] u8; name: [512] u8; path: [512] u8; }
+
+gxp_str :: (d: Jv, at: int, out: [] u8) -> string {
+  n := jv_str(d, at, out);
+  return ifx n < 0 then "" else cast(string) out[0..<n];
+}
+gxp_wire :: (name: string) -> int {
+  if name == "responses" { return GW_WIRE_RESPONSES; }
+  if name == "chat" { return GW_WIRE_CHAT; }
+  if name == "gemini" { return GW_WIRE_GEMINI; }
+  if name == "anthropic" { return GW_WIRE_ANTHROPIC; }
+  return 0;
+}
+// One wanted number's name to the value the gateway gave; found says whether the name is known.
+gxp_int :: (r: [] GwReplay, key: string, found: [] bool) -> int {
+  found[0] = true;
+  if key == "text_bytes" { return r[0].nt; }
+  if key == "deltas" { return r[0].deltas; }
+  if key == "reasoning_deltas" { return r[0].thoughts; }
+  if key == "reasoning_bytes" { return r[0].nr; }
+  if key == "done" { return r[0].done; }
+  if key == "refused" { return r[0].refused; }
+  if key == "input_tokens" { return r[0].usage.input_tokens; }
+  if key == "output_tokens" { return r[0].usage.output_tokens; }
+  if key == "cached_tokens" { return r[0].usage.cached_tokens; }
+  if key == "reasoning_tokens" { return r[0].usage.reasoning_tokens; }
+  if key == "cost_usd_micros" { return r[0].usage.cost_usd_micros; }
+  found[0] = false;
+  return 0;
+}
+// What the gateway gave, as a `want` object, for a person adding a fixture.
+gxp_show :: (r: [] GwReplay) {
+  print("  got: \"text_bytes\":%,\"deltas\":%,\"reasoning_deltas\":%,\"reasoning_bytes\":%,\"done\":%,\"refused\":%,\"reason\":\"%\",\"provider\":\"%\",\"input_tokens\":%,\"output_tokens\":%,\"cached_tokens\":%,\"reasoning_tokens\":%,\"cost_usd_micros\":%\n",
+        r[0].nt, r[0].deltas, r[0].thoughts, r[0].nr, r[0].done, r[0].refused, r[0].reason, gw_replay_provider(r), r[0].usage.input_tokens, r[0].usage.output_tokens, r[0].usage.cached_tokens, r[0].usage.reasoning_tokens, r[0].usage.cost_usd_micros);
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  args: [1] Args;
+  loaded := args_load(args[..]);
+  path := ifx loaded && args_count(args[..]) >= 1 then args_at(args[..], 0) else GXP_FIXTURE;
+  buf: [65536] u8; j: [1] Jv; w: [1] GxpWork;
+  n := fs_read(path, buf[..]);
+  if n <= 0 { tool_errln("gateway external profile: cannot read the fixture"); return 2; }
+  if !jv_parse(j[..], cast(string) buf[0..<n], w[0].nodes[..]) || jv_kind(j[0], 0) != JV_OBJECT { print("FAIL  cannot parse the fixture\n"); return 1; }
+  d := j[0]; bad := 0;
+  list := jv_get(d, 0, "fixtures");
+  if jv_len(d, list) < 1 { print("FAIL  no fixtures\n"); bad += 1; }
+  for i: 0..<jv_len(d, list) {
+    row := jv_at(d, list, i);
+    name := gxp_str(d, jv_get(d, row, "name"), w[0].name[..]);
+    file := gxp_str(d, jv_get(d, row, "file"), w[0].path[..]);
+    sb: [16] u8; source_n := jv_str(d, jv_get(d, row, "source"), w[0].s[..]);
+    wb: [32] u8; wire := gxp_wire(gxp_str(d, jv_get(d, row, "wire"), wb[..]));
+    want := jv_get(d, row, "want");
+    if name == "" || file == "" || source_n < 8 || wire == 0 || jv_kind(d, want) != JV_OBJECT || jv_len(d, want) < 4 {
+      print("FAIL  fixture %: it needs a name, a file, a source, a wire and a want of four values or more\n", i); bad += 1; continue;
+    }
+    m := fs_read(file, w[0].file[..]);
+    if m <= 0 { print("FAIL  %: cannot read %\n", name, file); bad += 1; continue; }
+    r: [1] GwReplay;
+    if jv_bool(d, jv_get(d, row, "whole")) {
+      arena: [65536] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = arena[..]};
+      ev: [8] GwEvent;
+      k := gw_parse_whole(wire, ar[..], cast(string) w[0].file[0..<m], ev[..]);
+      gw_replay_take(r[..], ev[..], k);
+    } else {
+      // the file's lines, as the transport hands them to the SSE reader (a trailing \r stays; the reader drops it)
+      nl := 0; from := 0; fits := true;
+      for at: 0..<m {
+        if w[0].file[at] != 10 { continue; }
+        if nl == GXP_LINES { fits = false; break; }
+        w[0].lines[nl] = cast(string) w[0].file[from..<at]; nl += 1; from = at + 1;
+      }
+      if fits && from < m { if nl == GXP_LINES { fits = false; } else { w[0].lines[nl] = cast(string) w[0].file[from..<m]; nl += 1; } }
+      if !fits { print("FAIL  %: too many lines\n", name); bad += 1; continue; }
+      gw_replay(wire, w[0].lines[0..<nl], r[..]);
+    }
+    wrong := 0;
+    for k: 0..<jv_len(d, want) {
+      v := jv_at(d, want, k);
+      key := jv_key(d, v);
+      if jv_kind(d, v) == JV_STRING {
+        ws := gxp_str(d, v, w[0].s[..]);
+        got := "";
+        if key == "text" { got = gw_replay_text(r[..]); }
+        else if key == "reason" { got = r[0].reason; }
+        else if key == "provider" { got = gw_replay_provider(r[..]); }
+        else { print("FAIL  %: want names %, which is no value of ours\n", name, key); wrong += 1; continue; }
+        if got != ws { print("FAIL  %: % is \"%\", wanted \"%\"\n", name, key, got, ws); wrong += 1; }
+      } else if jv_kind(d, v) == JV_TRUE || jv_kind(d, v) == JV_FALSE {
+        if key != "done_at_end" { print("FAIL  %: want names %, which is no value of ours\n", name, key); wrong += 1; }
+        else if r[0].done_at_end != jv_bool(d, v) { print("FAIL  %: done_at_end is %\n", name, r[0].done_at_end); wrong += 1; }
+      } else {
+        found: [1] bool; got := gxp_int(r[..], key, found[..]);
+        if !found[0] { print("FAIL  %: want names %, which is no value of ours\n", name, key); wrong += 1; }
+        else if jv_kind(d, v) != JV_NUMBER || got != jv_int(d, v, -999999) { print("FAIL  %: % is %, wanted %\n", name, key, got, jv_raw(d, v)); wrong += 1; }
+      }
+    }
+    if wrong > 0 { gxp_show(r[..]); bad += 1; }
+    else { print("ok    % (% bytes, % values)\n", name, m, jv_len(d, want)); }
+  }
+  print("%\n", ifx bad == 0 then "provider-request-bodies external profile holds" else "provider-request-bodies external profile fails");
+  return ifx bad == 0 then 0 else 1;
+}

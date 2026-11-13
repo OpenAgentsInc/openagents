@@ -1,0 +1,245 @@
+// The anime routes' goldens (Protocol, GitHub #13250): proto/verse/anime-director-v1.json holds the
+// bodies of coax/web/api/anime.c's two routes. This check holds every one of them through the
+// codecs that write and read them, and to its message in proto/openagents/api/v1alpha1/anime.proto:
+//   - a 200 answer of the anime director is read by aap_reply (the CLI's reader), then written
+//     again by aap_finish from a model answer that carries its directions and scores (the members
+//     the server derives, p, stock, render_supported and decision, are left out), for the same bytes;
+//   - a refusal is written again by aar_error or aap_error for the same bytes;
+//   - a request is admitted by aap_prepare (the route's reader) and written again by aap_request
+//     (the CLI's writer) for the same bytes;
+//   - a reply of the animation director is read by ads_reply_read and ad_read, then written again
+//     by ads_finish from its request for the same bytes;
+//   - each body's keys are json_names of its message (proto/descriptors/api-routes.pb).
+// "goldens" and "requests" are real bodies; "written" are the codec's own (see the file's "about").
+// With --read-all DIR it holds a run of the API suite the same way: every answer in DIR/coax.jsonl
+// (API_CAPTURE; coax/web/api/tests/anime_direct.coax records each call) whose path is one of the
+// two routes. It fails when the run has no 200 answer of either route.
+//
+//   coax/web/tool.sh coax/web/api/anime-director-profile.coax [proto/verse/anime-director-v1.json]
+//   coax/web/tool.sh coax/web/api/anime-director-profile.coax --read-all DIR
+#import "Basic";
+#load "anime-director-policy.coax";
+#load "../../lib/proto/importer.coax";
+#load "../../lib/proto/golden-keys.coax";
+#load "../../lib/sys/tool.coax";
+#load "../../lib/sys/args.coax";
+#load "../../lib/sys/fs.coax";
+
+ADP_FIXTURE :: "proto/verse/anime-director-v1.json";
+ADP_DESCRIPTOR :: "proto/descriptors/api-routes.pb";
+ADP_ANIME :: "/api/playtest/labs/anime/direct";
+ADP_ANIM :: "/api/playtest/labs/anim/direct";
+ADP_REQUEST :: ".openagents.api.v1alpha1.AnimeLabsAnimeDirectPostRequest";
+ADP_ANIM_REQUEST :: ".openagents.api.v1alpha1.AnimeLabsAnimDirectPostRequest";
+// A stage the route admits. The answer does not depend on it.
+ADP_STATE :: "{\"cast\":[{\"slot\":0,\"name\":\"Draconia\",\"archetype\":\"heroine\",\"on\":true,\"place\":\"courtyard\"},{\"slot\":1,\"name\":\"Kai\",\"archetype\":\"hero\",\"on\":true,\"place\":\"gate\"}],\"shot\":{\"framing\":\"wide\",\"place\":\"courtyard\"},\"last\":[]}";
+ADP_BODY :: 65536;
+
+AdpWork :: struct {
+  nodes: [65536] JvNode; body_nodes: [4096] JvNode; key_nodes: [4096] JvNode;
+  body: [ADP_BODY] u8; request: [ADP_BODY] u8; inner: [ADP_BODY] u8; model: [ADP_BODY] u8; out: [ADP_BODY] u8; words: [1024] u8;
+}
+
+// A model's envelope around text, as the selector answers.
+adp_model :: (text: string, out: [] u8) -> int {
+  o: [1] Jo; jo_start(o[..], out);
+  jo_obj(o[..]); jo_key(o[..], "candidates"); jo_arr(o[..]); jo_obj(o[..]); jo_key(o[..], "finishReason"); jo_str(o[..], "STOP");
+  jo_key(o[..], "content"); jo_obj(o[..]); jo_key(o[..], "parts"); jo_arr(o[..]); jo_obj(o[..]); jo_key(o[..], "text"); jo_str(o[..], text);
+  jo_end(o[..]); jo_end(o[..]); jo_end(o[..]); jo_end(o[..]); jo_end(o[..]); jo_end(o[..]);
+  return ifx o[0].bad then -1 else o[0].n;
+}
+// A 200 answer of the anime director: "" when it reads and is written again for the same bytes.
+adp_answer :: (w: [] AdpWork, body: string) -> string {
+  d: [1] Jv;
+  if !jv_parse(d[..], body, w[0].body_nodes[..]) { return "not JSON"; }
+  wn := jv_str(d[0], jv_get(d[0], 0, "heard"), w[0].words[..]);
+  if wn < 1 { return "no heard words"; }
+  words := cast(string) w[0].words[0..<wn];
+  answers := aap_reply(body, words, d[..], w[0].body_nodes[..]);
+  if answers == -1 { return "aap_reply refuses it"; }
+  if aap_reply(body, "other words", d[..], w[0].body_nodes[..]) != -1 { return "aap_reply takes it for other words"; }
+  answers = aap_reply(body, words, d[..], w[0].body_nodes[..]);
+  // the model's side of the same answer: the directions and their scores, without what the server derives
+  o: [1] Jo; jo_start(o[..], w[0].inner[..]); jo_obj(o[..]); jo_key(o[..], "answers"); jo_arr(o[..]);
+  for i: 0..<jv_len(d[0], answers) {
+    at := jv_at(d[0], answers, i); jo_obj(o[..]);
+    f := d[0].nodes[at].first;
+    while f != -1 {
+      key := jv_key(d[0], f);
+      if key != "p" && key != "stock" && key != "render_supported" && key != "decision" { jo_key(o[..], key); jv_write(d[0], f, o[..]); }
+      f = d[0].nodes[f].next;
+    }
+    jo_end(o[..]);
+  }
+  jo_end(o[..]); jo_end(o[..]);
+  if o[0].bad { return "the answer is too long for the check"; }
+  mn := adp_model(jo_text(o[..]), w[0].model[..]);
+  rn := aap_request(words, ADP_STATE, w[0].request[..]);
+  if mn < 0 || rn < 0 { return "the check could not build its request"; }
+  n := aap_finish(w[0].request[0..<rn], w[0].model[0..<mn], w[0].out[..]);
+  if n < 0 { return "aap_finish refuses the same directions"; }
+  if cast(string) w[0].out[0..<n] != body { return "aap_finish writes other bytes"; }
+  return "";
+}
+// A refusal: "" when one of the two writers gives the same bytes for the status.
+adp_refusal :: (w: [] AdpWork, status: int, body: string) -> string {
+  d: [1] Jv;
+  if !jv_parse(d[..], body, w[0].body_nodes[..]) || jv_kind(d[0], 0) != JV_OBJECT || jv_len(d[0], 0) != 2 { return "not an object of two members"; }
+  if jv_int(d[0], jv_get(d[0], 0, "v"), 0) != 1 || jv_kind(d[0], jv_get(d[0], 0, "error")) != JV_STRING { return "not v 1 and an error word"; }
+  n := aar_error(status, w[0].out[..]);
+  if n > 0 && cast(string) w[0].out[0..<n] == body { return ""; }
+  for code: [4] int.[AAP_INVALID, AAP_LIMIT, AAP_MODEL, AAP_CAPACITY] {
+    if aap_status(code) != status { continue; }
+    n = aap_error(code, w[0].out[..]);
+    if n > 0 && cast(string) w[0].out[0..<n] == body { return ""; }
+  }
+  return "neither aar_error nor aap_error writes these bytes for the status";
+}
+// A request of the anime director.
+adp_request :: (w: [] AdpWork, body: string) -> string {
+  d: [1] Jv;
+  if !jv_parse(d[..], body, w[0].body_nodes[..]) { return "not JSON"; }
+  wn := jv_str(d[0], jv_get(d[0], 0, "words"), w[0].words[..]);
+  if wn < 1 { return "no words"; }
+  if body.count > w[0].request.count { return "too long"; }
+  for c, i: body { w[0].request[i] = c; }
+  if aap_prepare(w[0].request[0..<body.count], w[0].out[..]) <= 0 { return "aap_prepare refuses it"; }
+  n := aap_request(cast(string) w[0].words[0..<wn], jv_raw(d[0], jv_get(d[0], 0, "state")), w[0].out[..]);
+  if n < 0 || cast(string) w[0].out[0..<n] != body { return "aap_request writes other bytes"; }
+  return "";
+}
+// A reply of the animation director and the request it answers.
+adp_anim :: (w: [] AdpWork, request: string, body: string) -> string {
+  base: [64] u8; r := ads_reply_read(body, base[..]);
+  if r.code != ANIM_OK || r.base_n != 64 { return "ads_reply_read refuses it"; }
+  e: [1] AnimDirection;
+  if ad_read(r.direction, e[..]) != ANIM_OK { return "ad_read refuses its direction"; }
+  if !ads_input(request) { return "ads_input refuses its request"; }
+  d: [1] Jv; asked: [64] u8;
+  if !jv_parse(d[..], request, w[0].body_nodes[..]) || jv_str(d[0], jv_get(d[0], 0, "base"), asked[..]) != 64 || cast(string) asked[..] != cast(string) base[..] { return "the reply's base is not its request's"; }
+  mn := adp_model(r.direction, w[0].model[..]);
+  if mn < 0 || request.count > w[0].request.count { return "the check could not build its request"; }
+  for c, i: request { w[0].request[i] = c; }
+  n := ads_finish(w[0].request[0..<request.count], w[0].model[0..<mn], w[0].out[..]);
+  if n < 0 || cast(string) w[0].out[0..<n] != body { return "ads_finish writes other bytes"; }
+  return "";
+}
+// One body against its route: the codec, then the keys of its message.
+adp_body :: (st: [] D_State, w: [] AdpWork, path: string, status: int, message: string, request: string, body: string) -> string {
+  why := "";
+  if status == 200 && path == ADP_ANIME { why = adp_answer(w, body); }
+  else if status == 200 && path == ADP_ANIM { why = adp_anim(w, request, body); }
+  else if status >= 400 && (path == ADP_ANIME || path == ADP_ANIM) { why = adp_refusal(w, status, body); }
+  else { why = "no route of anime.c"; }
+  if why != "" { return why; }
+  if status == 200 && path == ADP_ANIM {
+    why = pk_text_keys(st, ADP_ANIM_REQUEST, request, false, false, w[0].key_nodes[..]);
+    if why != "" { return why; }
+  }
+  return pk_text_keys(st, message, body, false, false, w[0].key_nodes[..]);
+}
+
+ADP_ANSWER :: ".openagents.api.v1alpha1.AnimeLabsAnimeDirectPost";
+ADP_ANIM_ANSWER :: ".openagents.api.v1alpha1.AnimeLabsAnimDirectPost";
+ADP_REFUSAL :: ".openagents.api.v1alpha1.AnimeLabsDirectPostRefusal";
+ADP_LINE :: 1048576;
+AdpRun :: struct { line: [ADP_LINE] u8; nodes: [64] JvNode; asked: [ADP_BODY] u8; }
+// A captured path without its origin and query.
+adp_path :: (path_in: string) -> string {
+  path := path_in;
+  if path.count > 8 && (path[0..<7] == "http://" || path[0..<8] == "https://") {
+    s := ifx path[4] == 's' then 8 else 7;
+    while s < path.count && path[s] != '/' { s += 1; }
+    path = path[s..<path.count];
+  }
+  for i: 0..<path.count { if path[i] == '?' { return path[0..<i]; } }
+  return path;
+}
+// Every answer of the two routes in file (one JSON object a line). counts: [anime 200, anim 200, refusals, failed].
+adp_read_file :: (st: [] D_State, w: [] AdpWork, run: [] AdpRun, file: string, counts: [] int) {
+  size := fs_size(file);
+  if size <= 0 { return; }
+  off := 0; rpath: [4096] u8; skipping := false;
+  while off < size {
+    n := fs_read_at(file, off, run[0].line[..]);
+    if n <= 0 { break; }
+    e := 0; while e < n && run[0].line[e] != '\n' { e += 1; }
+    if e >= n && off + n < size { off += n; skipping = true; continue; }   // a line past ADP_LINE bytes is no anime answer
+    if skipping { skipping = false; off += e + 1; continue; }
+    line := cast(string) run[0].line[0..<e];
+    off += e + 1;
+    j: [1] Jv;
+    if line.count == 0 || !jv_parse(j[..], line, run[0].nodes[..]) { continue; }
+    d := j[0];
+    pn := jv_str(d, jv_get(d, 0, "path"), rpath[..]);
+    if pn <= 0 { continue; }
+    path := adp_path(cast(string) rpath[0..<pn]);
+    if path != ADP_ANIME && path != ADP_ANIM { continue; }
+    status := jv_int(d, jv_get(d, 0, "status"), 0);
+    bn := jv_str(d, jv_get(d, 0, "answer"), w[0].body[..]); an := jv_str(d, jv_get(d, 0, "body"), run[0].asked[..]);
+    why := "";
+    if bn < 0 || an < 0 { why = "no request or answer in the record"; }
+    else {
+      message := ifx status != 200 then ADP_REFUSAL else ifx path == ADP_ANIME then ADP_ANSWER else ADP_ANIM_ANSWER;
+      why = adp_body(st, w, path, status, message, cast(string) run[0].asked[0..<an], cast(string) w[0].body[0..<bn]);
+    }
+    if status == 200 { counts[ifx path == ADP_ANIME then 0 else 1] += 1; } else { counts[2] += 1; }
+    if why != "" {
+      counts[3] += 1; show := ifx bn > 400 then 400 else ifx bn < 0 then 0 else bn;
+      print("FAIL  % %: %\n  %\n", path, status, why, cast(string) w[0].body[0..<show]);
+    }
+  }
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  args: [1] Args; loaded := args_load(args[..]);
+  pb: [262144] u8; pn := fs_read(ADP_DESCRIPTOR, pb[..]);
+  if pn <= 0 { tool_errln("anime-director-profile: cannot read the descriptor"); return 2; }
+  g: [1] PkDescriptor; err := pk_load(g[..], cast(string) pb[0..<pn]);
+  if err != "" { print("FAIL  descriptor: %\n", err); return 1; }
+  st := g[0].state[..];
+  if pk_type(st, ADP_REQUEST) < 0 { print("FAIL  % has no anime messages: run scripts/proto.sh generate with openagents/api/v1alpha1/anime.proto in profile api-routes\n", ADP_DESCRIPTOR); return 1; }
+  w: [1] AdpWork; buf: [1048576] u8; j: [1] Jv;
+  n := fs_read(ifx loaded && !args_has(args[..], "--read-all") && args_count(args[..]) >= 1 then args_at(args[..], 0) else ADP_FIXTURE, buf[..]);
+  if n <= 0 { tool_errln("anime-director-profile: cannot read the fixture"); return 2; }
+  if !jv_parse(j[..], cast(string) buf[0..<n], w[0].nodes[..]) || jv_kind(j[0], 0) != JV_OBJECT { print("FAIL  cannot parse the fixture\n"); return 1; }
+  d := j[0]; bad := 0; path: [256] u8; message: [256] u8;
+  // the check bites: a changed answer, a refusal under another status, a request with one more member
+  if adp_refusal(w[..], 400, "{\"v\":1,\"error\":\"invalid_model\"}") == "" || adp_refusal(w[..], 502, "{\"v\":1,\"error\":\"invalid_model\"}") != "" || adp_refusal(w[..], 502, "{\"error\":\"invalid_model\"}") == "" ||
+     adp_request(w[..], "{\"v\":1,\"words\":\"x\",\"state\":{}}") == "" || adp_answer(w[..], "{\"v\":1,\"heard\":\"x\",\"answers\":[{}]}") == "" || adp_answer(w[..], "{\"v\":1,\"heard\":\"x\",\"answers\":[]}") != "" || adp_answer(w[..], "{\"v\":1, \"heard\":\"x\",\"answers\":[]}") == "" {
+    print("FAIL  the check takes a body it should refuse, or refuses one it should take\n"); return 1;
+  }
+  if loaded && args_has(args[..], "--read-all") {
+    dir := args_at(args[..], args_find(args[..], "--read-all") + 1);
+    counts: [4] int; p1: [4200] u8; run: [1] AdpRun;
+    adp_read_file(st, w[..], run[..], fs_join(dir, "coax.jsonl", p1[..]), counts[..]);
+    if counts[0] == 0 || counts[1] == 0 { print("FAIL  the run has no 200 answer of % or of %\n", ADP_ANIME, ADP_ANIM); counts[3] += 1; }
+    print("%: % answers of the anime director, % of the animation director, % refusals, % failed\n", ifx counts[3] == 0 then "ok    the run's anime answers are the codecs'" else "FAIL  the run's anime answers", counts[0], counts[1], counts[2], counts[3]);
+    return ifx counts[3] == 0 then 0 else 1;
+  }
+  routes := jv_get(d, 0, "routes"); goldens := jv_get(d, 0, "goldens"); requests := jv_get(d, 0, "requests"); written := jv_get(d, 0, "written");
+  if jv_kind(d, routes) != JV_ARRAY || jv_kind(d, goldens) != JV_ARRAY || jv_len(d, goldens) == 0 || jv_kind(d, requests) != JV_ARRAY || jv_kind(d, written) != JV_ARRAY { print("FAIL  the fixture has no routes, goldens, requests or written\n"); return 1; }
+  for i: 0..<jv_len(d, goldens) {
+    k := jv_at(d, goldens, i); r := jv_at(d, routes, jv_int(d, jv_get(d, k, "route"), -1));
+    bn := jv_str(d, jv_get(d, k, "body"), w[0].body[..]); pn2 := jv_str(d, jv_get(d, r, "path"), path[..]); mn := jv_str(d, jv_get(d, r, "message"), message[..]);
+    if r == -1 || bn < 0 || pn2 < 0 || mn < 0 { print("FAIL  golden %: no row or no body\n", i); bad += 1; continue; }
+    why := adp_body(st, w[..], cast(string) path[0..<pn2], jv_int(d, jv_get(d, r, "status"), 0), cast(string) message[0..<mn], "", cast(string) w[0].body[0..<bn]);
+    if why != "" { print("FAIL  golden % (% %): %\n", i, cast(string) path[0..<pn2], jv_int(d, jv_get(d, r, "status"), 0), why); bad += 1; }
+  }
+  for i: 0..<jv_len(d, requests) {
+    k := jv_at(d, requests, i); bn := jv_str(d, jv_get(d, k, "body"), w[0].body[..]);
+    why := ifx bn < 0 then "no body" else adp_request(w[..], cast(string) w[0].body[0..<bn]);
+    if why == "" { why = pk_text_keys(st, ADP_REQUEST, cast(string) w[0].body[0..<bn], false, false, w[0].key_nodes[..]); }
+    if why != "" { print("FAIL  request %: %\n", i, why); bad += 1; }
+  }
+  for i: 0..<jv_len(d, written) {
+    k := jv_at(d, written, i); asked: [4096] u8;
+    bn := jv_str(d, jv_get(d, k, "body"), w[0].body[..]); pn2 := jv_str(d, jv_get(d, k, "path"), path[..]); mn := jv_str(d, jv_get(d, k, "message"), message[..]);
+    an := jv_str(d, jv_get(d, k, "request"), asked[..]);
+    if bn < 0 || pn2 < 0 || mn < 0 { print("FAIL  written %: no path, message or body\n", i); bad += 1; continue; }
+    why := adp_body(st, w[..], cast(string) path[0..<pn2], jv_int(d, jv_get(d, k, "status"), 0), cast(string) message[0..<mn], cast(string) asked[0..<(ifx an > 0 then an else 0)], cast(string) w[0].body[0..<bn]);
+    if why != "" { print("FAIL  written % (% %): %\n", i, cast(string) path[0..<pn2], jv_int(d, jv_get(d, k, "status"), 0), why); bad += 1; }
+  }
+  print("%: % real answers, % real requests, % bodies as the codec writes them, % failed\n", ifx bad == 0 then "anime director profile holds" else "anime director profile fails", jv_len(d, goldens), jv_len(d, requests), jv_len(d, written), bad);
+  return ifx bad == 0 then 0 else 1;
+}

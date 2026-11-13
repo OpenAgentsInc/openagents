@@ -193,7 +193,7 @@ cd_r2_session_of :: (line: string, ar: [] ClArena) -> string {
       if l[0].kind == SK_SESSION { return l[0].header.id; }
       if l[0].name.count > 0 { return ""; }
     }
-    return cl_str(ar, line, "id");     // not a log line: `coder status --json`'s object, which names its session
+    return cj_session_id(ar, line);     // not a log line: `coder status --json`'s object, which names its session
   }
   t := line; while t.count > 0 && t[0] == ' ' { t = cast(string) t[1..<t.count]; }
   if t.count > 8 && cast(string) t[0..<8] == "session " { t = cast(string) t[8..<t.count]; }

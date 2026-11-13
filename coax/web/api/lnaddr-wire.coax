@@ -1,0 +1,340 @@
+// Lightning Addresses on the wire, what coax/web/api/lnaddr.c writes itself (Protocol, GitHub
+// #13250): proto/openagents/api/v1alpha1/lnaddr.proto (profile api-routes) names the members.
+// The LNURL bodies (LUD-06/16/21, NIP-05) are coax/lib/lnaddr/lnurl.coax's and
+// pay/lnaddr-policy.coax's, through lnaddr-unit.c; the holder's routes' bodies are here. lnaddr.c
+// calls the #export_c writers below through lnaddr-wire.generated.c and builds no body of its own:
+//   lnw_failed_write          500 on a wallet's route when a body did not fit (LUD-06's error)
+//   lnw_error_lines           a refusal's words as lines: "error WORDS"
+//   lnw_refusal_lines         a policy refusal as lines: its words, its code, the step up
+//   lnw_empty_write           {}: an audit row or a notice with no detail; lnaddr_init's probe
+//   lnw_detail_name_write     audit and notice detail: on, off, a change cancelled
+//   lnw_detail_mode_write     the same: claimed, a first destination, a change applied
+//   lnw_detail_change_write   the same: a change asked for, with when it takes effect
+//   lnw_detail_profile_write  the same: a profile passed to the relays
+//   lnw_card_none_write       GET /api/lightning/address 200, no address yet
+//   lnw_card_write            the same with an address (and the POSTs that answer the card)
+//   lnw_card_none_lines, lnw_card_lines   the two as "name value" lines (?as=lines)
+//   lnw_available_write, lnw_available_lines   GET /api/lightning/address/available 200
+//   lnw_proof_write, lnw_proof_lines           GET /api/lightning/address/proof 200
+//   lnw_filter_write          to a relay: the REQ filter for a person's newest kind 0
+//   lnw_profile_write         GET /api/lightning/address/profile 200
+//   lnw_published_write, lnw_published_lines   POST /api/lightning/address/profile 200
+//   lnw_probe_payerdata_write, lnw_probe_refused_write   lnaddr_init's two sample inputs
+// The bytes are the ones lnaddr.c wrote before this file: proto/verse/api-routes-v1alpha1.json
+// holds what a running API answered and routes-goldens.coax holds each to its message. Strings
+// are escaped as JSON, where the C wrote them raw: every value here is a checked name, a mode or
+// state word, hex, a Lightning Address lu_target passed, or the policy's own words, none of which
+// holds a quote, a backslash or a control byte, so no byte differs. Two bodies keep the C's own
+// escapes: the proof's message (line breaks as \n, jo_quoted's too) and the profile's content
+// (every control byte as \u00XX, line breaks included). The lines are written raw. A number that
+// SQL printed (a waiting change's ready_at) and the notices (jsonb's text) are carried as they
+// came. A writer returns the body's length, or -1 when it does not fit.
+//   coax/bin/coax test coax/web/api/lnaddr-wire.coax --library
+#load "api-wire.coax";
+
+lnw_bool :: (o: [] Jo, b: bool) #effects(all) { jo_put(o, ifx b then "true" else "false"); }
+lnw_bit :: (o: [] Jo, b: bool) #effects(all) { jo_put(o, ifx b then "1" else "0"); }
+// name "value"\n as a line: the value raw.
+lnw_line :: (o: [] Jo, name: string, value: string) #effects(all) { jo_put(o, name); jo_put(o, " "); jo_put(o, value); jo_put(o, "\n"); }
+lnw_line_int :: (o: [] Jo, name: string, value: int) #effects(all) { jo_put(o, name); jo_put(o, " "); jo_int(o, value); jo_put(o, "\n"); }
+lnw_line_bit :: (o: [] Jo, name: string, value: bool) #effects(all) { jo_put(o, name); jo_put(o, " "); lnw_bit(o, value); jo_put(o, "\n"); }
+
+// {"status":"ERROR","reason":"That didn't work. Try again."}
+lnw_failed_write :: (out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "{\"status\":\"ERROR\",\"reason\":\"That didn't work. Try again.\"}");
+  return aw_len(o[..]);
+}
+// error WORDS\n
+lnw_error_lines :: (words: string, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0); lnw_line(o[..], "error", words); return aw_len(o[..]);
+}
+// error WORDS\ncode N\n and, when a fresh signature would do it, step_up L2-fresh\n
+lnw_refusal_lines :: (words: string, code: int, step_up: bool, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  lnw_line(o[..], "error", words); lnw_line_int(o[..], "code", code);
+  if step_up { jo_put(o[..], "step_up L2-fresh\n"); }
+  return aw_len(o[..]);
+}
+// {}
+lnw_empty_write :: (out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0); jo_put(o[..], "{}"); return aw_len(o[..]);
+}
+// {"name":"alice"}
+lnw_detail_name_write :: (name: string, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "{\"name\":"); jo_quoted(o[..], name); jo_put(o[..], "}");
+  return aw_len(o[..]);
+}
+// {"name":"alice","mode":"forward"}
+lnw_detail_mode_write :: (name: string, mode: string, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "{\"name\":"); jo_quoted(o[..], name); jo_put(o[..], ",\"mode\":"); jo_quoted(o[..], mode); jo_put(o[..], "}");
+  return aw_len(o[..]);
+}
+// {"name":"alice","mode":"forward","ready_at":1763000000}
+lnw_detail_change_write :: (name: string, mode: string, ready_at: int, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "{\"name\":"); jo_quoted(o[..], name); jo_put(o[..], ",\"mode\":"); jo_quoted(o[..], mode);
+  jo_put(o[..], ",\"ready_at\":"); jo_int(o[..], ready_at); jo_put(o[..], "}");
+  return aw_len(o[..]);
+}
+// {"name":"alice","pubkey":"ab..","relays":3,"nip05":true}
+lnw_detail_profile_write :: (name: string, pubkey: string, relays: int, nip05: bool, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "{\"name\":"); jo_quoted(o[..], name); jo_put(o[..], ",\"pubkey\":"); jo_quoted(o[..], pubkey);
+  jo_put(o[..], ",\"relays\":"); jo_int(o[..], relays); jo_put(o[..], ",\"nip05\":"); lnw_bool(o[..], nip05); jo_put(o[..], "}");
+  return aw_len(o[..]);
+}
+
+// The card's start: {"limits":{...},"spark_receiving":B. limits is lu_limit(0..6): min_msat,
+// max_msat, comment_chars, invoice_expiry_s and the three rates.
+lnw_card_head :: (o: [] Jo, limits: [] int, wait_h: int, spark_on: bool) #effects(all) {
+  if limits.count < 7 { o[0].bad = true; return; }
+  jo_put(o, "{\"limits\":{\"min_msat\":"); jo_int(o, limits[0]);
+  jo_put(o, ",\"max_msat\":"); jo_int(o, limits[1]);
+  jo_put(o, ",\"comment_chars\":"); jo_int(o, limits[2]);
+  jo_put(o, ",\"invoice_expiry_s\":"); jo_int(o, limits[3]);
+  jo_put(o, ",\"lookups_per_min_per_network\":"); jo_int(o, limits[4]);
+  jo_put(o, ",\"invoices_per_min_per_name\":"); jo_int(o, limits[5]);
+  jo_put(o, ",\"invoices_per_min_per_network\":"); jo_int(o, limits[6]);
+  jo_put(o, ",\"change_wait_hours\":"); jo_int(o, wait_h);
+  jo_put(o, "},\"spark_receiving\":"); lnw_bool(o, spark_on);
+}
+// The card of an account with no address: ...,"address":null,"suggest":"alice"} (suggest "" when
+// there is no name to offer).
+lnw_card_none_write :: (limits: [] int, wait_h: int, spark_on: bool, suggest: string, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  lnw_card_head(o[..], limits, wait_h, spark_on);
+  jo_put(o[..], ",\"address\":null,\"suggest\":"); jo_quoted(o[..], suggest); jo_put(o[..], "}");
+  return aw_len(o[..]);
+}
+// The card of an address. waiting: a change waits (its mode, target and ready_at, the number as
+// SQL printed it). notices: jsonb's text, or "" when they could not be read (the member is left out).
+lnw_card_write :: (limits: [] int, wait_h: int, spark_on: bool, name: string, domain: string, mode: string, state: string,
+                   forward_to: string, spark_pubkey: string, revision: int, max_msat: int, comments_on: bool, nip05: string,
+                   waiting: bool, wmode: string, wtarget: string, wready: string, notices: string, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  lnw_card_head(o[..], limits, wait_h, spark_on);
+  jo_put(o[..], ",\"address\":\""); jo_escape_bytes(o[..], name); jo_put(o[..], "@"); jo_escape_bytes(o[..], domain); jo_put(o[..], "\"");
+  jo_put(o[..], ",\"name\":"); jo_quoted(o[..], name);
+  jo_put(o[..], ",\"mode\":"); jo_quoted(o[..], mode);
+  jo_put(o[..], ",\"state\":"); jo_quoted(o[..], state);
+  jo_put(o[..], ",\"forward_to\":"); jo_quoted(o[..], forward_to);
+  jo_put(o[..], ",\"spark_pubkey\":"); jo_quoted(o[..], spark_pubkey);
+  jo_put(o[..], ",\"revision\":"); jo_int(o[..], revision);
+  jo_put(o[..], ",\"max_msat\":"); jo_int(o[..], max_msat);
+  jo_put(o[..], ",\"comments_on\":"); lnw_bool(o[..], comments_on);
+  jo_put(o[..], ",\"nip05\":"); jo_quoted(o[..], nip05);
+  if waiting {
+    jo_put(o[..], ",\"waiting\":{\"mode\":"); jo_quoted(o[..], wmode);
+    jo_put(o[..], ",\"target\":"); jo_quoted(o[..], wtarget);
+    jo_put(o[..], ",\"ready_at\":"); jo_put(o[..], wready); jo_put(o[..], "}");
+  }
+  if notices.count > 0 { jo_put(o[..], ",\"notices\":"); jo_put(o[..], notices); }
+  jo_put(o[..], "}");
+  return aw_len(o[..]);
+}
+// The lines' start. limits as above (the first three are written).
+lnw_card_lines_head :: (o: [] Jo, limits: [] int, wait_h: int, spark_on: bool, now_s: int, person: bool) #effects(all) {
+  if limits.count < 3 { o[0].bad = true; return; }
+  lnw_line_int(o, "min_msat", limits[0]); lnw_line_int(o, "limit_max_msat", limits[1]); lnw_line_int(o, "comment_chars", limits[2]);
+  lnw_line_int(o, "change_wait_hours", wait_h); lnw_line_bit(o, "spark_receiving", spark_on);
+  lnw_line_int(o, "now_s", now_s); lnw_line_bit(o, "person", person);
+}
+// No address yet, as lines; "suggest NAME" only when there is one.
+lnw_card_none_lines :: (limits: [] int, wait_h: int, spark_on: bool, now_s: int, person: bool, suggest: string, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  lnw_card_lines_head(o[..], limits, wait_h, spark_on, now_s, person);
+  if suggest.count > 0 { lnw_line(o[..], "suggest", suggest); }
+  return aw_len(o[..]);
+}
+// An address, as lines; forward_to, spark_pubkey and nip05 only when set, the waiting change last.
+lnw_card_lines :: (limits: [] int, wait_h: int, spark_on: bool, now_s: int, person: bool, name: string, domain: string, mode: string, state: string,
+                   forward_to: string, spark_pubkey: string, revision: int, max_msat: int, comments_on: bool, nip05: string,
+                   waiting: bool, wmode: string, wtarget: string, wready: string, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  lnw_card_lines_head(o[..], limits, wait_h, spark_on, now_s, person);
+  jo_put(o[..], "address "); jo_put(o[..], name); jo_put(o[..], "@"); jo_put(o[..], domain); jo_put(o[..], "\n");
+  lnw_line(o[..], "name", name); lnw_line(o[..], "mode", mode); lnw_line(o[..], "state", state);
+  lnw_line_int(o[..], "revision", revision); lnw_line_int(o[..], "max_msat", max_msat); lnw_line_bit(o[..], "comments_on", comments_on);
+  if forward_to.count > 0 { lnw_line(o[..], "forward_to", forward_to); }
+  if spark_pubkey.count > 0 { lnw_line(o[..], "spark_pubkey", spark_pubkey); }
+  if nip05.count > 0 { lnw_line(o[..], "nip05", nip05); }
+  if waiting { lnw_line(o[..], "waiting_mode", wmode); lnw_line(o[..], "waiting_ready_s", wready); lnw_line(o[..], "waiting_target", wtarget); }
+  return aw_len(o[..]);
+}
+
+// {"name":"alice","available":true,"code":0,"reason":""}
+lnw_available_write :: (name: string, available: bool, code: int, reason: string, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "{\"name\":"); jo_quoted(o[..], name); jo_put(o[..], ",\"available\":"); lnw_bool(o[..], available);
+  jo_put(o[..], ",\"code\":"); jo_int(o[..], code); jo_put(o[..], ",\"reason\":"); jo_quoted(o[..], reason); jo_put(o[..], "}");
+  return aw_len(o[..]);
+}
+lnw_available_lines :: (name: string, available: bool, code: int, reason: string, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  lnw_line(o[..], "name", name); lnw_line_bit(o[..], "available", available); lnw_line_int(o[..], "code", code); lnw_line(o[..], "reason", reason);
+  return aw_len(o[..]);
+}
+// {"name":"alice","op":"claim","nonce":"..","expires":N,"revision":N,"message":"line\nline"}: the
+// message is lines of plain ASCII, its line breaks written \n.
+lnw_proof_write :: (name: string, op: string, nonce: string, expires: int, revision: int, message: string, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "{\"name\":"); jo_quoted(o[..], name); jo_put(o[..], ",\"op\":"); jo_quoted(o[..], op);
+  jo_put(o[..], ",\"nonce\":"); jo_quoted(o[..], nonce); jo_put(o[..], ",\"expires\":"); jo_int(o[..], expires);
+  jo_put(o[..], ",\"revision\":"); jo_int(o[..], revision); jo_put(o[..], ",\"message\":"); jo_quoted(o[..], message); jo_put(o[..], "}");
+  return aw_len(o[..]);
+}
+// As lines the message has line breaks of its own: it is the rest of the answer, after "message".
+lnw_proof_lines :: (name: string, nonce: string, expires: int, revision: int, message: string, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  lnw_line(o[..], "name", name); lnw_line(o[..], "nonce", nonce); lnw_line_int(o[..], "expires", expires); lnw_line_int(o[..], "revision", revision);
+  jo_put(o[..], "message\n"); jo_put(o[..], message);
+  return aw_len(o[..]);
+}
+// {"kinds":[0],"authors":["ab.."],"limit":1}
+lnw_filter_write :: (pubkey: string, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "{\"kinds\":[0],\"authors\":["); jo_quoted(o[..], pubkey); jo_put(o[..], "],\"limit\":1}");
+  return aw_len(o[..]);
+}
+// {"pubkey":"ab..","found":true,"created_at":N,"address":"alice@openagents.com","nip05":false,
+// "relays":4,"content":"..."}: content is the kind 0's content (JSON text) as a JSON string, a
+// quote and a backslash behind a backslash and every control byte as \u00XX, as lnaddr.c wrote it.
+lnw_profile_write :: (pubkey: string, found: bool, created_at: int, address: string, nip05: bool, relays: int, content: string, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "{\"pubkey\":"); jo_quoted(o[..], pubkey); jo_put(o[..], ",\"found\":"); lnw_bool(o[..], found);
+  jo_put(o[..], ",\"created_at\":"); jo_int(o[..], created_at); jo_put(o[..], ",\"address\":"); jo_quoted(o[..], address);
+  jo_put(o[..], ",\"nip05\":"); lnw_bool(o[..], nip05); jo_put(o[..], ",\"relays\":"); jo_int(o[..], relays);
+  jo_put(o[..], ",\"content\":\"");
+  hex := "0123456789abcdef";
+  for c: content {
+    if c == '"' || c == '\\' { jo_byte(o[..], '\\'); jo_byte(o[..], c); }
+    else if c < 32 { jo_put(o[..], "\\u00"); jo_byte(o[..], hex[c >> 4]); jo_byte(o[..], hex[c & 15]); }
+    else { jo_byte(o[..], c); }
+  }
+  jo_put(o[..], "\"}");
+  return aw_len(o[..]);
+}
+// {"published":3,"relays":4,"nip05":true}
+lnw_published_write :: (published: int, relays: int, nip05: bool, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "{\"published\":"); jo_int(o[..], published); jo_put(o[..], ",\"relays\":"); jo_int(o[..], relays);
+  jo_put(o[..], ",\"nip05\":"); lnw_bool(o[..], nip05); jo_put(o[..], "}");
+  return aw_len(o[..]);
+}
+lnw_published_lines :: (published: int, relays: int, nip05: bool, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  lnw_line_int(o[..], "published", published); lnw_line_int(o[..], "relays", relays); lnw_line_bit(o[..], "nip05", nip05);
+  return aw_len(o[..]);
+}
+// lnaddr_init's sample inputs, which lnurl.coax must refuse: payer data we never ask for, and an
+// upstream's LUD-06 error.
+lnw_probe_payerdata_write :: (out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0); jo_put(o[..], "{\"email\":\"x\"}"); return aw_len(o[..]);
+}
+lnw_probe_refused_write :: (out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0); jo_put(o[..], "{\"status\":\"ERROR\"}"); return aw_len(o[..]);
+}
+
+#test "the fixed bodies, the refusals as lines and the audit details" {
+  b: [512] u8;
+  n := lnw_failed_write(b[..]);
+  #assert cast(string) b[0..<n] == "{\"status\":\"ERROR\",\"reason\":\"That didn't work. Try again.\"}" && lnw_failed_write(b[0..<n - 1]) == -1;
+  n = lnw_empty_write(b[..]); #assert cast(string) b[0..<n] == "{}" && lnw_empty_write(b[0..<1]) == -1;
+  n = lnw_probe_payerdata_write(b[..]); #assert cast(string) b[0..<n] == "{\"email\":\"x\"}" && lnw_probe_payerdata_write(b[0..<12]) == -1;
+  n = lnw_probe_refused_write(b[..]); #assert cast(string) b[0..<n] == "{\"status\":\"ERROR\"}" && lnw_probe_refused_write(b[0..<17]) == -1;
+  n = lnw_error_lines("busy", b[..]); #assert cast(string) b[0..<n] == "error busy\n" && lnw_error_lines("busy", b[0..<10]) == -1;
+  n = lnw_error_lines("", b[..]); #assert cast(string) b[0..<n] == "error \n";
+  n = lnw_refusal_lines("Confirm it's you first", 6, true, b[..]);
+  #assert cast(string) b[0..<n] == "error Confirm it's you first\ncode 6\nstep_up L2-fresh\n" && lnw_refusal_lines("Confirm it's you first", 6, true, b[0..<n - 1]) == -1;
+  n = lnw_refusal_lines("That name is taken", 5, false, b[..]); #assert cast(string) b[0..<n] == "error That name is taken\ncode 5\n";
+  n = lnw_refusal_lines("", -1, false, b[..]); #assert cast(string) b[0..<n] == "error \ncode -1\n";
+  n = lnw_detail_name_write("alice", b[..]); #assert cast(string) b[0..<n] == "{\"name\":\"alice\"}" && lnw_detail_name_write("alice", b[0..<n - 1]) == -1;
+  n = lnw_detail_name_write("", b[..]); #assert cast(string) b[0..<n] == "{\"name\":\"\"}";
+  n = lnw_detail_mode_write("alice", "forward", b[..]);
+  #assert cast(string) b[0..<n] == "{\"name\":\"alice\",\"mode\":\"forward\"}" && lnw_detail_mode_write("alice", "forward", b[0..<n - 1]) == -1;
+  n = lnw_detail_mode_write("a.b", "none", b[..]); #assert cast(string) b[0..<n] == "{\"name\":\"a.b\",\"mode\":\"none\"}";
+  n = lnw_detail_change_write("alice", "spark", 1763000000, b[..]);
+  #assert cast(string) b[0..<n] == "{\"name\":\"alice\",\"mode\":\"spark\",\"ready_at\":1763000000}" && lnw_detail_change_write("alice", "spark", 1763000000, b[0..<n - 1]) == -1;
+  n = lnw_detail_change_write("alice", "forward", 0, b[..]); #assert cast(string) b[0..<n] == "{\"name\":\"alice\",\"mode\":\"forward\",\"ready_at\":0}";
+  n = lnw_detail_profile_write("alice", "ab12", 3, true, b[..]);
+  #assert cast(string) b[0..<n] == "{\"name\":\"alice\",\"pubkey\":\"ab12\",\"relays\":3,\"nip05\":true}" && lnw_detail_profile_write("alice", "ab12", 3, true, b[0..<n - 1]) == -1;
+  n = lnw_detail_profile_write("alice", "", 0, false, b[..]); #assert cast(string) b[0..<n] == "{\"name\":\"alice\",\"pubkey\":\"\",\"relays\":0,\"nip05\":false}";
+}
+
+#test "the card: no address, an address, a waiting change, the notices; as JSON and as lines" {
+  b: [2048] u8; lim := [7] int.[1000, 500000000, 280, 600, 30, 120, 30];
+  head := "{\"limits\":{\"min_msat\":1000,\"max_msat\":500000000,\"comment_chars\":280,\"invoice_expiry_s\":600,\"lookups_per_min_per_network\":30,\"invoices_per_min_per_name\":120,\"invoices_per_min_per_network\":30,\"change_wait_hours\":24},\"spark_receiving\":false";
+  n := lnw_card_none_write(lim[..], 24, false, "alice", b[..]);
+  body := cast(string) b[0..<n];
+  #assert body[0..<head.count] == head && body[head.count..<n] == ",\"address\":null,\"suggest\":\"alice\"}";
+  #assert lnw_card_none_write(lim[..], 24, false, "alice", b[0..<n - 1]) == -1 && lnw_card_none_write(lim[0..<6], 24, false, "alice", b[..]) == -1;
+  n = lnw_card_none_write(lim[..], 72, true, "", b[..]);
+  tail := "\"change_wait_hours\":72},\"spark_receiving\":true,\"address\":null,\"suggest\":\"\"}";
+  #assert n == head.count + 28 && cast(string) b[n - tail.count..<n] == tail;
+  n = lnw_card_write(lim[..], 24, false, "alice", "openagents.com", "forward", "active", "bob@getalby.com", "", 2, 500000000, true, "", false, "", "", "", "[]", b[..]);
+  body = cast(string) b[0..<n];
+  #assert body[0..<head.count] == head && body[head.count..<n] == ",\"address\":\"alice@openagents.com\",\"name\":\"alice\",\"mode\":\"forward\",\"state\":\"active\",\"forward_to\":\"bob@getalby.com\",\"spark_pubkey\":\"\",\"revision\":2,\"max_msat\":500000000,\"comments_on\":true,\"nip05\":\"\",\"notices\":[]}";
+  #assert lnw_card_write(lim[..], 24, false, "alice", "openagents.com", "forward", "active", "bob@getalby.com", "", 2, 500000000, true, "", false, "", "", "", "[]", b[0..<n - 1]) == -1;
+  n = lnw_card_write(lim[..], 24, false, "al", "x.test", "spark", "off", "", "02ab", 1, 0, false, "cd34", true, "forward", "c@d.e", "1763000000", "[{\"at\": 5, \"kind\": \"on\", \"detail\": {\"name\": \"al\"}}]", b[..]);
+  body = cast(string) b[0..<n];
+  #assert body[head.count..<n] == ",\"address\":\"al@x.test\",\"name\":\"al\",\"mode\":\"spark\",\"state\":\"off\",\"forward_to\":\"\",\"spark_pubkey\":\"02ab\",\"revision\":1,\"max_msat\":0,\"comments_on\":false,\"nip05\":\"cd34\",\"waiting\":{\"mode\":\"forward\",\"target\":\"c@d.e\",\"ready_at\":1763000000},\"notices\":[{\"at\": 5, \"kind\": \"on\", \"detail\": {\"name\": \"al\"}}]}";
+  n = lnw_card_write(lim[..], 24, false, "al", "x.test", "none", "active", "", "", 1, 0, false, "", true, "spark", "02ab", "7", "", b[..]);
+  body = cast(string) b[0..<n];
+  wtail := ",\"nip05\":\"\",\"waiting\":{\"mode\":\"spark\",\"target\":\"02ab\",\"ready_at\":7}}";
+  #assert body[n - wtail.count..<n] == wtail;
+  lhead := "min_msat 1000\nlimit_max_msat 500000000\ncomment_chars 280\nchange_wait_hours 24\nspark_receiving 0\nnow_s 1763000001\nperson 1\n";
+  n = lnw_card_none_lines(lim[..], 24, false, 1763000001, true, "alice", b[..]);
+  body = cast(string) b[0..<n];
+  #assert body[0..<lhead.count] == lhead && body[lhead.count..<n] == "suggest alice\n" && lnw_card_none_lines(lim[..], 24, false, 1763000001, true, "alice", b[0..<n - 1]) == -1;
+  n = lnw_card_none_lines(lim[..], 72, true, 0, false, "", b[..]);
+  #assert cast(string) b[0..<n] == "min_msat 1000\nlimit_max_msat 500000000\ncomment_chars 280\nchange_wait_hours 72\nspark_receiving 1\nnow_s 0\nperson 0\n";
+  #assert lnw_card_none_lines(lim[0..<2], 72, true, 0, false, "", b[..]) == -1;
+  n = lnw_card_lines(lim[..], 24, false, 1763000001, true, "alice", "openagents.com", "none", "active", "", "", 1, 500000000, true, "", false, "", "", "", b[..]);
+  body = cast(string) b[0..<n];
+  #assert body[0..<lhead.count] == lhead && body[lhead.count..<n] == "address alice@openagents.com\nname alice\nmode none\nstate active\nrevision 1\nmax_msat 500000000\ncomments_on 1\n";
+  #assert lnw_card_lines(lim[..], 24, false, 1763000001, true, "alice", "openagents.com", "none", "active", "", "", 1, 500000000, true, "", false, "", "", "", b[0..<n - 1]) == -1;
+  n = lnw_card_lines(lim[..], 24, false, 1763000001, true, "al", "x.test", "forward", "off", "b@c.d", "02ab", 3, 0, false, "cd34", true, "spark", "02ef", "1763000000", b[..]);
+  body = cast(string) b[0..<n];
+  #assert body[lhead.count..<n] == "address al@x.test\nname al\nmode forward\nstate off\nrevision 3\nmax_msat 0\ncomments_on 0\nforward_to b@c.d\nspark_pubkey 02ab\nnip05 cd34\nwaiting_mode spark\nwaiting_ready_s 1763000000\nwaiting_target 02ef\n";
+}
+
+#test "available, the proof, the relay's filter, the profile and what was published" {
+  b: [1024] u8;
+  n := lnw_available_write("alice", true, 0, "", b[..]);
+  #assert cast(string) b[0..<n] == "{\"name\":\"alice\",\"available\":true,\"code\":0,\"reason\":\"\"}" && lnw_available_write("alice", true, 0, "", b[0..<n - 1]) == -1;
+  n = lnw_available_write("", false, 3, "Names can't start with ., - or _", b[..]);
+  #assert cast(string) b[0..<n] == "{\"name\":\"\",\"available\":false,\"code\":3,\"reason\":\"Names can't start with ., - or _\"}";
+  n = lnw_available_lines("alice", true, 0, "", b[..]);
+  #assert cast(string) b[0..<n] == "name alice\navailable 1\ncode 0\nreason \n" && lnw_available_lines("alice", true, 0, "", b[0..<n - 1]) == -1;
+  n = lnw_available_lines("", false, 5, "That name is taken", b[..]);
+  #assert cast(string) b[0..<n] == "name \navailable 0\ncode 5\nreason That name is taken\n";
+  n = lnw_proof_write("alice", "claim", "00ff", 1763000300, 1, "OpenAgents\nname: alice\n", b[..]);
+  #assert cast(string) b[0..<n] == "{\"name\":\"alice\",\"op\":\"claim\",\"nonce\":\"00ff\",\"expires\":1763000300,\"revision\":1,\"message\":\"OpenAgents\\nname: alice\\n\"}";
+  #assert lnw_proof_write("alice", "claim", "00ff", 1763000300, 1, "OpenAgents\nname: alice\n", b[0..<n - 1]) == -1;
+  n = lnw_proof_write("alice", "change", "00ff", 0, 12, "", b[..]);
+  #assert cast(string) b[0..<n] == "{\"name\":\"alice\",\"op\":\"change\",\"nonce\":\"00ff\",\"expires\":0,\"revision\":12,\"message\":\"\"}";
+  n = lnw_proof_lines("alice", "00ff", 1763000300, 1, "OpenAgents\nname: alice\n", b[..]);
+  #assert cast(string) b[0..<n] == "name alice\nnonce 00ff\nexpires 1763000300\nrevision 1\nmessage\nOpenAgents\nname: alice\n";
+  #assert lnw_proof_lines("alice", "00ff", 1763000300, 1, "OpenAgents\nname: alice\n", b[0..<n - 1]) == -1;
+  n = lnw_filter_write("ab12", b[..]);
+  #assert cast(string) b[0..<n] == "{\"kinds\":[0],\"authors\":[\"ab12\"],\"limit\":1}" && lnw_filter_write("ab12", b[0..<n - 1]) == -1;
+  n = lnw_filter_write("", b[..]); #assert cast(string) b[0..<n] == "{\"kinds\":[0],\"authors\":[\"\"],\"limit\":1}";
+  n = lnw_profile_write("ab12", true, 1763000001, "alice@openagents.com", false, 4, "{\"lud16\":\"alice@openagents.com\",\"about\":\"a\\nb\"}", b[..]);
+  #assert cast(string) b[0..<n] == "{\"pubkey\":\"ab12\",\"found\":true,\"created_at\":1763000001,\"address\":\"alice@openagents.com\",\"nip05\":false,\"relays\":4,\"content\":\"{\\\"lud16\\\":\\\"alice@openagents.com\\\",\\\"about\\\":\\\"a\\\\nb\\\"}\"}";
+  #assert lnw_profile_write("ab12", true, 1763000001, "alice@openagents.com", false, 4, "{\"lud16\":\"alice@openagents.com\",\"about\":\"a\\nb\"}", b[0..<n - 1]) == -1;
+  ctl := [5] u8.['a', 10, 9, 1, 0xc3];
+  n = lnw_profile_write("", false, 0, "@x", true, 0, cast(string) ctl[..], b[..]);
+  pre := "{\"pubkey\":\"\",\"found\":false,\"created_at\":0,\"address\":\"@x\",\"nip05\":true,\"relays\":0,\"content\":\"a\\u000a\\u0009\\u0001";
+  #assert n == pre.count + 3 && cast(string) b[0..<pre.count] == pre && b[pre.count] == 0xc3 && cast(string) b[pre.count + 1..<n] == "\"}";
+  n = lnw_profile_write("", false, 0, "@x", true, 0, "", b[..]);
+  #assert cast(string) b[0..<n] == "{\"pubkey\":\"\",\"found\":false,\"created_at\":0,\"address\":\"@x\",\"nip05\":true,\"relays\":0,\"content\":\"\"}";
+  n = lnw_published_write(3, 4, true, b[..]);
+  #assert cast(string) b[0..<n] == "{\"published\":3,\"relays\":4,\"nip05\":true}" && lnw_published_write(3, 4, true, b[0..<n - 1]) == -1;
+  n = lnw_published_write(1, 0, false, b[..]); #assert cast(string) b[0..<n] == "{\"published\":1,\"relays\":0,\"nip05\":false}";
+  n = lnw_published_lines(3, 4, true, b[..]);
+  #assert cast(string) b[0..<n] == "published 3\nrelays 4\nnip05 1\n" && lnw_published_lines(3, 4, true, b[0..<n - 1]) == -1;
+  n = lnw_published_lines(1, 0, false, b[..]); #assert cast(string) b[0..<n] == "published 1\nrelays 0\nnip05 0\n";
+}

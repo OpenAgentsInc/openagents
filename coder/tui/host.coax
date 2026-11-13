@@ -40,6 +40,7 @@
 #load "../../apps/openagents-cli/relay.coax";
 #load "../../coax/lib/nostr/nip19-core.coax";
 #load "../../coax/lib/agent/session/log.coax";   // the session log's reader
+#load "../../coax/lib/agent/cli/json-output.coax";   // what --json prints (cj_*)
 
 cxterm_write :: (s: [] u8) -> int #foreign #effects(all);
 cxproc_wall_us :: () -> int #foreign #effects(all);
@@ -769,21 +770,19 @@ hs_cmd_list :: (json: bool) -> int {
   now := hs_now();
   if json {
     o: [1] Jo; ob: [131072] u8; jo_start(o[..], ob[..]);
-    jo_obj(o[..]); jo_key(o[..], "waiting"); jo_arr(o[..]);
+    cj_host_open(o[..]);
     for i: 0..<st[0].np {
       p := st[0].pairings[i]; if !hs_waiting(p, now) { continue; }
       pid := p.id; pk := p.key;
-      jo_obj(o[..]); jo_key(o[..], "id"); jo_str(o[..], cast(string) pid[..]); jo_key(o[..], "key"); jo_str(o[..], cast(string) pk[..]);
-      jo_key(o[..], "label"); jo_str(o[..], hs_label(st[0].pairings[..], i)); jo_key(o[..], "asked_at"); jo_int(o[..], p.at); jo_end(o[..]);
+      cj_host_waiting(o[..], cast(string) pid[..], cast(string) pk[..], hs_label(st[0].pairings[..], i), p.at);
     }
-    jo_end(o[..]); jo_key(o[..], "browsers"); jo_arr(o[..]);
+    cj_host_allowed(o[..]);
     for i: 0..<st[0].ng {
       if !hs_current(st, i, now) { continue; }
       g := st[0].grants[i]; gid := g.grant; gd := g.device; gl := g.label;
-      jo_obj(o[..]); jo_key(o[..], "grant"); jo_str(o[..], cast(string) gid[..]); jo_key(o[..], "key"); jo_str(o[..], cast(string) gd[..]);
-      jo_key(o[..], "label"); jo_str(o[..], cast(string) gl[0..<g.nlabel]); jo_key(o[..], "expires_at"); jo_int(o[..], g.expires); jo_end(o[..]);
+      cj_host_browser(o[..], cast(string) gid[..], cast(string) gd[..], cast(string) gl[0..<g.nlabel], g.expires);
     }
-    jo_end(o[..]); jo_end(o[..]);
+    cj_host_close(o[..]);
     hs_outln(jo_text(o[..]));
     return 0;
   }

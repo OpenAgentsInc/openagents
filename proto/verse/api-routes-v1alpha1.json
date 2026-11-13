@@ -464,7 +464,8 @@
   {"fn": "rm_dev_api", "file": "coax/web/room/room-dev.coax", "method": "POST", "path": "/**", "status": 400, "kind": "json", "message": ".openagents.api.v1alpha1.ErrorReply", "list": false},
   {"fn": "rm_dev_api", "file": "coax/web/room/room-dev.coax", "method": "POST", "path": "/api/playtest/realms/everglade/switch", "status": 200, "kind": "json", "message": ".openagents.api.v1alpha1.DevRealmsEvergladeSwitchPost", "list": false},
   {"fn": "rm_dev_api", "file": "coax/web/room/room-dev.coax", "method": "POST", "path": "/api/playtest/realms/everglade/settings", "status": 200, "kind": "json", "message": ".openagents.api.v1alpha1.DevRealmsEvergladeSettingsPost", "list": false},
-  {"fn": "rm_dev_api", "file": "coax/web/room/room-dev.coax", "method": "GET", "path": "/**", "status": 404, "kind": "json", "message": ".openagents.api.v1alpha1.ErrorReply", "list": false}
+  {"fn": "rm_dev_api", "file": "coax/web/room/room-dev.coax", "method": "GET", "path": "/**", "status": 404, "kind": "json", "message": ".openagents.api.v1alpha1.ErrorReply", "list": false},
+  {"fn": "chat_route", "file": "coax/web/api/chat.c", "method": "POST", "path": "/api/chat/devbox", "status": 200, "kind": "json", "message": ".openagents.api.v1alpha1.ChatDevboxPost", "list": false}
  ],
  "goldens": [
   {"route": 0, "body": "F|realm_invites|0\n"},
@@ -991,6 +992,8 @@
   {"route": 460, "body": "{\"row\":\"daycycle\",\"on\":false}"},
   {"route": 457, "body": "{\"error\":\"no such row\"}"},
   {"route": 461, "body": "{\"ok\":true}"},
-  {"route": 462, "body": "{\"error\":\"not in the local API\"}"}
+  {"route": 462, "body": "{\"error\":\"not in the local API\"}"},
+  {"route": 463, "body": "{\"c\": 3, \"devbox\": \"bx_fwh3xnws\"}"},
+  {"route": 463, "body": "{\"c\": 3, \"devbox\": \"\"}"}
  ]
 }

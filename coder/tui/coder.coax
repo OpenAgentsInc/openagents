@@ -49,6 +49,7 @@
 #load "cursor.coax";
 #load "microcoder.coax";
 #load "session.coax";
+#load "../../coax/lib/agent/cli/json-output.coax";   // what --json prints for the verbs (cj_*)
 #load "route.coax";
 #load "availability.coax";
 #load "plugins.coax";
@@ -510,24 +511,16 @@ cd_cmd_usage :: (json: bool) -> int {
   now_s := cxproc_wall_us() / 1000000;
   if json {
     names := [2] string.["claude", "codex"];
-    ob: [4096] u8; n := json_raw(ob[..], 0, "[");
+    ob: [4096] u8; n := json_raw(ob[..], 0, CJ_LIST_OPEN);
     for i: 0..<2 {
-      if i > 0 { n = json_raw(ob[..], n, ","); }
-      n = json_raw(ob[..], n, "{\"agent\":"); n = json_write_string(ob[..], n, names[i]);
-      n = json_raw(ob[..], n, ",\"plan\":"); n = json_write_string(ob[..], n, cast(string) u[i].plan[0..<u[i].nplan]);
-      n = json_raw(ob[..], n, ",\"windows\":[");
+      n = cj_usage_agent(ob[..], n, i == 0, names[i], cast(string) u[i].plan[0..<u[i].nplan]);
       for k: 0..<u[i].nw {
         w := u[i].w[k];
-        if k > 0 { n = json_raw(ob[..], n, ","); }
-        n = json_raw(ob[..], n, "{\"label\":"); n = json_write_string(ob[..], n, cast(string) w.label[0..<w.nlabel]);
-        n = json_raw(ob[..], n, ",\"used_percent\":"); n = json_write_int(ob[..], n, cast(int) (w.used * 100.0 + 0.5));
-        n = json_raw(ob[..], n, ",\"resets_at\":"); n = json_write_int(ob[..], n, w.reset_s); n = json_raw(ob[..], n, "}");
+        n = cj_usage_window(ob[..], n, k == 0, cast(string) w.label[0..<w.nlabel], cast(int) (w.used * 100.0 + 0.5), w.reset_s);
       }
-      n = json_raw(ob[..], n, "]");
-      if u[i].nwhy > 0 { n = json_raw(ob[..], n, ",\"error\":"); n = json_write_string(ob[..], n, cast(string) u[i].why[0..<u[i].nwhy]); }
-      n = json_raw(ob[..], n, "}");
+      n = cj_usage_agent_end(ob[..], n, cast(string) u[i].why[0..<u[i].nwhy]);
     }
-    n = json_raw(ob[..], n, "]");
+    n = json_raw(ob[..], n, CJ_LIST_CLOSE);
     cd_outln(cast(string) ob[0..<n]);
   } else {
     labels := [2] string.["Claude Code", "Codex"];
@@ -1646,12 +1639,12 @@ cd_plugin_toggle :: (a: [] App, msg: string) {
 }
 
 cd_cmd_plugins :: (r: [] PlRegistry, json: bool) -> int {
-  if json { cd_out("["); }
+  if json { cd_out(CJ_LIST_OPEN); }
   for k: 0..<r[0].n {
     ob: [2048] u8;
-    if json { if k > 0 { cd_out(","); } cd_out(pl_json(r, k, ob[..])); } else { cd_outln(pl_line(r, k, ob[..])); }
+    if json { if k > 0 { cd_out(CJ_LIST_NEXT); } cd_out(pl_json(r, k, ob[..])); } else { cd_outln(pl_line(r, k, ob[..])); }
   }
-  if json { cd_outln("]"); } else if r[0].n == 0 { cd_outln("No plugins: add NAME.json to ~/.openagents/coder/plugins."); }
+  if json { cd_outln(CJ_LIST_CLOSE); } else if r[0].n == 0 { cd_outln("No plugins: add NAME.json to ~/.openagents/coder/plugins."); }
   return 0;
 }
 
@@ -1815,17 +1808,8 @@ cd_session_cut :: (id: string, text: string) -> int {
 cd_summary_line :: (id: string, s: [] CsSummary, json: bool, out: [] u8) -> string {
   n := 0;
   if json {
-    n = json_raw(out, 0, "{\"id\":"); n = json_write_string(out, n, id);
-    n = json_raw(out, n, ",\"engine\":"); n = json_write_string(out, n, cast(string) s[0].engine[0..<s[0].nengine]);
-    n = json_raw(out, n, ",\"state\":"); n = json_write_string(out, n, cast(string) s[0].ending[0..<s[0].nending]);
-    if cast(string) s[0].ending[0..<s[0].nending] == "running" { n = json_raw(out, n, ",\"effect_outcome\":\"unknown\""); }
-    n = json_raw(out, n, ",\"turns\":"); n = json_write_int(out, n, s[0].turns);
-    n = json_raw(out, n, ",\"steps\":"); n = json_write_int(out, n, s[0].steps);
-    n = json_raw(out, n, ",\"started_us\":"); n = json_write_int(out, n, s[0].started_us);
-    n = json_raw(out, n, ",\"cwd\":"); n = json_write_string(out, n, cast(string) s[0].cwd[0..<s[0].ncwd]);
-    n = json_raw(out, n, ",\"task\":"); n = json_write_string(out, n, cast(string) s[0].task[0..<s[0].ntask]);
-    n = json_raw(out, n, "}");
-    return ifx n < 0 then "" else cast(string) out[0..<n];
+    return cj_session(out, id, cast(string) s[0].engine[0..<s[0].nengine], cast(string) s[0].ending[0..<s[0].nending], s[0].turns, s[0].steps, s[0].started_us,
+                      cast(string) s[0].cwd[0..<s[0].ncwd], cast(string) s[0].task[0..<s[0].ntask]);
   }
   ab: [32] u8; tb: [16] u8;
   n = cd_cat(out, 0, id); n = cd_cat(out, n, "  ");
@@ -1848,10 +1832,10 @@ cd_cmd_ls :: (json: bool) -> int {
   if dir.count == 0 { tool_errln("coder: no $HOME"); return 1; }
   l_b: [1] FsList; l := l_b[..];
   n := fs_list(dir, l);
-  if n <= 0 { if json { cd_outln("[]"); } else { cd_outln("No sessions yet: coder run \"TASK\" or coder starts one."); } return 0; }
+  if n <= 0 { if json { cd_out(CJ_LIST_OPEN); cd_outln(CJ_LIST_CLOSE); } else { cd_outln("No sessions yet: coder run \"TASK\" or coder starts one."); } return 0; }
   fb: [4194304] u8; s: [1] CsSummary; ab: [65536] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
   shown := 0;
-  if json { cd_out("["); }
+  if json { cd_out(CJ_LIST_OPEN); }
   i := n - 1;
   while i >= 0 && shown < CD_LS_MAX {
     name := fs_entry(l, i);
@@ -1864,11 +1848,11 @@ cd_cmd_ls :: (json: bool) -> int {
     if !s[0].ok { continue; }
     ob: [4096] u8;
     line := cd_summary_line(cast(string) name[0..<name.count - 6], s[..], json, ob[..]);
-    if json && shown > 0 { cd_out(","); }
+    if json && shown > 0 { cd_out(CJ_LIST_NEXT); }
     if json { cd_out(line); } else { cd_outln(line); }
     shown += 1;
   }
-  if json { cd_outln("]"); }
+  if json { cd_outln(CJ_LIST_CLOSE); }
   return 0;
 }
 
@@ -1883,8 +1867,7 @@ cd_cmd_import :: (args: [] Args, json: bool) -> int {
   id := cast(string) rb[0..<rn[0]];
   ob: [300] u8; tb: [16] u8;
   if json {
-    n := json_raw(ob[..], 0, "{\"id\":"); n = json_write_string(ob[..], n, id);
-    n = json_raw(ob[..], n, ",\"turns\":"); n = json_write_int(ob[..], n, t); n = json_raw(ob[..], n, "}");
+    n := cj_import(ob[..], 0, id, t);
     cd_outln(cast(string) ob[0..<n]); return 0;
   }
   n := cd_cat(ob[..], 0, id); n = cd_cat(ob[..], n, " · "); n = cd_cat(ob[..], n, cd_itoa(t, tb[..])); n = cd_cat(ob[..], n, ifx t == 1 then " turn" else " turns");
@@ -1907,9 +1890,8 @@ cd_cmd_status :: (id: string, json: bool) -> int {
   if json {
     line := cd_summary_line(full, s[..], true, ob[..]);
     if cut == 0 { cd_outln(line); return 0; }
-    jb: [4200] u8; jn := cd_cat(jb[..], 0, cast(string) line[0..<line.count - 1]); jn = cd_cat(jb[..], jn, ",\"cut\":");
-    tc: [24] u8; jn = cd_cat(jb[..], jn, cd_itoa(cut, tc[..])); jn = cd_cat(jb[..], jn, "}");
-    cd_outln(cast(string) jb[0..<jn]); return 0;
+    jb: [4200] u8;
+    cd_outln(cj_session_cut(jb[..], line, cut)); return 0;
   }
   tb: [16] u8;
   cd_out("id      "); cd_outln(full);
@@ -2163,12 +2145,7 @@ cd_cmd_bench :: (suite: string, json: bool) -> int {
   st := e; while st > 0 && out[st - 1] != 10 { st -= 1; }
   last := cast(string) out[st..<e];
   jb: [8192] u8;
-  n := json_raw(jb[..], 0, "{\"suite\":"); n = json_write_string(jb[..], n, names[k]);
-  n = json_raw(jb[..], n, ifx ok[0] then ",\"passed\":true" else ",\"passed\":false");
-  n = json_raw(jb[..], n, ",\"ms\":"); n = json_write_int(jb[..], n, ms);
-  n = json_raw(jb[..], n, ",\"at_us\":"); n = json_write_int(jb[..], n, t0);
-  n = json_raw(jb[..], n, ",\"last\":"); n = json_write_string(jb[..], n, cast(string) last[0..<ifx last.count > 2000 then 2000 else last.count]);
-  n = json_raw(jb[..], n, "}");
+  n := cj_bench(jb[..], 0, names[k], ok[0], ms, t0, last);
   hb: [1024] u8; home := cd_state_home(hb[..]);
   if home.count > 0 && n > 0 {
     pb: [1300] u8; pn := cd_cat(pb[..], 0, home); pn = cd_cat(pb[..], pn, "/.openagents/coder/bench"); x := fs_mkdir(cast(string) pb[0..<pn]);
@@ -2262,7 +2239,7 @@ cd_cmd_replay :: (id: string, json: bool) -> int {
   mb: [MEM_BRIEF_MAX] u8; mn := 0;
   xcb: [CD_CONTEXT_MAX] u8; xcn := 0;
   requests := 0; matched := 0; tb: [24] u8;
-  if json { cd_out("{\"requests\":["); }
+  if json { cd_out(CJ_REPLAY_OPEN); }
   ab: [131072] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
   r: [1] SlReader; r[0] = SlReader.{text = text}; l: [1] SlLine;
   while sl_next(r[..], l[..]) {
@@ -2299,10 +2276,7 @@ cd_cmd_replay :: (id: string, json: bool) -> int {
       have_user = false;
       if json {
         ob: [512] u8;
-        n := json_raw(ob[..], 0, ifx requests > 1 then ",{\"turn\":" else "{\"turn\":"); n = json_write_int(ob[..], n, users);
-        n = json_raw(ob[..], n, ",\"bytes\":"); n = json_write_int(ob[..], n, sent.count);
-        n = json_raw(ob[..], n, ",\"sha256\":"); n = json_write_string(ob[..], n, got);
-        n = json_raw(ob[..], n, ifx same then ",\"same\":true}" else ",\"same\":false}");
+        n := cj_replay_request(ob[..], 0, requests == 1, users, sent.count, got, same);
         cd_out(cast(string) ob[0..<n]);
       } else {
         ob: [512] u8;
@@ -2315,8 +2289,7 @@ cd_cmd_replay :: (id: string, json: bool) -> int {
     }
   }
   if json {
-    ob: [128] u8; n := json_raw(ob[..], 0, "],\"matched\":"); n = json_write_int(ob[..], n, matched);
-    n = json_raw(ob[..], n, ",\"total\":"); n = json_write_int(ob[..], n, requests); n = json_raw(ob[..], n, "}");
+    ob: [128] u8; n := cj_replay_close(ob[..], 0, matched, requests);
     cd_outln(cast(string) ob[0..<n]);
   } else {
     ob: [128] u8; n := cd_cat(ob[..], 0, cd_itoa(matched, tb[..])); n = cd_cat(ob[..], n, " of ");
@@ -2416,8 +2389,7 @@ cd_detach :: (args: [] Args, json: bool) -> int {
   pb: [1300] u8; pn := cd_cat(pb[..], 0, dir); pn = cd_cat(pb[..], pn, "/"); pn = cd_cat(pb[..], pn, id); pn = cd_cat(pb[..], pn, ".pid");
   tb: [24] u8; w := fs_write(cast(string) pb[0..<pn], cd_itoa(pid, tb[..]));
   if json {
-    ob: [256] u8; n := json_raw(ob[..], 0, "{\"id\":"); n = json_write_string(ob[..], n, id);
-    n = json_raw(ob[..], n, ",\"pid\":"); n = json_write_int(ob[..], n, pid); n = json_raw(ob[..], n, "}");
+    ob: [256] u8; n := cj_detached(ob[..], 0, id, pid);
     cd_outln(cast(string) ob[0..<n]);
   } else { cd_outln(id); }
   return 0;
@@ -2464,14 +2436,14 @@ cd_cmd_stop :: (id_in: string, json: bool) -> int {
   id := cast(string) ib[0..<k];
   s: [1] CsSummary; ab: [65536] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
   cs_read(text, s[..], ar[..]);
-  if cast(string) s[0].ending[0..<s[0].nending] != "running" { cd_outln(ifx json then "{\"stopped\":false,\"why\":\"not running\"}" else "Not running."); return 0; }
+  if cast(string) s[0].ending[0..<s[0].nending] != "running" { cd_outln(ifx json then CJ_STOP_NOT_RUNNING else "Not running."); return 0; }
   sb: [1300] u8; stop_file := cd_sibling(id, ".stop", sb[..]);
   w := fs_write(stop_file, "stop\n");
   for i: 0..<100 {
     x := cxproc_sleep_ms(100);
     t2 := cd_session_file(id, fb[..], ib[..]);
     cs_read(t2, s[..], ar[..]);
-    if cast(string) s[0].ending[0..<s[0].nending] != "running" { cd_outln(ifx json then "{\"stopped\":true}" else "Stopped."); return 0; }
+    if cast(string) s[0].ending[0..<s[0].nending] != "running" { cd_outln(ifx json then CJ_STOP_STOPPED else "Stopped."); return 0; }
   }
   pid := cd_job_pid(id);
   if pid > 0 && cxproc_pid_alive(pid) == 1 {
@@ -2480,7 +2452,7 @@ cd_cmd_stop :: (id_in: string, json: bool) -> int {
     n := sl_nl(lb[..], sl_end(lb[..], 0, "stopped", 0, 0, -1, "coder stop ended the job's process", ""));
     y := cs_append_after(cd_sibling(id, ".jsonl", pb[..]), cast(string) lb[0..<n]);
     z := fs_remove(stop_file);
-    cd_outln(ifx json then "{\"stopped\":true,\"killed\":true}" else "Stopped (the job's process was ended).");
+    cd_outln(ifx json then CJ_STOP_KILLED else "Stopped (the job's process was ended).");
     return 0;
   }
   z := fs_remove(stop_file);
@@ -2630,7 +2602,7 @@ tool_main :: () -> int #export_c #effects(all) {
     db: [65536] u8; dok: [1] bool;
     d := cd_decide(cd_positional(args, 1), args_value(args, "--options", ""), args_value(args, "--state", ""), db[..], dok[..]);
     ab: [4096] u8; dar: [1] ClArena; dar[0] = ClArena.{buf = ab[..]};
-    if json || dok[0] { cd_outln(d); } else { tool_err("coder decide: "); tool_errln(cl_str(dar[..], d, "error")); }
+    if json || dok[0] { cd_outln(d); } else { tool_err("coder decide: "); tool_errln(cj_decide_why(dar[..], d)); }
     return ifx dok[0] then 0 else 1;
   }
   if verb == "apple-fm" { return cd_cmd_apple_fm(cd_positional(args, 1)); }

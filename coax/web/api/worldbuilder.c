@@ -19,8 +19,10 @@
 // side by side never go past the cap together; it settles at what Vertex reports it used.
 //
 // The model is Google's: Gemini 4 Hydrogen on Vertex (OA_WORLDBUILDER_MODEL), structured output under
-// the schema below, its thinking low. The catalogue it chooses from (worldbuilder-assets.h) is
-// written with the page's asset pack by metaverse/tools/assets/worldbuilder_pack.coax. A call takes
+// a schema, its thinking low. worldbuilder-wire.coax writes that request, the schema in it, and the
+// status and flood lines; this file builds no body of its own. The catalogue it chooses from
+// (worldbuilder-assets.h) is written with the page's asset pack by
+// metaverse/tools/assets/worldbuilder_pack.coax. A call takes
 // seconds and this service answers one request at a time, so a child process makes it, settles the
 // spend on its own database connection and answers the page.
 //   OA_WORLDBUILDER_URL    the generateContent URL (tests point it at a fake)
@@ -28,6 +30,7 @@
 #include "api.h"
 #include "worldbuilder-assets.h"
 #include "worldbuilder-policy.generated.h"
+#include "worldbuilder-wire.generated.h"
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -97,43 +100,7 @@ static const char WB_BUILDINGS[] =
   "house/timber-house|5.53,7.09,5.56|house home building timber wood\n"
   "house/long-house|5.51,7.23,7.57|house home building long hall brick\n";
 
-static const char WB_SCHEMA[] =
-  "{\"type\":\"object\",\"properties\":{\"say\":{\"type\":\"string\"},\"actions\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{"
-  "\"op\":{\"type\":\"string\",\"enum\":[\"place\",\"move\",\"rotate\",\"scale\",\"delete\",\"duplicate\",\"undo\",\"redo\",\"clear\",\"paint\",\"raise\",\"lower\",\"smooth\",\"flatten\"]},"
-  "\"asset\":{\"type\":\"string\"},\"layer\":{\"type\":\"string\",\"enum\":[\"grass\",\"dirt\",\"sand\",\"stone\",\"snow\",\"water\",\"grid\"]},\"count\":{\"type\":\"integer\"},"
-  "\"targets\":{\"type\":\"string\",\"enum\":[\"last\",\"names\",\"nearest\",\"all\"]},"
-  "\"names\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}},"
-  "\"anchor\":{\"type\":\"string\",\"enum\":[\"here\",\"view\",\"last\",\"named\",\"origin\",\"self\",\"edge\"]},"
-  "\"anchor_names\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}},"
-  "\"side\":{\"type\":\"string\",\"enum\":[\"at\",\"left\",\"right\",\"front\",\"behind\",\"around\"]},"
-  "\"distance\":{\"type\":\"number\"},\"spread\":{\"type\":\"number\"},\"size\":{\"type\":\"number\"},"
-  "\"factor\":{\"type\":\"number\"},\"degrees\":{\"type\":\"number\"}},\"required\":[\"op\",\"layer\"]}}},\"required\":[\"say\",\"actions\"]}";
-
-// ---- a growing string, and JSON string escaping
-typedef struct { char *p; size_t n, cap; bool bad; } sb;
-static void sb_put(sb *s, const char *t, size_t k) {
-  if (s->bad) return;
-  if (s->n + k + 1 > s->cap) {
-    size_t cap = (s->n + k + 1) * 2;
-    char *p = realloc(s->p, cap);
-    if (!p) { s->bad = true; return; }
-    s->p = p; s->cap = cap;
-  }
-  memcpy(s->p + s->n, t, k); s->n += k; s->p[s->n] = 0;
-}
-static void sb_str(sb *s, const char *t) { sb_put(s, t, strlen(t)); }
-static void sb_json(sb *s, const char *t, size_t k) {
-  sb_put(s, "\"", 1);
-  for (size_t i = 0; i < k; i++) {
-    unsigned char c = (unsigned char)t[i];
-    char e[8];
-    if (c == '"' || c == '\\') { e[0] = '\\'; e[1] = (char)c; sb_put(s, e, 2); }
-    else if (c == '\n') sb_put(s, "\\n", 2);
-    else if (c < 0x20) { snprintf(e, sizeof e, "\\u%04x", c); sb_put(s, e, 6); }
-    else sb_put(s, (const char *)&t[i], 1);
-  }
-  sb_put(s, "\"", 1);
-}
+static coax_string cs(const char *s) { return (coax_string){s, (int64_t)strlen(s)}; }
 
 // ---- anti-flood: a bucket per address (worldbuilder-policy.coax wb_take decides), kept as a row in
 // Postgres (auth.limit_buckets, migration 0173) so it is one bucket for every worker and instance
@@ -179,7 +146,9 @@ static void wb_status(const request *q) {
   long long spent = db ? wb_spent(db) : -1;
   if (spent < 0) { wb_text(q->fd, 503, "unknown"); return; }
   char out[96];
-  snprintf(out, sizeof out, "%s %lld %lld", wb_resting(spent) ? "resting" : "ok", spent, (long long)wb_cap_micros());
+  int64_t n = wbw_status_write(wb_resting(spent), spent, wb_cap_micros(), (coax_v_u8){(uint8_t *)out, sizeof out - 1});
+  if (n < 0) { wb_text(q->fd, 503, "unknown"); return; }
+  out[n] = 0;
   wb_text(q->fd, 200, out);
 }
 
@@ -266,26 +235,22 @@ static void wb_act(const request *q) {
   api_header(q, "X-Forwarded-For", ip, sizeof ip);
   char *comma = strchr(ip, ','); if (comma) *comma = 0;
   long wait = wb_flood(ip[0] ? ip : "unknown");
-  if (wait > 0) { char out[48]; snprintf(out, sizeof out, "flood %ld", wait); wb_text(q->fd, 429, out); return; }
+  if (wait > 0) {
+    char out[48];
+    int64_t n = wbw_flood_write(wait, (coax_v_u8){(uint8_t *)out, sizeof out - 1});
+    out[n < 0 ? 0 : n] = 0;
+    wb_text(q->fd, 429, out);
+    return;
+  }
   // the request: the system turn with the catalogue, the page's JSON as the user's turn, the schema
-  sb s = {0};
-  sb_str(&s, "{\"systemInstruction\":{\"parts\":[{\"text\":");
-  size_t sys_n = strlen(WB_SYSTEM), cat_n = strlen(WB_ASSETS), bld_n = strlen(WB_BUILDINGS);
-  char *sys = malloc(sys_n + bld_n + cat_n + 1);
-  if (!sys) { wb_text(q->fd, 503, "busy"); return; }
-  memcpy(sys, WB_SYSTEM, sys_n); memcpy(sys + sys_n, WB_BUILDINGS, bld_n); memcpy(sys + sys_n + bld_n, WB_ASSETS, cat_n);
-  sys[sys_n + bld_n + cat_n] = 0;
-  sb_json(&s, sys, sys_n + bld_n + cat_n);
-  free(sys);
-  sb_str(&s, "}]},\"contents\":[{\"role\":\"user\",\"parts\":[{\"text\":");
-  sb_json(&s, q->body, q->body_len);
-  char gen[200];
-  snprintf(gen, sizeof gen, "}]}],\"generationConfig\":{\"temperature\":0.3,\"maxOutputTokens\":%lld,\"responseMimeType\":\"application/json\",\"responseJsonSchema\":",
-           (long long)wb_max_output());
-  sb_str(&s, gen);
-  sb_str(&s, WB_SCHEMA);
-  sb_str(&s, ",\"thinkingConfig\":{\"thinkingLevel\":\"LOW\"}}}");
-  if (s.bad) { free(s.p); wb_text(q->fd, 503, "busy"); return; }
+  // (worldbuilder-wire.coax writes it)
+  int64_t room = wbw_request_room((int64_t)(strlen(WB_SYSTEM) + strlen(WB_BUILDINGS) + strlen(WB_ASSETS) + q->body_len));
+  struct { char *p; size_t n; } s = {room < 0 ? NULL : malloc((size_t)room + 1), 0};
+  if (!s.p) { wb_text(q->fd, 503, "busy"); return; }
+  int64_t wrote = wbw_request_write(cs(WB_SYSTEM), cs(WB_BUILDINGS), cs(WB_ASSETS), (coax_string){q->body, (int64_t)q->body_len},
+                                    wb_max_output(), (coax_v_u8){(uint8_t *)s.p, room});
+  if (wrote < 0) { free(s.p); wb_text(q->fd, 503, "busy"); return; }
+  s.n = (size_t)wrote; s.p[s.n] = 0;
   PGconn *db = api_db();
   if (!db) { free(s.p); wb_text(q->fd, 503, "busy"); return; }
   // about three bytes a token for the prompt: the reservation's prompt part, before Vertex counts it

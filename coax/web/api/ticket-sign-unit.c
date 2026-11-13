@@ -229,6 +229,8 @@ size_t capacity_record_field_c(const char *body, size_t n, const char *key, char
   return v.count > 0 ? (size_t)v.count : 0;
 }
 // The room reports' codec (metaverse-engine/session/room-report.coax, Protocol E7 and E8, #13250), for player.c.
+// Its readers of the vitals and directory posts (room_report_vitals_*_read, room_report_dir_*, room_report_stats_names_shard)
+// are exports player.c and rooms.c call directly, with ticket-sign.generated.h's types.
 int room_report_receipt_c(long long gen, long long batch, const char *codes, char *out, size_t cap);
 int room_report_checkpoint_receipt_c(int v, const char *status, size_t status_n, long long owner, long long process, long long rev, long long accepted_at, char *out, size_t cap);
 // A vitals post's receipt, "receipt GEN BATCH CODES\n", into out: its length, -1 when it does not fit.

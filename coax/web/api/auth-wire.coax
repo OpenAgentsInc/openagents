@@ -1,0 +1,655 @@
+// Our own authentication on the wire, one codec for what auth.c writes and reads (Protocol E11,
+// GitHub #13250): proto/openagents/api/v1alpha1/auth.proto (profile api-routes; messages Auth* and
+// AuthGate*) names the members. auth.c calls the #export_c functions below through
+// auth-wire.generated.c and builds no body of its own. Each answer has two forms, the JSON
+// (..._write) and the "name value" lines a Coax page asks for with ?as=lines (..._lines):
+//   auw_refusal_lines                       a refusal's lines (its JSON is api-wire.coax's ErrorReply)
+//   auw_limit_write, auw_limit_lines        429: a limit's words, its name and when it lifts
+//   auw_login_app_write, .._lines           200 logged in, an app: the token pair, the guest's player
+//   auw_login_web_write, .._lines           200 logged in, a browser (the session is a cookie)
+//   auw_sent_write, auw_sent_lines          200 from POST /api/auth/email/start
+//   auw_state_write, auw_state_lines        {"state":"linked"} and the other one-word answers
+//   auw_elsewhere_write, .._lines           409 from POST /api/auth/email/link: the code to type
+//   auw_challenge_write, .._lines           200 from POST /api/auth/nostr/challenge
+//   auw_phone_write, auw_phone_lines        200 from POST /api/auth/phone/start
+//   auw_pair_write, auw_pair_lines          200 from POST /api/auth/refresh
+//   auw_logout_all_write, .._lines          200 from POST /api/auth/logout-everywhere
+//   auw_sessions_write                      200 from GET /api/auth/sessions (the rows are jsonb's text)
+//   auw_nobody_write, auw_nobody_lines      200 from GET /api/auth/account, nobody logged in
+//   auw_me_head_write, auw_me_email_write, auw_me_tail_write, auw_me_head_lines,
+//   auw_me_email_lines, auw_me_primary_lines, auw_me_key_lines
+//                                           200 from GET /api/auth/account, written in steps
+//   auw_limits_open_write, auw_limits_row_write, auw_limits_close_write, auw_limits_row_lines
+//                                           200 from GET /api/auth/limits, written in steps
+//   auw_viewer_lines, auw_viewer_account_lines, auw_viewer_nobody_lines
+//                                           GET /api/auth/viewer and /api/auth/me (lines only)
+//   auw_mail_write                          the login message handed to email.c (email_send)
+//   auw_none_write, auw_why_write, auw_purpose_write, auw_ended_write, auw_ended_all_write,
+//   auw_login_detail_write                  an audit row's detail (auth.log's jsonb)
+// and the reads:
+//   auw_ask_client, _email, _pending, _code, _t, _challenge, _label, _poll, _refresh_token
+//                                           a request body's string member
+//   auw_ask_link, _merge, _agents           a request body's true member
+//   auw_body_str                            the same scan for auth_json_str (auth-internal.h), whose
+//                                           callers in the other auth files still name the member
+//   auw_me_sealed_at, auw_me_sealed_len, auw_me_pubkey_at
+//                                           where auth.me_of's jsonb text holds a sealed email and a key
+// The bytes are the ones auth.c wrote before this file: proto/verse/api-routes-v1alpha1.json holds
+// what a running API answered and routes-goldens.coax checks it. A writer returns the body's
+// length (a step writer: its end in the buffer), or -1 when it does not fit. A string member is
+// escaped as JSON; auth.c wrote most of them raw, and none of them (account ids, tokens, hex,
+// fixed words, a masked email) holds a quote, a backslash or a control byte. The limit's words and
+// the message's address were escaped before too (a control byte as \u00XX there, never present).
+// What is JSON already goes in as it came: the guest's player, the sessions and the keys (jsonb's
+// text), and the members another auth file adds to a login's answer.
+// The reads are auth.c's own scanner, byte for byte (not jv_parse: the scanner takes bodies a
+// parser refuses, and finds a member at any depth, and every route has always read them so).
+//   coax/bin/coax test coax/web/api/auth-wire.coax --library
+#load "api-wire.coax";
+
+auw_cut :: (s: string, n: int) -> string #effects(all) { return ifx s.count > n then s[0..<n] else s; }
+auw_bit :: (b: bool) -> string #effects(all) { return ifx b then "1" else "0"; }
+auw_bool :: (b: bool) -> string #effects(all) { return ifx b then "true" else "false"; }
+
+// ---- refusals
+// error WORDS
+auw_refusal_lines :: (words: string, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "error "); jo_put(o[..], words); jo_put(o[..], "\n");
+  return aw_len(o[..]);
+}
+// {"error":"WORDS","limit":"NAME","max":N,"per":"an hour","until_ms":N}
+auw_limit_write :: (words: string, name: string, max: int, per: string, until_ms: int, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "{\"error\":"); jo_quoted(o[..], words); jo_put(o[..], ",\"limit\":"); jo_quoted(o[..], name);
+  jo_put(o[..], ",\"max\":"); jo_int(o[..], max); jo_put(o[..], ",\"per\":"); jo_quoted(o[..], per);
+  jo_put(o[..], ",\"until_ms\":"); jo_int(o[..], until_ms); jo_put(o[..], "}");
+  return aw_len(o[..]);
+}
+auw_limit_lines :: (words: string, name: string, until_ms: int, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "error "); jo_put(o[..], words); jo_put(o[..], "\nlimit "); jo_put(o[..], name);
+  jo_put(o[..], "\nuntil_ms "); jo_int(o[..], until_ms); jo_put(o[..], "\n");
+  return aw_len(o[..]);
+}
+
+// ---- audit details
+// {}
+auw_none_write :: (out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0); jo_put(o[..], "{}"); return aw_len(o[..]);
+}
+auw_one :: (open: string, value: string, out: [] u8) -> int #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0); jo_put(o[..], open); jo_quoted(o[..], value); jo_put(o[..], "}"); return aw_len(o[..]);
+}
+// {"why":"deleted"}
+auw_why_write :: (why: string, out: [] u8) -> int #export_c #effects(all) { return auw_one("{\"why\":", why, out); }
+// {"purpose":"login"}
+auw_purpose_write :: (purpose: string, out: [] u8) -> int #export_c #effects(all) { return auw_one("{\"purpose\":", purpose, out); }
+// {"ended":"family"}
+auw_ended_write :: (what: string, out: [] u8) -> int #export_c #effects(all) { return auw_one("{\"ended\":", what, out); }
+// {"ended":N,"agents_paused":N}
+auw_ended_all_write :: (ended: int, paused: int, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "{\"ended\":"); jo_int(o[..], ended); jo_put(o[..], ",\"agents_paused\":"); jo_int(o[..], paused); jo_put(o[..], "}");
+  return aw_len(o[..]);
+}
+// {"via":"email","client":"web","new":false,"device":false}
+auw_login_detail_write :: (via: string, client: string, made: bool, device: bool, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "{\"via\":"); jo_quoted(o[..], via); jo_put(o[..], ",\"client\":"); jo_quoted(o[..], client);
+  jo_put(o[..], ",\"new\":"); jo_put(o[..], auw_bool(made)); jo_put(o[..], ",\"device\":"); jo_put(o[..], auw_bool(device)); jo_put(o[..], "}");
+  return aw_len(o[..]);
+}
+
+// ---- logged in
+// {"state":"logged-in","account":"A","new":B,"access_token":"T","refresh_token":"T","expires_in":3600,
+// "device_bound":B,"player":P EXTRA}: player is JSON (an object or null); extra is "" or more
+// members, each led by its comma, as the caller in another auth file made them.
+auw_login_app_write :: (account: string, made: bool, access: string, refresh: string, bound: bool, player: string, extra: string, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "{\"state\":\"logged-in\",\"account\":"); jo_quoted(o[..], account);
+  jo_put(o[..], ",\"new\":"); jo_put(o[..], auw_bool(made));
+  jo_put(o[..], ",\"access_token\":"); jo_quoted(o[..], access); jo_put(o[..], ",\"refresh_token\":"); jo_quoted(o[..], refresh);
+  jo_put(o[..], ",\"expires_in\":3600,\"device_bound\":"); jo_put(o[..], auw_bool(bound));
+  jo_put(o[..], ",\"player\":"); jo_put(o[..], player); jo_put(o[..], extra); jo_put(o[..], "}");
+  return aw_len(o[..]);
+}
+auw_login_app_lines :: (account: string, made: bool, access: string, refresh: string, bound: bool, extra: string, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "state logged-in\naccount "); jo_put(o[..], account); jo_put(o[..], "\nnew "); jo_put(o[..], auw_bit(made));
+  jo_put(o[..], "\naccess_token "); jo_put(o[..], access); jo_put(o[..], "\nrefresh_token "); jo_put(o[..], refresh);
+  jo_put(o[..], "\nexpires_in 3600\ndevice_bound "); jo_put(o[..], auw_bit(bound)); jo_put(o[..], "\n"); jo_put(o[..], extra);
+  return aw_len(o[..]);
+}
+// {"state":"logged-in","account":"A","new":B,"player":P EXTRA}
+auw_login_web_write :: (account: string, made: bool, player: string, extra: string, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "{\"state\":\"logged-in\",\"account\":"); jo_quoted(o[..], account);
+  jo_put(o[..], ",\"new\":"); jo_put(o[..], auw_bool(made));
+  jo_put(o[..], ",\"player\":"); jo_put(o[..], player); jo_put(o[..], extra); jo_put(o[..], "}");
+  return aw_len(o[..]);
+}
+auw_login_web_lines :: (account: string, made: bool, extra: string, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "state logged-in\naccount "); jo_put(o[..], account); jo_put(o[..], "\nnew "); jo_put(o[..], auw_bit(made));
+  jo_put(o[..], "\n"); jo_put(o[..], extra);
+  return aw_len(o[..]);
+}
+
+// ---- email
+// The login message for email.c: the code (its first six bytes) in the subject and the text, the
+// link for the same browser. The text's line ends are JSON's \n.
+auw_mail_write :: (to: string, code: string, id: string, url: string, out: [] u8) -> int #export_c #effects(all) {
+  six := auw_cut(code, 6);
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "{\"to\":"); jo_quoted(o[..], to);
+  jo_put(o[..], ",\"subject\":\"Your OpenAgents code: "); jo_escape_bytes(o[..], six);
+  jo_put(o[..], "\",\"idempotency_key\":\"login-"); jo_escape_bytes(o[..], id);
+  jo_put(o[..], "\",\"text\":\"Your code is "); jo_escape_bytes(o[..], six);
+  jo_put(o[..], ".\\n\\nOr open this link in the same browser:\\n"); jo_escape_bytes(o[..], url);
+  jo_put(o[..], "\\n\\nIt works for 10 minutes. If you didn't ask for it, ignore this email.\\n\"}");
+  return aw_len(o[..]);
+}
+// {"state":"sent","expires_in":600,"tries":5,"pending":"P"}; pending "": a browser, whose pending
+// value is a cookie, and the member is left out.
+auw_sent_write :: (pending: string, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "{\"state\":\"sent\",\"expires_in\":600,\"tries\":5");
+  if pending.count > 0 { jo_put(o[..], ",\"pending\":"); jo_quoted(o[..], pending); }
+  jo_put(o[..], "}");
+  return aw_len(o[..]);
+}
+auw_sent_lines :: (pending: string, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "state sent\nexpires_in 600\ntries 5\n");
+  if pending.count > 0 { jo_put(o[..], "pending "); jo_put(o[..], pending); jo_put(o[..], "\n"); }
+  return aw_len(o[..]);
+}
+// {"state":"linked"}: linked, approved, waiting, logged-out, removed, frozen.
+auw_state_write :: (state: string, out: [] u8) -> int #export_c #effects(all) { return auw_one("{\"state\":", state, out); }
+auw_state_lines :: (state: string, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0); jo_put(o[..], "state "); jo_put(o[..], state); jo_put(o[..], "\n"); return aw_len(o[..]);
+}
+// {"state":"elsewhere","code":"482913","error":"Type this code in the window where you asked: 482913"}:
+// the code's first six bytes.
+auw_elsewhere_write :: (code: string, out: [] u8) -> int #export_c #effects(all) {
+  six := auw_cut(code, 6);
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "{\"state\":\"elsewhere\",\"code\":"); jo_quoted(o[..], six);
+  jo_put(o[..], ",\"error\":\"Type this code in the window where you asked: "); jo_escape_bytes(o[..], six); jo_put(o[..], "\"}");
+  return aw_len(o[..]);
+}
+auw_elsewhere_lines :: (code: string, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0); jo_put(o[..], "state elsewhere\ncode "); jo_put(o[..], auw_cut(code, 6)); jo_put(o[..], "\n"); return aw_len(o[..]);
+}
+
+// ---- Nostr and the phone
+// {"challenge":"C","url":"ORIGIN/api/auth/nostr","method":"POST","body":"{\"challenge\":\"C\"}","expires_in":300}:
+// body is the request to sign, itself JSON, carried as a string.
+auw_challenge_write :: (challenge: string, origin: string, out: [] u8) -> int #export_c #effects(all) {
+  inner: [256] u8; i: [1] Jo; aw_at(i[..], inner[..], 0);
+  jo_put(i[..], "{\"challenge\":"); jo_quoted(i[..], challenge); jo_put(i[..], "}");
+  if aw_len(i[..]) < 0 { return -1; }
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "{\"challenge\":"); jo_quoted(o[..], challenge);
+  jo_put(o[..], ",\"url\":\""); jo_escape_bytes(o[..], origin); jo_put(o[..], "/api/auth/nostr\",\"method\":\"POST\",\"body\":");
+  jo_quoted(o[..], jo_text(i[..])); jo_put(o[..], ",\"expires_in\":300}");
+  return aw_len(o[..]);
+}
+auw_challenge_lines :: (challenge: string, origin: string, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "challenge "); jo_put(o[..], challenge); jo_put(o[..], "\nurl "); jo_put(o[..], origin);
+  jo_put(o[..], "/api/auth/nostr\nexpires_in 300\n");
+  return aw_len(o[..]);
+}
+// {"challenge":"C","poll":"P","url":"ORIGIN/login#c=C","expires_in":300}
+auw_phone_write :: (challenge: string, poll: string, origin: string, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "{\"challenge\":"); jo_quoted(o[..], challenge); jo_put(o[..], ",\"poll\":"); jo_quoted(o[..], poll);
+  jo_put(o[..], ",\"url\":\""); jo_escape_bytes(o[..], origin); jo_put(o[..], "/login#c="); jo_escape_bytes(o[..], challenge);
+  jo_put(o[..], "\",\"expires_in\":300}");
+  return aw_len(o[..]);
+}
+auw_phone_lines :: (challenge: string, poll: string, origin: string, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "challenge "); jo_put(o[..], challenge); jo_put(o[..], "\npoll "); jo_put(o[..], poll);
+  jo_put(o[..], "\nurl "); jo_put(o[..], origin); jo_put(o[..], "/login#c="); jo_put(o[..], challenge);
+  jo_put(o[..], "\nexpires_in 300\n");
+  return aw_len(o[..]);
+}
+
+// ---- app tokens and sessions
+// {"access_token":"T","refresh_token":"T","expires_in":3600}
+auw_pair_write :: (access: string, refresh: string, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "{\"access_token\":"); jo_quoted(o[..], access); jo_put(o[..], ",\"refresh_token\":"); jo_quoted(o[..], refresh);
+  jo_put(o[..], ",\"expires_in\":3600}");
+  return aw_len(o[..]);
+}
+auw_pair_lines :: (access: string, refresh: string, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "access_token "); jo_put(o[..], access); jo_put(o[..], "\nrefresh_token "); jo_put(o[..], refresh);
+  jo_put(o[..], "\nexpires_in 3600\n");
+  return aw_len(o[..]);
+}
+// {"state":"logged-out","ended":N}
+auw_logout_all_write :: (ended: int, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0); jo_put(o[..], "{\"state\":\"logged-out\",\"ended\":"); jo_int(o[..], ended); jo_put(o[..], "}"); return aw_len(o[..]);
+}
+auw_logout_all_lines :: (ended: int, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0); jo_put(o[..], "state logged-out\nended "); jo_int(o[..], ended); jo_put(o[..], "\n"); return aw_len(o[..]);
+}
+// {"sessions":ROWS}: rows as auth.sessions_of's jsonb printed them.
+auw_sessions_write :: (rows: string, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0); jo_put(o[..], "{\"sessions\":"); jo_put(o[..], rows); jo_put(o[..], "}"); return aw_len(o[..]);
+}
+
+// ---- who is logged in
+// {"logged_in":false}
+auw_nobody_write :: (out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0); jo_put(o[..], "{\"logged_in\":false}"); return aw_len(o[..]);
+}
+auw_nobody_lines :: (out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0); jo_put(o[..], "logged_in 0\n"); return aw_len(o[..]);
+}
+// {"logged_in":true,"account":"A","kind":"person","level":"L2","via":"nostr","session":"S","admin":B,"emails":[
+// then each masked email, then ],"primary":"P" when the account has an email (its primary, else its
+// first, whole: the caller is that account's own login), then ,"keys":KEYS} with the keys as jsonb
+// printed them.
+auw_me_head_write :: (account: string, kind: string, level: int, via: string, session: string, admin: bool, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "{\"logged_in\":true,\"account\":"); jo_quoted(o[..], account); jo_put(o[..], ",\"kind\":"); jo_quoted(o[..], kind);
+  jo_put(o[..], ",\"level\":\"L"); jo_int(o[..], level); jo_put(o[..], "\",\"via\":"); jo_quoted(o[..], via);
+  jo_put(o[..], ",\"session\":"); jo_quoted(o[..], session); jo_put(o[..], ",\"admin\":"); jo_put(o[..], auw_bool(admin));
+  jo_put(o[..], ",\"emails\":[");
+  return aw_len(o[..]);
+}
+auw_me_email_write :: (masked: string, first: bool, out: [] u8, at: int) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, at);
+  if !first { jo_put(o[..], ","); }
+  jo_quoted(o[..], masked);
+  return aw_len(o[..]);
+}
+auw_me_tail_write :: (primary: string, keys: string, out: [] u8, at: int) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, at); jo_put(o[..], "]");
+  if primary.count > 0 { jo_put(o[..], ",\"primary\":"); jo_quoted(o[..], primary); }
+  jo_put(o[..], ",\"keys\":"); jo_put(o[..], keys); jo_put(o[..], "}"); return aw_len(o[..]);
+}
+auw_me_head_lines :: (account: string, kind: string, level: int, via: string, admin: bool, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "logged_in 1\naccount "); jo_put(o[..], account); jo_put(o[..], "\nkind "); jo_put(o[..], kind);
+  jo_put(o[..], "\nlevel L"); jo_int(o[..], level); jo_put(o[..], "\nvia "); jo_put(o[..], via);
+  jo_put(o[..], "\nadmin "); jo_put(o[..], auw_bit(admin)); jo_put(o[..], "\n");
+  return aw_len(o[..]);
+}
+auw_me_email_lines :: (masked: string, out: [] u8, at: int) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, at); jo_put(o[..], "email "); jo_put(o[..], masked); jo_put(o[..], "\n"); return aw_len(o[..]);
+}
+// primary P: the account's email, whole (after the masked ones).
+auw_me_primary_lines :: (primary: string, out: [] u8, at: int) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, at); jo_put(o[..], "primary "); jo_put(o[..], primary); jo_put(o[..], "\n"); return aw_len(o[..]);
+}
+// key K: at most the key's first 64 bytes.
+auw_me_key_lines :: (key: string, out: [] u8, at: int) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, at); jo_put(o[..], "key "); jo_put(o[..], auw_cut(key, 64)); jo_put(o[..], "\n"); return aw_len(o[..]);
+}
+
+// {"limits":[{"name":"N","what":"W","max":N,"per":"an hour","window_ms":N},...]}
+auw_limits_open_write :: (out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0); jo_put(o[..], "{\"limits\":["); return aw_len(o[..]);
+}
+auw_limits_row_write :: (first: bool, name: string, what: string, max: int, per: string, window_ms: int, out: [] u8, at: int) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, at);
+  if !first { jo_put(o[..], ","); }
+  jo_put(o[..], "{\"name\":"); jo_quoted(o[..], name); jo_put(o[..], ",\"what\":"); jo_quoted(o[..], what);
+  jo_put(o[..], ",\"max\":"); jo_int(o[..], max); jo_put(o[..], ",\"per\":"); jo_quoted(o[..], per);
+  jo_put(o[..], ",\"window_ms\":"); jo_int(o[..], window_ms); jo_put(o[..], "}");
+  return aw_len(o[..]);
+}
+auw_limits_close_write :: (out: [] u8, at: int) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, at); jo_put(o[..], "]}"); return aw_len(o[..]);
+}
+// limit NAME|MAX|PER|WHAT
+auw_limits_row_lines :: (name: string, max: int, per: string, what: string, out: [] u8, at: int) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, at);
+  jo_put(o[..], "limit "); jo_put(o[..], name); jo_put(o[..], "|"); jo_int(o[..], max); jo_put(o[..], "|"); jo_put(o[..], per);
+  jo_put(o[..], "|"); jo_put(o[..], what); jo_put(o[..], "\n");
+  return aw_len(o[..]);
+}
+
+// The viewer's lines as auth.viewer_lines made them, and A|1 after them for an admin.
+auw_viewer_lines :: (lines: string, admin: bool, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0); jo_put(o[..], lines); if admin { jo_put(o[..], "A|1\n"); } return aw_len(o[..]);
+}
+// U|ACCOUNT: logged in, with no key it acts as.
+auw_viewer_account_lines :: (account: string, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0); jo_put(o[..], "U|"); jo_put(o[..], account); jo_put(o[..], "\n"); return aw_len(o[..]);
+}
+auw_viewer_nobody_lines :: (out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0); jo_put(o[..], "not logged in\n"); return aw_len(o[..]);
+}
+
+// ---- reads
+// The first place at or after `from` where pat stands in hay, or -1.
+auw_find :: (hay: string, from: int, pat: string) -> int #effects(all) {
+  if from < 0 { return -1; }
+  i := from;
+  while i + pat.count <= hay.count {
+    same := true;
+    for k: 0..<pat.count { if hay[i + k] != pat[k] { same = false; break; } }
+    if same { return i; }
+    i += 1;
+  }
+  return -1;
+}
+// The first place at or after `from` where "KEY" (quoted) stands in body, or -1.
+auw_find_key :: (body: string, from: int, key: string) -> int #effects(all) {
+  if from < 0 { return -1; }
+  i := from + 1;   // the key's own first byte: one past its opening quote
+  while i >= 0 {
+    i = auw_find(body, i, key);
+    if i < 0 { return -1; }
+    if i > 0 && body[i - 1] == '"' && i + key.count < body.count && body[i + key.count] == '"' { return i - 1; }
+    i += 1;
+  }
+  return -1;
+}
+auw_space :: (c: u8) -> bool #effects(all) { return c == ' ' || c == 9 || c == 10 || c == 13; }
+// A body's string member as auth.c has always read it: the first "KEY" followed by a colon,
+// wherever it stands; its value with \" \\ and \/ unescaped, into out with a 0 after it. Returns
+// the value's length; -1 when no "KEY": stands in the body (out is then ""); -2 when the value
+// is no string, holds another escape or a control byte, is not closed, or does not fit with its 0
+// (out then holds what was copied so far and no 0 was written, as the C left it).
+auw_scan :: (body: string, key: string, out: [] u8) -> int #effects(all) {
+  end := body.count; cap := out.count;
+  if cap < 1 { return -2; }
+  p := 0;
+  while p < end {
+    p = auw_find_key(body, p, key);
+    if p < 0 { break; }
+    v := p + key.count + 2;
+    while v < end && auw_space(body[v]) { v += 1; }
+    if v < end && body[v] == ':' {
+      v += 1;
+      while v < end && auw_space(body[v]) { v += 1; }
+      if v >= end || body[v] != '"' { return -2; }
+      v += 1;
+      k := 0;
+      while v < end && body[v] != '"' && k + 1 < cap {
+        if body[v] == '\\' && v + 1 < end {
+          v += 1;
+          if body[v] != '"' && body[v] != '\\' && body[v] != '/' { return -2; }
+        }
+        if body[v] < 32 { return -2; }
+        out[k] = body[v]; k += 1; v += 1;
+      }
+      if v >= end || body[v] != '"' { return -2; }
+      out[k] = 0;
+      return k;
+    }
+    p += 1;
+  }
+  out[0] = 0;
+  return -1;
+}
+// A body's true member as auth.c has always read it: the first "KEY" in the body, then any spaces
+// and colons, then the letters true.
+auw_flag :: (body: string, key: string) -> bool #effects(all) {
+  p := auw_find_key(body, 0, key);
+  if p < 0 { return false; }
+  p += key.count + 2;
+  while p < body.count && (body[p] == ' ' || body[p] == ':') { p += 1; }
+  return p + 4 <= body.count && body[p..<p + 4] == "true";
+}
+auw_ask_client :: (body: string, out: [] u8) -> int #export_c #effects(all) { return auw_scan(body, "client", out); }
+auw_ask_email :: (body: string, out: [] u8) -> int #export_c #effects(all) { return auw_scan(body, "email", out); }
+auw_ask_pending :: (body: string, out: [] u8) -> int #export_c #effects(all) { return auw_scan(body, "pending", out); }
+auw_ask_code :: (body: string, out: [] u8) -> int #export_c #effects(all) { return auw_scan(body, "code", out); }
+auw_ask_t :: (body: string, out: [] u8) -> int #export_c #effects(all) { return auw_scan(body, "t", out); }
+auw_ask_challenge :: (body: string, out: [] u8) -> int #export_c #effects(all) { return auw_scan(body, "challenge", out); }
+auw_ask_label :: (body: string, out: [] u8) -> int #export_c #effects(all) { return auw_scan(body, "label", out); }
+auw_ask_poll :: (body: string, out: [] u8) -> int #export_c #effects(all) { return auw_scan(body, "poll", out); }
+auw_ask_refresh_token :: (body: string, out: [] u8) -> int #export_c #effects(all) { return auw_scan(body, "refresh_token", out); }
+auw_ask_link :: (body: string) -> bool #export_c #effects(all) { return auw_flag(body, "link"); }
+auw_ask_merge :: (body: string) -> bool #export_c #effects(all) { return auw_flag(body, "merge"); }
+auw_ask_agents :: (body: string) -> bool #export_c #effects(all) { return auw_flag(body, "agents"); }
+// For auth_json_str alone (auth-internal.h): the other auth files' reads, which still name their
+// member in C until each has a unit of its own.
+auw_body_str :: (body: string, key: string, out: [] u8) -> int #export_c #effects(all) { return auw_scan(body, key, out); }
+
+// auth.me_of's emails and keys as jsonb printed them ("sealed": "...", "pubkey": "..."): where
+// the next value starts at or after `from` (-1: no more), and how long a sealed value is (to its
+// closing quote; -1: none).
+auw_me_value_at :: (text: string, from: int, lead: string) -> int #effects(all) {
+  i := auw_find(text, from, lead);
+  return ifx i < 0 then -1 else i + lead.count;
+}
+auw_me_sealed_at :: (emails: string, from: int) -> int #export_c #effects(all) { return auw_me_value_at(emails, from, "\"sealed\": \""); }
+auw_me_pubkey_at :: (keys: string, from: int) -> int #export_c #effects(all) { return auw_me_value_at(keys, from, "\"pubkey\": \""); }
+auw_me_sealed_len :: (emails: string, at: int) -> int #export_c #effects(all) {
+  i := auw_find(emails, at, "\"");
+  return ifx i < 0 then -1 else i - at;
+}
+
+#test "refusals and a limit: both forms, the words escaped in the JSON alone" {
+  b: [512] u8;
+  n := auw_refusal_lines("Log in first.", b[..]);
+  #assert cast(string) b[0..<n] == "error Log in first.\n" && auw_refusal_lines("Log in first.", b[0..<n - 1]) == -1;
+  n = auw_refusal_lines("", b[..]);
+  #assert cast(string) b[0..<n] == "error \n";
+  n = auw_limit_write("Too many codes for this address. Try again in 12 minutes.", "email_hour", 5, "an hour", 1794500000000, b[..]);
+  #assert cast(string) b[0..<n] == "{\"error\":\"Too many codes for this address. Try again in 12 minutes.\",\"limit\":\"email_hour\",\"max\":5,\"per\":\"an hour\",\"until_ms\":1794500000000}";
+  #assert auw_limit_write("w", "email_hour", 5, "an hour", 1, b[0..<40]) == -1;
+  n = auw_limit_write("a \"b\" \\", "", 0, "", -1, b[..]);
+  #assert cast(string) b[0..<n] == "{\"error\":\"a \\\"b\\\" \\\\\",\"limit\":\"\",\"max\":0,\"per\":\"\",\"until_ms\":-1}";
+  n = auw_limit_lines("Too many refreshes. Try again in 2 hours.", "refresh", 1794500000000, b[..]);
+  #assert cast(string) b[0..<n] == "error Too many refreshes. Try again in 2 hours.\nlimit refresh\nuntil_ms 1794500000000\n" && auw_limit_lines("w", "refresh", 0, b[0..<10]) == -1;
+}
+
+#test "audit details" {
+  b: [128] u8;
+  n := auw_none_write(b[..]);
+  #assert cast(string) b[0..<n] == "{}" && auw_none_write(b[0..<1]) == -1;
+  n = auw_why_write("deleted", b[..]);
+  #assert cast(string) b[0..<n] == "{\"why\":\"deleted\"}" && auw_why_write("deleted", b[0..<n - 1]) == -1;
+  n = auw_why_write("another account's", b[..]);
+  #assert cast(string) b[0..<n] == "{\"why\":\"another account's\"}";
+  n = auw_purpose_write("merge", b[..]);
+  #assert cast(string) b[0..<n] == "{\"purpose\":\"merge\"}";
+  n = auw_ended_write("family", b[..]);
+  #assert cast(string) b[0..<n] == "{\"ended\":\"family\"}";
+  n = auw_ended_all_write(3, 0, b[..]);
+  #assert cast(string) b[0..<n] == "{\"ended\":3,\"agents_paused\":0}" && auw_ended_all_write(3, 0, b[0..<n - 1]) == -1;
+  n = auw_ended_all_write(0, 12, b[..]);
+  #assert cast(string) b[0..<n] == "{\"ended\":0,\"agents_paused\":12}";
+  n = auw_login_detail_write("email", "web", false, false, b[..]);
+  #assert cast(string) b[0..<n] == "{\"via\":\"email\",\"client\":\"web\",\"new\":false,\"device\":false}" && auw_login_detail_write("email", "web", false, false, b[0..<n - 1]) == -1;
+  n = auw_login_detail_write("nostr", "app", true, true, b[..]);
+  #assert cast(string) b[0..<n] == "{\"via\":\"nostr\",\"client\":\"app\",\"new\":true,\"device\":true}";
+}
+
+#test "logged in: an app's pair and a browser's, the player null or an object, more members or none" {
+  b: [1024] u8;
+  n := auw_login_app_write("acct_1", true, "oa_at_A", "oa_rt_R", false, "null", "", b[..]);
+  #assert cast(string) b[0..<n] == "{\"state\":\"logged-in\",\"account\":\"acct_1\",\"new\":true,\"access_token\":\"oa_at_A\",\"refresh_token\":\"oa_rt_R\",\"expires_in\":3600,\"device_bound\":false,\"player\":null}";
+  #assert auw_login_app_write("acct_1", true, "oa_at_A", "oa_rt_R", false, "null", "", b[0..<n - 1]) == -1;
+  n = auw_login_app_write("acct_1", false, "oa_at_A", "oa_rt_R", true, "{\"player\": \"p1\", \"name\": \"A\"}", ",\"recovery_code\":\"x\"", b[..]);
+  #assert cast(string) b[0..<n] == "{\"state\":\"logged-in\",\"account\":\"acct_1\",\"new\":false,\"access_token\":\"oa_at_A\",\"refresh_token\":\"oa_rt_R\",\"expires_in\":3600,\"device_bound\":true,\"player\":{\"player\": \"p1\", \"name\": \"A\"},\"recovery_code\":\"x\"}";
+  n = auw_login_app_lines("acct_1", true, "oa_at_A", "oa_rt_R", false, "", b[..]);
+  #assert cast(string) b[0..<n] == "state logged-in\naccount acct_1\nnew 1\naccess_token oa_at_A\nrefresh_token oa_rt_R\nexpires_in 3600\ndevice_bound 0\n" && auw_login_app_lines("acct_1", true, "oa_at_A", "oa_rt_R", false, "", b[0..<n - 1]) == -1;
+  n = auw_login_app_lines("acct_1", false, "oa_at_A", "oa_rt_R", true, "recovery_code x\n", b[..]);
+  #assert cast(string) b[0..<n] == "state logged-in\naccount acct_1\nnew 0\naccess_token oa_at_A\nrefresh_token oa_rt_R\nexpires_in 3600\ndevice_bound 1\nrecovery_code x\n";
+  n = auw_login_web_write("acct_1", false, "null", "", b[..]);
+  #assert cast(string) b[0..<n] == "{\"state\":\"logged-in\",\"account\":\"acct_1\",\"new\":false,\"player\":null}" && auw_login_web_write("acct_1", false, "null", "", b[0..<n - 1]) == -1;
+  n = auw_login_web_write("acct_1", true, "{\"player\": \"p1\"}", ",\"passkey_offer\":true", b[..]);
+  #assert cast(string) b[0..<n] == "{\"state\":\"logged-in\",\"account\":\"acct_1\",\"new\":true,\"player\":{\"player\": \"p1\"},\"passkey_offer\":true}";
+  n = auw_login_web_lines("acct_1", false, "", b[..]);
+  #assert cast(string) b[0..<n] == "state logged-in\naccount acct_1\nnew 0\n" && auw_login_web_lines("acct_1", false, "", b[0..<n - 1]) == -1;
+  n = auw_login_web_lines("acct_1", true, "passkey_offer 1\n", b[..]);
+  #assert cast(string) b[0..<n] == "state logged-in\naccount acct_1\nnew 1\npasskey_offer 1\n";
+}
+
+#test "the email routes: the message, sent, the one-word states, the code to type elsewhere" {
+  b: [1024] u8;
+  n := auw_mail_write("a@example.com", "482913", "0123abcd", "https://openagents.com/login/email#t=ff00", b[..]);
+  #assert cast(string) b[0..<n] == "{\"to\":\"a@example.com\",\"subject\":\"Your OpenAgents code: 482913\",\"idempotency_key\":\"login-0123abcd\",\"text\":\"Your code is 482913.\\n\\nOr open this link in the same browser:\\nhttps://openagents.com/login/email#t=ff00\\n\\nIt works for 10 minutes. If you didn't ask for it, ignore this email.\\n\"}";
+  #assert auw_mail_write("a@example.com", "482913", "0123abcd", "u", b[0..<200]) == -1;
+  n = auw_mail_write("\"a\\b\"@example.com", "4829137", "", "", b[..]);
+  #assert cast(string) b[0..<n] == "{\"to\":\"\\\"a\\\\b\\\"@example.com\",\"subject\":\"Your OpenAgents code: 482913\",\"idempotency_key\":\"login-\",\"text\":\"Your code is 482913.\\n\\nOr open this link in the same browser:\\n\\n\\nIt works for 10 minutes. If you didn't ask for it, ignore this email.\\n\"}";
+  n = auw_sent_write("", b[..]);
+  #assert cast(string) b[0..<n] == "{\"state\":\"sent\",\"expires_in\":600,\"tries\":5}" && auw_sent_write("", b[0..<n - 1]) == -1;
+  n = auw_sent_write("ab12", b[..]);
+  #assert cast(string) b[0..<n] == "{\"state\":\"sent\",\"expires_in\":600,\"tries\":5,\"pending\":\"ab12\"}";
+  n = auw_sent_lines("", b[..]);
+  #assert cast(string) b[0..<n] == "state sent\nexpires_in 600\ntries 5\n";
+  n = auw_sent_lines("ab12", b[..]);
+  #assert cast(string) b[0..<n] == "state sent\nexpires_in 600\ntries 5\npending ab12\n" && auw_sent_lines("ab12", b[0..<n - 1]) == -1;
+  n = auw_state_write("linked", b[..]);
+  #assert cast(string) b[0..<n] == "{\"state\":\"linked\"}" && auw_state_write("linked", b[0..<n - 1]) == -1;
+  n = auw_state_write("logged-out", b[..]);
+  #assert cast(string) b[0..<n] == "{\"state\":\"logged-out\"}";
+  n = auw_state_lines("linked", b[..]);
+  #assert cast(string) b[0..<n] == "state linked\n" && auw_state_lines("linked", b[0..<n - 1]) == -1;
+  n = auw_state_lines("logged-out", b[..]);
+  #assert cast(string) b[0..<n] == "state logged-out\n";
+  n = auw_elsewhere_write("482913", b[..]);
+  #assert cast(string) b[0..<n] == "{\"state\":\"elsewhere\",\"code\":\"482913\",\"error\":\"Type this code in the window where you asked: 482913\"}" && auw_elsewhere_write("482913", b[0..<n - 1]) == -1;
+  n = auw_elsewhere_write("0000001", b[..]);
+  #assert cast(string) b[0..<n] == "{\"state\":\"elsewhere\",\"code\":\"000000\",\"error\":\"Type this code in the window where you asked: 000000\"}";
+  n = auw_elsewhere_lines("482913", b[..]);
+  #assert cast(string) b[0..<n] == "state elsewhere\ncode 482913\n" && auw_elsewhere_lines("482913", b[0..<n - 1]) == -1;
+}
+
+#test "challenges, the phone, a new pair, logging out everywhere, the sessions" {
+  b: [1024] u8;
+  n := auw_challenge_write("c0ffee", "https://openagents.com", b[..]);
+  #assert cast(string) b[0..<n] == "{\"challenge\":\"c0ffee\",\"url\":\"https://openagents.com/api/auth/nostr\",\"method\":\"POST\",\"body\":\"{\\\"challenge\\\":\\\"c0ffee\\\"}\",\"expires_in\":300}";
+  #assert auw_challenge_write("c0ffee", "https://openagents.com", b[0..<n - 1]) == -1;
+  n = auw_challenge_lines("c0ffee", "https://openagents.com", b[..]);
+  #assert cast(string) b[0..<n] == "challenge c0ffee\nurl https://openagents.com/api/auth/nostr\nexpires_in 300\n" && auw_challenge_lines("c0ffee", "o", b[0..<20]) == -1;
+  n = auw_phone_write("c0ffee", "beef", "http://localhost:8080", b[..]);
+  #assert cast(string) b[0..<n] == "{\"challenge\":\"c0ffee\",\"poll\":\"beef\",\"url\":\"http://localhost:8080/login#c=c0ffee\",\"expires_in\":300}" && auw_phone_write("c0ffee", "beef", "o", b[0..<40]) == -1;
+  n = auw_phone_lines("c0ffee", "beef", "http://localhost:8080", b[..]);
+  #assert cast(string) b[0..<n] == "challenge c0ffee\npoll beef\nurl http://localhost:8080/login#c=c0ffee\nexpires_in 300\n" && auw_phone_lines("c0ffee", "beef", "o", b[0..<40]) == -1;
+  n = auw_pair_write("oa_at_A", "oa_rt_R", b[..]);
+  #assert cast(string) b[0..<n] == "{\"access_token\":\"oa_at_A\",\"refresh_token\":\"oa_rt_R\",\"expires_in\":3600}" && auw_pair_write("oa_at_A", "oa_rt_R", b[0..<n - 1]) == -1;
+  n = auw_pair_lines("oa_at_A", "oa_rt_R", b[..]);
+  #assert cast(string) b[0..<n] == "access_token oa_at_A\nrefresh_token oa_rt_R\nexpires_in 3600\n" && auw_pair_lines("oa_at_A", "oa_rt_R", b[0..<n - 1]) == -1;
+  n = auw_logout_all_write(0, b[..]);
+  #assert cast(string) b[0..<n] == "{\"state\":\"logged-out\",\"ended\":0}" && auw_logout_all_write(0, b[0..<n - 1]) == -1;
+  n = auw_logout_all_write(14, b[..]);
+  #assert cast(string) b[0..<n] == "{\"state\":\"logged-out\",\"ended\":14}";
+  n = auw_logout_all_lines(14, b[..]);
+  #assert cast(string) b[0..<n] == "state logged-out\nended 14\n" && auw_logout_all_lines(14, b[0..<n - 1]) == -1;
+  n = auw_sessions_write("[]", b[..]);
+  #assert cast(string) b[0..<n] == "{\"sessions\":[]}" && auw_sessions_write("[]", b[0..<n - 1]) == -1;
+  n = auw_sessions_write("[{\"id\": \"s1\", \"current\": true}]", b[..]);
+  #assert cast(string) b[0..<n] == "{\"sessions\":[{\"id\": \"s1\", \"current\": true}]}";
+}
+
+#test "who is logged in: nobody, an account in steps, the limits in steps, the viewer's lines" {
+  b: [1024] u8;
+  n := auw_nobody_write(b[..]);
+  #assert cast(string) b[0..<n] == "{\"logged_in\":false}" && auw_nobody_write(b[0..<n - 1]) == -1;
+  n = auw_nobody_lines(b[..]);
+  #assert cast(string) b[0..<n] == "logged_in 0\n" && auw_nobody_lines(b[0..<n - 1]) == -1;
+  n = auw_me_head_write("acct_1", "person", 2, "nostr", "s1", true, b[..]);
+  n = auw_me_tail_write("", "[]", b[..], n);
+  #assert cast(string) b[0..<n] == "{\"logged_in\":true,\"account\":\"acct_1\",\"kind\":\"person\",\"level\":\"L2\",\"via\":\"nostr\",\"session\":\"s1\",\"admin\":true,\"emails\":[],\"keys\":[]}";
+  n = auw_me_head_write("acct_1", "", 1, "email", "", false, b[..]);
+  n = auw_me_email_write("a•••@example.com", true, b[..], n);
+  n = auw_me_email_write("•••", false, b[..], n);
+  n = auw_me_tail_write("ada@example.com", "[{\"label\": \"app\", \"pubkey\": \"ab\"}]", b[..], n);
+  #assert cast(string) b[0..<n] == "{\"logged_in\":true,\"account\":\"acct_1\",\"kind\":\"\",\"level\":\"L1\",\"via\":\"email\",\"session\":\"\",\"admin\":false,\"emails\":[\"a•••@example.com\",\"•••\"],\"primary\":\"ada@example.com\",\"keys\":[{\"label\": \"app\", \"pubkey\": \"ab\"}]}";
+  #assert auw_me_head_write("acct_1", "person", 2, "nostr", "s1", true, b[0..<40]) == -1 && auw_me_email_write("x", true, b[..], -1) == -1 && auw_me_tail_write("", "[]", b[..], -1) == -1 && auw_me_email_write("x", true, b[0..<12], 10) == -1 && auw_me_tail_write("", "[]", b[0..<12], 10) == -1;
+  n = auw_me_head_lines("acct_1", "person", 2, "nostr", true, b[..]);
+  n = auw_me_email_lines("a•••@example.com", b[..], n);
+  n = auw_me_primary_lines("ada@example.com", b[..], n);
+  n = auw_me_key_lines("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\", \"label\": \"app\"}]", b[..], n);
+  n = auw_me_key_lines("ab", b[..], n);
+  #assert cast(string) b[0..<n] == "logged_in 1\naccount acct_1\nkind person\nlevel L2\nvia nostr\nadmin 1\nemail a•••@example.com\nprimary ada@example.com\nkey 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\nkey ab\n";
+  n = auw_me_head_lines("acct_1", "person", 1, "email", false, b[..]);
+  #assert cast(string) b[0..<n] == "logged_in 1\naccount acct_1\nkind person\nlevel L1\nvia email\nadmin 0\n" && auw_me_head_lines("acct_1", "person", 1, "email", false, b[0..<n - 1]) == -1;
+  #assert auw_me_email_lines("x", b[..], -1) == -1 && auw_me_primary_lines("x", b[..], -1) == -1 && auw_me_key_lines("x", b[..], -1) == -1 && auw_me_key_lines("x", b[0..<12], 10) == -1;
+  n = auw_limits_open_write(b[..]);
+  n = auw_limits_row_write(true, "email_hour", "Email codes sent to one address", 5, "an hour", 3600000, b[..], n);
+  n = auw_limits_row_write(false, "recovery", "Recovery requests for one account", 3, "a week", 604800000, b[..], n);
+  n = auw_limits_close_write(b[..], n);
+  #assert cast(string) b[0..<n] == "{\"limits\":[{\"name\":\"email_hour\",\"what\":\"Email codes sent to one address\",\"max\":5,\"per\":\"an hour\",\"window_ms\":3600000},{\"name\":\"recovery\",\"what\":\"Recovery requests for one account\",\"max\":3,\"per\":\"a week\",\"window_ms\":604800000}]}";
+  #assert auw_limits_open_write(b[0..<5]) == -1 && auw_limits_row_write(true, "n", "w", 1, "p", 1, b[..], -1) == -1 && auw_limits_row_write(true, "n", "w", 1, "p", 1, b[0..<30], 11) == -1 && auw_limits_close_write(b[..], -1) == -1 && auw_limits_close_write(b[0..<12], 11) == -1;
+  n = auw_limits_row_lines("email_hour", 5, "an hour", "Email codes sent to one address", b[..], 0);
+  n = auw_limits_row_lines("code_tries", 5, "per code", "Tries at one email code", b[..], n);
+  #assert cast(string) b[0..<n] == "limit email_hour|5|an hour|Email codes sent to one address\nlimit code_tries|5|per code|Tries at one email code\n" && auw_limits_row_lines("n", 1, "p", "w", b[..], -1) == -1 && auw_limits_row_lines("n", 1, "p", "w", b[0..<12], 4) == -1;
+  n = auw_viewer_lines("K|npub1\n\nH|ab\n\n", true, b[..]);
+  #assert cast(string) b[0..<n] == "K|npub1\n\nH|ab\n\nA|1\n" && auw_viewer_lines("K|npub1\n\nH|ab\n\n", true, b[0..<n - 1]) == -1;
+  n = auw_viewer_lines("K|npub1\n\nH|ab\n\n", false, b[..]);
+  #assert cast(string) b[0..<n] == "K|npub1\n\nH|ab\n\n";
+  n = auw_viewer_lines("", false, b[..]);
+  #assert n == 0;
+  n = auw_viewer_account_lines("acct_1", b[..]);
+  #assert cast(string) b[0..<n] == "U|acct_1\n" && auw_viewer_account_lines("acct_1", b[0..<n - 1]) == -1;
+  n = auw_viewer_nobody_lines(b[..]);
+  #assert n == 14 && cast(string) b[0..<n] == "not logged in\n" && auw_viewer_nobody_lines(b[0..<13]) == -1;
+}
+
+// What the scan left in out: the bytes up to the first 0.
+auw_test_left :: (out: [] u8) -> string #effects(all) {
+  n := 0;
+  while n < out.count && out[n] != 0 { n += 1; }
+  return cast(string) out[0..<n];
+}
+#test "a body's string member, as the C scanner read it" {
+  o: [16] u8;
+  #assert auw_ask_email("{\"email\":\"a@b.c\"}", o[..]) == 5 && auw_test_left(o[..]) == "a@b.c";
+  #assert auw_ask_email("{ \"email\" \t:\r\n \"a@b.c\" , \"client\":\"app\"}", o[..]) == 5 && auw_test_left(o[..]) == "a@b.c";
+  #assert auw_ask_client("{\"email\":\"a@b.c\",\"client\":\"app\"}", o[..]) == 3 && auw_test_left(o[..]) == "app";
+  // no parser's JSON, read all the same: not closed, a comma too many, the member a level down
+  #assert auw_ask_code("{\"code\":\"482 913\"", o[..]) == 7 && auw_test_left(o[..]) == "482 913";
+  #assert auw_ask_code("{\"code\":\"482913\",}", o[..]) == 6 && auw_ask_code("{\"x\":{\"code\":\"1\"}}", o[..]) == 1 && auw_test_left(o[..]) == "1";
+  #assert auw_ask_code("\"code\":\"\"", o[..]) == 0 && auw_test_left(o[..]) == "";
+  // the escapes it takes: \" \\ \/ ; any other, or a control byte, is no value
+  #assert auw_ask_label("{\"label\":\"a\\\"b\\\\c\\/d\"}", o[..]) == 7 && auw_test_left(o[..]) == "a\"b\\c/d";
+  // absent: out is emptied
+  o[0] = 'w'; o[1] = 'e'; o[2] = 'b'; o[3] = 0;
+  #assert auw_ask_client("{\"email\":\"a@b.c\"}", o[..]) == -1 && auw_test_left(o[..]) == "";
+  #assert auw_ask_client("", o[..]) == -1 && auw_ask_client("{\"clients\":\"app\"}", o[..]) == -1 && auw_ask_client("{client:\"app\"}", o[..]) == -1;
+  // a value that is no string: out is left as it was
+  o[0] = 'w'; o[1] = 'e'; o[2] = 'b'; o[3] = 0;
+  #assert auw_ask_client("{\"client\":5}", o[..]) == -2 && auw_test_left(o[..]) == "web";
+  #assert auw_ask_client("{\"client\":", o[..]) == -2 && auw_ask_client("{\"client\": ", o[..]) == -2 && auw_test_left(o[..]) == "web";
+  // a bad escape, a control byte, no closing quote: out holds what was copied, with no 0 written
+  #assert auw_ask_client("{\"client\":\"ap\\n\"}", o[..]) == -2 && auw_test_left(o[..]) == "apb";
+  o[0] = 'w'; o[1] = 'e'; o[2] = 'b'; o[3] = 0;
+  #assert auw_ask_client("{\"client\":\"a\nb\"}", o[..]) == -2 && auw_test_left(o[..]) == "aeb";
+  #assert auw_ask_client("{\"client\":\"xy", o[..]) == -2 && auw_test_left(o[..]) == "xyb";
+  // a backslash as the body's last byte is copied as it is; then the value is not closed
+  #assert auw_ask_client("{\"client\":\"q\\", o[..]) == -2 && auw_test_left(o[..]) == "q\\b";
+  // too long for out and its 0: 15 bytes fit in 16
+  #assert auw_ask_client("{\"client\":\"0123456789abcde\"}", o[..]) == 15 && auw_test_left(o[..]) == "0123456789abcde";
+  o[15] = 'z';
+  #assert auw_ask_client("{\"client\":\"0123456789ABCDEF\"}", o[..]) == -2 && auw_test_left(o[..]) == "0123456789ABCDEz";
+  // "KEY" with no colon after it is passed over (a value that happens to be the key's name)
+  #assert auw_ask_t("{\"x\":\"t\",\"t\":\"ab\"}", o[..]) == 2 && auw_test_left(o[..]) == "ab";
+  #assert auw_ask_t("{\"x\":\"t\"}", o[..]) == -1 && auw_test_left(o[..]) == "";
+  #assert auw_ask_pending("{\"pending\":\"p1\"}", o[..]) == 2 && auw_ask_challenge("{\"challenge\":\"c1\"}", o[..]) == 2 && auw_ask_poll("{\"poll\":\"p2\"}", o[..]) == 2 && auw_test_left(o[..]) == "p2";
+  #assert auw_ask_refresh_token("{\"refresh_token\":\"oa_rt_1\"}", o[..]) == 7 && auw_test_left(o[..]) == "oa_rt_1";
+  #assert auw_body_str("{\"name\":\"n1\"}", "name", o[..]) == 2 && auw_test_left(o[..]) == "n1" && auw_body_str("{\"name\":\"n1\"}", "nam", o[..]) == -1;
+  #assert auw_ask_t("{\"t\":\"ab\"}", o[0..<0]) == -2;
+}
+
+#test "a body's true member, and where auth.me_of's sealed emails and keys stand" {
+  #assert auw_ask_link("{\"link\":true}") && auw_ask_link("{\"email\":\"a\", \"link\" : true}") && auw_ask_link("{\"link\":::  true") && auw_ask_link("{\"link\":trueish}");
+  #assert !auw_ask_link("{\"link\":false}") && !auw_ask_link("{\"link\":\"true\"}") && !auw_ask_link("{\"link\":\ttrue}") && !auw_ask_link("{}") && !auw_ask_link("") && !auw_ask_link("{\"link\":tru") && !auw_ask_link("{\"link\"");
+  // the first "link" alone is looked at
+  #assert !auw_ask_link("{\"x\":\"link\",\"link\":true}") && auw_ask_merge("{\"merge\":true}") && !auw_ask_merge("{\"link\":true}") && auw_ask_agents("{\"agents\": true}") && !auw_ask_agents("{\"agent\": true}");
+  emails := "[{\"id\": 4, \"sealed\": \"01ab\"}, {\"id\": 5, \"sealed\": \"02cd\"}]";
+  a := auw_me_sealed_at(emails, 0);
+  #assert a == 22 && auw_me_sealed_len(emails, a) == 4 && emails[a..<a + 4] == "01ab";
+  c := auw_me_sealed_at(emails, a + 1);
+  #assert c == 51 && auw_me_sealed_len(emails, c) == 4 && emails[c..<c + 4] == "02cd" && auw_me_sealed_at(emails, c + 1) == -1;
+  #assert auw_me_sealed_at("[]", 0) == -1 && auw_me_sealed_at("", 0) == -1 && auw_me_sealed_at(emails, 500) == -1 && auw_me_sealed_at(emails, -1) == -1;
+  #assert auw_me_sealed_len("\"sealed\": \"01ab", 11) == -1 && auw_me_sealed_len("\"sealed\": \"\"", 11) == 0;
+  keys := "[{\"label\": \"app\", \"pubkey\": \"ab12\"}]";
+  k := auw_me_pubkey_at(keys, 0);
+  #assert k == 29 && keys[k..<k + 4] == "ab12" && auw_me_pubkey_at(keys, k + 1) == -1 && auw_me_pubkey_at("[]", 0) == -1;
+}

@@ -1,0 +1,69 @@
+// The room directory's routes on the wire, one codec for what rooms.c writes itself (Protocol,
+// GitHub #13250): proto/openagents/api/v1alpha1/rooms.proto (profile api-routes) names the
+// members. rooms.c calls the #export_c writers below through rooms-wire.generated.c and builds no
+// body of its own:
+//   rmw_rooms_write     200 from POST /api/playtest/room-directory: {"rooms":N}
+//   rmw_kept_write      200 from POST /api/playtest/room-stats and capacity-record: {"kept":true|false}
+//   rmw_bucket_write    200 from POST /api/playtest/room-crash and app-crash: {"kept":true,"bucket":"..."}
+//   rmw_crashes_write   200 from GET /api/playtest/crashes: {"env":"...","now_ms":N,"buckets":[...]}
+// The rooms list, the shards and the crash buckets are SQL's, carried as they came; the rooms list
+// has its own codec (metaverse-engine/net/rooms-list.coax). The directory post is read through
+// metaverse-engine/session/room-report.coax (room_report_dir_read, exported by the ticket-sign
+// unit). The bytes are the ones rooms.c wrote before this file:
+// proto/verse/api-routes-v1alpha1.json holds what a running API answered and routes-goldens.coax
+// holds each answer's keys to its message. A bucket is 32 hex digits (service.c crash_keep), so
+// nothing here ever needed an escape. A writer returns the body's length, or -1 when it does not fit.
+//   coax/bin/coax test coax/web/api/rooms-wire.coax --library
+#load "api-wire.coax";
+
+// {"rooms":3}: the instances the report named.
+rmw_rooms_write :: (rooms: int, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "{\"rooms\":"); jo_int(o[..], rooms); jo_put(o[..], "}");
+  return aw_len(o[..]);
+}
+// {"kept":true}, or {"kept":false} when a later run of that day is already kept.
+rmw_kept_write :: (kept: bool, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "{\"kept\":"); jo_put(o[..], ifx kept then "true" else "false"); jo_put(o[..], "}");
+  return aw_len(o[..]);
+}
+// {"kept":true,"bucket":"0123..."}: the bucket a crash report was kept under.
+rmw_bucket_write :: (bucket: string, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "{\"kept\":true,\"bucket\":"); jo_quoted(o[..], bucket); jo_put(o[..], "}");
+  return aw_len(o[..]);
+}
+// {"env":"staging","now_ms":1762190000000,"buckets":[...]}: env is staging or production; buckets
+// is verse.crash_list's JSON as it came.
+rmw_crashes_write :: (staging: bool, now_ms: int, buckets: string, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "{\"env\":"); jo_quoted(o[..], ifx staging then "staging" else "production");
+  jo_put(o[..], ",\"now_ms\":"); jo_int(o[..], now_ms);
+  jo_put(o[..], ",\"buckets\":"); jo_put(o[..], buckets); jo_put(o[..], "}");
+  return aw_len(o[..]);
+}
+
+#test "what rooms.c answers itself: the rooms named, kept, a crash's bucket and the crash buckets" {
+  b: [256] u8;
+  n := rmw_rooms_write(3, b[..]);
+  #assert cast(string) b[0..<n] == "{\"rooms\":3}" && rmw_rooms_write(3, b[0..<n - 1]) == -1;
+  n = rmw_rooms_write(0, b[..]);
+  #assert cast(string) b[0..<n] == "{\"rooms\":0}";
+  n = rmw_rooms_write(2147483647, b[..]);
+  #assert cast(string) b[0..<n] == "{\"rooms\":2147483647}";
+  n = rmw_kept_write(true, b[..]);
+  #assert cast(string) b[0..<n] == "{\"kept\":true}" && rmw_kept_write(true, b[0..<n - 1]) == -1;
+  n = rmw_kept_write(false, b[..]);
+  #assert cast(string) b[0..<n] == "{\"kept\":false}";
+  n = rmw_bucket_write("0123456789abcdef0123456789abcdef", b[..]);
+  #assert cast(string) b[0..<n] == "{\"kept\":true,\"bucket\":\"0123456789abcdef0123456789abcdef\"}" && n == 57 && rmw_bucket_write("0123456789abcdef0123456789abcdef", b[0..<56]) == -1;
+  n = rmw_bucket_write("", b[..]);
+  #assert cast(string) b[0..<n] == "{\"kept\":true,\"bucket\":\"\"}";
+  n = rmw_crashes_write(true, 1762190000000, "[]", b[..]);
+  #assert cast(string) b[0..<n] == "{\"env\":\"staging\",\"now_ms\":1762190000000,\"buckets\":[]}" && rmw_crashes_write(true, 1762190000000, "[]", b[0..<n - 1]) == -1;
+  n = rmw_crashes_write(false, 0, "[{\"sig\":\"a \\\"b\\\"\",\"shard\":null,\"reports\":2}]", b[..]);
+  #assert cast(string) b[0..<n] == "{\"env\":\"production\",\"now_ms\":0,\"buckets\":[{\"sig\":\"a \\\"b\\\"\",\"shard\":null,\"reports\":2}]}";
+  n = rmw_crashes_write(false, -5, "[]", b[..]);
+  #assert cast(string) b[0..<n] == "{\"env\":\"production\",\"now_ms\":-5,\"buckets\":[]}";
+}

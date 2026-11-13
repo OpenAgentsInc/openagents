@@ -79,3 +79,34 @@ aapt_wire_answer :: (canonical:string,out:[]u8)->string {
   b:[128]u8;o:[1]Jo;
   for i:0..<19 {jo_start(o[..],b[..]);jo_str(o[..],aap_wire_name(i));#assert jv_parse(d[..],jo_text(o[..]),nodes[..]) && aap_row_field(d[0],0)==i;}
 }
+
+// The client's side of the route: the request as written and the answer as read.
+#test "API anime request writer gives the exact envelope the route admits and fails whole at capacity" {
+  state:="{\"cast\":[{\"slot\":0,\"name\":\"Draconia\",\"archetype\":\"heroine\",\"on\":true,\"place\":\"courtyard\"}],\"shot\":{\"framing\":\"wide\",\"place\":\"courtyard\"},\"last\":[]}";
+  out:[AAP_INPUT_MAX]u8;n:=aap_request("Say \"go\".",state,out[..]);
+  #assert n>0 && cast(string)out[0..<n]=="{\"v\":1,\"words\":\"Say \\\"go\\\".\",\"state\":{\"cast\":[{\"slot\":0,\"name\":\"Draconia\",\"archetype\":\"heroine\",\"on\":true,\"place\":\"courtyard\"}],\"shot\":{\"framing\":\"wide\",\"place\":\"courtyard\"},\"last\":[]}}";
+  prepared:[AAP_RESULT_MAX]u8;#assert aap_prepare(out[0..<n],prepared[..])>0;
+  exact:[AAP_INPUT_MAX]u8;#assert aap_request("Say \"go\".",state,exact[0..<n])==n && cast(string)exact[0..<n]==cast(string)out[0..<n];
+  tiny:[AAP_INPUT_MAX]u8;for i:0..<tiny.count {tiny[i]=55;}#assert aap_request("Say \"go\".",state,tiny[0..<n-1])==AAP_CAPACITY && tiny[0]==55 && tiny[n-2]==55;
+  long:[AAP_INPUT_MAX]u8;for i:0..<long.count {long[i]='a';}#assert aap_request(cast(string)long[..],state,out[..])==AAP_CAPACITY;
+}
+#test "API anime answer reader holds the route's own answers and refuses other words, missing members and loose envelopes" {
+  list:[8192]u8;out:[AAP_RESULT_MAX]u8;n:=aap_test_finish(aap_test_list(AAP_TEST_CAST,AAP_TEST_ACT,list[..]),out[..]);#assert n>0;
+  words:="Draconia casts a fireball. Close up on Kai.";reply:=cast(string)out[0..<n];
+  nodes:[2048]JvNode;d:[1]Jv;answers:=aap_reply(reply,words,d[..],nodes[..]);#assert answers!=-1 && jv_len(d[0],answers)==2;
+  #assert jv_raw(d[0],jv_get(d[0],jv_at(d[0],answers,0),"decision"))=="play" && jv_raw(d[0],jv_get(d[0],jv_at(d[0],answers,1),"kind"))=="act";
+  #assert aap_reply(reply,"Other.",d[..],nodes[..])==-1;
+  n=aap_test_finish("[]",out[..]);#assert n>0;answers=aap_reply(cast(string)out[0..<n],words,d[..],nodes[..]);#assert answers!=-1 && jv_len(d[0],answers)==0;
+  n=aap_test_finish(aap_test_list(AAP_TEST_CAST,"",list[..]),out[..]);#assert n>0;reply=cast(string)out[0..<n];#assert aap_reply(reply,words,d[..],nodes[..])!=-1;
+  changed:[AAP_RESULT_MAX]u8;
+  from:=[11]string.["\"p\":0.900,","\"timing\":\"now\",","\"stock\":true,","\"render_supported\":true,",",\"decision\":\"play\"","\"decision\":\"play\"","\"v\":1","\"v\":1","\"heard\"","\"answers\":[","\"p\":0.900"];
+  to:=[11]string.["","","","","","\"decision\":\"soft\"","\"v\":2","\"v\":1,\"more\":1","\"heard\":\"x\",\"heard\"","\"answers\":{},\"x\":[","\"p\":0.800"];
+  for i:0..<11 {x:=aap_test_replace(reply,from[i],to[i],changed[..]);#assert x!="" && aap_reply(x,words,d[..],nodes[..])==-1;}
+  for bad:[5]string.["","{}","[]","{\"v\":1,\"heard\":3,\"answers\":[]}","{\"v\":1,\"heard\":\"Draconia casts a fireball. Close up on Kai.\",\"answers\":[]} x"] {#assert aap_reply(bad,words,d[..],nodes[..])==-1;}
+  nul:=[2]u8.['{',0];#assert aap_reply(cast(string)nul[..],words,d[..],nodes[..])==-1;
+  big:[AAP_RESULT_MAX+1]u8;for i:0..<big.count {big[i]=' ';}for c,i:reply {big[i]=c;}
+  #assert aap_reply(cast(string)big[0..<AAP_RESULT_MAX],words,d[..],nodes[..])!=-1 && aap_reply(cast(string)big[..],words,d[..],nodes[..])==-1;
+  nine:[32768]u8;o:[1]Jo;jo_start(o[..],nine[..]);jo_obj(o[..]);jo_key(o[..],"v");jo_int(o[..],1);jo_key(o[..],"heard");jo_str(o[..],words);jo_key(o[..],"answers");jo_arr(o[..]);
+  nn:=aap_reply(reply,words,d[..],nodes[..]);first:=jv_raw(d[0],jv_at(d[0],nn,0));for i:0..<9 {jo_raw(o[..],first);}jo_end(o[..]);jo_end(o[..]);
+  #assert !o[0].bad && aap_reply(jo_text(o[..]),words,d[..],nodes[..])==-1;
+}

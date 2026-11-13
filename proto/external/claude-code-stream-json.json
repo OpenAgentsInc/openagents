@@ -1,0 +1,50 @@
+{
+ "profile": "external-claude-code-stream-json",
+ "about": "Claude Code's stream-json: the lines `claude --output-format stream-json` prints. coax/lib/agent/claude/ is the only folder that parses them; what comes out is our own ClMessage, ClInit, ClAssistant, ClResult and ClModelUsage. The fixture names a recorded turn and the values those records must hold for it. Checked by coax/lib/agent/claude/claude-external-profile.coax. Not here: the control frames (control_request, control_response, control_cancel_request). The recording has none, and the ones in tests.coax are written by hand, so ClControlRequest has no fixture of real bytes yet.",
+ "fixtures": [
+  {
+   "name": "claude-tools.jsonl",
+   "source": "Claude Code 2.1.312 (`claude --output-format stream-json`), one claude-haiku-5-5 turn of seven steps (Bash, Read, Grep, Edit, a failed Bash, thinking, a Markdown answer), recorded for commit ef75934bc4 and kept at apps/openagents-desktop/zeron/fixtures/claude-tools.jsonl. Scrubbed and thinned by fixtures/fixture.py beside it: the folder is /tmp/demo, the init frame's machine lists are empty, hook, status, rate-limit and signature frames and most tool-input deltas are dropped, and each kept line is written again as compact JSON with type, subtype, parent_tool_use_id, event and message first. The values are the program's; the member order and the dropped members are not.",
+   "file": "apps/openagents-desktop/zeron/fixtures/claude-tools.jsonl",
+   "want": {
+    "lines": 92,
+    "invalid": 0,
+    "unknown": 0,
+    "control": 0,
+    "system": 1,
+    "stream_event": 76,
+    "assistant": 8,
+    "user": 6,
+    "result": 1,
+    "assistant_errors": 0,
+    "assistant_empty": 0,
+    "sessions_differ": 0,
+    "session_id": "dfc3d0c7-79e7-4d09-b940-c3ad305b7492",
+    "init.claude_code_version": "2.1.312",
+    "init.model": "claude-haiku-5-5",
+    "init.cwd": "/tmp/demo",
+    "init.permission_mode": "acceptEdits",
+    "init.api_key_source": "none",
+    "init.output_style": "default",
+    "init.tool_count": 0,
+    "result.kind": "success",
+    "result.terminal_reason": "completed",
+    "result.is_error": 0,
+    "result.num_turns": 7,
+    "result.duration_ms": 9547,
+    "result.duration_api_ms": 9097,
+    "result.input_tokens": 8,
+    "result.output_tokens": 1058,
+    "result.cache_read_input_tokens": 88145,
+    "result.cache_creation_input_tokens": 13814,
+    "result.text_bytes": 309,
+    "result.queued_turn_count": 0,
+    "result.model.found": 1,
+    "result.model.output_tokens": 1058,
+    "result.model.context_window": 1000000,
+    "result.model.thinking_tokens": 196,
+    "result.model.provider": "firstParty"
+   }
+  }
+ ]
+}

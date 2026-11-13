@@ -1,0 +1,1254 @@
+{
+ "identity": "microcoder-worker-lines-v1",
+ "check": "coax/web/tool.sh coax/lib/agent/engine/mcworker-profile.coax proto/coder/microcoder-worker-lines-v1.json",
+ "codec": "coax/lib/agent/engine/mcworker-wire.coax",
+ "scope": "What Microcoder's worker process (coder/tui/mcworker.coax) and its owner say to each other over the worker's standard input and output: one JSON object a line each way, with no spaces. The owners are Coder's terminal (coder/tui/microcoder.coax), the turn runner (coax/lib/agent/engine/run.coax), both through mcworker-client.coax, and Coder's memory (coder/tui/memory.coax) for embeddings.",
+ "captured": "2026-11-13, in a throwaway home, from the worker and the Coder CLI built from this tree before the codec (commit 21f7b9ada1). No hosted model was called: the model's and Vertex's answers were replayed with GW_REPLAY from recordings in the repository or from scripted answers. The same runs with both programs built on the codec gave the same bytes each way, apart from the journal file's name (its start time).",
+ "framing": "A line ends with one line feed. A string is escaped as coax/lib/nostr/json.coax json_write_string does: a quote and a backslash behind a backslash, \\n \\r \\t \\b \\f, any other byte under 32 as \\u00XX, every other byte as it is. Members are written in the order given here; the readers find them by name in any order and skip members they do not know. The worker takes an owner's line as the first of stop, forget, embed, answer, task that fits; a line that fits none is skipped. An owner skips a worker's line of a kind it does not know.",
+ "endings": {
+  "finished": "the reply is whole",
+  "asked": "the reply is a question for the person",
+  "stopped": "STOP",
+  "failed": "refused or broken; text says why",
+  "no_capacity": "no model answered; text says why",
+  "bad_replies": "three answers in a row that fit no schema",
+  "idle": "three answers in a row with nothing to do and no reply"
+ },
+ "lines": [
+  {
+   "kind": "task",
+   "from": "owner",
+   "writer": "mww_task",
+   "reader": "mww_request (the worker); mww_task_read (every member)",
+   "members": [
+    {
+     "name": "task",
+     "type": "string",
+     "note": "the message; a line whose task is missing, empty or no string is skipped; over 16384 bytes it ends failed"
+    },
+    {
+     "name": "session",
+     "type": "string",
+     "note": "the owner's session ID, kept in the journal's context frame"
+    },
+    {
+     "name": "cwd",
+     "type": "string",
+     "note": "the folder; missing, empty or over 4096 bytes the task ends failed"
+    },
+    {
+     "name": "local",
+     "type": "true",
+     "note": "written only when true: the model server on this machine"
+    },
+    {
+     "name": "sandbox",
+     "type": "string",
+     "note": "danger-full-access, read-only or workspace-write; missing or empty reads as danger-full-access; any other ends failed"
+    },
+    {
+     "name": "policy.enabled",
+     "type": "boolean",
+     "note": "the owner runs under an approval policy"
+    },
+    {
+     "name": "policy.allow",
+     "type": "integer",
+     "note": "the effect that runs freely (0 read, 1 network, 2 write, 3 run); the worker keeps it in the journal only"
+    },
+    {
+     "name": "policy.ceiling",
+     "type": "integer",
+     "note": "the highest effect, 0 to 3; read only when enabled is true; out of range ends failed"
+    },
+    {
+     "name": "policy.roots",
+     "type": "string",
+     "note": "the policy's folders, a line each; the worker keeps it in the journal only"
+    },
+    {
+     "name": "gated",
+     "type": "true",
+     "note": "written only when true: each command waits for an answer line"
+    },
+    {
+     "name": "model",
+     "type": "string",
+     "note": "written only when the owner names a model; not read for a local task"
+    },
+    {
+     "name": "effort",
+     "type": "string",
+     "note": "written only when given: low, medium or high; anything else reads as low"
+    }
+   ]
+  },
+  {
+   "kind": "answer",
+   "from": "owner",
+   "writer": "mww_answer",
+   "reader": "mww_request",
+   "members": [
+    {
+     "name": "answer",
+     "type": "boolean",
+     "note": "true runs the waiting command, false refuses it"
+    },
+    {
+     "name": "ticket",
+     "type": "integer",
+     "note": "the ask line's ticket; an answer for another ticket is ignored"
+    },
+    {
+     "name": "why",
+     "type": "string",
+     "note": "written only when answer is false: the reason, refused when the owner gives none"
+    }
+   ]
+  },
+  {
+   "kind": "stop",
+   "from": "owner",
+   "writer": "MWW_STOP_LINE",
+   "reader": "mww_request",
+   "members": [
+    {
+     "name": "stop",
+     "type": "true",
+     "note": "STOP the run; the worker takes a boolean of either value"
+    }
+   ]
+  },
+  {
+   "kind": "forget",
+   "from": "owner",
+   "writer": "MWW_FORGET_LINE",
+   "reader": "mww_request",
+   "members": [
+    {
+     "name": "forget",
+     "type": "true",
+     "note": "forget the conversation; the worker takes a boolean of either value"
+    }
+   ]
+  },
+  {
+   "kind": "embed",
+   "from": "owner",
+   "writer": "mww_embed",
+   "reader": "mww_request",
+   "members": [
+    {
+     "name": "embed",
+     "type": "string",
+     "note": "the text to embed"
+    },
+    {
+     "name": "query",
+     "type": "true",
+     "note": "written only when true: a query's embedding, else a document's"
+    }
+   ]
+  },
+  {
+   "kind": "journal",
+   "from": "worker",
+   "writer": "mww_journal",
+   "reader": "mww_read",
+   "members": [
+    {
+     "name": "kind",
+     "type": "string",
+     "note": "the line's kind"
+    },
+    {
+     "name": "path",
+     "type": "string",
+     "note": "the worker's journal file (AJR1). The first line a worker writes. The owner copies the line into the session log as it is"
+    }
+   ]
+  },
+  {
+   "kind": "ready",
+   "from": "worker",
+   "writer": "mww_ready",
+   "reader": "mww_read",
+   "members": [
+    {
+     "name": "kind",
+     "type": "string",
+     "note": "the line's kind"
+    }
+   ]
+  },
+  {
+   "kind": "reply",
+   "from": "worker",
+   "writer": "mww_reply",
+   "reader": "mww_read",
+   "members": [
+    {
+     "name": "kind",
+     "type": "string",
+     "note": "the line's kind"
+    },
+    {
+     "name": "text",
+     "type": "string",
+     "note": "more of the reply"
+    }
+   ]
+  },
+  {
+   "kind": "attempt",
+   "from": "worker",
+   "writer": "mww_attempt (coax/lib/agent/session/stream.coax cst_attempt)",
+   "reader": "mww_read (what an owner shows); mww_attempt_again (every member); micro-observation.coax mo_relay relays it to the session log",
+   "members": [
+    {
+     "name": "kind",
+     "type": "string",
+     "note": "the line's kind"
+    },
+    {
+     "name": "schema",
+     "type": "string",
+     "note": "coder.observability.v2: the line is that schema's attempt record (proto/openagents/coder/observability/v2/events.proto)"
+    },
+    {
+     "name": "scope",
+     "type": "string",
+     "note": "request_attempt"
+    },
+    {
+     "name": "engine",
+     "type": "null",
+     "note": "the worker names no engine; the owner's relay does"
+    },
+    {
+     "name": "gateway",
+     "type": "string",
+     "note": "the gateway asked"
+    },
+    {
+     "name": "model",
+     "type": "string",
+     "note": "the model asked"
+    },
+    {
+     "name": "model_source",
+     "type": "string",
+     "note": "attempt_configuration"
+    },
+    {
+     "name": "requested_effort",
+     "type": "string or null",
+     "note": ""
+    },
+    {
+     "name": "outcome",
+     "type": "string",
+     "note": "done, stopped or why the attempt failed"
+    },
+    {
+     "name": "status",
+     "type": "integer",
+     "note": "the HTTP status, 0 when there was none"
+    },
+    {
+     "name": "input_tokens",
+     "type": "integer or null",
+     "note": ""
+    },
+    {
+     "name": "output_tokens",
+     "type": "integer or null",
+     "note": ""
+    },
+    {
+     "name": "cached_tokens",
+     "type": "integer or null",
+     "note": ""
+    },
+    {
+     "name": "reasoning_tokens",
+     "type": "integer or null",
+     "note": ""
+    },
+    {
+     "name": "cache_write_tokens",
+     "type": "integer or null",
+     "note": ""
+    },
+    {
+     "name": "provider_cost_usd_micros",
+     "type": "integer or null",
+     "note": ""
+    },
+    {
+     "name": "card_estimate_usd_micros",
+     "type": "integer or null",
+     "note": ""
+    },
+    {
+     "name": "usd_micros",
+     "type": "integer",
+     "note": "the card estimate again, -1 when there is none: what an owner adds to its cost"
+    }
+   ]
+  },
+  {
+   "kind": "command",
+   "from": "worker",
+   "writer": "mww_command",
+   "reader": "mww_read",
+   "members": [
+    {
+     "name": "kind",
+     "type": "string",
+     "note": "the line's kind"
+    },
+    {
+     "name": "command",
+     "type": "string",
+     "note": "the shell command"
+    },
+    {
+     "name": "exit",
+     "type": "integer",
+     "note": "its exit status; 126 for one the owner refused"
+    },
+    {
+     "name": "timed_out",
+     "type": "boolean",
+     "note": ""
+    },
+    {
+     "name": "output",
+     "type": "string",
+     "note": "what it printed, or the refusal's reason"
+    }
+   ]
+  },
+  {
+   "kind": "view",
+   "from": "worker",
+   "writer": "mww_view",
+   "reader": "mww_read",
+   "members": [
+    {
+     "name": "kind",
+     "type": "string",
+     "note": "the line's kind"
+    },
+    {
+     "name": "path",
+     "type": "string",
+     "note": "the file viewed"
+    },
+    {
+     "name": "found",
+     "type": "boolean",
+     "note": ""
+    }
+   ]
+  },
+  {
+   "kind": "ask",
+   "from": "worker",
+   "writer": "mww_ask",
+   "reader": "mww_read",
+   "members": [
+    {
+     "name": "kind",
+     "type": "string",
+     "note": "the line's kind"
+    },
+    {
+     "name": "command",
+     "type": "string",
+     "note": "a gated run's command, waiting"
+    },
+    {
+     "name": "ticket",
+     "type": "integer",
+     "note": "over 0; the answer line carries it back"
+    }
+   ]
+  },
+  {
+   "kind": "ended",
+   "from": "worker",
+   "writer": "mww_ended",
+   "reader": "mww_read",
+   "members": [
+    {
+     "name": "kind",
+     "type": "string",
+     "note": "the line's kind"
+    },
+    {
+     "name": "ending",
+     "type": "string",
+     "note": "one of endings"
+    },
+    {
+     "name": "text",
+     "type": "string",
+     "note": "the reply for finished and asked, else why (may be empty)"
+    }
+   ]
+  },
+  {
+   "kind": "embedding",
+   "from": "worker",
+   "writer": "mww_embedding, mww_embedding_error",
+   "reader": "mww_read",
+   "members": [
+    {
+     "name": "kind",
+     "type": "string",
+     "note": "the line's kind"
+    },
+    {
+     "name": "values",
+     "type": "array of numbers",
+     "note": "the embedding (gemini-embedding-001, 256 numbers), on one line; or"
+    },
+    {
+     "name": "error",
+     "type": "string",
+     "note": "why there is none"
+    }
+   ]
+  }
+ ],
+ "runs": [
+  {
+   "name": "coder-run",
+   "what": "coder run --engine micro --json: a command, then the reply, with the model's two answers replayed from coder/tui/fixtures/micro-replay (recorded from Vertex Gemini Flash on 2026-11-02)",
+   "from": "Coder's CLI (coder/tui/coder.coax) and the worker it started (coder/tui/mcworker.coax), both built before the codec; a recorder between them kept each end's lines. The owner's lines come first, then the worker's, each in its own order.",
+   "lines": [
+    {
+     "from": "owner",
+     "kind": "task",
+     "line": "{\"task\":\"Run `echo replay-check` and then tell me what it printed, in one short sentence.\",\"session\":\"c11-run\",\"cwd\":\"/tmp/mcw-c11/crun/ws\",\"sandbox\":\"danger-full-access\",\"policy\":{\"enabled\":false,\"allow\":0,\"ceiling\":3,\"roots\":\"\"}}"
+    },
+    {
+     "from": "worker",
+     "kind": "journal",
+     "line": "{\"kind\":\"journal\",\"path\":\"/tmp/mcw-c11/crun/home/.openagents/coder/sessions/worker-1794592735983843.ajr\"}"
+    },
+    {
+     "from": "worker",
+     "kind": "ready",
+     "line": "{\"kind\":\"ready\"}"
+    },
+    {
+     "from": "worker",
+     "kind": "attempt",
+     "line": "{\"kind\":\"attempt\",\"schema\":\"coder.observability.v2\",\"scope\":\"request_attempt\",\"engine\":null,\"gateway\":\"vertex\",\"model\":\"google/gemini-3.8-flash\",\"model_source\":\"attempt_configuration\",\"requested_effort\":\"low\",\"outcome\":\"done\",\"status\":200,\"input_tokens\":522,\"output_tokens\":35,\"cached_tokens\":null,\"reasoning_tokens\":null,\"cache_write_tokens\":null,\"provider_cost_usd_micros\":null,\"card_estimate_usd_micros\":1046,\"usd_micros\":1046}"
+    },
+    {
+     "from": "worker",
+     "kind": "command",
+     "line": "{\"kind\":\"command\",\"command\":\"echo replay-check\",\"exit\":0,\"timed_out\":false,\"output\":\"replay-check\\n\"}"
+    },
+    {
+     "from": "worker",
+     "kind": "reply",
+     "line": "{\"kind\":\"reply\",\"text\":\"It printed replay-check.\"}"
+    },
+    {
+     "from": "worker",
+     "kind": "attempt",
+     "line": "{\"kind\":\"attempt\",\"schema\":\"coder.observability.v2\",\"scope\":\"request_attempt\",\"engine\":null,\"gateway\":\"vertex\",\"model\":\"google/gemini-3.8-flash\",\"model_source\":\"attempt_configuration\",\"requested_effort\":\"low\",\"outcome\":\"done\",\"status\":200,\"input_tokens\":562,\"output_tokens\":113,\"cached_tokens\":null,\"reasoning_tokens\":38,\"cache_write_tokens\":null,\"provider_cost_usd_micros\":null,\"card_estimate_usd_micros\":1691,\"usd_micros\":1691}"
+    },
+    {
+     "from": "worker",
+     "kind": "ended",
+     "line": "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"It printed replay-check.\"}"
+    }
+   ]
+  },
+  {
+   "name": "coder-policy",
+   "what": "coder run --engine psionic --effort medium --allow run --ceiling run --root DIR: a local, gated task under a policy; one command allowed by the policy and one view (the model's answers scripted, as coder/tests/journal-worker.coax scripts them)",
+   "from": "Coder's CLI (coder/tui/coder.coax) and the worker it started (coder/tui/mcworker.coax), both built before the codec; a recorder between them kept each end's lines. The owner's lines come first, then the worker's, each in its own order.",
+   "lines": [
+    {
+     "from": "owner",
+     "kind": "task",
+     "line": "{\"task\":\"write once and read\",\"session\":\"c11-policy\",\"cwd\":\"/tmp/mcw-c11/crun/ws\",\"local\":true,\"sandbox\":\"workspace-write\",\"policy\":{\"enabled\":true,\"allow\":3,\"ceiling\":3,\"roots\":\"/tmp/mcw-c11/crun/ws\\n\"},\"gated\":true,\"effort\":\"medium\"}"
+    },
+    {
+     "from": "owner",
+     "kind": "answer",
+     "line": "{\"answer\":true,\"ticket\":1}"
+    },
+    {
+     "from": "worker",
+     "kind": "journal",
+     "line": "{\"kind\":\"journal\",\"path\":\"/tmp/mcw-c11/crun/home/.openagents/coder/sessions/worker-1794592736575296.ajr\"}"
+    },
+    {
+     "from": "worker",
+     "kind": "ready",
+     "line": "{\"kind\":\"ready\"}"
+    },
+    {
+     "from": "worker",
+     "kind": "attempt",
+     "line": "{\"kind\":\"attempt\",\"schema\":\"coder.observability.v2\",\"scope\":\"request_attempt\",\"engine\":null,\"gateway\":\"psionic\",\"model\":\"local\",\"model_source\":\"attempt_configuration\",\"requested_effort\":\"medium\",\"outcome\":\"done\",\"status\":200,\"input_tokens\":null,\"output_tokens\":null,\"cached_tokens\":null,\"reasoning_tokens\":null,\"cache_write_tokens\":null,\"provider_cost_usd_micros\":null,\"card_estimate_usd_micros\":null,\"usd_micros\":-1}"
+    },
+    {
+     "from": "worker",
+     "kind": "ask",
+     "line": "{\"kind\":\"ask\",\"command\":\"printf once > worker.txt\",\"ticket\":1}"
+    },
+    {
+     "from": "worker",
+     "kind": "command",
+     "line": "{\"kind\":\"command\",\"command\":\"printf once > worker.txt\",\"exit\":0,\"timed_out\":false,\"output\":\"\"}"
+    },
+    {
+     "from": "worker",
+     "kind": "view",
+     "line": "{\"kind\":\"view\",\"path\":\"worker.txt\",\"found\":true}"
+    },
+    {
+     "from": "worker",
+     "kind": "reply",
+     "line": "{\"kind\":\"reply\",\"text\":\"done\"}"
+    },
+    {
+     "from": "worker",
+     "kind": "attempt",
+     "line": "{\"kind\":\"attempt\",\"schema\":\"coder.observability.v2\",\"scope\":\"request_attempt\",\"engine\":null,\"gateway\":\"psionic\",\"model\":\"local\",\"model_source\":\"attempt_configuration\",\"requested_effort\":\"medium\",\"outcome\":\"done\",\"status\":200,\"input_tokens\":null,\"output_tokens\":null,\"cached_tokens\":null,\"reasoning_tokens\":null,\"cache_write_tokens\":null,\"provider_cost_usd_micros\":null,\"card_estimate_usd_micros\":null,\"usd_micros\":-1}"
+    },
+    {
+     "from": "worker",
+     "kind": "ended",
+     "line": "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"done\"}"
+    }
+   ]
+  },
+  {
+   "name": "coder-ask",
+   "what": "coder run --engine micro --model gemini-4-argon --allow read --ceiling run with no terminal: two commands refused, a view of a missing file, a reply of two lines (scripted answers)",
+   "from": "Coder's CLI (coder/tui/coder.coax) and the worker it started (coder/tui/mcworker.coax), both built before the codec; a recorder between them kept each end's lines. The owner's lines come first, then the worker's, each in its own order.",
+   "lines": [
+    {
+     "from": "owner",
+     "kind": "task",
+     "line": "{\"task\":\"clean up\",\"session\":\"c11-ask\",\"cwd\":\"/tmp/mcw-c11/crun/ws\",\"sandbox\":\"workspace-write\",\"policy\":{\"enabled\":true,\"allow\":0,\"ceiling\":3,\"roots\":\"\"},\"gated\":true,\"model\":\"gemini-4-argon\"}"
+    },
+    {
+     "from": "owner",
+     "kind": "answer",
+     "line": "{\"answer\":false,\"ticket\":1,\"why\":\"The person denied this.\"}"
+    },
+    {
+     "from": "owner",
+     "kind": "answer",
+     "line": "{\"answer\":false,\"ticket\":2,\"why\":\"The person denied this.\"}"
+    },
+    {
+     "from": "worker",
+     "kind": "journal",
+     "line": "{\"kind\":\"journal\",\"path\":\"/tmp/mcw-c11/crun/home/.openagents/coder/sessions/worker-1794592736872260.ajr\"}"
+    },
+    {
+     "from": "worker",
+     "kind": "ready",
+     "line": "{\"kind\":\"ready\"}"
+    },
+    {
+     "from": "worker",
+     "kind": "attempt",
+     "line": "{\"kind\":\"attempt\",\"schema\":\"coder.observability.v2\",\"scope\":\"request_attempt\",\"engine\":null,\"gateway\":\"vertex\",\"model\":\"google/gemini-3.8-flash\",\"model_source\":\"attempt_configuration\",\"requested_effort\":\"low\",\"outcome\":\"done\",\"status\":200,\"input_tokens\":null,\"output_tokens\":null,\"cached_tokens\":null,\"reasoning_tokens\":null,\"cache_write_tokens\":null,\"provider_cost_usd_micros\":null,\"card_estimate_usd_micros\":0,\"usd_micros\":0}"
+    },
+    {
+     "from": "worker",
+     "kind": "ask",
+     "line": "{\"kind\":\"ask\",\"command\":\"rm -rf build\",\"ticket\":1}"
+    },
+    {
+     "from": "worker",
+     "kind": "command",
+     "line": "{\"kind\":\"command\",\"command\":\"rm -rf build\",\"exit\":126,\"timed_out\":false,\"output\":\"The person denied this.\"}"
+    },
+    {
+     "from": "worker",
+     "kind": "attempt",
+     "line": "{\"kind\":\"attempt\",\"schema\":\"coder.observability.v2\",\"scope\":\"request_attempt\",\"engine\":null,\"gateway\":\"vertex\",\"model\":\"google/gemini-3.8-flash\",\"model_source\":\"attempt_configuration\",\"requested_effort\":\"low\",\"outcome\":\"done\",\"status\":200,\"input_tokens\":null,\"output_tokens\":null,\"cached_tokens\":null,\"reasoning_tokens\":null,\"cache_write_tokens\":null,\"provider_cost_usd_micros\":null,\"card_estimate_usd_micros\":0,\"usd_micros\":0}"
+    },
+    {
+     "from": "worker",
+     "kind": "ask",
+     "line": "{\"kind\":\"ask\",\"command\":\"printf 'a\\\\tb \\\"q\\\" \\\\\\\\ back\\\\nline2 \\\\342\\\\202\\\\254 \\\\001\\\\n'; exit 3\",\"ticket\":2}"
+    },
+    {
+     "from": "worker",
+     "kind": "command",
+     "line": "{\"kind\":\"command\",\"command\":\"printf 'a\\\\tb \\\"q\\\" \\\\\\\\ back\\\\nline2 \\\\342\\\\202\\\\254 \\\\001\\\\n'; exit 3\",\"exit\":126,\"timed_out\":false,\"output\":\"The person denied this.\"}"
+    },
+    {
+     "from": "worker",
+     "kind": "view",
+     "line": "{\"kind\":\"view\",\"path\":\"missing.txt\",\"found\":false}"
+    },
+    {
+     "from": "worker",
+     "kind": "reply",
+     "line": "{\"kind\":\"reply\",\"text\":\"Refused once, then printed.\\nTwo lines \\\"quoted\\\".\"}"
+    },
+    {
+     "from": "worker",
+     "kind": "attempt",
+     "line": "{\"kind\":\"attempt\",\"schema\":\"coder.observability.v2\",\"scope\":\"request_attempt\",\"engine\":null,\"gateway\":\"vertex\",\"model\":\"google/gemini-3.8-flash\",\"model_source\":\"attempt_configuration\",\"requested_effort\":\"low\",\"outcome\":\"done\",\"status\":200,\"input_tokens\":null,\"output_tokens\":null,\"cached_tokens\":null,\"reasoning_tokens\":null,\"cache_write_tokens\":null,\"provider_cost_usd_micros\":null,\"card_estimate_usd_micros\":0,\"usd_micros\":0}"
+    },
+    {
+     "from": "worker",
+     "kind": "ended",
+     "line": "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"Refused once, then printed.\\nTwo lines \\\"quoted\\\".\"}"
+    }
+   ]
+  },
+  {
+   "name": "coder-recall",
+   "what": "coder recall: two documents and a query embedded, Vertex's three answers replayed from coder/tui/fixtures/memory-replay (recorded on 2026-11-02)",
+   "from": "Coder's CLI (coder/tui/coder.coax) and the worker it started (coder/tui/mcworker.coax), both built before the codec; a recorder between them kept each end's lines. The owner's lines come first, then the worker's, each in its own order.",
+   "lines": [
+    {
+     "from": "owner",
+     "kind": "embed",
+     "line": "{\"embed\":\"deploy: Ship openagents.com only through coax/web/release.sh.\"}"
+    },
+    {
+     "from": "owner",
+     "kind": "embed",
+     "line": "{\"embed\":\"build: Build with coder/tui/coder.sh.\"}"
+    },
+    {
+     "from": "owner",
+     "kind": "embed",
+     "line": "{\"embed\":\"how do I put the website live?\",\"query\":true}"
+    },
+    {
+     "from": "worker",
+     "kind": "journal",
+     "line": "{\"kind\":\"journal\",\"path\":\"/tmp/mcw-c11/crun/home/.openagents/coder/sessions/worker-1794592736268434.ajr\"}"
+    },
+    {
+     "from": "worker",
+     "kind": "ready",
+     "line": "{\"kind\":\"ready\"}"
+    },
+    {
+     "from": "worker",
+     "kind": "embedding",
+     "line": "{\"kind\":\"embedding\",\"values\":[-0.014840412884950638,0.0062157534994184971,0.01421566866338253,-0.0776546448469162,0.0085699977353215218,0.019686365500092506,0.008534272201359272,-0.00820727739483118,0.011917383410036564,-0.007577069103717804,-0.012025114148855209,0.00014522732817567885,0.0037642598617821932,0.016311237588524818,0.1308283656835556,-0.0089232232421636581,-0.011823971755802631,-0.018569057807326317,0.013072063215076923,-0.001193635631352663,0.011573950760066509,0.0061568594537675381,-0.00830488558858633,-0.021071583032608032,-8.9194661995861679e-05,-0.0187021866440773,0.0309037733823061,0.0074252183549106121,0.037331607192754745,0.0055566374212503433,0.0018129548989236355,0.022919652983546257,-0.0091372076421976089,0.008200058713555336,0.008662673644721508,0.00462413439527154,0.02537163533270359,-0.0057715559378266335,-0.0099528450518846512,-0.012291617691516876,-0.014391051605343819,0.02245020866394043,0.017433887347579002,-0.016704322770237923,-0.0016544595127925277,0.019808502867817879,-0.0041575138457119465,-0.038873530924320221,0.0020600343123078346,0.0037196027114987373,-0.017758691683411598,-0.0054368237033486366,-0.018888913094997406,-0.18206793069839478,-0.0014632128877565265,-0.013168496079742908,0.014285904355347157,0.0069507178850471973,0.011473126709461212,0.0046807252801954746,-0.012248781509697437,-0.0024738714564591646,-0.0040232911705970764,-0.010686459019780159,-0.010296435095369816,0.0066496366634964943,-0.011683174408972263,0.011144562624394894,-0.020798902958631516,0.0066630174405872822,0.00013519983622245491,-0.011986133642494678,-0.0078780055046081543,-0.018073929473757744,0.006973824929445982,-0.037451751530170441,-0.0069409417919814587,0.0035678471904248,0.0051777325570583344,0.052834015339612961,0.0089401165023446083,-0.023549990728497505,-0.019316736608743668,-0.0081768399104475975,0.0010291283251717687,-0.024061664938926697,-0.002830874640494585,-0.0075455200858414173,-0.0081113250926136971,0.022866550832986832,0.012174642644822598,0.032272793352603912,0.0018275565234944224,0.0029798261821269989,0.0037770932540297508,0.0050246189348399639,-0.009691162034869194,-0.013105420395731926,0.0051366365514695644,-0.0070548336952924728,-0.015717307105660439,-0.012107038870453835,0.0035260594449937344,0.0049568614922463894,0.00052199384663254023,-0.017011193558573723,0.020282251760363579,-0.028062857687473297,0.013501354493200779,0.00950467586517334,-0.0043757227249443531,-0.0014940822729840875,0.0059568081051111221,-0.020739177241921425,0.0015609449474141002,-0.17335827648639679,0.008870425634086132,0.0073188263922929764,0.018630050122737885,-0.012093612924218178,-0.024028247222304344,0.011930509470403194,0.013958942145109177,0.00955947581678629,0.019614450633525848,0.016809402033686638,0.010479401797056198,0.010340819135308266,0.0083191860467195511,-0.00675063394010067,-0.031013969331979752,-0.00785270519554615,0.0029764685314148664,0.0039376616477966309,0.0053769936785101891,0.026249492540955544,-0.014560095965862274,0.017576334998011589,-0.017255950719118118,-0.0098730931058526039,0.0037628260906785727,0.02413780614733696,0.0080693634226918221,-0.007456392515450716,-0.011289780028164387,-0.0061595081351697445,-0.020594587549567223,0.0047346316277980804,-0.0050743143074214458,-0.029363540932536125,-0.0014684037305414677,-0.023626534268260002,0.016900584101676941,0.010346333496272564,0.020102424547076225,-0.053187437355518341,0.0077543752267956734,0.016601268202066422,-0.0013572821626439691,0.015685293823480606,0.0035137336235493422,0.023216081783175468,0.020464103668928146,-0.00412383396178484,0.015367320738732815,0.00086484500207006931,0.014367219991981983,0.010150041431188583,-0.00429388415068388,0.019546190276741982,-0.016277721151709557,-0.021907854825258255,0.0093078864738345146,0.024518126621842384,-0.0037312221247702837,-0.00033105781767517328,-0.0023357130121439695,-0.0010828289669007063,0.013166326098144054,-0.0123342489823699,-0.0098293852061033249,0.0056059178896248341,0.017053555697202682,-0.00091098842676728964,-0.0055590057745575905,0.0086901262402534485,-0.0030914891976863146,-0.016953757032752037,-0.0012370407348498702,-0.0088682211935520172,-0.0085234437137842178,0.0060572386719286442,-0.000236958047025837,-0.0011797926854342222,0.017931420356035233,0.0021961780730634928,-0.003293714951723814,-0.011910900473594666,0.022780923172831535,0.002452334389090538,0.011014094576239586,0.0049051307141780853,0.0055617964826524258,-0.011427085846662521,-0.0076965889893472195,0.011489677242934704,-0.006820120383054018,-0.0034145091194659472,-0.0034999123308807611,0.017979515716433525,-0.0092800687998533249,-0.026129098609089851,0.031557045876979828,-0.0039344960823655128,0.015123726800084114,-0.040411952883005142,-0.015571634285151958,0.023592984303832054,-2.5689196263556369e-05,0.018279412761330605,0.0078785829246044159,0.00091775268083438277,-0.013788158074021339,0.020672136917710304,0.011815212666988373,0.0165045578032732,-0.014910429716110229,-0.00860014371573925,-0.017204342409968376,0.0025658437516540289,0.026713404804468155,0.043361134827136993,-0.0094652362167835236,0.025888288393616676,-0.0013761980226263404,0.010880190879106522,-0.012304574251174927,-0.0043642614036798477,0.0069997054524719715,0.02432691678404808,-0.011446008458733559,-0.0069360011257231236,0.0084362523630261421,-0.019805885851383209,0.0090296575799584389,0.00058211421128362417,-0.0028986914549022913,-0.025723591446876526,-0.0029225992038846016,0.0054722987115383148,-0.016162438318133354,0.031417544931173325,-0.031408753246068954,0.00569474371150136,-0.011861343868076801,0.0014789093984290957]}"
+    },
+    {
+     "from": "worker",
+     "kind": "embedding",
+     "line": "{\"kind\":\"embedding\",\"values\":[0.0095146829262375832,0.003634958527982235,0.0018446369795128703,-0.0975065529346466,-0.010522440075874329,0.0015728760045021772,0.0027895933017134666,-0.0096359606832265854,0.014504401013255119,-0.0011076953960582614,-0.035757452249526978,-0.014488697983324528,0.00031183689134195447,0.0057759201154112816,0.15354363620281219,-0.0233162734657526,-0.0069790459237992764,-0.0035931405145674944,-0.0018437826074659824,-0.0047539123333990574,0.0023547818418592215,0.021751575171947479,0.0057306620292365551,0.000779809954110533,-0.0013048480032011867,-0.011288885027170181,0.026127602905035019,0.012325144372880459,0.034608043730258942,-0.0062216059304773808,-0.0057182866148650646,0.037197314202785492,-0.0018385614966973662,0.0075847660191357136,0.0018317882204428315,-0.0088133243843913078,0.024720262736082077,0.017278684303164482,-0.019906258210539818,0.0020949169993400574,0.00049055443378165364,0.017578018829226494,0.021945655345916748,0.0069888648577034473,0.0025833877734839916,0.022000307217240334,-0.0029496983624994755,-0.018182666972279549,0.0090153096243739128,0.0071306568570435047,0.0084739169105887413,0.026899335905909538,-0.01643725112080574,-0.2144237756729126,0.012832116335630417,0.016413187608122826,-0.0040070503018796444,-0.0034134513698518276,0.0089112604036927223,-0.030721522867679596,-0.0092621631920337677,0.00097343919333070517,-0.010683884844183922,-0.0047525200061500072,-0.0053769303485751152,-0.014757406897842884,0.018112683668732643,0.03574429452419281,-7.6015130616724491e-05,-0.015082101337611675,-0.0071222316473722458,0.0090230042114853859,-0.0054028332233428955,0.010443801060318947,-0.0023033479228615761,-0.01596439816057682,0.0065042995847761631,0.015014311298727989,0.02072640135884285,0.057548679411411285,0.0054501905106008053,-0.011241105385124683,-0.017575543373823166,0.0032012469600886106,-0.010061967186629772,-0.0075655477121472359,-0.0070712198503315449,-0.013344931416213512,0.0059417220763862133,0.0043380097486078739,-0.0072624827735126019,0.028650196269154549,-0.00092918373411521316,0.00064812385244295,-0.0023344180081039667,-0.0062419003807008266,0.01369952317327261,0.011127281002700329,-1.9827726646326482e-05,-0.00578128919005394,0.014483516104519367,-0.022793810814619064,0.0017135515809059143,0.0022396857384592295,0.0090297199785709381,0.0068432888947427273,0.011449082754552364,0.0062271975912153721,-0.0050580203533172607,0.00035511227906681597,0.030166514217853546,0.0068517816253006458,0.011659391224384308,0.00061591423582285643,0.018127836287021637,-0.17748397588729858,-0.00502068642526865,0.011052912101149559,0.031661573797464371,0.0080209951847791672,0.0025931361597031355,0.014686261303722858,-0.015640348196029663,0.0040751970373094082,0.0068150595761835575,0.012533916160464287,0.0038934564217925072,-0.0022181107196956873,-0.0017486668657511473,-0.0051872688345611095,0.021965935826301575,0.0072253658436238766,0.0061794701032340527,-0.014365915209054947,0.0086934724822640419,0.0071473871357738972,-0.0097949765622615814,-0.0064655449241399765,-0.0014101057313382626,0.0078052813187241554,0.00046588573604822159,0.0091916294768452644,0.010271591134369373,-0.014769800938665867,0.0051677855663001537,-0.0064150765538215637,0.00026285776402801275,0.013447288423776627,0.0057451566681265831,-0.022132683545351028,0.0025655617937445641,-0.0026072533801198006,0.0078599918633699417,-0.011731476522982121,0.01590181328356266,-0.0521693117916584,0.0098479576408863068,0.0032842569053173065,-0.00423066783696413,0.012484095059335232,0.0004938995698466897,-0.0030921944417059422,0.011079521849751472,-0.0045871902257204056,0.000602262036409229,-0.013133715838193893,0.0011742755305022001,-0.00013598079385701567,0.0051794089376926422,0.0080802487209439278,-0.0018563373014330864,-0.006715540774166584,0.0067808022722601891,0.012233128771185875,0.019340822473168373,-0.017938701435923576,0.0024763266555964947,-0.0058854520320892334,-0.0071204220876097679,-0.021297682076692581,-0.012068163603544235,0.0080262050032615662,0.0075963125564157963,0.0096260607242584229,-0.0035023505333811045,-0.00731401052325964,-0.0097585581243038177,-0.012522039003670216,0.022689457982778549,-0.015476847067475319,-0.012974532321095467,-0.012828130275011063,0.0140990624204278,0.00865876767784357,0.010905256494879723,-0.016664579510688782,-0.034111514687538147,-0.019947435706853867,0.011651893146336079,0.0031792744994163513,0.022010471671819687,-0.016748370602726936,-0.0010016507003456354,-0.021766182035207748,-0.0032530219759792089,0.030824450775980949,-0.014299954287707806,0.0071792122907936573,-0.0068877525627613068,0.014753744937479496,0.0079613914713263512,-0.013033756986260414,0.0077150743454694748,-0.00081220240099355578,-0.0078623779118061066,0.003149277763441205,-0.023373264819383621,-0.00970384106040001,0.0066736713051795959,0.0059811016544699669,0.02248334139585495,0.0053264079615473747,0.0087213637307286263,0.002124665305018425,-0.018554091453552246,-0.012676537968218327,-0.019211845472455025,-0.015287306159734726,-0.018476365134119987,0.0088538490235805511,0.014426745474338531,0.019870281219482422,-0.011910273693501949,0.026177961379289627,0.0062980907969176769,0.024865260347723961,-0.013771436177194118,-0.012716072611510754,0.023634955286979675,0.00371430697850883,0.0010154357878491282,-0.001967474352568388,0.012108543887734413,0.0050132349133491516,0.011594337411224842,-0.01021221000701189,0.022013202309608459,-0.020808326080441475,-0.0334523543715477,0.00783974677324295,-0.01072405930608511,0.00845101848244667,-0.028412910178303719,-0.0095464643090963364,0.019934499636292458,0.022538794204592705]}"
+    },
+    {
+     "from": "worker",
+     "kind": "embedding",
+     "line": "{\"kind\":\"embedding\",\"values\":[-0.013330202549695969,-0.012095748446881771,0.01654561422765255,-0.041893783956766129,0.012479453347623348,0.02071692980825901,0.027797047048807144,0.00669947499409318,0.0071696820668876171,0.016024030745029449,-0.0018634989392012358,-0.033941678702831268,0.016582140699028969,0.0078052310273051262,0.15351645648479462,-0.0098076388239860535,0.0027588307857513428,-0.017356030642986298,-0.017557650804519653,0.023603722453117371,-0.0031456437427550554,0.0023878028150647879,-0.022146062925457954,-0.0037041753530502319,0.011909289285540581,-0.034023355692625046,0.0045125745236873627,0.0045724809169769287,0.033602487295866013,0.013580804690718651,0.0059839170426130295,-0.012588139623403549,-0.0011060184333473444,-0.0016552215674892068,-0.0047987564466893673,0.0052718524821102619,0.018058596178889275,-0.0050214119255542755,-0.012628857977688313,-0.023675592616200447,-0.010743792168796062,0.0054024220444262028,0.01394922100007534,-0.047160152345895767,0.0032168740872293711,0.011591329239308834,-0.016193412244319916,-0.047152753919363022,-0.023030474781990051,-0.014062259346246719,-0.026397619396448135,-0.028348485007882118,-0.0028087224345654249,-0.16076479852199554,-0.0047825477086007595,0.0053633563220500946,0.028191961348056793,0.00976349227130413,-0.034861054271459579,-0.0028816612903028727,0.0093913804739713669,-0.018197637051343918,-0.0052792029455304146,-0.039021853357553482,-0.0077375615946948528,-0.00463884137570858,-0.0022314009256660938,0.0016345321200788021,0.016415303573012352,0.024281272664666176,0.0017613137606531382,0.0031472824048250914,0.019388904795050621,-0.0043681836687028408,-0.0028505157679319382,-0.033260580152273178,-0.012386630289256573,-0.001225339132361114,-0.0084638437256217,0.017704306170344353,-0.02094225212931633,-0.01876898854970932,-0.020826762542128563,-0.017147239297628403,0.0047582709230482578,0.0044967089779675007,-0.006483136210590601,0.0022587641142308712,0.0048340000212192535,0.021019654348492622,-0.01887630857527256,0.031917192041873932,-0.0044265990145504475,-0.00088799378136172891,-0.0050448663532733917,-0.002898672828450799,-0.032020904123783112,-0.0332782007753849,-0.0065765460021793842,-3.5829008993459865e-05,-0.023965243250131607,-0.0036744822282344103,-0.0062983473762869835,0.023099929094314575,0.004324793815612793,0.016076002269983292,0.051686927676200867,-0.0061215371824800968,0.013018297031521797,-0.016439979895949364,0.029662180691957474,-0.0047173639759421349,0.020508278161287308,-0.039867207407951355,-0.012729032896459103,-0.13128690421581268,0.012374969199299812,0.016535572707653046,2.2022995835868642e-05,-0.0056594717316329479,0.024083241820335388,-0.010981927625834942,0.0069420053623616695,0.033881757408380508,0.023900995030999184,0.0081330463290214539,0.017039338126778603,-0.018585586920380592,-0.017158705741167068,0.0089581366628408432,-0.0099909193813800812,-0.0029595585074275732,0.0025220769457519054,0.03112422302365303,0.0095992982387542725,-0.018717089667916298,-0.0080166608095169067,0.037432894110679626,0.0069000278599560261,-0.041480746120214462,0.005345695186406374,0.0019758553244173527,-0.0043354448862373829,0.0046269651502370834,0.011081110686063766,-0.0036177732981741428,-0.0083478856831789017,0.025835985317826271,-0.0039381301030516624,-0.014606902375817299,-0.012905940413475037,0.0011557211400941014,0.034932445734739304,0.0046658553183078766,0.008493584580719471,-0.03104882687330246,0.028262538835406303,0.0014442220563068986,0.020811799913644791,0.0090072862803936,0.00042574782855808735,0.028828805312514305,0.019491616636514664,0.0091572627425193787,0.021935498341917992,0.0089068729430437088,-0.011154725216329098,0.0083153322339057922,0.013191354461014271,0.03399420902132988,-0.013946317136287689,0.015109810046851635,-0.0072770449332892895,0.019958684220910072,-0.014716432429850101,-0.023493098095059395,0.00019768737547565252,0.013395954854786396,0.015586227178573608,-0.0029755560681223869,0.01122688502073288,-0.00062064762460067868,-0.011652350425720215,-0.017576411366462708,-0.01653023436665535,-0.015085753984749317,0.00714595103636384,-0.013174645602703094,-0.022831518203020096,-0.024495132267475128,-0.0078053628094494343,0.017439626157283783,0.0061945449560880661,0.00049499701708555222,0.00012698804493993521,-0.021911542862653732,-0.014787554740905762,-0.018998591229319572,-0.0233675055205822,-0.00015424624143633991,0.0011433764593675733,-0.017535651102662086,0.017319565638899803,0.00061945384368300438,0.0016159552615135908,0.017587864771485329,-0.012137421406805515,-0.021732792258262634,-0.0060359742492437363,-0.014432433061301708,-0.014198359102010727,-0.022593216970562935,0.022703295573592186,0.0011168357450515032,0.0041339145973324776,0.0040540611371397972,-0.01482390146702528,0.012692241929471493,0.01073777861893177,-0.0032453720923513174,0.047069668769836426,0.0065301745198667049,-0.014782399870455265,0.011513843201100826,-0.0090044364333152771,0.0047448924742639065,-0.027892874553799629,-0.022636726498603821,0.013510605320334435,0.010189465247094631,0.018681488931179047,0.017864091321825981,-0.029649902135133743,0.0055418526753783226,-0.022050525993108749,0.021751778200268745,0.0257569570094347,-0.025221364572644234,0.0025079566985368729,-0.00096660992130637169,0.014388673007488251,0.0024520121514797211,0.022606519982218742,-0.015389962121844292,-0.0072556072846055031,-0.00663366774097085,-0.018934553489089012,-0.0030408247839659452,-0.0022085830569267273,0.030039045959711075,0.002136885654181242,-0.013438684865832329,-0.020992226898670197,0.029303194954991341,-0.0040468610823154449,-0.023342708125710487]}"
+    }
+   ]
+  },
+  {
+   "name": "gated",
+   "what": "a gated local task: the command allowed, a view, the reply; then forget",
+   "from": "the worker built before the codec, driven over its standard input by the capture's driver; the lines are in the order they crossed. The driver's task lines are read_only; its other lines are byte for byte what the client writes.",
+   "lines": [
+    {
+     "from": "worker",
+     "kind": "journal",
+     "line": "{\"kind\":\"journal\",\"path\":\"/tmp/mcw-c11/run/gated/home/.openagents/coder/sessions/worker-1794592621533344.ajr\"}"
+    },
+    {
+     "from": "worker",
+     "kind": "ready",
+     "line": "{\"kind\":\"ready\"}"
+    },
+    {
+     "from": "owner",
+     "kind": "task",
+     "read_only": true,
+     "line": "{\"task\":\"write once and read\",\"session\":\"c11-gated\",\"cwd\":\"/tmp/mcw-c11/run/gated/ws\",\"local\":true,\"gated\":true,\"sandbox\":\"workspace-write\"}"
+    },
+    {
+     "from": "worker",
+     "kind": "attempt",
+     "line": "{\"kind\":\"attempt\",\"schema\":\"coder.observability.v2\",\"scope\":\"request_attempt\",\"engine\":null,\"gateway\":\"psionic\",\"model\":\"local\",\"model_source\":\"attempt_configuration\",\"requested_effort\":\"low\",\"outcome\":\"done\",\"status\":200,\"input_tokens\":null,\"output_tokens\":null,\"cached_tokens\":null,\"reasoning_tokens\":null,\"cache_write_tokens\":null,\"provider_cost_usd_micros\":null,\"card_estimate_usd_micros\":null,\"usd_micros\":-1}"
+    },
+    {
+     "from": "worker",
+     "kind": "ask",
+     "line": "{\"kind\":\"ask\",\"command\":\"printf once > worker.txt\",\"ticket\":1}"
+    },
+    {
+     "from": "owner",
+     "kind": "answer",
+     "line": "{\"answer\":true,\"ticket\":1}"
+    },
+    {
+     "from": "worker",
+     "kind": "command",
+     "line": "{\"kind\":\"command\",\"command\":\"printf once > worker.txt\",\"exit\":0,\"timed_out\":false,\"output\":\"\"}"
+    },
+    {
+     "from": "worker",
+     "kind": "view",
+     "line": "{\"kind\":\"view\",\"path\":\"worker.txt\",\"found\":true}"
+    },
+    {
+     "from": "worker",
+     "kind": "reply",
+     "line": "{\"kind\":\"reply\",\"text\":\"done\"}"
+    },
+    {
+     "from": "worker",
+     "kind": "attempt",
+     "line": "{\"kind\":\"attempt\",\"schema\":\"coder.observability.v2\",\"scope\":\"request_attempt\",\"engine\":null,\"gateway\":\"psionic\",\"model\":\"local\",\"model_source\":\"attempt_configuration\",\"requested_effort\":\"low\",\"outcome\":\"done\",\"status\":200,\"input_tokens\":null,\"output_tokens\":null,\"cached_tokens\":null,\"reasoning_tokens\":null,\"cache_write_tokens\":null,\"provider_cost_usd_micros\":null,\"card_estimate_usd_micros\":null,\"usd_micros\":-1}"
+    },
+    {
+     "from": "worker",
+     "kind": "ended",
+     "line": "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"done\"}"
+    },
+    {
+     "from": "owner",
+     "kind": "forget",
+     "line": "{\"forget\":true}"
+    }
+   ]
+  },
+  {
+   "name": "refused",
+   "what": "a command refused with a reason, then one allowed whose output has a tab, quotes, a backslash, a line end, a euro sign and a control byte and whose exit is 3; a missing view",
+   "from": "the worker built before the codec, driven over its standard input by the capture's driver; the lines are in the order they crossed. The driver's task lines are read_only; its other lines are byte for byte what the client writes.",
+   "lines": [
+    {
+     "from": "worker",
+     "kind": "journal",
+     "line": "{\"kind\":\"journal\",\"path\":\"/tmp/mcw-c11/run/refused/home/.openagents/coder/sessions/worker-1794592622229875.ajr\"}"
+    },
+    {
+     "from": "worker",
+     "kind": "ready",
+     "line": "{\"kind\":\"ready\"}"
+    },
+    {
+     "from": "owner",
+     "kind": "task",
+     "read_only": true,
+     "line": "{\"task\":\"clean up\",\"session\":\"c11-refused\",\"cwd\":\"/tmp/mcw-c11/run/refused/ws\",\"local\":true,\"gated\":true,\"sandbox\":\"workspace-write\",\"policy\":{\"enabled\":true,\"allow\":0,\"ceiling\":3,\"roots\":\"/tmp/mcw-c11/run/refused/ws\\n\"}}"
+    },
+    {
+     "from": "worker",
+     "kind": "attempt",
+     "line": "{\"kind\":\"attempt\",\"schema\":\"coder.observability.v2\",\"scope\":\"request_attempt\",\"engine\":null,\"gateway\":\"psionic\",\"model\":\"local\",\"model_source\":\"attempt_configuration\",\"requested_effort\":\"low\",\"outcome\":\"done\",\"status\":200,\"input_tokens\":null,\"output_tokens\":null,\"cached_tokens\":null,\"reasoning_tokens\":null,\"cache_write_tokens\":null,\"provider_cost_usd_micros\":null,\"card_estimate_usd_micros\":null,\"usd_micros\":-1}"
+    },
+    {
+     "from": "worker",
+     "kind": "ask",
+     "line": "{\"kind\":\"ask\",\"command\":\"rm -rf build\",\"ticket\":1}"
+    },
+    {
+     "from": "owner",
+     "kind": "answer",
+     "line": "{\"answer\":false,\"ticket\":1,\"why\":\"The person denied this.\"}"
+    },
+    {
+     "from": "worker",
+     "kind": "command",
+     "line": "{\"kind\":\"command\",\"command\":\"rm -rf build\",\"exit\":126,\"timed_out\":false,\"output\":\"The person denied this.\"}"
+    },
+    {
+     "from": "worker",
+     "kind": "attempt",
+     "line": "{\"kind\":\"attempt\",\"schema\":\"coder.observability.v2\",\"scope\":\"request_attempt\",\"engine\":null,\"gateway\":\"psionic\",\"model\":\"local\",\"model_source\":\"attempt_configuration\",\"requested_effort\":\"low\",\"outcome\":\"done\",\"status\":200,\"input_tokens\":null,\"output_tokens\":null,\"cached_tokens\":null,\"reasoning_tokens\":null,\"cache_write_tokens\":null,\"provider_cost_usd_micros\":null,\"card_estimate_usd_micros\":null,\"usd_micros\":-1}"
+    },
+    {
+     "from": "worker",
+     "kind": "ask",
+     "line": "{\"kind\":\"ask\",\"command\":\"printf 'a\\\\tb \\\"q\\\" \\\\\\\\ back\\\\nline2 \\\\342\\\\202\\\\254 \\\\001\\\\n'; exit 3\",\"ticket\":2}"
+    },
+    {
+     "from": "owner",
+     "kind": "answer",
+     "line": "{\"answer\":true,\"ticket\":2}"
+    },
+    {
+     "from": "worker",
+     "kind": "command",
+     "line": "{\"kind\":\"command\",\"command\":\"printf 'a\\\\tb \\\"q\\\" \\\\\\\\ back\\\\nline2 \\\\342\\\\202\\\\254 \\\\001\\\\n'; exit 3\",\"exit\":3,\"timed_out\":false,\"output\":\"a\\tb \\\"q\\\" \\\\ back\\nline2 € \\u0001\\n\"}"
+    },
+    {
+     "from": "worker",
+     "kind": "view",
+     "line": "{\"kind\":\"view\",\"path\":\"missing.txt\",\"found\":false}"
+    },
+    {
+     "from": "worker",
+     "kind": "reply",
+     "line": "{\"kind\":\"reply\",\"text\":\"Refused once, then printed.\\nTwo lines \\\"quoted\\\".\"}"
+    },
+    {
+     "from": "worker",
+     "kind": "attempt",
+     "line": "{\"kind\":\"attempt\",\"schema\":\"coder.observability.v2\",\"scope\":\"request_attempt\",\"engine\":null,\"gateway\":\"psionic\",\"model\":\"local\",\"model_source\":\"attempt_configuration\",\"requested_effort\":\"low\",\"outcome\":\"done\",\"status\":200,\"input_tokens\":null,\"output_tokens\":null,\"cached_tokens\":null,\"reasoning_tokens\":null,\"cache_write_tokens\":null,\"provider_cost_usd_micros\":null,\"card_estimate_usd_micros\":null,\"usd_micros\":-1}"
+    },
+    {
+     "from": "worker",
+     "kind": "ended",
+     "line": "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"Refused once, then printed.\\nTwo lines \\\"quoted\\\".\"}"
+    }
+   ]
+  },
+  {
+   "name": "stopped",
+   "what": "STOP while a command waits for its answer",
+   "from": "the worker built before the codec, driven over its standard input by the capture's driver; the lines are in the order they crossed. The driver's task lines are read_only; its other lines are byte for byte what the client writes.",
+   "lines": [
+    {
+     "from": "worker",
+     "kind": "journal",
+     "line": "{\"kind\":\"journal\",\"path\":\"/tmp/mcw-c11/run/stopped/home/.openagents/coder/sessions/worker-1794592622498875.ajr\"}"
+    },
+    {
+     "from": "worker",
+     "kind": "ready",
+     "line": "{\"kind\":\"ready\"}"
+    },
+    {
+     "from": "owner",
+     "kind": "task",
+     "read_only": true,
+     "line": "{\"task\":\"wait\",\"session\":\"c11-stopped\",\"cwd\":\"/tmp/mcw-c11/run/stopped/ws\",\"local\":true,\"gated\":true,\"sandbox\":\"workspace-write\"}"
+    },
+    {
+     "from": "worker",
+     "kind": "attempt",
+     "line": "{\"kind\":\"attempt\",\"schema\":\"coder.observability.v2\",\"scope\":\"request_attempt\",\"engine\":null,\"gateway\":\"psionic\",\"model\":\"local\",\"model_source\":\"attempt_configuration\",\"requested_effort\":\"low\",\"outcome\":\"done\",\"status\":200,\"input_tokens\":null,\"output_tokens\":null,\"cached_tokens\":null,\"reasoning_tokens\":null,\"cache_write_tokens\":null,\"provider_cost_usd_micros\":null,\"card_estimate_usd_micros\":null,\"usd_micros\":-1}"
+    },
+    {
+     "from": "worker",
+     "kind": "ask",
+     "line": "{\"kind\":\"ask\",\"command\":\"sleep 1\",\"ticket\":1}"
+    },
+    {
+     "from": "owner",
+     "kind": "stop",
+     "line": "{\"stop\":true}"
+    },
+    {
+     "from": "worker",
+     "kind": "ended",
+     "line": "{\"kind\":\"ended\",\"ending\":\"stopped\",\"text\":\"\"}"
+    }
+   ]
+  },
+  {
+   "name": "refusals",
+   "what": "tasks refused before a run starts (no folder, an unknown sandbox, a ceiling out of range), and a run whose ceiling is frozen below commands",
+   "from": "the worker built before the codec, driven over its standard input by the capture's driver; the lines are in the order they crossed. The driver's task lines are read_only; its other lines are byte for byte what the client writes.",
+   "lines": [
+    {
+     "from": "worker",
+     "kind": "journal",
+     "line": "{\"kind\":\"journal\",\"path\":\"/tmp/mcw-c11/run/refusals/home/.openagents/coder/sessions/worker-1794592622593541.ajr\"}"
+    },
+    {
+     "from": "worker",
+     "kind": "ready",
+     "line": "{\"kind\":\"ready\"}"
+    },
+    {
+     "from": "owner",
+     "kind": "task",
+     "read_only": true,
+     "line": "{\"task\":\"no folder\",\"session\":\"c11-refusals\"}"
+    },
+    {
+     "from": "worker",
+     "kind": "ended",
+     "line": "{\"kind\":\"ended\",\"ending\":\"failed\",\"text\":\"task or workspace exceeds the declared worker bounds\"}"
+    },
+    {
+     "from": "owner",
+     "kind": "task",
+     "read_only": true,
+     "line": "{\"task\":\"bad sandbox\",\"session\":\"c11-refusals\",\"cwd\":\"/tmp/mcw-c11/run/refusals/ws\",\"local\":true,\"sandbox\":\"everything\"}"
+    },
+    {
+     "from": "worker",
+     "kind": "ended",
+     "line": "{\"kind\":\"ended\",\"ending\":\"failed\",\"text\":\"unknown sandbox profile\"}"
+    },
+    {
+     "from": "owner",
+     "kind": "task",
+     "read_only": true,
+     "line": "{\"task\":\"bad ceiling\",\"session\":\"c11-refusals\",\"cwd\":\"/tmp/mcw-c11/run/refusals/ws\",\"local\":true,\"sandbox\":\"read-only\",\"policy\":{\"enabled\":true,\"allow\":0,\"ceiling\":9,\"roots\":\"\"}}"
+    },
+    {
+     "from": "worker",
+     "kind": "ended",
+     "line": "{\"kind\":\"ended\",\"ending\":\"failed\",\"text\":\"invalid frozen effect ceiling\"}"
+    },
+    {
+     "from": "owner",
+     "kind": "task",
+     "read_only": true,
+     "line": "{\"task\":\"read only\",\"session\":\"c11-refusals\",\"cwd\":\"/tmp/mcw-c11/run/refusals/ws\",\"local\":true,\"gated\":true,\"sandbox\":\"workspace-write\",\"policy\":{\"enabled\":true,\"ceiling\":0}}"
+    },
+    {
+     "from": "worker",
+     "kind": "attempt",
+     "line": "{\"kind\":\"attempt\",\"schema\":\"coder.observability.v2\",\"scope\":\"request_attempt\",\"engine\":null,\"gateway\":\"psionic\",\"model\":\"local\",\"model_source\":\"attempt_configuration\",\"requested_effort\":\"low\",\"outcome\":\"done\",\"status\":200,\"input_tokens\":null,\"output_tokens\":null,\"cached_tokens\":null,\"reasoning_tokens\":null,\"cache_write_tokens\":null,\"provider_cost_usd_micros\":null,\"card_estimate_usd_micros\":null,\"usd_micros\":-1}"
+    },
+    {
+     "from": "worker",
+     "kind": "ask",
+     "line": "{\"kind\":\"ask\",\"command\":\"printf unsafe > forbidden.txt\",\"ticket\":1}"
+    },
+    {
+     "from": "owner",
+     "kind": "answer",
+     "line": "{\"answer\":true,\"ticket\":1}"
+    },
+    {
+     "from": "worker",
+     "kind": "ended",
+     "line": "{\"kind\":\"ended\",\"ending\":\"failed\",\"text\":\"this run may not run commands: its effect ceiling is frozen below them\"}"
+    }
+   ]
+  },
+  {
+   "name": "no-model",
+   "what": "no model and no credentials: a task ends with no_capacity, an embedding with an error",
+   "from": "the worker built before the codec, driven over its standard input by the capture's driver; the lines are in the order they crossed. The driver's task lines are read_only; its other lines are byte for byte what the client writes.",
+   "lines": [
+    {
+     "from": "worker",
+     "kind": "journal",
+     "line": "{\"kind\":\"journal\",\"path\":\"/tmp/mcw-c11/run/nomodel/home/.openagents/coder/sessions/worker-1794592622730999.ajr\"}"
+    },
+    {
+     "from": "worker",
+     "kind": "ready",
+     "line": "{\"kind\":\"ready\"}"
+    },
+    {
+     "from": "owner",
+     "kind": "task",
+     "read_only": true,
+     "line": "{\"task\":\"anything\",\"session\":\"c11-nomodel\",\"cwd\":\"/tmp/mcw-c11/run/nomodel/ws\",\"sandbox\":\"read-only\"}"
+    },
+    {
+     "from": "worker",
+     "kind": "ended",
+     "line": "{\"kind\":\"ended\",\"ending\":\"no_capacity\",\"text\":\"Microcoder has no model to call here: add ~/work/.secrets/vertex-sa-inference.json (with gcloud installed), openagents-gemini-provider.env or openrouter.env.\"}"
+    },
+    {
+     "from": "owner",
+     "kind": "embed",
+     "line": "{\"embed\":\"a fact\"}"
+    },
+    {
+     "from": "worker",
+     "kind": "embedding",
+     "line": "{\"kind\":\"embedding\",\"error\":\"no Vertex key file\"}"
+    }
+   ]
+  },
+  {
+   "name": "bad-replies",
+   "what": "three answers that fit no schema",
+   "from": "the worker built before the codec, driven over its standard input by the capture's driver; the lines are in the order they crossed. The driver's task lines are read_only; its other lines are byte for byte what the client writes.",
+   "lines": [
+    {
+     "from": "worker",
+     "kind": "journal",
+     "line": "{\"kind\":\"journal\",\"path\":\"/tmp/mcw-c11/run/badreplies/home/.openagents/coder/sessions/worker-1794592622756095.ajr\"}"
+    },
+    {
+     "from": "worker",
+     "kind": "ready",
+     "line": "{\"kind\":\"ready\"}"
+    },
+    {
+     "from": "owner",
+     "kind": "task",
+     "read_only": true,
+     "line": "{\"task\":\"say hi\",\"session\":\"c11-badreplies\",\"cwd\":\"/tmp/mcw-c11/run/badreplies/ws\",\"local\":true,\"sandbox\":\"read-only\"}"
+    },
+    {
+     "from": "worker",
+     "kind": "attempt",
+     "line": "{\"kind\":\"attempt\",\"schema\":\"coder.observability.v2\",\"scope\":\"request_attempt\",\"engine\":null,\"gateway\":\"psionic\",\"model\":\"local\",\"model_source\":\"attempt_configuration\",\"requested_effort\":\"low\",\"outcome\":\"done\",\"status\":200,\"input_tokens\":null,\"output_tokens\":null,\"cached_tokens\":null,\"reasoning_tokens\":null,\"cache_write_tokens\":null,\"provider_cost_usd_micros\":null,\"card_estimate_usd_micros\":null,\"usd_micros\":-1}"
+    },
+    {
+     "from": "worker",
+     "kind": "attempt",
+     "line": "{\"kind\":\"attempt\",\"schema\":\"coder.observability.v2\",\"scope\":\"request_attempt\",\"engine\":null,\"gateway\":\"psionic\",\"model\":\"local\",\"model_source\":\"attempt_configuration\",\"requested_effort\":\"low\",\"outcome\":\"done\",\"status\":200,\"input_tokens\":null,\"output_tokens\":null,\"cached_tokens\":null,\"reasoning_tokens\":null,\"cache_write_tokens\":null,\"provider_cost_usd_micros\":null,\"card_estimate_usd_micros\":null,\"usd_micros\":-1}"
+    },
+    {
+     "from": "worker",
+     "kind": "attempt",
+     "line": "{\"kind\":\"attempt\",\"schema\":\"coder.observability.v2\",\"scope\":\"request_attempt\",\"engine\":null,\"gateway\":\"psionic\",\"model\":\"local\",\"model_source\":\"attempt_configuration\",\"requested_effort\":\"low\",\"outcome\":\"done\",\"status\":200,\"input_tokens\":null,\"output_tokens\":null,\"cached_tokens\":null,\"reasoning_tokens\":null,\"cache_write_tokens\":null,\"provider_cost_usd_micros\":null,\"card_estimate_usd_micros\":null,\"usd_micros\":-1}"
+    },
+    {
+     "from": "worker",
+     "kind": "ended",
+     "line": "{\"kind\":\"ended\",\"ending\":\"bad_replies\",\"text\":\"\"}"
+    }
+   ]
+  },
+  {
+   "name": "idle",
+   "what": "three answers with nothing to do and no reply",
+   "from": "the worker built before the codec, driven over its standard input by the capture's driver; the lines are in the order they crossed. The driver's task lines are read_only; its other lines are byte for byte what the client writes.",
+   "lines": [
+    {
+     "from": "worker",
+     "kind": "journal",
+     "line": "{\"kind\":\"journal\",\"path\":\"/tmp/mcw-c11/run/idle/home/.openagents/coder/sessions/worker-1794592622942218.ajr\"}"
+    },
+    {
+     "from": "worker",
+     "kind": "ready",
+     "line": "{\"kind\":\"ready\"}"
+    },
+    {
+     "from": "owner",
+     "kind": "task",
+     "read_only": true,
+     "line": "{\"task\":\"do nothing\",\"session\":\"c11-idle\",\"cwd\":\"/tmp/mcw-c11/run/idle/ws\",\"local\":true,\"sandbox\":\"read-only\"}"
+    },
+    {
+     "from": "worker",
+     "kind": "attempt",
+     "line": "{\"kind\":\"attempt\",\"schema\":\"coder.observability.v2\",\"scope\":\"request_attempt\",\"engine\":null,\"gateway\":\"psionic\",\"model\":\"local\",\"model_source\":\"attempt_configuration\",\"requested_effort\":\"low\",\"outcome\":\"done\",\"status\":200,\"input_tokens\":null,\"output_tokens\":null,\"cached_tokens\":null,\"reasoning_tokens\":null,\"cache_write_tokens\":null,\"provider_cost_usd_micros\":null,\"card_estimate_usd_micros\":null,\"usd_micros\":-1}"
+    },
+    {
+     "from": "worker",
+     "kind": "attempt",
+     "line": "{\"kind\":\"attempt\",\"schema\":\"coder.observability.v2\",\"scope\":\"request_attempt\",\"engine\":null,\"gateway\":\"psionic\",\"model\":\"local\",\"model_source\":\"attempt_configuration\",\"requested_effort\":\"low\",\"outcome\":\"done\",\"status\":200,\"input_tokens\":null,\"output_tokens\":null,\"cached_tokens\":null,\"reasoning_tokens\":null,\"cache_write_tokens\":null,\"provider_cost_usd_micros\":null,\"card_estimate_usd_micros\":null,\"usd_micros\":-1}"
+    },
+    {
+     "from": "worker",
+     "kind": "attempt",
+     "line": "{\"kind\":\"attempt\",\"schema\":\"coder.observability.v2\",\"scope\":\"request_attempt\",\"engine\":null,\"gateway\":\"psionic\",\"model\":\"local\",\"model_source\":\"attempt_configuration\",\"requested_effort\":\"low\",\"outcome\":\"done\",\"status\":200,\"input_tokens\":null,\"output_tokens\":null,\"cached_tokens\":null,\"reasoning_tokens\":null,\"cache_write_tokens\":null,\"provider_cost_usd_micros\":null,\"card_estimate_usd_micros\":null,\"usd_micros\":-1}"
+    },
+    {
+     "from": "worker",
+     "kind": "ended",
+     "line": "{\"kind\":\"ended\",\"ending\":\"idle\",\"text\":\"\"}"
+    }
+   ]
+  },
+  {
+   "name": "asked",
+   "what": "the model asks the person a question: the run ends asked",
+   "from": "the worker built before the codec, driven over its standard input by the capture's driver; the lines are in the order they crossed. The driver's task lines are read_only; its other lines are byte for byte what the client writes.",
+   "lines": [
+    {
+     "from": "worker",
+     "kind": "journal",
+     "line": "{\"kind\":\"journal\",\"path\":\"/tmp/mcw-c11/run/asked/home/.openagents/coder/sessions/worker-1794593438506153.ajr\"}"
+    },
+    {
+     "from": "worker",
+     "kind": "ready",
+     "line": "{\"kind\":\"ready\"}"
+    },
+    {
+     "from": "owner",
+     "kind": "task",
+     "read_only": true,
+     "line": "{\"task\":\"fix it\",\"session\":\"c11-asked\",\"cwd\":\"/tmp/mcw-c11/run/asked/ws\",\"local\":true,\"sandbox\":\"read-only\"}"
+    },
+    {
+     "from": "worker",
+     "kind": "reply",
+     "line": "{\"kind\":\"reply\",\"text\":\"Which file?\"}"
+    },
+    {
+     "from": "worker",
+     "kind": "attempt",
+     "line": "{\"kind\":\"attempt\",\"schema\":\"coder.observability.v2\",\"scope\":\"request_attempt\",\"engine\":null,\"gateway\":\"psionic\",\"model\":\"local\",\"model_source\":\"attempt_configuration\",\"requested_effort\":\"low\",\"outcome\":\"done\",\"status\":200,\"input_tokens\":null,\"output_tokens\":null,\"cached_tokens\":null,\"reasoning_tokens\":null,\"cache_write_tokens\":null,\"provider_cost_usd_micros\":null,\"card_estimate_usd_micros\":null,\"usd_micros\":-1}"
+    },
+    {
+     "from": "worker",
+     "kind": "ended",
+     "line": "{\"kind\":\"ended\",\"ending\":\"asked\",\"text\":\"Which file?\"}"
+    }
+   ]
+  },
+  {
+   "name": "timed-out",
+   "what": "a command that runs past the worker's 120 seconds",
+   "from": "the worker built before the codec, driven over its standard input by the capture's driver; the lines are in the order they crossed. The driver's task lines are read_only; its other lines are byte for byte what the client writes.",
+   "lines": [
+    {
+     "from": "worker",
+     "kind": "journal",
+     "line": "{\"kind\":\"journal\",\"path\":\"/tmp/mcw-c11/run/timeout/home/.openagents/coder/sessions/worker-1794593438579816.ajr\"}"
+    },
+    {
+     "from": "worker",
+     "kind": "ready",
+     "line": "{\"kind\":\"ready\"}"
+    },
+    {
+     "from": "owner",
+     "kind": "task",
+     "read_only": true,
+     "line": "{\"task\":\"sleep\",\"session\":\"c11-timeout\",\"cwd\":\"/tmp/mcw-c11/run/timeout/ws\",\"local\":true,\"sandbox\":\"danger-full-access\"}"
+    },
+    {
+     "from": "worker",
+     "kind": "attempt",
+     "line": "{\"kind\":\"attempt\",\"schema\":\"coder.observability.v2\",\"scope\":\"request_attempt\",\"engine\":null,\"gateway\":\"psionic\",\"model\":\"local\",\"model_source\":\"attempt_configuration\",\"requested_effort\":\"low\",\"outcome\":\"done\",\"status\":200,\"input_tokens\":null,\"output_tokens\":null,\"cached_tokens\":null,\"reasoning_tokens\":null,\"cache_write_tokens\":null,\"provider_cost_usd_micros\":null,\"card_estimate_usd_micros\":null,\"usd_micros\":-1}"
+    },
+    {
+     "from": "worker",
+     "kind": "command",
+     "line": "{\"kind\":\"command\",\"command\":\"sleep 300\",\"exit\":-1,\"timed_out\":true,\"output\":\"\\n[killed after 120 s]\"}"
+    },
+    {
+     "from": "worker",
+     "kind": "reply",
+     "line": "{\"kind\":\"reply\",\"text\":\"It timed out.\"}"
+    },
+    {
+     "from": "worker",
+     "kind": "attempt",
+     "line": "{\"kind\":\"attempt\",\"schema\":\"coder.observability.v2\",\"scope\":\"request_attempt\",\"engine\":null,\"gateway\":\"psionic\",\"model\":\"local\",\"model_source\":\"attempt_configuration\",\"requested_effort\":\"low\",\"outcome\":\"done\",\"status\":200,\"input_tokens\":null,\"output_tokens\":null,\"cached_tokens\":null,\"reasoning_tokens\":null,\"cache_write_tokens\":null,\"provider_cost_usd_micros\":null,\"card_estimate_usd_micros\":null,\"usd_micros\":-1}"
+    },
+    {
+     "from": "worker",
+     "kind": "ended",
+     "line": "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"It timed out.\"}"
+    }
+   ]
+  },
+  {
+   "name": "attempt-failed",
+   "what": "the model's second answer is missing: three attempts retried, one refused, and the run ends with no_capacity",
+   "from": "the worker built before the codec, driven over its standard input by the capture's driver; the lines are in the order they crossed. The driver's task lines are read_only; its other lines are byte for byte what the client writes.",
+   "lines": [
+    {
+     "from": "worker",
+     "kind": "journal",
+     "line": "{\"kind\":\"journal\",\"path\":\"/tmp/mcw-c11/run/attemptfailed/home/.openagents/coder/sessions/worker-1794593581222860.ajr\"}"
+    },
+    {
+     "from": "worker",
+     "kind": "ready",
+     "line": "{\"kind\":\"ready\"}"
+    },
+    {
+     "from": "owner",
+     "kind": "task",
+     "read_only": true,
+     "line": "{\"task\":\"list\",\"session\":\"c11-attemptfailed\",\"cwd\":\"/tmp/mcw-c11/run/attemptfailed/ws\",\"local\":true,\"sandbox\":\"danger-full-access\"}"
+    },
+    {
+     "from": "worker",
+     "kind": "attempt",
+     "line": "{\"kind\":\"attempt\",\"schema\":\"coder.observability.v2\",\"scope\":\"request_attempt\",\"engine\":null,\"gateway\":\"psionic\",\"model\":\"local\",\"model_source\":\"attempt_configuration\",\"requested_effort\":\"low\",\"outcome\":\"done\",\"status\":200,\"input_tokens\":null,\"output_tokens\":null,\"cached_tokens\":null,\"reasoning_tokens\":null,\"cache_write_tokens\":null,\"provider_cost_usd_micros\":null,\"card_estimate_usd_micros\":null,\"usd_micros\":-1}"
+    },
+    {
+     "from": "worker",
+     "kind": "command",
+     "line": "{\"kind\":\"command\",\"command\":\"true\",\"exit\":0,\"timed_out\":false,\"output\":\"\"}"
+    },
+    {
+     "from": "worker",
+     "kind": "attempt",
+     "line": "{\"kind\":\"attempt\",\"schema\":\"coder.observability.v2\",\"scope\":\"request_attempt\",\"engine\":null,\"gateway\":\"psionic\",\"model\":\"local\",\"model_source\":\"attempt_configuration\",\"requested_effort\":\"low\",\"outcome\":\"retried\",\"status\":0,\"input_tokens\":null,\"output_tokens\":null,\"cached_tokens\":null,\"reasoning_tokens\":null,\"cache_write_tokens\":null,\"provider_cost_usd_micros\":null,\"card_estimate_usd_micros\":null,\"usd_micros\":-1}"
+    },
+    {
+     "from": "worker",
+     "kind": "attempt",
+     "line": "{\"kind\":\"attempt\",\"schema\":\"coder.observability.v2\",\"scope\":\"request_attempt\",\"engine\":null,\"gateway\":\"psionic\",\"model\":\"local\",\"model_source\":\"attempt_configuration\",\"requested_effort\":\"low\",\"outcome\":\"retried\",\"status\":0,\"input_tokens\":null,\"output_tokens\":null,\"cached_tokens\":null,\"reasoning_tokens\":null,\"cache_write_tokens\":null,\"provider_cost_usd_micros\":null,\"card_estimate_usd_micros\":null,\"usd_micros\":-1}"
+    },
+    {
+     "from": "worker",
+     "kind": "attempt",
+     "line": "{\"kind\":\"attempt\",\"schema\":\"coder.observability.v2\",\"scope\":\"request_attempt\",\"engine\":null,\"gateway\":\"psionic\",\"model\":\"local\",\"model_source\":\"attempt_configuration\",\"requested_effort\":\"low\",\"outcome\":\"retried\",\"status\":0,\"input_tokens\":null,\"output_tokens\":null,\"cached_tokens\":null,\"reasoning_tokens\":null,\"cache_write_tokens\":null,\"provider_cost_usd_micros\":null,\"card_estimate_usd_micros\":null,\"usd_micros\":-1}"
+    },
+    {
+     "from": "worker",
+     "kind": "attempt",
+     "line": "{\"kind\":\"attempt\",\"schema\":\"coder.observability.v2\",\"scope\":\"request_attempt\",\"engine\":null,\"gateway\":\"psionic\",\"model\":\"local\",\"model_source\":\"attempt_configuration\",\"requested_effort\":\"low\",\"outcome\":\"refused\",\"status\":0,\"input_tokens\":null,\"output_tokens\":null,\"cached_tokens\":null,\"reasoning_tokens\":null,\"cache_write_tokens\":null,\"provider_cost_usd_micros\":null,\"card_estimate_usd_micros\":null,\"usd_micros\":-1}"
+    },
+    {
+     "from": "worker",
+     "kind": "ended",
+     "line": "{\"kind\":\"ended\",\"ending\":\"no_capacity\",\"text\":\"the server is unreachable\"}"
+    }
+   ]
+  },
+  {
+   "name": "embedding-failed",
+   "what": "an embedding request with no recorded answer left (the three before it are coder-recall's and are left out)",
+   "from": "the worker built before the codec, driven over its standard input by the capture's driver; the lines are in the order they crossed. The driver's task lines are read_only; its other lines are byte for byte what the client writes.",
+   "lines": [
+    {
+     "from": "worker",
+     "kind": "journal",
+     "line": "{\"kind\":\"journal\",\"path\":\"/tmp/mcw-c11/run/embeddings/home/.openagents/coder/sessions/worker-1794592623123277.ajr\"}"
+    },
+    {
+     "from": "worker",
+     "kind": "ready",
+     "line": "{\"kind\":\"ready\"}"
+    },
+    {
+     "from": "owner",
+     "kind": "embed",
+     "line": "{\"embed\":\"one more\",\"query\":true}"
+    },
+    {
+     "from": "worker",
+     "kind": "embedding",
+     "line": "{\"kind\":\"embedding\",\"error\":\"Vertex gave no embedding (status 0)\"}"
+    }
+   ]
+  }
+ ],
+ "skipped": {
+  "owner": [
+   "",
+   "{}",
+   "not json",
+   "[1]",
+   "{\"task\":\"\"}",
+   "{\"task\":7,\"cwd\":\"/w\"}",
+   "{\"stop\":1}",
+   "{\"answer\":\"yes\"}",
+   "{\"kind\":\"ready\"}"
+  ],
+  "worker": [
+   "",
+   "{}",
+   "not json",
+   "{\"kind\":7}",
+   "{\"kind\":\"Ready\"}",
+   "{\"kind\":\"session\",\"id\":\"s\"}",
+   "{\"kind\":\"reply_delta\",\"segment\":0,\"text\":\"x\"}",
+   "{\"task\":\"t\"}"
+  ]
+ }
+}

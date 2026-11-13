@@ -11,23 +11,8 @@
 #   shape NAME     a shape that is not compliant yet: a pending row's id, or one with no row
 
 # Area 1: Coder, Microcoder, Golemancy
-shape coder-json-output  # C8, wave 2: --json and --stream-json output (#13250)
-shape chat-page-lines  # C9, wave 2: the /chat page lines Z C S U T (#13250)
-shape microcoder-worker-lines  # C11, wave 2: ready, reply, attempt, command, view, ask, ended, embedding, journal, task, answer (#13250)
 shape external-format-fixtures  # C13, wave 2: every external row gets a fixture (#13250)
-route coax/web/api/chat.c  # C9: the /chat routes. Its answers have messages and goldens (api-routes-v1alpha1.json) and its refusals go through api_error; left: the bodies its C still spells with snprintf move to a Coax unit (#13250); and the page lines (shape chat-page-lines)
 
 # Area 2: Everglade
-route coax/web/api/player.c  # E11: player, progress, tickets. Its answers have messages and goldens (api-routes-v1alpha1.json) and its refusals go through api_error; left: the bodies its C still spells with snprintf move to a Coax unit (#13250): the two refusals with several members (maintenance, every room is full), the bodies it posts to SQL, and the vitals post it still reads in C. Its items route (room_items) is everglade.item-op.v1: the answer through the codec, the request still read with SQL jsonb (#13291)
-route coax/web/api/rooms.c  # E8: it reads the directory post in C (shard_lines) and the stats body is room-stats.h's. Its answers have messages and goldens (api-routes-v1alpha1.json) and its refusals go through api_error; left: the bodies its C still spells with snprintf move to a Coax unit (#13250)
-route coax/web/api/worldbuilder.c  # E12, after #13226: the API suite does not call it, so it has no goldens yet; its bodies are worldbuilder-policy.coax's and two the C spells (#13250)
 
 # Outside the two audited areas. The tracker owns these.
-route coax/web/api/anime.c  # the anime director: its bodies are anime-director-policy.coax's and its refusal is api_error's; left: a schema and goldens (the suite's anime step did not run: it follows a red check), and its three readers (two CLI commands, animationlab-face.c) onto one codec (#13250)
-route coax/web/api/auth.c  # auth. Its answers have messages and goldens (api-routes-v1alpha1.json) and its refusals go through api_error; left: the bodies its C still spells with snprintf move to a Coax unit (#13250)
-route coax/web/api/auth-device.c  # device keys. Its answers have messages and goldens (api-routes-v1alpha1.json) and its refusals go through api_error; left: the bodies its C still spells with snprintf move to a Coax unit (#13250)
-route coax/web/api/auth-life.c  # auth life. Its answers have messages and goldens (api-routes-v1alpha1.json) and its refusals go through api_error; left: the bodies its C still spells with snprintf move to a Coax unit (#13250)
-route coax/web/api/auth-recover.c  # auth recovery. Its answers have messages and goldens (api-routes-v1alpha1.json) and its refusals go through api_error; left: the bodies its C still spells with snprintf move to a Coax unit (#13250)
-route coax/web/api/passkeys.c  # passkeys. Its answers have messages and goldens (api-routes-v1alpha1.json) and its refusals go through api_error; left: the bodies its C still spells with snprintf move to a Coax unit (#13250)
-route coax/web/api/lnaddr.c  # Lightning Addresses: the LNURL bodies are lnurl.coax's (the lnurl row). Its answers have messages and goldens (api-routes-v1alpha1.json) and its refusals go through api_error; left: the bodies its C still spells with snprintf move to a Coax unit (#13250)
-route coax/web/api/makers.c  # makers and upgrades. Its answers have messages and goldens (api-routes-v1alpha1.json) and its refusals go through api_error; left: the bodies its C still spells with snprintf move to a Coax unit (#13250)

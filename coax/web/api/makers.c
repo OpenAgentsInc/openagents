@@ -42,6 +42,7 @@
 // reaches a load balancer's logs.
 #include "api.h"
 #include "lnaddr-policy.generated.h"
+#include "makers-wire.generated.h"
 #include <fcntl.h>
 #include <signal.h>
 #include <stdio.h>
@@ -58,6 +59,12 @@ enum { MP_TIP = 0, MP_UPGRADE = 1, MP_NO_PROOF = 0, MP_BY_VERIFY = 1, MP_BY_WALL
 static coax_string cs(const char *s) { return (coax_string){s ? s : "", s ? (int64_t)strlen(s) : 0}; }
 
 static const char *env_or(const char *name, const char *fallback) { const char *v = getenv(name); return v && *v ? v : fallback; }
+// Every body this file writes itself is makers-wire.coax's (makers-wire.generated.c). A body a
+// writer put in buf (n its length, or -1 when it did not fit) as a C string: NULL when it did not fit.
+static const char *wrote(char *buf, int64_t n) { if (n < 0) return NULL; buf[n] = 0; return buf; }
+#define WIRE(buf) ((coax_v_u8){(uint8_t *)(buf), (int64_t)sizeof (buf) - 1})
+// {}: a request with no body, or a wallet answer that did not come, as SQL reads it.
+static const char *no_members(void) { static char b[4]; const char *e = wrote(b, mkw_empty_write(WIRE(b))); return e ? e : ""; }
 static const char *origin(void) { const char *o = getenv("OA_API_ORIGIN"); return o && *o ? o : "https://openagents.com"; }
 
 static bool slug_ok(const char *s, size_t n) {
@@ -69,7 +76,7 @@ static bool slug_ok(const char *s, size_t n) {
 static char *body_of(const request *q) {
   char *b = malloc(q->body_len + 3);
   if (!b) return NULL;
-  if (q->body_len) { memcpy(b, q->body, q->body_len); b[q->body_len] = 0; } else strcpy(b, "{}");
+  if (q->body_len) { memcpy(b, q->body, q->body_len); b[q->body_len] = 0; } else strcpy(b, no_members());
   return b;
 }
 
@@ -112,9 +119,11 @@ static void make_code(const request *q, PGconn *db, const char *realm) {
   else if (atoi(PQgetvalue(r, 0, 0)) != 200) api_json(q->fd, atoi(PQgetvalue(r, 0, 0)), PQgetvalue(r, 0, 1));
   else {
     char out[512];
-    snprintf(out, sizeof out, "{\"realm\":\"%s\",\"code\":\"%s\",\"link\":\"%s/worlds/%s/claim#code=%s\"}", realm, code, origin(), realm, code);
-    api_json(q->fd, 200, out);
-    api_log("makers: a claim code for %s", realm);
+    if (!wrote(out, mkw_claim_link_write(cs(realm), cs(code), cs(origin()), WIRE(out)))) api_error(q->fd, 500, "not kept");
+    else {
+      api_json(q->fd, 200, out);
+      api_log("makers: a claim code for %s", realm);
+    }
   }
   PQclear(r);
   memset(code, 0, sizeof code);
@@ -125,7 +134,7 @@ static void make_code(const request *q, PGconn *db, const char *realm) {
 
 // A value of a JSON text, by SQL (""): the wallet's answers are read the way every answer here is.
 static void jget(PGconn *db, const char *json, const char *key, char *out, size_t cap) {
-  const char *v[2] = {json ? json : "{}", key};
+  const char *v[2] = {json ? json : no_members(), key};
   out[0] = 0;
   PGresult *r = PQexecParams(db, "SELECT coalesce($1::jsonb->>$2, '')", 2, NULL, v, NULL, NULL, 0);
   if (PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1) snprintf(out, cap, "%s", PQgetvalue(r, 0, 0));
@@ -157,8 +166,7 @@ static void run_payouts(PGconn *db) {
     char body[2400], state[32], fee[24], err[200], *w = NULL;
     if (!mp_payout(source, direct)) { outcome(db, tip, "failed", NULL, "not ours to send: the player paid the maker", false); continue; }
     if (inv[0]) {   // an invoice kept before: what became of it?
-      snprintf(body, sizeof body, "{\"invoice\":\"%s\"}", inv);
-      long st = api_spark("/sent", body, 40, &w);
+      long st = wrote(body, mkw_invoice_write(cs(inv), WIRE(body))) ? api_spark("/sent", body, 40, &w) : 0;
       if (st != 200) { free(w); outcome(db, tip, "failed", NULL, "our wallet did not answer", false); continue; }
       jget(db, w, "state", state, sizeof state); jget(db, w, "fee_sats", fee, sizeof fee); free(w); w = NULL;
       if (!strcmp(state, "completed")) { outcome(db, tip, "sent", fee, NULL, false); continue; }
@@ -186,10 +194,10 @@ static void run_payouts(PGconn *db) {
         }
         api_log("makers: a first tip's bonus waits for funding");
       }
-      snprintf(body, sizeof body, source == MP_SRC_BONUS ? "{\"address\":\"%s\",\"sats\":%s,\"comment\":\"Your first tip on %s: a bonus from OpenAgents\"}"
-                                : source == MP_SRC_GIFT ? "{\"address\":\"%s\",\"sats\":%s,\"comment\":\"A gift from OpenAgents for %s\"}"
-                                : "{\"address\":\"%s\",\"sats\":%s,\"comment\":\"A tip from a player of %s on OpenAgents\"}", ln, sats, realm);
-      long st = api_spark("/quote", body, 40, &w);
+      int64_t bn = source == MP_SRC_BONUS ? mkw_quote_bonus_write(cs(ln), cs(sats), cs(realm), WIRE(body))
+                 : source == MP_SRC_GIFT ? mkw_quote_gift_write(cs(ln), cs(sats), cs(realm), WIRE(body))
+                 : mkw_quote_tip_write(cs(ln), cs(sats), cs(realm), WIRE(body));
+      long st = wrote(body, bn) ? api_spark("/quote", body, 40, &w) : 0;
       if (st != 200) { jget(db, w, "error", err, sizeof err); free(w); outcome(db, tip, "failed", NULL, *err ? err : "no invoice from the address", true); continue; }
       char hash[80], amount[24], expiry[24];
       jget(db, w, "invoice", inv, sizeof inv); jget(db, w, "payment_hash", hash, sizeof hash); jget(db, w, "amount_sats", amount, sizeof amount);
@@ -202,8 +210,7 @@ static void run_payouts(PGconn *db) {
       if (!kept) { outcome(db, tip, "failed", NULL, "the address's invoice did not fit", true); continue; }
     }
     // the fee may differ a little from the quote's; at most this many sats of our own on top
-    snprintf(body, sizeof body, "{\"invoice\":\"%s\",\"max_fee_sats\":%ld}", inv, atol(sats) / 50 + 10 > 1000 ? 1000L : atol(sats) / 50 + 10);
-    long st = api_spark("/send", body, 60, &w);
+    long st = wrote(body, mkw_send_write(cs(inv), atol(sats) / 50 + 10 > 1000 ? 1000L : atol(sats) / 50 + 10, WIRE(body))) ? api_spark("/send", body, 60, &w) : 0;
     jget(db, w, "state", state, sizeof state); jget(db, w, "fee_sats", fee, sizeof fee); jget(db, w, "error", err, sizeof err); free(w); w = NULL;
     if (st == 200 && !strcmp(state, "completed")) outcome(db, tip, "sent", fee, NULL, false);
     else if (st == 200 && !strcmp(state, "pending")) outcome(db, tip, "pending", NULL, NULL, false);
@@ -348,9 +355,9 @@ static void tip_check(int fd, PGconn *db, const char *slug, const char *hash, co
   if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) { api_error(fd, 500, "not kept"); PQclear(r); return; }
   if (atoi(PQgetvalue(r, 0, 0)) != 200 || strcmp(PQgetvalue(r, 0, 1), "open")) { api_json(fd, atoi(PQgetvalue(r, 0, 0)), PQgetvalue(r, 0, 3)); PQclear(r); return; }
   char body[2400], *w = NULL;
-  snprintf(body, sizeof body, "{\"invoice\":\"%s\"}", PQgetvalue(r, 0, 2));
+  bool fits = wrote(body, mkw_invoice_write(cs(PQgetvalue(r, 0, 2)), WIRE(body)));
   PQclear(r);
-  long st = api_spark("/paid", body, 30, &w);
+  long st = fits ? api_spark("/paid", body, 30, &w) : 0;
   if (st == 200 && w) {
     char state[32], amount[24], opre[80];
     jget(db, w, "state", state, sizeof state); jget(db, w, "amount_msat", amount, sizeof amount); jget(db, w, "preimage", opre, sizeof opre);
@@ -403,7 +410,10 @@ bool makers_route(const request *q) {
       if (post && !strcmp(what, "run")) {   // every payout not sent is due now
         PGresult *u = PQexec(db, "UPDATE makers.payouts SET next_try = now() WHERE state <> 'sent' AND (lease IS NULL OR lease < now())");
         PQclear(u);
-        in_child(-1, slug, NULL, NULL, NULL); api_json(q->fd, 200, "{\"running\":true}"); return true;
+        in_child(-1, slug, NULL, NULL, NULL);
+        char running[32];
+        if (wrote(running, mkw_running_write(WIRE(running)))) api_json(q->fd, 200, running); else api_error(q->fd, 500, "not kept");
+        return true;
       }
       PGresult *r = PQexec(db, "SELECT makers.payout_lines()");
       const char *t = PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1 ? PQgetvalue(r, 0, 0) : "";
@@ -418,7 +428,7 @@ bool makers_route(const request *q) {
       int st = admin_who(q, db, who);
       if (st) { api_error(q->fd, st, st == 403 ? "admins only" : "log in as an admin"); return true; }
       char *body = body_of(q);
-      const char *v[3] = {slug, body ? body : "{}", env_or("OA_MAKER_GIFT_MAX_SATS", "20000")};
+      const char *v[3] = {slug, body ? body : no_members(), env_or("OA_MAKER_GIFT_MAX_SATS", "20000")};
       PGresult *r = PQexecParams(db, "SELECT (x->>'status')::int, (x - 'status')::text FROM makers.gift($1, ($2::jsonb->>'sats')::bigint, $3::bigint) x", 3, NULL, v, NULL, NULL, 0);
       free(body);
       if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) { api_log("makers: gift: %s", PQerrorMessage(db)); api_error(q->fd, 400, "sats must be a whole number"); }
@@ -436,7 +446,7 @@ bool makers_route(const request *q) {
   if (post && !strcmp(what, "tip")) {
     if (q->body_len > 512) { api_error(q->fd, 413, "too big"); return true; }
     char body[520]; memcpy(body, q->body, q->body_len); body[q->body_len] = 0;
-    in_child(q->fd, slug, q->body_len ? body : "{}", team_asks(q, db) ? "true" : "false", tip_new);
+    in_child(q->fd, slug, q->body_len ? body : no_members(), team_asks(q, db) ? "true" : "false", tip_new);
     return true;
   }
   if (post && !strncmp(what, "tip/", 4)) {
@@ -517,9 +527,9 @@ static void buy_check(int fd, PGconn *db, const char *id, const char *hash, cons
   if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) { api_error(fd, 500, "not kept"); PQclear(r); return; }
   if (atoi(PQgetvalue(r, 0, 0)) != 200 || strcmp(PQgetvalue(r, 0, 1), "open")) { api_json(fd, atoi(PQgetvalue(r, 0, 0)), PQgetvalue(r, 0, 3)); PQclear(r); return; }
   char body[2400], *w = NULL;
-  snprintf(body, sizeof body, "{\"invoice\":\"%s\"}", PQgetvalue(r, 0, 2));
+  bool fits = wrote(body, mkw_invoice_write(cs(PQgetvalue(r, 0, 2)), WIRE(body)));
   PQclear(r);
-  long st = api_spark("/paid", body, 30, &w);
+  long st = fits ? api_spark("/paid", body, 30, &w) : 0;
   if (st == 200 && w) {
     char state[32], amount[24], pre[80];
     jget(db, w, "state", state, sizeof state); jget(db, w, "amount_msat", amount, sizeof amount); jget(db, w, "preimage", pre, sizeof pre);

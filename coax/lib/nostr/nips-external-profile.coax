@@ -1,0 +1,153 @@
+// The Nostr NIPs' external profile check (Protocol, GitHub #13250, step C13):
+// proto/external/nostr-nips.json names bytes other programs and the NIP texts
+// published, and the values our own records must hold after coax/lib/nostr/
+// has read them. For each fixture, by its `reader`:
+//   - relay-frames: a file of relay frames, a line each. message.coax reads
+//     every frame (NostrMessage), nip42.coax reads the AUTH challenge, and
+//     the event each EVENT frame carries is verified (NostrEvent: its id is
+//     the one computed from its bytes and its BIP-340 signature holds).
+//   - nip19: a NIP-19 string, read by nip19-core.coax (N19_Result).
+//   - nip06: BIP-39 words, read by nip06.coax into the key, its nsec and npub.
+// This file parses no Nostr format itself: it reads the fixture's own JSON
+// and compares values.
+//   coax/web/tool.sh coax/lib/nostr/nips-external-profile.coax [proto/external/nostr-nips.json]
+// tool.sh: run-steps 250000000
+#run_steps 250000000;
+#import "Basic";
+#load "message.coax";
+#load "nip42.coax";
+#load "nip06.coax";
+#load "../json/json.coax";
+#load "../sys/tool.coax";
+#load "../sys/args.coax";
+#load "../sys/fs.coax";
+
+XN_FIXTURE :: "proto/external/nostr-nips.json";
+XN_FILE :: 1048576;
+XnWork :: struct { nodes: [4096] JvNode; file: [XN_FILE] u8; scratch: [NE_MAX_OUTPUT] u8; a: [1024] u8; b: [1024] u8; c: [1024] u8; name: [256] u8; }
+
+xn_str :: (d: Jv, at: int, out: [] u8) -> string {
+  n := jv_str(d, at, out);
+  return ifx n < 0 then "" else cast(string) out[0..<n];
+}
+xn_hex :: (bytes: [] u8, out: [] u8) -> string {
+  digits := "0123456789abcdef";
+  for i: 0..<bytes.count { out[2 * i] = digits[cast(int) (bytes[i] >> 4)]; out[2 * i + 1] = digits[cast(int) (bytes[i] & 15)]; }
+  return cast(string) out[0..<2 * bytes.count];
+}
+xn_itoa :: (v: int, out: [] u8) -> string {
+  tmp: [24] u8; k := 0; x := v;
+  while true { tmp[k] = cast(u8) ('0' + x % 10); k += 1; x /= 10; if x == 0 { break; } }
+  for i: 0..<k { out[i] = tmp[k - 1 - i]; }
+  return cast(string) out[0..<k];
+}
+
+// A file of relay frames against want; "" when every value is want's, else what differs.
+xn_frames :: (w: [] XnWork, d: Jv, path: string, want: int) -> string {
+  n := fs_read(path, w[0].file[..]);
+  if n <= 0 || n >= XN_FILE { return "cannot read the file"; }
+  text := cast(string) w[0].file[0..<n];
+  frames := 0; auth := 0; events := 0; eose := 0; verified := 0; other := 0; first := true;
+  n42: [1] Nip42; challenge_ok := false;
+  kinds := jv_get(d, want, "kinds"); kind_seen: [32] int;
+  if jv_len(d, kinds) > 32 { return "too many kinds in want"; }
+  fe := jv_get(d, want, "first_event");
+  from := 0;
+  for i: 0..<n + 1 {
+    if i < n && text[i] != '\n' { continue; }
+    line := text[from..<i]; from = i + 1;
+    if line.count == 0 { continue; }
+    frames += 1;
+    m := nostr_message_read(line);
+    if m.error == NM_TYPE {
+      // message.coax leaves AUTH to nip42.coax
+      if nip42_challenge(n42[..], 1, line) != N42_OK { other += 1; continue; }
+      auth += 1;
+      challenge_ok = nip42_challenge_text(n42[..]) == xn_str(d, jv_get(d, want, "challenge"), w[0].a[..]);
+      continue;
+    }
+    if m.error != NM_OK { other += 1; continue; }
+    if m.type == NM_EOSE { eose += 1; continue; }
+    if m.type != NM_EVENT { other += 1; continue; }
+    events += 1;
+    e := nostr_message_event_verify_vartime(line, w[0].scratch[..], false);
+    if e.error == NE_OK && e.verified { verified += 1; }
+    for k: 0..<jv_len(d, kinds) {
+      kn := jv_at(d, kinds, k);
+      if jv_key(d, kn) == xn_itoa(e.kind, w[0].a[..]) { kind_seen[k] += 1; }
+    }
+    if first {
+      first = false;
+      if nm_text(m, m.sub) != xn_str(d, jv_get(d, fe, "sub"), w[0].a[..]) { return "the first event's subscription differs"; }
+      if xn_hex(e.id[..], w[0].b[..]) != xn_str(d, jv_get(d, fe, "id"), w[0].a[..]) { return "the first event's id differs"; }
+      if xn_hex(e.public_key[..], w[0].b[..]) != xn_str(d, jv_get(d, fe, "pubkey"), w[0].a[..]) { return "the first event's pubkey differs"; }
+      if e.kind != jv_int(d, jv_get(d, fe, "kind"), -1) || e.created_at != jv_int(d, jv_get(d, fe, "created_at"), -1) || e.tags != jv_int(d, jv_get(d, fe, "tags"), -1) { return "the first event's kind, created_at or tag count differs"; }
+    }
+  }
+  if frames != jv_int(d, jv_get(d, want, "frames"), -1) { return "the frame count differs"; }
+  if auth != jv_int(d, jv_get(d, want, "auth"), -1) || !challenge_ok { return "the AUTH count or challenge differs"; }
+  if events != jv_int(d, jv_get(d, want, "events"), -1) { return "the EVENT count differs"; }
+  if eose != jv_int(d, jv_get(d, want, "eose"), -1) { return "the EOSE count differs"; }
+  if verified != jv_int(d, jv_get(d, want, "verified"), -1) { return "the count of events whose id and signature hold differs"; }
+  if other != 0 { return "a frame was refused"; }
+  total := 0;
+  for k: 0..<jv_len(d, kinds) {
+    if kind_seen[k] != jv_int(d, jv_at(d, kinds, k), -1) { return "a kind's event count differs"; }
+    total += kind_seen[k];
+  }
+  if total != events { return "the kinds do not account for every event"; }
+  return "";
+}
+// A NIP-19 string against want {type, hex, relays}.
+xn_nip19 :: (w: [] XnWork, d: Jv, body: string, want: int) -> string {
+  out: [512] u8;
+  r := nip19_decode_checked(body, out[..], false);
+  if r.error != NC_OK { return "nip19-core.coax refuses it"; }
+  names := [7] string.["", "npub", "nsec", "note", "nprofile", "nevent", "naddr"];
+  if r.type < 1 || r.type > 6 || names[cast(int) r.type] != xn_str(d, jv_get(d, want, "type"), w[0].a[..]) { return "the type differs"; }
+  if !r.has_special { return "no key or id in it"; }
+  if xn_hex(out[r.special_at..<r.special_at + r.special_length], w[0].b[..]) != xn_str(d, jv_get(d, want, "hex"), w[0].a[..]) { return "the key differs"; }
+  if r.relays != jv_int(d, jv_get(d, want, "relays"), 0) { return "the relay count differs"; }
+  return "";
+}
+// BIP-39 words against want {secret, nsec, public, npub}.
+xn_nip06 :: (w: [] XnWork, d: Jv, body: string, want: int) -> string {
+  key: [32] u8; out: [512] u8; pub: [64] u8;
+  if !nip06_key(body, key[..]) { return "nip06.coax refuses the words"; }
+  if xn_hex(key[..], w[0].b[..]) != xn_str(d, jv_get(d, want, "secret"), w[0].a[..]) { return "the private key differs"; }
+  r := nip19_encode_checked(N19_NSEC, cast(string) key[..], out[..], false);
+  if r.error != NC_OK || cast(string) out[0..<r.written] != xn_str(d, jv_get(d, want, "nsec"), w[0].a[..]) { return "the nsec differs"; }
+  n := nip06_npub(key[..], out[..]);
+  if n < 0 || cast(string) out[0..<n] != xn_str(d, jv_get(d, want, "npub"), w[0].a[..]) { return "the npub differs"; }
+  p := nip19_decode_checked(cast(string) out[0..<n], pub[..], false);
+  if p.error != NC_OK || p.written != 32 || xn_hex(pub[0..<32], w[0].b[..]) != xn_str(d, jv_get(d, want, "public"), w[0].a[..]) { return "the public key differs"; }
+  return "";
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  args: [1] Args;
+  loaded := args_load(args[..]);
+  path := ifx loaded && args_count(args[..]) >= 1 then args_at(args[..], 0) else XN_FIXTURE;
+  buf: [65536] u8; j: [1] Jv; w: [1] XnWork;
+  n := fs_read(path, buf[..]);
+  if n <= 0 { tool_errln("nostr nips external profile: cannot read the fixture"); return 2; }
+  if !jv_parse(j[..], cast(string) buf[0..<n], w[0].nodes[..]) || jv_kind(j[0], 0) != JV_OBJECT { print("FAIL  cannot parse the fixture\n"); return 1; }
+  d := j[0]; bad := 0; seen := [3] int.[0, 0, 0];
+  list := jv_get(d, 0, "fixtures");
+  for i: 0..<jv_len(d, list) {
+    row := jv_at(d, list, i);
+    reader := xn_str(d, jv_get(d, row, "reader"), w[0].c[..]);
+    want := jv_get(d, row, "want");
+    why := "a reader this tool does not know";
+    body: [1024] u8;
+    if jv_kind(d, jv_get(d, row, "source")) != JV_STRING || jv_kind(d, want) != JV_OBJECT { why = "the fixture names no source or no want"; }
+    else if reader == "relay-frames" { fb: [512] u8; seen[0] += 1; why = xn_frames(w[..], d, xn_str(d, jv_get(d, row, "file"), fb[..]), want); }
+    else if reader == "nip19" { seen[1] += 1; why = xn_nip19(w[..], d, xn_str(d, jv_get(d, row, "body"), body[..]), want); }
+    else if reader == "nip06" { seen[2] += 1; why = xn_nip06(w[..], d, xn_str(d, jv_get(d, row, "body"), body[..]), want); }
+    name := xn_str(d, jv_get(d, row, "name"), w[0].name[..]);
+    if why != "" { print("FAIL  %: %\n", name, why); bad += 1; } else { print("ok    %\n", name); }
+  }
+  if seen[0] < 1 || seen[1] < 3 || seen[2] < 2 { print("FAIL  too few fixtures: a relay capture, three NIP-19 strings and two NIP-06 vectors are the least\n"); bad += 1; }
+  print("%\n", ifx bad == 0 then "nostr-nips external profile holds" else "nostr-nips external profile fails");
+  return ifx bad == 0 then 0 else 1;
+}

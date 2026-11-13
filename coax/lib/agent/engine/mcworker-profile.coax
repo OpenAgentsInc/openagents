@@ -1,0 +1,214 @@
+// Hold Microcoder's worker lines (proto/coder/microcoder-worker-lines-v1.json, Protocol C11,
+// GitHub #13250) to their one codec, mcworker-wire.coax. The profile names every line and its
+// members, and holds runs: the lines a worker and its owner wrote each way, byte for byte. For
+// each line of each run this check
+//   - requires every member the line carries to be one the profile names for its kind;
+//   - reads it through the codec (mww_read for a worker's line, mww_request for an owner's) and
+//     requires the kind the profile says;
+//   - writes it again from what was read and requires the same bytes.
+// A line marked "read_only" was not written by the client (the capture's driver wrote it, with
+// members in another order or left out): it is read as the worker reads it and not written back.
+// Every kind must be in some run. Every line under "skipped" must read as no line at all.
+// The check never writes a line to compare with itself: every line of a run came from a program
+// that ran.
+//   coax/web/tool.sh coax/lib/agent/engine/mcworker-profile.coax proto/coder/microcoder-worker-lines-v1.json
+#import "Basic";
+#load "mcworker-wire.coax";
+#load "../../json/json.coax";
+#load "../../sys/tool.coax";
+#load "../../sys/args.coax";
+#load "../../sys/fs.coax";
+
+MP_FILE :: 524288;
+MP_LINE :: 16384;
+MP_PATH :: "proto/coder/microcoder-worker-lines-v1.json";
+MP_CHECK :: "coax/web/tool.sh coax/lib/agent/engine/mcworker-profile.coax proto/coder/microcoder-worker-lines-v1.json";
+MP_KINDS :: 14;
+MP_NAMES :: [MP_KINDS] string.["task", "answer", "stop", "forget", "embed", "journal", "ready", "reply", "attempt", "command", "view", "ask", "ended", "embedding"];
+MP_CODES :: [MP_KINDS] int.[MWW_TASK, MWW_ANSWER, MWW_STOP, MWW_FORGET, MWW_EMBED, MWW_JOURNAL, MWW_READY, MWW_REPLY, MWW_ATTEMPT, MWW_COMMAND, MWW_VIEW, MWW_ASK, MWW_ENDED, MWW_EMBEDDING];
+MP_OWNER :: 5;       // the first five are the owner's lines
+
+MpWork :: struct {
+  file: [MP_FILE] u8; line: [MP_LINE] u8; back: [MP_LINE] u8; arena: [MP_LINE] u8; word: [256] u8; name: [256] u8;
+  nodes: [16384] JvNode; line_nodes: [2048] JvNode; seen: [MP_KINDS] int;
+}
+
+mp_str :: (d: Jv, at: int, out: [] u8) -> string {
+  n := jv_str(d, at, out);
+  return ifx n >= 0 then cast(string) out[0..<n] else "";
+}
+mp_kind :: (name: string) -> int {
+  names := MP_NAMES;
+  for k: 0..<MP_KINDS { if names[k] == name { return k; } }
+  return -1;
+}
+// The profile's entry for a kind in "lines", or -1.
+mp_entry :: (w: [] MpWork, d: Jv, kind: string) -> int {
+  lines := jv_get(d, 0, "lines");
+  for i: 0..<jv_len(d, lines) {
+    e := jv_at(d, lines, i);
+    if mp_str(d, jv_get(d, e, "kind"), w[0].word[..]) == kind { return e; }
+  }
+  return -1;
+}
+// Whether the entry names a member: by its name, or as the object a dotted name is in.
+mp_named :: (w: [] MpWork, d: Jv, entry: int, key: string) -> bool {
+  members := jv_get(d, entry, "members");
+  for i: 0..<jv_len(d, members) {
+    name := mp_str(d, jv_get(d, jv_at(d, members, i), "name"), w[0].word[..]);
+    if name == key { return true; }
+    if name.count > key.count + 1 && name[key.count] == '.' && cast(string) name[0..<key.count] == key { return true; }
+  }
+  return false;
+}
+// A worker's line, read and written back: "" when the bytes are the same, else what is wrong.
+mp_worker :: (w: [] MpWork, k: int, line: string) -> string {
+  ar: [1] ClArena; ar[0] = ClArena.{buf = w[0].arena[..]};
+  l: [1] MwwLine; codes := MP_CODES;
+  got := mww_read(ar[..], line, l[..]);
+  if got != codes[k] { return "the codec reads another kind"; }
+  o := w[0].back[..]; n := -1;
+  if got == MWW_JOURNAL { n = mww_journal(o, l[0].path); }
+  else if got == MWW_READY { n = mww_ready(o); }
+  else if got == MWW_REPLY { n = mww_reply(o, l[0].text); }
+  else if got == MWW_ATTEMPT {
+    if l[0].gateway.count == 0 || l[0].outcome.count == 0 || !l[0].status.ok || !l[0].usd_micros.ok { return "an attempt with no gateway, outcome, status or usd_micros"; }
+    n = mww_attempt_again(ar[..], line, o);
+  }
+  else if got == MWW_COMMAND {
+    if !l[0].exit.ok || !l[0].timed_out.ok { return "a command with no exit or timed_out"; }
+    n = mww_command(o, l[0].command, l[0].exit.value, l[0].timed_out.value, l[0].output);
+  }
+  else if got == MWW_VIEW { if !l[0].found.ok { return "a view with no found"; } n = mww_view(o, l[0].path, l[0].found.value); }
+  else if got == MWW_ASK { if !l[0].ticket.ok { return "an ask with no ticket"; } n = mww_ask(o, l[0].command, l[0].ticket.value); }
+  else if got == MWW_ENDED { n = mww_ended(o, l[0].ending, l[0].text); }
+  else if got == MWW_EMBEDDING { n = ifx l[0].error.count > 0 then mww_embedding_error(o, l[0].why) else mww_embedding(o, l[0].values); }
+  if ar[0].full { return "it does not fit the check's arena"; }
+  if n < 0 || cast(string) o[0..<n] != line { return "written back, it is not the same bytes"; }
+  return "";
+}
+// An owner's line (with no line end), read as the worker reads it and written back with the client's writer.
+mp_owner :: (w: [] MpWork, k: int, line: string, read_only: bool) -> string {
+  ar: [1] ClArena; ar[0] = ClArena.{buf = w[0].arena[..]};
+  r: [1] MwwRequest; codes := MP_CODES;
+  got := mww_request(ar[..], line, r[..]);
+  if got != codes[k] { return "the codec reads another kind"; }
+  if read_only { return ""; }
+  o := w[0].back[..]; n := -1;
+  if got == MWW_TASK {
+    t: [1] McTask;
+    if !mww_task_read(ar[..], line, t[..]) { return "a task without every member"; }
+    if t[0].cwd != r[0].cwd || t[0].session != r[0].session || t[0].sandbox != r[0].sandbox || t[0].local != r[0].local || t[0].gated != r[0].gated ||
+       t[0].policy != r[0].policy_on || !r[0].ceiling.ok || t[0].ceiling != r[0].ceiling.value || t[0].effort != r[0].effort || (!t[0].local && t[0].model != r[0].model) {
+      return "the worker's reading and the whole reading differ";
+    }
+    n = mww_task(o, t[0]);
+  }
+  else if got == MWW_ANSWER { if !r[0].ticket.ok { return "an answer with no ticket"; } n = mww_answer(o, r[0].allow, r[0].ticket.value, r[0].why); }
+  else if got == MWW_EMBED { n = mww_embed(o, r[0].text, r[0].query); }
+  else if got == MWW_STOP { n = json_raw(o, 0, MWW_STOP_LINE); }
+  else if got == MWW_FORGET { n = json_raw(o, 0, MWW_FORGET_LINE); }
+  if ar[0].full { return "it does not fit the check's arena"; }
+  if n < 1 || o[n - 1] != 10 || cast(string) o[0..<n - 1] != line { return "written back, it is not the same bytes"; }
+  return "";
+}
+// One line of a run against the profile and the codec: "" when it holds.
+mp_line :: (w: [] MpWork, d: Jv, from: string, kind: string, line: string, read_only: bool) -> string {
+  k := mp_kind(kind);
+  if k < 0 { return "a kind the codec does not have"; }
+  if (from == "owner") != (k < MP_OWNER) || (from != "owner" && from != "worker") { return "from: not the end that writes this kind"; }
+  entry := mp_entry(w, d, kind);
+  if entry < 0 { return "the profile does not name this kind"; }
+  j: [1] Jv;
+  if !jv_parse(j[..], line, w[0].line_nodes[..]) || jv_kind(j[0], 0) != JV_OBJECT { return "not a JSON object"; }
+  for i: 0..<jv_len(j[0], 0) {
+    if !mp_named(w, d, entry, jv_key(j[0], jv_at(j[0], 0, i))) { return "a member the profile does not name"; }
+  }
+  if read_only && k >= MP_OWNER { return "read_only is for an owner's line"; }
+  why := ifx k < MP_OWNER then mp_owner(w, k, line, read_only) else mp_worker(w, k, line);
+  if why == "" { w[0].seen[k] += 1; }
+  return why;
+}
+
+mp_check :: (w: [] MpWork, d: Jv, path: string) -> bool {
+  if jv_kind(d, 0) != JV_OBJECT || mp_str(d, jv_get(d, 0, "identity"), w[0].word[..]) != "microcoder-worker-lines-v1" { print("identity\n"); return false; }
+  file := MP_PATH;
+  if path.count < file.count || path[path.count - file.count..<path.count] != file { print("identity: not the file's name\n"); return false; }
+  if mp_str(d, jv_get(d, 0, "check"), w[0].name[..]) != MP_CHECK { print("check: not this program\n"); return false; }
+  // the profile names each of the codec's kinds once, from the end that writes it, with its members
+  lines := jv_get(d, 0, "lines"); names := MP_NAMES;
+  if jv_kind(d, lines) != JV_ARRAY || jv_len(d, lines) != MP_KINDS { print("lines: % kinds, one entry each\n", MP_KINDS); return false; }
+  for k: 0..<MP_KINDS {
+    e := mp_entry(w, d, names[k]);
+    from := mp_str(d, jv_get(d, e, "from"), w[0].word[..]);
+    if e < 0 || from != (ifx k < MP_OWNER then "owner" else "worker") || jv_kind(d, jv_get(d, e, "members")) != JV_ARRAY || jv_len(d, jv_get(d, e, "members")) < 1 {
+      print("lines: % has no entry, another end or no members\n", names[k]); return false;
+    }
+  }
+  // the check bites: members in another order, a space, a member the profile lacks, another kind,
+  // the other end, a task the client did not write
+  if mp_line(w, d, "worker", "view", "{\"kind\":\"view\",\"found\":true,\"path\":\"a.txt\"}", false) == "" ||
+     mp_line(w, d, "worker", "view", "{\"kind\":\"view\", \"path\":\"a.txt\",\"found\":true}", false) == "" ||
+     mp_line(w, d, "worker", "view", "{\"kind\":\"view\",\"path\":\"a.txt\",\"found\":true,\"size\":4}", false) == "" ||
+     mp_line(w, d, "worker", "reply", "{\"kind\":\"view\",\"path\":\"a.txt\",\"found\":true}", false) == "" ||
+     mp_line(w, d, "owner", "view", "{\"kind\":\"view\",\"path\":\"a.txt\",\"found\":true}", false) == "" ||
+     mp_line(w, d, "worker", "command", "{\"kind\":\"command\",\"command\":\"ls\",\"exit\":0,\"output\":\"\"}", false) == "" ||
+     mp_line(w, d, "worker", "embedding", "{\"kind\":\"embedding\",\"values\":[1, 2]}", false) == "" ||
+     mp_line(w, d, "owner", "task", "{\"task\":\"t\",\"cwd\":\"/w\"}", false) == "" ||
+     mp_line(w, d, "owner", "answer", "{\"answer\":true,\"ticket\":1,\"why\":\"x\"}", false) == "" ||
+     mp_line(w, d, "owner", "stop", "{\"stop\":false}", false) == "" ||
+     mp_line(w, d, "owner", "task", "{\"task\":\"t\",\"cwd\":\"/w\"}", true) != "" ||
+     mp_line(w, d, "worker", "view", "{\"kind\":\"view\",\"path\":\"a.txt\",\"found\":true}", false) != "" {
+    print("FAIL  the check takes a line it should refuse, or refuses one it should take\n"); return false;
+  }
+  for k: 0..<MP_KINDS { w[0].seen[k] = 0; }
+  runs := jv_get(d, 0, "runs");
+  if jv_kind(d, runs) != JV_ARRAY || jv_len(d, runs) < 1 { print("runs: none\n"); return false; }
+  total := 0;
+  for i: 0..<jv_len(d, runs) {
+    run := jv_at(d, runs, i);
+    list := jv_get(d, run, "lines");
+    if jv_kind(d, list) != JV_ARRAY || jv_len(d, list) < 1 { print("run %: no lines\n", i); return false; }
+    for at: 0..<jv_len(d, list) {
+      item := jv_at(d, list, at);
+      fb: [16] u8; kb: [32] u8;
+      from := mp_str(d, jv_get(d, item, "from"), fb[..]); kind := mp_str(d, jv_get(d, item, "kind"), kb[..]);
+      n := jv_str(d, jv_get(d, item, "line"), w[0].line[..]);
+      if n <= 0 { print("run % line %: no line, or one too long\n", i, at); return false; }
+      why := mp_line(w, d, from, kind, cast(string) w[0].line[0..<n], jv_bool(d, jv_get(d, item, "read_only")));
+      if why != "" { print("FAIL  run % line % (% %): %\n", i, at, from, kind, why); return false; }
+    }
+    total += jv_len(d, list);
+    print("ok    % (% lines): %\n", mp_str(d, jv_get(d, run, "name"), w[0].name[..]), jv_len(d, list), mp_str(d, jv_get(d, run, "what"), w[0].line[..]));
+  }
+  for k: 0..<MP_KINDS { if w[0].seen[k] == 0 { print("FAIL  no run has a % line\n", names[k]); return false; } }
+  // what neither end takes
+  for end: 0..<2 {
+    name := ifx end == 0 then "owner" else "worker";
+    bad := jv_get(d, jv_get(d, 0, "skipped"), name);
+    if jv_kind(d, bad) != JV_ARRAY || jv_len(d, bad) < 3 { print("skipped %: three lines at least\n", name); return false; }
+    for i: 0..<jv_len(d, bad) {
+      line := mp_str(d, jv_at(d, bad, i), w[0].line[..]);
+      ar: [1] ClArena; ar[0] = ClArena.{buf = w[0].arena[..]};
+      r: [1] MwwRequest; l: [1] MwwLine;
+      taken := ifx end == 0 then mww_request(ar[..], line, r[..]) else mww_read(ar[..], line, l[..]);
+      if taken != MWW_NONE { print("FAIL  skipped % %: taken\n", name, i); return false; }
+    }
+    print("ok    skipped, %: % lines are not taken\n", name, jv_len(d, bad));
+  }
+  print("% lines of % kinds read and written back\n", total, MP_KINDS);
+  return true;
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) != 1 { tool_errln("usage: mcworker-profile PROFILE.json"); return 2; }
+  work: [1] MpWork; w := work[..];
+  path := args_at(a[..], 0);
+  n := fs_read(path, w[0].file[..]);
+  d: [1] Jv;
+  if n <= 0 || !jv_parse(d[..], cast(string) w[0].file[0..<n], w[0].nodes[..]) { tool_errln("mcworker-profile: cannot parse JSON"); return 2; }
+  if !mp_check(w, d[0], path) { print("%: profile fails\n", path); return 1; }
+  print("%: profile holds\n", path);
+  return 0;
+}

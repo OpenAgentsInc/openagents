@@ -33,6 +33,7 @@
 #include "api.h"
 #include "auth-internal.h"
 #include "auth-device-policy.generated.h"
+#include "auth-device-wire.generated.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -55,6 +56,15 @@ static void copy_words(coax_string s, char *out, size_t cap) {
   size_t n = (size_t)s.count < cap - 1 ? (size_t)s.count : cap - 1;
   memcpy(out, s.data, n); out[n] = 0;
 }
+// The bodies are auth-device-wire.coax's: a writer's text ended, or false when it did not fit.
+#define OUT(b) ((coax_v_u8){(uint8_t *)(b), (int64_t)sizeof(b) - 1})
+static bool fit(char *b, int64_t n) {
+  if (n < 0) { b[0] = 0; return false; }
+  b[n] = 0;
+  return true;
+}
+// An audit detail, or NULL when it did not fit (auth_audit then writes an empty one).
+static const char *detail_of(char *b, int64_t n) { return fit(b, n) ? b : NULL; }
 
 bool auth_device_init(void) {
   int64_t now = 1800000000000LL;
@@ -71,16 +81,13 @@ bool auth_device_init(void) {
 
 // A refusal with its reason: {"error", "device_proof"} and, for a clock that is off, our time.
 static void refuse_proof(const request *q, int verdict, long long now_ms) {
-  char words[200], why[24], e[300], json[500], lines[400];
+  char words[200], why[24], json[500], lines[400];
   copy_words(dk_words(verdict), words, sizeof words);
   copy_words(dk_why(verdict), why, sizeof why);
-  auth_json_esc(words, e, sizeof e);
-  if (verdict == DK_CLOCK) {
-    snprintf(json, sizeof json, "{\"error\":\"%s\",\"device_proof\":\"%s\",\"now_ms\":%lld}", e, why, now_ms);
-    snprintf(lines, sizeof lines, "error %s\ndevice_proof %s\nnow_ms %lld\n", words, why, now_ms);
-  } else {
-    snprintf(json, sizeof json, "{\"error\":\"%s\",\"device_proof\":\"%s\"}", e, why);
-    snprintf(lines, sizeof lines, "error %s\ndevice_proof %s\n", words, why);
+  bool clock = verdict == DK_CLOCK;
+  if (!fit(json, adw_refusal_write(str(words), str(why), clock, now_ms, OUT(json))) || !fit(lines, adw_refusal_lines(str(words), str(why), clock, now_ms, OUT(lines)))) {
+    auth_refuse(q, 500, "That didn't work. Try again.");
+    return;
   }
   auth_answer(q, (int)dk_status(verdict), NULL, json, lines);
 }
@@ -106,8 +113,7 @@ bool auth_device_login(const request *q, PGconn *db, const char *acct, bool app,
   if (verdict == DK_UNBOUND) return true;
   if (verdict != DK_OK) {
     char why[24], d[80]; copy_words(dk_why(verdict), why, sizeof why);
-    snprintf(d, sizeof d, "{\"why\":\"%s\"}", why);
-    auth_audit(db, acct, NULL, "device.bind", "refused", d);
+    auth_audit(db, acct, NULL, "device.bind", "refused", detail_of(d, adw_why_detail_write(str(why), OUT(d))));
     api_log("auth-device: a login's device key refused: %s", why);
     refuse_proof(q, verdict, 0);
     return false;
@@ -125,10 +131,11 @@ bool auth_device_bind(PGconn *db, const char *acct, const char *sid, const auth_
   PGresult *r = PQexecParams(db, "SELECT auth.session_bind($1, $2, decode($3, 'hex'), $4, $5, $6)", 6, NULL, v, NULL, NULL, 0);
   bool ok = PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1 && !PQgetisnull(r, 0, 0);
   char d[120];
-  if (ok) snprintf(d, sizeof d, "{\"device\":%s,\"platform\":\"%s\",\"store\":\"%s\"}", PQgetvalue(r, 0, 0), ask->platform, ask->store);
-  else { api_log("auth-device: bind: %s", PQerrorMessage(db)); snprintf(d, sizeof d, "{\"why\":\"bind\"}"); }
+  const char *detail;
+  if (ok) detail = detail_of(d, adw_bound_detail_write(str(PQgetvalue(r, 0, 0)), str(ask->platform), str(ask->store), OUT(d)));
+  else { api_log("auth-device: bind: %s", PQerrorMessage(db)); detail = detail_of(d, adw_bind_failed_detail_write(OUT(d))); }
   PQclear(r);
-  auth_audit(db, acct, sid, "device.bind", ok ? "ok" : "failed", d);
+  auth_audit(db, acct, sid, "device.bind", ok ? "ok" : "failed", detail);
   return ok;
 }
 
@@ -179,8 +186,7 @@ bool auth_device_refresh(const request *q, PGconn *db, const char *rt_sha, const
   if (dk_proved(verdict)) snprintf(proved, 24, "%s", f->device);
   if (dk_allows(verdict)) return true;
   char why[24], d[120]; copy_words(dk_why(verdict), why, sizeof why);
-  snprintf(d, sizeof d, "{\"why\":\"%s\",\"device\":%s}", why, f->device[0] ? f->device : "null");
-  auth_audit(db, f->account, f->session, "refresh.proof", "refused", d);
+  auth_audit(db, f->account, f->session, "refresh.proof", "refused", detail_of(d, adw_proof_detail_write(str(why), str(f->device), OUT(d))));
   api_log("auth-device: refresh refused: %s", why);
   refuse_proof(q, verdict, f->now_ms);
   return false;
@@ -199,20 +205,19 @@ static void devices(const request *q, PGconn *db, const auth_principal *p) {
   char *json = malloc(cap), *lines = malloc(cap);
   if (!json || !lines) { free(json); free(lines); PQclear(r); auth_refuse(q, 500, "Out of memory."); return; }
   long long now_ms = n ? atoll(PQgetvalue(r, 0, 8)) : (long long)api_now_ms();
-  size_t j = (size_t)snprintf(json, cap, "{\"now_ms\":%lld,\"devices\":[", now_ms);
-  size_t l = (size_t)snprintf(lines, cap, "now_ms %lld\ncount %d\n", now_ms, n);
-  for (int i = 0; i < n; i++) {
-    char name[200]; auth_json_esc(PQgetvalue(r, i, 1), name, sizeof name);
+  coax_v_u8 jo = {(uint8_t *)json, (int64_t)cap - 1}, lo = {(uint8_t *)lines, (int64_t)cap - 1};
+  int64_t j = adw_devices_open_write(now_ms, jo), l = adw_devices_open_lines(now_ms, n, lo);
+  for (int i = 0; i < n && j >= 0 && l >= 0; i++) {
     bool this = !strcmp(PQgetvalue(r, i, 7), "t");
-    j += (size_t)snprintf(json + j, cap - j, "%s{\"id\":%s,\"name\":\"%s\",\"platform\":\"%s\",\"store\":\"%s\",\"created_ms\":%s,\"last_seen_ms\":%s,\"sessions\":%s,\"this\":%s}",
-                          i ? "," : "", PQgetvalue(r, i, 0), name, PQgetvalue(r, i, 2), PQgetvalue(r, i, 3), PQgetvalue(r, i, 4), PQgetvalue(r, i, 5),
-                          PQgetvalue(r, i, 6), this ? "true" : "false");
-    // device <id> <platform> <store> <last_seen_ms> <logins> <this> <name to the line's end>
-    l += (size_t)snprintf(lines + l, cap - l, "device %s %s %s %s %s %d %s\n", PQgetvalue(r, i, 0), PQgetvalue(r, i, 2), PQgetvalue(r, i, 3),
-                          PQgetvalue(r, i, 5), PQgetvalue(r, i, 6), this, PQgetvalue(r, i, 1));
+    j = adw_devices_row_write(j, i, str(PQgetvalue(r, i, 0)), str(PQgetvalue(r, i, 1)), str(PQgetvalue(r, i, 2)), str(PQgetvalue(r, i, 3)), str(PQgetvalue(r, i, 4)),
+                              str(PQgetvalue(r, i, 5)), str(PQgetvalue(r, i, 6)), this, jo);
+    l = adw_devices_row_lines(l, str(PQgetvalue(r, i, 0)), str(PQgetvalue(r, i, 2)), str(PQgetvalue(r, i, 3)), str(PQgetvalue(r, i, 5)), str(PQgetvalue(r, i, 6)),
+                              this, str(PQgetvalue(r, i, 1)), lo);
   }
-  snprintf(json + j, cap - j, "]}");
+  if (j >= 0) j = adw_devices_close_write(j, jo);
   PQclear(r);
+  if (j < 0 || l < 0) { free(json); free(lines); auth_refuse(q, 500, "That didn't work. Try again."); return; }
+  json[j] = 0; lines[l] = 0;
   auth_answer(q, 200, NULL, json, lines);
   free(json); free(lines);
 }
@@ -233,11 +238,10 @@ static void device_remove(const request *q, PGconn *db, const auth_principal *p)
   if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1 || PQgetisnull(r, 0, 0)) { PQclear(r); refuse_proof(q, DK_NOT_FOUND, 0); return; }
   int ended = atoi(PQgetvalue(r, 0, 0));
   PQclear(r);
-  char d[80]; snprintf(d, sizeof d, "{\"device\":%s,\"ended\":%d}", id, ended);
-  auth_audit(db, p->account, p->session, "device.remove", "ok", d);
+  char d[80];
+  auth_audit(db, p->account, p->session, "device.remove", "ok", detail_of(d, adw_removed_detail_write(str(id), ended, OUT(d))));
   char json[80], lines[80];
-  snprintf(json, sizeof json, "{\"state\":\"removed\",\"ended\":%d}", ended);
-  snprintf(lines, sizeof lines, "state removed\nended %d\n", ended);
+  if (!fit(json, adw_removed_write(ended, OUT(json))) || !fit(lines, adw_removed_lines(ended, OUT(lines)))) { auth_refuse(q, 500, "That didn't work. Try again."); return; }
   auth_answer(q, 200, NULL, json, lines);
 }
 
@@ -246,8 +250,7 @@ static void refuse_push(const request *q, PGconn *db, const auth_principal *p, i
   char words[200], why[24], d[80];
   copy_words(dk_words(verdict), words, sizeof words);
   copy_words(dk_why(verdict), why, sizeof why);
-  snprintf(d, sizeof d, "{\"why\":\"%s\"}", why);
-  auth_audit(db, p->account, p->session, "device.push", "refused", d);
+  auth_audit(db, p->account, p->session, "device.push", "refused", detail_of(d, adw_why_detail_write(str(why), OUT(d))));
   auth_refuse(q, (int)dk_status(verdict), words);
 }
 static void push_set(const request *q, PGconn *db, const auth_principal *p) {
@@ -277,10 +280,8 @@ static void push_set(const request *q, PGconn *db, const auth_principal *p) {
   char id[24]; snprintf(id, sizeof id, "%s", PQgetvalue(r, 0, 0));
   PQclear(r);
   char d[120], json[120], lines[120];
-  snprintf(d, sizeof d, "{\"device\":%s,\"service\":\"%s\"}", id, service);
-  auth_audit(db, p->account, p->session, "device.push", "ok", d);
-  snprintf(json, sizeof json, "{\"state\":\"on\",\"device\":%s}", id);
-  snprintf(lines, sizeof lines, "state on\ndevice %s\n", id);
+  auth_audit(db, p->account, p->session, "device.push", "ok", detail_of(d, adw_push_detail_write(str(id), str(service), OUT(d))));
+  if (!fit(json, adw_push_on_write(str(id), OUT(json))) || !fit(lines, adw_push_on_lines(str(id), OUT(lines)))) { auth_refuse(q, 500, "That didn't work. Try again."); return; }
   auth_answer(q, 200, NULL, json, lines);
 }
 static void push_off(const request *q, PGconn *db, const auth_principal *p) {
@@ -289,8 +290,10 @@ static void push_off(const request *q, PGconn *db, const auth_principal *p) {
   bool was = PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1 && !strcmp(PQgetvalue(r, 0, 0), "t");
   if (PQresultStatus(r) != PGRES_TUPLES_OK) api_log("auth-device: device_push_off: %s", PQerrorMessage(db));
   PQclear(r);
-  if (was) auth_audit(db, p->account, p->session, "device.push", "ok", "{\"off\":true}");
-  auth_answer(q, 200, NULL, "{\"state\":\"off\"}", "state off\n");
+  char d[40], json[40], lines[40];
+  if (was) auth_audit(db, p->account, p->session, "device.push", "ok", detail_of(d, adw_push_off_detail_write(OUT(d))));
+  if (!fit(json, adw_push_off_write(OUT(json))) || !fit(lines, adw_push_off_lines(OUT(lines)))) { auth_refuse(q, 500, "That didn't work. Try again."); return; }
+  auth_answer(q, 200, NULL, json, lines);
 }
 
 int auth_device_push(PGconn *db, const char *acct, long long notice, const char *what, const char *title, const char *words, int *failed) {
@@ -308,8 +311,8 @@ int auth_device_push(PGconn *db, const char *acct, long long notice, const char 
     if (dk_push_gone(svc, status)) {
       const char *g[2] = {PQgetvalue(r, i, 0), token};
       PQclear(PQexecParams(db, "SELECT auth.device_push_gone($1::bigint, $2)", 2, NULL, g, NULL, NULL, 0));
-      char d[80]; snprintf(d, sizeof d, "{\"device\":%s,\"gone\":true}", g[0]);
-      auth_audit(db, acct, NULL, "device.push", "ok", d);
+      char d[80];
+      auth_audit(db, acct, NULL, "device.push", "ok", detail_of(d, adw_push_gone_detail_write(str(g[0]), OUT(d))));
     }
   }
   PQclear(r);

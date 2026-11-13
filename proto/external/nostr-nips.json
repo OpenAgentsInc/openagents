@@ -1,0 +1,104 @@
+{
+ "profile": "external-nostr-nips",
+ "about": "Nostr relay frames, events and the NIPs' display forms, as other programs and the NIP texts give them. coax/lib/nostr/ is the only folder that parses them: message.coax reads a relay frame into NostrMessage, nip42.coax reads the AUTH challenge, event.coax reads and verifies an event into NostrEvent, nip19-core.coax reads a NIP-19 string into N19_Result, nip06.coax derives the NIP-06 key. Each fixture names where its bytes came from and the values our records must hold. Checked by coax/lib/nostr/nips-external-profile.coax.",
+ "fixtures": [
+  {
+   "name": "a relay's frames: wss://relay.openagents.com, 2026-10-28",
+   "reader": "relay-frames",
+   "source": "What wss://relay.openagents.com sent for the Coax project's five subscriptions on 2026-10-28T20:33Z, a frame a line, recorded by capture.ts (now `openagents project capture`). Kept in coax/lib/nostr/fixtures/coax_relay.jsonl; the events are signed by their authors' clients.",
+   "file": "coax/lib/nostr/fixtures/coax_relay.jsonl",
+   "want": {
+    "frames": 243,
+    "auth": 1,
+    "challenge": "edea324d841c5ed2b4c32dfe40acc6eae68e3875ed31fdc13b549aac17d31528",
+    "events": 237,
+    "eose": 5,
+    "verified": 237,
+    "kinds": {
+     "30617": 1,
+     "30623": 1,
+     "30621": 1,
+     "1111": 121,
+     "1621": 105,
+     "1631": 8
+    },
+    "first_event": {
+     "sub": "repo",
+     "id": "813d9fb02bd78ce24200ba986b62ef727f0c032f712cff82241bd465f4bc9d21",
+     "pubkey": "9ef92e341b43ebc5617a75cf7eca7e2e30fae41e08a0614a344d851d98731575",
+     "kind": 30617,
+     "created_at": 1793214821,
+     "tags": 7
+    }
+   }
+  },
+  {
+   "name": "NIP-19: the npub of the bare keys example",
+   "reader": "nip19",
+   "source": "NIP-19, \"Bare keys and ids\" (nostr/nips/official/19.md, pinned by nostr/nips/upstream-lock.json)",
+   "body": "npub180cvv07tjdrrgpa0j7j7tmnyl2yr6yr7l8j4s3evf6u64th6gkwsyjh6w6",
+   "want": {
+    "type": "npub",
+    "hex": "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d",
+    "relays": 0
+   }
+  },
+  {
+   "name": "NIP-19: the npub example",
+   "reader": "nip19",
+   "source": "NIP-19, \"Examples\" (nostr/nips/official/19.md)",
+   "body": "npub10elfcs4fr0l0r8af98jlmgdh9c8tcxjvz9qkw038js35mp4dma8qzvjptg",
+   "want": {
+    "type": "npub",
+    "hex": "7e7e9c42a91bfef19fa929e5fda1b72e0ebc1a4c1141673e2794234d86addf4e",
+    "relays": 0
+   }
+  },
+  {
+   "name": "NIP-19: the nsec example",
+   "reader": "nip19",
+   "source": "NIP-19, \"Examples\" (nostr/nips/official/19.md); a published example key, never a real one",
+   "body": "nsec1vl029mgpspedva04g90vltkh6fvh240zqtv9k0t9af8935ke9laqsnlfe5",
+   "want": {
+    "type": "nsec",
+    "hex": "67dea2ed018072d675f5415ecfaed7d2597555e202d85b3d65ea4e58d2d92ffa",
+    "relays": 0
+   }
+  },
+  {
+   "name": "NIP-19: the nprofile example",
+   "reader": "nip19",
+   "source": "NIP-19, \"Examples\" (nostr/nips/official/19.md)",
+   "body": "nprofile1qqsrhuxx8l9ex335q7he0f09aej04zpazpl0ne2cgukyawd24mayt8gpp4mhxue69uhhytnc9e3k7mgpz4mhxue69uhkg6nzv9ejuumpv34kytnrdaksjlyr9p",
+   "want": {
+    "type": "nprofile",
+    "hex": "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d",
+    "relays": 2
+   }
+  },
+  {
+   "name": "NIP-06: the 12-word test vector",
+   "reader": "nip06",
+   "source": "NIP-06, \"Test vectors\" (nostr/nips/official/06.md); published test words, never a real key",
+   "body": "leader monkey parrot ring guide accident before fence cannon height naive bean",
+   "want": {
+    "secret": "7f7ff03d123792d6ac594bfa67bf6d0c0ab55b6b1fdb6249303fe861f1ccba9a",
+    "nsec": "nsec10allq0gjx7fddtzef0ax00mdps9t2kmtrldkyjfs8l5xruwvh2dq0lhhkp",
+    "public": "17162c921dc4d2518f9a101db33695df1afb56ab82f5ff3e5da6eec3ca5cd917",
+    "npub": "npub1zutzeysacnf9rru6zqwmxd54mud0k44tst6l70ja5mhv8jjumytsd2x7nu"
+   }
+  },
+  {
+   "name": "NIP-06: the 24-word test vector",
+   "reader": "nip06",
+   "source": "NIP-06, \"Test vectors\" (nostr/nips/official/06.md); published test words, never a real key",
+   "body": "what bleak badge arrange retreat wolf trade produce cricket blur garlic valid proud rude strong choose busy staff weather area salt hollow arm fade",
+   "want": {
+    "secret": "c15d739894c81a2fcfd3a2df85a0d2c0dbc47a280d092799f144d73d7ae78add",
+    "nsec": "nsec1c9wh8xy5eqdzln7n5t0ctgxjcrdug73gp5yj0x03gntn67h83twssdfhel",
+    "public": "d41b22899549e1f3d335a31002cfd382174006e166d3e658e3a5eecdb6463573",
+    "npub": "npub16sdj9zv4f8sl85e45vgq9n7nsgt5qphpvmf7vk8r5hhvmdjxx4es8rq74h"
+   }
+  }
+ ]
+}

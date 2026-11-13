@@ -1,0 +1,162 @@
+// NIP-HOST's external profile check (Protocol, GitHub #13250, step C13):
+// proto/external/openagents.host-request.v1.json and
+// proto/external/openagents.host-reply.v1.json hold kind 3188 events that
+// `coder host` and its stand-in browser sent through a local relay, and the
+// values our own records must hold after browser.coax has opened them.
+//   - a request: hb_request_open with the host's key gives the signer, the
+//     event id, created_at and an HbRequest;
+//   - a reply: hb_reply_open with the browser's key gives the same and an
+//     HbReply, and the body it opened is want.inline byte for byte.
+// The fixture's `profile` says which. The keys in `keys` are public test
+// scalars. This file parses no event, envelope or body itself: it reads the
+// fixture's own JSON and compares values.
+//   coax/web/tool.sh coax/lib/nostr/host/host-external-profile.coax proto/external/openagents.host-request.v1.json
+//   coax/web/tool.sh coax/lib/nostr/host/host-external-profile.coax proto/external/openagents.host-reply.v1.json
+// tool.sh: run-steps 250000000
+#run_steps 250000000;
+#import "Basic";
+#load "browser.coax";
+#load "../../sys/tool.coax";
+#load "../../sys/args.coax";
+#load "../../sys/fs.coax";
+
+XH_REQUEST :: "external-openagents.host-request.v1";
+XH_REPLY :: "external-openagents.host-reply.v1";
+XH_TEXT :: 65536;
+XhWork :: struct {
+  nodes: [8192] JvNode; file: [262144] u8;
+  event: [XH_TEXT] u8; body: [HB_BODY_MAX] u8; arena: [HB_BODY_MAX] u8; want: [XH_TEXT] u8; name: [256] u8;
+  hb: [1] HbWork;
+}
+
+// want's member `key` as text ("" when absent or null), kept in w's want buffer.
+xh_text :: (w: [] XhWork, d: Jv, want: int, key: string) -> string {
+  at := jv_get(d, want, key);
+  if jv_kind(d, at) != JV_STRING { return ""; }
+  n := jv_str(d, at, w[0].want[..]);
+  return ifx n < 0 then "?" else cast(string) w[0].want[0..<n];
+}
+xh_is :: (w: [] XhWork, d: Jv, want: int, key: string, got: string) -> bool { return xh_text(w, d, want, key) == got; }
+xh_int :: (d: Jv, want: int, key: string, got: int, absent: int) -> bool {
+  at := jv_get(d, want, key);
+  return got == (ifx jv_kind(d, at) == JV_NUMBER then jv_int(d, at, absent) else absent);
+}
+// The opened event's own values.
+xh_opened :: (w: [] XhWork, d: Jv, want: int, opened: HbOpened) -> string {
+  o := opened;
+  if o.error != HB_OK { return hb_refusal(o.error); }
+  if !xh_is(w, d, want, "signer", cast(string) o.signer[..]) { return "signer"; }
+  if !xh_is(w, d, want, "id", cast(string) o.id[..]) { return "id"; }
+  if !xh_is(w, d, want, "request", cast(string) o.mailbox[..]) { return "mailbox"; }
+  if !xh_int(d, want, "created_at", o.created_at, -1) { return "created_at"; }
+  return "";
+}
+// A request event against want: "" or the first value that differs.
+xh_request :: (w: [] XhWork, d: Jv, text: string, want: int, key: [] u8, key_x: [] u8) -> string {
+  q: [1] HbRequest; a := [1] HbText.[HbText.{buf = w[0].arena[..]}];
+  o := hb_request_open(text, key, key_x, w[0].hb[..], w[0].body[..], q[..], a[..]);
+  why := xh_opened(w, d, want, o);
+  if why != "" { return why; }
+  r := q[0]; ops := HB_OPS;
+  if r.op < 1 || r.op > 6 || !xh_is(w, d, want, "op", ops[r.op]) { return "op"; }
+  if !xh_is(w, d, want, "request", r.request) { return "request"; }
+  if !xh_is(w, d, want, "host", r.host) { return "host"; }
+  if !xh_is(w, d, want, "grant", r.grant) { return "grant"; }
+  if !xh_int(d, want, "epoch", r.epoch, -1) { return "epoch"; }
+  if !xh_is(w, d, want, "relay", r.relay) { return "relay"; }
+  if !xh_int(d, want, "issued_at", r.issued_at, -1) { return "issued_at"; }
+  if !xh_int(d, want, "expires_at", r.expires_at, -1) { return "expires_at"; }
+  if !xh_is(w, d, want, "key", r.key) { return "key"; }
+  if !xh_is(w, d, want, "label", r.label) { return "label"; }
+  if !xh_is(w, d, want, "pairing", r.pairing) { return "pairing"; }
+  if !xh_is(w, d, want, "text", r.text) { return "text"; }
+  if !xh_is(w, d, want, "realm", r.realm) { return "realm"; }
+  if !xh_is(w, d, want, "thread", r.thread) { return "thread"; }
+  if !xh_int(d, want, "after", r.after, 0) { return "after"; }
+  return "";
+}
+// A reply event against want.
+xh_reply :: (w: [] XhWork, d: Jv, text: string, want: int, key: [] u8, key_x: [] u8) -> string {
+  p: [1] HbReply; a := [1] HbText.[HbText.{buf = w[0].arena[..]}];
+  o := hb_reply_open(text, key, key_x, w[0].hb[..], w[0].body[..], p[..], a[..]);
+  why := xh_opened(w, d, want, o);
+  if why != "" { return why; }
+  if !xh_is(w, d, want, "inline", cast(string) w[0].body[0..<o.body_n]) { return "inline"; }
+  if !xh_is(w, d, want, "request", p[0].request) { return "request"; }
+  if !xh_is(w, d, want, "request_event", p[0].request_event) { return "request_event"; }
+  if !xh_is(w, d, want, "host", p[0].host) { return "host"; }
+  if !xh_int(d, want, "issued_at", p[0].issued_at, -1) { return "issued_at"; }
+  if !xh_int(d, want, "expires_at", p[0].expires_at, -1) { return "expires_at"; }
+  if p[0].ok != jv_bool(d, jv_get(d, want, "ok")) { return "ok"; }
+  if !p[0].ok {
+    if !xh_is(w, d, want, "code", p[0].code) { return "code"; }
+    if !xh_is(w, d, want, "missing", p[0].missing) { return "missing"; }
+    return "";
+  }
+  outcomes := HB_OUTCOMES; ops := HB_OPS; pairing := HB_PAIRING_STATES; threads := HB_THREAD_STATES;
+  if p[0].outcome < 1 || p[0].outcome > 4 || !xh_is(w, d, want, "outcome", outcomes[p[0].outcome]) { return "outcome"; }
+  if p[0].outcome == HB_OUT_PAIRING {
+    if !xh_is(w, d, want, "pairing", p[0].pairing) { return "pairing"; }
+    if p[0].state < 0 || p[0].state > 3 || !xh_is(w, d, want, "state", pairing[p[0].state]) { return "state"; }
+    if !xh_is(w, d, want, "grant", p[0].grant) { return "grant"; }
+    if p[0].grant != "" && (!xh_int(d, want, "epoch", p[0].epoch, -1) || !xh_int(d, want, "grant_expires", p[0].grant_expires, -1)) { return "the grant's epoch or expires_at"; }
+  }
+  if p[0].outcome == HB_OUT_DISPATCHED {
+    if p[0].operation < 1 || p[0].operation > 6 || !xh_is(w, d, want, "operation", ops[p[0].operation]) { return "operation"; }
+    if !xh_is(w, d, want, "reference", p[0].reference) { return "reference"; }
+  }
+  if p[0].outcome == HB_OUT_STEPS {
+    if !xh_is(w, d, want, "thread", p[0].thread) { return "thread"; }
+    if p[0].state < 0 || p[0].state > 3 || !xh_is(w, d, want, "state", threads[p[0].state]) { return "state"; }
+    if !xh_int(d, want, "next", p[0].next, -1) { return "next"; }
+    steps := jv_get(d, want, "steps");
+    if jv_len(d, steps) != p[0].nsteps { return "the step count"; }
+    for i: 0..<p[0].nsteps {
+      s := jv_at(d, steps, i);
+      if !xh_int(d, s, "seq", p[0].steps[i].seq, -1) || !xh_is(w, d, s, "kind", p[0].steps[i].kind) || !xh_is(w, d, s, "text", p[0].steps[i].text) { return "a step"; }
+    }
+  }
+  return "";
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  args: [1] Args;
+  loaded := args_load(args[..]);
+  if !loaded || args_count(args[..]) < 1 { tool_errln("usage: host-external-profile.coax proto/external/openagents.host-request.v1.json | proto/external/openagents.host-reply.v1.json"); return 2; }
+  j: [1] Jv; w: [1] XhWork;
+  n := fs_read(args_at(args[..], 0), w[0].file[..]);
+  if n <= 0 { tool_errln("host external profile: cannot read the fixture"); return 2; }
+  if !jv_parse(j[..], cast(string) w[0].file[0..<n], w[0].nodes[..]) || jv_kind(j[0], 0) != JV_OBJECT { print("FAIL  cannot parse the fixture\n"); return 1; }
+  d := j[0]; bad := 0;
+  profile := xh_text(w[..], d, 0, "profile");
+  is_request := profile == XH_REQUEST;
+  if !is_request && profile != XH_REPLY { print("FAIL  the profile is neither the request's nor the reply's\n"); return 1; }
+  row_id := ifx is_request then "openagents.host-request.v1" else "openagents.host-reply.v1";
+  // the recipient's key: the host opens requests, the browser opens replies
+  keys := jv_get(d, 0, "keys"); secret: [32] u8; x: [32] u8;
+  if !hb_unhex(xh_text(w[..], d, keys, ifx is_request then "host_secret" else "browser_secret"), secret[..]) || !hb_public(secret[..], x[..]) { print("FAIL  the fixture's test key is not a key\n"); return 1; }
+  list := jv_get(d, 0, "fixtures");
+  seen: [8] bool; kinds := 0;
+  for i: 0..<jv_len(d, list) {
+    row := jv_at(d, list, i);
+    want := jv_get(d, row, "want");
+    en := jv_str(d, jv_get(d, row, "body"), w[0].event[..]);
+    text := ifx en < 0 then "" else cast(string) w[0].event[0..<en];
+    why := "the fixture names no source or no want";
+    if jv_kind(d, jv_get(d, row, "source")) == JV_STRING && jv_kind(d, want) == JV_OBJECT {
+      why = ifx is_request then xh_request(w[..], d, text, want, secret[..], x[..]) else xh_reply(w[..], d, text, want, secret[..], x[..]);
+    }
+    // which operations (requests) or outcomes and refusals (replies) the fixtures cover
+    ops := HB_OPS; outcomes := HB_OUTCOMES;
+    for k: 1..<7 { if is_request && xh_is(w[..], d, want, "op", ops[k]) && !seen[k] { seen[k] = true; kinds += 1; } }
+    for k: 1..<5 { if !is_request && xh_is(w[..], d, want, "outcome", outcomes[k]) && !seen[k] { seen[k] = true; kinds += 1; } }
+    if !is_request && xh_text(w[..], d, want, "code") != "" && !seen[5] { seen[5] = true; kinds += 1; }
+    nn := jv_str(d, jv_get(d, row, "name"), w[0].name[..]);
+    name := ifx nn < 0 then "" else cast(string) w[0].name[0..<nn];
+    if why != "" { print("FAIL  %: % differs or is refused\n", name, why); bad += 1; } else { print("ok    %\n", name); }
+  }
+  if is_request && kinds != 6 { print("FAIL  the fixtures do not cover the six operations\n"); bad += 1; }
+  if !is_request && kinds != 5 { print("FAIL  the fixtures do not cover the four outcomes and a refusal\n"); bad += 1; }
+  print("% external profile %\n", row_id, ifx bad == 0 then "holds" else "fails");
+  return ifx bad == 0 then 0 else 1;
+}

@@ -1,0 +1,357 @@
+// WorldBuilder's API checks (/create-world's chat; worldbuilder.c, worldbuilder-wire.coax,
+// worldbuilder-policy.coax, migrations/0141_worldbuilder.sql and 0159_worldbuilder_layer.sql), run
+// by test.sh after test.py against the same API and database: the page's request goes to a fake
+// Gemini that test.sh points the service at (OA_WORLDBUILDER_URL on WORLDBUILDER_PORT), under the
+// answer's schema, and comes back as the page's lines; the request's bytes as the model gets them;
+// the day's spend; the flood refusal, the resting refusal and a model that gives no answer. Every
+// answer here is recorded for the route's goldens (proto/verse/api-routes-v1alpha1.json;
+// proto/openagents/api/v1alpha1/worldbuilder.proto).
+//
+// The fake model is this program in its `model` mode, started as a child. It answers every POST
+// with what DIR/mode says (a status on the first line, then the answer's text) in Gemini's
+// envelope with fixed usage, and keeps the last request in DIR: request (the body's bytes), auth,
+// path, and calls (how many so far). DIR/stop ends it.
+//   API=... PGURL=... PSQL=... WORLDBUILDER_PORT=... coax/web/tool.sh coax/web/api/tests/worldbuilder_checks.coax
+//   coax/web/tool.sh coax/web/api/tests/worldbuilder_checks.coax model PORT DIR
+// (from the repository root).
+#load "api_harness.coax";
+#load "../../../lib/sys/args.coax";
+#load "../../../lib/net/socket_foreign.coax";
+
+WK_REQ :: 262144;       // a request to the model, at most (about 45,000 bytes today)
+WK_COST :: 16050;       // worldbuilder-policy.coax wb_cost_micros(12000, 2000, 120): 15000 + 150 + 900
+WK_CAP :: 50000000;
+// The page's turn. The route never reads it: it goes to the model byte for byte (a tab between members too).
+WK_PAGE :: "{\"text\":\"three birches \\\"here\\\"\",\t\"walking\":false,\"here\":[1.5,-2],\"cam\":{\"x\":0,\"z\":12,\"looks\":[0,-1]},\"present\":{\"birch-1\":2},\"recent\":[{\"id\":7,\"asset\":\"birch-1\",\"x\":1,\"z\":2,\"size\":1}],\"last\":[\"birch-1\"]}";
+WK_ANSWER :: "{\"say\": \"Three birches, right here.\", \"actions\": [{\"op\": \"place\", \"asset\": \"birch-1\", \"layer\": \"grid\", \"count\": 3, \"anchor\": \"here\", \"side\": \"at\", \"distance\": 0, \"spread\": 4, \"size\": 1}, {\"op\": \"paint\", \"asset\": \"\", \"layer\": \"grass\", \"targets\": \"all\", \"factor\": 0.5}, {\"op\": \"delete\", \"layer\": \"grid\", \"targets\": \"names\", \"names\": [\"birch-1\", \"birch-3\"]}]}";
+// op|asset (a ground edit's layer)|count|targets|names|anchor|anchor_names|side|distance|spread|size|factor|degrees
+WK_WANT :: "S Three birches, right here.\nA place|birch-1|3|||here||at|0|4|1||\nA paint|grass||all||||||||0.5|\nA delete|||names|birch-1,birch-3||||||||\n";
+
+// ---- the fake model
+// The answer in Gemini's envelope: a thought part, the text, and the usage WK_COST is the price of.
+wm_envelope :: (text: string, out: [] u8) -> int {
+  o: [1] Jo; jo_start(o[..], out);
+  jo_put(o[..], "{\"candidates\":[{\"content\":{\"role\":\"model\",\"parts\":[{\"text\":\"planning\",\"thought\":true},{\"text\":"); jo_quoted(o[..], text);
+  jo_put(o[..], "}]},\"finishReason\":\"STOP\"}],\"usageMetadata\":{\"promptTokenCount\":12000,\"cachedContentTokenCount\":2000,\"candidatesTokenCount\":100,\"thoughtsTokenCount\":20}}");
+  return ifx o[0].bad then -1 else o[0].n;
+}
+// A request header's value (case folded), or "".
+wm_header :: (head: string, name: string) -> string {
+  at := 0;
+  for i: 0..<head.count {
+    if head[i] != '\n' { continue; }
+    line := head[at..<i]; at = i + 1;
+    if line.count > 0 && line[line.count - 1] == '\r' { line = line[0..<line.count - 1]; }
+    if line.count > name.count && line[name.count] == ':' && http_same(line[0..<name.count], name) { return http_trim(line[name.count + 1..<line.count]); }
+  }
+  return "";
+}
+wm_head_end :: (s: string) -> int { if s.count < 4 { return -1; } for i: 0..<s.count - 3 { if s[i..<i + 4] == "\r\n\r\n" { return i + 4; } } return -1; }
+// DIR/mode: the status of its first line (200 when there is none) and the text after it.
+wm_mode_status :: (mode: string) -> int {
+  e := 0; while e < mode.count && mode[e] != '\n' { e += 1; }
+  v := ap_whole(mode[0..<e]);
+  return ifx v < 100 || v > 599 then 200 else v;
+}
+wm_mode_text :: (mode: string) -> string {
+  e := 0; while e < mode.count && mode[e] != '\n' { e += 1; }
+  return ifx e < mode.count then mode[e + 1..<mode.count] else "";
+}
+wm_put :: (h: int, s: string) -> bool {
+  for c: s { if cxsock_write(h, cast(int) c) != 0 { return false; } }
+  return true;
+}
+wm_send :: (h: int, code: int, body: string) {
+  s: [1] Sb; sb(s[..], "HTTP/1.1 "); sb_int(s[..], code); sb(s[..], " Fake\r\nContent-Type: application/json\r\nConnection: close\r\nContent-Length: "); sb_int(s[..], body.count); sb(s[..], "\r\n\r\n");
+  if wm_put(h, sb_text(s[..])) && wm_put(h, body) { f := cxsock_flush(h, 5000); }
+}
+WmWork :: struct { req: [WK_REQ] u8; out: [WK_REQ] u8; mode: [65536] u8; }
+wm_main :: (port: int, dir: string) -> int {
+  k := [1] WmWork.[WmWork.{}]; req := k[0].req[..];
+  listener := cxsock_listen(port);
+  if listener < 0 { tool_errln("worldbuilder_checks model: can't listen"); return 1; }
+  cp: [1100] u8; calls_path := fs_join(dir, "calls", cp[..]);
+  rp: [1100] u8; request_path := fs_join(dir, "request", rp[..]);
+  ap: [1100] u8; auth_path := fs_join(dir, "auth", ap[..]);
+  pp: [1100] u8; path_path := fs_join(dir, "path", pp[..]);
+  mp: [1100] u8; mode_path := fs_join(dir, "mode", mp[..]);
+  sp: [1100] u8; stop := fs_join(dir, "stop", sp[..]);
+  yp: [1100] u8; nb: [32] u8;
+  if !fs_write(calls_path, "0") || !fs_write(fs_join(dir, "ready", yp[..]), "1") { return 1; }
+  calls := 0; deadline := proc_now_ms() + 1800000;
+  while !fs_exists(stop) && proc_now_ms() < deadline {
+    h := cxsock_accept(listener, 50);
+    if h < 0 { continue; }
+    used := 0; end := -1; want := 0; went_on := false; until := proc_now_ms() + 20000;
+    while (end < 0 || used < end + want) && proc_now_ms() < until {
+      n := cxsock_read(h, 100);
+      if n == -2 { continue; }
+      if n < 0 || used + n > req.count { break; }
+      for i: 0..<n { req[used + i] = cast,trunc(u8) cxsock_byte(h, i); }
+      used += n;
+      if end < 0 {
+        end = wm_head_end(cast(string) req[0..<used]);
+        if end >= 0 { v := ap_whole(wm_header(cast(string) req[0..<end], "Content-Length")); want = ifx v < 0 then 0 else v; }
+      }
+      // curl waits a second for this before it sends a body past 1024 bytes
+      if end >= 0 && !went_on && used < end + want && ap_has(wm_header(cast(string) req[0..<end], "Expect"), "100-continue") {
+        went_on = true;
+        if wm_put(h, "HTTP/1.1 100 Continue\r\n\r\n") { f := cxsock_flush(h, 2000); }
+      }
+    }
+    if end < 0 || used < end + want { c := cxsock_close(h); continue; }
+    head := cast(string) req[0..<end]; body := cast(string) req[end..<end + want];
+    sp1 := 0; while sp1 < head.count && head[sp1] != ' ' { sp1 += 1; }
+    sp2 := sp1 + 1; while sp2 < head.count && head[sp2] != ' ' && head[sp2] != '\r' { sp2 += 1; }
+    target := ifx sp1 < head.count then head[sp1 + 1..<sp2] else "";
+    // what was asked is on disk before the answer goes, so the checks read it once the API has answered
+    calls += 1;
+    kept := fs_write(request_path, body) && fs_write(auth_path, wm_header(head, "Authorization")) && fs_write(path_path, target) && fs_write(calls_path, ap_num(calls, nb[..]));
+    mn := fs_read(mode_path, k[0].mode[..]);
+    mode := ifx mn > 0 then cast(string) k[0].mode[0..<mn] else "";
+    code := ifx kept then wm_mode_status(mode) else 500;
+    if code != 200 { wm_send(h, code, "{\"error\":{\"code\":500}}"); }
+    else {
+      n := wm_envelope(wm_mode_text(mode), k[0].out[..]);
+      wm_send(h, ifx n < 0 then 500 else 200, ifx n < 0 then "{}" else cast(string) k[0].out[0..<n]);
+    }
+    c := cxsock_close(h);
+  }
+  c := cxsock_close(listener);
+  return 0;
+}
+
+#test "the fake model: Gemini's envelope with a thought part and the usage, the mode file's status and text" {
+  b: [1024] u8; nodes: [64] JvNode; d: [1] Jv; t: [256] u8;
+  n := wm_envelope("{\"say\":\"hi\"}", b[..]);
+  #assert n > 0 && cast(string) b[0..<n] == "{\"candidates\":[{\"content\":{\"role\":\"model\",\"parts\":[{\"text\":\"planning\",\"thought\":true},{\"text\":\"{\\\"say\\\":\\\"hi\\\"}\"}]},\"finishReason\":\"STOP\"}],\"usageMetadata\":{\"promptTokenCount\":12000,\"cachedContentTokenCount\":2000,\"candidatesTokenCount\":100,\"thoughtsTokenCount\":20}}";
+  #assert jv_parse(d[..], cast(string) b[0..<n], nodes[..]);
+  tn := jv_str(d[0], jv_path(d[0], 0, "candidates[0].content.parts[1].text"), t[..]);
+  #assert cast(string) t[0..<tn] == "{\"say\":\"hi\"}" && wm_envelope("x", b[0..<20]) == -1;
+  #assert wm_mode_status("200\n{}") == 200 && wm_mode_text("200\n{}") == "{}" && wm_mode_status("500\n") == 500 && wm_mode_text("500\n") == "" && wm_mode_status("") == 200 && wm_mode_text("503") == "";
+  #assert wm_mode_text("200\nnot json\nat all") == "not json\nat all" && wm_mode_status("x\ny") == 200;
+  #assert wm_header("POST /model HTTP/1.1\r\ncontent-length: 12\r\nAuthorization: Bearer test-token\r\n\r\n", "Content-Length") == "12";
+  #assert wm_header("POST /model HTTP/1.1\r\nAuthorization: Bearer test-token\r\n\r\n", "Authorization") == "Bearer test-token" && wm_header("POST / HTTP/1.1\r\n\r\n", "Expect") == "";
+  #assert wm_head_end("POST / HTTP/1.1\r\n\r\nab") == 19 && wm_head_end("POST / HTTP/1.1\r\n") == -1 && wm_head_end("") == -1;
+}
+#test "the checks' own sums: a reservation is a token every three bytes and the whole output allowance, rounded up; the lines wanted" {
+  #assert wk_reserve(44557) == 37638 && wk_reserve(0) == 15360 && wk_reserve(4) == 15362;
+  #assert WK_COST == (10000 * 1500000 + 2000 * 75000 + 120 * 7500000) / 1000000;
+  #assert ap_starts(WK_WANT, "S Three birches, right here.\nA place|birch-1|3|||here||at|0|4|1||\nA paint|grass||all||||||||0.5|\n") && ap_ends(WK_WANT, "A delete|||names|birch-1,birch-3||||||||\n");
+  nodes: [128] JvNode; d: [1] Jv; s: [1] Sb;
+  #assert jv_parse(d[..], WK_PAGE, nodes[..]) && jv_parse(d[..], WK_ANSWER, nodes[..]) && jv_len(d[0], jv_get(d[0], 0, "actions")) == 3;
+  wk_keys(d[0], jv_path(d[0], 0, "actions[1]"), s[..]);
+  #assert sb_text(s[..]) == "op,asset,layer,targets,factor";
+}
+
+// ---- the checks
+Wk :: struct {
+  req: [WK_REQ] u8; req_n: int;      // the last request the model got
+  text: [WK_REQ] u8;                 // a member of it
+  big: [20000] u8;
+  nodes: [8192] JvNode;
+  dir: [1100] u8; dir_n: int;
+  address: int;
+}
+wk_dir :: (k: [] Wk) -> string { return cast(string) k[0].dir[0..<k[0].dir_n]; }
+// The most a call with a request of n bytes may cost (worldbuilder.c: a token every three bytes; wb_reserve_micros).
+wk_reserve :: (n: int) -> int { return ((n / 3) * 1500000 + 2048 * 7500000 + 999999) / 1000000; }
+// The keys of the object at `at`, in order, joined by commas.
+wk_keys :: (d: Jv, at: int, s: [] Sb) {
+  sb_clear(s);
+  for i: 0..<jv_len(d, at) { if i > 0 { sb(s, ","); } sb(s, jv_key(d, jv_at(d, at, i))); }
+}
+// A file of the fake model's directory, in out.
+wk_file :: (k: [] Wk, name: string, out: [] u8) -> string {
+  pb: [1400] u8; n := fs_read(fs_join(wk_dir(k), name, pb[..]), out);
+  return ifx n < 0 then "" else cast(string) out[0..<n];
+}
+wk_calls :: (k: [] Wk) -> int { b: [32] u8; v := ap_whole(ap_trim(wk_file(k, "calls", b[..]))); return ifx v < 0 then 0 else v; }
+// What the model answers from now on: a status, and the answer's text.
+wk_mode :: (k: [] Wk, status: int, text: string) -> bool {
+  s: [1] Sb; sb_int(s[..], status); sb(s[..], "\n"); sb(s[..], text);
+  pb: [1400] u8;
+  return fs_write(fs_join(wk_dir(k), "mode", pb[..]), sb_text(s[..]));
+}
+// POST /api/worldbuilder/act from an address ("": one of its own, so the flood bucket, four at once an address, refuses none).
+wk_act :: (t: [] Ap, k: [] Wk, body: string, address: string) -> int {
+  x: [1] Sb; sb(x[..], "X-Forwarded-For: ");
+  if address == "" { k[0].address += 1; sb(x[..], "198.51.100."); sb_int(x[..], k[0].address); } else { sb(x[..], address); }
+  sb(x[..], ", 10.0.0.1");
+  h := [2] string.["Content-Type: application/json", sb_text(x[..])];
+  return ap_call(t, "POST", "/api/worldbuilder/act", body, h[..]);
+}
+wk_status :: (t: [] Ap) -> int { return ap_call(t, "GET", "/api/worldbuilder/status", "", t[0].no[0..<0]); }
+wk_spent :: (t: [] Ap) -> int {
+  b: [256] u8;
+  return ap_whole(ap_sql(t, "select coalesce((select spent_micros from worldbuilder.days where day = worldbuilder.today()), 0)", b[..]));
+}
+wk_refused :: (t: [] Ap) -> int { b: [256] u8; return ap_whole(ap_sql(t, "select refused from worldbuilder.days where day = worldbuilder.today()", b[..])); }
+wk_set_spent :: (t: [] Ap, v: int) {
+  q: [1] Sb; sb(q[..], "update worldbuilder.days set spent_micros = "); sb_int(q[..], v); sb(q[..], " where day = worldbuilder.today()");
+  ap_do(t, sb_text(q[..]));
+}
+// "WORD SPENT CAP", the status line.
+wk_line :: (word: string, spent: int, s: [] Sb) -> string {
+  sb_clear(s); sb(s, word); sb(s, " "); sb_int(s, spent); sb(s, " "); sb_int(s, WK_CAP);
+  return sb_text(s);
+}
+
+wk_checks :: (t: [] Ap, k: [] Wk) {
+  s: [1] Sb; b: [512] u8; d: [1] Jv; none := "";
+  before := wk_spent(t);
+  st := wk_status(t);
+  ap_check(t, "the status line is the day's spend and its cap", st == 200 && before >= 0 && ap_body(t) == wk_line("ok", before, s[..]), ap_body(t));
+
+  // ---- a request, the model's answer, the page's lines
+  moded := wk_mode(k, 200, WK_ANSWER);
+  first := wk_calls(k);
+  st = wk_act(t, k, WK_PAGE, none);
+  ap_check(t, "an act answers the model's edits as lines: the line to show, then an edit a line",
+           moded && st == 200 && ap_body(t) == WK_WANT && ap_header(t, "Content-Type") == "text/plain; charset=utf-8", ap_body(t));
+  ab: [256] u8; pb: [256] u8;
+  auth := wk_file(k, "auth", ab[..]); path := wk_file(k, "path", pb[..]);
+  ap_check(t, "the model was asked once, with the service's token", wk_calls(k) == first + 1 && auth == "Bearer test-token" && path == "/model", auth);
+  raw := wk_file(k, "request", k[0].req[..]); k[0].req_n = raw.count;
+  parsed := jv_parse(d[..], raw, k[0].nodes[..]) && jv_kind(d[0], 0) == JV_OBJECT;
+  wk_keys(d[0], 0, s[..]);
+  ap_check(t, "the request to the model: the system turn, the page's turn, the configuration, in that order (worldbuilder-wire.coax)",
+           parsed && sb_text(s[..]) == "systemInstruction,contents,generationConfig"
+           && ap_starts(raw, "{\"systemInstruction\":{\"parts\":[{\"text\":\"You turn what someone types into edits of a 3D world")
+           && ap_ends(raw, "\"required\":[\"say\",\"actions\"]},\"thinkingConfig\":{\"thinkingLevel\":\"LOW\"}}}"), ifx raw.count > 120 then raw[0..<120] else raw);
+  contents := jv_get(d[0], 0, "contents"); turn := jv_at(d[0], contents, 0); parts := jv_get(d[0], turn, "parts");
+  wk_keys(d[0], turn, s[..]);
+  tn := jv_str(d[0], jv_path(d[0], 0, "contents[0].parts[0].text"), k[0].text[..]);
+  ap_check(t, "the page's request is the user's turn, byte for byte",
+           parsed && jv_len(d[0], contents) == 1 && sb_text(s[..]) == "role,parts" && jv_raw(d[0], jv_get(d[0], turn, "role")) == "user"
+           && jv_len(d[0], parts) == 1 && jv_len(d[0], jv_at(d[0], parts, 0)) == 1 && tn >= 0 && cast(string) k[0].text[0..<(ifx tn < 0 then 0 else tn)] == WK_PAGE, jv_raw(d[0], contents));
+  ap_check(t, "its text is escaped as it always was: a quote with a backslash, a tab as \\u0009",
+           ap_has(raw, "\"contents\":[{\"role\":\"user\",\"parts\":[{\"text\":\"{\\\"text\\\":\\\"three birches \\\\\\\"here\\\\\\\"\\\",\\u0009\\\"walking\\\":false,"), ifx raw.count > 1900 then raw[raw.count - 1900..<raw.count - 1500] else raw);
+  si := jv_get(d[0], 0, "systemInstruction"); sparts := jv_get(d[0], si, "parts");
+  wk_keys(d[0], si, s[..]);
+  tn = jv_str(d[0], jv_path(d[0], 0, "systemInstruction.parts[0].text"), k[0].text[..]);
+  system := cast(string) k[0].text[0..<(ifx tn < 0 then 0 else tn)];
+  ap_check(t, "the system turn ends with the catalogue: the whole buildings, then the models",
+           parsed && sb_text(s[..]) == "parts" && jv_len(d[0], sparts) == 1 && jv_len(d[0], jv_at(d[0], sparts, 0)) == 1
+           && ap_has(system, "Catalogue (name|width,height,depth in metres|tags):\nhouse/cottage|5.51,7.25,5.56|house home cottage building plaster\n")
+           && ap_has(system, "\nhouse/long-house|5.51,7.23,7.57|house home building long hall brick\nbestiary-dungeon/imp|") && ap_ends(system, "\n"),
+           ifx system.count > 300 then system[system.count - 300..<system.count] else system);
+  config := jv_get(d[0], 0, "generationConfig");
+  wk_keys(d[0], config, s[..]);
+  ap_check(t, "the configuration: temperature 0.3, the policy's output allowance, JSON under the schema, low thinking",
+           parsed && sb_text(s[..]) == "temperature,maxOutputTokens,responseMimeType,responseJsonSchema,thinkingConfig" && jv_raw(d[0], jv_get(d[0], config, "temperature")) == "0.3"
+           && jv_raw(d[0], jv_get(d[0], config, "maxOutputTokens")) == "2048" && jv_raw(d[0], jv_get(d[0], config, "responseMimeType")) == "application/json"
+           && jv_raw(d[0], jv_get(d[0], config, "thinkingConfig")) == "{\"thinkingLevel\":\"LOW\"}", sb_text(s[..]));
+  schema := jv_get(d[0], config, "responseJsonSchema"); edit := jv_path(d[0], schema, "properties.actions.items"); props := jv_get(d[0], edit, "properties");
+  wk_keys(d[0], props, s[..]);
+  ap_check(t, "the schema: say and actions; an edit's op is one of fourteen and its layer one of seven",
+           parsed && jv_raw(d[0], jv_get(d[0], schema, "required")) == "[\"say\",\"actions\"]" && jv_raw(d[0], jv_get(d[0], edit, "required")) == "[\"op\",\"layer\"]"
+           && jv_raw(d[0], jv_path(d[0], props, "op.enum")) == "[\"place\",\"move\",\"rotate\",\"scale\",\"delete\",\"duplicate\",\"undo\",\"redo\",\"clear\",\"paint\",\"raise\",\"lower\",\"smooth\",\"flatten\"]"
+           && jv_raw(d[0], jv_path(d[0], props, "layer.enum")) == "[\"grass\",\"dirt\",\"sand\",\"stone\",\"snow\",\"water\",\"grid\"]"
+           && sb_text(s[..]) == "op,asset,layer,count,targets,names,anchor,anchor_names,side,distance,spread,size,factor,degrees", sb_text(s[..]));
+
+  // ---- the spend: reserved by the request's size before the call, settled at what the model used
+  row := ap_sql(t, "select status, input, cached, output, reserved, micros from worldbuilder.calls order by id desc limit 1", b[..]);
+  sb_clear(s[..]); sb(s[..], "200|12000|2000|120|"); sb_int(s[..], wk_reserve(raw.count)); sb(s[..], "|"); sb_int(s[..], WK_COST);
+  ap_check(t, "the call is kept with its usage, its reservation (a token every three bytes of the request) and its cost", row == sb_text(s[..]), row);
+  spent := wk_spent(t);
+  ap_check(t, "the day's spend settles at the cost", spent == before + WK_COST, ap_num(spent, b[..]));
+  st = wk_status(t);
+  ap_check(t, "and the status line shows it", st == 200 && ap_body(t) == wk_line("ok", before + WK_COST, s[..]), ap_body(t));
+
+  // ---- refusals
+  asked := wk_calls(k);
+  st = wk_act(t, k, "", none);
+  ap_check(t, "nothing sent is a 400", st == 400 && ap_body(t) == "too long", ap_body(t));
+  big := k[0].big[..]; head := "{\"text\":\""; bn := 0;
+  for c: head { big[bn] = c; bn += 1; }
+  for i: 0..<16384 { big[bn] = 'a'; bn += 1; }
+  big[bn] = '"'; big[bn + 1] = '}'; bn += 2;
+  st = wk_act(t, k, cast(string) big[0..<bn], none);
+  ap_check(t, "more than 16384 bytes is a 400", st == 400 && ap_body(t) == "too long", ap_body(t));
+  spent = wk_spent(t);
+  ap_check(t, "neither asked the model nor spent", wk_calls(k) == asked && spent == before + WK_COST, ap_num(spent, b[..]));
+
+  // an answer that is no JSON of the schema's: no lines, and the tokens are still paid for
+  moded = wk_mode(k, 200, "not json");
+  st = wk_act(t, k, WK_PAGE, none);
+  ap_check(t, "an answer that can't be read is a 502", moded && st == 502 && ap_body(t) == "no answer", ap_body(t));
+  spent = wk_spent(t);
+  ap_check(t, "its tokens are paid for", spent == before + 2 * WK_COST, ap_num(spent, b[..]));
+  // the model fails: asked twice (npc.c tries a failed call once more), nothing spent
+  moded = wk_mode(k, 500, "");
+  asked = wk_calls(k);
+  st = wk_act(t, k, WK_PAGE, none);
+  ap_check(t, "a model that fails is a 502, after a second try", moded && st == 502 && ap_body(t) == "no answer" && wk_calls(k) == asked + 2, ap_num(wk_calls(k) - asked, b[..]));
+  spent = wk_spent(t);
+  row = ap_sql(t, "select status, micros from worldbuilder.calls order by id desc limit 1", b[..]);
+  ap_check(t, "a call with no answer costs nothing: its reservation is given back", spent == before + 2 * WK_COST && row == "500|0", row);
+  moded = wk_mode(k, 200, WK_ANSWER);
+
+  // flood: an address whose bucket is empty waits (the bucket's row is keyed by the address's digest)
+  ap_do(t, "insert into auth.limit_buckets (name, key, fill_ms, at_ms) values ('worldbuilder', left(encode(sha256(convert_to('203.0.113.77', 'UTF8')), 'hex'), 40), 0, projects.now_ms()) on conflict (name, key) do update set fill_ms = 0, at_ms = excluded.at_ms");
+  asked = wk_calls(k);
+  st = wk_act(t, k, WK_PAGE, "203.0.113.77");
+  body := ap_body(t);
+  wait := ifx ap_starts(body, "flood ") then ap_whole(body[6..<body.count]) else -1;
+  ap_check(t, "an address with an empty bucket is refused with the milliseconds to wait", st == 429 && wait >= 1 && wait <= 1500 && wk_calls(k) == asked, body);
+  ap_do(t, "update auth.limit_buckets set fill_ms = 6000 where name = 'worldbuilder' and key = left(encode(sha256(convert_to('203.0.113.77', 'UTF8')), 'hex'), 40)");
+  st = wk_act(t, k, WK_PAGE, "203.0.113.77");
+  ap_check(t, "and let through once its bucket has refilled", moded && st == 200 && ap_body(t) == WK_WANT, ap_body(t));
+
+  // resting: the day's spend at its cap refuses every call until the day ends
+  spent = wk_spent(t);
+  refused := wk_refused(t);
+  wk_set_spent(t, WK_CAP);
+  asked = wk_calls(k);
+  st = wk_status(t);
+  ap_check(t, "at the cap the status line says resting", st == 200 && ap_body(t) == wk_line("resting", WK_CAP, s[..]), ap_body(t));
+  st = wk_act(t, k, WK_PAGE, none);
+  ap_check(t, "and an act is refused without asking the model, and counted",
+           st == 429 && ap_body(t) == "resting" && wk_calls(k) == asked && wk_refused(t) == refused + 1 && wk_spent(t) == WK_CAP, ap_body(t));
+  // a call whose reservation would pass the cap is refused too, though the day is not yet spent
+  wk_set_spent(t, WK_CAP - 1);
+  st = wk_act(t, k, WK_PAGE, none);
+  ap_check(t, "a call that could pass the cap is refused", st == 429 && ap_body(t) == "resting" && wk_calls(k) == asked, ap_body(t));
+  wk_set_spent(t, spent);
+  st = wk_status(t);
+  ap_check(t, "the day goes on from where it was", st == 200 && ap_body(t) == wk_line("ok", spent, s[..]), ap_body(t));
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  ar: [1] Args;
+  if !args_load(ar[..]) { return 2; }
+  if args_count(ar[..]) >= 1 && args_at(ar[..], 0) == "model" {
+    if args_count(ar[..]) != 3 || ap_whole(args_at(ar[..], 1)) < 1 { tool_errln("worldbuilder_checks model PORT DIR"); return 2; }
+    return wm_main(ap_whole(args_at(ar[..], 1)), args_at(ar[..], 2));
+  }
+  if args_count(ar[..]) != 0 { tool_errln("worldbuilder_checks: no arguments (API, PGURL, PSQL and WORLDBUILDER_PORT come from coax/web/api/test.sh), or: model PORT DIR"); return 2; }
+  t: [1] Ap; k := [1] Wk.[Wk.{}];
+  if !ap_open(t[..]) { return 2; }
+  // without the fake's port the service would ask the real model: nothing is called
+  wp: [32] u8; port := proc_getenv("WORLDBUILDER_PORT", wp[..]);
+  if ap_whole(port) < 1 {
+    ap_check(t[..], "test.sh gives WorldBuilder's fake model a port (WORLDBUILDER_PORT, OA_WORLDBUILDER_URL)", false, "not set");
+    return ap_done(t[..], "worldbuilder checks");
+  }
+  work := fs_temp("worldbuilder-model", k[0].dir[..]); k[0].dir_n = work.count;
+  ma := [5] string.["coax/web/tool.sh", "coax/web/api/tests/worldbuilder_checks.coax", "model", port, work];
+  h := proc_new(); ok := h >= 0 && work != "";
+  for x: ma { ok = ok && proc_arg(h, x); }
+  started := ok && proc_start(h) == 0;
+  rb: [1400] u8; ready := fs_join(work, "ready", rb[..]);
+  deadline := proc_now_ms() + 300000;
+  while started && !fs_exists(ready) && proc_now_ms() < deadline && proc_wait(h, 0) == PROC_RUNNING { proc_sleep(50); }
+  if !started || !fs_exists(ready) {
+    ap_check(t[..], "the fake model listens (WORLDBUILDER_PORT comes from test.sh)", false, port);
+    if h >= 0 { killed := proc_kill(h, PROC_SIGKILL); wt := proc_wait(h, 2000); rl := proc_release(h); }
+    return ap_done(t[..], "worldbuilder checks");
+  }
+  wk_checks(t[..], k[..]);
+  sb_: [1400] u8; stopped := fs_write(fs_join(work, "stop", sb_[..]), "1");
+  wt := proc_wait(h, 5000);
+  if wt == PROC_RUNNING { killed := proc_kill(h, PROC_SIGKILL); wt = proc_wait(h, 2000); }
+  rl := proc_release(h);
+  gone := fs_remove(work);
+  return ap_done(t[..], "worldbuilder checks");
+}

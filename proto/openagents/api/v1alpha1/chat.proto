@@ -133,3 +133,9 @@ message ChatTabPost {
   optional int64 c = 1 [json_name = "c"];
   optional int64 tab = 2 [json_name = "tab"];   // or null
 }
+
+// POST /api/chat/devbox 200 (#13474): the boat dev box the conversation's turns run on, "" for none
+message ChatDevboxPost {
+  optional int64 c = 1 [json_name = "c"];
+  optional string devbox = 2 [json_name = "devbox"];
+}

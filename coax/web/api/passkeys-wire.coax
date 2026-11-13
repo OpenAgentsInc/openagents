@@ -1,0 +1,302 @@
+// Passkeys on the wire, one codec for what passkeys.c writes (Protocol E11, GitHub #13250):
+// proto/openagents/api/v1alpha1/passkeys.proto (profile api-routes) names the members. passkeys.c
+// calls the #export_c writers below through passkeys-wire.generated.c and builds no body of its own:
+//   pky_cred_write, pky_cred_line        one credential of an options answer (JSON; the line)
+//   pky_options_write, pky_options_lines 200 from POST /api/auth/passkey/{login,register,step-up}/options
+//   pky_added_write, pky_added_lines     200 from POST /api/auth/passkey/register
+//   pky_stepped_write, pky_stepped_lines 200 from POST /api/auth/passkey/step-up
+//   pky_state_write, pky_state_lines     200 from .../passkeys/<id>/rename and .../passkeys/offered
+//   pky_list_open, pky_row_write, pky_list_close; pky_row_line, pky_offer_line
+//                                        200 from GET /api/auth/passkeys (the rows also in GET /api/auth/ways)
+//   pky_audit_*                          the detail of an auth.audit row (jsonb)
+// The bytes are the ones passkeys.c wrote before this file; proto/verse/api-routes-v1alpha1.json
+// holds what a running API answered and routes-goldens.coax checks it. A passkey's name (and the
+// account's user name) comes here already escaped by auth.c's auth_json_esc, which writes a control
+// byte as \u00XX and cuts at its buffer: it is put between the quotes as it came. Every other
+// string (a base64url challenge, id or handle, the RP ID, a purpose, transports, a refusal's reason)
+// holds no quote, backslash or control byte and is written as a JSON string; a number that SQL
+// printed (a passkey's id, a time in ms) is put as it came. A writer returns the body's length, or
+// -1 when it does not fit.
+//   coax/bin/coax test coax/web/api/passkeys-wire.coax --library
+#load "api-wire.coax";
+
+pky_bool :: (b: bool) -> string #effects(all) { return ifx b then "true" else "false"; }
+pky_client :: (app: bool) -> string #effects(all) { return ifx app then "app" else "web"; }
+
+// {"type":"public-key","id":"ID"}, after a comma when it is not the first.
+pky_cred_write :: (more: bool, id: string, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  if more { jo_put(o[..], ","); }
+  jo_put(o[..], "{\"type\":\"public-key\",\"id\":"); jo_quoted(o[..], id); jo_put(o[..], "}");
+  return aw_len(o[..]);
+}
+// "allow ID\n" (stepping up) or "exclude ID\n" (adding).
+pky_cred_line :: (allow: bool, id: string, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], ifx allow then "allow " else "exclude "); jo_put(o[..], id); jo_put(o[..], "\n");
+  return aw_len(o[..]);
+}
+// The options: our members, then the standard ones under publicKey. registering: a passkey is
+// being added (user_id, user_name, and creds are the ones to exclude); else creds are the ones
+// allowed ("" at a login). user_name is escaped already; creds is pky_cred_write's list.
+pky_options_write :: (challenge: string, rp: string, purpose: string, registering: bool, user_id: string, user_name: string, creds: string, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "{\"challenge\":"); jo_quoted(o[..], challenge); jo_put(o[..], ",\"rp_id\":"); jo_quoted(o[..], rp);
+  jo_put(o[..], ",\"timeout\":300000,\"purpose\":"); jo_quoted(o[..], purpose);
+  if registering {
+    jo_put(o[..], ",\"user_id\":"); jo_quoted(o[..], user_id);
+    jo_put(o[..], ",\"user_name\":\""); jo_put(o[..], user_name);
+    jo_put(o[..], "\",\"publicKey\":{\"challenge\":"); jo_quoted(o[..], challenge);
+    jo_put(o[..], ",\"rp\":{\"id\":"); jo_quoted(o[..], rp); jo_put(o[..], ",\"name\":\"OpenAgents\"},");
+    jo_put(o[..], "\"user\":{\"id\":"); jo_quoted(o[..], user_id);
+    jo_put(o[..], ",\"name\":\""); jo_put(o[..], user_name); jo_put(o[..], "\",\"displayName\":\""); jo_put(o[..], user_name); jo_put(o[..], "\"},");
+    jo_put(o[..], "\"pubKeyCredParams\":[{\"type\":\"public-key\",\"alg\":-7},{\"type\":\"public-key\",\"alg\":-8},{\"type\":\"public-key\",\"alg\":-257}],");
+    jo_put(o[..], "\"timeout\":300000,\"attestation\":\"none\",\"excludeCredentials\":["); jo_put(o[..], creds); jo_put(o[..], "],");
+    jo_put(o[..], "\"authenticatorSelection\":{\"residentKey\":\"required\",\"requireResidentKey\":true,\"userVerification\":\"required\"},");
+    jo_put(o[..], "\"extensions\":{\"credProps\":true,\"prf\":{}}}}");
+  } else {
+    jo_put(o[..], ",\"publicKey\":{\"challenge\":"); jo_quoted(o[..], challenge); jo_put(o[..], ",\"rpId\":"); jo_quoted(o[..], rp);
+    jo_put(o[..], ",\"timeout\":300000,\"userVerification\":\"required\",\"allowCredentials\":["); jo_put(o[..], creds); jo_put(o[..], "]}}");
+  }
+  return aw_len(o[..]);
+}
+// The same as lines: challenge, rp_id, timeout, (adding: user_id, user_name), then pky_cred_line's.
+pky_options_lines :: (challenge: string, rp: string, registering: bool, user_id: string, user_name: string, cred_lines: string, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "challenge "); jo_put(o[..], challenge); jo_put(o[..], "\nrp_id "); jo_put(o[..], rp); jo_put(o[..], "\ntimeout 300000\n");
+  if registering { jo_put(o[..], "user_id "); jo_put(o[..], user_id); jo_put(o[..], "\nuser_name "); jo_put(o[..], user_name); jo_put(o[..], "\n"); }
+  jo_put(o[..], cred_lines);
+  return aw_len(o[..]);
+}
+
+// {"state":"added","id":7,"name":"NAME","synced":true}; name is escaped already.
+pky_added_write :: (id: string, name: string, synced: bool, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "{\"state\":\"added\",\"id\":"); jo_put(o[..], id); jo_put(o[..], ",\"name\":\""); jo_put(o[..], name);
+  jo_put(o[..], "\",\"synced\":"); jo_put(o[..], pky_bool(synced)); jo_put(o[..], "}");
+  return aw_len(o[..]);
+}
+// "state added\nid 7\nname NAME\nsynced 1\n"; name as it is.
+pky_added_lines :: (id: string, name: string, synced: bool, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "state added\nid "); jo_put(o[..], id); jo_put(o[..], "\nname "); jo_put(o[..], name);
+  jo_put(o[..], "\nsynced "); jo_put(o[..], ifx synced then "1" else "0"); jo_put(o[..], "\n");
+  return aw_len(o[..]);
+}
+// {"state":"stepped-up","level":"L2"}
+pky_stepped_write :: (out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0); jo_put(o[..], "{\"state\":\"stepped-up\",\"level\":\"L2\"}"); return aw_len(o[..]);
+}
+pky_stepped_lines :: (out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0); jo_put(o[..], "state stepped-up\nlevel L2\n"); return aw_len(o[..]);
+}
+// {"state":"renamed"} or {"state":"offered"}: offered says which.
+pky_state_write :: (offered: bool, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "{\"state\":"); jo_quoted(o[..], ifx offered then "offered" else "renamed"); jo_put(o[..], "}");
+  return aw_len(o[..]);
+}
+pky_state_lines :: (offered: bool, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "state "); jo_put(o[..], ifx offered then "offered" else "renamed"); jo_put(o[..], "\n");
+  return aw_len(o[..]);
+}
+
+// The list: {"passkeys":[ROW,ROW],"offer":true}.
+pky_list_open :: (out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0); jo_put(o[..], "{\"passkeys\":["); return aw_len(o[..]);
+}
+pky_list_close :: (offer: bool, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "],\"offer\":"); jo_put(o[..], pky_bool(offer)); jo_put(o[..], "}");
+  return aw_len(o[..]);
+}
+// "offer 1\n"
+pky_offer_line :: (offer: bool, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "offer "); jo_put(o[..], ifx offer then "1" else "0"); jo_put(o[..], "\n");
+  return aw_len(o[..]);
+}
+// One passkey, after a comma when it is not the first: id, added_ms and used_ms as SQL printed
+// them, name escaped already.
+pky_row_write :: (more: bool, id: string, name: string, added_ms: string, used_ms: string, synced: bool, clone: bool, prf: bool, transports: string, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  if more { jo_put(o[..], ","); }
+  jo_put(o[..], "{\"id\":"); jo_put(o[..], id); jo_put(o[..], ",\"name\":\""); jo_put(o[..], name);
+  jo_put(o[..], "\",\"added_ms\":"); jo_put(o[..], added_ms); jo_put(o[..], ",\"used_ms\":"); jo_put(o[..], used_ms);
+  jo_put(o[..], ",\"synced\":"); jo_put(o[..], pky_bool(synced)); jo_put(o[..], ",\"clone\":"); jo_put(o[..], pky_bool(clone));
+  jo_put(o[..], ",\"prf\":"); jo_put(o[..], pky_bool(prf)); jo_put(o[..], ",\"transports\":"); jo_quoted(o[..], transports); jo_put(o[..], "}");
+  return aw_len(o[..]);
+}
+// "passkey ID ADDED_MS USED_MS SYNCED CLONE NAME\n"; the name last and as it is: it may hold spaces.
+pky_row_line :: (id: string, added_ms: string, used_ms: string, synced: bool, clone: bool, name: string, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "passkey "); jo_put(o[..], id); jo_put(o[..], " "); jo_put(o[..], added_ms); jo_put(o[..], " "); jo_put(o[..], used_ms);
+  jo_put(o[..], ifx synced then " 1" else " 0"); jo_put(o[..], ifx clone then " 1 " else " 0 "); jo_put(o[..], name); jo_put(o[..], "\n");
+  return aw_len(o[..]);
+}
+
+// ---- the detail of an audit row
+// {"purpose":"login","client":"web"}: a challenge was made.
+pky_audit_challenge_write :: (purpose: string, app: bool, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "{\"purpose\":"); jo_quoted(o[..], purpose); jo_put(o[..], ",\"client\":"); jo_quoted(o[..], pky_client(app)); jo_put(o[..], "}");
+  return aw_len(o[..]);
+}
+// {"why":"challenge","verdict":2}: a challenge was not good here.
+pky_audit_verdict_write :: (verdict: int, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "{\"why\":\"challenge\",\"verdict\":"); jo_int(o[..], verdict); jo_put(o[..], "}");
+  return aw_len(o[..]);
+}
+// {"why":"webauthn","code":4}, or with "via":"passkey" first: the browser's answer did not check.
+pky_audit_code_write :: (via: bool, code: int, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], ifx via then "{\"via\":\"passkey\",\"why\":\"webauthn\",\"code\":" else "{\"why\":\"webauthn\",\"code\":"); jo_int(o[..], code); jo_put(o[..], "}");
+  return aw_len(o[..]);
+}
+// {"why":"too many"}, or with "via":"passkey" first: a refusal's reason.
+pky_audit_why_write :: (via: bool, why: string, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], ifx via then "{\"via\":\"passkey\",\"why\":" else "{\"why\":"); jo_quoted(o[..], why); jo_put(o[..], "}");
+  return aw_len(o[..]);
+}
+// {"via":"passkey"}: a session stepped up.
+pky_audit_via_write :: (out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0); jo_put(o[..], "{\"via\":\"passkey\"}"); return aw_len(o[..]);
+}
+// {"id":7,"alg":-7,"synced":true,"client":"web"}: a passkey was added.
+pky_audit_added_write :: (id: string, alg: int, synced: bool, app: bool, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "{\"id\":"); jo_put(o[..], id); jo_put(o[..], ",\"alg\":"); jo_int(o[..], alg);
+  jo_put(o[..], ",\"synced\":"); jo_put(o[..], pky_bool(synced)); jo_put(o[..], ",\"client\":"); jo_quoted(o[..], pky_client(app)); jo_put(o[..], "}");
+  return aw_len(o[..]);
+}
+// {"id":7,"stored":12,"got":3}: a sign count went backwards.
+pky_audit_clone_write :: (id: string, stored: int, got: int, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "{\"id\":"); jo_put(o[..], id); jo_put(o[..], ",\"stored\":"); jo_int(o[..], stored); jo_put(o[..], ",\"got\":"); jo_int(o[..], got); jo_put(o[..], "}");
+  return aw_len(o[..]);
+}
+// {"id":7}: a passkey was renamed.
+pky_audit_id_write :: (id: string, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0); jo_put(o[..], "{\"id\":"); jo_put(o[..], id); jo_put(o[..], "}"); return aw_len(o[..]);
+}
+// {}: the offer was shown.
+pky_audit_none_write :: (out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0); jo_put(o[..], "{}"); return aw_len(o[..]);
+}
+
+#test "an options answer: a login's, a step-up's and an add's, as JSON and as lines" {
+  b: [2048] u8; c: [256] u8; l: [256] u8;
+  n := pky_cred_write(false, "aWQx", c[..]);
+  #assert cast(string) c[0..<n] == "{\"type\":\"public-key\",\"id\":\"aWQx\"}" && pky_cred_write(false, "aWQx", c[0..<n - 1]) == -1;
+  m := pky_cred_write(true, "aWQy", c[n..<256]);
+  #assert cast(string) c[n..<n + m] == ",{\"type\":\"public-key\",\"id\":\"aWQy\"}";
+  creds := cast(string) c[0..<n + m];
+  ln := pky_cred_line(true, "aWQx", l[..]);
+  #assert cast(string) l[0..<ln] == "allow aWQx\n" && pky_cred_line(true, "aWQx", l[0..<ln - 1]) == -1;
+  lm := pky_cred_line(false, "aWQy", l[ln..<256]);
+  #assert cast(string) l[ln..<ln + lm] == "exclude aWQy\n";
+  n = pky_options_write("Y2g", "openagents.com", "login", false, "", "OpenAgents account", "", b[..]);
+  #assert cast(string) b[0..<n] == "{\"challenge\":\"Y2g\",\"rp_id\":\"openagents.com\",\"timeout\":300000,\"purpose\":\"login\",\"publicKey\":{\"challenge\":\"Y2g\",\"rpId\":\"openagents.com\",\"timeout\":300000,\"userVerification\":\"required\",\"allowCredentials\":[]}}";
+  #assert pky_options_write("Y2g", "openagents.com", "login", false, "", "", "", b[0..<n - 1]) == -1;
+  n = pky_options_write("Y2g", "openagents.com", "stepup", false, "", "OpenAgents account", creds, b[..]);
+  #assert cast(string) b[0..<n] == "{\"challenge\":\"Y2g\",\"rp_id\":\"openagents.com\",\"timeout\":300000,\"purpose\":\"stepup\",\"publicKey\":{\"challenge\":\"Y2g\",\"rpId\":\"openagents.com\",\"timeout\":300000,\"userVerification\":\"required\",\"allowCredentials\":[{\"type\":\"public-key\",\"id\":\"aWQx\"},{\"type\":\"public-key\",\"id\":\"aWQy\"}]}}";
+  n = pky_options_write("Y2g", "openagents.com", "link", true, "aGFuZGxl", "a\\\"b@example.com", creds, b[..]);
+  #assert cast(string) b[0..<n] == "{\"challenge\":\"Y2g\",\"rp_id\":\"openagents.com\",\"timeout\":300000,\"purpose\":\"link\",\"user_id\":\"aGFuZGxl\",\"user_name\":\"a\\\"b@example.com\",\"publicKey\":{\"challenge\":\"Y2g\",\"rp\":{\"id\":\"openagents.com\",\"name\":\"OpenAgents\"},\"user\":{\"id\":\"aGFuZGxl\",\"name\":\"a\\\"b@example.com\",\"displayName\":\"a\\\"b@example.com\"},\"pubKeyCredParams\":[{\"type\":\"public-key\",\"alg\":-7},{\"type\":\"public-key\",\"alg\":-8},{\"type\":\"public-key\",\"alg\":-257}],\"timeout\":300000,\"attestation\":\"none\",\"excludeCredentials\":[{\"type\":\"public-key\",\"id\":\"aWQx\"},{\"type\":\"public-key\",\"id\":\"aWQy\"}],\"authenticatorSelection\":{\"residentKey\":\"required\",\"requireResidentKey\":true,\"userVerification\":\"required\"},\"extensions\":{\"credProps\":true,\"prf\":{}}}}";
+  #assert pky_options_write("Y2g", "openagents.com", "link", true, "aGFuZGxl", "a\\\"b@example.com", creds, b[0..<n - 1]) == -1;
+  n = pky_options_write("Y2g", "openagents.com", "link", true, "aGFuZGxl", "OpenAgents account", "", b[..]);
+  #assert cast(string) b[0..<n] == "{\"challenge\":\"Y2g\",\"rp_id\":\"openagents.com\",\"timeout\":300000,\"purpose\":\"link\",\"user_id\":\"aGFuZGxl\",\"user_name\":\"OpenAgents account\",\"publicKey\":{\"challenge\":\"Y2g\",\"rp\":{\"id\":\"openagents.com\",\"name\":\"OpenAgents\"},\"user\":{\"id\":\"aGFuZGxl\",\"name\":\"OpenAgents account\",\"displayName\":\"OpenAgents account\"},\"pubKeyCredParams\":[{\"type\":\"public-key\",\"alg\":-7},{\"type\":\"public-key\",\"alg\":-8},{\"type\":\"public-key\",\"alg\":-257}],\"timeout\":300000,\"attestation\":\"none\",\"excludeCredentials\":[],\"authenticatorSelection\":{\"residentKey\":\"required\",\"requireResidentKey\":true,\"userVerification\":\"required\"},\"extensions\":{\"credProps\":true,\"prf\":{}}}}";
+  n = pky_options_lines("Y2g", "openagents.com", false, "", "OpenAgents account", "", b[..]);
+  #assert cast(string) b[0..<n] == "challenge Y2g\nrp_id openagents.com\ntimeout 300000\n" && pky_options_lines("Y2g", "openagents.com", false, "", "", "", b[0..<n - 1]) == -1;
+  n = pky_options_lines("Y2g", "openagents.com", false, "", "OpenAgents account", "allow aWQx\n", b[..]);
+  #assert cast(string) b[0..<n] == "challenge Y2g\nrp_id openagents.com\ntimeout 300000\nallow aWQx\n";
+  n = pky_options_lines("Y2g", "openagents.com", true, "aGFuZGxl", "a@example.com", "exclude aWQx\nexclude aWQy\n", b[..]);
+  #assert cast(string) b[0..<n] == "challenge Y2g\nrp_id openagents.com\ntimeout 300000\nuser_id aGFuZGxl\nuser_name a@example.com\nexclude aWQx\nexclude aWQy\n";
+}
+
+#test "an added passkey, a step-up, a rename and the offer, as JSON and as lines" {
+  b: [512] u8;
+  n := pky_added_write("7", "iCloud \\\"Keychain\\\"\\u000a", true, b[..]);
+  #assert cast(string) b[0..<n] == "{\"state\":\"added\",\"id\":7,\"name\":\"iCloud \\\"Keychain\\\"\\u000a\",\"synced\":true}" && pky_added_write("7", "x", true, b[0..<10]) == -1;
+  n = pky_added_write("12", "", false, b[..]);
+  #assert cast(string) b[0..<n] == "{\"state\":\"added\",\"id\":12,\"name\":\"\",\"synced\":false}";
+  n = pky_added_lines("7", "iCloud \"Keychain\"", true, b[..]);
+  #assert cast(string) b[0..<n] == "state added\nid 7\nname iCloud \"Keychain\"\nsynced 1\n" && pky_added_lines("7", "x", true, b[0..<10]) == -1;
+  n = pky_added_lines("12", "", false, b[..]);
+  #assert cast(string) b[0..<n] == "state added\nid 12\nname \nsynced 0\n";
+  n = pky_stepped_write(b[..]);
+  #assert cast(string) b[0..<n] == "{\"state\":\"stepped-up\",\"level\":\"L2\"}" && pky_stepped_write(b[0..<n - 1]) == -1;
+  n = pky_stepped_lines(b[..]);
+  #assert cast(string) b[0..<n] == "state stepped-up\nlevel L2\n" && pky_stepped_lines(b[0..<n - 1]) == -1;
+  n = pky_state_write(false, b[..]);
+  #assert cast(string) b[0..<n] == "{\"state\":\"renamed\"}" && pky_state_write(false, b[0..<n - 1]) == -1;
+  n = pky_state_write(true, b[..]);
+  #assert cast(string) b[0..<n] == "{\"state\":\"offered\"}";
+  n = pky_state_lines(false, b[..]);
+  #assert cast(string) b[0..<n] == "state renamed\n" && pky_state_lines(false, b[0..<n - 1]) == -1;
+  n = pky_state_lines(true, b[..]);
+  #assert cast(string) b[0..<n] == "state offered\n";
+}
+
+#test "the list: its rows as JSON and as lines, and the offer" {
+  b: [1024] u8;
+  n := pky_list_open(b[..]);
+  #assert cast(string) b[0..<n] == "{\"passkeys\":[" && pky_list_open(b[0..<n - 1]) == -1;
+  n += pky_row_write(false, "7", "My \\\"key\\\"", "1762900000000", "0", true, false, true, "internal,hybrid", b[n..<1024]);
+  n += pky_row_write(true, "8", "", "1762900000001", "1762900000002", false, true, false, "", b[n..<1024]);
+  n += pky_list_close(true, b[n..<1024]);
+  #assert cast(string) b[0..<n] == "{\"passkeys\":[{\"id\":7,\"name\":\"My \\\"key\\\"\",\"added_ms\":1762900000000,\"used_ms\":0,\"synced\":true,\"clone\":false,\"prf\":true,\"transports\":\"internal,hybrid\"},{\"id\":8,\"name\":\"\",\"added_ms\":1762900000001,\"used_ms\":1762900000002,\"synced\":false,\"clone\":true,\"prf\":false,\"transports\":\"\"}],\"offer\":true}";
+  #assert pky_row_write(false, "7", "k", "1", "0", true, false, true, "usb", b[0..<40]) == -1;
+  n = pky_list_open(b[..]); n += pky_list_close(false, b[n..<1024]);
+  #assert cast(string) b[0..<n] == "{\"passkeys\":[],\"offer\":false}" && pky_list_close(false, b[0..<5]) == -1;
+  n = pky_row_line("7", "1762900000000", "0", true, false, "My \"key\" here", b[..]);
+  #assert cast(string) b[0..<n] == "passkey 7 1762900000000 0 1 0 My \"key\" here\n" && pky_row_line("7", "1", "0", true, false, "k", b[0..<n - 30]) == -1;
+  n = pky_row_line("8", "1762900000001", "1762900000002", false, true, "", b[..]);
+  #assert cast(string) b[0..<n] == "passkey 8 1762900000001 1762900000002 0 1 \n";
+  n = pky_offer_line(true, b[..]);
+  #assert cast(string) b[0..<n] == "offer 1\n" && pky_offer_line(true, b[0..<n - 1]) == -1;
+  n = pky_offer_line(false, b[..]);
+  #assert cast(string) b[0..<n] == "offer 0\n";
+}
+
+#test "the audit details" {
+  b: [256] u8;
+  n := pky_audit_challenge_write("login", false, b[..]);
+  #assert cast(string) b[0..<n] == "{\"purpose\":\"login\",\"client\":\"web\"}" && pky_audit_challenge_write("login", false, b[0..<n - 1]) == -1;
+  n = pky_audit_challenge_write("stepup", true, b[..]);
+  #assert cast(string) b[0..<n] == "{\"purpose\":\"stepup\",\"client\":\"app\"}";
+  n = pky_audit_verdict_write(2, b[..]);
+  #assert cast(string) b[0..<n] == "{\"why\":\"challenge\",\"verdict\":2}" && pky_audit_verdict_write(2, b[0..<n - 1]) == -1;
+  n = pky_audit_verdict_write(-1, b[..]);
+  #assert cast(string) b[0..<n] == "{\"why\":\"challenge\",\"verdict\":-1}";
+  n = pky_audit_code_write(false, 4, b[..]);
+  #assert cast(string) b[0..<n] == "{\"why\":\"webauthn\",\"code\":4}" && pky_audit_code_write(false, 4, b[0..<n - 1]) == -1;
+  n = pky_audit_code_write(true, 0, b[..]);
+  #assert cast(string) b[0..<n] == "{\"via\":\"passkey\",\"why\":\"webauthn\",\"code\":0}";
+  n = pky_audit_code_write(true, -9223372036854775807, b[..]);
+  #assert cast(string) b[0..<n] == "{\"via\":\"passkey\",\"why\":\"webauthn\",\"code\":-9223372036854775807}";
+  n = pky_audit_why_write(false, "another account's", b[..]);
+  #assert cast(string) b[0..<n] == "{\"why\":\"another account's\"}" && pky_audit_why_write(false, "already", b[0..<5]) == -1;
+  n = pky_audit_why_write(false, "", b[..]);
+  #assert cast(string) b[0..<n] == "{\"why\":\"\"}";
+  n = pky_audit_why_write(true, "not this account's passkey", b[..]);
+  #assert cast(string) b[0..<n] == "{\"via\":\"passkey\",\"why\":\"not this account's passkey\"}";
+  n = pky_audit_via_write(b[..]);
+  #assert cast(string) b[0..<n] == "{\"via\":\"passkey\"}" && pky_audit_via_write(b[0..<n - 1]) == -1;
+  n = pky_audit_added_write("7", -7, true, false, b[..]);
+  #assert cast(string) b[0..<n] == "{\"id\":7,\"alg\":-7,\"synced\":true,\"client\":\"web\"}" && pky_audit_added_write("7", -7, true, false, b[0..<n - 1]) == -1;
+  n = pky_audit_added_write("12", -257, false, true, b[..]);
+  #assert cast(string) b[0..<n] == "{\"id\":12,\"alg\":-257,\"synced\":false,\"client\":\"app\"}";
+  n = pky_audit_clone_write("7", 12, 3, b[..]);
+  #assert cast(string) b[0..<n] == "{\"id\":7,\"stored\":12,\"got\":3}" && pky_audit_clone_write("7", 12, 3, b[0..<n - 1]) == -1;
+  n = pky_audit_clone_write("7", -5, 4294967295, b[..]);
+  #assert cast(string) b[0..<n] == "{\"id\":7,\"stored\":-5,\"got\":4294967295}";
+  n = pky_audit_id_write("42", b[..]);
+  #assert cast(string) b[0..<n] == "{\"id\":42}" && pky_audit_id_write("42", b[0..<n - 1]) == -1;
+  n = pky_audit_id_write("", b[..]);
+  #assert cast(string) b[0..<n] == "{\"id\":}";
+  n = pky_audit_none_write(b[..]);
+  #assert cast(string) b[0..<n] == "{}" && pky_audit_none_write(b[0..<1]) == -1;
+}

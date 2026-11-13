@@ -32,6 +32,7 @@
 #include "auth-recover-policy.generated.h"
 #include "passkey-policy.generated.h"
 #include "passkey-verify.generated.h"
+#include "passkeys-wire.generated.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -55,6 +56,11 @@ bool passkeys_init(void) {
 }
 
 // ---------------------------------------------------------------- small pieces
+// Every body here is passkeys-wire.coax's: a C string for a writer, a buffer for it to fill (its
+// last byte kept for the NUL), and what it wrote as a C string ("" when it did not fit).
+static coax_string cs(const char *s) { return (coax_string){s, (int64_t)strlen(s)}; }
+#define OUT(b) ((coax_v_u8){(uint8_t *)(b), (int64_t)sizeof(b) - 1})
+static const char *fin(char *b, int64_t n) { b[n < 0 ? 0 : n] = 0; return b; }
 static void words_of(coax_string w, char *out, size_t cap) { snprintf(out, cap, "%.*s", (int)w.count, w.data); }
 static void refuse_pk(const request *q, int verdict) {
   char w[240]; words_of(pk_words(verdict), w, sizeof w);
@@ -131,8 +137,10 @@ static void options(const request *q, PGconn *db, const auth_principal *p, int p
     const char *a[1] = {p->account};
     PGresult *r = PQexecParams(db, "SELECT credential_id, coalesce(array_to_string(transports, ','), '') FROM auth.passkeys WHERE account = $1 ORDER BY id", 1, NULL, a, NULL, NULL, 0);
     for (int i = 0; PQresultStatus(r) == PGRES_TUPLES_OK && i < PQntuples(r) && c + 1600 < 24000; i++) {
-      c += (size_t)snprintf(creds + c, 24000 - c, "%s{\"type\":\"public-key\",\"id\":\"%s\"}", i ? "," : "", PQgetvalue(r, i, 0));
-      lc += (size_t)snprintf(lines_creds + lc, 24000 - lc, "%s %s\n", purpose == PK_STEPUP ? "allow" : "exclude", PQgetvalue(r, i, 0));
+      int64_t k = pky_cred_write(i > 0, cs(PQgetvalue(r, i, 0)), (coax_v_u8){(uint8_t *)creds + c, (int64_t)(24000 - c - 1)});
+      int64_t lk = pky_cred_line(purpose == PK_STEPUP, cs(PQgetvalue(r, i, 0)), (coax_v_u8){(uint8_t *)lines_creds + lc, (int64_t)(24000 - lc - 1)});
+      if (k < 0 || lk < 0) { creds[c] = 0; lines_creds[lc] = 0; break; }
+      c += (size_t)k; lc += (size_t)lk;
     }
     PQclear(r);
   }
@@ -150,23 +158,12 @@ static void options(const request *q, PGconn *db, const auth_principal *p, int p
   // The answer: ours, and the standard options under publicKey.
   size_t cap = 60000; char *json = malloc(cap), *lines = malloc(30000);
   if (!json || !lines) { free(json); free(lines); free(creds); free(lines_creds); auth_refuse(q, 500, "Out of memory."); return; }
-  size_t j = (size_t)snprintf(json, cap, "{\"challenge\":\"%s\",\"rp_id\":\"%s\",\"timeout\":300000,\"purpose\":\"%s\"", chb, rp, purpose_row(purpose));
-  size_t l = (size_t)snprintf(lines, 30000, "challenge %s\nrp_id %s\ntimeout 300000\n", chb, rp);
-  if (purpose == PK_REGISTER) {
-    j += (size_t)snprintf(json + j, cap - j, ",\"user_id\":\"%s\",\"user_name\":\"%s\",\"publicKey\":{\"challenge\":\"%s\",\"rp\":{\"id\":\"%s\",\"name\":\"OpenAgents\"},"
-                          "\"user\":{\"id\":\"%s\",\"name\":\"%s\",\"displayName\":\"%s\"},"
-                          "\"pubKeyCredParams\":[{\"type\":\"public-key\",\"alg\":-7},{\"type\":\"public-key\",\"alg\":-8},{\"type\":\"public-key\",\"alg\":-257}],"
-                          "\"timeout\":300000,\"attestation\":\"none\",\"excludeCredentials\":[%s],"
-                          "\"authenticatorSelection\":{\"residentKey\":\"required\",\"requireResidentKey\":true,\"userVerification\":\"required\"},"
-                          "\"extensions\":{\"credProps\":true,\"prf\":{}}}}",
-                          handle, user_name, chb, rp, handle, user_name, user_name, creds);
-    l += (size_t)snprintf(lines + l, 30000 - l, "user_id %s\nuser_name %s\n%s", handle, user_name, lines_creds);
-  } else {
-    j += (size_t)snprintf(json + j, cap - j, ",\"publicKey\":{\"challenge\":\"%s\",\"rpId\":\"%s\",\"timeout\":300000,\"userVerification\":\"required\",\"allowCredentials\":[%s]}}",
-                          chb, rp, purpose == PK_STEPUP ? creds : "");
-    l += (size_t)snprintf(lines + l, 30000 - l, "%s", lines_creds);
-  }
-  char d[80]; snprintf(d, sizeof d, "{\"purpose\":\"%s\",\"client\":\"%s\"}", purpose_row(purpose), app ? "app" : "web");
+  bool adding = purpose == PK_REGISTER;
+  int64_t j = pky_options_write(cs(chb), cs(rp), cs(purpose_row(purpose)), adding, cs(handle), cs(user_name), cs(creds), (coax_v_u8){(uint8_t *)json, (int64_t)cap - 1});
+  int64_t l = pky_options_lines(cs(chb), cs(rp), adding, cs(handle), cs(user_name), cs(lines_creds), (coax_v_u8){(uint8_t *)lines, 30000 - 1});
+  if (j < 0 || l < 0) { free(json); free(lines); free(creds); free(lines_creds); auth_refuse(q, 500, "That didn't work. Try again."); return; }
+  json[j] = 0; lines[l] = 0;
+  char d[80]; fin(d, pky_audit_challenge_write(cs(purpose_row(purpose)), app, OUT(d)));
   auth_audit(db, acct, sid, "passkey.challenge", "ok", d);
   auth_answer(q, 200, headers[0] ? headers : NULL, json, lines);
   free(json); free(lines); free(creds); free(lines_creds);
@@ -202,7 +199,7 @@ static bool spend(const request *q, PGconn *db, const auth_principal *p, int pur
   PQclear(r);
   int verdict = (int)pk_challenge(found, row, purpose, now, made, *app, browser, account, session);
   if (verdict != PK_OK) {
-    char d[120]; snprintf(d, sizeof d, "{\"why\":\"challenge\",\"verdict\":%d}", verdict);
+    char d[120]; fin(d, pky_audit_verdict_write(verdict, OUT(d)));
     auth_audit(db, p && p->account[0] ? p->account : NULL, p && p->session[0] ? p->session : NULL, purpose_action(purpose), "refused", d);
     refuse_pk(q, verdict);
     return false;
@@ -243,7 +240,7 @@ static void do_register(const request *q, PGconn *db, const auth_principal *p, c
     }
   }
   if (reg.error != WA_OK) {
-    char d[120]; snprintf(d, sizeof d, "{\"why\":\"webauthn\",\"code\":%lld}", (long long)reg.error);
+    char d[120]; fin(d, pky_audit_code_write(false, (int64_t)reg.error, OUT(d)));
     auth_audit(db, p->account, p->session, "passkey.add", "refused", d);
     free(att); free(cd);
     refuse_pk(q, PK_REFUSED);
@@ -262,7 +259,7 @@ static void do_register(const request *q, PGconn *db, const auth_principal *p, c
   int o = atoi(owner);
   int verdict = (int)ar_link(p->level, p->strong, o == 1 ? AR_OWNER_THIS : o == 2 ? AR_OWNER_OTHER : AR_OWNER_NONE);
   if (verdict != AR_OK) {
-    char d[120]; snprintf(d, sizeof d, "{\"why\":\"%s\"}", verdict == AR_OTHER ? "another account's" : verdict == AR_ALREADY ? "already" : "step up");
+    char d[120]; fin(d, pky_audit_why_write(false, cs(verdict == AR_OTHER ? "another account's" : verdict == AR_ALREADY ? "already" : "step up"), OUT(d)));
     auth_audit(db, p->account, p->session, "passkey.add", "refused", d);
     char w[200]; words_of(ar_words(verdict), w, sizeof w);
     auth_refuse(q, (int)ar_status(verdict), w);
@@ -270,7 +267,7 @@ static void do_register(const request *q, PGconn *db, const auth_principal *p, c
   }
   const char *a[1] = {p->account};
   one(db, "SELECT count(*) FROM auth.passkeys WHERE account = $1", 1, a, have, sizeof have);
-  if (pk_add(atoi(have)) != PK_OK) { auth_audit(db, p->account, p->session, "passkey.add", "refused", "{\"why\":\"too many\"}"); refuse_pk(q, PK_TOO_MANY); return; }
+  if (pk_add(atoi(have)) != PK_OK) { char d[120]; auth_audit(db, p->account, p->session, "passkey.add", "refused", fin(d, pky_audit_why_write(false, cs("too many"), OUT(d)))); refuse_pk(q, PK_TOO_MANY); return; }
   one(db, "SELECT auth.passkey_handle($1)", 1, a, handle, sizeof handle);
   if (!handle[0]) {
     // The first passkey: the handle the browser was given. The client data names no handle, so the
@@ -309,21 +306,21 @@ static void do_register(const request *q, PGconn *db, const auth_principal *p, c
   const char *v[14] = {p->account, cred, handle, cose, alg, count, be ? "t" : "f", bs ? "t" : "f", aaguid, tarr, name, salt, !strcmp(prfv, "1") ? "t" : "f", rp};
   char pid[24] = "";
   if (!one(db, "SELECT auth.passkey_add($1, $2, $3, $4, $5::int, $6::bigint, $7::boolean, $8::boolean, $9, $10::text[], $11, $12, $13::boolean, $14)", 14, v, pid, sizeof pid) || !pid[0]) {
-    auth_audit(db, p->account, p->session, "passkey.add", "refused", "{\"why\":\"not stored\"}");
+    char d[120]; auth_audit(db, p->account, p->session, "passkey.add", "refused", fin(d, pky_audit_why_write(false, cs("not stored"), OUT(d))));
     auth_refuse(q, 500, "That didn't work. Try again.");
     return;
   }
   one(db, "SELECT auth.passkey_offered($1)", 1, a, NULL, 0);
-  char d[160]; snprintf(d, sizeof d, "{\"id\":%s,\"alg\":%s,\"synced\":%s,\"client\":\"%s\"}", pid, alg, bs ? "true" : "false", app ? "app" : "web");
+  char d[160]; fin(d, pky_audit_added_write(cs(pid), (int64_t)reg.alg, bs, app, OUT(d)));
   auth_audit(db, p->account, p->session, "passkey.add", "ok", d);
   char words[320], esc[200];
   snprintf(words, sizeof words, "A passkey (%s) was added to your OpenAgents account. It can now log in and change the account.", name);
   auth_notice(db, p->account, "link.passkey", "a passkey was added", words);
   auth_json_esc(name, esc, sizeof esc);
   char json[400], lines[300];
-  snprintf(json, sizeof json, "{\"state\":\"added\",\"id\":%s,\"name\":\"%s\",\"synced\":%s}", pid, esc, bs ? "true" : "false");
-  snprintf(lines, sizeof lines, "state added\nid %s\nname %s\nsynced %d\n", pid, name, bs ? 1 : 0);
-  auth_answer(q, 200, NULL, json, lines);
+  int64_t j = pky_added_write(cs(pid), cs(esc), bs, OUT(json)), l = pky_added_lines(cs(pid), cs(name), bs, OUT(lines));
+  if (j < 0 || l < 0) { auth_refuse(q, 500, "That didn't work. Try again."); return; }
+  auth_answer(q, 200, NULL, fin(json, j), fin(lines, l));
 }
 
 // ---------------------------------------------------------------- logging in and stepping up
@@ -344,7 +341,7 @@ static void do_assert(const request *q, PGconn *db, const auth_principal *p, int
   PGresult *r = PQexecParams(db, "SELECT id, account, user_handle, cose_hex, sign_count, backup_eligible, frozen FROM auth.passkey_find($1, $2)", 2, NULL, v, NULL, NULL, 0);
   if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) {
     PQclear(r);
-    auth_audit(db, p && p->account[0] ? p->account : NULL, NULL, action, "refused", "{\"why\":\"unknown passkey\"}");
+    char d[120]; auth_audit(db, p && p->account[0] ? p->account : NULL, NULL, action, "refused", fin(d, pky_audit_why_write(false, cs("unknown passkey"), OUT(d))));
     refuse_pk(q, PK_UNKNOWN);
     return;
   }
@@ -356,14 +353,14 @@ static void do_assert(const request *q, PGconn *db, const auth_principal *p, int
   PQclear(r);
   // Stepping up: only this account's passkeys.
   if (purpose == PK_STEPUP && strcmp(acct, p->account)) {
-    auth_audit(db, p->account, p->session, action, "refused", "{\"via\":\"passkey\",\"why\":\"not this account's passkey\"}");
+    char d[120]; auth_audit(db, p->account, p->session, action, "refused", fin(d, pky_audit_why_write(true, cs("not this account's passkey"), OUT(d))));
     refuse_pk(q, PK_NOT_YOURS);
     return;
   }
   // The handle the authenticator returned, when it returned one, is the row's.
   char uh[80] = "";
   if (auth_json_str(body, strlen(body), "user_handle", uh, sizeof uh) && uh[0] && strcmp(uh, handle)) {
-    auth_audit(db, acct, NULL, action, "refused", "{\"why\":\"user handle\"}");
+    char d[120]; auth_audit(db, acct, NULL, action, "refused", fin(d, pky_audit_why_write(false, cs("user handle"), OUT(d))));
     refuse_pk(q, PK_HANDLE);
     return;
   }
@@ -388,7 +385,7 @@ static void do_assert(const request *q, PGconn *db, const auth_principal *p, int
     // A copied passkey: the login is refused, the row marked, and the account told.
     const char *c[1] = {pid};
     one(db, "SELECT auth.passkey_clone($1::bigint)", 1, c, NULL, 0);
-    char d[120]; snprintf(d, sizeof d, "{\"id\":%s,\"stored\":%lld,\"got\":%u}", pid, stored, got.count);
+    char d[120]; fin(d, pky_audit_clone_write(cs(pid), (int64_t)stored, (int64_t)got.count, OUT(d)));
     auth_audit(db, acct, NULL, "passkey.clone", "refused", d);
     auth_notice(db, acct, "passkey.clone", "a passkey may have been copied",
                         "A login with one of your passkeys showed a counter lower than its last login, which can mean the passkey was copied. "
@@ -397,7 +394,7 @@ static void do_assert(const request *q, PGconn *db, const auth_principal *p, int
     return;
   }
   if (verdict != PK_OK) {
-    char d[120]; snprintf(d, sizeof d, "{\"via\":\"passkey\",\"why\":\"webauthn\",\"code\":%lld}", (long long)got.error);
+    char d[120]; fin(d, pky_audit_code_write(true, (int64_t)got.error, OUT(d)));
     auth_audit(db, acct, purpose == PK_STEPUP ? p->session : NULL, action, "refused", d);
     refuse_pk(q, PK_REFUSED);
     return;
@@ -411,8 +408,9 @@ static void do_assert(const request *q, PGconn *db, const auth_principal *p, int
     one(db, "SELECT auth.session_raise($1, $2, $3::bigint)", 3, s, ok, sizeof ok);
     if (strcmp(ok, "t")) { auth_refuse(q, 500, "That didn't work. Try again."); return; }
     auth_recover_strong_login(db, p->account, p->session);
-    auth_audit(db, p->account, p->session, "stepup", "ok", "{\"via\":\"passkey\"}");
-    auth_answer(q, 200, NULL, "{\"state\":\"stepped-up\",\"level\":\"L2\"}", "state stepped-up\nlevel L2\n");
+    char d[40], json[64], lines[64];
+    auth_audit(db, p->account, p->session, "stepup", "ok", fin(d, pky_audit_via_write(OUT(d))));
+    auth_answer(q, 200, NULL, fin(json, pky_stepped_write(OUT(json))), fin(lines, pky_stepped_lines(OUT(lines))));
     return;
   }
   auth_logged_in(q, db, acct, "passkey", pid, "L2", app, false, "login.passkey", NULL, NULL);
@@ -429,10 +427,13 @@ int passkeys_rows(PGconn *db, const char *acct, char *json, size_t jcap, size_t 
   for (int i = 0; i < have && *j + 600 < jcap && *l + 300 < lcap; i++) {
     char esc[200]; auth_json_esc(PQgetvalue(r, i, 1), esc, sizeof esc);
     bool synced = !strcmp(PQgetvalue(r, i, 4), "t"), clone = !strcmp(PQgetvalue(r, i, 5), "t"), prf = !strcmp(PQgetvalue(r, i, 6), "t");
-    *j += (size_t)snprintf(json + *j, jcap - *j, "%s{\"id\":%s,\"name\":\"%s\",\"added_ms\":%s,\"used_ms\":%s,\"synced\":%s,\"clone\":%s,\"prf\":%s,\"transports\":\"%s\"}",
-                           i ? "," : "", PQgetvalue(r, i, 0), esc, PQgetvalue(r, i, 2), PQgetvalue(r, i, 3), synced ? "true" : "false",
-                           clone ? "true" : "false", prf ? "true" : "false", PQgetvalue(r, i, 7));
-    *l += (size_t)snprintf(lines + *l, lcap - *l, "passkey %s %s %s %d %d %s\n", PQgetvalue(r, i, 0), PQgetvalue(r, i, 2), PQgetvalue(r, i, 3), synced, clone, PQgetvalue(r, i, 1));
+    int64_t k = pky_row_write(i > 0, cs(PQgetvalue(r, i, 0)), cs(esc), cs(PQgetvalue(r, i, 2)), cs(PQgetvalue(r, i, 3)), synced, clone, prf, cs(PQgetvalue(r, i, 7)),
+                              (coax_v_u8){(uint8_t *)json + *j, (int64_t)(jcap - *j - 1)});
+    int64_t lk = pky_row_line(cs(PQgetvalue(r, i, 0)), cs(PQgetvalue(r, i, 2)), cs(PQgetvalue(r, i, 3)), synced, clone, cs(PQgetvalue(r, i, 1)),
+                              (coax_v_u8){(uint8_t *)lines + *l, (int64_t)(lcap - *l - 1)});
+    if (k < 0 || lk < 0) { json[*j] = 0; lines[*l] = 0; break; }
+    *j += (size_t)k; *l += (size_t)lk;
+    json[*j] = 0; lines[*l] = 0;
   }
   PQclear(r);
   return have;
@@ -440,17 +441,19 @@ int passkeys_rows(PGconn *db, const char *acct, char *json, size_t jcap, size_t 
 static void list(const request *q, PGconn *db, const auth_principal *p) {
   size_t cap = 40000; char *json = malloc(cap), *lines = malloc(20000);
   if (!json || !lines) { free(json); free(lines); auth_refuse(q, 500, "Out of memory."); return; }
-  size_t j = (size_t)snprintf(json, cap, "{\"passkeys\":["), l = 0;
-  lines[0] = 0;
+  int64_t open = pky_list_open((coax_v_u8){(uint8_t *)json, (int64_t)cap - 1});
+  size_t j = open < 0 ? 0 : (size_t)open, l = 0;
+  json[j] = 0; lines[0] = 0;
   int have = passkeys_rows(db, p->account, json, cap, &j, lines, 20000, &l);
   const char *a[1] = {p->account};
   char offered[8] = "";
   one(db, "SELECT passkey_offered_at IS NOT NULL FROM auth.accounts WHERE id = $1", 1, a, offered, sizeof offered);
   // A limited session (an account with a stronger way in) would be told to step up: no offer there.
   bool offer = pk_offer(have, !strcmp(offered, "t"), !strcmp(p->via, "email") && p->session[0] && !p->limited);
-  snprintf(json + j, cap - j, "],\"offer\":%s}", offer ? "true" : "false");
-  snprintf(lines + l, 20000 - l, "offer %d\n", offer);
-  auth_answer(q, 200, NULL, json, lines);
+  int64_t k = pky_list_close(offer, (coax_v_u8){(uint8_t *)json + j, (int64_t)(cap - j - 1)});
+  int64_t lk = pky_offer_line(offer, (coax_v_u8){(uint8_t *)lines + l, (int64_t)(20000 - l - 1)});
+  if (open < 0 || k < 0 || lk < 0) auth_refuse(q, 500, "That didn't work. Try again.");
+  else { json[j + (size_t)k] = 0; lines[l + (size_t)lk] = 0; auth_answer(q, 200, NULL, json, lines); }
   free(json); free(lines);
 }
 static void rename_one(const request *q, PGconn *db, const auth_principal *p, const char *body) {
@@ -461,9 +464,9 @@ static void rename_one(const request *q, PGconn *db, const auth_principal *p, co
   char ok[8] = "";
   one(db, "SELECT auth.passkey_rename($1, $2::bigint, $3)", 3, v, ok, sizeof ok);
   if (strcmp(ok, "t")) { auth_refuse(q, 404, "That isn't on this account."); return; }
-  char d[60]; snprintf(d, sizeof d, "{\"id\":%s}", idtxt);
+  char d[60], json[40], lines[40]; fin(d, pky_audit_id_write(cs(idtxt), OUT(d)));
   auth_audit(db, p->account, p->session, "passkey.rename", "ok", d);
-  auth_answer(q, 200, NULL, "{\"state\":\"renamed\"}", "state renamed\n");
+  auth_answer(q, 200, NULL, fin(json, pky_state_write(false, OUT(json))), fin(lines, pky_state_lines(false, OUT(lines))));
 }
 
 // ---------------------------------------------------------------- dispatch
@@ -508,8 +511,9 @@ bool passkeys_route(const request *q, PGconn *db, const char *op) {
   else if (offered) {
     const char *a[1] = {p->account};
     one(db, "SELECT auth.passkey_offered($1)", 1, a, NULL, 0);
-    auth_audit(db, p->account, p->session, "passkey.offer", "ok", "{}");
-    auth_answer(q, 200, NULL, "{\"state\":\"offered\"}", "state offered\n");
+    char d[8], json[40], lines[40];
+    auth_audit(db, p->account, p->session, "passkey.offer", "ok", fin(d, pky_audit_none_write(OUT(d))));
+    auth_answer(q, 200, NULL, fin(json, pky_state_write(true, OUT(json))), fin(lines, pky_state_lines(true, OUT(lines))));
   }
   else rename_one(q, db, p, body);
   memset(body, 0, q->body_len);

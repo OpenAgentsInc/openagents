@@ -61,6 +61,7 @@
 #load "../../coax/lib/gateway/chat.coax";    // Chat Completions: the request's body, a chunk
 #load "../../coax/lib/gateway/sse.coax";     // server-sent events
 #load "../../coax/lib/agent/world/turn.coax"; // the world the editor has open, a hosted turn's plan for it, a world's card
+#load "../../coax/lib/agent/cli/json-output.coax"; // `coder ls --json`'s rows, which Coder's local route serves
 
 CW_INBOX :: 16384;     // a field's text, or a piece of the answer's stream, from the host
 CW_DRAFT :: 16384;     // a message's most, in bytes: what is typed past it is not taken
@@ -778,16 +779,15 @@ cw_show :: (s: [] ChatWeb, id: string, tail: bool) {
 // The sessions as Coder lists them (`coder ls --json`: an array, newest first).
 cw_list_read :: (s: [] ChatWeb, body: string) {
   ar: [1] ClArena; ar[0].buf = s[0].scratch[..];
-  path: [48] u8; part: [24] u8;
   n := 0;
   while n < CW_SESS {
     ar[0].at = 0; ar[0].full = false;
-    id := cl_str(ar[..], body, tr_cat(path[..], tr_join(part[..], "", n), ".id"));
+    id := cj_sessions_str(ar[..], body, n, "id");
     if id.count == 0 { break; }
     s[0].sid_n[n] = cw_put(s[0].sid[n][..], 0, id);
-    s[0].seng_n[n] = cw_put(s[0].seng[n][..], 0, cl_str(ar[..], body, tr_cat(path[..], tr_join(part[..], "", n), ".engine")));
-    s[0].srun[n] = cl_str(ar[..], body, tr_cat(path[..], tr_join(part[..], "", n), ".state")) == "running";
-    task := cl_str(ar[..], body, tr_cat(path[..], tr_join(part[..], "", n), ".task"));
+    s[0].seng_n[n] = cw_put(s[0].seng[n][..], 0, cj_sessions_str(ar[..], body, n, "engine"));
+    s[0].srun[n] = cj_sessions_str(ar[..], body, n, "state") == CJ_RUNNING;
+    task := cj_sessions_str(ar[..], body, n, "task");
     e := 0; while e < task.count && e < 96 && task[e] != '\n' { e += 1; }
     s[0].stask_n[n] = cw_put(s[0].stask[n][..], 0, cast(string) task[0..<e]);
     n += 1;

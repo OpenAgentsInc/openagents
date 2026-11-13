@@ -20,6 +20,7 @@
 //   coder consent grant system-one --classes session [--days N]
 
 #load "../../coax/lib/agent/engine/consent-gate.coax";   // the ledger and the gate on System One (shared with the turn runner)
+#load "../../coax/lib/agent/cli/json-output.coax";   // what --json prints (cj_*)
 
 gt_dest :: (engine: int) -> CsDest { return CsDest.{kind = CsKind.agent, id = engine, purpose = CsPurpose.delegate}; }
 
@@ -94,16 +95,11 @@ cd_cmd_consent :: (sub: string, what: string, classes: string, days: int, json: 
   } else if sub.count > 0 { tool_errln("coder consent [grant ENGINE|all --classes C [--days N] | revoke N] [--json]"); return 2; }
   if !gt_save(path, l[0], before) { tool_errln("coder consent: the ledger could not be written"); return 1; }
   o: [65536] u8; k := 0; cb: [64] u8; ib: [24] u8;
-  if json { k = json_raw(o[..], 0, "{\"events\":"); k = json_write_int(o[..], k, l[0].count); k = json_raw(o[..], k, ",\"grants\":["); }
+  if json { k = cj_consent_open(o[..], 0, l[0].count); }
   for g, i: l[0].grants[0..<l[0].granted] {
     state := ifx g.revoked then "revoked" else ifx now >= g.until then "expired" else "active";
     if json {
-      k = json_raw(o[..], k, ifx i > 0 then ",{\"grant\":" else "{\"grant\":"); k = json_write_int(o[..], k, i);
-      k = json_raw(o[..], k, ",\"engine\":"); k = json_write_string(o[..], k, gt_dest_name(g.dest));
-      k = json_raw(o[..], k, ",\"classes\":"); k = json_write_string(o[..], k, gt_class_text(g.classes, cb[..]));
-      k = json_raw(o[..], k, ",\"state\":\""); k = json_raw(o[..], k, state);
-      k = json_raw(o[..], k, "\",\"sends\":"); k = json_write_int(o[..], k, g.sends);
-      k = json_raw(o[..], k, ",\"bytes\":"); k = json_write_int(o[..], k, g.bytes); k = json_raw(o[..], k, "}");
+      k = cj_consent_grant(o[..], k, i == 0, i, gt_dest_name(g.dest), gt_class_text(g.classes, cb[..]), state, g.sends, g.bytes);
     } else {
       ln: [512] u8; m := cd_cat(ln[..], 0, cd_itoa(i, ib[..])); m = cd_cat(ln[..], m, "  "); m = cd_cat(ln[..], m, gt_dest_name(g.dest));
       m = cd_cat(ln[..], m, "  "); m = cd_cat(ln[..], m, gt_class_text(g.classes, cb[..])); m = cd_cat(ln[..], m, "  "); m = cd_cat(ln[..], m, state);
@@ -111,7 +107,7 @@ cd_cmd_consent :: (sub: string, what: string, classes: string, days: int, json: 
       cd_outln(cast(string) ln[0..<m]);
     }
   }
-  if json { k = json_raw(o[..], k, "]}"); cd_outln(cast(string) o[0..<k]); }
+  if json { k = cj_consent_close(o[..], k); cd_outln(cast(string) o[0..<k]); }
   else if l[0].granted == 0 { cd_outln("No grants. Remembered facts stay on this machine until you run: coder consent grant all --classes user,project"); }
   return 0;
 }

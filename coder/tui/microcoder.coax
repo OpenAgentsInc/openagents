@@ -61,52 +61,52 @@ cd_micro_poll :: (a: [] App) -> bool {
   return changed;
 }
 
-cd_mc_str :: (a: [] App, json: string, path: string) -> string { return mcw_str(a[0].mcw[..], json, path); }
-
+// One line of the worker's, read through its codec (mcworker-wire.coax, Protocol C11).
 cd_micro_line :: (a: [] App, line: string) {
   a[0].mcw[0].ar[0].at = 0; a[0].mcw[0].ar[0].full = false;
-  kind := cd_mc_str(a, line, "kind");
+  ev: [1] MwwLine;
+  kind := mcw_line(a[0].mcw[..], line, ev[..]);
   if !a[0].running || !cd_is_micro(a[0].engine) { return; }    // late lines after a stop
-  if kind=="journal" {n:=json_raw(a[0].log[0].line[..],0,line);cs_put(a,n);return;}
-  if kind == "reply" { cd_reply_add(a, cd_mc_str(a, line, "text")); cd_reply_commit(a, false); return; }
-  if kind == "attempt" {
+  if kind == MWW_JOURNAL {n:=json_raw(a[0].log[0].line[..],0,line);cs_put(a,n);return;}
+  if kind == MWW_REPLY { cd_reply_add(a, ev[0].text); cd_reply_commit(a, false); return; }
+  if kind == MWW_ATTEMPT {
     o := a[0].log[0].line[..];
     count := mo_relay(line, ifx a[0].engine == ENGINE_PSIONIC then "psionic" else "micro", o);
     if count > 0 { cs_put(a, count); }
-    usd := cl_int(line, "usd_micros");
+    usd := ev[0].usd_micros;
     if usd.ok && usd.value > 0 { a[0].cost += cast(f64) usd.value / 1000000.0; }
-    outcome := cd_mc_str(a, line, "outcome");
+    outcome := ev[0].outcome;
     if outcome != "done" && outcome != "stopped" {
-      lb: [512] u8; ln := cd_cat(lb[..], 0, "  · "); ln = cd_cat(lb[..], ln, cd_mc_str(a, line, "gateway"));
-      ln = cd_cat(lb[..], ln, " "); ln = cd_cat(lb[..], ln, cd_mc_str(a, line, "outcome"));
-      st := cl_int(line, "status");
+      lb: [512] u8; ln := cd_cat(lb[..], 0, "  · "); ln = cd_cat(lb[..], ln, ev[0].gateway);
+      ln = cd_cat(lb[..], ln, " "); ln = cd_cat(lb[..], ln, outcome);
+      st := ev[0].status;
       if st.ok && st.value > 0 { tb: [16] u8; ln = cd_cat(lb[..], ln, " "); ln = cd_cat(lb[..], ln, cd_itoa(st.value, tb[..])); }
       cd_commit(a, TUI_FAINT, cast(string) lb[0..<ln]);
     }
     return;
   }
-  if kind == "command" || kind == "view" {
+  if kind == MWW_COMMAND || kind == MWW_VIEW {
+    view := kind == MWW_VIEW;
     cd_reply_commit(a, true); a[0].rep_lines = 0; a[0].nrep = 0; a[0].rep_done = 0;
     lb: [1024] u8;
-    // copies: each lookup reuses the arena
-    pb: [1024] u8; pn := cd_cat(pb[..], 0, cd_mc_str(a, line, ifx kind == "view" then "path" else "command"));
-    cd_tool_row(a, cd_label(a, ifx kind == "view" then "Read" else "Bash", cast(string) pb[0..<pn], lb[..]));
+    pb: [1024] u8; pn := cd_cat(pb[..], 0, ifx view then ev[0].path else ev[0].command);
+    cd_tool_row(a, cd_label(a, ifx view then "Read" else "Bash", cast(string) pb[0..<pn], lb[..]));
     a[0].steps += 1;
-    if kind == "view" {
-      found := cl_bool(line, "found");
+    if view {
+      found := ev[0].found;
       if !(found.ok && found.value) { cd_result_line(a, "not found", true); }
       return;
     }
-    exit := cl_int(line, "exit");
-    late := cl_bool(line, "timed_out");
+    exit := ev[0].exit;
+    late := ev[0].timed_out;
     timed_out := late.ok && late.value;
-    cd_result_line(a, ifx timed_out then "timed out" else cd_mc_str(a, line, "output"), timed_out || (exit.ok && exit.value != 0));
+    cd_result_line(a, ifx timed_out then "timed out" else ev[0].output, timed_out || (exit.ok && exit.value != 0));
     return;
   }
-  if kind == "ask" {ticket:=cl_int(line,"ticket");if !ticket.ok || ticket.value<=0 {cd_micro_close(a);cd_finish(a,END_FAILED,"worker proposal has no owner ticket");return;}a[0].mcw[0].ticket=ticket.value; cd_micro_ask(a, cd_mc_str(a, line, "command")); return; }
-  if kind == "ended" {
-    eb: [64] u8; en := cd_cat(eb[..], 0, cd_mc_str(a, line, "ending")); ending := cast(string) eb[0..<en];
-    text := cd_mc_str(a, line, "text");
+  if kind == MWW_ASK {ticket:=ev[0].ticket;if !ticket.ok || ticket.value<=0 {cd_micro_close(a);cd_finish(a,END_FAILED,"worker proposal has no owner ticket");return;}a[0].mcw[0].ticket=ticket.value; cd_micro_ask(a, ev[0].command); return; }
+  if kind == MWW_ENDED {
+    eb: [64] u8; en := cd_cat(eb[..], 0, ev[0].ending); ending := cast(string) eb[0..<en];
+    text := ev[0].text;
     a[0].stopping = false;
     if ending == "finished" || ending == "asked" {
       if a[0].nrep == 0 && text.count > 0 { cd_reply_add(a, text); }

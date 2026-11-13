@@ -1,0 +1,305 @@
+{
+ "profile": "chat-page-lines-v2",
+ "about": "The /chat page's lines (GitHub #13250, compliance plan step C9): what GET /api/chat/state answers an admin, text, one line each, cells split by \"|\", every line ended by a line end. SQL writes them (chat.lines in coax/web/api/migrations/0139_chat_folders_tabs.sql; chat.v and chat.vv in 0021_chat.sql) and coax/web/api/chat.c sends the text as it is. components/zeron/chat-lines.coax is the one reader, and the writer in Coax; the page apps/openagents-web/chat.coax reads every line through it. \"lines\" names each kind and its cells in order: \"col\" is the cell's column (the kind's letter is column 0) and \"text\" says how the cell is written. \"answers\" are bodies a running API gave the API suite (coax/web/api/test_zchat.py, a throwaway database and a stand-in runner), byte for byte. components/zeron/chat-lines-profile.coax reads every line through the codec and writes the same bytes back.",
+ "check": "coax/web/tool.sh components/zeron/chat-lines-profile.coax proto/coder/chat-page-lines-v2.json",
+ "codec": "components/zeron/chat-lines.coax",
+ "captured": "2026-11-13: the API suite's /chat step (coax/web/api/test_zchat.py) against a running oa-api of this tree, each answer recorded as sent. The keys, tokens and hashes in them are the suite's stand-ins.",
+ "text": {
+  "plain": "a number, a flag, a date or a word the API chooses; it holds no bar and no line end",
+  "clean": "a short text with each bar, tab, carriage return and line end written as a space (SQL chat.v; chl_clean)",
+  "escaped": "a long text: a backslash is written \\\\, a bar \\p, a line end \\n; a carriage return is dropped and a tab is two spaces (SQL chat.vv; chl_escape, undone by chl_unescape)"
+ },
+ "order": "Z, then every C, then S when a conversation is shown, then each U followed by its T lines. Z's shown is S's id, or 0 when there is no S.",
+ "older": "An API before migration 0139 writes Z with no record cell and C with no folder or tab. The reader gives an empty cell for a column a line lacks, and the page reads an empty record as no folders and no tabs. No fixture holds such an answer: no running API writes one.",
+ "not_held": "No captured answer has a bar or a backslash in a message or an answer, so \\p and \\\\ appear in no fixture line. The codec's own tests cover them with made-up text (coax/bin/coax test components/zeron/chat-lines.coax --library).",
+ "lines": [
+  {
+   "key": "Z",
+   "form": "Z|SPENT|CAP|CREDENTIAL|LAST4|EXPIRED|BUSY|SHOWN|RECORD",
+   "says": "the head: one, the first line",
+   "cells": 9,
+   "fields": [
+    {
+     "name": "spent",
+     "col": 1,
+     "text": "plain",
+     "says": "today's spend on OpenAgents' key for /chat, dollars with two decimals"
+    },
+    {
+     "name": "cap",
+     "col": 2,
+     "text": "plain",
+     "says": "the day's cap, the same way"
+    },
+    {
+     "name": "credential",
+     "col": 3,
+     "text": "plain",
+     "says": "the asker's saved credential's kind: api, oauth, or empty for none"
+    },
+    {
+     "name": "last4",
+     "col": 4,
+     "text": "plain",
+     "says": "the saved credential's last four characters, or empty"
+    },
+    {
+     "name": "expired",
+     "col": 5,
+     "text": "plain",
+     "says": "1 when the saved credential has expired, else 0"
+    },
+    {
+     "name": "busy",
+     "col": 6,
+     "text": "plain",
+     "says": "1 when a turn of the conversation shown waits or runs, else 0"
+    },
+    {
+     "name": "shown",
+     "col": 7,
+     "text": "plain",
+     "says": "the id of the conversation shown, or 0 for none"
+    },
+    {
+     "name": "record",
+     "col": 8,
+     "text": "plain",
+     "says": "2: the API keeps folders and tabs (migration 0139)"
+    }
+   ],
+   "example": "Z|1.07|1.00|oauth|OATK|0|1|1|2"
+  },
+  {
+   "key": "C",
+   "form": "C|ID|TITLE|MODEL|UPDATED|BUSY|FOLDER|TAB",
+   "says": "a conversation: the asker's 60 newest and every open tab, newest first",
+   "cells": 8,
+   "fields": [
+    {
+     "name": "id",
+     "col": 1,
+     "text": "plain",
+     "says": "the conversation's number"
+    },
+    {
+     "name": "title",
+     "col": 2,
+     "text": "clean",
+     "says": "its title, at most 80 characters; empty until it has one"
+    },
+    {
+     "name": "model",
+     "col": 3,
+     "text": "plain",
+     "says": "the model its next turn uses"
+    },
+    {
+     "name": "updated",
+     "col": 4,
+     "text": "plain",
+     "says": "when it last changed: Mon DD HH24:MI, Chicago time"
+    },
+    {
+     "name": "busy",
+     "col": 5,
+     "text": "plain",
+     "says": "1 when a turn of it waits or runs, else 0"
+    },
+    {
+     "name": "folder",
+     "col": 6,
+     "text": "clean",
+     "says": "the folder its turns read"
+    },
+    {
+     "name": "tab",
+     "col": 7,
+     "text": "plain",
+     "says": "its place among the open tabs, from 1; empty when its tab is closed"
+    }
+   ],
+   "example": "C|1|What does README.md say?|claude-opus-5-5|Nov 13 01:45|1|openagents|2"
+  },
+  {
+   "key": "S",
+   "form": "S|ID|TITLE|MODEL|RESUMES",
+   "says": "the conversation shown: none or one, after the C lines",
+   "cells": 5,
+   "fields": [
+    {
+     "name": "id",
+     "col": 1,
+     "text": "plain",
+     "says": "the conversation's number: Z's shown"
+    },
+    {
+     "name": "title",
+     "col": 2,
+     "text": "clean",
+     "says": "its title, as on its C line"
+    },
+    {
+     "name": "model",
+     "col": 3,
+     "text": "plain",
+     "says": "the model its next turn uses"
+    },
+    {
+     "name": "resumes",
+     "col": 4,
+     "text": "plain",
+     "says": "1 once a turn of it has started, else 0"
+    }
+   ],
+   "example": "S|1|What does README.md say?|claude-opus-5-5|1"
+  },
+  {
+   "key": "U",
+   "form": "U|ID|STATUS|AT|MODEL|CREDENTIAL|TEXT|ANSWER|ERROR|WORKING|COST",
+   "says": "a turn of the conversation shown: its 40 newest, oldest first",
+   "cells": 11,
+   "fields": [
+    {
+     "name": "id",
+     "col": 1,
+     "text": "plain",
+     "says": "the turn's number"
+    },
+    {
+     "name": "status",
+     "col": 2,
+     "text": "plain",
+     "says": "queued, running, done, failed, stopped or refused"
+    },
+    {
+     "name": "at",
+     "col": 3,
+     "text": "plain",
+     "says": "when it was asked, written as C's updated"
+    },
+    {
+     "name": "model",
+     "col": 4,
+     "text": "plain",
+     "says": "the model it ran on"
+    },
+    {
+     "name": "credential",
+     "col": 5,
+     "text": "plain",
+     "says": "whose key it ran on: openagents or own; empty until it starts"
+    },
+    {
+     "name": "text",
+     "col": 6,
+     "text": "escaped",
+     "says": "the message, at most 8000 characters"
+    },
+    {
+     "name": "answer",
+     "col": 7,
+     "text": "escaped",
+     "says": "the answer, at most 24000 characters; empty until there is one"
+    },
+    {
+     "name": "error",
+     "col": 8,
+     "text": "clean",
+     "says": "why it failed, at most 400 characters; else empty"
+    },
+    {
+     "name": "working",
+     "col": 9,
+     "text": "clean",
+     "says": "what a running turn is doing, at most 160 characters; else empty"
+    },
+    {
+     "name": "cost",
+     "col": 10,
+     "text": "plain",
+     "says": "what it cost, dollars with four decimals"
+    }
+   ],
+   "example": "U|9|running|Nov 13 01:45|claude-opus-5-5|own|with my token|||getting the latest code|0.0000"
+  },
+  {
+   "key": "T",
+   "form": "T|TURN|NAME|DETAIL",
+   "says": "a tool the turn used: its 12 newest, each after its U line",
+   "cells": 4,
+   "fields": [
+    {
+     "name": "turn",
+     "col": 1,
+     "text": "plain",
+     "says": "the U line's id"
+    },
+    {
+     "name": "name",
+     "col": 2,
+     "text": "clean",
+     "says": "the tool's name, at most 40 characters"
+    },
+    {
+     "name": "detail",
+     "col": 3,
+     "text": "clean",
+     "says": "what it was used on, at most 200 characters; may be empty"
+    }
+   ],
+   "example": "T|1|Read|README.md"
+  }
+ ],
+ "answers": [
+  {
+   "name": "empty",
+   "request": "GET /api/chat/state",
+   "status": 200,
+   "says": "an admin with no conversation: the head alone",
+   "body": "Z|0.00|1.00|||0|0|0|2\n"
+  },
+  {
+   "name": "queued",
+   "request": "GET /api/chat/state?c=1",
+   "status": 200,
+   "says": "a first message waits: the turn has no credential yet and the conversation does not resume",
+   "body": "Z|0.00|1.00|||0|1|1|2\nC|1|What does README.md say?|claude-haiku-5-5|Nov 13 01:45|1|openagents|1\nS|1|What does README.md say?|claude-haiku-5-5|0\nU|1|queued|Nov 13 01:45|claude-haiku-5-5||What does README.md say?||||0.0000\n"
+  },
+  {
+   "name": "running",
+   "request": "GET /api/chat/state?c=1",
+   "status": 200,
+   "says": "three turns done, each with its tool, and a fourth running with what it is doing",
+   "body": "Z|0.06|1.00|||0|1|1|2\nC|1|What does README.md say?|claude-opus-5-5|Nov 13 01:45|1|openagents|1\nS|1|What does README.md say?|claude-opus-5-5|1\nU|1|done|Nov 13 01:45|claude-haiku-5-5|openagents|What does README.md say?|## Answer\\n\\ncred=ANTHROPIC_API_KEY:f71aea64 resume=no turns=0 model=claude-haiku-5-5 mode=chat readme=first budget=1.00 others=none|||0.0200\nT|1|Read|README.md\nU|2|done|Nov 13 01:45|claude-sonnet-5-5|openagents|And now?|## Answer\\n\\ncred=ANTHROPIC_API_KEY:f71aea64 resume=yes turns=1 model=claude-sonnet-5-5 mode=chat readme=second budget=0.98 others=none|||0.0200\nT|2|Read|README.md\nU|3|done|Nov 13 01:45|claude-opus-5-5|openagents|third|## Answer\\n\\ncred=ANTHROPIC_API_KEY:f71aea64 resume=yes turns=2 model=claude-opus-5-5 mode=chat readme=second budget=0.96 others=none|||0.0200\nT|3|Read|README.md\nU|4|running|Nov 13 01:45|claude-opus-5-5|openagents|slow one|||getting the latest code|0.0000\n"
+  },
+  {
+   "name": "tab-closed",
+   "request": "GET /api/chat/state?c=2",
+   "status": 200,
+   "says": "two conversations, one with no title and one whose tab is closed; the one shown has no turns",
+   "body": "Z|0.07|1.00|||0|0|2|2\nC|2||claude-haiku-5-5|Nov 13 01:45|0|openagents|1\nC|1|What does README.md say?|claude-opus-5-5|Nov 13 01:45|0|openagents|\nS|2||claude-haiku-5-5|0\n"
+  },
+  {
+   "name": "own-token-running",
+   "request": "GET /api/chat/state?c=1",
+   "status": 200,
+   "says": "the day's cap is spent and a subscription token is saved: turns on OpenAgents' key and on the asker's own, a stopped one, a failed one with its error, and one running",
+   "body": "Z|1.07|1.00|oauth|OATK|0|1|1|2\nC|1|What does README.md say?|claude-opus-5-5|Nov 13 01:45|1|openagents|2\nC|2||claude-haiku-5-5|Nov 13 01:45|0|openagents|1\nS|1|What does README.md say?|claude-opus-5-5|1\nU|1|done|Nov 13 01:45|claude-haiku-5-5|openagents|What does README.md say?|## Answer\\n\\ncred=ANTHROPIC_API_KEY:f71aea64 resume=no turns=0 model=claude-haiku-5-5 mode=chat readme=first budget=1.00 others=none|||0.0200\nT|1|Read|README.md\nU|2|done|Nov 13 01:45|claude-sonnet-5-5|openagents|And now?|## Answer\\n\\ncred=ANTHROPIC_API_KEY:f71aea64 resume=yes turns=1 model=claude-sonnet-5-5 mode=chat readme=second budget=0.98 others=none|||0.0200\nT|2|Read|README.md\nU|3|done|Nov 13 01:45|claude-opus-5-5|openagents|third|## Answer\\n\\ncred=ANTHROPIC_API_KEY:f71aea64 resume=yes turns=2 model=claude-opus-5-5 mode=chat readme=second budget=0.96 others=none|||0.0200\nT|3|Read|README.md\nU|4|stopped|Nov 13 01:45|claude-opus-5-5|openagents|slow one||||0.0100\nT|4|Read|README.md\nU|5|done|Nov 13 01:45|claude-opus-5-5|openagents|costly|## Answer\\n\\ncred=ANTHROPIC_API_KEY:f71aea64 resume=yes turns=3 model=claude-opus-5-5 mode=chat readme=second budget=0.93 others=none|||1.0000\nT|5|Read|README.md\nU|6|done|Nov 13 01:45|claude-opus-5-5|own|with my key|## Answer\\n\\ncred=ANTHROPIC_API_KEY:385ce3ea resume=yes turns=4 model=claude-opus-5-5 mode=chat readme=second budget=0.00 others=none|||0.0200\nT|6|Read|README.md\nU|7|done|Nov 13 01:45|claude-opus-5-5|own|while the host is away|## Answer\\n\\ncred=ANTHROPIC_API_KEY:385ce3ea resume=yes turns=5 model=claude-opus-5-5 mode=chat readme=second budget=0.00 others=none|||0.0200\nT|7|Read|README.md\nU|8|failed|Nov 13 01:45|claude-opus-5-5|own|with no copy at all||We couldn't reach GitHub to get our copy of the code. Send your message again in a minute.||0.0000\nU|9|running|Nov 13 01:45|claude-opus-5-5|own|with my token|||getting the latest code|0.0000\n"
+  },
+  {
+   "name": "token-expired",
+   "request": "GET /api/chat/state?c=1",
+   "status": 200,
+   "says": "the saved token has expired: the head says so, and the turn that found out failed with why",
+   "body": "Z|1.07|1.00|oauth|OATK|1|0|1|2\nC|1|What does README.md say?|claude-opus-5-5|Nov 13 01:45|0|openagents|2\nC|2||claude-haiku-5-5|Nov 13 01:45|0|openagents|1\nS|1|What does README.md say?|claude-opus-5-5|1\nU|1|done|Nov 13 01:45|claude-haiku-5-5|openagents|What does README.md say?|## Answer\\n\\ncred=ANTHROPIC_API_KEY:f71aea64 resume=no turns=0 model=claude-haiku-5-5 mode=chat readme=first budget=1.00 others=none|||0.0200\nT|1|Read|README.md\nU|2|done|Nov 13 01:45|claude-sonnet-5-5|openagents|And now?|## Answer\\n\\ncred=ANTHROPIC_API_KEY:f71aea64 resume=yes turns=1 model=claude-sonnet-5-5 mode=chat readme=second budget=0.98 others=none|||0.0200\nT|2|Read|README.md\nU|3|done|Nov 13 01:45|claude-opus-5-5|openagents|third|## Answer\\n\\ncred=ANTHROPIC_API_KEY:f71aea64 resume=yes turns=2 model=claude-opus-5-5 mode=chat readme=second budget=0.96 others=none|||0.0200\nT|3|Read|README.md\nU|4|stopped|Nov 13 01:45|claude-opus-5-5|openagents|slow one||||0.0100\nT|4|Read|README.md\nU|5|done|Nov 13 01:45|claude-opus-5-5|openagents|costly|## Answer\\n\\ncred=ANTHROPIC_API_KEY:f71aea64 resume=yes turns=3 model=claude-opus-5-5 mode=chat readme=second budget=0.93 others=none|||1.0000\nT|5|Read|README.md\nU|6|done|Nov 13 01:45|claude-opus-5-5|own|with my key|## Answer\\n\\ncred=ANTHROPIC_API_KEY:385ce3ea resume=yes turns=4 model=claude-opus-5-5 mode=chat readme=second budget=0.00 others=none|||0.0200\nT|6|Read|README.md\nU|7|done|Nov 13 01:45|claude-opus-5-5|own|while the host is away|## Answer\\n\\ncred=ANTHROPIC_API_KEY:385ce3ea resume=yes turns=5 model=claude-opus-5-5 mode=chat readme=second budget=0.00 others=none|||0.0200\nT|7|Read|README.md\nU|8|failed|Nov 13 01:45|claude-opus-5-5|own|with no copy at all||We couldn't reach GitHub to get our copy of the code. Send your message again in a minute.||0.0000\nU|9|done|Nov 13 01:45|claude-opus-5-5|own|with my token|## Answer\\n\\ncred=CLAUDE_CODE_OAUTH_TOKEN:b2b5122f resume=yes turns=6 model=claude-opus-5-5 mode=chat readme=third budget=0.00 others=none|||0.0200\nT|9|Read|README.md\nU|10|failed|Nov 13 01:45|claude-opus-5-5|own|expire now||Your token expired. Make a new one with claude setup-token and save it under KEY.||0.0000\nT|10|Read|README.md\n"
+  },
+  {
+   "name": "newest-shown",
+   "request": "GET /api/chat/state",
+   "status": 200,
+   "says": "no conversation asked for: the newest is shown; no credential is saved, and a turn on another provider's model has no credential and no tool",
+   "body": "Z|1.07|1.00|||0|0|1|2\nC|1|What does README.md say?|claude-opus-5-5|Nov 13 01:45|0|openagents|2\nC|2||claude-haiku-5-5|Nov 13 01:45|0|openagents|1\nS|1|What does README.md say?|claude-opus-5-5|1\nU|1|done|Nov 13 01:45|claude-haiku-5-5|openagents|What does README.md say?|## Answer\\n\\ncred=ANTHROPIC_API_KEY:f71aea64 resume=no turns=0 model=claude-haiku-5-5 mode=chat readme=first budget=1.00 others=none|||0.0200\nT|1|Read|README.md\nU|2|done|Nov 13 01:45|claude-sonnet-5-5|openagents|And now?|## Answer\\n\\ncred=ANTHROPIC_API_KEY:f71aea64 resume=yes turns=1 model=claude-sonnet-5-5 mode=chat readme=second budget=0.98 others=none|||0.0200\nT|2|Read|README.md\nU|3|done|Nov 13 01:45|claude-opus-5-5|openagents|third|## Answer\\n\\ncred=ANTHROPIC_API_KEY:f71aea64 resume=yes turns=2 model=claude-opus-5-5 mode=chat readme=second budget=0.96 others=none|||0.0200\nT|3|Read|README.md\nU|4|stopped|Nov 13 01:45|claude-opus-5-5|openagents|slow one||||0.0100\nT|4|Read|README.md\nU|5|done|Nov 13 01:45|claude-opus-5-5|openagents|costly|## Answer\\n\\ncred=ANTHROPIC_API_KEY:f71aea64 resume=yes turns=3 model=claude-opus-5-5 mode=chat readme=second budget=0.93 others=none|||1.0000\nT|5|Read|README.md\nU|6|done|Nov 13 01:45|claude-opus-5-5|own|with my key|## Answer\\n\\ncred=ANTHROPIC_API_KEY:385ce3ea resume=yes turns=4 model=claude-opus-5-5 mode=chat readme=second budget=0.00 others=none|||0.0200\nT|6|Read|README.md\nU|7|done|Nov 13 01:45|claude-opus-5-5|own|while the host is away|## Answer\\n\\ncred=ANTHROPIC_API_KEY:385ce3ea resume=yes turns=5 model=claude-opus-5-5 mode=chat readme=second budget=0.00 others=none|||0.0200\nT|7|Read|README.md\nU|8|failed|Nov 13 01:45|claude-opus-5-5|own|with no copy at all||We couldn't reach GitHub to get our copy of the code. Send your message again in a minute.||0.0000\nU|9|done|Nov 13 01:45|claude-opus-5-5|own|with my token|## Answer\\n\\ncred=CLAUDE_CODE_OAUTH_TOKEN:b2b5122f resume=yes turns=6 model=claude-opus-5-5 mode=chat readme=third budget=0.00 others=none|||0.0200\nT|9|Read|README.md\nU|10|failed|Nov 13 01:45|claude-opus-5-5|own|expire now||Your token expired. Make a new one with claude setup-token and save it under KEY.||0.0000\nT|10|Read|README.md\nU|11|stopped|Dec 31 18:00|claude-opus-5-5|own|wire||||0.0001\nT|11|Read|project/plan.md\nU|12|done|Dec 31 18:00|google/gemini-3.8-flash||gemini||||0.0000\n"
+  }
+ ]
+}

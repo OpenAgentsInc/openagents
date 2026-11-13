@@ -22,6 +22,8 @@
 #load "../../psionic/lib/harness/memory.coax";
 #load "../../coax/lib/agent/engine/memory-log.coax";   // the log's one codec: mem_line and mem_unline (Protocol C12, #13250)
 #load "../../coax/lib/nostr/json-f64.coax";
+#load "../../coax/lib/agent/cli/json-output.coax";   // what --json prints (cj_*)
+#load "../../coax/lib/agent/engine/mcworker-wire.coax";   // the worker's embedding lines: the one codec (Protocol C11, #13250)
 
 MEM_EVENTS :: 512;
 MEM_BYTES :: 262144;
@@ -205,7 +207,7 @@ mem_vec_prune :: (path: string, g: MmLog, t: MmTable, file: [] u8, keep: [] u8) 
   x := fs_write(cast(string) tb[0..<tn], cast(string) keep[0..<k]) && fs_rename(cast(string) tb[0..<tn], path);
 }
 
-// Asks Microcoder's worker for embeddings: texts[0..<count] as documents,
+// Asks Microcoder's worker for embeddings (its lines through mcworker-wire.coax): texts[0..<count] as documents,
 // then the query. Their vectors go to out, MEM_DIMS each, in that order.
 // "" when every one came back, else why not.
 mem_embed :: (texts: [] string, query: string, out: [] int) -> string {
@@ -219,21 +221,23 @@ mem_embed :: (texts: [] string, query: string, out: [] int) -> string {
   if !ok || cxproc_spawn(h) != 0 { r := cxproc_release(h); return "Microcoder's worker did not start."; }
   ob: [20000] u8;
   for i: 0..<texts.count + 1 {
-    n := json_raw(ob[..], 0, "{\"embed\":"); n = json_write_string(ob[..], n, ifx i < texts.count then texts[i] else query);
-    n = json_raw(ob[..], n, ifx i < texts.count then "}\n" else ",\"query\":true}\n");
+    n := mww_embed(ob[..], ifx i < texts.count then texts[i] else query, i >= texts.count);
     for b: cast(string) ob[0..<n] { x := cxproc_write(h, cast(int) b); }
   }
   f := cxproc_flush(h); c := cxproc_close_stdin(h);
   got := 0; why := "";
   line: [65536] u8;
+  kb: [64] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = kb[..]};   // a line's kind; the list and the error are read as JSON text
+  ev: [1] MwwLine;
   for guard: 0..<100000 {
     m := cxproc_read_line(h, 120000);
     if m < 0 && m != CL_TOO_LONG { break; }
     if m == CL_TOO_LONG || m > line.count { continue; }
     for i: 0..<m { line[i] = cast,trunc(u8) cxproc_line_byte(h, i); }
     ln := cast(string) line[0..<m];
-    if mem_s(ln, "kind") != "embedding" { continue; }
-    if cl_raw(ln, "error").count > 0 || got > texts.count || !mem_vec(cl_raw(ln, "values"), out[got * MEM_DIMS..<(got + 1) * MEM_DIMS]) { why = "Vertex gave no embedding."; break; }
+    ar[0].at = 0; ar[0].full = false;
+    if mww_read(ar[..], ln, ev[..]) != MWW_EMBEDDING { continue; }
+    if ev[0].error.count > 0 || got > texts.count || !mem_vec(ev[0].values, out[got * MEM_DIMS..<(got + 1) * MEM_DIMS]) { why = "Vertex gave no embedding."; break; }
     got += 1;
   }
   w := cxproc_wait(h, 2000);
@@ -357,11 +361,7 @@ cd_cmd_memory :: (verb: string, key: string, text: string, project: bool, days: 
     conflict := verb == "remember" && last.state == MmState.conflict;
     if json {
       o: [4096] u8;
-      n := json_raw(o[..], 0, "{\"key\":"); n = json_write_string(o[..], n, key);
-      n = json_raw(o[..], n, ",\"scope\":\""); n = json_raw(o[..], n, mem_scope_name(scope));
-      n = json_raw(o[..], n, "\",\"event\":"); n = json_write_int(o[..], n, g[0].count - 1);
-      n = json_raw(o[..], n, ",\"state\":\""); n = json_raw(o[..], n, ifx verb == "forget" then "forgotten" else ifx conflict then "conflict" else "current");
-      n = json_raw(o[..], n, "\"}");
+      n := cj_remembered(o[..], 0, key, mem_scope_name(scope), g[0].count - 1, ifx verb == "forget" then "forgotten" else ifx conflict then "conflict" else "current");
       cd_outln(cast(string) o[0..<n]);
     } else if verb == "forget" { cd_out("Forgot "); cd_out(key); cd_outln("."); }
     else if conflict { cd_out(key); cd_out(" now holds two texts; "); cd_out("coder revise "); cd_out(key); cd_outln(" \"TEXT\" settles it."); }
@@ -423,25 +423,15 @@ cd_cmd_memory :: (verb: string, key: string, text: string, project: bool, days: 
   shown := ifx top > 0 && top < n then top else n;
   if json {
     o: [65536] u8;
-    k := json_raw(o[..], 0, "{\"verified\":true,\"events\":"); k = json_write_int(o[..], k, g[0].count);
-    k = json_raw(o[..], k, ",\"ranked\":"); k = json_raw(o[..], k, ifx ranked then "true" else "false");
-    k = json_raw(o[..], k, ",\"facts\":[");
+    k := cj_recall_open(o[..], 0, g[0].count, ranked);
     for i: 0..<shown {
       f := t[0].facts[ids[i]];
-      k = json_raw(o[..], k, ifx i > 0 then ",{\"key\":" else "{\"key\":"); k = json_write_string(o[..], k, f.key);
-      k = json_raw(o[..], k, ",\"text\":"); k = json_write_string(o[..], k, f.text);
-      k = json_raw(o[..], k, ",\"scope\":\""); k = json_raw(o[..], k, mem_scope_name(f.scope));
-      k = json_raw(o[..], k, "\",\"version\":"); k = json_write_int(o[..], k, f.version);
-      if ranked { k = json_raw(o[..], k, ",\"score\":"); k = json_write_int(o[..], k, cast(int) (score[i] * 1000.0)); }
+      k = cj_recall_fact(o[..], k, i == 0, f.key, f.text, mem_scope_name(f.scope), f.version, ranked, ifx ranked then cast(int) (score[i] * 1000.0) else 0);
       og := mem_origin(f, mem_sbuf[..]);
-      if og != MEM_ORIGIN_NONE {
-        k = json_raw(o[..], k, ",\"said_in\":{\"session\":"); k = json_write_string(o[..], k, f.cite.id);
-        k = json_raw(o[..], k, ",\"line\":"); k = json_write_int(o[..], k, f.cite.from);
-        k = json_raw(o[..], k, ",\"state\":\""); k = json_raw(o[..], k, mem_origin_name(og)); k = json_raw(o[..], k, "\"}");
-      }
-      k = json_raw(o[..], k, "}");
+      if og != MEM_ORIGIN_NONE { k = cj_recall_said(o[..], k, f.cite.id, f.cite.from, mem_origin_name(og)); }
+      k = cj_recall_fact_end(o[..], k);
     }
-    k = json_raw(o[..], k, "]}");
+    k = cj_recall_close(o[..], k);
     if k < 0 { tool_errln("coder recall: too much to print as JSON; use --top"); return 1; }
     cd_outln(cast(string) o[0..<k]);
     return 0;

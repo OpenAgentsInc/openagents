@@ -1,0 +1,314 @@
+syntax = "proto3";
+
+package openagents.api.v1alpha1;
+
+// What coax/web/api/anime.c answers, route by route (Protocol, GitHub #13250; profile
+// api-routes; docs/protocol/api-routes-v1alpha1.md). Each message names the members
+// of one body as it ships: json_name is the key on the wire, a `bytes` member is
+// JSON carried as it came, and a member may be absent. The C builds no body. Two Coax
+// codecs write and read them, and anime.c calls both through
+// anime-director-policy.generated.c:
+//   - the anime director (/api/playtest/labs/anime/direct):
+//     coax/web/api/anime-director-policy.coax (aap_request, aap_prepare, aap_finish,
+//     aap_reply, aap_error) and its route refusals in anime-route-policy.coax (aar_error);
+//   - the animation director (/api/playtest/labs/anim/direct):
+//     metaverse-engine/anim/direction-select.coax (ads_prepare, ads_finish,
+//     ads_reply_read) over direction-wire.coax (ad_read).
+// proto/verse/anime-director-v1.json holds real bodies and their routes;
+// coax/web/api/anime-director-profile.coax holds them through the codecs, and
+// coax/web/api/routes-goldens.coax holds each body's keys to its message here.
+// The option words are the catalogue's (metaverse-engine/anime/director.coax).
+
+// POST /api/playtest/labs/anime/direct, the request.
+message AnimeLabsAnimeDirectPostRequest {
+  optional int64 v = 1 [json_name = "v"];   // 1
+  optional string words = 2 [json_name = "words"];   // 1 to 600 bytes
+  optional AnimeStage state = 3 [json_name = "state"];
+}
+
+// The stage as the client holds it: the cast, the shot and the last held directions.
+message AnimeStage {
+  repeated AnimeCast cast = 1 [json_name = "cast"];
+  optional AnimeShot shot = 2 [json_name = "shot"];
+  repeated AnimeDirection last = 3 [json_name = "last"];   // at most 8
+}
+
+message AnimeCast {
+  optional int64 slot = 1 [json_name = "slot"];
+  optional string name = 2 [json_name = "name"];
+  optional string archetype = 3 [json_name = "archetype"];
+  optional bool on = 4 [json_name = "on"];
+  optional string place = 5 [json_name = "place"];
+  optional string action = 6 [json_name = "action"];
+  optional string emotion = 7 [json_name = "emotion"];
+}
+
+message AnimeShot {
+  optional string framing = 1 [json_name = "framing"];
+  optional string who = 2 [json_name = "who"];
+  optional string place = 3 [json_name = "place"];
+  optional string move = 4 [json_name = "move"];
+}
+
+// POST /api/playtest/labs/anime/direct 200
+message AnimeLabsAnimeDirectPost {
+  optional int64 v = 1 [json_name = "v"];   // 1
+  optional string heard = 2 [json_name = "heard"];   // the request's words
+  repeated AnimeDirection answers = 3 [json_name = "answers"];   // at most 8
+}
+
+// One held direction. Only the members its kind uses are present. In an answer p, timing,
+// confidence, stock, render_supported and decision are always present; in the request's
+// history (last) they may be absent.
+message AnimeDirection {
+  optional string kind = 1 [json_name = "kind"];
+  optional string who = 2 [json_name = "who"];
+  optional string to = 3 [json_name = "to"];
+  optional string archetype = 4 [json_name = "archetype"];
+  optional string action = 5 [json_name = "action"];
+  optional string emotion = 6 [json_name = "emotion"];
+  optional string spell = 7 [json_name = "spell"];
+  optional string effect = 8 [json_name = "effect"];
+  optional string framing = 9 [json_name = "framing"];
+  optional string move = 10 [json_name = "move"];
+  optional string transition = 11 [json_name = "transition"];
+  optional string beat = 12 [json_name = "beat"];
+  optional string how = 13 [json_name = "how"];
+  optional string place = 14 [json_name = "place"];
+  optional string size = 15 [json_name = "size"];
+  optional int64 count = 16 [json_name = "count"];   // 1 to 3
+  optional string like = 17 [json_name = "like"];
+  optional string what = 18 [json_name = "what"];   // 1 to 40 bytes, kind make only
+  optional double p = 19 [json_name = "p"];   // the lowest chosen score, in thousandths
+  optional string timing = 20 [json_name = "timing"];
+  optional AnimeConfidence confidence = 21 [json_name = "confidence"];
+  optional bool stock = 22 [json_name = "stock"];
+  optional bool render_supported = 23 [json_name = "render_supported"];
+  optional string decision = 24 [json_name = "decision"];   // play, soft or heard
+}
+
+// For each chosen member, a score for every option of its catalogue. The scores of one
+// member sum to 1.
+message AnimeConfidence {
+  optional AnimeKindScores kind = 1 [json_name = "kind"];
+  optional AnimeArchetypeScores who = 2 [json_name = "who"];
+  optional AnimeArchetypeScores to = 3 [json_name = "to"];
+  optional AnimeArchetypeScores archetype = 4 [json_name = "archetype"];
+  optional AnimeActionScores action = 5 [json_name = "action"];
+  optional AnimeEmotionScores emotion = 6 [json_name = "emotion"];
+  optional AnimeSpellScores spell = 7 [json_name = "spell"];
+  optional AnimeEffectScores effect = 8 [json_name = "effect"];
+  optional AnimeFramingScores framing = 9 [json_name = "framing"];
+  optional AnimeMoveScores move = 10 [json_name = "move"];
+  optional AnimeTransitionScores transition = 11 [json_name = "transition"];
+  optional AnimeBeatScores beat = 12 [json_name = "beat"];
+  optional AnimeHowScores how = 13 [json_name = "how"];
+  optional AnimePlaceScores place = 14 [json_name = "place"];
+  optional AnimeSizeScores size = 15 [json_name = "size"];
+  optional AnimeCountScores count = 16 [json_name = "count"];
+  optional AnimeArchetypeScores like = 17 [json_name = "like"];
+  optional AnimeTimingScores timing = 18 [json_name = "timing"];
+}
+
+// A score for each kind of direction.
+message AnimeKindScores {
+  optional double enter = 1 [json_name = "enter"];
+  optional double exit = 2 [json_name = "exit"];
+  optional double act = 3 [json_name = "act"];
+  optional double emote = 4 [json_name = "emote"];
+  optional double cast = 5 [json_name = "cast"];
+  optional double fx = 6 [json_name = "fx"];
+  optional double shot = 7 [json_name = "shot"];
+  optional double cut = 8 [json_name = "cut"];
+  optional double beat = 9 [json_name = "beat"];
+  optional double make = 10 [json_name = "make"];
+}
+
+// A score for each archetype (who, to, archetype, like).
+message AnimeArchetypeScores {
+  optional double heroine = 1 [json_name = "heroine"];
+  optional double hero = 2 [json_name = "hero"];
+  optional double hooded = 3 [json_name = "hooded"];
+  optional double dark_lord = 4 [json_name = "dark-lord"];
+  optional double creature = 5 [json_name = "creature"];
+}
+
+// A score for each action.
+message AnimeActionScores {
+  optional double raise_wand = 1 [json_name = "raise-wand"];
+  optional double cast = 2 [json_name = "cast"];
+  optional double block = 3 [json_name = "block"];
+  optional double run = 4 [json_name = "run"];
+  optional double fall = 5 [json_name = "fall"];
+  optional double kneel = 6 [json_name = "kneel"];
+  optional double turn = 7 [json_name = "turn"];
+  optional double point = 8 [json_name = "point"];
+  optional double hesitate = 9 [json_name = "hesitate"];
+  optional double recoil = 10 [json_name = "recoil"];
+  optional double shout = 11 [json_name = "shout"];
+}
+
+// A score for each emotion.
+message AnimeEmotionScores {
+  optional double calm = 1 [json_name = "calm"];
+  optional double sad = 2 [json_name = "sad"];
+  optional double angry = 3 [json_name = "angry"];
+  optional double afraid = 4 [json_name = "afraid"];
+  optional double determined = 5 [json_name = "determined"];
+  optional double smug = 6 [json_name = "smug"];
+  optional double shocked = 7 [json_name = "shocked"];
+  optional double crying = 8 [json_name = "crying"];
+  optional double laughing = 9 [json_name = "laughing"];
+  optional double hesitant = 10 [json_name = "hesitant"];
+}
+
+// A score for each spell.
+message AnimeSpellScores {
+  optional double bolt = 1 [json_name = "bolt"];
+  optional double fireball = 2 [json_name = "fireball"];
+  optional double shield = 3 [json_name = "shield"];
+  optional double frost_ring = 4 [json_name = "frost-ring"];
+  optional double guardian = 5 [json_name = "guardian"];
+  optional double light = 6 [json_name = "light"];
+}
+
+// A score for each effect.
+message AnimeEffectScores {
+  optional double explosion = 1 [json_name = "explosion"];
+  optional double rubble_rain = 2 [json_name = "rubble-rain"];
+  optional double flash = 3 [json_name = "flash"];
+  optional double smoke = 4 [json_name = "smoke"];
+  optional double embers = 5 [json_name = "embers"];
+  optional double wind = 6 [json_name = "wind"];
+  optional double lightning = 7 [json_name = "lightning"];
+  optional double petals = 8 [json_name = "petals"];
+  optional double shockwave = 9 [json_name = "shockwave"];
+}
+
+// A score for each framing.
+message AnimeFramingScores {
+  optional double extreme_close_up = 1 [json_name = "extreme-close-up"];
+  optional double close_up = 2 [json_name = "close-up"];
+  optional double medium = 3 [json_name = "medium"];
+  optional double wide = 4 [json_name = "wide"];
+  optional double establishing = 5 [json_name = "establishing"];
+  optional double over_the_shoulder = 6 [json_name = "over-the-shoulder"];
+  optional double low_angle = 7 [json_name = "low-angle"];
+  optional double high_angle = 8 [json_name = "high-angle"];
+}
+
+// A score for each camera move.
+message AnimeMoveScores {
+  optional double hold = 1 [json_name = "hold"];
+  optional double push_in = 2 [json_name = "push-in"];
+  optional double pull_out = 3 [json_name = "pull-out"];
+  optional double orbit = 4 [json_name = "orbit"];
+  optional double shake = 5 [json_name = "shake"];
+  optional double whip_pan = 6 [json_name = "whip-pan"];
+}
+
+// A score for each transition.
+message AnimeTransitionScores {
+  optional double cut = 1 [json_name = "cut"];
+  optional double flash = 2 [json_name = "flash"];
+  optional double smash = 3 [json_name = "smash"];
+  optional double speed_line_wipe = 4 [json_name = "speed-line-wipe"];
+  optional double match = 5 [json_name = "match"];
+}
+
+// A score for each beat.
+message AnimeBeatScores {
+  optional double hold = 1 [json_name = "hold"];
+  optional double slow_motion = 2 [json_name = "slow-motion"];
+  optional double freeze_frame = 3 [json_name = "freeze-frame"];
+  optional double speed_lines = 4 [json_name = "speed-lines"];
+}
+
+// A score for each way to enter or leave.
+message AnimeHowScores {
+  optional double walks = 1 [json_name = "walks"];
+  optional double runs = 2 [json_name = "runs"];
+  optional double appears = 3 [json_name = "appears"];
+  optional double lands = 4 [json_name = "lands"];
+}
+
+// A score for each place.
+message AnimePlaceScores {
+  optional double gate = 1 [json_name = "gate"];
+  optional double courtyard = 2 [json_name = "courtyard"];
+  optional double wall = 3 [json_name = "wall"];
+  optional double sky = 4 [json_name = "sky"];
+  optional double left = 5 [json_name = "left"];
+  optional double right = 6 [json_name = "right"];
+  optional double behind = 7 [json_name = "behind"];
+  optional double above = 8 [json_name = "above"];
+}
+
+// A score for each size.
+message AnimeSizeScores {
+  optional double small = 1 [json_name = "small"];
+  optional double large = 2 [json_name = "large"];
+  optional double huge = 3 [json_name = "huge"];
+}
+
+// A score for each count.
+message AnimeCountScores {
+  optional double one = 1 [json_name = "1"];
+  optional double two = 2 [json_name = "2"];
+  optional double three = 3 [json_name = "3"];
+}
+
+// A score for each timing.
+message AnimeTimingScores {
+  optional double now = 1 [json_name = "now"];
+  optional double after = 2 [json_name = "after"];
+  optional double with = 3 [json_name = "with"];
+}
+
+// POST /api/playtest/labs/anime/direct and /api/playtest/labs/anim/direct, every refusal
+// (400, 401, 403, 405, 413, 415, 422, 429, 500, 502, 503).
+message AnimeLabsDirectPostRefusal {
+  optional int64 v = 1 [json_name = "v"];   // 1
+  optional string error = 2 [json_name = "error"];   // a fixed word, such as invalid_input
+}
+
+// POST /api/playtest/labs/anim/direct, the request (anim.direct.request.v1).
+message AnimeLabsAnimDirectPostRequest {
+  optional string schema = 1 [json_name = "schema"];
+  optional string base = 2 [json_name = "base"];   // the project's content id, 64 hex digits
+  optional string words = 3 [json_name = "words"];
+  optional bytes stock = 4 [json_name = "stock"];   // the scene's inventory, JSON carried as it came
+}
+
+// POST /api/playtest/labs/anim/direct 200 (anim.direct.reply.v1)
+message AnimeLabsAnimDirectPost {
+  optional string schema = 1 [json_name = "schema"];
+  optional string base = 2 [json_name = "base"];   // the request's base
+  optional AnimDirection direction = 3 [json_name = "direction"];
+}
+
+// One typed edit (anim.direction.v1).
+message AnimDirection {
+  optional string schema = 1 [json_name = "schema"];
+  optional string kind = 2 [json_name = "kind"];
+  optional int64 actor = 3 [json_name = "actor"];
+  optional int64 row = 4 [json_name = "row"];
+  optional int64 option = 5 [json_name = "option"];
+  optional double at = 6 [json_name = "at"];
+  optional double end = 7 [json_name = "end"];
+  optional double value = 8 [json_name = "value"];
+  repeated double point = 9 [json_name = "point"];   // x, y, z
+  optional AnimDirectionScores confidence = 10 [json_name = "confidence"];
+}
+
+// A score from 0 to 1000 for each member of the edit.
+message AnimDirectionScores {
+  optional int64 kind = 1 [json_name = "kind"];
+  optional int64 actor = 2 [json_name = "actor"];
+  optional int64 row = 3 [json_name = "row"];
+  optional int64 option = 4 [json_name = "option"];
+  optional int64 at = 5 [json_name = "at"];
+  optional int64 end = 6 [json_name = "end"];
+  optional int64 value = 7 [json_name = "value"];
+  optional int64 point = 8 [json_name = "point"];
+}

@@ -73,6 +73,7 @@
     #assert aar_error(statuses[i],out[0..<n-1]) == -1;
     for c: out { #assert c == 99; }
   }
+  exact: [64] u8; #assert aar_error_write("output_capacity",exact[..]) == 33 && cast(string)exact[0..<33] == "{\"v\":1,\"error\":\"output_capacity\"}" && aar_error_write("output_capacity",exact[0..<32]) == -1;
   #assert aar_error_word(0) == "internal_error" && aar_error_word(200) == "internal_error" && aar_error_word(-1) == "internal_error";
 }
 
@@ -145,8 +146,11 @@ aar_error_word :: (status: int) -> string #effects(all) {
   if status == 504 { return "director_timeout"; }
   return "internal_error";
 }
-aar_error :: (status: int, out: [] u8) -> int #export_c #effects(all) {
-  word := aar_error_word(status); prefix := "{\"v\":1,\"error\":\"";
+aar_error :: (status: int, out: [] u8) -> int #export_c #effects(all) { return aar_error_write(aar_error_word(status),out); }
+// The one writer of both routes' refusal, {"v":1,"error":"WORD"}: its length, or -1 when out
+// is too small (out is then untouched). The word is a fixed one that needs no escape.
+aar_error_write :: (word: string, out: [] u8) -> int #effects(all) {
+  prefix := "{\"v\":1,\"error\":\"";
   n := prefix.count+word.count+2;
   if n > out.count { return -1; }
   for i: 0..<prefix.count { out[i] = prefix[i]; }

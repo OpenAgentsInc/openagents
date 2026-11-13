@@ -1,0 +1,899 @@
+{
+ "identity": "coder-cli-json-v1",
+ "check": "coax/web/tool.sh coax/lib/agent/cli/cli-json-goldens.coax proto/coder/cli-json-v1.json",
+ "codec": "coax/lib/agent/cli/json-output.coax",
+ "scope": "What the Coder CLI prints on stdout for --json (and --stream-json, which these verbs read as the same flag): usage, ls, status, import, run|fork --detach, stop, replay, bench, plugins, credential, queue, daemon, jobs, host list, decide, policy, router, consent, remember, revise, forget and recall. Each output is compact JSON on one line that ends in a line feed (policy list keeps its file's line breaks; router prints a line an event); a body here is that output less its last line feed. Not here, because another row owns it: run, log and attach print session log lines (openagents.session.v1) and stream records (coder.observability.v2); route prints coder.route.v2; agents prints openagents.coder.agents.v1; session-read prints coder.session-reader.v1.",
+ "form": "A member list gives an object's members in the order the writer writes them. A name that ends in ? is written only in the case its shape describes; every other member is always written. `top` is the output itself, or one row when the output is an array; any other list is named for the member that holds the object or the array of objects. Integers are decimal. Times that end in _us or are named `at` or `handled` are Unix microseconds; resets_at, asked_at and expires_at are Unix seconds.",
+ "captured": "2026-11-13, from the Coder CLI of this tree (coder/tui/coder.sh, built before the writers moved to the codec) in a throwaway home under /tmp/coder-c8, with a stand-in `hostname` that prints c8-host. Engines: echo, and psionic against coder/tui/local_model.py. No hosted model, login or network service was used: usage read the stand-in endpoints of coder/tui/smoke.py, ssh was a stand-in script, and the host list came from coder host against a local relay (nostr/relay) with throwaway browser keys. The second capture (decide, policy, router, consent, memory), the same day under /tmp/coder-c8x, was from the CLI built before those writers moved; recall's ranking replayed the recorded embeddings of coder/tui/fixtures/memory-replay with GW_REPLAY, and the Router's candidates met no System One key. decide has only its error outputs here: the repository has no recorded System One answer to a coder decide request, and System One's transport does not read GW_REPLAY; json-output.coax's own checks hold the decided form.",
+ "shapes": {
+  "usage": {
+   "command": "coder usage --json",
+   "members": {
+    "top": [
+     "agent",
+     "plan",
+     "windows",
+     "error?"
+    ],
+    "windows": [
+     "label",
+     "used_percent",
+     "resets_at"
+    ]
+   }
+  },
+  "sessions": {
+   "command": "coder ls --json",
+   "members": {
+    "top": [
+     "id",
+     "engine",
+     "state",
+     "effect_outcome?",
+     "turns",
+     "steps",
+     "started_us",
+     "cwd",
+     "task"
+    ]
+   }
+  },
+  "session": {
+   "command": "coder status ID --json",
+   "members": {
+    "top": [
+     "id",
+     "engine",
+     "state",
+     "effect_outcome?",
+     "turns",
+     "steps",
+     "started_us",
+     "cwd",
+     "task",
+     "cut?"
+    ]
+   }
+  },
+  "import": {
+   "command": "coder import claude [ID] --json",
+   "members": {
+    "top": [
+     "id",
+     "turns"
+    ]
+   }
+  },
+  "detached": {
+   "command": "coder run|fork ... --detach --json",
+   "members": {
+    "top": [
+     "id",
+     "pid"
+    ]
+   }
+  },
+  "stop": {
+   "command": "coder stop ID --json",
+   "members": {
+    "top": [
+     "stopped",
+     "why?",
+     "killed?"
+    ]
+   }
+  },
+  "replay": {
+   "command": "coder replay ID --json",
+   "members": {
+    "top": [
+     "requests",
+     "matched",
+     "total"
+    ],
+    "requests": [
+     "turn",
+     "bytes",
+     "sha256",
+     "same"
+    ]
+   }
+  },
+  "bench": {
+   "command": "coder bench SUITE --json; the same line is kept in ~/.openagents/coder/bench/SUITE-ID.json",
+   "members": {
+    "top": [
+     "suite",
+     "passed",
+     "ms",
+     "at_us",
+     "last"
+    ]
+   }
+  },
+  "plugins": {
+   "command": "coder plugins --json [--profile NAME]",
+   "members": {
+    "top": [
+     "name",
+     "state",
+     "signed",
+     "why?",
+     "commands",
+     "defines",
+     "provides",
+     "uses"
+    ]
+   }
+  },
+  "credential-stored": {
+   "command": "coder credential add NAME VAR --json",
+   "members": {
+    "top": [
+     "name",
+     "var",
+     "stored"
+    ]
+   }
+  },
+  "credential-removed": {
+   "command": "coder credential rm NAME --json",
+   "members": {
+    "top": [
+     "removed"
+    ]
+   }
+  },
+  "credentials": {
+   "command": "coder credential ls --json",
+   "members": {
+    "top": [
+     "name",
+     "var"
+    ]
+   }
+  },
+  "queued": {
+   "command": "coder queue TASK --json",
+   "members": {
+    "top": [
+     "job",
+     "state",
+     "dest?"
+    ]
+   }
+  },
+  "job-handled": {
+   "command": "coder daemon --json, one line a job; the same line is the job's file in ~/.openagents/coder/daemon/done",
+   "members": {
+    "top": [
+     "id",
+     "task",
+     "engine",
+     "cwd",
+     "credentials?",
+     "at",
+     "session?",
+     "refused?",
+     "handled"
+    ]
+   }
+  },
+  "beat": {
+   "command": "the daemon's heartbeat, ~/.openagents/coder/daemon/daemon.json; coder jobs --json prints it as its daemon object, with up",
+   "members": {
+    "top": [
+     "name",
+     "host",
+     "engines",
+     "roots",
+     "credentials",
+     "at"
+    ]
+   }
+  },
+  "jobs": {
+   "command": "coder jobs --json",
+   "members": {
+    "top": [
+     "daemon",
+     "jobs"
+    ],
+    "daemon": [
+     "name",
+     "host",
+     "engines",
+     "roots",
+     "credentials",
+     "at",
+     "up"
+    ],
+    "jobs": [
+     "job",
+     "state",
+     "task",
+     "session?",
+     "why?",
+     "dest?",
+     "remote_job?",
+     "exit?"
+    ]
+   }
+  },
+  "host-list": {
+   "command": "coder host list --json",
+   "members": {
+    "top": [
+     "waiting",
+     "browsers"
+    ],
+    "waiting": [
+     "id",
+     "key",
+     "label",
+     "asked_at"
+    ],
+    "browsers": [
+     "grant",
+     "key",
+     "label",
+     "expires_at"
+    ]
+   }
+  },
+  "decide": {
+   "command": "coder decide QUESTION --options A,B [--state TEXT] --json",
+   "members": {
+    "top": [
+     "choice?",
+     "probability?",
+     "error?"
+    ]
+   }
+  },
+  "policy-result": {
+   "command": "coder policy add NAME ... --json, coder policy rm NAME --json",
+   "members": {
+    "top": [
+     "saved?",
+     "removed?"
+    ]
+   }
+  },
+  "policy-list": {
+   "command": "coder policy list --json: the object after `sources` in ~/.openagents/coder/router/sources.json, with the file's line breaks",
+   "members": {
+    "top": [
+     "*"
+    ],
+    "entry": [
+     "mode",
+     "authors",
+     "engine?",
+     "label?",
+     "channel?",
+     "deliver?",
+     "ci?",
+     "policy?",
+     "to?",
+     "send?"
+    ]
+   }
+  },
+  "router-line": {
+   "command": "coder router --json, one line an event; the same lines are ~/.openagents/coder/router/log.jsonl",
+   "members": {
+    "top": [
+     "kind",
+     "id?",
+     "source?",
+     "thread?",
+     "fate?",
+     "session?",
+     "note?",
+     "events?",
+     "ms?",
+     "decided?",
+     "sessions?",
+     "hops?",
+     "bytes?",
+     "at_us?"
+    ]
+   }
+  },
+  "consent": {
+   "command": "coder consent [grant ENGINE --classes C [--days N] | revoke N] --json",
+   "members": {
+    "top": [
+     "events",
+     "grants"
+    ],
+    "grants": [
+     "grant",
+     "engine",
+     "classes",
+     "state",
+     "sends",
+     "bytes"
+    ]
+   }
+  },
+  "remembered": {
+   "command": "coder remember|revise|forget KEY ... --json",
+   "members": {
+    "top": [
+     "key",
+     "scope",
+     "event",
+     "state"
+    ]
+   }
+  },
+  "recall": {
+   "command": "coder recall [QUERY] [--top N] --json",
+   "members": {
+    "top": [
+     "verified",
+     "events",
+     "ranked",
+     "facts"
+    ],
+    "facts": [
+     "key",
+     "text",
+     "scope",
+     "version",
+     "score?",
+     "said_in?"
+    ],
+    "said_in": [
+     "session",
+     "line",
+     "state"
+    ]
+   }
+  }
+ },
+ "when": {
+  "usage.error": "the agent's usage could not be read; windows is then empty",
+  "session.effect_outcome": "state is running; its value is always unknown",
+  "session.cut": "the log ends in a partial line of this many bytes, which was not read",
+  "stop.why": "stopped is false; its value is always `not running`",
+  "stop.killed": "the session did not stop within 10 s and its process was ended; always true",
+  "plugins.why": "state is failed",
+  "queued.dest": "state is held: the job's machine did not answer",
+  "job-handled.credentials": "the job names credential handles",
+  "job-handled.session": "the job started; else refused says why not",
+  "jobs.session": "the job started here",
+  "jobs.why": "the job was refused",
+  "jobs.dest": "the job is for another machine",
+  "jobs.remote_job": "that machine took it",
+  "jobs.exit": "it failed there, with this exit status",
+  "decide.choice": "System One decided; probability is then written too, with three decimals",
+  "decide.error": "it did not; never with choice",
+  "policy-result.saved": "add; always true",
+  "policy-result.removed": "rm; always true",
+  "policy-list.*": "each member is a source's name and its entry; {} when there is none. An entry's members after authors are written only when set, and deliver, ci and send only as true. A sources.json a person wrote by hand is printed as it stands",
+  "router-line.kind": "trigger: id, source, thread, fate, session when it has a worker, note (at most 2000 bytes) when there is one, at_us. batch: events, ms, decided, at_us. recall: id, sessions, hops, bytes",
+  "recall.score": "ranked is true: the similarity to the query, in thousandths",
+  "recall.said_in": "the fact names the session line it was said in; state is held, changed or gone"
+ },
+ "goldens": [
+  {
+   "name": "usage-both",
+   "kind": "usage",
+   "from": "coder usage --json, both logins stand-ins and the two usage endpoints the stand-in server of coder/tui/smoke.py",
+   "body": "[{\"agent\":\"claude\",\"plan\":\"Claude Max\",\"windows\":[{\"label\":\"Session\",\"used_percent\":12,\"resets_at\":1793631600},{\"label\":\"Week\",\"used_percent\":84,\"resets_at\":1794045600}]},{\"agent\":\"codex\",\"plan\":\"ChatGPT Pro\",\"windows\":[{\"label\":\"Session\",\"used_percent\":3,\"resets_at\":1793000000},{\"label\":\"Week\",\"used_percent\":4,\"resets_at\":1793500000}]}]"
+  },
+  {
+   "name": "usage-no-login",
+   "kind": "usage",
+   "from": "coder usage --json with no login (exit 1)",
+   "body": "[{\"agent\":\"claude\",\"plan\":\"\",\"windows\":[],\"error\":\"Claude Code isn't signed in here\"},{\"agent\":\"codex\",\"plan\":\"\",\"windows\":[],\"error\":\"Codex isn't signed in here\"}]"
+  },
+  {
+   "name": "ls-none",
+   "kind": "sessions",
+   "from": "coder ls --json in a new home",
+   "body": "[]"
+  },
+  {
+   "name": "ls-running",
+   "kind": "sessions",
+   "from": "coder ls --json while a detached job runs",
+   "body": "[{\"id\":\"20261113-180734-900\",\"engine\":\"echo\",\"state\":\"running\",\"effect_outcome\":\"unknown\",\"turns\":1,\"steps\":0,\"started_us\":1794593255260073,\"cwd\":\"/tmp/coder-c8/work\",\"task\":\"$ sleep 30\"},{\"id\":\"20261113-180734-843\",\"engine\":\"echo\",\"state\":\"finished\",\"turns\":1,\"steps\":1,\"started_us\":1794593254843144,\"cwd\":\"/tmp/coder-c8/work\",\"task\":\"$ echo one\"}]"
+  },
+  {
+   "name": "ls-four",
+   "kind": "sessions",
+   "from": "coder ls --json: psionic, echo, an imported Claude Code session and a copied log",
+   "body": "[{\"id\":\"20261113-180752-099\",\"engine\":\"echo\",\"state\":\"stopped\",\"turns\":1,\"steps\":0,\"started_us\":1794593272395071,\"cwd\":\"/tmp/coder-c8/work\",\"task\":\"$ trap \\\"\\\" TERM INT; sleep 40\"},{\"id\":\"20261113-180736-130\",\"engine\":\"psionic\",\"state\":\"finished\",\"turns\":1,\"steps\":1,\"started_us\":1794593256130583,\"cwd\":\"/tmp/coder-c8/work\",\"task\":\"say ok\"},{\"id\":\"20261113-180734-900\",\"engine\":\"echo\",\"state\":\"stopped\",\"turns\":1,\"steps\":0,\"started_us\":1794593255260073,\"cwd\":\"/tmp/coder-c8/work\",\"task\":\"$ sleep 30\"},{\"id\":\"20261113-180734-843\",\"engine\":\"echo\",\"state\":\"finished\",\"turns\":1,\"steps\":1,\"started_us\":1794593254843144,\"cwd\":\"/tmp/coder-c8/work\",\"task\":\"$ echo one\"},{\"id\":\"20261102-120000-000\",\"engine\":\"claude\",\"state\":\"finished\",\"turns\":1,\"steps\":1,\"started_us\":1793620800000000,\"cwd\":\"/tmp/coder-c8/work\",\"task\":\"list the files\"},{\"id\":\"20261101-000000-000\",\"engine\":\"psionic\",\"state\":\"finished\",\"turns\":1,\"steps\":1,\"started_us\":1794593256130583,\"cwd\":\"/tmp/coder-c8/work\",\"task\":\"say no\"}]"
+  },
+  {
+   "name": "status-running",
+   "kind": "session",
+   "from": "coder status ID --json of a running job",
+   "body": "{\"id\":\"20261113-180734-900\",\"engine\":\"echo\",\"state\":\"running\",\"effect_outcome\":\"unknown\",\"turns\":1,\"steps\":0,\"started_us\":1794593255260073,\"cwd\":\"/tmp/coder-c8/work\",\"task\":\"$ sleep 30\"}"
+  },
+  {
+   "name": "status-stopped",
+   "kind": "session",
+   "from": "coder status ID --json after coder stop",
+   "body": "{\"id\":\"20261113-180734-900\",\"engine\":\"echo\",\"state\":\"stopped\",\"turns\":1,\"steps\":0,\"started_us\":1794593255260073,\"cwd\":\"/tmp/coder-c8/work\",\"task\":\"$ sleep 30\"}"
+  },
+  {
+   "name": "status-finished",
+   "kind": "session",
+   "from": "coder status ID --json of a finished run",
+   "body": "{\"id\":\"20261113-180734-843\",\"engine\":\"echo\",\"state\":\"finished\",\"turns\":1,\"steps\":1,\"started_us\":1794593254843144,\"cwd\":\"/tmp/coder-c8/work\",\"task\":\"$ echo one\"}"
+  },
+  {
+   "name": "status-cut",
+   "kind": "session",
+   "from": "coder status ID --json of a log that ends in a partial line of 18 bytes",
+   "body": "{\"id\":\"20261113-180734-843\",\"engine\":\"echo\",\"state\":\"finished\",\"turns\":1,\"steps\":1,\"started_us\":1794593254843144,\"cwd\":\"/tmp/coder-c8/work\",\"task\":\"$ echo one\",\"cut\":18}"
+  },
+  {
+   "name": "import",
+   "kind": "import",
+   "from": "coder import claude --json of a Claude Code log of the folder",
+   "body": "{\"id\":\"20261102-120000-000\",\"turns\":1}"
+  },
+  {
+   "name": "detached",
+   "kind": "detached",
+   "from": "coder run '$ sleep 30' --engine echo --detach --json",
+   "body": "{\"id\":\"20261113-180734-900\",\"pid\":2258884}"
+  },
+  {
+   "name": "stop-stopped",
+   "kind": "stop",
+   "from": "coder stop ID --json of that job",
+   "body": "{\"stopped\":true}"
+  },
+  {
+   "name": "stop-not-running",
+   "kind": "stop",
+   "from": "coder stop ID --json again",
+   "body": "{\"stopped\":false,\"why\":\"not running\"}"
+  },
+  {
+   "name": "stop-killed",
+   "kind": "stop",
+   "from": "coder stop ID --json of a job whose process was suspended, so it could not stop itself",
+   "body": "{\"stopped\":true,\"killed\":true}"
+  },
+  {
+   "name": "replay-none",
+   "kind": "replay",
+   "from": "coder replay ID --json of an echo session, which has no request line",
+   "body": "{\"requests\":[],\"matched\":0,\"total\":0}"
+  },
+  {
+   "name": "replay-same",
+   "kind": "replay",
+   "from": "coder replay ID --json of a psionic session (coder/tui/local_model.py answered)",
+   "body": "{\"requests\":[{\"turn\":1,\"bytes\":6,\"sha256\":\"7be8ca738338621efb32079bacfea71413d89960d512c4d23b61075e26bab5a9\",\"same\":true}],\"matched\":1,\"total\":1}"
+  },
+  {
+   "name": "replay-different",
+   "kind": "replay",
+   "from": "coder replay ID --json of that log with its message changed after the fact",
+   "body": "{\"requests\":[{\"turn\":1,\"bytes\":6,\"sha256\":\"bd52153f6f0143aede418250a0a36bf3ad38e3ec9f24297ded61570bec93503a\",\"same\":false}],\"matched\":0,\"total\":1}"
+  },
+  {
+   "name": "bench",
+   "kind": "bench",
+   "from": "coder bench harness --json",
+   "body": "{\"suite\":\"harness\",\"passed\":true,\"ms\":4470,\"at_us\":1794593267622048,\"last\":\"  receipt 1 claimed with one more right run: broken chain at receipt 1\"}"
+  },
+  {
+   "name": "plugins-none",
+   "kind": "plugins",
+   "from": "coder plugins --json in a new home",
+   "body": "[]"
+  },
+  {
+   "name": "plugins-three",
+   "kind": "plugins",
+   "from": "coder plugins --json with three manifests",
+   "body": "[{\"name\":\"demo\",\"state\":\"active\",\"signed\":false,\"commands\":[\"hello\"],\"defines\":[],\"provides\":[],\"uses\":[]},{\"name\":\"fmt\",\"state\":\"active\",\"signed\":false,\"commands\":[],\"defines\":[\"format\"],\"provides\":[\"format\"],\"uses\":[]},{\"name\":\"tidy\",\"state\":\"active\",\"signed\":false,\"commands\":[\"tidy\"],\"defines\":[],\"provides\":[],\"uses\":[\"format\"]}]"
+  },
+  {
+   "name": "plugins-failed",
+   "kind": "plugins",
+   "from": "coder plugins --json --profile lean: a user before its provider fails",
+   "body": "[{\"name\":\"tidy\",\"state\":\"failed\",\"signed\":false,\"why\":\"uses format, which no active plugin provides\",\"commands\":[],\"defines\":[],\"provides\":[],\"uses\":[]},{\"name\":\"fmt\",\"state\":\"active\",\"signed\":false,\"commands\":[],\"defines\":[\"format\"],\"provides\":[\"format\"],\"uses\":[]}]"
+  },
+  {
+   "name": "plugins-disabled",
+   "kind": "plugins",
+   "from": "coder plugins --json after /plugin disable demo",
+   "body": "[{\"name\":\"demo\",\"state\":\"disabled\",\"signed\":false,\"commands\":[],\"defines\":[],\"provides\":[],\"uses\":[]},{\"name\":\"fmt\",\"state\":\"active\",\"signed\":false,\"commands\":[],\"defines\":[\"format\"],\"provides\":[\"format\"],\"uses\":[]},{\"name\":\"tidy\",\"state\":\"active\",\"signed\":false,\"commands\":[\"tidy\"],\"defines\":[],\"provides\":[],\"uses\":[\"format\"]}]"
+  },
+  {
+   "name": "credential-stored",
+   "kind": "credential-stored",
+   "from": "coder credential add gh GH_TOKEN --json",
+   "body": "{\"name\":\"gh\",\"var\":\"GH_TOKEN\",\"stored\":true}"
+  },
+  {
+   "name": "credential-removed",
+   "kind": "credential-removed",
+   "from": "coder credential rm npm --json",
+   "body": "{\"removed\":true}"
+  },
+  {
+   "name": "credentials-none",
+   "kind": "credentials",
+   "from": "coder credential ls --json in a new home",
+   "body": "[]"
+  },
+  {
+   "name": "credentials-two",
+   "kind": "credentials",
+   "from": "coder credential ls --json",
+   "body": "[{\"name\":\"gh\",\"var\":\"GH_TOKEN\"},{\"name\":\"npm\",\"var\":\"NPM_TOKEN\"}]"
+  },
+  {
+   "name": "queued",
+   "kind": "queued",
+   "from": "coder queue '$ echo daemon-ok' --engine echo --json",
+   "body": "{\"job\":\"20261113-180803-168\",\"state\":\"queued\"}"
+  },
+  {
+   "name": "held",
+   "kind": "queued",
+   "from": "coder queue ... --on ssh:box --json with an ssh that exits 255",
+   "body": "{\"job\":\"20261113-180803-592\",\"state\":\"held\",\"dest\":\"box\"}"
+  },
+  {
+   "name": "handled-started",
+   "kind": "job-handled",
+   "from": "coder daemon --once --engines echo,micro --name c8 --json, one line of four",
+   "body": "{\"id\":\"20261113-180803-168\",\"task\":\"$ echo daemon-ok\",\"engine\":\"echo\",\"cwd\":\"/tmp/coder-c8/home\",\"at\":1794593283168863,\"session\":\"20261113-180803-570\",\"handled\":1794593283572877}"
+  },
+  {
+   "name": "handled-refused-engine",
+   "kind": "job-handled",
+   "from": "coder daemon --once --engines echo,micro --name c8 --json, one line of four",
+   "body": "{\"id\":\"20261113-180803-172\",\"task\":\"x\",\"engine\":\"claude\",\"cwd\":\"/tmp/coder-c8/home\",\"at\":1794593283172879,\"refused\":\"its engine is outside this machine's grant\",\"handled\":1794593283573045}"
+  },
+  {
+   "name": "handled-refused-folder",
+   "kind": "job-handled",
+   "from": "coder daemon --once --engines echo,micro --name c8 --json, one line of four",
+   "body": "{\"id\":\"20261113-180803-180\",\"task\":\"y\",\"engine\":\"echo\",\"cwd\":\"/etc\",\"at\":1794593283180891,\"refused\":\"its directory is outside this machine's grant\",\"handled\":1794593283573100}"
+  },
+  {
+   "name": "handled-refused-credential",
+   "kind": "job-handled",
+   "from": "coder daemon --once --engines echo,micro --name c8 --json, one line of four",
+   "body": "{\"id\":\"20261113-180803-192\",\"task\":\"$ echo with-credential\",\"engine\":\"echo\",\"cwd\":\"/tmp/coder-c8/home\",\"credentials\":\"gh\",\"at\":1794593283192866,\"refused\":\"a credential it names is outside this machine's grant\",\"handled\":1794593283573150}"
+  },
+  {
+   "name": "beat",
+   "kind": "beat",
+   "from": "~/.openagents/coder/daemon/daemon.json after coder daemon --once, less its line feed",
+   "body": "{\"name\":\"c8-host\",\"host\":\"c8-host\",\"engines\":\"any\",\"roots\":\"/tmp/coder-c8/home\",\"credentials\":\"\",\"at\":1794593375724106}"
+  },
+  {
+   "name": "jobs-none",
+   "kind": "jobs",
+   "from": "coder jobs --json in a new home",
+   "body": "{\"daemon\":null,\"jobs\":[]}"
+  },
+  {
+   "name": "jobs-queued",
+   "kind": "jobs",
+   "from": "coder jobs --json with four queued jobs and no daemon yet",
+   "body": "{\"daemon\":null,\"jobs\":[{\"job\":\"20261113-180803-192\",\"state\":\"queued\",\"task\":\"$ echo with-credential\"},{\"job\":\"20261113-180803-180\",\"state\":\"queued\",\"task\":\"y\"},{\"job\":\"20261113-180803-172\",\"state\":\"queued\",\"task\":\"x\"},{\"job\":\"20261113-180803-168\",\"state\":\"queued\",\"task\":\"$ echo daemon-ok\"}]}"
+  },
+  {
+   "name": "jobs-handled",
+   "kind": "jobs",
+   "from": "coder jobs --json after the daemon's pass: one started, three refused",
+   "body": "{\"daemon\":{\"name\":\"c8\",\"host\":\"c8-host\",\"engines\":\"echo,micro\",\"roots\":\"/tmp/coder-c8/home\",\"credentials\":\"\",\"at\":1794593283305674,\"up\":true},\"jobs\":[{\"job\":\"20261113-180803-192\",\"state\":\"refused\",\"task\":\"$ echo with-credential\",\"why\":\"a credential it names is outside this machine's grant\"},{\"job\":\"20261113-180803-180\",\"state\":\"refused\",\"task\":\"y\",\"why\":\"its directory is outside this machine's grant\"},{\"job\":\"20261113-180803-172\",\"state\":\"refused\",\"task\":\"x\",\"why\":\"its engine is outside this machine's grant\"},{\"job\":\"20261113-180803-168\",\"state\":\"started\",\"task\":\"$ echo daemon-ok\",\"session\":\"20261113-180803-570\"}]}"
+  },
+  {
+   "name": "jobs-held",
+   "kind": "jobs",
+   "from": "coder jobs --json with a job held for a machine that did not answer",
+   "body": "{\"daemon\":{\"name\":\"c8\",\"host\":\"c8-host\",\"engines\":\"echo,micro\",\"roots\":\"/tmp/coder-c8/home\",\"credentials\":\"\",\"at\":1794593283305674,\"up\":true},\"jobs\":[{\"job\":\"20261113-180803-592\",\"state\":\"held\",\"task\":\"$ echo held-ok\",\"dest\":\"box\"},{\"job\":\"20261113-180803-192\",\"state\":\"refused\",\"task\":\"$ echo with-credential\",\"why\":\"a credential it names is outside this machine's grant\"},{\"job\":\"20261113-180803-180\",\"state\":\"refused\",\"task\":\"y\",\"why\":\"its directory is outside this machine's grant\"},{\"job\":\"20261113-180803-172\",\"state\":\"refused\",\"task\":\"x\",\"why\":\"its engine is outside this machine's grant\"},{\"job\":\"20261113-180803-168\",\"state\":\"started\",\"task\":\"$ echo daemon-ok\",\"session\":\"20261113-180803-570\"}]}"
+  },
+  {
+   "name": "jobs-sent",
+   "kind": "jobs",
+   "from": "coder jobs --json after the daemon sent the held job (the heartbeat is older than 10 s: down)",
+   "body": "{\"daemon\":{\"name\":\"c8-host\",\"host\":\"c8-host\",\"engines\":\"any\",\"roots\":\"/tmp/coder-c8/home\",\"credentials\":\"\",\"at\":1794593283836688,\"up\":false},\"jobs\":[{\"job\":\"20261113-180803-592\",\"state\":\"sent\",\"task\":\"$ echo held-ok\",\"dest\":\"box\"},{\"job\":\"20261113-180803-192\",\"state\":\"refused\",\"task\":\"$ echo with-credential\",\"why\":\"a credential it names is outside this machine's grant\"},{\"job\":\"20261113-180803-180\",\"state\":\"refused\",\"task\":\"y\",\"why\":\"its directory is outside this machine's grant\"},{\"job\":\"20261113-180803-172\",\"state\":\"refused\",\"task\":\"x\",\"why\":\"its engine is outside this machine's grant\"},{\"job\":\"20261113-180803-168\",\"state\":\"started\",\"task\":\"$ echo daemon-ok\",\"session\":\"20261113-180803-570\"}]}"
+  },
+  {
+   "name": "jobs-failed",
+   "kind": "jobs",
+   "from": "coder jobs --json after a held job failed on its machine (ssh exit 3)",
+   "body": "{\"daemon\":{\"name\":\"c8-host\",\"host\":\"c8-host\",\"engines\":\"any\",\"roots\":\"/tmp/coder-c8/home\",\"credentials\":\"\",\"at\":1794593375724106,\"up\":true},\"jobs\":[{\"job\":\"20261113-180935-714\",\"state\":\"failed\",\"task\":\"$ echo fail-there\",\"dest\":\"box\",\"exit\":3},{\"job\":\"20261113-180803-592\",\"state\":\"sent\",\"task\":\"$ echo held-ok\",\"dest\":\"box\"},{\"job\":\"20261113-180803-192\",\"state\":\"refused\",\"task\":\"$ echo with-credential\",\"why\":\"a credential it names is outside this machine's grant\"},{\"job\":\"20261113-180803-180\",\"state\":\"refused\",\"task\":\"y\",\"why\":\"its directory is outside this machine's grant\"},{\"job\":\"20261113-180803-172\",\"state\":\"refused\",\"task\":\"x\",\"why\":\"its engine is outside this machine's grant\"},{\"job\":\"20261113-180803-168\",\"state\":\"started\",\"task\":\"$ echo daemon-ok\",\"session\":\"20261113-180803-570\"}]}"
+  },
+  {
+   "name": "host-list-none",
+   "kind": "host-list",
+   "from": "coder host list --json with nothing paired",
+   "body": "{\"waiting\":[],\"browsers\":[]}"
+  },
+  {
+   "name": "host-list-waiting",
+   "kind": "host-list",
+   "from": "coder host list --json after two browser.request calls over a local relay (coder host call, throwaway keys)",
+   "body": "{\"waiting\":[{\"id\":\"d98181aeca9805d73833513d9ed78253a4d456c828ac07e05c7a0f5fb31b72a9\",\"key\":\"2b84215b105ec1a4827f9e48497bc29150e40c059039e94a8b9eacc1443b8511\",\"label\":\"Smoke browser\",\"asked_at\":1794592886},{\"id\":\"6be6e271b8aa157f39193b5ff7f67e62cf8ace3b5bcaaffaf69e5ca7e73e2ace\",\"key\":\"51902492b0a196fff6470d767547c45165f2782ebbd1aadb82389493485db331\",\"label\":\"Second \\\"quoted\\\" browser\",\"asked_at\":1794592886}],\"browsers\":[]}"
+  },
+  {
+   "name": "host-list-allowed",
+   "kind": "host-list",
+   "from": "coder host list --json after coder host allow of the first",
+   "body": "{\"waiting\":[{\"id\":\"6be6e271b8aa157f39193b5ff7f67e62cf8ace3b5bcaaffaf69e5ca7e73e2ace\",\"key\":\"51902492b0a196fff6470d767547c45165f2782ebbd1aadb82389493485db331\",\"label\":\"Second \\\"quoted\\\" browser\",\"asked_at\":1794592886}],\"browsers\":[{\"grant\":\"dc69816fee314fdf37fd733e60f021c99eb90d50f313898dd7b99c577417a5b6\",\"key\":\"2b84215b105ec1a4827f9e48497bc29150e40c059039e94a8b9eacc1443b8511\",\"label\":\"Smoke browser\",\"expires_at\":1795197686}]}"
+  },
+  {
+   "name": "decide-no-key",
+   "kind": "decide",
+   "from": "coder decide 'Reply needed?' --options yes,no --state 'thanks!' --json in a home with no System One key (exit 1)",
+   "body": "{\"error\":\"no System One key: set BASETEN_API_KEY or add it to ~/work/.secrets/baseten.env\"}"
+  },
+  {
+   "name": "decide-one-option",
+   "kind": "decide",
+   "from": "coder decide 'Pick' --options a --json (exit 1)",
+   "body": "{\"error\":\"needs 2 to 32 options, separated by commas, none empty\"}"
+  },
+  {
+   "name": "decide-no-question",
+   "kind": "decide",
+   "from": "coder decide '' --options a,b --json (exit 1)",
+   "body": "{\"error\":\"needs a question\"}"
+  },
+  {
+   "name": "policy-saved",
+   "kind": "policy-result",
+   "from": "coder policy add local --mode explicit_requests_only --authors me --engine echo --json",
+   "body": "{\"saved\":true}"
+  },
+  {
+   "name": "policy-removed",
+   "kind": "policy-result",
+   "from": "coder policy rm mail --json",
+   "body": "{\"removed\":true}"
+  },
+  {
+   "name": "policy-list-none",
+   "kind": "policy-list",
+   "from": "coder policy list --json in a new home",
+   "body": "{}"
+  },
+  {
+   "name": "policy-list-four",
+   "kind": "policy-list",
+   "from": "coder policy list --json after four coder policy add: every member an entry can have",
+   "body": "{\n  \"local\":{\"mode\":\"explicit_requests_only\",\"authors\":[\"me\"],\"engine\":\"echo\"},\n  \"spam\":{\"mode\":\"ignore\",\"authors\":[\"*\"]},\n  \"team\":{\"mode\":\"candidate\",\"authors\":[\"kim\",\"lee\"],\"engine\":\"echo\",\"label\":\"agent\",\"channel\":\"issue\",\"deliver\":true,\"ci\":true,\"policy\":\"work on requests for changes\"},\n  \"mail\":{\"mode\":\"explicit_requests_only\",\"authors\":[\"kim\"],\"engine\":\"echo\",\"channel\":\"mail\",\"to\":\"kim@example.com\",\"send\":true}}"
+  },
+  {
+   "name": "policy-list-three",
+   "kind": "policy-list",
+   "from": "coder policy list --json after coder policy rm mail",
+   "body": "{\n  \"local\":{\"mode\":\"explicit_requests_only\",\"authors\":[\"me\"],\"engine\":\"echo\"},\n  \"spam\":{\"mode\":\"ignore\",\"authors\":[\"*\"]},\n  \"team\":{\"mode\":\"candidate\",\"authors\":[\"kim\",\"lee\"],\"engine\":\"echo\",\"label\":\"agent\",\"channel\":\"issue\",\"deliver\":true,\"ci\":true,\"policy\":\"work on requests for changes\"}}"
+  },
+  {
+   "name": "consent-none",
+   "kind": "consent",
+   "from": "coder consent --json in a new home",
+   "body": "{\"events\":0,\"grants\":[]}"
+  },
+  {
+   "name": "consent-granted",
+   "kind": "consent",
+   "from": "coder consent grant micro --classes user --json",
+   "body": "{\"events\":1,\"grants\":[{\"grant\":0,\"engine\":\"microcoder\",\"classes\":\"user\",\"state\":\"active\",\"sends\":0,\"bytes\":0}]}"
+  },
+  {
+   "name": "consent-two",
+   "kind": "consent",
+   "from": "coder consent grant system-one --classes session,project --days 30 --json",
+   "body": "{\"events\":2,\"grants\":[{\"grant\":0,\"engine\":\"microcoder\",\"classes\":\"user\",\"state\":\"active\",\"sends\":0,\"bytes\":0},{\"grant\":1,\"engine\":\"system-one\",\"classes\":\"session,project\",\"state\":\"active\",\"sends\":0,\"bytes\":0}]}"
+  },
+  {
+   "name": "consent-revoked",
+   "kind": "consent",
+   "from": "coder consent revoke 0 --json",
+   "body": "{\"events\":3,\"grants\":[{\"grant\":0,\"engine\":\"microcoder\",\"classes\":\"user\",\"state\":\"revoked\",\"sends\":0,\"bytes\":0},{\"grant\":1,\"engine\":\"system-one\",\"classes\":\"session,project\",\"state\":\"active\",\"sends\":0,\"bytes\":0}]}"
+  },
+  {
+   "name": "remembered-project",
+   "kind": "remembered",
+   "from": "coder remember deploy TEXT --project --json",
+   "body": "{\"key\":\"deploy\",\"scope\":\"project\",\"event\":0,\"state\":\"current\"}"
+  },
+  {
+   "name": "remembered",
+   "kind": "remembered",
+   "from": "coder remember build TEXT --json",
+   "body": "{\"key\":\"build\",\"scope\":\"user\",\"event\":1,\"state\":\"current\"}"
+  },
+  {
+   "name": "remembered-conflict",
+   "kind": "remembered",
+   "from": "coder remember build OTHER --json: the key now holds two texts",
+   "body": "{\"key\":\"build\",\"scope\":\"user\",\"event\":2,\"state\":\"conflict\"}"
+  },
+  {
+   "name": "revised",
+   "kind": "remembered",
+   "from": "coder revise build TEXT --reason resolve --json",
+   "body": "{\"key\":\"build\",\"scope\":\"user\",\"event\":3,\"state\":\"current\"}"
+  },
+  {
+   "name": "forgotten",
+   "kind": "remembered",
+   "from": "coder forget cake --json",
+   "body": "{\"key\":\"cake\",\"scope\":\"user\",\"event\":5,\"state\":\"forgotten\"}"
+  },
+  {
+   "name": "recall-unranked",
+   "kind": "recall",
+   "from": "coder recall --json: no query, the facts in the order they were written",
+   "body": "{\"verified\":true,\"events\":6,\"ranked\":false,\"facts\":[{\"key\":\"deploy\",\"text\":\"Ship openagents.com only through coax/web/release.sh.\",\"scope\":\"project\",\"version\":1},{\"key\":\"build\",\"text\":\"Build with coder/tui/coder.sh.\",\"scope\":\"user\",\"version\":3}]}"
+  },
+  {
+   "name": "recall-ranked",
+   "kind": "recall",
+   "from": "coder recall 'how do I put the website live?' --json with GW_REPLAY on coder/tui/fixtures/memory-replay (recorded embeddings)",
+   "body": "{\"verified\":true,\"events\":6,\"ranked\":true,\"facts\":[{\"key\":\"deploy\",\"text\":\"Ship openagents.com only through coax/web/release.sh.\",\"scope\":\"project\",\"version\":1,\"score\":718},{\"key\":\"build\",\"text\":\"Build with coder/tui/coder.sh.\",\"scope\":\"user\",\"version\":3,\"score\":637}]}"
+  },
+  {
+   "name": "recall-ranked-top",
+   "kind": "recall",
+   "from": "the same with --top 1; the two facts' vectors are kept, so only the query's recording is replayed",
+   "body": "{\"verified\":true,\"events\":6,\"ranked\":true,\"facts\":[{\"key\":\"deploy\",\"text\":\"Ship openagents.com only through coax/web/release.sh.\",\"scope\":\"project\",\"version\":1,\"score\":718}]}"
+  },
+  {
+   "name": "recall-said-held",
+   "kind": "recall",
+   "from": "coder recall --json in a home where a fact names the session line it was said in (coder remember --session ID)",
+   "body": "{\"verified\":true,\"events\":2,\"ranked\":false,\"facts\":[{\"key\":\"build\",\"text\":\"make -C coder\",\"scope\":\"user\",\"version\":1,\"said_in\":{\"session\":\"20261113-182859-059\",\"line\":2,\"state\":\"held\"}},{\"key\":\"editor\",\"text\":\"vim\",\"scope\":\"user\",\"version\":1}]}"
+  },
+  {
+   "name": "recall-said-changed",
+   "kind": "recall",
+   "from": "the same after that line of the session's log was edited",
+   "body": "{\"verified\":true,\"events\":2,\"ranked\":false,\"facts\":[{\"key\":\"build\",\"text\":\"make -C coder\",\"scope\":\"user\",\"version\":1,\"said_in\":{\"session\":\"20261113-182859-059\",\"line\":2,\"state\":\"changed\"}},{\"key\":\"editor\",\"text\":\"vim\",\"scope\":\"user\",\"version\":1}]}"
+  },
+  {
+   "name": "recall-said-gone",
+   "kind": "recall",
+   "from": "the same after the session's log was removed",
+   "body": "{\"verified\":true,\"events\":2,\"ranked\":false,\"facts\":[{\"key\":\"build\",\"text\":\"make -C coder\",\"scope\":\"user\",\"version\":1,\"said_in\":{\"session\":\"20261113-182859-059\",\"line\":2,\"state\":\"gone\"}},{\"key\":\"editor\",\"text\":\"vim\",\"scope\":\"user\",\"version\":1}]}"
+  },
+  {
+   "name": "router-new-worker",
+   "kind": "router-line",
+   "from": "coder router --once --json, one line of its passes; the same line is in ~/.openagents/coder/router/log.jsonl",
+   "body": "{\"kind\":\"trigger\",\"id\":\"20261113-182900-923\",\"source\":\"local\",\"thread\":\"ci\",\"fate\":\"addressed to the agent: new worker\",\"session\":\"20261113-182901-139\",\"at_us\":1794594541267140}"
+  },
+  {
+   "name": "router-dropped-source",
+   "kind": "router-line",
+   "from": "coder router --once --json, one line of its passes; the same line is in ~/.openagents/coder/router/log.jsonl",
+   "body": "{\"kind\":\"trigger\",\"id\":\"20261113-182900-977\",\"source\":\"spam\",\"thread\":\"\",\"fate\":\"dropped: source ignored\",\"at_us\":1794594541267301}"
+  },
+  {
+   "name": "router-dropped-not-addressed",
+   "kind": "router-line",
+   "from": "coder router --once --json, one line of its passes; the same line is in ~/.openagents/coder/router/log.jsonl",
+   "body": "{\"kind\":\"trigger\",\"id\":\"20261113-182901-031\",\"source\":\"local\",\"thread\":\"lunch\",\"fate\":\"dropped: not addressed to the agent\",\"at_us\":1794594541267334}"
+  },
+  {
+   "name": "router-dropped-author",
+   "kind": "router-line",
+   "from": "coder router --once --json, one line of its passes; the same line is in ~/.openagents/coder/router/log.jsonl",
+   "body": "{\"kind\":\"trigger\",\"id\":\"20261113-182901-084\",\"source\":\"local\",\"thread\":\"nope\",\"fate\":\"dropped: author not allowed\",\"at_us\":1794594541267363}"
+  },
+  {
+   "name": "router-reply",
+   "kind": "router-line",
+   "from": "coder router --once --json, one line of its passes; the same line is in ~/.openagents/coder/router/log.jsonl",
+   "body": "{\"kind\":\"trigger\",\"id\":\"20261113-182901-139\",\"source\":\"local\",\"thread\":\"ci\",\"fate\":\"reply written to the outbox\",\"session\":\"20261113-182901-139\",\"note\":\"first\",\"at_us\":1794594541583136}"
+  },
+  {
+   "name": "router-batch",
+   "kind": "router-line",
+   "from": "coder router --once --json, one line of its passes; the same line is in ~/.openagents/coder/router/log.jsonl",
+   "body": "{\"kind\":\"batch\",\"events\":2,\"ms\":0,\"decided\":false,\"at_us\":1794594541694998}"
+  },
+  {
+   "name": "router-no-decision",
+   "kind": "router-line",
+   "from": "coder router --once --json, one line of its passes; the same line is in ~/.openagents/coder/router/log.jsonl",
+   "body": "{\"kind\":\"trigger\",\"id\":\"20261113-182901-587\",\"source\":\"team\",\"thread\":\"\",\"fate\":\"dropped: no decision\",\"note\":\"no System One key: set BASETEN_API_KEY or add it to ~/work/.secrets/baseten.env\",\"at_us\":1794594541695080}"
+  },
+  {
+   "name": "router-recall",
+   "kind": "router-line",
+   "from": "coder router --once --json, one line of its passes; the same line is in ~/.openagents/coder/router/log.jsonl",
+   "body": "{\"kind\":\"recall\",\"id\":\"20261113-182904-384\",\"sessions\":1,\"hops\":1,\"bytes\":438}"
+  },
+  {
+   "name": "router-to-thread",
+   "kind": "router-line",
+   "from": "coder router --once --json, one line of its passes; the same line is in ~/.openagents/coder/router/log.jsonl",
+   "body": "{\"kind\":\"trigger\",\"id\":\"20261113-182904-572\",\"source\":\"local\",\"thread\":\"ci\",\"fate\":\"passed to its thread's worker\",\"session\":\"20261113-182904-626\",\"at_us\":1794594544756521}"
+  }
+ ],
+ "refused": [
+  {
+   "kind": "session",
+   "why": "running with no effect_outcome",
+   "body": "{\"id\":\"x\",\"engine\":\"echo\",\"state\":\"running\",\"turns\":1,\"steps\":0,\"started_us\":5,\"cwd\":\"/w\",\"task\":\"t\"}"
+  },
+  {
+   "kind": "session",
+   "why": "turns is a string",
+   "body": "{\"id\":\"x\",\"engine\":\"echo\",\"state\":\"finished\",\"turns\":\"1\",\"steps\":0,\"started_us\":5,\"cwd\":\"/w\",\"task\":\"t\"}"
+  },
+  {
+   "kind": "sessions",
+   "why": "no list",
+   "body": "{\"id\":\"x\"}"
+  },
+  {
+   "kind": "stop",
+   "why": "not stopped, with no reason",
+   "body": "{\"stopped\":false}"
+  },
+  {
+   "kind": "queued",
+   "why": "a state queue never prints",
+   "body": "{\"job\":\"j\",\"state\":\"done\"}"
+  },
+  {
+   "kind": "job-handled",
+   "why": "handled, with neither a session nor a refusal",
+   "body": "{\"id\":\"j\",\"task\":\"t\",\"engine\":\"echo\",\"cwd\":\"/w\",\"at\":5,\"handled\":9}"
+  },
+  {
+   "kind": "plugins",
+   "why": "failed with no reason",
+   "body": "[{\"name\":\"a\",\"state\":\"failed\",\"signed\":false,\"commands\":[],\"defines\":[],\"provides\":[],\"uses\":[]}]"
+  },
+  {
+   "kind": "host-list",
+   "why": "no browsers list",
+   "body": "{\"waiting\":[]}"
+  },
+  {
+   "kind": "decide",
+   "why": "a probability with two decimals",
+   "body": "{\"choice\":\"yes\",\"probability\":0.96}"
+  },
+  {
+   "kind": "policy-list",
+   "why": "an entry with no authors",
+   "body": "{\n  \"local\":{\"mode\":\"ignore\"}}"
+  },
+  {
+   "kind": "router-line",
+   "why": "a kind the Router does not write",
+   "body": "{\"kind\":\"other\",\"id\":\"x\"}"
+  },
+  {
+   "kind": "consent",
+   "why": "a state consent never prints",
+   "body": "{\"events\":1,\"grants\":[{\"grant\":0,\"engine\":\"claude\",\"classes\":\"user\",\"state\":\"paused\",\"sends\":0,\"bytes\":0}]}"
+  },
+  {
+   "kind": "remembered",
+   "why": "a scope memory does not have",
+   "body": "{\"key\":\"k\",\"scope\":\"team\",\"event\":0,\"state\":\"current\"}"
+  },
+  {
+   "kind": "recall",
+   "why": "ranked, with a fact that has no score",
+   "body": "{\"verified\":true,\"events\":1,\"ranked\":true,\"facts\":[{\"key\":\"k\",\"text\":\"t\",\"scope\":\"user\",\"version\":1}]}"
+  }
+ ]
+}

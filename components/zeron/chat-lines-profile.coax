@@ -1,0 +1,259 @@
+// The /chat page's lines through their codec (compliance plan step C9, GitHub #13250):
+// proto/coder/chat-page-lines-v2.json names every line and cell and holds answers a running API
+// gave to GET /api/chat/state. This requires:
+//   - the profile's lines are the codec's kinds, each with the codec's number of cells, and each
+//     cell's name is at the codec's column for it (chat-lines.coax, CHL_U_TEXT and the rest);
+//   - every line of every answer is one the reader indexes, of a known kind, with all its cells;
+//   - each line, written again from its cells through chl_put, is the same bytes, and so is the
+//     whole answer;
+//   - a cell the profile calls "clean" is unchanged by chl_clean, and one it calls "escaped"
+//     comes back the same through chl_unescape and chl_escape;
+//   - the lines keep their order: one Z, then the C lines, at most one S, then each U with its
+//     T lines after it; Z's shown is S's id, or 0 with no S.
+// SQL writes the lines in production (chat.lines). To hold a running API to the same rules:
+//   coax/web/tool.sh components/zeron/chat-lines-profile.coax --read FILE     (FILE: one answer's body)
+//   coax/web/tool.sh components/zeron/chat-lines-profile.coax proto/coder/chat-page-lines-v2.json
+
+#import "Basic";
+#load "chat-lines.coax";
+#load "../../coax/lib/json/json.coax";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/args.coax";
+#load "../../coax/lib/sys/fs.coax";
+
+CP_FIXTURE_PATH :: "proto/coder/chat-page-lines-v2.json";
+CP_BODY :: 1048576;       // one answer: what the page keeps of it (chat.coax, WC_DATA)
+CP_LINES :: 4096;         // and its lines (WC_LINES)
+CP_TEXT :: 65536;         // one long text, escaped or not
+CP_PLAIN :: 0; CP_CLEAN :: 1; CP_ESCAPED :: 2;
+
+Cp :: struct { bad: int; pass: int; quiet: bool; }
+cp_need :: (g: [] Cp, name: string, what: string, ok: bool) -> bool {
+  if ok { g[0].pass += 1; return true; }
+  g[0].bad += 1;
+  if !g[0].quiet { print("FAIL  % (%)\n", name, what); }
+  return false;
+}
+cp_same :: (g: [] Cp, name: string, what: string, got: string, want: string) {
+  if got == want { g[0].pass += 1; return; }
+  g[0].bad += 1;
+  if !g[0].quiet { print("FAIL  % (%)\n  got:  %\n  want: %\n", name, what, got, want); }
+}
+
+// The kinds in the order the profile lists them, and each cell's name by the codec's column.
+cp_kind_at :: (k: int) -> u8 { return ifx k == 0 then CHL_Z else ifx k == 1 then CHL_C else ifx k == 2 then CHL_S else ifx k == 3 then CHL_U else ifx k == 4 then CHL_T else 0; }
+cp_kind_index :: (kind: u8) -> int {
+  for k: 0..<5 { if cp_kind_at(k) == kind { return k; } }
+  return -1;
+}
+cp_cell_name :: (kind: u8, col: int) -> string {
+  if kind == CHL_Z {
+    if col == CHL_Z_SPENT { return "spent"; } if col == CHL_Z_CAP { return "cap"; } if col == CHL_Z_CREDENTIAL { return "credential"; }
+    if col == CHL_Z_LAST4 { return "last4"; } if col == CHL_Z_EXPIRED { return "expired"; } if col == CHL_Z_BUSY { return "busy"; }
+    if col == CHL_Z_SHOWN { return "shown"; } if col == CHL_Z_RECORD { return "record"; }
+  }
+  if kind == CHL_C {
+    if col == CHL_C_ID { return "id"; } if col == CHL_C_TITLE { return "title"; } if col == CHL_C_MODEL { return "model"; }
+    if col == CHL_C_UPDATED { return "updated"; } if col == CHL_C_BUSY { return "busy"; } if col == CHL_C_FOLDER { return "folder"; }
+    if col == CHL_C_TAB { return "tab"; }
+  }
+  if kind == CHL_S {
+    if col == CHL_S_ID { return "id"; } if col == CHL_S_TITLE { return "title"; } if col == CHL_S_MODEL { return "model"; }
+    if col == CHL_S_RESUMES { return "resumes"; }
+  }
+  if kind == CHL_U {
+    if col == CHL_U_ID { return "id"; } if col == CHL_U_STATUS { return "status"; } if col == CHL_U_AT { return "at"; }
+    if col == CHL_U_MODEL { return "model"; } if col == CHL_U_CREDENTIAL { return "credential"; } if col == CHL_U_TEXT { return "text"; }
+    if col == CHL_U_ANSWER { return "answer"; } if col == CHL_U_ERROR { return "error"; } if col == CHL_U_WORKING { return "working"; }
+    if col == CHL_U_COST { return "cost"; }
+  }
+  if kind == CHL_T {
+    if col == CHL_T_TURN { return "turn"; } if col == CHL_T_NAME { return "name"; } if col == CHL_T_DETAIL { return "detail"; }
+  }
+  return "";
+}
+// How each cell's text is written (CP_PLAIN, CP_CLEAN, CP_ESCAPED), by kind and column: the
+// profile says, and cp_spec reads it.
+CpSpec :: struct { text: [5 * 12] int; seen: [5] int; }
+cp_digits :: (t: string) -> bool {
+  if t.count == 0 { return false; }
+  for c: t { if c < '0' || c > '9' { return false; } }
+  return true;
+}
+cp_bit :: (t: string) -> bool { return t == "0" || t == "1"; }
+
+// The profile's "lines" against the codec; fills the spec.
+cp_spec :: (g: [] Cp, f: Jv, spec: [] CpSpec) {
+  lines := jv_get(f, 0, "lines");
+  if !cp_need(g, "the profile", "it names five lines", jv_len(f, lines) == 5) { return; }
+  for i: 0..<5 {
+    l := jv_at(f, lines, i);
+    kb: [8] u8; kn := jv_str(f, jv_get(f, l, "key"), kb[..]);
+    kind := cp_kind_at(i);
+    name := ifx kn == 1 then cast(string) kb[0..<1] else "?";
+    if !cp_need(g, name, "the profile lists the kinds as the codec has them: Z C S U T", kn == 1 && kb[0] == kind) { continue; }
+    cells := chl_cells(kind);
+    _ = cp_need(g, name, "the line has the codec's number of cells", jv_int(f, jv_get(f, l, "cells"), -1) == cells);
+    fields := jv_get(f, l, "fields");
+    if !cp_need(g, name, "every cell after the letter is named", jv_len(f, fields) == cells - 1) { continue; }
+    for k: 0..<cells - 1 {
+      c := jv_at(f, fields, k);
+      nb: [32] u8; nn := jv_str(f, jv_get(f, c, "name"), nb[..]);
+      tb: [16] u8; tn := jv_str(f, jv_get(f, c, "text"), tb[..]);
+      text := ifx tn < 0 then "" else cast(string) tb[0..<tn];
+      _ = cp_need(g, name, "a cell's column is its place in the line", jv_int(f, jv_get(f, c, "col"), -1) == k + 1);
+      cp_same(g, name, "a cell's name is the codec's for its column", ifx nn < 0 then "" else cast(string) nb[0..<nn], cp_cell_name(kind, k + 1));
+      if cp_need(g, name, "a cell's text is plain, clean or escaped", text == "plain" || text == "clean" || text == "escaped") {
+        spec[0].text[i * 12 + k + 1] = ifx text == "clean" then CP_CLEAN else ifx text == "escaped" then CP_ESCAPED else CP_PLAIN;
+      }
+    }
+    // the line's example is a line of its kind that comes back the same
+    eb: [512] u8; en := jv_str(f, jv_get(f, l, "example"), eb[..]);
+    if cp_need(g, name, "the line has an example", en > 0) {
+      ex := cast(string) eb[0..<en];
+      cs: [12] string; out: [520] u8;
+      for k: 0..<cells { cs[k] = chl_cell(ex, k); }
+      n := chl_put(out[..], 0, cs[0..<cells]);
+      _ = cp_need(g, name, "the example is a line of its kind", chl_kind(ex) == kind && chl_count(ex) == cells && n == en + 1 && cast(string) out[0..<en] == ex);
+    }
+  }
+}
+
+// One answer's body: every rule in this file's head. out holds the lines written back.
+cp_answer :: (g: [] Cp, name: string, body: string, spec: [] CpSpec, at: [] int, end: [] int, out: [] u8) {
+  if !cp_need(g, name, "the answer ends with a line end", body.count > 0 && body[body.count - 1] == '\n') { return; }
+  n := chl_index(body, at, end);
+  ends := 0;
+  for c: body { if c == '\n' { ends += 1; } }
+  if !cp_need(g, name, "every line is a line of the shape", n == ends) { return; }
+  o := 0; stage := 0; zs := 0; ss := 0;
+  shown := ""; s_id := ""; turn := "";
+  a: [CP_TEXT] u8; b: [CP_TEXT] u8;
+  for i: 0..<n {
+    line := body[at[i]..<end[i]];
+    kind := chl_kind(line); ki := cp_kind_index(kind);
+    cells := chl_cells(kind);
+    if !cp_need(g, name, "a line's letter is a kind", ki >= 0) { return; }
+    if !cp_need(g, name, "a line has all its kind's cells", chl_count(line) == cells) { return; }
+    cs: [12] string;
+    for k: 0..<cells { cs[k] = chl_cell(line, k); }
+    was := o;
+    o = chl_put(out, o, cs[0..<cells]);
+    if !cp_need(g, name, "a line is written from its cells", o > was) { return; }
+    cp_same(g, name, "a line comes back byte for byte", cast(string) out[was..<o - 1], line);
+    for k: 1..<cells {
+      how := spec[0].text[ki * 12 + k];
+      if how == CP_CLEAN {
+        m := chl_clean(a[..], 0, cs[k]);
+        cp_same(g, name, "a clean cell is unchanged by the cleaning", ifx m < 0 then "" else cast(string) a[0..<m], cs[k]);
+      }
+      if how == CP_ESCAPED {
+        r := chl_unescape(cs[k], a[..], '\n');
+        m := ifx r.whole then chl_escape(b[..], 0, cast(string) a[0..<r.n]) else -1;
+        cp_same(g, name, "an escaped cell comes back from its text", ifx m < 0 then "" else cast(string) b[0..<m], cs[k]);
+      }
+    }
+    // the order, and what the lines say of each other
+    st := ifx kind == CHL_Z then 0 else ifx kind == CHL_C then 1 else ifx kind == CHL_S then 2 else 3;
+    _ = cp_need(g, name, "the lines keep their order: Z, C, S, then U with its T", st >= stage && (i == 0) == (kind == CHL_Z));
+    stage = st;
+    if kind == CHL_Z {
+      zs += 1; shown = cs[CHL_Z_SHOWN];
+      _ = cp_need(g, name, "the head's flags are 0 or 1, its shown a number and its record 2", cp_bit(cs[CHL_Z_EXPIRED]) && cp_bit(cs[CHL_Z_BUSY]) && cp_digits(shown) && cs[CHL_Z_RECORD] == "2");
+      _ = cp_need(g, name, "the head's credential is api, oauth or none, with its last four", (cs[CHL_Z_CREDENTIAL] == "") == (cs[CHL_Z_LAST4] == "") && (cs[CHL_Z_CREDENTIAL] == "" || cs[CHL_Z_CREDENTIAL] == "api" || cs[CHL_Z_CREDENTIAL] == "oauth"));
+    }
+    if kind == CHL_C { _ = cp_need(g, name, "a conversation has an id, a model, a busy flag and a tab or none", cp_digits(cs[CHL_C_ID]) && cs[CHL_C_MODEL] != "" && cp_bit(cs[CHL_C_BUSY]) && (cs[CHL_C_TAB] == "" || cp_digits(cs[CHL_C_TAB]))); }
+    if kind == CHL_S { ss += 1; s_id = cs[CHL_S_ID]; _ = cp_need(g, name, "the conversation shown has an id and says whether it resumes", cp_digits(s_id) && cp_bit(cs[CHL_S_RESUMES])); }
+    if kind == CHL_U {
+      turn = cs[CHL_U_ID];
+      status := cs[CHL_U_STATUS];
+      _ = cp_need(g, name, "a turn has an id and a status the API keeps", cp_digits(turn) && (status == "queued" || status == "running" || status == "done" || status == "failed" || status == "stopped" || status == "refused"));
+    }
+    if kind == CHL_T { _ = cp_need(g, name, "a tool's line follows its turn", turn != "" && cs[CHL_T_TURN] == turn); }
+  }
+  _ = cp_need(g, name, "one head, and at most one conversation shown", zs == 1 && ss <= 1);
+  _ = cp_need(g, name, "the head's shown is the conversation shown, or 0", shown == (ifx ss == 1 then s_id else "0"));
+  _ = cp_need(g, name, "turns come only with the conversation shown", stage < 3 || ss == 1);
+  cp_same(g, name, "the answer comes back byte for byte", ifx o < 0 then "" else cast(string) out[0..<o], body);
+}
+
+// The spec with no profile at hand (--read): the codec's own word for each cell.
+cp_spec_builtin :: (spec: [] CpSpec) {
+  for k: 0..<60 { spec[0].text[k] = CP_PLAIN; }
+  spec[0].text[1 * 12 + CHL_C_TITLE] = CP_CLEAN; spec[0].text[1 * 12 + CHL_C_FOLDER] = CP_CLEAN;
+  spec[0].text[2 * 12 + CHL_S_TITLE] = CP_CLEAN;
+  spec[0].text[3 * 12 + CHL_U_TEXT] = CP_ESCAPED; spec[0].text[3 * 12 + CHL_U_ANSWER] = CP_ESCAPED;
+  spec[0].text[3 * 12 + CHL_U_ERROR] = CP_CLEAN; spec[0].text[3 * 12 + CHL_U_WORKING] = CP_CLEAN;
+  spec[0].text[4 * 12 + CHL_T_NAME] = CP_CLEAN; spec[0].text[4 * 12 + CHL_T_DETAIL] = CP_CLEAN;
+}
+
+cp_run :: (text: string, at: [] int, end: [] int, out: [] u8, body: [] u8) -> int {
+  nodes: [8192] JvNode; f: [1] Jv;
+  if !jv_parse(f[..], text, nodes[..]) { print("FAIL  the fixture is not JSON\n"); return 1; }
+  g: [1] Cp; spec: [1] CpSpec; own: [1] CpSpec;
+  cp_spec(g[..], f[0], spec[..]);
+  cp_spec_builtin(own[..]);
+  same := true;
+  for k: 0..<60 { if spec[0].text[k] != own[0].text[k] { same = false; } }
+  _ = cp_need(g[..], "the profile", "it says of each cell's text what this check holds a running API to", same);
+  answers := jv_get(f[0], 0, "answers");
+  lines := 0;
+  for i: 0..<jv_len(f[0], answers) {
+    a := jv_at(f[0], answers, i);
+    nb: [160] u8; nn := jv_str(f[0], jv_get(f[0], a, "name"), nb[..]); name := ifx nn < 0 then "" else cast(string) nb[0..<nn];
+    bn := jv_str(f[0], jv_get(f[0], a, "body"), body);
+    if !cp_need(g[..], name, "the answer has a body", bn > 0) { continue; }
+    b := cast(string) body[0..<bn];
+    cp_answer(g[..], name, b, spec[..], at, end, out);
+    k := chl_index(b, at, end);
+    lines += k;
+    for j: 0..<k { ki := cp_kind_index(chl_kind(b[at[j]..<end[j]])); if ki >= 0 { spec[0].seen[ki] += 1; } }
+  }
+  _ = cp_need(g[..], "the fixture", "it holds answers", jv_len(f[0], answers) >= 5);
+  for k: 0..<5 { kb: [1] u8; kb[0] = cp_kind_at(k); _ = cp_need(g[..], cast(string) kb[..], "the fixture holds a line of this kind", spec[0].seen[k] >= 1); }
+  print("% chat page line checks hold over % lines, % failed\n", g[0].pass, lines, g[0].bad);
+  return ifx g[0].bad == 0 then 0 else 1;
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  args: [1] Args;
+  loaded := args_load(args[..]);
+  at: [CP_LINES] int; end: [CP_LINES] int;
+  out: [CP_BODY + 1] u8; body: [CP_BODY] u8;
+  spec: [1] CpSpec; g: [1] Cp;
+  cp_spec_builtin(spec[..]);
+  // the checks bite: a line short a cell, an unknown letter, lines out of order, a tool before
+  // its turn, text that is no line, a second head, a bar left raw by a wrong escape, no line
+  // end; and a good answer passes
+  bad := [8] string.[
+    "Z|0.00|1.00|||0|0|0\n",
+    "Z|0.00|1.00|||0|0|0|2\nQ|1|x\n",
+    "Z|0.00|1.00|||0|0|1|2\nS|1||m|0\nC|1||m|Nov 13 01:45|0||1\n",
+    "Z|0.00|1.00|||0|0|1|2\nC|1||m|Nov 13 01:45|0||1\nS|1||m|0\nT|1|Read|x\n",
+    "Z|0.00|1.00|||0|0|0|2\nhello\n",
+    "Z|0.00|1.00|||0|0|0|2\nZ|0.00|1.00|||0|0|0|2\n",
+    "Z|0.00|1.00|||0|0|1|2\nC|1||m|Nov 13 01:45|0||1\nS|1||m|0\nU|1|done|Nov 13 01:45|m|own|a\\qb|||x|0.0000\n",
+    "Z|0.00|1.00|||0|0|0|2"];
+  for k: 0..<8 {
+    g[0] = Cp.{quiet = true};
+    cp_answer(g[..], "self", bad[k], spec[..], at[..], end[..], out[..]);
+    if g[0].bad == 0 { print("FAIL  the check takes an answer it should refuse (%)\n", k); return 1; }
+  }
+  g[0] = Cp.{quiet = true};
+  cp_answer(g[..], "self", "Z|0.00|1.00|||0|0|1|2\nC|1|a b|m|Nov 13 01:45|0|f|1\nS|1|a b|m|1\nU|1|done|Nov 13 01:45|m|own|a\\pb\\\\c\\nd|ok|||0.0200\nT|1|Read|x\n", spec[..], at[..], end[..], out[..]);
+  if g[0].bad != 0 { print("FAIL  the check refuses a good answer\n"); return 1; }
+  if loaded && args_has(args[..], "--read") {
+    path := args_value(args[..], "--read", "");
+    n := fs_read(path, body[..]);
+    if n < 0 { tool_errln("chat-lines-profile: cannot read the answer"); return 2; }
+    g[0] = Cp.{};
+    cp_answer(g[..], path, cast(string) body[0..<n], spec[..], at[..], end[..], out[..]);
+    print("% lines read and written back, % failed\n", chl_index(cast(string) body[0..<n], at[..], end[..]), g[0].bad);
+    return ifx g[0].bad == 0 then 0 else 1;
+  }
+  path := ifx loaded && args_count(args[..]) >= 1 then args_at(args[..], 0) else CP_FIXTURE_PATH;
+  buf: [262144] u8;
+  n := fs_read(path, buf[..]);
+  if n <= 0 { tool_errln("chat-lines-profile: cannot read the fixture"); return 2; }
+  return cp_run(cast(string) buf[0..<n], at[..], end[..], out[..], body[..]);
+}

@@ -14,9 +14,10 @@
 //
 // Writers: the room (coax/web/room/room-vitals.coax, room-directory.coax, room-control.coax), the
 // room's local stand-in for the API (room-vitals.coax rm_vitals_local, room-dev.coax) and the API
-// (coax/web/api/player.c through ticket-sign.coax: the two receipts). Readers: the room. The API
-// still reads the vitals and directory posts in C (player.c room_vitals, rooms.c shard_lines), and
-// SQL builds the control answer; their allowlist lines say so.
+// (coax/web/api/player.c through ticket-sign.coax: the two receipts). Readers: the room (the
+// receipts and the control answer) and the API (the vitals and directory posts, "the API's readers"
+// below: player.c room_vitals and rooms.c report call them through ticket-sign.coax). SQL builds
+// the control answer; its allowlist line says so.
 //
 // A writer takes the buffer and where to go on, and returns the new end, or -1 when it did not fit
 // (and -1 again from every later call, so a caller checks once).
@@ -234,6 +235,224 @@ room_report_checkpoint_receipt_read :: (body: string, r: [] RoomCheckpointReceip
   return true;
 }
 
+// ---- the API's readers -------------------------------------------------------------------------------
+//
+// The API read both posts with C's sscanf and atoi until Protocol wave 2 (#13250), and what is saved
+// for a player hangs on what it took from each text. So these read as glibc's sscanf and atoi do,
+// for every text and not only a room's: a number may follow white space of any kind (a line end too,
+// so a number may be taken from a later line), may have a sign, and one too large is LONG_MAX or
+// LONG_MIN ("%lld") or the low 32 bits of that ("%d", atoi); a word is at most 47 bytes and the rest
+// of a longer one is read as the next field; a text ends at its first NUL. Do not make them stricter.
+
+// The text as C sees it: up to its first NUL.
+room_report_c_text :: (t: string) -> string #effects(all) {
+  for i: 0..<t.count { if t[i] == 0 { return t[0..<i]; } }
+  return t;
+}
+// C's isspace
+room_report_c_space :: (c: u8) -> bool #effects(all) { return c == ' ' || (c >= 9 && c <= 13); }
+ROOM_SCAN_MAX :: 9223372036854775807;
+RoomScan :: struct { at: int; v: int; }
+// scanf's "%lld" (and strtoll) at s.at: 1 with the number in s.v and s.at after it, 0 when no number
+// is there (a sign alone too), -1 when the text ends first. Too large a number is the nearest end.
+room_report_scan_num :: (t: string, s: [] RoomScan) -> int #effects(all) {
+  i := s[0].at;
+  while i < t.count && room_report_c_space(t[i]) { i += 1; }
+  if i >= t.count { return -1; }
+  neg := t[i] == '-';
+  if t[i] == '-' || t[i] == '+' { i += 1; }
+  first := i; x := 0; sig := 0; over := false;
+  while i < t.count && t[i] >= '0' && t[i] <= '9' {
+    d := cast(int) (t[i] - '0');
+    if sig > 0 || d > 0 {
+      // 18 digits always fit; the 19th does up to 9223372036854775807 (the 8 of LONG_MIN is the end it clamps to)
+      if sig < 18 { x = x * 10 + d; }
+      else if sig == 18 && (x < 922337203685477580 || (x == 922337203685477580 && d <= 7)) { x = x * 10 + d; }
+      else { over = true; }
+      sig += 1;
+    }
+    i += 1;
+  }
+  if i == first { return 0; }
+  if over { s[0].v = ifx neg then -ROOM_SCAN_MAX - 1 else ROOM_SCAN_MAX; }
+  else { s[0].v = ifx neg then -x else x; }
+  s[0].at = i;
+  return 1;
+}
+// What C's (int) keeps of a long: its low 32 bits, signed.
+room_report_c_int :: (v: int) -> int #effects(all) {
+  m := v % 4294967296;
+  if m < 0 { m += 4294967296; }
+  return ifx m >= 2147483648 then m - 4294967296 else m;
+}
+// atoi at `at`: the number there as an int, 0 when there is none.
+room_report_atoi :: (t: string, at: int) -> int #effects(all) {
+  s: [1] RoomScan; s[0].at = at;
+  return ifx room_report_scan_num(t, s[..]) == 1 then room_report_c_int(s[0].v) else 0;
+}
+// Where the next line end is at or after `at`, or -1.
+room_report_line_end :: (t: string, at: int) -> int #effects(all) {
+  i := at;
+  while i < t.count { if t[i] == '\n' { return i; } i += 1; }
+  return -1;
+}
+
+// A vitals post's head, as sscanf("t %lld") and, after the first line end, sscanf("o %d %lld %lld")
+// took it. stamped: the first gave a time (at). owned: the second gave all three (shard, gen, batch),
+// so the lines have operation IDs and the answer is a receipt. lines: the line end the player lines
+// follow (the first after the o line's start when owned, else the first), -1 none.
+RoomVitalsHead :: struct { stamped: bool; owned: bool; at: int; shard: int; gen: int; batch: int; lines: int; }
+room_report_vitals_head_read :: (body: string, h: [] RoomVitalsHead) #export_c #effects(all) {
+  h[0] = RoomVitalsHead.{lines = -1};
+  t := room_report_c_text(body);
+  s: [1] RoomScan;
+  if t.count > 0 && t[0] == 't' {
+    s[0].at = 1;
+    if room_report_scan_num(t, s[..]) == 1 { h[0].stamped = true; h[0].at = s[0].v; }
+  }
+  o := room_report_line_end(t, 0);
+  h[0].lines = o;
+  if o < 0 || o + 1 >= t.count || t[o + 1] != 'o' { return; }
+  s[0].at = o + 2;
+  if room_report_scan_num(t, s[..]) != 1 { return; }
+  h[0].shard = room_report_c_int(s[0].v);
+  if room_report_scan_num(t, s[..]) != 1 { return; }
+  h[0].gen = s[0].v;
+  if room_report_scan_num(t, s[..]) != 1 { return; }
+  h[0].batch = s[0].v;
+  h[0].owned = true;
+  h[0].lines = room_report_line_end(t, o + 1);
+}
+// One player line, as sscanf("%47s %d %d %d %d %lld %lld %lld") took it from the line's first 159
+// bytes (owned), or sscanf("%47s %d %d %d") from its first 127 (a post without operation IDs).
+// got: how many fields it took, in order pid, hp, max, xp, wanted, rev, at (when), owner; -1 an empty
+// line. A field not taken keeps 0, but xp and owner -1. klass: what follows the first " c=" in those
+// bytes, to their end (has_class). pid and klass end in a 0 byte. next: the line end the next line
+// follows, -1 none.
+ROOM_VITALS_PID :: 48;
+ROOM_VITALS_ONE :: 160;
+ROOM_VITALS_ONE_LEGACY :: 128;
+RoomVitalsLine :: struct { got: int; hp: int; max: int; xp: int; wanted: int; rev: int; when: int; owner: int; next: int; has_class: bool; pid: [ROOM_VITALS_PID] u8; klass: [ROOM_VITALS_ONE] u8; }
+// The line that follows the line end at `from` (RoomVitalsHead.lines, then RoomVitalsLine.next):
+// false when there is none (no line end, or the text ends after it).
+room_report_vitals_line_read :: (body: string, from: int, owned: bool, l: [] RoomVitalsLine) -> bool #export_c #effects(all) {
+  l[0] = RoomVitalsLine.{got = -1, xp = -1, owner = -1, next = -1};
+  t := room_report_c_text(body);
+  if from < 0 || from + 1 >= t.count { return false; }
+  start := from + 1;
+  next := room_report_line_end(t, start);
+  l[0].next = next;
+  end := ifx next < 0 then t.count else next;
+  most := ifx owned then ROOM_VITALS_ONE - 1 else ROOM_VITALS_ONE_LEGACY - 1;
+  if end - start > most { end = start + most; }
+  one := t[start..<end];
+  i := 0;
+  while i < one.count && room_report_c_space(one[i]) { i += 1; }
+  if i >= one.count { return true; }
+  pn := 0;
+  while i < one.count && pn < ROOM_VITALS_PID - 1 && !room_report_c_space(one[i]) { l[0].pid[pn] = one[i]; pn += 1; i += 1; }
+  s: [1] RoomScan; s[0].at = i;
+  got := 1;
+  fields := ifx owned then 8 else 4;
+  while got < fields {
+    if room_report_scan_num(one, s[..]) != 1 { break; }
+    v := s[0].v;
+    if got == 1 { l[0].hp = room_report_c_int(v); }
+    else if got == 2 { l[0].max = room_report_c_int(v); }
+    else if got == 3 { l[0].xp = room_report_c_int(v); }
+    else if got == 4 { l[0].wanted = room_report_c_int(v); }
+    else if got == 5 { l[0].rev = v; }
+    else if got == 6 { l[0].when = v; }
+    else { l[0].owner = v; }
+    got += 1;
+  }
+  l[0].got = got;
+  if owned {
+    c := 0;
+    while c + 3 <= one.count {
+      if one[c] == ' ' && one[c + 1] == 'c' && one[c + 2] == '=' {
+        l[0].has_class = true;
+        for k: c + 3..<one.count { l[0].klass[k - c - 3] = one[k]; }
+        break;
+      }
+      c += 1;
+    }
+  }
+  return true;
+}
+
+// A directory post as rooms.c took it. kept gets the post without its "e " and "h " lines (what
+// verse.room_report reads), and the result is its length, -1 when kept is too small (the post's
+// length always fits). shard: atoi after the last "s " line's key, 0 when there is none. endpoint:
+// the last "e " line's URL that is wss://NAME.openagents.com[:PORT]/api/room/s.../ in printable
+// ASCII without a quote or backslash and under ROOM_DIR_ENDPOINT bytes, ending in a 0 byte ("" none).
+// players, tick_us: the last "h " line's two numbers as sscanf("%d %d") took them, both -1 when it
+// did not take two (or there is no such line).
+ROOM_DIR_ENDPOINT :: 200;
+RoomDirPost :: struct { shard: int; players: int; tick_us: int; endpoint_n: int; endpoint: [ROOM_DIR_ENDPOINT] u8; }
+room_report_dir_endpoint_ok :: (u: string) -> bool #effects(all) {
+  m := u.count;
+  if !(m < ROOM_DIR_ENDPOINT && m > 6 && u[0..<6] == "wss://") { return false; }
+  slash := -1;
+  for i: 6..<m { if u[i] == '/' { slash = i; break; } }
+  hn := ifx slash < 0 then 0 else slash - 6;
+  for i: 0..<hn { if u[6 + i] == ':' { hn = i; break; } }
+  if !(slash >= 0 && hn > 15 && u[6 + hn - 15..<6 + hn] == ".openagents.com") { return false; }
+  if !(slash + 11 <= m && u[slash..<slash + 11] == "/api/room/s" && u[m - 1] == '/') { return false; }
+  for c: u { if !(c > ' ' && c < 127 && c != '"' && c != '\\') { return false; } }
+  return true;
+}
+room_report_dir_read :: (body: string, kept: [] u8, d: [] RoomDirPost) -> int #export_c #effects(all) {
+  d[0] = RoomDirPost.{players = -1, tick_us = -1};
+  t := room_report_c_text(body);
+  w := 0; at := 0;
+  while at < t.count {
+    nl := room_report_line_end(t, at);
+    end := ifx nl < 0 then t.count else nl + 1;   // the line with its line end
+    key := at + 1 < t.count && t[at + 1] == ' ';
+    if key && t[at] == 'e' {
+      u := t[at + 2..<(ifx nl < 0 then end else end - 1)];
+      if room_report_dir_endpoint_ok(u) {
+        for i: 0..<ROOM_DIR_ENDPOINT { d[0].endpoint[i] = ifx i < u.count then u[i] else 0; }
+        d[0].endpoint_n = u.count;
+      }
+    } else if key && t[at] == 'h' {
+      s: [1] RoomScan; s[0].at = at + 2;
+      d[0].players = -1; d[0].tick_us = -1;
+      if room_report_scan_num(t, s[..]) == 1 {
+        p := room_report_c_int(s[0].v);
+        if room_report_scan_num(t, s[..]) == 1 { d[0].players = p; d[0].tick_us = room_report_c_int(s[0].v); }
+      }
+    } else {
+      if key && t[at] == 's' { d[0].shard = room_report_atoi(t, at + 2); }
+      if w + (end - at) > kept.count { return -1; }
+      for i: at..<end { kept[w] = t[i]; w += 1; }
+    }
+    at = end;
+  }
+  return w;
+}
+// Whether every line that starts with `key` names `shard` (atoi right after the key), and one does.
+room_report_names_shard :: (body: string, key: string, shard: int) -> bool #effects(all) {
+  t := room_report_c_text(body);
+  seen := 0; at := 0;
+  while at < t.count {
+    if at + key.count <= t.count && t[at..<at + key.count] == key {
+      if room_report_atoi(t, at + key.count) != shard { return false; }
+      seen += 1;
+    }
+    nl := room_report_line_end(t, at);
+    if nl < 0 { break; }
+    at = nl + 1;
+  }
+  return seen > 0;
+}
+// A directory post's "s " lines all name this shard, and it has one: a shard's own key reports for
+// that shard only (#13260).
+room_report_dir_names_shard :: (body: string, shard: int) -> bool #export_c #effects(all) { return room_report_names_shard(body, "s ", shard); }
+// The same of a stats post's "shard=" lines (POST /api/playtest/room-stats; its other lines are SQL's).
+room_report_stats_names_shard :: (body: string, shard: int) -> bool #export_c #effects(all) { return room_report_names_shard(body, "shard=", shard); }
+
 #test "a vitals post, its receipt and what an older API answered" {
   b: [256] u8;
   n := room_report_vitals_head(b[..], 600000, 1, 777, 1);
@@ -263,6 +482,115 @@ room_report_checkpoint_receipt_read :: (body: string, r: [] RoomCheckpointReceip
   #assert cast(string) b[0..<n] == "g 777\n" && room_report_dir_health(b[..], 0, 0, -1) == 6 && cast(string) b[0..<6] == "h 0 0\n";
   n = room_report_drain(b[..], 3, 990000, 600);
   #assert cast(string) b[0..<n] == "drain 3 990000 600" && room_report_drain(b[0..<10], 3, 990000, 600) == -1;
+}
+#test "the API reads a room's vitals post: the head, each line, the owner and the class" {
+  // a room server's post (proto/verse/room-reports-v1.json, vitals 0)
+  post := "t 1794552522401\no 1 1794552384531 7\np-raidcheck-1794552383-0 57 57 0 0 1 1794552478286\np-raidcheck-1794552383-1 57 57 0 0 2 1794552478286\np-raidcheck-1794552383-2 57 57 0 0 3 1794552478286\np-raidcheck-1794552383-3 57 57 0 0 4 1794552478286\n";
+  h: [1] RoomVitalsHead; l: [1] RoomVitalsLine;
+  room_report_vitals_head_read(post, h[..]);
+  #assert h[0].stamped && h[0].at == 1794552522401 && h[0].owned && h[0].shard == 1 && h[0].gen == 1794552384531 && h[0].batch == 7 && h[0].lines == 35;
+  from := h[0].lines; n := 0;
+  while room_report_vitals_line_read(post, from, true, l[..]) {
+    #assert l[0].got == 7 && cast(string) l[0].pid[0..<23] == "p-raidcheck-1794552383-" && l[0].pid[23] == cast(u8) ('0' + n) && l[0].pid[24] == 0;
+    #assert l[0].hp == 57 && l[0].max == 57 && l[0].xp == 0 && l[0].wanted == 0 && l[0].rev == n + 1 && l[0].when == 1794552478286 && l[0].owner == -1 && !l[0].has_class;
+    from = l[0].next; n += 1;
+  }
+  #assert n == 4 && from == post.count - 1;
+  // what the writer gives, read back: an owner, a class
+  b: [256] u8;
+  m := room_report_vitals_head(b[..], 600000, 3, 777, 2);
+  m = room_report_vitals_line(b[..], m, "p-a", 17, 30, 0, 0, 1, 600000, 0, "");
+  m = room_report_vitals_line(b[..], m, "p-b", 9, 22, 120, 2, 4, 600500, 3, "wizard");
+  text := cast(string) b[0..<m];
+  room_report_vitals_head_read(text, h[..]);
+  #assert h[0].stamped && h[0].at == 600000 && h[0].owned && h[0].shard == 3 && h[0].gen == 777 && h[0].batch == 2;
+  #assert room_report_vitals_line_read(text, h[0].lines, true, l[..]) && l[0].got == 7 && cast(string) l[0].pid[0..<4] == "p-a\0" && l[0].hp == 17 && l[0].max == 30 && l[0].when == 600000 && !l[0].has_class;
+  #assert room_report_vitals_line_read(text, l[0].next, true, l[..]) && l[0].got == 8 && cast(string) l[0].pid[0..<4] == "p-b\0" && l[0].hp == 9 && l[0].max == 22 && l[0].xp == 120 && l[0].wanted == 2 && l[0].rev == 4 && l[0].when == 600500 && l[0].owner == 3;
+  #assert l[0].has_class && cast(string) l[0].klass[0..<7] == "wizard\0";
+  #assert !room_report_vitals_line_read(text, l[0].next, true, l[..]) && !room_report_vitals_line_read(text, -1, true, l[..]);
+  // a post from before operation IDs: "PID HP MAX [XP]"
+  old := "t 600000\np-a 17 30 5\np-b 9 22\n\nx\n";
+  room_report_vitals_head_read(old, h[..]);
+  #assert h[0].stamped && !h[0].owned && h[0].lines == 8;
+  #assert room_report_vitals_line_read(old, 8, false, l[..]) && l[0].got == 4 && l[0].hp == 17 && l[0].max == 30 && l[0].xp == 5;
+  #assert room_report_vitals_line_read(old, l[0].next, false, l[..]) && l[0].got == 3 && l[0].hp == 9 && l[0].max == 22 && l[0].xp == -1;
+  #assert room_report_vitals_line_read(old, l[0].next, false, l[..]) && l[0].got == -1;   // an empty line
+  #assert room_report_vitals_line_read(old, l[0].next, false, l[..]) && l[0].got == 1 && !room_report_vitals_line_read(old, l[0].next, false, l[..]);
+}
+#test "the API's readers take what sscanf and atoi took: white space, signs, long words, numbers too large, a NUL" {
+  h: [1] RoomVitalsHead; l: [1] RoomVitalsLine; s: [1] RoomScan;
+  // "t %lld": the t, then a number after any white space; nothing else is a time
+  room_report_vitals_head_read("t5", h[..]); #assert h[0].stamped && h[0].at == 5 && !h[0].owned && h[0].lines == -1;
+  room_report_vitals_head_read("t \n\t+7\no1 2 3", h[..]); #assert h[0].stamped && h[0].at == 7 && !h[0].owned && h[0].lines == 2;
+  room_report_vitals_head_read(" t 5", h[..]); #assert !h[0].stamped && h[0].at == 0;
+  room_report_vitals_head_read("t -", h[..]); #assert !h[0].stamped;
+  room_report_vitals_head_read("t x", h[..]); #assert !h[0].stamped;
+  room_report_vitals_head_read("", h[..]); #assert !h[0].stamped && h[0].lines == -1;
+  // the o line's numbers may stand on later lines; the player lines then follow the line end after the o
+  room_report_vitals_head_read("t 5\no 1\n2\n3\np 1 1", h[..]); #assert h[0].owned && h[0].shard == 1 && h[0].gen == 2 && h[0].batch == 3 && h[0].lines == 7;
+  room_report_vitals_head_read("t 5\no 1 2\n", h[..]); #assert !h[0].owned && h[0].lines == 3;
+  room_report_vitals_head_read("t 5\n o 1 2 3\n", h[..]); #assert !h[0].owned;
+  room_report_vitals_head_read("t 5\no 4294967297 -9223372036854775809 9223372036854775808\n", h[..]);
+  #assert h[0].owned && h[0].shard == 1 && h[0].gen == -9223372036854775807 - 1 && h[0].batch == 9223372036854775807;
+  // a text ends at its first NUL
+  room_report_vitals_head_read("t 5\no 1 2\0 3\n", h[..]); #assert h[0].stamped && !h[0].owned;
+  // numbers: %lld clamps, %d keeps the low 32 bits of the clamped long
+  s[0].at = 0; #assert room_report_scan_num("  -0012x", s[..]) == 1 && s[0].v == -12 && s[0].at == 7;
+  s[0].at = 0; #assert room_report_scan_num("9223372036854775807", s[..]) == 1 && s[0].v == 9223372036854775807;
+  s[0].at = 0; #assert room_report_scan_num("9223372036854775808", s[..]) == 1 && s[0].v == 9223372036854775807;
+  s[0].at = 0; #assert room_report_scan_num("-9223372036854775808", s[..]) == 1 && s[0].v == -9223372036854775807 - 1;
+  s[0].at = 0; #assert room_report_scan_num("000000000000000000000000000012", s[..]) == 1 && s[0].v == 12;
+  s[0].at = 0; #assert room_report_scan_num("99999999999999999999999", s[..]) == 1 && s[0].v == 9223372036854775807;
+  s[0].at = 0; #assert room_report_scan_num("+", s[..]) == 0 && room_report_scan_num("-x", s[..]) == 0 && room_report_scan_num("x", s[..]) == 0 && room_report_scan_num(" \n", s[..]) == -1 && room_report_scan_num("", s[..]) == -1;
+  #assert room_report_c_int(2147483647) == 2147483647 && room_report_c_int(2147483648) == -2147483648 && room_report_c_int(4294967297) == 1 && room_report_c_int(-1) == -1 && room_report_c_int(-2147483649) == 2147483647;
+  #assert room_report_c_int(9223372036854775807) == -1 && room_report_c_int(-9223372036854775807 - 1) == 0;
+  #assert room_report_atoi("s \n 42 7", 1) == 42 && room_report_atoi("s x", 1) == 0 && room_report_atoi("s -3", 1) == -3 && room_report_atoi("s 99999999999999999999", 1) == -1 && room_report_atoi("s", 1) == 0;
+  // a word is 47 bytes at most: the rest of a longer one is read as HP (and here is no number)
+  long := "t 5\no 1 2 3\n0123456789012345678901234567890123456789012345678 5 6\n";
+  #assert room_report_vitals_line_read(long, 11, true, l[..]) && l[0].got == 4 && l[0].pid[46] == '6' && l[0].pid[47] == 0 && l[0].hp == 78 && l[0].max == 5 && l[0].xp == 6;
+  long = "t 5\no 1 2 3\n01234567890123456789012345678901234567890123456x 5 6\n";
+  #assert room_report_vitals_line_read(long, 11, true, l[..]) && l[0].got == 1 && l[0].hp == 0;
+  // fields after tabs, with signs; a number too large for an int
+  odd := "t 5\no 1 2 3\n \tp-a\t+17 -30 4294967296 0 1 600000 0 c=a c=b\n";
+  #assert room_report_vitals_line_read(odd, 11, true, l[..]) && l[0].got == 8 && l[0].hp == 17 && l[0].max == -30 && l[0].xp == 0 && l[0].owner == 0 && l[0].has_class && cast(string) l[0].klass[0..<6] == "a c=b\0";
+  // only a line's first 159 bytes are read (127 without operation IDs): a class past them is not seen, one across them is cut
+  b: [400] u8; n := room_report_put(b[..], 0, "t 5\no 1 2 3\np 1 2 3 4 5 6 7");
+  while n < 12 + 156 { b[n] = ' '; n += 1; }
+  n = room_report_put(b[..], n, " c=wizard\nq 1\n");
+  #assert room_report_vitals_line_read(cast(string) b[0..<n], 11, true, l[..]) && l[0].got == 8 && l[0].owner == 7 && l[0].has_class && l[0].klass[0] == 0 && l[0].next == 12 + 165;
+  n = room_report_put(b[..], 12 + 157, " c=wizard\n");
+  #assert room_report_vitals_line_read(cast(string) b[0..<n], 11, true, l[..]) && !l[0].has_class;
+  lb: [200] u8; k := room_report_put(lb[..], 0, "t 5\np 1 2");
+  while k < 4 + 126 { lb[k] = ' '; k += 1; }
+  k = room_report_put(lb[..], k, "34\n");
+  #assert room_report_vitals_line_read(cast(string) lb[0..<k], 3, false, l[..]) && l[0].got == 4 && l[0].xp == 3 && l[0].next == 4 + 128;
+}
+#test "the API reads a room's directory post: the shard, the endpoint, the health, and the post without them" {
+  // a room's post (proto/verse/room-reports-v1.json, directory 0 and 6)
+  post := "t 1000000\ns 2 4\ng 777\ne wss://room.openagents.com/api/room/s2/\nh 0 640\n";
+  kept: [256] u8; d: [1] RoomDirPost;
+  n := room_report_dir_read(post, kept[..], d[..]);
+  #assert cast(string) kept[0..<n] == "t 1000000\ns 2 4\ng 777\n" && d[0].shard == 2 && d[0].players == 0 && d[0].tick_us == 640;
+  #assert cast(string) d[0].endpoint[0..<d[0].endpoint_n] == "wss://room.openagents.com/api/room/s2/" && d[0].endpoint[d[0].endpoint_n] == 0;
+  #assert room_report_dir_names_shard(post, 2) && !room_report_dir_names_shard(post, 3) && room_report_dir_read(post, kept[0..<10], d[..]) == -1;
+  post = "t 990500\ns 3 3\nr everglade2-2 2 p-00000000000000a1 p-00000000000000a2\n";
+  n = room_report_dir_read(post, kept[..], d[..]);
+  #assert cast(string) kept[0..<n] == post && d[0].shard == 3 && d[0].players == -1 && d[0].tick_us == -1 && d[0].endpoint_n == 0 && d[0].endpoint[0] == 0;
+  // endpoints the API does not take (the line is taken out all the same)
+  bad := [9] string.["e ws://room.openagents.com/api/room/s2/", "e wss://room.openagents.org/api/room/s2/", "e wss://.openagents.com/api/room/s2/", "e wss://room.openagents.com/api/room/s2", "e wss://room.openagents.com/api/rooms/2/",
+    "e wss://room.openagents.com/api/room/s2/\"/", "e wss://room.openagents.com/x/api/room/s2/", "e wss://room.openagents.com", "e "];
+  for i: 0..<bad.count { n = room_report_dir_read(bad[i], kept[..], d[..]); #assert n == 0 && d[0].endpoint_n == 0; }
+  n = room_report_dir_read("e wss://room.openagents.com:8443/api/room/s12/\ne wss://x/\n", kept[..], d[..]);
+  #assert n == 0 && cast(string) d[0].endpoint[0..<d[0].endpoint_n] == "wss://room.openagents.com:8443/api/room/s12/";   // a later one that is refused leaves the earlier
+  // the health line: two numbers or none; the last line counts; a number may come from the next line
+  n = room_report_dir_read("h 2 1800\nh 3\n", kept[..], d[..]); #assert n == 0 && d[0].players == -1 && d[0].tick_us == -1;
+  n = room_report_dir_read("h 2 1800\nh x\n", kept[..], d[..]); #assert d[0].players == -1 && d[0].tick_us == -1;
+  n = room_report_dir_read("h 2\n7\n", kept[..], d[..]); #assert d[0].players == 2 && d[0].tick_us == 7 && cast(string) kept[0..<n] == "7\n";
+  // the s line: atoi, the last line counts, a line that only looks like one does not
+  n = room_report_dir_read("s 2 4\ns 7x\ns\n ss 9\n", kept[..], d[..]); #assert d[0].shard == 7 && n == 19;
+  n = room_report_dir_read("s x\0s 5\n", kept[..], d[..]); #assert d[0].shard == 0 && n == 3;
+  #assert room_report_dir_names_shard("s 2 4\nr a 1\ns 2\n", 2) && !room_report_dir_names_shard("s 2 4\ns 3\n", 2) && !room_report_dir_names_shard("t 5\n", 0) && room_report_dir_names_shard("s x", 0) && !room_report_dir_names_shard("", 0);
+  #assert room_report_stats_names_shard("shard=2 at=5\nx=1\nshard=2\n", 2) && !room_report_stats_names_shard("shard=2\nshard=1\n", 2) && !room_report_stats_names_shard("s 2\n", 2) && !room_report_stats_names_shard(" shard=2\n", 2);
 }
 #test "the control answer's lines, written and read" {
   b: [256] u8;

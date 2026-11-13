@@ -263,6 +263,17 @@ for cid in (C, C2):
                         cwd=REPO, capture_output=True, text=True, timeout=1200)
     check(f"chat: every line of conversation {cid}'s record reads through log.coax and is written back byte for byte",
           s == 200 and rd.returncode == 0, (s, rd.stdout[-2000:], rd.stderr[-800:]))
+# The page's lines (GET /api/chat/state) are written in SQL (chat.lines); chat-lines.coax is their one
+# reader and their writer in Coax (C9, #13250). Every line the route returns reads through it and,
+# written again, is the same bytes (chat-lines-profile.coax --read), so the two can't drift.
+for cid in (C, C2):
+    s, sb = state(cid)
+    spath = os.path.join(cwork, f"state-{cid}.txt")
+    open(spath, "w").write(sb if s == 200 else "")
+    rd = subprocess.run([os.path.join(REPO, "coax", "web", "tool.sh"), "components/zeron/chat-lines-profile.coax", "--read", spath],
+                        cwd=REPO, capture_output=True, text=True, timeout=1200)
+    check(f"chat: every line of conversation {cid}'s state reads through chat-lines.coax and is written back byte for byte",
+          s == 200 and rd.returncode == 0, (s, rd.stdout[-2000:], rd.stderr[-800:]))
 
 # ---- the cap on our key ($1 here)
 s, b = cpage("POST", "send", {"c": str(C), "text": "costly"})

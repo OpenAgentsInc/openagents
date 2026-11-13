@@ -34,6 +34,7 @@
 #include "auth-internal.h"
 #include "auth-recover-policy.generated.h"
 #include "auth-recover-crypto.generated.h"
+#include "auth-recover-wire.generated.h"
 #include "nostr.h"
 #include "relay.h"
 
@@ -47,6 +48,21 @@
 static const char *env_or(const char *name, const char *fallback) { const char *v = getenv(name); return v && *v ? v : fallback; }
 
 // ---------------------------------------------------------------- small helpers
+// Every body here is auth-recover-wire.coax's: its functions take a string as cs(s) and write into
+// OUT(buffer), one byte kept for the NUL; each gives the length written, or -1 when it does not fit.
+static coax_string cs(const char *s) { return (coax_string){s ? s : "", s ? (int64_t)strlen(s) : 0}; }
+#define OUT(b) ((coax_v_u8){(uint8_t *)(b), (int64_t)sizeof(b) - 1})
+// An answer whose two forms the wire unit wrote: jn and ln are their lengths in json and lines.
+static void answer_made(const request *q, int status, char *json, int64_t jn, char *lines, int64_t ln) {
+  if (jn < 0 || ln < 0) { auth_refuse(q, 500, "That didn't work. Try again."); return; }
+  json[jn] = 0; lines[ln] = 0;
+  auth_answer(q, status, NULL, json, lines);
+}
+// An audit row whose detail the wire unit wrote: n is its length in d (NULL detail: an empty object).
+static void audit_made(PGconn *db, const char *acct, const char *actor, const char *action, const char *result, char *d, int64_t n) {
+  if (n >= 0) d[n] = 0;
+  auth_audit(db, acct, actor, action, result, n >= 0 ? d : NULL);
+}
 // One row's first column as text into out ("" when none or NULL); true when there was a row.
 static bool one(PGconn *db, const char *sql, int n, const char *const *v, char *out, size_t cap) {
   PGresult *r = PQexecParams(db, sql, n, NULL, v, NULL, NULL, 0);
@@ -118,14 +134,20 @@ static recovery_state recovery_of(PGconn *db, const char *acct) {
 static const char *state_name(int st) {
   return st == AR_PENDING ? "pending" : st == AR_READY ? "ready" : st == AR_CANCELLED ? "cancelled" : st == AR_DONE ? "done" : "none";
 }
-static void recovery_json(const recovery_state *s, char *out, size_t cap) {
-  snprintf(out, cap, "{\"state\":\"%s\",\"asked_ms\":%lld,\"ready_ms\":%lld,\"cancelled_ms\":%lld,\"done_ms\":%lld,\"now_ms\":%lld,\"wait_hours\":72%s%s%s}",
-           state_name(s->state), s->asked, s->ready, s->cancelled, s->done, s->now,
-           s->via[0] ? ",\"cancelled_via\":\"" : "", s->via, s->via[0] ? "\"" : "");
+// The recovery as JSON in out (400 bytes): its length, and "" in out when it did not fit.
+static int64_t recovery_json(const recovery_state *s, char out[400]) {
+  int64_t n = arw_recovery_write(cs(state_name(s->state)), s->asked, s->ready, s->cancelled, s->done, s->now, cs(s->via), (coax_v_u8){(uint8_t *)out, 399});
+  out[n < 0 ? 0 : n] = 0;
+  return n;
 }
-static void methods_json(PGconn *db, const char *acct, char *out, size_t cap) {
+// The account's methods as JSON in out (200 bytes); acct "": a login with no account, by its key.
+static void methods_json(PGconn *db, const char *acct, char out[200]) {
   const char *v[1] = {acct};
-  if (!one(db, "SELECT to_json(auth.methods_of($1))::text", 1, v, out, cap) || !out[0]) snprintf(out, cap, "[]");
+  coax_v_u8 o = {(uint8_t *)out, 199};
+  int64_t n = -1;
+  if (!acct[0]) n = arw_methods_key_write(o);
+  else if (!one(db, "SELECT to_json(auth.methods_of($1))::text", 1, v, out, 200) || !out[0]) n = arw_methods_none_write(o);
+  if (n >= 0) out[n] = 0;
 }
 
 // ---------------------------------------------------------------- notices
@@ -154,12 +176,12 @@ static void deliver(PGconn *db, long long notice_id, const char *acct, const cha
     if (i < ne) { if (!auth_unseal(ad, PQgetvalue(r, i, 0), email, sizeof email)) { failed++; continue; } }
     else if (also_email && *also_email) snprintf(email, sizeof email, "%s", also_email);
     if (!email[0]) continue;
-    char to[600], subj[200], body[2400], message[3600], id[128], err[300];
-    auth_json_esc(email, to, sizeof to); auth_json_esc(subject, subj, sizeof subj); auth_json_esc(text, body, sizeof body);
+    char message[3600], id[128], err[300];
     // The key names the account too: staging and production share one mail account, and their
     // notice ids both start at 1 (a reused key with other words is refused, 409).
-    snprintf(message, sizeof message, "{\"to\":\"%s\",\"subject\":\"OpenAgents security: %s\",\"idempotency_key\":\"notice-%s-%lld-%d\",\"text\":\"%s\"}",
-             to, subj, acct, notice_id, i, body);
+    int64_t mn = arw_mail_write(cs(email), cs(subject), cs(acct), notice_id, i, cs(text), OUT(message));
+    if (mn < 0) { failed++; memset(email, 0, sizeof email); memset(message, 0, sizeof message); continue; }
+    message[mn] = 0;
     int s = email_send(db, message, id, err, sizeof err);
     if (s > 1) { failed++; api_log("auth: notice %lld email: %s", notice_id, err); } else emailed++;
     memset(email, 0, sizeof email); memset(message, 0, sizeof message);
@@ -192,10 +214,8 @@ static void deliver(PGconn *db, long long notice_id, const char *acct, const cha
     memset(fresh, 0, sizeof fresh);
     if (n <= 0) { failed++; continue; }
     wrap[n] = 0;
-    char id[65] = "", err[200];
-    const char *at = strstr(wrap, "\"id\":\"");
-    if (at) snprintf(id, sizeof id, "%.64s", at + 6);
-    if (strlen(id) == 64 && relay_send(rl, wrap, id, err, sizeof err)) nostr_sent++;
+    char id[65] = "", err[200] = "";
+    if (arw_event_id((coax_string){wrap, n}, (coax_v_u8){(uint8_t *)id, 64}) == 64 && relay_send(rl, wrap, id, err, sizeof err)) nostr_sent++;
     else { failed++; api_log("auth: notice %lld nostr: %s", notice_id, err); }
   }
   PQclear(r);
@@ -207,12 +227,14 @@ static void deliver(PGconn *db, long long notice_id, const char *acct, const cha
   char title[200]; snprintf(title, sizeof title, "OpenAgents security: %s", subject);
   int pushed = auth_device_push(db, acct, notice_id, what, title, words, &failed);
   char sent[160], idb[24];
-  snprintf(sent, sizeof sent, "{\"email\":%d,\"nostr\":%d,\"push\":%d,\"failed\":%d}", emailed, nostr_sent, pushed, failed);
+  int64_t sn = arw_sent_write(emailed, nostr_sent, pushed, failed, OUT(sent));
+  sent[sn < 0 ? 0 : sn] = 0;   // four numbers: it fits
   snprintf(idb, sizeof idb, "%lld", notice_id);
   const char *w[2] = {idb, sent};
   PQclear(PQexecParams(db, "SELECT auth.notice_sent($1::bigint, $2::jsonb)", 2, NULL, w, NULL, NULL, 0));
-  char detail[240]; snprintf(detail, sizeof detail, "{\"what\":\"%s\",\"email\":%d,\"nostr\":%d,\"push\":%d,\"failed\":%d}", what, emailed, nostr_sent, pushed, failed);
-  auth_audit(db, acct, NULL, "notice", failed && !emailed && !nostr_sent && !pushed ? "failed" : "ok", detail);
+  char detail[240];
+  audit_made(db, acct, NULL, "notice", failed && !emailed && !nostr_sent && !pushed ? "failed" : "ok", detail,
+             arw_notice_detail_write(cs(what), emailed, nostr_sent, pushed, failed, OUT(detail)));
 }
 // The notice's row now, its delivery from a child (inline under OA_AUTH_NOTICE_SYNC=1).
 static void notify(PGconn *db, const char *acct, const char *what, const char *subject, const char *words,
@@ -233,22 +255,16 @@ static void short_key(const char *pk, char *out, size_t cap) { snprintf(out, cap
 
 // ---------------------------------------------------------------- the gate's step-up answer
 void auth_step_up_refusal(const request *q, PGconn *db, const auth_principal *p, int need, int status, const char *words) {
-  char methods[200], rec[400], e[400], json[1400], lines[800];
+  char methods[200], rec[400], json[1400], lines[800];
   // An admin page's old key-made login has no account: its key is its one way in.
   recovery_state s = {0};
-  if (p->account[0]) { methods_json(db, p->account, methods, sizeof methods); s = recovery_of(db, p->account); }
-  else snprintf(methods, sizeof methods, "[\"nostr\"]");
-  recovery_json(&s, rec, sizeof rec);
-  auth_json_esc(words, e, sizeof e);
+  methods_json(db, p->account, methods);
+  if (p->account[0]) s = recovery_of(db, p->account);
+  recovery_json(&s, rec);
   const char *lvl = need == 3 ? "L2-fresh" : "L2";
-  snprintf(json, sizeof json, "{\"error\":\"%s\",\"step_up\":\"%s\",\"methods\":%s,\"limited\":%s,\"level\":\"L%d\",\"recovery\":%s}",
-           e, lvl, methods, p->limited ? "true" : "false", p->level, rec);
-  // methods as one line: nostr,recovery_code
-  char flat[200]; size_t k = 0;
-  for (const char *c = methods; *c && k + 1 < sizeof flat; c++) if (*c != '[' && *c != ']' && *c != '"' && *c != ' ') flat[k++] = *c;
-  flat[k] = 0;
-  snprintf(lines, sizeof lines, "error %s\nstep_up %s\nmethods %s\nlimited %d\nrecovery %s\nready_ms %lld\n", words, lvl, flat, p->limited, state_name(s.state), s.ready);
-  auth_answer(q, status, NULL, json, lines);
+  // in the lines, methods are one line: nostr,recovery_code
+  answer_made(q, status, json, arw_step_up_write(cs(words), cs(lvl), cs(methods), p->limited, p->level, cs(rec), OUT(json)),
+              lines, arw_step_up_lines(cs(words), cs(lvl), cs(methods), p->limited, cs(state_name(s.state)), s.ready, OUT(lines)));
 }
 
 // ---------------------------------------------------------------- proofs made while logged in
@@ -268,9 +284,8 @@ static void proof_challenge(const request *q, PGconn *db, const auth_principal *
   const char *v[4] = {id, chsha, p->account, purpose};
   if (!one(db, "SELECT auth.proof_challenge($1, $2, $3, $4)", 4, v, NULL, 0)) { auth_refuse(q, 500, "That didn't work. Try again."); return; }
   char json[600], lines[500];
-  snprintf(json, sizeof json, "{\"challenge\":\"%s\",\"url\":\"%s%s?c=%s\",\"method\":\"POST\",\"expires_in\":300}", ch, auth_origin(), route, ch);
-  snprintf(lines, sizeof lines, "challenge %s\nurl %s%s?c=%s\nexpires_in 300\n", ch, auth_origin(), route, ch);
-  auth_answer(q, 200, NULL, json, lines);
+  answer_made(q, 200, json, arw_challenge_write(cs(ch), cs(auth_origin()), cs(route), OUT(json)),
+              lines, arw_challenge_lines(cs(ch), cs(auth_origin()), cs(route), OUT(lines)));
 }
 // The key that signed this request's proof: a NIP-98 event (kind 27235, within 60 seconds) over
 // this route with ?c=<challenge>, method POST, no payload tag, sent as {"proof": base64}. The
@@ -279,12 +294,12 @@ static bool proof_key(const request *q, PGconn *db, const auth_principal *p, con
   char c[80], proof[4000], csha[65];
   if (!api_query(q, "c", c, sizeof c) || strlen(c) != 64) { auth_refuse(q, 400, "Ask for a challenge first."); return false; }
   if (!auth_json_str(body, strlen(body), "proof", proof, sizeof proof) || !proof[0]) { auth_refuse(q, 400, "Sign the challenge with your key."); return false; }
-  char authz[4100], url[400], err[160];
+  char authz[4100], url[400], err[160], d[64];
   snprintf(authz, sizeof authz, "Nostr %s", proof);
   snprintf(url, sizeof url, "%s%s?c=%s", auth_origin(), q->path, c);
   nostr_event ev;
   if (!nip98_check(authz, "POST", url, NULL, 0, (long long)time(NULL), &ev, err, sizeof err)) {
-    auth_audit(db, p->account, p->session, purpose, "refused", "{\"why\":\"bad signature\"}");
+    audit_made(db, p->account, p->session, purpose, "refused", d, arw_why_write(cs("bad signature"), OUT(d)));
     auth_refuse(q, 401, "That signature isn't good for this challenge. Sign it again.");
     return false;
   }
@@ -293,7 +308,7 @@ static bool proof_key(const request *q, PGconn *db, const auth_principal *p, con
   char state[16];
   one(db, "SELECT auth.proof_spend($1, $2, $3, $4)", 4, v, state, sizeof state);
   if (strcmp(state, "ok")) {
-    auth_audit(db, p->account, p->session, purpose, "refused", !strcmp(state, "replay") ? "{\"why\":\"replay\"}" : "{\"why\":\"no challenge\"}");
+    audit_made(db, p->account, p->session, purpose, "refused", d, arw_why_write(cs(!strcmp(state, "replay") ? "replay" : "no challenge"), OUT(d)));
     auth_refuse(q, 401, !strcmp(state, "replay") ? "That signature was used already." : "That challenge has ended. Ask for a new one.");
     return false;
   }
@@ -369,51 +384,51 @@ static bool code_matches(PGconn *db, const char *acct, const char *typed, char i
 
 // ---------------------------------------------------------------- routes
 static void ways(const request *q, PGconn *db, const auth_principal *p) {
+  enum { JSON_CAP = 24000, LINES_CAP = 8000 };
   const char *v[1] = {p->account};
-  size_t cap = 24000;
-  char *json = malloc(cap), *lines = malloc(8000);
+  char *json = malloc(JSON_CAP), *lines = malloc(LINES_CAP);
   if (!json || !lines) { free(json); free(lines); auth_refuse(q, 500, "Out of memory."); return; }
-  size_t j = (size_t)snprintf(json, cap, "{\"account\":\"%s\",\"level\":\"L%d\",\"via\":\"%s\",\"l2_age_ms\":%lld,\"limited\":%s,\"emails\":[",
-                              p->account, p->level, p->via, p->l2_age_ms, p->limited ? "true" : "false");
-  size_t l = (size_t)snprintf(lines, 8000, "account %s\nlevel L%d\nvia %s\nl2_age_ms %lld\nlimited %d\n", p->account, p->level, p->via, p->l2_age_ms, p->limited);
+  // Each piece goes on where the last ended (j in json, l in lines); -1 once one did not fit.
+  coax_v_u8 J = {(uint8_t *)json, JSON_CAP - 1}, L = {(uint8_t *)lines, LINES_CAP - 1};
+  int64_t j = arw_ways_head_write(cs(p->account), p->level, cs(p->via), p->l2_age_ms, p->limited, J);
+  int64_t l = arw_ways_head_lines(cs(p->account), p->level, cs(p->via), p->l2_age_ms, p->limited, L);
   PGresult *r = PQexecParams(db, "SELECT id, coalesce(sealed, ''), (extract(epoch FROM created_at) * 1000)::bigint FROM auth.emails WHERE account = $1 ORDER BY id", 1, NULL, v, NULL, NULL, 0);
   char ad[96]; snprintf(ad, sizeof ad, "auth.emails|sealed|%s", p->account);
   for (int i = 0; PQresultStatus(r) == PGRES_TUPLES_OK && i < PQntuples(r); i++) {
     char email[300], masked[320] = "•••";
     if (auth_unseal(ad, PQgetvalue(r, i, 1), email, sizeof email)) { auth_mask_email(email, masked, sizeof masked); memset(email, 0, sizeof email); }
-    j += (size_t)snprintf(json + j, cap - j, "%s{\"id\":%s,\"email\":\"%s\",\"added_ms\":%s}", i ? "," : "", PQgetvalue(r, i, 0), masked, PQgetvalue(r, i, 2));
-    l += (size_t)snprintf(lines + l, 8000 - l, "email %s %s\n", PQgetvalue(r, i, 0), masked);
+    j = arw_ways_email_write(i == 0, cs(PQgetvalue(r, i, 0)), cs(masked), cs(PQgetvalue(r, i, 2)), J, j);
+    l = arw_ways_email_line(cs(PQgetvalue(r, i, 0)), cs(masked), L, l);
   }
   PQclear(r);
-  j += (size_t)snprintf(json + j, cap - j, "],\"keys\":[");
+  j = arw_ways_keys_write(J, j);
   r = PQexecParams(db, "SELECT id, pubkey, coalesce(label, ''), (extract(epoch FROM created_at) * 1000)::bigint FROM auth.nostr_keys WHERE account = $1 ORDER BY id", 1, NULL, v, NULL, NULL, 0);
-  for (int i = 0; PQresultStatus(r) == PGRES_TUPLES_OK && i < PQntuples(r) && j + 300 < cap; i++) {
-    char lab[100]; auth_json_esc(PQgetvalue(r, i, 2), lab, sizeof lab);
-    j += (size_t)snprintf(json + j, cap - j, "%s{\"id\":%s,\"pubkey\":\"%s\",\"label\":\"%s\",\"added_ms\":%s}", i ? "," : "", PQgetvalue(r, i, 0), PQgetvalue(r, i, 1), lab, PQgetvalue(r, i, 3));
-    if (l + 100 < 8000) l += (size_t)snprintf(lines + l, 8000 - l, "key %s %s\n", PQgetvalue(r, i, 0), PQgetvalue(r, i, 1));
+  for (int i = 0; PQresultStatus(r) == PGRES_TUPLES_OK && i < PQntuples(r) && j + 300 < JSON_CAP; i++) {
+    j = arw_ways_key_write(i == 0, cs(PQgetvalue(r, i, 0)), cs(PQgetvalue(r, i, 1)), cs(PQgetvalue(r, i, 2)), cs(PQgetvalue(r, i, 3)), J, j);
+    if (l + 100 < LINES_CAP) l = arw_ways_key_line(cs(PQgetvalue(r, i, 0)), cs(PQgetvalue(r, i, 1)), L, l);
   }
   PQclear(r);
-  j += (size_t)snprintf(json + j, cap - j, "],\"passkeys\":[");
-  if (p->account[0]) passkeys_rows(db, p->account, json, cap, &j, lines, 8000, &l);
+  j = arw_ways_passkeys_write(J, j);
+  if (p->account[0] && j >= 0 && l >= 0) {   // passkeys.c writes its rows on the end of both
+    size_t pj = (size_t)j, pl = (size_t)l;
+    passkeys_rows(db, p->account, json, JSON_CAP, &pj, lines, LINES_CAP, &pl);
+    j = (int64_t)pj; l = (int64_t)pl;
+  }
   char methods[200], rec[400], extra[200];
   // An admin page's old key-made login has no account: its key is its one way in.
   recovery_state s = {0};
-  if (p->account[0]) { methods_json(db, p->account, methods, sizeof methods); s = recovery_of(db, p->account); }
-  else snprintf(methods, sizeof methods, "[\"nostr\"]");
-  recovery_json(&s, rec, sizeof rec);
+  methods_json(db, p->account, methods);
+  if (p->account[0]) s = recovery_of(db, p->account);
+  recovery_json(&s, rec);
   one(db, "SELECT json_build_object('passkeys', (SELECT count(*) FROM auth.passkeys WHERE account = $1), 'recovery_code', "
           "EXISTS (SELECT 1 FROM auth.recovery WHERE account = $1 AND spent_at IS NULL), 'ways', auth.login_ways($1), 'strong', auth.strong_ways($1))::text",
       1, v, extra, sizeof extra);
-  snprintf(json + j, cap - j, "],\"methods\":%s,\"recovery\":%s,\"counts\":%s}", methods, rec, extra[0] ? extra : "{}");
-  char flat[200], codes[8] = "0", passkeys[16] = "0";
-  size_t k = 0;
-  for (const char *c = methods; *c && k + 1 < sizeof flat; c++) if (*c != '[' && *c != ']' && *c != '"' && *c != ' ') flat[k++] = *c;
-  flat[k] = 0;
+  j = arw_ways_tail_write(cs(methods), cs(rec), cs(extra), J, j);
+  char codes[8] = "0", passkeys[16] = "0";
   one(db, "SELECT CASE WHEN EXISTS (SELECT 1 FROM auth.recovery WHERE account = $1 AND spent_at IS NULL) THEN 1 ELSE 0 END", 1, v, codes, sizeof codes);
   one(db, "SELECT count(*) FROM auth.passkeys WHERE account = $1", 1, v, passkeys, sizeof passkeys);
-  snprintf(lines + l, 8000 - l, "methods %s\nrecovery_code %s\npasskeys %s\nrecovery %s\nasked_ms %lld\nready_ms %lld\nnow_ms %lld\n",
-           flat, codes, passkeys, state_name(s.state), s.asked, s.ready, s.now);
-  auth_answer(q, 200, NULL, json, lines);
+  l = arw_ways_tail_lines(cs(methods), cs(codes), cs(passkeys), cs(state_name(s.state)), s.asked, s.ready, s.now, L, l);
+  answer_made(q, 200, json, j, lines, l);
   free(json); free(lines);
 }
 static void notices(const request *q, PGconn *db, const auth_principal *p) {
@@ -422,15 +437,15 @@ static void notices(const request *q, PGconn *db, const auth_principal *p) {
   if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) { PQclear(r); auth_refuse(q, 500, "That didn't work. Try again."); return; }
   size_t n = (size_t)PQgetlength(r, 0, 0) + 32;
   char *json = malloc(n);
-  if (json) { snprintf(json, n, "{\"notices\":%s}", PQgetvalue(r, 0, 0)); }
+  int64_t jn = json ? arw_notices_write(cs(PQgetvalue(r, 0, 0)), (coax_v_u8){(uint8_t *)json, (int64_t)n - 1}) : -1;
   PQclear(r);
   // lines: "notice AT_MS WHAT", newest first (the page shows when and what; the words went in the notice)
-  char lines[3000]; size_t l = 0; lines[0] = 0;
+  char lines[3000]; int64_t l = 0;
   r = PQexecParams(db, "SELECT (extract(epoch FROM at) * 1000)::bigint, what FROM auth.notices WHERE account = $1 ORDER BY id DESC LIMIT 30", 1, NULL, v, NULL, NULL, 0);
-  for (int i = 0; PQresultStatus(r) == PGRES_TUPLES_OK && i < PQntuples(r) && l + 80 < sizeof lines; i++)
-    l += (size_t)snprintf(lines + l, sizeof lines - l, "notice %s %s\n", PQgetvalue(r, i, 0), PQgetvalue(r, i, 1));
+  for (int i = 0; PQresultStatus(r) == PGRES_TUPLES_OK && i < PQntuples(r) && l + 80 < (int64_t)sizeof lines; i++)
+    l = arw_notice_line(cs(PQgetvalue(r, i, 0)), cs(PQgetvalue(r, i, 1)), OUT(lines), l);
   PQclear(r);
-  if (json) { auth_answer(q, 200, NULL, json, lines); free(json); } else auth_refuse(q, 500, "Out of memory.");
+  if (json) { answer_made(q, 200, json, jn, lines, l); free(json); } else auth_refuse(q, 500, "Out of memory.");
 }
 
 // The session to L2 now (key or code), and what follows: a pending recovery ends.
@@ -451,16 +466,16 @@ static void step_up(const request *q, PGconn *db, const auth_principal *p, const
     char pk[65];
     if (!proof_key(q, db, p, "stepup", body, pk)) return;
     const char *v[2] = {pk, p->account};
-    char kid[24];
+    char kid[24], d[64], json[64], lines[64];
     one(db, "SELECT id FROM auth.nostr_keys WHERE pubkey = $1 AND account = $2", 2, v, kid, sizeof kid);
     if (!kid[0]) {
-      auth_audit(db, p->account, p->session, "stepup", "refused", "{\"via\":\"nostr\",\"why\":\"not this account's key\"}");
+      audit_made(db, p->account, p->session, "stepup", "refused", d, arw_via_write(cs("nostr"), cs("not this account's key"), OUT(d)));
       auth_refuse(q, 403, "That key isn't on this account. Sign with a key you added, or use your recovery code.");
       return;
     }
     if (!raise_session(db, p, "nostr", kid)) { auth_refuse(q, 500, "That didn't work. Try again."); return; }
-    auth_audit(db, p->account, p->session, "stepup", "ok", "{\"via\":\"nostr\"}");
-    auth_answer(q, 200, NULL, "{\"state\":\"stepped-up\",\"level\":\"L2\"}", "state stepped-up\nlevel L2\n");
+    audit_made(db, p->account, p->session, "stepup", "ok", d, arw_via_write(cs("nostr"), cs(""), OUT(d)));
+    answer_made(q, 200, json, arw_stepped_write(cs(""), OUT(json)), lines, arw_stepped_lines(cs(""), OUT(lines)));
     return;
   }
   // The recovery code: limits first, then scrypt in a child that answers.
@@ -469,9 +484,9 @@ static void step_up(const request *q, PGconn *db, const auth_principal *p, const
   if (!in_child()) return;
   PGconn *c = api_db_new();
   if (!c) { auth_refuse(q, 503, "The database isn't answering. Try again."); _exit(0); }
-  char id[24]; new_code fresh;
+  char id[24], d[64]; new_code fresh;
   if (!code_matches(c, p->account, typed, id)) {
-    auth_audit(c, p->account, p->session, "stepup", "refused", "{\"via\":\"recovery_code\",\"why\":\"wrong code\"}");
+    audit_made(c, p->account, p->session, "stepup", "refused", d, arw_via_write(cs("recovery_code"), cs("wrong code"), OUT(d)));
     auth_refuse(q, 401, "That recovery code isn't right. Check the 24 words and their order.");
     PQfinish(c); _exit(0);
   }
@@ -482,11 +497,9 @@ static void step_up(const request *q, PGconn *db, const auth_principal *p, const
   if (!made) { PQclear(PQexec(c, "ROLLBACK")); auth_refuse(q, 500, "That didn't work. Try again."); PQfinish(c); _exit(0); }
   PQclear(PQexec(c, "COMMIT"));
   raise_session(c, p, "recovery", id);
-  auth_audit(c, p->account, p->session, "stepup", "ok", "{\"via\":\"recovery_code\"}");
+  audit_made(c, p->account, p->session, "stepup", "ok", d, arw_via_write(cs("recovery_code"), cs(""), OUT(d)));
   char json[600], lines[400];
-  snprintf(json, sizeof json, "{\"state\":\"stepped-up\",\"level\":\"L2\",\"recovery_code\":\"%s\"}", fresh.words);
-  snprintf(lines, sizeof lines, "state stepped-up\nlevel L2\nrecovery_code %s\n", fresh.words);
-  auth_answer(q, 200, NULL, json, lines);
+  answer_made(q, 200, json, arw_stepped_write(cs(fresh.words), OUT(json)), lines, arw_stepped_lines(cs(fresh.words), OUT(lines)));
   memset(&fresh, 0, sizeof fresh); memset(json, 0, sizeof json); memset(lines, 0, sizeof lines);
   notify(c, p->account, "code.used", "your recovery code was used",
          "Your OpenAgents recovery code was used to confirm a login. It no longer works; a new code was shown once to whoever used it.", NULL, NULL, NULL);
@@ -514,8 +527,9 @@ static void link_nostr(const request *q, PGconn *db, const auth_principal *p, co
   int owner = key_owner(db, pk, p->account);
   int verdict = (int)ar_link(p->level, p->strong, owner == 1 ? AR_OWNER_THIS : owner == 2 ? AR_OWNER_OTHER : AR_OWNER_NONE);
   if (verdict != AR_OK) {
-    char d[120]; snprintf(d, sizeof d, "{\"kind\":\"nostr\",\"why\":\"%s\"}", verdict == AR_OTHER ? "another account's" : verdict == AR_ALREADY ? "already" : "step up");
-    auth_audit(db, p->account, p->session, "link", "refused", d);
+    char d[120];
+    audit_made(db, p->account, p->session, "link", "refused", d,
+               arw_kind_write(cs("nostr"), cs(verdict == AR_OTHER ? "another account's" : verdict == AR_ALREADY ? "already" : "step up"), OUT(d)));
     refuse_ar(q, verdict);
     return;
   }
@@ -525,27 +539,26 @@ static void link_nostr(const request *q, PGconn *db, const auth_principal *p, co
   const char *v[3] = {p->account, pk, label};
   char kid[24];
   if (!one(db, "SELECT auth.key_link($1, $2, $3)", 3, v, kid, sizeof kid) || !kid[0]) { auth_refuse(q, 500, "That didn't work. Try again."); return; }
-  auth_audit(db, p->account, p->session, "link", "ok", "{\"kind\":\"nostr\"}");
+  char d[64];
+  audit_made(db, p->account, p->session, "link", "ok", d, arw_kind_write(cs("nostr"), cs(""), OUT(d)));
   char sk[40], words[300];
   short_key(pk, sk, sizeof sk);
   snprintf(words, sizeof words, "A Nostr key (%s) was added to your OpenAgents account. It can now log in and change the account.", sk);
   notify(db, p->account, "link.nostr", "a Nostr key was added", words, NULL, NULL, NULL);
   char json[200], lines[200];
-  snprintf(json, sizeof json, "{\"state\":\"linked\",\"id\":%s,\"pubkey\":\"%s\"}", kid, pk);
-  snprintf(lines, sizeof lines, "state linked\nid %s\npubkey %s\n", kid, pk);
-  auth_answer(q, 200, NULL, json, lines);
+  answer_made(q, 200, json, arw_linked_write(cs(kid), cs(pk), OUT(json)), lines, arw_linked_lines(cs(kid), cs(pk), OUT(lines)));
 }
 
 static void unlink_way(const request *q, PGconn *db, const auth_principal *p, const char *body) {
   char kind[16] = "", idtxt[24] = "";
   auth_json_str(body, strlen(body), "kind", kind, sizeof kind);
   // id: a number, as a JSON number or string
-  const char *at = strstr(body, "\"id\"");
-  if (at) { at = strchr(at + 4, ':'); if (at) { at++; while (*at == ' ' || *at == '"') at++; size_t k = 0; while (k + 1 < sizeof idtxt && at[k] >= '0' && at[k] <= '9') { idtxt[k] = at[k]; k++; } idtxt[k] = 0; } }
+  idtxt[arw_unlink_id(cs(body), OUT(idtxt))] = 0;
   if ((strcmp(kind, "email") && strcmp(kind, "nostr") && strcmp(kind, "passkey")) || !idtxt[0]) { auth_refuse(q, 400, "Say which way in to remove: kind and id."); return; }
   const char *v[1] = {p->account};
   int verdict = (int)ar_unlink(one_int(db, "SELECT auth.login_ways($1)", 1, v) - 1);
-  if (verdict != AR_OK) { auth_audit(db, p->account, p->session, "unlink", "refused", "{\"why\":\"last way in\"}"); refuse_ar(q, verdict); return; }
+  char d[120];
+  if (verdict != AR_OK) { audit_made(db, p->account, p->session, "unlink", "refused", d, arw_why_write(cs("last way in"), OUT(d))); refuse_ar(q, verdict); return; }
   // Who to tell besides the account's ways that stay: the way itself.
   char also_email[300] = "", also_pk[65] = "", label[120] = "";
   const char *w[2] = {idtxt, p->account};
@@ -572,31 +585,26 @@ static void unlink_way(const request *q, PGconn *db, const auth_principal *p, co
     auth_refuse(q, 404, "That isn't on this account.");
     return;
   }
-  char d[120]; snprintf(d, sizeof d, "{\"kind\":\"%s\",\"ended\":%d}", kind, ended);
-  auth_audit(db, p->account, p->session, "unlink", "ok", d);
+  audit_made(db, p->account, p->session, "unlink", "ok", d, arw_unlinked_write(cs(kind), ended, OUT(d)));
   char words[400];
   snprintf(words, sizeof words, "%c%s was removed from your OpenAgents account. It can't log in any more, and its logins ended.", label[0] == 't' ? 'T' : 'A', label + 1);
   notify(db, p->account, "unlink", "a way to log in was removed", words, NULL, also_email, also_pk[0] ? also_pk : NULL);
   memset(also_email, 0, sizeof also_email);
   char json[120], lines[80];
-  snprintf(json, sizeof json, "{\"state\":\"removed\",\"ended\":%d}", ended);
-  snprintf(lines, sizeof lines, "state removed\nended %d\n", ended);
-  auth_answer(q, 200, NULL, json, lines);
+  answer_made(q, 200, json, arw_removed_write(ended, OUT(json)), lines, arw_removed_lines(ended, OUT(lines)));
 }
 
 static void recovery_get(const request *q, PGconn *db, const auth_principal *p) {
   recovery_state s = recovery_of(db, p->account);
   char rec[400], lines[300];
-  recovery_json(&s, rec, sizeof rec);
-  snprintf(lines, sizeof lines, "state %s\nasked_ms %lld\nready_ms %lld\nnow_ms %lld\n", state_name(s.state), s.asked, s.ready, s.now);
-  auth_answer(q, 200, NULL, rec, lines);
+  answer_made(q, 200, rec, recovery_json(&s, rec), lines, arw_recovery_lines(cs(state_name(s.state)), s.asked, s.ready, s.now, OUT(lines)));
 }
 
 static void recovery_start(const request *q, PGconn *db, const auth_principal *p) {
   if (!p->session[0]) { auth_refuse(q, 400, "Log in with your email to ask for recovery."); return; }
   recovery_state s = recovery_of(db, p->account);
   int verdict = (int)ar_start(p->level, p->strong, s.state);
-  if (verdict != AR_OK) { auth_audit(db, p->account, p->session, "recovery.start", "refused", "{}"); refuse_ar(q, verdict); return; }
+  if (verdict != AR_OK) { auth_audit(db, p->account, p->session, "recovery.start", "refused", NULL); refuse_ar(q, verdict); return; }
   if (!auth_limit_hit(q, db, AUTH_LIMIT_RECOVERY, p->account)) return;
   char tok[65], tsha[65];
   if (!auth_random_hex(tok, 32)) { auth_refuse(q, 503, "No randomness here. Try again."); return; }
@@ -608,7 +616,8 @@ static void recovery_start(const request *q, PGconn *db, const auth_principal *p
   if (!ok) api_log("auth: recovery ask: %s", PQerrorMessage(db));
   PQclear(r);
   if (!ok) { refuse_ar(q, AR_ASKED); return; }
-  auth_audit(db, p->account, p->session, "recovery.start", "ok", "{\"wait_hours\":72}");
+  char d[64];
+  audit_made(db, p->account, p->session, "recovery.start", "ok", d, arw_wait_write(OUT(d)));
   char when[40], words[600];
   utc(ready, when, sizeof when);
   snprintf(words, sizeof words, "Someone logged in to your OpenAgents account with its email and asked to recover it. "
@@ -620,9 +629,7 @@ static void recovery_start(const request *q, PGconn *db, const auth_principal *p
   memset(cancel_url, 0, sizeof cancel_url);
   memset(tok, 0, sizeof tok);
   char json[300], lines[200];
-  snprintf(json, sizeof json, "{\"state\":\"pending\",\"asked_ms\":%lld,\"ready_ms\":%lld,\"wait_hours\":72}", asked, ready);
-  snprintf(lines, sizeof lines, "state pending\nasked_ms %lld\nready_ms %lld\n", asked, ready);
-  auth_answer(q, 200, NULL, json, lines);
+  answer_made(q, 200, json, arw_pending_write(asked, ready, OUT(json)), lines, arw_pending_lines(asked, ready, OUT(lines)));
 }
 
 static void cancelled_notice(PGconn *db, const char *acct, const char *how) {
@@ -646,27 +653,31 @@ static void recovery_cancel(const request *q, PGconn *db, const char *body) {
     const char *v[2] = {acct, via};
     if (one_int(db, "SELECT auth.recovery_cancel($1, $2)", 2, v) != 1) { auth_refuse(q, 409, "There is no recovery waiting."); return; }
   }
-  char d[60]; snprintf(d, sizeof d, "{\"via\":\"%s\"}", via);
-  auth_audit(db, acct, NULL, "recovery.cancel", "ok", d);
+  char d[60], json[64], lines[64];
+  audit_made(db, acct, NULL, "recovery.cancel", "ok", d, arw_via_write(cs(via), cs(""), OUT(d)));
   cancelled_notice(db, acct, !strcmp(via, "link") ? "from the link in a notice" : !strcmp(via, "key") ? "by a signature of a key on the account" : "from a login");
-  auth_answer(q, 200, NULL, "{\"state\":\"cancelled\"}", "state cancelled\n");
+  answer_made(q, 200, json, arw_cancelled_write(OUT(json)), lines, arw_cancelled_lines(OUT(lines)));
 }
 void auth_recover_strong_login(PGconn *db, const char *acct, const char *sid) {
   (void)sid;
   if (!ar_cancels(2)) return;
   const char *v[2] = {acct, "login"};
   if (one_int(db, "SELECT auth.recovery_cancel($1, $2)", 2, v) != 1) return;
-  auth_audit(db, acct, sid, "recovery.cancel", "ok", "{\"via\":\"login\"}");
+  char d[64];
+  audit_made(db, acct, sid, "recovery.cancel", "ok", d, arw_via_write(cs("login"), cs(""), OUT(d)));
   cancelled_notice(db, acct, "someone logged in with a key, passkey or recovery code");
 }
 
 static void recovery_finish(const request *q, PGconn *db, const auth_principal *p, const char *body) {
   recovery_state s = recovery_of(db, p->account);
   int verdict = (int)ar_finish(p->level, !strcmp(p->via, "email") && p->session[0], s.state);
-  if (verdict != AR_OK) { auth_audit(db, p->account, p->session, "recovery.finish", "refused", "{}"); refuse_ar(q, verdict); return; }
-  char pk[65];
+  if (verdict != AR_OK) { auth_audit(db, p->account, p->session, "recovery.finish", "refused", NULL); refuse_ar(q, verdict); return; }
+  char pk[65], d[64];
   if (!proof_key(q, db, p, "finish", body, pk)) return;
-  if (key_owner(db, pk, p->account) == 2) { auth_audit(db, p->account, p->session, "recovery.finish", "refused", "{\"why\":\"another account's key\"}"); refuse_ar(q, AR_OTHER); return; }
+  if (key_owner(db, pk, p->account) == 2) {
+    audit_made(db, p->account, p->session, "recovery.finish", "refused", d, arw_why_write(cs("another account's key"), OUT(d)));
+    refuse_ar(q, AR_OTHER); return;
+  }
   // Who hears it: every key and email now, the keys that are about to go included.
   const char *v[1] = {p->account};
   PGresult *old = PQexecParams(db, "SELECT string_agg(pubkey, ',' ORDER BY id) FROM auth.nostr_keys WHERE account = $1 AND pubkey <> $2", 2, NULL, (const char *[]){p->account, pk}, NULL, NULL, 0);
@@ -686,7 +697,7 @@ static void recovery_finish(const request *q, PGconn *db, const auth_principal *
   if (ok) snprintf(kid, sizeof kid, "%s", PQgetvalue(r, 0, 0)); else api_log("auth: recovery finish: %s", PQerrorMessage(db));
   PQclear(r);
   if (!ok) { refuse_ar(q, AR_WAITING); return; }
-  auth_audit(db, p->account, p->session, "recovery.finish", "ok", "{}");
+  auth_audit(db, p->account, p->session, "recovery.finish", "ok", NULL);
   char sk[40], words[500];
   short_key(pk, sk, sizeof sk);
   snprintf(words, sizeof words, "Your OpenAgents account was recovered: a new key (%s) replaced its keys and passkeys, and every other login ended. "
@@ -694,9 +705,7 @@ static void recovery_finish(const request *q, PGconn *db, const auth_principal *
   // one notice: every email, the new key, and the keys that were removed
   notify(db, p->account, "recovery.done", "your account was recovered", words, NULL, NULL, old_keys);
   char json[200], lines[200];
-  snprintf(json, sizeof json, "{\"state\":\"recovered\",\"level\":\"L2\",\"pubkey\":\"%s\"}", pk);
-  snprintf(lines, sizeof lines, "state recovered\nlevel L2\npubkey %s\n", pk);
-  auth_answer(q, 200, NULL, json, lines);
+  answer_made(q, 200, json, arw_recovered_write(cs(pk), OUT(json)), lines, arw_recovered_lines(cs(pk), OUT(lines)));
 }
 
 static void code_new_route(const request *q, PGconn *db, const auth_principal *p) {
@@ -706,11 +715,9 @@ static void code_new_route(const request *q, PGconn *db, const auth_principal *p
   if (!c) { auth_refuse(q, 503, "The database isn't answering. Try again."); _exit(0); }
   new_code fresh;
   if (!code_make(c, p->account, &fresh)) { auth_refuse(q, 500, "That didn't work. Try again."); PQfinish(c); _exit(0); }
-  auth_audit(c, p->account, p->session, "recovery_code.new", "ok", "{}");
+  auth_audit(c, p->account, p->session, "recovery_code.new", "ok", NULL);
   char json[600], lines[400];
-  snprintf(json, sizeof json, "{\"recovery_code\":\"%s\",\"words\":24}", fresh.words);
-  snprintf(lines, sizeof lines, "recovery_code %s\n", fresh.words);
-  auth_answer(q, 200, NULL, json, lines);
+  answer_made(q, 200, json, arw_code_write(cs(fresh.words), OUT(json)), lines, arw_code_lines(cs(fresh.words), OUT(lines)));
   memset(&fresh, 0, sizeof fresh); memset(json, 0, sizeof json); memset(lines, 0, sizeof lines);
   notify(c, p->account, "code.new", "a new recovery code was made",
          "A new recovery code was made for your OpenAgents account. The old one no longer works.", NULL, NULL, NULL);
@@ -742,9 +749,9 @@ static void code_login(const request *q, PGconn *db, const char *body) {
   if (!in_child()) return;
   PGconn *c = api_db_new();
   if (!c) { auth_refuse(q, 503, "The database isn't answering. Try again."); _exit(0); }
-  char id[24]; new_code fresh;
+  char id[24], d[64]; new_code fresh;
   if (!code_matches(c, acct, typed, id)) {
-    auth_audit(c, acct, NULL, "login.recovery_code", "refused", "{\"why\":\"wrong code\"}");
+    audit_made(c, acct, NULL, "login.recovery_code", "refused", d, arw_why_write(cs("wrong code"), OUT(d)));
     auth_refuse(q, 401, "That recovery code isn't right for that account.");
     PQfinish(c); _exit(0);
   }
@@ -754,8 +761,8 @@ static void code_login(const request *q, PGconn *db, const char *body) {
   if (strcmp(spent, "t") || !code_make(c, acct, &fresh)) { PQclear(PQexec(c, "ROLLBACK")); auth_refuse(q, 500, "That didn't work. Try again."); PQfinish(c); _exit(0); }
   PQclear(PQexec(c, "COMMIT"));
   char ej[300], el[300];
-  snprintf(ej, sizeof ej, ",\"recovery_code\":\"%s\"", fresh.words);
-  snprintf(el, sizeof el, "recovery_code %s\n", fresh.words);
+  int64_t en = arw_code_member_write(cs(fresh.words), OUT(ej)), ln = arw_code_lines(cs(fresh.words), OUT(el));
+  ej[en < 0 ? 0 : en] = 0; el[ln < 0 ? 0 : ln] = 0;   // 24 words of at most 8 letters: both fit
   auth_logged_in(q, c, acct, "recovery", id, "L2", !strcmp(client, "app"), false, "login.recovery_code", ej, el);
   memset(&fresh, 0, sizeof fresh); memset(ej, 0, sizeof ej); memset(el, 0, sizeof el);
   notify(c, acct, "code.used", "your recovery code was used",
