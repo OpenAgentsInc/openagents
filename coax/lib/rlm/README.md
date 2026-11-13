@@ -129,11 +129,68 @@ run ends there. In a worker `rlm_query` is a plain sub-call: workers start no wo
 `rlm_query(_batched)` and `FINAL`; `read`, `lines`, `edit`, `replace_lines` and `write` fail at the
 root, before any effect, with a note to give them to a worker (script.coax `root_deny`).
 
+**Compiler questions and working memory** (GitHub #13444, #13445). Two flags, each off by
+default, so a run with one can be compared with a run without. With neither, the functions,
+the prompt, the turn notes and the report line are what they were. Their functions ride the same
+request, memo and rerun as the rest (script.coax `env_more`), so none is asked or recorded twice.
+Neither goes with `--manager`.
+
+`--intel` (`[--coax PATH]`): the Coax compiler's answers, from `coax/lib/agent/intel/compiler.coax`.
+The compiler is `--coax`, else the workspace's own `coax/bin/coax`, else the one of the checkout
+the tool runs in.
+
+| Function | Returns |
+| --- | --- |
+| `defines(name)` | where it is declared: kind, file, lines, the file's hash (16 records at most) |
+| `uses(name, file="")` | each use with the procedure or check it is written in (40); `file` picks the declaration |
+| `show(name, file="")` | one declaration numbered, under a line `FILE:A-B  KIND NAME  hash H` (12 hex digits) |
+| `exports(path)` | what the file declares (80) |
+| `check(path)` | the diagnostics as a list of dicts `code`, `line`, `message`, `fix` (20); `[]` is a clean file. A file that fails alone and has a loader is checked through the loader, and a first dict with code `note` says so |
+| `explain(code)` | what a diagnostic code means |
+| `effects(path, proc="")` | a procedure's may-effects with a call path to each (24) |
+| `replace(name, seen_hash, text, file="")` | replaces the declaration through `ix_replace`. A hash that is not the text's: nothing is written, and it returns the text and hash as they are (`replace refused: ...`). Applied: the new lines numbered, their hash and the file's check |
+
+An answer that left records out says how many. When the compiler can't answer (a program with a
+tagged value, a file that does not compile, a crash, a run past its time, no compiler) the function
+returns `no answer: the compiler could not answer F(ARG): WHY. Use search and lines for this.`;
+`check` returns one dict with code `no answer` and that message. The block goes on. A question
+counts as a read, `replace` as an edit, against the same 512 and 128. The compiler runs outside the
+sandbox profile, as the tool does; `replace` writes through Microcoder's exact edit in the profile.
+
+`--memory` (`[--session ID | --memory-dir DIR]`): the run store of `coax/lib/agent/workmem/`, in
+`~/.openagents/coder/sessions/ID.workmem` (a new session each run unless `--session` names one;
+a folder made for another workspace is refused). The driver records with no action from the model:
+`read`, `lines` and `show` as reads, `edit`, `replace_lines`, `write` and `replace` as changes, and
+each `sh` as a run (the store looks at its files again first, so a file the command changed is seen).
+
+| Function | Returns |
+| --- | --- |
+| `note(text, path="", a=0, b=0)` | records a finding with the lines it is about (the whole file when a and b are 0); `noted F3` |
+| `known()` | findings, then reads, that are still current (6,000 bytes at most; the view says how many rows it left out) |
+| `changed()` | every edit and the lines it wrote |
+| `open_items()` | what stops `FINAL` now |
+
+- **Repeat reads.** `lines` and `show` of lines the store already has at the file's current content
+  return them under a first line `[already read at turn N: ...]`. `read` returns the file's text
+  and nothing else (its value is often written back), and is counted. Each turn's note gains a line
+  before it: `Reads this turn: 3; repeats (lines you already had): 2.`
+- **The finish rule.** The task's commands are its spans in single backticks. An `sh` command is
+  a run of the longest span that is the whole command, or that has a space and is part of it; the
+  check's row is made at its first run. The root's `FINAL` is refused, with `wm_view_open`'s lines,
+  while `wm_may_finish` says no: a check's latest run failed, or passed before a later edit. After
+  two refusals it is accepted, and the report's `unproven` lists what was open. A check the model
+  never ran has no row and stops nothing; a worker's `FINAL` is its report and is not held.
+
+The report line gains `intel` (`asked`, `unanswered`, `stale_edits`, each function's calls) and
+`memory` (`dir`, `reads`, `repeat_reads`, `finishes_refused`, `checks`, `runs`, `changes`, each
+function's calls, `unproven`), each only with its flag. The trace has a `--- compiler: no answer`
+line for each question the compiler could not answer and `--- final refused ---` for each refusal.
+
 ```sh
 coax/web/tool.sh coax/lib/rlm/code.coax run --cwd DIR (--task TEXT | --task-file F) [--manager] [--max-depth 2] [--root-model gemini-4-argon] \
   [--sub-model gemini-3.8-flash] [--root-effort low] [--max-turns 40] [--max-usd 5] [--max-minutes 15] \
-  [--profile workspace-write] [--trace F] [--log F]
-coax/web/tool.sh coax/lib/rlm/code.coax selftest      # every function, confinement, reruns, a whole run, limits: a scratch git repo, the scripted model
+  [--profile workspace-write] [--trace F] [--log F] [--intel [--coax PATH]] [--memory [--session ID | --memory-dir DIR]]
+coax/web/tool.sh coax/lib/rlm/code.coax selftest      # every function, confinement, reruns, a whole run, limits: a scratch git repo, the scripted model; then --intel and --memory on a scratch Coax repo with the real compiler
 ```
 
 It prints one JSON line: `ending` (`final`, `limit`, `no answer`), turns, root and sub calls,

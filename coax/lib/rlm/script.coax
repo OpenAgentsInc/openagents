@@ -97,6 +97,7 @@ Rs :: struct {
   env_on: bool;                  // the code environment's functions (RS_ENV) are defined; code.coax serves them
   root_deny: [] const string;          // functions of RS_ENV refused at depth 0 (code.coax's manager): calling one fails with deny_why
   deny_why: string;
+  env_more: [] const string;           // more environment functions, in RS_ENV's form, that the caller serves too (code.coax --intel, --memory); none unless it sets them
 }
 
 rs_nil :: () -> RsVal { return RsVal.{}; }
@@ -1912,6 +1913,7 @@ rs_builtin :: (r: [] Rs, name: string, a: RsArgs) -> RsVal {
         return rs_env(r, spec, a);
       }
     }
+    for spec: r[0].env_more { if rs_word(spec) == name { return rs_env(r, spec, a); } }
   }
   if r[0].env_on && name == "open" { rs_fail(r, "open() is not available: use read(path), lines(path, a, b) and write(path, text)", "", ""); return rs_nil(); }
   if name == "open" || name == "exec" || name == "eval" || name == "input" || name == "__import__" || name == "compile" {
@@ -2009,6 +2011,7 @@ rs_env :: (r: [] Rs, spec: string, a: RsArgs) -> RsVal {
   s := v.s;
   if name == "files" || name == "search" { return rs_lines(r, s); }
   if name == "count_lines" { return rs_int(rs_env_int(s)); }
+  if name == "check" { return rs_records(r, s); }
   if name == "sh" {
     // "EXIT TIMED\n" and the whole output
     nl := 0; while nl < s.count && s[nl] != 10 { nl += 1; }
@@ -2021,6 +2024,28 @@ rs_env :: (r: [] Rs, spec: string, a: RsArgs) -> RsVal {
     return d;
   }
   return v;
+}
+
+// check(path)'s diagnostics (code.coax, env_more) as a list of dicts with code, line, message and
+// fix: the records end with byte 30, and their four fields are parted by byte 31, in that order.
+rs_records :: (r: [] Rs, s: string) -> RsVal {
+  l := rs_new_list(r, 8); if rs_bad(r) { return rs_nil(); }
+  keys := [4] string.["code", "line", "message", "fix"];
+  at := 0;
+  while at < s.count {
+    e := at; while e < s.count && s[e] != 30 { e += 1; }
+    d := rs_new_dict(r); if rs_bad(r) { return rs_nil(); }
+    f := at;
+    for key, k: keys {
+      g := f; while g < e && s[g] != 31 { g += 1; }
+      part := cast(string) s[f..<g];
+      rs_dict_set(r, d.i, rs_strv(key), ifx k == 1 then rs_int(rs_env_int(part)) else rs_strv(part));
+      f = ifx g < e then g + 1 else e;
+    }
+    if rs_bad(r) || !rs_list_push(r, l.i, d) { return rs_nil(); }
+    at = e + 1;
+  }
+  return l;
 }
 
 // A decimal number, maybe negative (0 for none).

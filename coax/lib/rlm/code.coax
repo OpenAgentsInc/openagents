@@ -7,6 +7,8 @@
 //     [--root-model gemini-4-argon] [--sub-model gemini-3.8-flash] [--root-effort low]
 //     [--max-turns 40] [--max-usd 5] [--max-minutes 15] [--profile workspace-write]
 //     [--manager] [--max-depth 2] [--trace F] [--log F]   (--manager: the root delegates to workers, README.md)
+//     [--intel [--coax PATH]]                       the Coax compiler's answers as functions, and replace by hash
+//     [--memory [--session ID | --memory-dir DIR]]  the working memory, and the finish rule
 //   coax/web/tool.sh coax/lib/rlm/code.coax selftest    the checks on a scratch git repo, scripted model
 //
 // Effects ride the RLM's suspend, memo and rerun (run.coax): a call of an environment function
@@ -28,6 +30,8 @@
 #load "../microcoder/tools.coax";
 #load "../sys/tool.coax";
 #load "../json/json.coax";
+#load "../agent/intel/compiler.coax";
+#load "../agent/workmem/file.coax";
 
 RC_JSON_NOTE :: "How to reply: one JSON object with two string fields. \"code\" is the Python to run this turn, as plain code with no ``` fence (it is run as one repl block). \"final\" stays \"\" while you work. When the task is done and its checks pass, reply with \"code\": \"\" and your summary in \"final\". You can also finish inside code, in the same turn as the last check, by calling FINAL(summary) under an if that tests the check passed (r = sh(...), then if r[\"exit\"] == 0: FINAL(...) on the next lines); that saves a turn.\n\n";
 RC_SYSTEM :: "You are a coding agent. The repository you work on is in your environment, not in this conversation. You work in it by writing Python in ```repl blocks; each turn every block runs in order and you see only what it printed (at most {SHOWN} characters a block). Variables persist across turns. What you print fills your window, which is small; files and variables cost nothing. Print only the lines you need, and keep what you find in variables.\n\nThe REPL runs a subset of Python: None, bool, int (no floats), str, list, dict; f-strings; list comprehensions; a if c else b; assignment (also a, b = ... and x[i] = ...), += -=, if/elif/else, for, while, break, continue; print len str repr int bool abs list dict range enumerate zip sum min max sorted; the common str, list and dict methods. Not supported: def, lambda, class, try, with, return, import of anything, set, slices with a step. Write the steps inline.\n\nThe repository (paths are relative to its root):\n- files(prefix=\"\"): the tracked paths, as a list\n- read(path): a file's text; lines(path, a, b): lines a to b numbered; count_lines(path)\n- search(pattern, prefix=\"\", limit=40, regex=False): matching lines as \"path:line:text\" strings (git grep; a fixed string unless regex=True, then an extended regex)\n- edit(path, old, new): replaces old, which must be in the file exactly once; returns the changed lines numbered, or text starting \"edit failed:\" with the nearest lines numbered\n- replace_lines(path, a, b, text): replaces lines a to b with text (a = b + 1 inserts before line a); returns the new lines numbered\n- write(path, text): creates or replaces a whole file\n- sh(cmd, seconds=120): runs a shell command at the root; returns {\"exit\": int, \"out\": str, \"timed_out\": bool} with the whole output\n- outline(path): the file's top-level definitions (functions, types, constants, tests) with their line numbers: a cheap map of a file before you look at its lines\n- grep(pattern, text): the lines of text that match; chunk(text, size)\n- llm_query(prompt), llm_query_batched(prompts): a sub-model that sees only the prompt (about {SUBCHARS} characters at most) and answers with a str\n- rlm_query(brief), rlm_query_batched(briefs): {RLMQ}\n- FINAL(summary) ends the task; SHOW_VARS() names your variables\n\nWork this way: find the code with search, then look at the lines you need with lines. When several files need the same kind of look, have sub-models read whole files with llm_query_batched and answer focused questions or draft edits. Make changes with edit or replace_lines, in a loop when the same change applies to several places, and print their results. Run the checks the task names with sh and print only the failing lines (r['out'][-2000:] or grep). Before anything else, find out whether the work is already done: look at the commits and comments the task gives you, and at git log for the files it names. If it is already in the tree, run the check the task names once and FINAL(what you found, with the commits); do not keep verifying. Call FINAL(summary) only after those checks pass.{WORKER}";
@@ -67,7 +71,20 @@ RcEnv :: struct {
   full: [4096] u8; real: [4096] u8; cmd: [65536] u8; why: [1024] u8;
   reads: int; acts: int;         // what np_read_budget and np_budget count
   ops: [10] int; failed: int; refused: int; writes: int;
+  // --intel: the compiler session (opened at the first question: ix_state 1 open, 2 no compiler) and its counts
+  intel: bool; coax: string; ix_state: int;
+  ix: [1] Ix;
+  decls: [RC_DECLS] IxDecl; uses: [RC_USES] IxUse; diags: [RC_DIAGS] IxDiag; fx: [RC_FX] IxEffect; loaders: [4] string;
+  xops: [12] int; asked: int; unanswered: int; stale_edits: int;
+  // --memory: the run store and its counts; read_turn: the turn each read row was first read at, plus one
+  memory: bool;
+  wm: [1] Wmf;
+  read_turn: [WM_READS] int;
+  mem_reads: int; repeats: int; turn_reads: int; turn_repeats: int; notes: int; finish_refused: int;
+  cmds: [RC_CMDS] string; ncmds: int;
+  view: [RC_VIEW] u8; notel: [160] u8; unproven: [RC_VIEW] u8; nunproven: int;
 }
+RC_DECLS :: 80; RC_USES :: 40; RC_DIAGS :: 20; RC_FX :: 24;   // records one compiler answer shows at most
 
 // One effect's result: the text for the memo; fail ends the block with it as its error.
 RcResult :: struct { text: string; fail: bool; }
@@ -128,6 +145,13 @@ rc_why :: (env: [] RcEnv, a: string, b: string) -> string {
   env[0].full[0] = 0;
   return "";
 }
+// path as the working memory names it: relative to the workspace, with no "./" before it.
+rc_rel :: (env: [] RcEnv, path: string) -> string {
+  p := path;
+  if p.count > env[0].cwd.count + 1 && p[0] == '/' { p = cast(string) p[env[0].cwd.count + 1..<p.count]; }
+  while p.count > 2 && p[0] == '.' && p[1] == '/' { p = cast(string) p[2..<p.count]; }
+  return p;
+}
 rc_why_text :: (env: [] RcEnv) -> string { n := 0; while env[0].why[n] != 0 { n += 1; } return cast(string) env[0].why[0..<n]; }
 
 // A file's text under the workspace, or why not.
@@ -182,14 +206,8 @@ rc_effect :: (env: [] RcEnv, r: [] Rs, st: [] RlmState, req: string) -> RcResult
   if k < 0 { return rc_fail(rs_cat(r, "no such function: ", op)); }
   acts := k >= 5 && k <= 8;     // edit, replace_lines, write, sh; the rest (outline too) are reads
   now := rc_now(st); deadline := st[0].spent.started_ms + st[0].limits.max_ms;
-  ok := ifx acts then np_budget(false, env[0].acts, now, deadline) else np_read_budget(env[0].reads, now, deadline);
-  if !ok {
-    env[0].refused += 1;
-    st[0].stop = ifx now >= deadline then RLM_STOP_TIME else ifx acts then RC_STOP_EFFECTS else RC_STOP_READS;
-    st[0].failed = rc_stop_name(st[0].stop);
-    return rc_fail(rs_cat(r, rs_cat(r, op, "() was refused: "), rs_cat(r, st[0].failed, " was reached")));
-  }
-  if acts { env[0].acts += 1; } else { env[0].reads += 1; }
+  ad := rc_admit(env, r, st, op, acts);
+  if ad.fail { return ad; }
   env[0].ops[k] += 1;
   if op == "files" {
     s := rc_sh(env, "git ls-files", 60);
@@ -234,7 +252,9 @@ rc_effect :: (env: [] RcEnv, r: [] Rs, st: [] RlmState, req: string) -> RcResult
     if secs > RC_SH_MOST { secs = RC_SH_MOST; }
     if secs > left { secs = left; }
     if secs < 1 { secs = 1; }
+    t0 := cxproc_now_ms();
     s := rc_sh(env, q.f[1], secs);
+    if env[0].memory { rc_wm_ran(env, q.f[1], s, cxproc_now_ms() - t0); }
     at := r[0].nh;
     ok2 := rs_put_int(r, s.exit) && rs_put(r, ifx s.timed_out then " 1\n" else " 0\n") && rs_put(r, s.out);
     if s.cut { ok2 = ok2 && rs_put(r, "\n[the output was cut at 8 MB]\n"); }
@@ -246,8 +266,10 @@ rc_effect :: (env: [] RcEnv, r: [] Rs, st: [] RlmState, req: string) -> RcResult
     full := rc_path(env, path, true);
     if full.count == 0 { env[0].failed += 1; return rc_fail(rs_cat(r, "write(): ", rc_why_text(env))); }
     if fs_kind(full) == 2 { return rc_fail(rs_cat(r, "write(): that is a folder: ", path)); }
+    before := ifx env[0].memory then rc_wm_before(env, full) else "";
     if q.f[2].count > RC_FILE_MOST || !fs_write(full, q.f[2]) { env[0].failed += 1; return rc_fail(rs_cat(r, "write(): could not write ", path)); }
     env[0].writes += 1;
+    if env[0].memory { x := wmf_change(env[0].wm[..], rc_rel(env, path), before, q.f[2]); }
     at := r[0].nh;
     if !(rs_put(r, "wrote ") && rs_put(r, path) && rs_put(r, ": ") && rs_put_int(r, rp_lines(q.f[2])) && rs_put(r, " lines")) { r[0].nh = at; return rc_ok("wrote it"); }
     return rc_ok(rs_take(r, at));
@@ -256,6 +278,7 @@ rc_effect :: (env: [] RcEnv, r: [] Rs, st: [] RlmState, req: string) -> RcResult
     full := rc_path(env, path, true);
     if full.count == 0 { env[0].failed += 1; return rc_ok(rs_cat(r, "edit failed: ", rc_why_text(env))); }
     if q.f[2].count == 0 { env[0].failed += 1; return rc_ok("edit failed: old is empty; write(path, text) writes a whole file"); }
+    before := ifx env[0].memory then rc_wm_before(env, full) else "";
     e := mc_edit_file(env[0].cwd, McEdit.{path = path, old = q.f[2], text = q.f[3]}, env[0].profile, env[0].b[..]);
     if !e.ok {
       env[0].failed += 1;
@@ -263,6 +286,7 @@ rc_effect :: (env: [] RcEnv, r: [] Rs, st: [] RlmState, req: string) -> RcResult
       return rc_ok(rs_cat(r, t, e.shown));
     }
     env[0].writes += 1;
+    if env[0].memory { rc_wm_change(env, rc_rel(env, path), full, before); }
     return rc_ok(rs_copy(r, e.shown));
   }
   // read, lines, count_lines, replace_lines: the file's text first
@@ -271,11 +295,21 @@ rc_effect :: (env: [] RcEnv, r: [] Rs, st: [] RlmState, req: string) -> RcResult
     if op == "replace_lines" { env[0].failed += 1; return rc_fail(rs_cat(r, "replace_lines(): ", f.why)); }
     return rc_fail(rs_cat(r, rs_cat(r, op, "(): "), f.why));
   }
-  if op == "read" { return rc_ok(rs_copy(r, f.text)); }
+  if op == "read" {
+    if env[0].memory { x := rc_wm_read(env, st, rc_rel(env, path), f.text, 1, WM_END); }   // counted; the text is the file's and nothing else
+    return rc_ok(rs_copy(r, f.text));
+  }
   if op == "outline" { return rc_ok(rc_outline(r, path, f.text)); }
   if op == "count_lines" { at := r[0].nh; x := rs_put_int(r, rp_lines(f.text)); return rc_ok(rs_take(r, at)); }
   a := rc_int(q.f[2]); b := rc_int(q.f[3]);
-  if op == "lines" { return rc_ok(rc_numbered(env, r, f.text, ifx a < 1 then 1 else a, ifx b < 1 then -1 else b)); }
+  if op == "lines" {
+    shown := rc_numbered(env, r, f.text, ifx a < 1 then 1 else a, ifx b < 1 then -1 else b);
+    if env[0].memory {
+      total := rp_lines(f.text); from := ifx a < 1 then 1 else a; to := ifx b < 1 || b > total then total else b;
+      if from <= to { shown = rc_again(r, rc_wm_read(env, st, rc_rel(env, path), f.text, from, to), shown); }
+    }
+    return rc_ok(shown);
+  }
   // replace_lines: lines a..b become text; a = b + 1 inserts before line a
   total := rp_lines(f.text);
   if a < 1 || b < a - 1 || b > total || a > total + 1 {
@@ -299,6 +333,7 @@ rc_effect :: (env: [] RcEnv, r: [] Rs, st: [] RlmState, req: string) -> RcResult
   now_text := cast(string) env[0].dst[0..<n];
   if !fs_write(full, now_text) { env[0].failed += 1; return rc_fail(rs_cat(r, "replace_lines(): could not write ", path)); }
   env[0].writes += 1;
+  if env[0].memory { x := wmf_change(env[0].wm[..], rc_rel(env, path), f.text, now_text); }
   added := rp_lines(text);
   lo := ifx a > 2 then a - 2 else 1;
   hi := a + added + 1;
@@ -358,8 +393,10 @@ rc_stop_name :: (v: int) -> string {
 
 // Serves the effect the run's block waits on, and says so in the trace.
 rc_serve :: (env: [] RcEnv, r: [] Rs, st: [] RlmState, req: string) {
-  res := rc_effect(env, r, st, req);
   q := rc_fields(req);
+  more := false; for o: RC_XOPS { if o == q.f[0] { more = true; } }   // a function a flag adds (--intel, --memory)
+  res := RcResult.{};
+  if more { res = rc_more_effect(env, r, st, q); } else { res = rc_effect(env, r, st, req); }
   rlm_tr(st, "--- effect "); rlm_tr(st, q.f[0]); rlm_tr(st, "(");
   for i: 1..<q.n {
     if i > 1 { rlm_tr(st, ", "); }
@@ -375,12 +412,21 @@ rc_serve :: (env: [] RcEnv, r: [] Rs, st: [] RlmState, req: string) {
 // One step of the run: the effect its block waits on served, or the driver's next step.
 rc_step :: (env: [] RcEnv, r: [] Rs, st: [] RlmState) {
   q := rlm_fx_waiting(r, st);
-  if q.count > 0 { rc_serve(env, r, st, q); } else { rlm_step(r, st); }
+  if q.count > 0 { rc_serve(env, r, st, q); return; }
+  if !env[0].memory { rlm_step(r, st); return; }
+  // --memory: the turn's repeat reads go before the next turn's note, and the root's FINAL meets the finish rule
+  t := st[0].nlev - 1; v := st[0].levels[t..<t + 1];
+  was := v[0].phase; depth := v[0].depth;
+  if was == L_CALL { env[0].turn_reads = 0; env[0].turn_repeats = 0; }
+  st[0].note_line = ifx was == L_BLOCK then rc_note_line(env) else "";
+  rlm_step(r, st);
+  if st[0].nlev == t + 1 && depth == 0 && (was == L_PASS || was == L_CALL) && v[0].phase == L_END && v[0].answer.count > 0 && st[0].stop == RLM_OK { rc_finish(env, r, st, v, was); }
 }
 
 // Steps the run to its end, serving its effects; progress lines on stderr when live.
 rc_drive :: (env: [] RcEnv, r: [] Rs, st: [] RlmState, task: string, live: bool) {
   rlm_start(r, st, task);
+  if env[0].memory { rc_task_cmds(env, task); }
   calls := 0; t0 := cxproc_now_ms();
   while st[0].nlev > 0 {
     rc_step(env, r, st);
@@ -396,6 +442,477 @@ rc_drive :: (env: [] RcEnv, r: [] Rs, st: [] RlmState, task: string, live: bool)
       tool_errln(cast(string) lb[0..<n]);
     }
   }
+  if env[0].memory { rc_wm_close(env); }
+}
+
+// ---------------------------------------------------------------- compiler questions and working memory (--intel, --memory)
+//
+// Two sets of environment functions the run gains with a flag each (GitHub #13444, #13445;
+// README.md "Compiler questions and working memory"). They ride the same request, memo and rerun
+// as the functions above (script.coax env_more), so none is asked or recorded twice.
+//   --intel   the Coax compiler's answers (coax/lib/agent/intel/compiler.coax): defines, uses,
+//             show, exports, check, explain, effects, and replace, an edit that names the hash
+//             of the declaration it read
+//   --memory  the run store (coax/lib/agent/workmem/): every read, edit and command is recorded
+//             as it happens; note, known, changed and open_items reach it; a read of lines the
+//             store already has says so; FINAL is refused while a check the task names has not
+//             passed on the files as they are
+
+RC_ENV_INTEL :: [8] string.["defines name:s", "uses name:s file:s=", "show name:s file:s=", "exports path:s", "check path:s", "explain code:s", "effects path:s proc:s=", "replace name:s seen_hash:s text:s file:s="];
+RC_ENV_MEMORY :: [4] string.["note text:s path:s= a:i=0 b:i=0", "known", "changed", "open_items"];
+RC_XOPS :: [12] string.["defines", "uses", "show", "exports", "check", "explain", "effects", "replace", "note", "known", "changed", "open_items"];
+RC_XINTEL :: 8;                  // the first of RC_XOPS are --intel's, the rest --memory's
+RC_XREPLACE :: 7;
+
+RC_INTEL_NOTE :: "\n\nThe Coax compiler answers questions about .coax files. Its answers are certain where a search is a guess, so ask it first:\n- defines(name): where name is declared: kind, file and lines\n- uses(name, file=\"\"): every place name is used, with the procedure or check it is written in; file says which declaration you mean when several files declare the name\n- show(name, file=\"\"): one declaration's lines numbered; its first line gives the file, the lines and their hash\n- exports(path): what a file declares\n- check(path): the file's diagnostics as a list of dicts with code, line, message and fix; an empty list is a clean file\n- explain(code): what a diagnostic code such as E0315 means\n- effects(path, proc=\"\"): what a procedure may do (foreign calls, traps, I/O), with a call path to each\n- replace(name, seen_hash, text, file=\"\"): replaces the whole declaration with text. seen_hash is the hash show(name) gave. If the declaration changed since you read it, nothing is written and you get its text and hash as they are now; else you get the new lines numbered, their hash and the file's diagnostics\nPrefer show(name) to lines for a declaration you can name, uses(name) to search for a symbol, and replace to edit when you rewrite a whole declaration. Call check(path) after every edit of a .coax file. When the compiler can't answer, the function returns text that starts \"no answer:\" and says why (check returns one dict with code \"no answer\"); use search and lines for that question. Each answer is bounded and says how many records it left out.";
+RC_MEMORY_NOTE :: "\n\nYou have a working memory. What you read, change and run is recorded in it as you go, with no action from you, and it outlives this conversation:\n- note(text, path=\"\", a=0, b=0): records a finding, with the lines of the file it is about; it stays current until that file changes\n- known(): what is still current: your findings, then the lines you have read\n- changed(): every edit so far and the lines it wrote\n- open_items(): what still stops FINAL\nWhen lines or show returns lines you already have at the file's current version, its first line says so: you are reading the same thing again. Call known() before you read again, and note what you learn when you learn it. A check the task names (a command it quotes in backticks) has passed only when its latest run exited 0 after your last edit. FINAL before that is refused and lists what is open.";
+
+RC_ANS :: 24000;                 // bytes of one compiler answer at most
+RC_VIEW :: 6000;                 // bytes of known(), changed() and open_items() at most
+RC_REFUSALS :: 2;                // times FINAL is refused before it is accepted with what is open
+RC_CMDS :: 64;                   // backtick spans of the task kept
+
+// Whether the run may do one more effect (reads against np_read_budget, commands and edits
+// against np_budget, both against the run's time); when not, the refusal that stops the run.
+rc_admit :: (env: [] RcEnv, r: [] Rs, st: [] RlmState, op: string, acts: bool) -> RcResult {
+  now := rc_now(st); deadline := st[0].spent.started_ms + st[0].limits.max_ms;
+  ok := ifx acts then np_budget(false, env[0].acts, now, deadline) else np_read_budget(env[0].reads, now, deadline);
+  if !ok {
+    env[0].refused += 1;
+    st[0].stop = ifx now >= deadline then RLM_STOP_TIME else ifx acts then RC_STOP_EFFECTS else RC_STOP_READS;
+    st[0].failed = rc_stop_name(st[0].stop);
+    return rc_fail(rs_cat(r, rs_cat(r, op, "() was refused: "), rs_cat(r, st[0].failed, " was reached")));
+  }
+  if acts { env[0].acts += 1; } else { env[0].reads += 1; }
+  return rc_ok("");
+}
+
+// The compiler session, opened at the first question. False when no compiler answers.
+rc_ix :: (env: [] RcEnv, st: [] RlmState) -> bool {
+  if env[0].ix_state == 0 {
+    env[0].ix_state = ifx ix_open(env[0].ix[..], env[0].cwd, env[0].coax) then 1 else 2;
+    if env[0].ix_state == 1 { env[0].ix[0].profile = env[0].profile; }
+  }
+  if env[0].ix_state != 1 { return false; }
+  // one compiler run gets what is left of the run's time, a minute at most
+  left := st[0].spent.started_ms + st[0].limits.max_ms - rc_now(st);
+  env[0].ix[0].timeout_ms = ifx left > 60000 then 60000 else ifx left < 1000 then 1000 else left;
+  return true;
+}
+
+// What a compiler question returns when the compiler gave no answer: a short text that says so,
+// why, and what to use for it. It never ends the block.
+rc_no_answer_text :: (env: [] RcEnv, r: [] Rs, st: [] RlmState, what: string, arg: string, why: string) -> string {
+  env[0].unanswered += 1;
+  at := r[0].nh;
+  ok := rs_put(r, "no answer: the compiler could not answer ") && rs_put(r, what) && rs_put(r, "(") && rs_put(r, cast(string) arg[0..<ifx arg.count > 120 then 120 else arg.count]) && rs_put(r, "): ");
+  ok = ok && rs_put(r, ifx why.count > 0 then cast(string) why[0..<ifx why.count > 400 then 400 else why.count] else "it said nothing") && rs_put(r, ". Use search and lines for this.");
+  if !ok { r[0].nh = at; return "no answer: the compiler could not answer. Use search and lines for this."; }
+  t := rs_take(r, at);
+  rlm_tr(st, "--- compiler: "); rlm_tr(st, t); rlm_tr(st, "\n");
+  return t;
+}
+rc_no_answer :: (env: [] RcEnv, r: [] Rs, st: [] RlmState, what: string, arg: string, why: string) -> RcResult { return rc_ok(rc_no_answer_text(env, r, st, what, arg, why)); }
+
+// What an answer left out, a line each.
+rc_left_out :: (out: [] u8, at: int, a: IxAnswer, what: string) -> int {
+  n := at;
+  if a.n < a.total { n = rp_put(out, n, "["); n = rp_put_int(out, n, a.total - a.n); n = rp_put(out, n, " more "); n = rp_put(out, n, what); n = rp_put(out, n, " not listed]\n"); }
+  if a.unchecked > 0 { n = rp_put(out, n, "["); n = rp_put_int(out, n, a.unchecked); n = rp_put(out, n, " files that name it were not checked: they do not compile, or the question's limit of compiler runs was reached]\n"); }
+  if a.ok && a.n > 0 && a.why.count > 0 { n = rp_put(out, n, "note: "); n = rp_put(out, n, a.why); n = rp_put(out, n, "\n"); }
+  return n;
+}
+rc_none :: (out: [] u8, a: IxAnswer, otherwise: string) -> int {
+  n := rp_put(out, 0, "none: "); n = rp_put(out, n, ifx a.why.count > 0 then a.why else otherwise);
+  return rp_put(out, n, "\n");
+}
+rc_hash12 :: (hash: string) -> string { return ifx hash.count > IX_SEEN_LEAST then cast(string) hash[0..<IX_SEEN_LEAST] else hash; }
+
+// A file's diagnostics in env.diags. A file that is a part of a larger unit fails alone on names
+// its loader gives it; then the answer is the first loader's check, and via names that loader.
+RcChecked :: struct { a: IxAnswer; via: string; }
+rc_check_file :: (env: [] RcEnv, r: [] Rs, path: string, alone: IxAnswer, asked: bool) -> RcChecked {
+  s := env[0].ix[..];
+  c := RcChecked.{a = alone};
+  if !asked { c.a = ix_check(s, path, env[0].diags[0..<RC_DIAGS]); }
+  if !c.a.ok || c.a.status == 0 { return c; }
+  l := ix_loaders(s, path, env[0].loaders[..]);
+  if !l.ok || l.n == 0 {
+    // the loaders question used the session's strings: ask the check again so its records stand
+    c.a = ix_check(s, path, env[0].diags[0..<RC_DIAGS]);
+    return c;
+  }
+  c.via = rs_copy(r, env[0].loaders[0]);
+  c.a = ix_check(s, c.via, env[0].diags[0..<RC_DIAGS]);
+  return c;
+}
+
+// A check's records for the model as text: "clean", or each diagnostic with its notes and fixes.
+rc_checked_text :: (env: [] RcEnv, out: [] u8, at: int, c: RcChecked) -> int {
+  n := rp_put(out, at, "check");
+  if c.via.count > 0 { n = rp_put(out, n, " (through "); n = rp_put(out, n, c.via); n = rp_put(out, n, ", which loads it)"); }
+  if !c.a.ok { n = rp_put(out, n, ": no answer: "); n = rp_put(out, n, c.a.why); return rp_put(out, n, "\n"); }
+  if c.a.total == 0 { return rp_put(out, n, ": clean\n"); }
+  n = rp_put(out, n, ": "); n = rp_put_int(out, n, c.a.total); n = rp_put(out, n, ifx c.a.total == 1 then " diagnostic\n" else " diagnostics\n");
+  n = ix_diags_text(env[0].diags[0..<c.a.n], out, n);
+  return rc_left_out(out, n, c.a, "diagnostics");
+}
+
+// One field of a check record: no byte that parts records or fields.
+rc_field :: (out: [] u8, at: int, s: string) -> int {
+  n := at;
+  for ch: s { if n < out.count { out[n] = ifx ch == 30 || ch == 31 then ' ' else ch; n += 1; } }
+  return n;
+}
+rc_byte :: (out: [] u8, at: int, c: u8) -> int { if at < out.count { out[at] = c; return at + 1; } return at; }
+rc_record :: (out: [] u8, at: int, code: string, line: int, a: string, b: string, fix: string) -> int {
+  n := rc_byte(out, rc_field(out, at, code), 31); n = rc_byte(out, rp_put_int(out, n, line), 31);
+  n = rc_field(out, n, a); n = rc_byte(out, rc_field(out, n, b), 31);
+  return rc_byte(out, rc_field(out, n, fix), 30);
+}
+
+// The working memory hears that lines from..to of path, whose whole content is text, went to the
+// model. -1 when they were new to it; else the store already had every one of them at this
+// content: the turn they were first read at, plus one (0: in an earlier run of this memory).
+rc_wm_read :: (env: [] RcEnv, st: [] RlmState, path: string, text: string, from: int, to: int) -> int {
+  w := env[0].wm[..]; s := w[0].s[..];
+  before := s[0].nreads;
+  p := wmf_read(w, path, text, from, to);
+  env[0].turn_reads += 1; env[0].mem_reads += 1;
+  if !p.ok || p.id < 0 || p.id >= WM_READS { return -1; }
+  turn := ifx st[0].nlev > 0 then st[0].levels[st[0].nlev - 1].turn + 1 else 1;
+  if !p.known { if s[0].nreads > before { env[0].read_turn[p.id] = turn; } return -1; }
+  env[0].repeats += 1; env[0].turn_repeats += 1;
+  if s[0].nreads == before { return env[0].read_turn[p.id]; }
+  // a new row inside rows the store had: the turn of the one that holds its first line
+  first := 0; row := s[0].reads[p.id];
+  for i: 0..<p.id {
+    x := s[0].reads[i];
+    if x.file == row.file && x.from <= row.from && x.to >= row.from && wm_same(x.hash, row.hash) { first = env[0].read_turn[i]; break; }
+  }
+  env[0].read_turn[p.id] = first;
+  return first;
+}
+// text with a first line saying the model already had it (again: rc_wm_read's answer).
+rc_again :: (r: [] Rs, again: int, text: string) -> string {
+  if again < 0 { return text; }
+  at := r[0].nh;
+  ok := rs_put(r, "[already read ");
+  if again > 0 { ok = ok && rs_put(r, "at turn ") && rs_put_int(r, again - 1); } else { ok = ok && rs_put(r, "in an earlier run"); }
+  ok = ok && rs_put(r, ": you have these lines, and known() lists what you have]\n") && rs_put(r, text);
+  if !ok { r[0].nh = at; return text; }
+  return rs_take(r, at);
+}
+// An edit for the working memory: before is the file's content before it (in env.file), and its
+// content now is read here.
+rc_wm_change :: (env: [] RcEnv, path: string, full: string, before: string) {
+  n := fs_read(full, env[0].dst[..]);
+  if n < 0 { return; }
+  x := wmf_change(env[0].wm[..], path, before, cast(string) env[0].dst[0..<n]);
+}
+// The file's content now, in env.file ("" when there is no file yet).
+rc_wm_before :: (env: [] RcEnv, full: string) -> string {
+  n := ifx fs_kind(full) == 1 then fs_read(full, env[0].file[..]) else 0;
+  return cast(string) env[0].file[0..<ifx n < 0 then 0 else n];
+}
+
+// The task's commands: its spans in single backticks, each on one line (a run of two or more
+// backticks, a code fence, is no span).
+rc_task_cmds :: (env: [] RcEnv, task: string) {
+  env[0].ncmds = 0;
+  i := 0;
+  while i < task.count {
+    if task[i] != '`' { i += 1; continue; }
+    e := i; while e < task.count && task[e] == '`' { e += 1; }
+    if e - i != 1 { i = e; continue; }
+    c := e; while c < task.count && task[c] != '`' && task[c] != 10 { c += 1; }
+    if c >= task.count || task[c] == 10 { i = c; continue; }
+    a := e; b := c;
+    while a < b && task[a] == ' ' { a += 1; }
+    while b > a && task[b - 1] == ' ' { b -= 1; }
+    span := cast(string) task[a..<b];
+    known := false;
+    for k: 0..<env[0].ncmds { if env[0].cmds[k] == span { known = true; } }
+    if !known && span.count >= 2 && span.count <= 400 && env[0].ncmds < RC_CMDS { env[0].cmds[env[0].ncmds] = span; env[0].ncmds += 1; }
+    i = c + 1;
+    while i < task.count && task[i] == '`' { i += 1; }
+  }
+}
+// The check of the task that cmd is a run of: the longest of the task's backtick spans that is
+// the whole command, or has a space (a command with arguments) and is part of it. "" for none.
+rc_task_check :: (env: [] RcEnv, cmd: string) -> string {
+  best := "";
+  for k: 0..<env[0].ncmds {
+    c := env[0].cmds[k];
+    spaced := false; for ch: c { if ch == ' ' { spaced = true; } }
+    if (c == cmd || (spaced && rs_find_sub(cmd, c, 0) >= 0)) && c.count > best.count { best = c; }
+  }
+  return best;
+}
+// A command ran: the working memory sees which files it changed, then keeps the run, as a run of
+// the task's check it is (the check's row is made at its first run).
+rc_wm_ran :: (env: [] RcEnv, cmd: string, s: RcSh, ms: int) {
+  w := env[0].wm[..];
+  x := wmf_refresh(w);
+  check := rc_task_check(env, cmd);
+  if check.count > 0 {
+    have := false;
+    for i: 0..<w[0].s[0].nchecks { if w[0].s[0].checks[i].name == check { have = true; } }
+    if !have && !wmf_check(w, check, check).ok { check = ""; }
+  }
+  y := wmf_run(w, cmd, check, s.exit, s.timed_out, ms, s.out);
+}
+
+// What stops FINAL now, in env.view ("" when nothing does).
+rc_open :: (env: [] RcEnv) -> string {
+  x := wmf_refresh(env[0].wm[..]);
+  return wm_view_open(env[0].wm[0].s[..], RC_VIEW, env[0].view[..]);
+}
+
+rc_memory_fn :: (env: [] RcEnv, r: [] Rs, st: [] RlmState, q: RcReq) -> RcResult {
+  op := q.f[0]; w := env[0].wm[..]; s := w[0].s[..];
+  if op == "known" {
+    t := wm_view_known(s, RC_VIEW, env[0].view[..]);
+    return rc_ok(ifx t.count > 0 then rs_copy(r, t) else "(nothing yet: no findings, and no lines read that are still current)");
+  }
+  if op == "changed" {
+    t := wm_view_changed(s, RC_VIEW, env[0].view[..]);
+    return rc_ok(ifx t.count > 0 then rs_copy(r, t) else "(no edits yet)");
+  }
+  if op == "open_items" {
+    t := rc_open(env);
+    return rc_ok(ifx t.count > 0 then rs_copy(r, t) else "nothing is open: FINAL will be accepted");
+  }
+  // note(text, path, a, b)
+  text := q.f[1]; path := q.f[2];
+  if text.count == 0 { return rc_ok("note: give the finding's text"); }
+  p := WmPut.{};
+  if path.count == 0 {
+    none: [1] WmSrc;
+    p = wmf_finding(w, text, -1, none[0..<0]);
+  } else {
+    f := rc_read(env, r, path);
+    if !f.ok { return rc_fail(rs_cat(r, "note(): ", f.why)); }
+    o := wmf_observe(w, path, f.text);
+    total := rp_lines(f.text);
+    a := rc_int(q.f[3]); b := rc_int(q.f[4]);
+    if a < 1 { a = 1; }
+    if b < a || b > total { b = ifx total < a then a else total; }
+    p = wmf_finding_at(w, text, -1, path, a, b);
+  }
+  if !p.ok { return rc_ok("note: it could not be recorded (the memory is full, or the text is over 32 KB)"); }
+  env[0].notes += 1;
+  at := r[0].nh;
+  if !(rs_put(r, "noted F") && rs_put_int(r, p.id)) { r[0].nh = at; return rc_ok("noted"); }
+  return rc_ok(rs_take(r, at));
+}
+
+rc_intel_fn :: (env: [] RcEnv, r: [] Rs, st: [] RlmState, q: RcReq) -> RcResult {
+  op := q.f[0]; arg := q.f[1];
+  out := env[0].show[0..<RC_ANS];
+  env[0].asked += 1;
+  // a file the question names is held to the workspace as a read is
+  if op == "exports" || op == "check" || op == "effects" {
+    full := rc_path(env, arg, false);
+    if full.count == 0 { return rc_fail(rs_cat(r, rs_cat(r, op, "(): "), rc_why_text(env))); }
+    if fs_kind(full) != 1 { return rc_fail(rs_cat(r, rs_cat(r, op, "(): no such file (files() lists them): "), arg)); }
+  }
+  if !rc_ix(env, st) {
+    why := "no Coax compiler answers here (pass --coax PATH)";
+    if op == "check" { n := rc_record(out, 0, "no answer", 0, rc_no_answer_text(env, r, st, op, arg, why), "", ""); return rc_ok(rs_copy(r, cast(string) out[0..<n])); }
+    return rc_no_answer(env, r, st, op, arg, why);
+  }
+  s := env[0].ix[..];
+  if op == "defines" {
+    a := ix_defines(s, arg, env[0].decls[0..<16]);
+    if !a.ok { return rc_no_answer(env, r, st, op, arg, a.why); }
+    n := ifx a.n == 0 then rc_none(out, a, "no declaration has this name") else rc_left_out(out, ix_decls_text(env[0].decls[0..<a.n], out, 0), a, "declarations");
+    return rc_ok(rs_copy(r, cast(string) out[0..<n]));
+  }
+  if op == "uses" {
+    a := ix_uses_of(s, arg, q.f[2], env[0].decls[0..<8], env[0].uses[0..<RC_USES]);
+    if !a.ok { return rc_no_answer(env, r, st, op, arg, a.why); }
+    n := rc_left_out(out, ifx a.n == 0 then rc_none(out, a, "nothing uses this name") else ix_uses_text(env[0].uses[0..<a.n], a.defs > 1, out, 0), a, "uses");
+    return rc_ok(rs_copy(r, cast(string) out[0..<n]));
+  }
+  if op == "exports" {
+    a := ix_exports(s, arg, env[0].decls[0..<RC_DECLS]);
+    if !a.ok { return rc_no_answer(env, r, st, op, arg, a.why); }
+    n := ifx a.n == 0 then rc_none(out, a, "the file declares nothing") else rc_left_out(out, ix_decls_text(env[0].decls[0..<a.n], out, 0), a, "declarations");
+    return rc_ok(rs_copy(r, cast(string) out[0..<n]));
+  }
+  if op == "explain" {
+    t := ix_explain(s, arg, env[0].dst[0..<4000]);
+    if !t.ok { return rc_no_answer(env, r, st, op, arg, t.why); }
+    return rc_ok(rs_copy(r, t.text));
+  }
+  if op == "effects" {
+    a := ix_effects_of(s, arg, q.f[2], env[0].fx[0..<RC_FX]);
+    if !a.ok { return rc_no_answer(env, r, st, op, arg, a.why); }
+    n := ifx a.n == 0 then rc_none(out, a, "no effects are recorded for it") else rc_left_out(out, ix_effects_text(env[0].fx[0..<a.n], out, 0), a, "effects");
+    return rc_ok(rs_copy(r, cast(string) out[0..<n]));
+  }
+  if op == "check" { return rc_intel_check(env, r, st, arg); }
+  if op == "show" { return rc_intel_show(env, r, st, arg, q.f[2]); }
+  return rc_intel_replace(env, r, st, q);
+}
+
+// check(path): the file's diagnostics as records for a list of dicts (script.coax rs_records).
+rc_intel_check :: (env: [] RcEnv, r: [] Rs, st: [] RlmState, arg: string) -> RcResult {
+  op := "check"; out := env[0].show[0..<RC_ANS];
+  {
+    c := rc_check_file(env, r, arg, IxAnswer.{}, false);
+    n := 0;
+    if !c.a.ok { n = rc_record(out, 0, "no answer", 0, rc_no_answer_text(env, r, st, op, arg, c.a.why), "", ""); return rc_ok(rs_copy(r, cast(string) out[0..<n])); }
+    if c.via.count > 0 && c.a.total > 0 { n = rc_record(out, n, "note", 0, "these are the diagnostics of the file that loads it: ", c.via, ""); }
+    for i: 0..<c.a.n {
+      d := env[0].diags[i];
+      other := d.file.count > 0 && d.file != arg;
+      n = rc_record(out, n, d.code, d.line, ifx other then rs_cat(r, rs_cat(r, "in ", d.file), ": ") else "", d.message, d.fixes);
+    }
+    if c.a.n < c.a.total { at := r[0].nh; x := rs_put_int(r, c.a.total - c.a.n) && rs_put(r, " more diagnostics not listed"); n = rc_record(out, n, "more", 0, rs_take(r, at), "", ""); }
+    return rc_ok(rs_copy(r, cast(string) out[0..<n]));
+  }
+}
+
+// show(name, file): one declaration's lines numbered, under a line with its file, lines and hash.
+rc_intel_show :: (env: [] RcEnv, r: [] Rs, st: [] RlmState, arg: string, file_arg: string) -> RcResult {
+  op := "show"; out := env[0].show[0..<RC_ANS]; s := env[0].ix[..];
+  {
+    sh := ix_show(s, arg, file_arg, env[0].dst[0..<RC_ANS - 400]);
+    if !sh.ok {
+      if sh.found > 1 { n := rp_put(out, 0, "more than one declaration has this name: pass file=\n"); n = rp_put(out, n, sh.text); return rc_ok(rs_copy(r, cast(string) out[0..<n])); }
+      // the library's two answers of "nothing has this name"; anything else is the compiler failing
+      if rs_find_sub(sh.why, "no declaration has this name", 0) == 0 || rs_find_sub(sh.why, "no .coax file under the root names it", 0) == 0 { n := rp_put(out, 0, "none: "); n = rp_put(out, n, sh.why); return rc_ok(rs_copy(r, cast(string) out[0..<n])); }
+      return rc_no_answer(env, r, st, op, arg, sh.why);
+    }
+    n := rp_put(out, 0, sh.file); n = rp_put(out, n, ":"); n = rp_put_int(out, n, sh.from); n = rp_put(out, n, "-"); n = rp_put_int(out, n, sh.to);
+    n = rp_put(out, n, "  "); n = rp_put(out, n, sh.decl.kind); n = rp_put(out, n, " "); n = rp_put(out, n, sh.decl.name); n = rp_put(out, n, "  hash "); n = rp_put(out, n, rc_hash12(sh.hash)); n = rp_put(out, n, "\n");
+    n = rp_put(out, n, sh.text);
+    if sh.cut { n = rp_put(out, n, "[cut: ask for lines "); n = rp_put_int(out, n, sh.next); n = rp_put(out, n, " on with lines(path, a, b)]\n"); }
+    text := rs_copy(r, cast(string) out[0..<n]);
+    if env[0].memory {
+      file := rs_copy(r, sh.file); from := sh.from; to := ifx sh.cut then sh.next - 1 else sh.to;
+      f := rc_read(env, r, file);
+      if f.ok && to >= from { text = rc_again(r, rc_wm_read(env, st, file, f.text, from, to), text); }
+    }
+    return rc_ok(text);
+  }
+}
+
+// replace(name, seen_hash, text, file): the declaration first, so its file is held to the
+// workspace as an edit is; then the library's edit by the hash that was read.
+rc_intel_replace :: (env: [] RcEnv, r: [] Rs, st: [] RlmState, q: RcReq) -> RcResult {
+  op := q.f[0]; arg := q.f[1]; out := env[0].show[0..<RC_ANS]; s := env[0].ix[..];
+  a := ix_defines(s, arg, env[0].decls[0..<16]);
+  if !a.ok { env[0].failed += 1; return rc_no_answer(env, r, st, op, arg, a.why); }
+  want := ifx q.f[4].count > 0 then ix_file(s, q.f[4]) else "";
+  pick := ix_pick(env[0].decls[0..<a.n], want);
+  if pick.count == 0 { env[0].failed += 1; return rc_ok(rs_cat(r, "replace failed: no declaration has this name (defines(name) says where a name is declared): ", arg)); }
+  if pick.count > 1 {
+    env[0].failed += 1;
+    n := rp_put(out, 0, "replace failed: more than one declaration has this name: pass file=\n"); n = ix_decls_text(env[0].decls[0..<a.n], out, n);
+    return rc_ok(rs_copy(r, cast(string) out[0..<n]));
+  }
+  d := env[0].decls[pick.at];
+  path := rs_copy(r, d.file); kind := rs_copy(r, d.kind);   // the session's strings end at its next question
+  full := rc_path(env, path, true);
+  if full.count == 0 { env[0].failed += 1; return rc_ok(rs_cat(r, "replace failed: ", rc_why_text(env))); }
+  before := ifx env[0].memory then rc_wm_before(env, full) else "";
+  res := ix_replace(s, IxEdit.{file = path, from = d.line, to = d.end_line, seen = q.f[2], text = q.f[3]}, env[0].dst[0..<RC_ANS - 2000], env[0].diags[0..<RC_DIAGS]);
+  if res.stale {
+    env[0].stale_edits += 1; env[0].failed += 1;
+    n := rp_put(out, 0, "replace refused: "); n = rp_put(out, n, arg); n = rp_put(out, n, " is not what you read (its hash is "); n = rp_put(out, n, rc_hash12(res.hash)); n = rp_put(out, n, " now): nothing was written. It is now, at "); n = rp_put(out, n, path); n = rp_put(out, n, ":"); n = rp_put_int(out, n, res.from); n = rp_put(out, n, "-"); n = rp_put_int(out, n, res.to); n = rp_put(out, n, ":\n");
+    n = rp_put(out, n, res.text);
+    return rc_ok(rs_copy(r, cast(string) out[0..<n]));
+  }
+  if !res.ok { env[0].failed += 1; return rc_ok(rs_cat(r, "replace failed: ", res.why)); }
+  env[0].writes += 1;
+  n := rp_put(out, 0, "replaced "); n = rp_put(out, n, kind); n = rp_put(out, n, " "); n = rp_put(out, n, arg); n = rp_put(out, n, ": "); n = rp_put(out, n, path); n = rp_put(out, n, ":"); n = rp_put_int(out, n, res.from); n = rp_put(out, n, "-"); n = rp_put_int(out, n, res.to);
+  if res.hash.count > 0 { n = rp_put(out, n, "  hash "); n = rp_put(out, n, rc_hash12(res.hash)); }
+  n = rp_put(out, n, "\n"); n = rp_put(out, n, res.text);
+  if res.cut { n = rp_put(out, n, "[cut: the rest is in the file]\n"); }
+  c := rc_check_file(env, r, path, res.checked, true);
+  n = rc_checked_text(env, out, n, c);
+  text := rs_copy(r, cast(string) out[0..<n]);
+  if env[0].memory { rc_wm_change(env, path, rc_path(env, path, true), before); }
+  return rc_ok(text);
+}
+
+// One of the functions a flag adds (RC_XOPS), counted and limited as the others are: replace as
+// an edit, the rest as reads.
+rc_more_effect :: (env: [] RcEnv, r: [] Rs, st: [] RlmState, q: RcReq) -> RcResult {
+  op := q.f[0];
+  k := -1; for o, i: RC_XOPS { if o == op { k = i; } }
+  if k < 0 || (k < RC_XINTEL && !env[0].intel) || (k >= RC_XINTEL && !env[0].memory) { return rc_fail(rs_cat(r, "no such function: ", op)); }
+  ad := rc_admit(env, r, st, op, k == RC_XREPLACE);
+  if ad.fail { return ad; }
+  env[0].xops[k] += 1;
+  if k >= RC_XINTEL { return rc_memory_fn(env, r, st, q); }
+  return rc_intel_fn(env, r, st, q);
+}
+
+// The line before the next turn's note: how many of this turn's reads the memory already had.
+rc_note_line :: (env: [] RcEnv) -> string {
+  b := env[0].notel[..];
+  n := rp_put(b, 0, "Reads this turn: "); n = rp_put_int(b, n, env[0].turn_reads); n = rp_put(b, n, "; repeats (lines you already had): "); n = rp_put_int(b, n, env[0].turn_repeats);
+  n = rp_put(b, n, ifx env[0].turn_repeats > 0 then ". known() lists what you have." else ".");
+  return cast(string) b[0..<n];
+}
+
+// The root gave FINAL (the level v is at L_END with an answer; was: its phase before). With a
+// check of the task still open, it is refused: the answer goes, the model is told what is open,
+// and its next turn comes. After RC_REFUSALS refusals it stands, and the run's report says what
+// was open (unproven).
+rc_finish :: (env: [] RcEnv, r: [] Rs, st: [] RlmState, v: [] RlmLevel, was: int) {
+  open := rc_open(env);
+  if open.count == 0 || env[0].finish_refused >= RC_REFUSALS { return; }
+  at := r[0].nh;
+  ok := rs_put(r, "FINAL was refused (") && rs_put_int(r, env[0].finish_refused + 1) && rs_put(r, " of at most ") && rs_put_int(r, RC_REFUSALS) && rs_put(r, " refusals): a check the task names has not passed on the files as they are now.\n") && rs_put(r, open);
+  ok = ok && rs_put(r, "Run it again and call FINAL when it passes. If it can't pass, say why in FINAL.\n\n");
+  if !ok { r[0].nh = at; return; }
+  head := rs_take(r, at);
+  // after a block: this turn's reports and the next turn's note; after a reply with no code: the note
+  rest := "";
+  if was == L_PASS { st[0].note_line = rc_note_line(env); rest = rlm_feedback(r, st, v); } else { st[0].note_line = ""; rest = rlm_turn_note(r, st, v[0].turn + 1, st[0].limits.max_turns); }
+  st[0].note_line = "";
+  msg := rs_cat(r, head, rest);
+  if rest.count == 0 || !rlm_push(r, st, "user", msg) { return; }
+  env[0].finish_refused += 1;
+  rlm_tr(st, "--- final refused ---\n"); rlm_tr(st, msg); rlm_tr(st, "\n");
+  v[0].answer = ""; st[0].answer = ""; r[0].final_set = false;
+  v[0].phase = L_CALL;
+}
+
+// The run's end for the working memory: what is still open (the report's unproven).
+rc_wm_close :: (env: [] RcEnv) {
+  x := wmf_refresh(env[0].wm[..]);
+  env[0].nunproven = wm_view_open(env[0].wm[0].s[..], RC_VIEW, env[0].unproven[..]).count;
+}
+
+// The flags' functions and prompt sections for a state rc_init made: intel (the compiler's
+// answers; coax is the compiler, "" for the library's own search) and, with memory_dir, the
+// working memory in that folder (made when new, opened again when not). "" when it is set up,
+// else why not.
+rc_extend :: (m: [] RcMem, intel: bool, coax: string, memory_dir: string) -> string {
+  e := m[0].env[..]; r := m[0].r[..]; st := m[0].st[..];
+  n := 0;
+  if intel { for s: RC_ENV_INTEL { m[0].more[n] = s; n += 1; } e[0].intel = true; e[0].coax = coax; }
+  if memory_dir.count > 0 {
+    for s: RC_ENV_MEMORY { m[0].more[n] = s; n += 1; }
+    if !wmf_open(e[0].wm[..], memory_dir, fs_base(memory_dir), e[0].cwd) { return "the memory's folder could not be made or opened (or its log is not a working memory's)"; }
+    if e[0].wm[0].s[0].root != e[0].cwd { return "that memory is of another folder: give another --session or --memory-dir"; }
+    e[0].memory = true;
+  }
+  r[0].env_more = m[0].more[0..<n];
+  // each flag's section of the prompt goes before the worker's part
+  cut := rs_find_sub(RC_SYSTEM, "{WORKER}", 0);
+  if cut < 0 { cut = RC_SYSTEM.count; }
+  at := r[0].nh;
+  ok := rs_put(r, cast(string) RC_SYSTEM[0..<cut]) && (!intel || rs_put(r, RC_INTEL_NOTE)) && (!e[0].memory || rs_put(r, RC_MEMORY_NOTE)) && rs_put(r, cast(string) RC_SYSTEM[cut..<RC_SYSTEM.count]);
+  if !ok { r[0].nh = at; return "the run's memory is full"; }
+  st[0].system_tpl = rs_take(r, at); st[0].child_tpl = st[0].system_tpl;
+  return "";
 }
 
 // ---------------------------------------------------------------- the run
@@ -417,10 +934,12 @@ RcMem :: struct {
   snap_names: [2 * RC_NAMES] string; snap_vals: [2 * RC_NAMES] RsVal; snap_lists: [2 * RC_LISTS] RsList; snap_cells: [2 * RC_CELLS] RsVal;
   st: [1] RlmState; r: [1] Rs;
   none: [1] string;
+  more: [12] string;             // the flags' functions (rc_extend)
   live: [1] RlmLive;
   env: [1] RcEnv;
   task: [1048576] u8;
   cwd: [4096] u8;
+  mdir: [4096] u8; coax: [4096] u8; home: [4096] u8; tmp: [4096] u8;
 }
 
 RC_LIMITS :: RlmLimits.{max_depth = 2, max_turns = 40, max_usd_micros = 5000000, max_ms = 900000};   // depth 2: rlm_query at the root starts a worker, a worker's is a plain sub-call
@@ -440,6 +959,13 @@ rc_init :: (m: [] RcMem, limits: RlmLimits, cwd: string, profile: string, manage
   e[0].cwd = cwd; e[0].profile = profile;
   e[0].reads = 0; e[0].acts = 0; e[0].failed = 0; e[0].refused = 0; e[0].writes = 0;
   for i: 0..<RC_OPS.count { e[0].ops[i] = 0; }
+  // no flag's functions until rc_extend
+  m[0].r[0].env_more = m[0].none[0..<0];
+  e[0].intel = false; e[0].memory = false; e[0].coax = ""; e[0].ix_state = 0;
+  e[0].asked = 0; e[0].unanswered = 0; e[0].stale_edits = 0;
+  e[0].mem_reads = 0; e[0].repeats = 0; e[0].turn_reads = 0; e[0].turn_repeats = 0; e[0].notes = 0; e[0].finish_refused = 0; e[0].ncmds = 0; e[0].nunproven = 0;
+  for i: 0..<RC_XOPS.count { e[0].xops[i] = 0; }
+  for i: 0..<WM_READS { e[0].read_turn[i] = 0; }
 }
 
 // The run's JSON line.
@@ -489,6 +1015,31 @@ rc_report :: (m: [] RcMem, o: [] Jo, buf: [] u8, ms: int) -> string {
   jo_end(o);
   jo_key(o, "unpriced"); jo_int(o, st[0].unpriced);
   jo_key(o, "wall_s"); jo_int(o, (ms + 500) / 1000);
+  if e[0].intel {
+    // compiler questions asked, those the compiler could not answer, and replaces refused as stale; then each function's calls
+    jo_key(o, "intel"); jo_obj(o);
+    jo_key(o, "asked"); jo_int(o, e[0].asked); jo_key(o, "unanswered"); jo_int(o, e[0].unanswered); jo_key(o, "stale_edits"); jo_int(o, e[0].stale_edits);
+    for i: 0..<RC_XINTEL { jo_key(o, RC_XOPS[i]); jo_int(o, e[0].xops[i]); }
+    jo_end(o);
+  }
+  if e[0].memory {
+    jo_key(o, "memory"); jo_obj(o);
+    jo_key(o, "dir"); jo_str(o, e[0].wm[0].dir);
+    jo_key(o, "reads"); jo_int(o, e[0].mem_reads); jo_key(o, "repeat_reads"); jo_int(o, e[0].repeats);
+    jo_key(o, "finishes_refused"); jo_int(o, e[0].finish_refused);
+    jo_key(o, "checks"); jo_int(o, e[0].wm[0].s[0].nchecks); jo_key(o, "runs"); jo_int(o, e[0].wm[0].s[0].nruns); jo_key(o, "changes"); jo_int(o, e[0].wm[0].s[0].nchanges);
+    for i: RC_XINTEL..<RC_XOPS.count { jo_key(o, RC_XOPS[i]); jo_int(o, e[0].xops[i]); }
+    // what was still open when the run ended, a line each
+    jo_key(o, "unproven"); jo_arr(o);
+    u := cast(string) e[0].unproven[0..<e[0].nunproven]; i := 0; first := true;
+    while i < u.count {
+      x := i; while x < u.count && u[x] != 10 { x += 1; }
+      if !first && x > i { jo_str(o, cast(string) u[i..<x]); }     // the first line is the view's title
+      first = false; i = x + 1;
+    }
+    jo_end(o);
+    jo_end(o);
+  }
   jo_key(o, "final"); jo_str(o, st[0].answer);
   jo_end(o);
   return jo_text(o);
@@ -519,8 +1070,33 @@ rc_run :: (a: [] Args) -> int {
   manager := args_has(a, "--manager");
   limits := rlm_arg_limits(a, RC_LIMITS);
   if manager && limits.max_depth < 2 { tool_errln("rlm code: --manager needs --max-depth 2 or more (its workers are rlm_query's child runs)"); return 2; }
+  intel := args_has(a, "--intel"); memory := args_has(a, "--memory");
+  if manager && (intel || memory) { tool_errln("rlm code: --manager does not take --intel or --memory"); return 2; }
   rc_init(m, limits, cwd, args_value(a, "--profile", "workspace-write"), manager);
   r := m[0].r[..]; st := m[0].st[..];
+  if intel || memory {
+    // the compiler: --coax, else the workspace's own (the library finds it), else the one of the checkout this runs in
+    coax := args_value(a, "--coax", "");
+    own: [4096] u8;
+    if coax.count == 0 && !fs_exists(fs_join(cwd, "coax/bin/coax", own[..])) { coax = fs_realpath("coax/bin/coax", m[0].coax[..]); }
+    // the memory's folder: --memory-dir, else the session's (~/.openagents/coder/sessions/ID.workmem; a new session unless --session names one)
+    mdir := "";
+    if memory {
+      mdir = args_value(a, "--memory-dir", "");
+      if mdir.count == 0 {
+        session := args_value(a, "--session", "");
+        if session.count == 0 {
+          fresh := fs_temp("rlm-", m[0].tmp[..]);
+          session = fs_base(fresh);
+          if fresh.count > 0 { gone := fs_remove(fresh); }
+        }
+        mdir = wmf_dir(proc_getenv("HOME", m[0].home[..]), session, m[0].mdir[..]);
+      }
+      if mdir.count == 0 { tool_errln("rlm code: --memory has no folder: give --session ID or --memory-dir DIR"); return 2; }
+    }
+    bad := rc_extend(m, intel, coax, mdir);
+    if bad.count > 0 { tool_errln("rlm code: "); tool_errln(bad); return 2; }
+  }
   task = rs_copy(r, task);
   why := rlm_live_models(st, m[0].live[..], a);
   if why.count > 0 { tool_errln("rlm code: no model: "); tool_errln(why); return 1; }
@@ -548,9 +1124,14 @@ tool_main :: () -> int #export_c #effects(all) {
   a := ab[..];
   cmd := args_at(a, 0);
   if cmd == "run" { return rc_run(a); }
-  if cmd == "selftest" { return rc_selftest(args_value(a, "--profile", "workspace-write")); }
-  tool_errln("usage: code.coax run --cwd DIR (--task TEXT | --task-file F) [--manager] [--max-depth 2] [--root-model M] [--sub-model M] [--root-effort E] [--max-turns 40] [--max-usd 5] [--max-minutes 15] [--profile workspace-write] [--trace F] [--log F]");
-  tool_errln("       code.coax selftest [--profile P]");
+  if cmd == "selftest" {
+    code := rc_selftest(args_value(a, "--profile", "workspace-write"));
+    cb: [4096] u8;
+    more := rc_selftest_more(args_value(a, "--profile", "workspace-write"), args_value(a, "--coax", fs_realpath("coax/bin/coax", cb[..])));
+    return ifx code == 0 then more else code;
+  }
+  tool_errln("usage: code.coax run --cwd DIR (--task TEXT | --task-file F) [--manager] [--max-depth 2] [--root-model M] [--sub-model M] [--root-effort E] [--max-turns 40] [--max-usd 5] [--max-minutes 15] [--profile workspace-write] [--trace F] [--log F] [--intel [--coax PATH]] [--memory [--session ID | --memory-dir DIR]]");
+  tool_errln("       code.coax selftest [--profile P] [--coax PATH]");
   return 2;
 }
 
@@ -578,6 +1159,46 @@ tool_main :: () -> int #export_c #effects(all) {
     #assert k >= 0;
   }
   #assert rs_count_sub(RC_SYSTEM, "{WORKER}") == 1 && rs_count_sub(RC_SYSTEM, "{RLMQ}") == 1 && rs_count_sub(RC_MANAGER_SYSTEM, "{WORKER}") == 0;
+}
+
+// Whether text has "- name(": the line of a function in a prompt's list.
+rc_names :: (text: string, name: string) -> bool {
+  at := rs_find_sub(text, name, 0);
+  while at >= 0 {
+    if at >= 2 && text[at - 2] == '-' && text[at - 1] == ' ' && at + name.count < text.count && text[at + name.count] == '(' { return true; }
+    at = rs_find_sub(text, name, at + 1);
+  }
+  return false;
+}
+
+#test "the flags' functions: each is in its prompt section, counted under its name, and no section has a brace the prompt would read as a key" {
+  for spec, i: RC_ENV_INTEL { #assert rs_word(spec) == RC_XOPS[i] && rc_names(RC_INTEL_NOTE, rs_word(spec)); }
+  for spec, i: RC_ENV_MEMORY { #assert rs_word(spec) == RC_XOPS[RC_XINTEL + i] && rc_names(RC_MEMORY_NOTE, rs_word(spec)); }
+  #assert RC_XOPS[RC_XREPLACE] == "replace" && RC_ENV_INTEL.count == RC_XINTEL && RC_ENV_INTEL.count + RC_ENV_MEMORY.count == RC_XOPS.count;
+  // none of them is a function the environment already has
+  for x: RC_XOPS { for spec: RS_ENV { #assert rs_word(spec) != x; } }
+  #assert rs_count_sub(RC_INTEL_NOTE, "{") == 0 && rs_count_sub(RC_MEMORY_NOTE, "{") == 0 && rs_count_sub(RC_SYSTEM, "{WORKER}") == 1;
+}
+
+#test "the task's commands are its spans in single backticks; a command is a run of the longest one it holds" {
+  eb: [1] RcEnv; env := eb[..];
+  rc_task_cmds(env, "Reply with no ``` fence. Fix `area` in `shapes.coax`; run `sh test.sh` and ` coax test shapes.coax ` then `sh test.sh` again.\nAn open `span\nends at its line. ``two ticks`` are no span. `x`");
+  #assert env[0].ncmds == 4 && env[0].cmds[0] == "area" && env[0].cmds[1] == "shapes.coax" && env[0].cmds[2] == "sh test.sh" && env[0].cmds[3] == "coax test shapes.coax";
+  #assert rc_task_check(env, "sh test.sh") == "sh test.sh" && rc_task_check(env, "cd . && sh test.sh 2>&1 | tail -5") == "sh test.sh";
+  // a span with no space names a check only as the whole command: a grep for area is no check
+  #assert rc_task_check(env, "grep area shapes.coax") == "" && rc_task_check(env, "area") == "area" && rc_task_check(env, "sh other.sh") == "";
+  #assert rc_task_check(env, "coax test shapes.coax && sh test.sh") == "coax test shapes.coax";
+  rc_task_cmds(env, "no spans here");
+  #assert env[0].ncmds == 0 && rc_task_check(env, "sh test.sh") == "";
+}
+
+#test "a check's record: four fields, and no byte that would part them" {
+  b: [64] u8; msg := [3] u8.['a', 31, 'b'];
+  n := rc_record(b[..], 0, "E1", 12, "in f: ", cast(string) msg[..], "fix");
+  #assert n == 20 && b[2] == 31 && cast(string) b[3..<5] == "12" && b[5] == 31 && cast(string) b[6..<15] == "in f: a b" && b[15] == 31 && cast(string) b[16..<19] == "fix" && b[19] == 30;
+  env_rel: [1] RcEnv; e := env_rel[..]; e[0].cwd = "/r/w";
+  #assert rc_rel(e, "./a/b.c") == "a/b.c" && rc_rel(e, "/r/w/a.c") == "a.c" && rc_rel(e, "a.c") == "a.c" && rc_rel(e, "././x") == "x";
+  #assert rc_hash12("0123456789abcdef0123") == "0123456789ab" && rc_hash12("0123") == "0123";
 }
 
 // ---------------------------------------------------------------- the self-test (real files and commands)
@@ -753,5 +1374,161 @@ rc_selftest :: (profile: string) -> int {
 
   print("selftest: % passed, % failed\n", c[0].pass, c[0].fail);
   x := mc_run_command("", rs_cat(m[0].r[..], rs_cat(m[0].r[..], "rm -rf '", cwd), rs_cat(m[0].r[..], "' '", rs_cat(m[0].r[..], outside, "'"))), 30, o[..]);
+  return ifx c[0].fail == 0 then 0 else 1;
+}
+
+// ---------------------------------------------------------------- the self-test of --intel and --memory (a scratch Coax repo, the real compiler)
+
+RC_T_SHAPES :: "// shapes\nShape :: struct { w: int; h: int; }\nUNIT :: 1;\narea :: (s: Shape) -> int { return s.w * s.h; }\n#test \"area of a unit square\" { #assert area(Shape.{w = UNIT, h = UNIT}) == 1; }\n";
+RC_T_CLOCK :: "cx_now :: () -> int #foreign #effects(foreign, clock);\nstamp :: () -> int { return cx_now() + 1; }\n";
+RC_T_PART :: "// a part: it names Shape and area but loads nothing, so it checks only inside main.coax\nedge :: (s: Shape) -> int {\n  return 2 * (s.w + s.h) + area(s) * 0;\n}\nflat :: (s: Shape) -> bool {\n  return s.h == 0;\n}\n";
+RC_T_MAIN :: "#load \"shapes.coax\";\n#load \"clock.coax\";\n#load \"part.coax\";\ntotal :: (a: Shape, b: Shape) -> int { return area(a) + area(b); }\ntimed :: (a: Shape) -> int { return area(a) + stamp(); }\nrun :: () -> int { return total(Shape.{w = 1, h = 2}, Shape.{w = 3, h = 4}) + edge(Shape.{w = 1, h = 1}); }\n";
+RC_T_BAD :: "#load \"shapes.coax\";\nwrong :: (s: Shape) -> int { x: string = area(s); return x; }\n";
+RC_T_TAGGED :: "safe :: (a: int, b: int) -> int { return add_checked(a, b) or_else 0; }\n";
+// a compiler that says its version, hangs on check and crashes on everything else
+RC_T_FAKE :: "#!/bin/sh\nif [ \"$1\" = version ]; then echo 'coax0 fake'; exit 0; fi\nif [ \"$1\" = check ]; then sleep 30; exit 0; fi\nkill -SEGV $$\n";
+
+// A fresh scripted state over cwd with the flags' functions.
+rc_scripted_more :: (m: [] RcMem, limits: RlmLimits, cwd: string, profile: string, roots: [] string, intel: bool, coax: string, mdir: string) -> string {
+  rc_scripted(m, limits, cwd, profile, roots, m[0].none[0..<0]);
+  return rc_extend(m, intel, coax, mdir);
+}
+// Whether a message of the run holds sub.
+rc_said :: (st: [] RlmState, sub: string) -> bool {
+  for i: 0..<st[0].nm { if rc_has(st[0].msgs[i].text, sub) { return true; } }
+  return false;
+}
+
+rc_selftest_more :: (profile: string, coax: string) -> int {
+  mb: [1] RcMem; m := mb[..];
+  c: [1] RcCheck; ob: [262144] u8;
+  tb: [4096] u8; t := fs_temp("rlm-code-more-", tb[..]);
+  cb: [4096] u8; cwd := fs_realpath(t, cb[..]);
+  otb: [4096] u8; outside := fs_temp("rlm-code-more-out-", otb[..]);
+  if cwd.count == 0 || outside.count == 0 { tool_errln("selftest: no temporary folder"); return 1; }
+  pb: [4096] u8; fkb: [4096] u8; m1b: [4096] u8; m2b: [4096] u8;
+  fake := fs_join(outside, "fake-coax", fkb[..]); mem1 := fs_join(outside, "mem1", m1b[..]); mem2 := fs_join(outside, "mem2", m2b[..]);
+  ok := fs_write(fs_join(cwd, "shapes.coax", pb[..]), RC_T_SHAPES) && fs_write(fs_join(cwd, "clock.coax", pb[..]), RC_T_CLOCK) && fs_write(fs_join(cwd, "part.coax", pb[..]), RC_T_PART);
+  ok = ok && fs_write(fs_join(cwd, "main.coax", pb[..]), RC_T_MAIN) && fs_write(fs_join(cwd, "bad.coax", pb[..]), RC_T_BAD) && fs_write(fs_join(cwd, "tagged.coax", pb[..]), RC_T_TAGGED);
+  ok = ok && fs_write(fs_join(cwd, "test.sh", pb[..]), "grep -q 'return s.h \\* s.w' shapes.coax && echo 'test ok'\n") && fs_write(fake, RC_T_FAKE);
+  if !ok { tool_errln("selftest: could not write the fixture"); return 1; }
+  sb: [8192] u8; n := rp_put(sb[..], 0, "chmod +x "); n = rc_quote(sb[..], n, fake);
+  n = rp_put(sb[..], n, " && git init -q && git add -A && git -c user.email=t@example.com -c user.name=t commit -qm fixture");
+  o: [1] McOutput;
+  g := mc_run_command(cwd, cast(string) sb[0..<n], 60, o[..]);
+  if g.exit != 0 { tool_errln("selftest: git init failed:"); tool_errln(g.output); return 1; }
+  none: [1] string;
+  print("selftest (--intel, --memory): workspace % (profile %, compiler %)\n", cwd, profile, coax);
+
+  // neither flag: the functions are not there, the prompt is the committed one, the report has no new key
+  rc_scripted(m, RC_LIMITS, cwd, profile, none[0..<0], none[0..<0]);
+  rc_expect(c[..], "with neither flag a compiler question is no function", cast(string) ob[0..<rc_block(m, "print(show('area'))", ob[..])], "Error: line 1: name 'show' is not defined");
+  rc_expect(c[..], "with neither flag a memory function is no function", cast(string) ob[0..<rc_block(m, "print(known())", ob[..])], "Error: line 1: name 'known' is not defined");
+  sys0 := rlm_system(m[0].r[..], m[0].st[..], 0);
+  rc_expect_true(c[..], "with neither flag the system prompt is RC_SYSTEM and nothing else", m[0].st[0].system_tpl == RC_SYSTEM && m[0].st[0].child_tpl == RC_SYSTEM && !rc_has(sys0, "working memory") && !rc_has(sys0, "compiler answers"), sys0);
+  plain := [2] string.["```repl\nprint(lines('shapes.coax', 1, 1))\nprint(lines('shapes.coax', 1, 1))\n```", "FINAL(read it)"];
+  rc_scripted(m, RC_LIMITS, cwd, profile, plain[..], none[0..<0]);
+  rc_drive(m[0].env[..], m[0].r[..], m[0].st[..], "Read the first line of shapes.coax. The check is `sh test.sh`.", false);
+  ln: [1] Jo; lbuf: [65536] u8;
+  line := rc_report(m, ln[..], lbuf[..], 1000);
+  rc_expect(c[..], "with neither flag a repeated read is the same text, the turn note has no new line, and FINAL is not held to the task's check", m[0].st[0].msgs[2].text, "REPL output:\n     1\t// shapes\n\n     1\t// shapes\n\n\n\nTurn 2/40 ($0.00 of $5.00 spent, 0 of 15 minutes used):");
+  rc_expect_true(c[..], "with neither flag the report line has no new key", m[0].st[0].answer == "read it" && !rc_has(line, "\"intel\"") && !rc_has(line, "\"memory\"") && rc_has(line, "\"wall_s\":1,\"final\":\"read it\"}"), line);
+
+  // --intel: each question
+  why := rc_scripted_more(m, RC_LIMITS, cwd, profile, none[0..<0], true, coax, "");
+  rc_expect(c[..], "--intel sets up", why, "");
+  sys1 := rlm_system(m[0].r[..], m[0].st[..], 0); sysw := rlm_system(m[0].r[..], m[0].st[..], 1);
+  rc_expect_true(c[..], "--intel: the prompt gains its section before the worker's part, and no memory section", rc_has(sys1, "The Coax compiler answers questions") && !rc_has(sys1, "working memory") && rc_has(sysw, "how many records it left out.\n\nYou are a worker:") && rc_has(sys1, cast(string) RC_SYSTEM[0..<100]), sys1);
+  rc_expect(c[..], "--intel: a memory function is still no function", cast(string) ob[0..<rc_block(m, "print(known())", ob[..])], "Error: line 1: name 'known' is not defined");
+  e := cast(string) ob[0..<rc_block(m, "print(defines('area'))\nprint(defines('nosuch'))", ob[..])];
+  rc_expect_true(c[..], "defines: kind, file, lines and the file's hash; a name nothing declares", rc_has(e, "proc area  shapes.coax:4-4  exported  file ") && rc_has(e, "\nnone: no .coax file under the root names it\n"), e);
+  e = cast(string) ob[0..<rc_block(m, "u = uses('area')\nprint(u)", ob[..])];
+  rc_expect_true(c[..], "uses: each place with what it is written in, and the files that could not be checked counted", rc_has(e, "main.coax:4:") && rc_has(e, "  in proc total") && rc_has(e, "shapes.coax:5:41  in #test \"area of a unit square\"") && rc_has(e, "part.coax:3:") && rc_has(e, "[1 files that name it were not checked"), e);
+  e = cast(string) ob[0..<rc_block(m, "print(show('area'))", ob[..])];
+  rc_expect_true(c[..], "show: one declaration numbered, under its file, lines and hash", rc_has(e, "shapes.coax:4-4  proc area  hash ") && rc_has(e, "\n     4\tarea :: (s: Shape) -> int { return s.w * s.h; }\n") && e.count < 140, e);
+  e = cast(string) ob[0..<rc_block(m, "print(exports('shapes.coax'))\nprint(exports('part.coax'))", ob[..])];
+  rc_expect_true(c[..], "exports: what a file declares; a part answers through its loader, with a note", rc_has(e, "struct Shape  shapes.coax:2-2") && rc_has(e, "const UNIT  shapes.coax:3-3") && rc_has(e, "proc edge  part.coax:2-4") && rc_has(e, "note: the file does not check alone"), e);
+  e = cast(string) ob[0..<rc_block(m, "d = check('bad.coax')\nprint(len(d), d[0]['code'], d[0]['line'], d[0]['message'], repr(d[0]['fix']), d[1]['code'])\nprint(check('main.coax'), check('part.coax'))", ob[..])];
+  rc_expect_true(c[..], "check: diagnostics as dicts with code, line, message and fix; a clean file is []; a part is checked through its loader", rc_has(e, "2 E0325 2 'x' is string but is initialized with int") && rc_has(e, " E0330\n[] []\n"), e);
+  e = cast(string) ob[0..<rc_block(m, "print(explain('E0325'))", ob[..])];
+  rc_expect_true(c[..], "explain: what a code means", rc_has(e, "E0325") && rc_has(e, "initializer"), e);
+  e = cast(string) ob[0..<rc_block(m, "print(effects('main.coax', 'timed'))", ob[..])];
+  rc_expect_true(c[..], "effects: a procedure's effect and the path that reaches it", rc_has(e, "timed: foreign_call at clock.coax:1:1 by timed -> stamp (clock.coax:2) -> cx_now (clock.coax:1)\n"), e);
+  rc_expect(c[..], "a question about a file outside the workspace is refused as a read is", cast(string) ob[0..<rc_block(m, "print(check('../x.coax'))", ob[..])], "Error: line 1: check(): the path leaves the workspace: ../x.coax");
+  // the compiler can't answer: a program with a tagged value (G1); the block goes on
+  e = cast(string) ob[0..<rc_block(m, "a = defines('safe')\nb = exports('tagged.coax')\nprint(a)\nprint(b)\nprint('went on')", ob[..])];
+  rc_expect_true(c[..], "a program with a tagged value: no answer, why, what to use, and the block goes on", rc_has(e, "no answer: the compiler could not answer defines(safe): E0911") && rc_has(e, "no answer: the compiler could not answer exports(tagged.coax): E0911") && rc_has(e, "Use search and lines for this.") && rc_has(e, "\nwent on\n") && m[0].env[0].unanswered == 2, e);
+  // replace: stale, applied with its check, and one that breaks the check
+  e = cast(string) ob[0..<rc_block(m, "print(replace('area', '000000000000', 'area :: (s: Shape) -> int { return 0; }'))", ob[..])];
+  rc_expect_true(c[..], "replace with a hash that is not the text's is refused with the text as it is, and nothing is written", rc_has(e, "replace refused: area is not what you read (its hash is ") && rc_has(e, " now): nothing was written. It is now, at shapes.coax:4-4:\n     4\tarea :: (s: Shape) -> int { return s.w * s.h; }\n") && rc_file(m, cwd, "shapes.coax") == RC_T_SHAPES && m[0].env[0].stale_edits == 1, e);
+  e = cast(string) ob[0..<rc_block(m, "t = show('edge')\nh = t.split('hash ')[1][0:12]\nprint(replace('edge', h, 'edge :: (s: Shape) -> int {\\n  return 2 * (s.w + s.h);\\n}'))", ob[..])];
+  rc_expect_true(c[..], "replace by the hash show gave: the new lines numbered, their hash, and the check, for a part through its loader", rc_has(e, "replaced proc edge: part.coax:2-4  hash ") && rc_has(e, "\n     3\t  return 2 * (s.w + s.h);\n     4\t}\ncheck (through main.coax, which loads it): clean\n") && rc_has(rc_file(m, cwd, "part.coax"), "\n  return 2 * (s.w + s.h);\n}\nflat"), e);
+  e = cast(string) ob[0..<rc_block(m, "t = show('stamp')\nprint(replace('stamp', t.split('hash ')[1][0:12], 'stamp :: () -> int { return \"now\"; }'))", ob[..])];
+  rc_expect_true(c[..], "a replace that breaks the type check is written and comes back with the diagnostic", rc_has(e, "replaced proc stamp: clock.coax:2-2") && rc_has(e, "\ncheck: ") && rc_has(e, "error E0") && rc_has(e, "clock.coax:2:") && rc_has(rc_file(m, cwd, "clock.coax"), "return \"now\""), e);
+  // a file that does not check has no answers (the compiler's query needs a program that compiles): the model is told, and edit still works
+  e = cast(string) ob[0..<rc_block(m, "print(show('stamp'))\nx = edit('clock.coax', 'return \"now\"', 'return cx_now() + 1')\nprint(check('clock.coax'))\nprint(replace('nosuch', '000000000000', 'x'))", ob[..])];
+  rc_expect_true(c[..], "while the file does not check, show has no answer and says so; edit mends it; a name nothing declares fails with words", rc_has(e, "no answer: the compiler could not answer show(stamp): E0") && rc_has(e, "Use search and lines for this.\n[]\nreplace failed: no declaration has this name") && rc_file(m, cwd, "clock.coax") == RC_T_CLOCK, e);
+  line = rc_report(m, ln[..], lbuf[..], 1000);
+  rc_expect_true(c[..], "the report line: questions asked, not answered, stale edits, and each function's calls", rc_has(line, "\"intel\":{\"asked\":22,\"unanswered\":3,\"stale_edits\":1,\"defines\":3,\"uses\":1,\"show\":4,\"exports\":3,\"check\":5,\"explain\":1,\"effects\":1,\"replace\":4}") && !rc_has(line, "\"memory\""), line);
+  // a compiler that crashes, one that hangs, and none
+  why = rc_scripted_more(m, RlmLimits.{max_depth = 2, max_turns = 40, max_ms = 1500}, cwd, profile, none[0..<0], true, fake, "");
+  e = cast(string) ob[0..<rc_block(m, "print(defines('area'))\nd = check('main.coax')\nprint(len(d), d[0]['code'], d[0]['message'])\nprint(lines('shapes.coax', 3, 3))", ob[..])];
+  rc_expect_true(c[..], "a compiler that crashes and one that runs past its time: no answer each time, and the block goes on to lines", rc_has(e, "no answer: the compiler could not answer defines(area): ") && rc_has(e, "\n1 no answer no answer: the compiler could not answer check(main.coax): the compiler ran past its time. Use search and lines for this.\n") && rc_has(e, "     3\tUNIT :: 1;\n") && m[0].env[0].unanswered == 2, e);
+  why = rc_scripted_more(m, RC_LIMITS, cwd, profile, none[0..<0], true, "/nonexistent/coax", "");
+  rc_expect(c[..], "no compiler at all: no answer, and why", cast(string) ob[0..<rc_block(m, "print(show('area'))", ob[..])], "no answer: the compiler could not answer show(area): no Coax compiler answers here (pass --coax PATH). Use search and lines for this.\n");
+
+  // --memory: reads, repeats, notes, changes
+  why = rc_scripted_more(m, RC_LIMITS, cwd, profile, none[0..<0], false, "", mem1);
+  rc_expect(c[..], "--memory sets up in a new folder", why, "");
+  sys1 = rlm_system(m[0].r[..], m[0].st[..], 0);
+  rc_expect_true(c[..], "--memory: the prompt gains its section, and no compiler section", rc_has(sys1, "You have a working memory.") && !rc_has(sys1, "The Coax compiler answers"), sys1);
+  rc_expect(c[..], "--memory: a compiler question is still no function", cast(string) ob[0..<rc_block(m, "print(show('area'))", ob[..])], "Error: line 1: name 'show' is not defined");
+  rc_expect(c[..], "an empty memory says so", cast(string) ob[0..<rc_block(m, "print(known())\nprint(changed())\nprint(open_items())", ob[..])], "(nothing yet: no findings, and no lines read that are still current)\n(no edits yet)\nnothing is open: FINAL will be accepted\n");
+  rc_expect(c[..], "lines read a second time start with a line that says so; lines not yet read do not", cast(string) ob[0..<rc_block(m, "a = lines('main.coax', 1, 3)\nb = lines('main.coax', 2, 3)\nprint(b)\nprint(lines('./main.coax', 4, 4))", ob[..])], "[already read at turn 0: you have these lines, and known() lists what you have]\n     2\t#load \"clock.coax\";\n     3\t#load \"part.coax\";\n\n     4\ttotal :: (a: Shape, b: Shape) -> int { return area(a) + area(b); }\n\n");
+  rc_expect_true(c[..], "read's text is the file's and nothing else, though the repeat is counted", cast(string) ob[0..<rc_block(m, "t = read('shapes.coax')\nu = read('shapes.coax')\nprint(t == u, len(u))", ob[..])] == "True 186\n" && m[0].env[0].repeats == 2 && m[0].env[0].mem_reads == 5, cast(string) ob[0..<32]);
+  e = cast(string) ob[0..<rc_block(m, "print(note('area multiplies w by h', 'shapes.coax', 4, 4), note('a guess with no file'))\nprint(known())", ob[..])];
+  rc_expect_true(c[..], "note records a finding with its source, and known lists findings, then what was read", rc_has(e, "noted F0 noted F1\nFindings (current):\nF0 guess: area multiplies w by h [shapes.coax:4-4]\nF1 guess: a guess with no file []\nReads (current):\nR0 main.coax 1-3\n") && rc_has(e, "R3 shapes.coax 1-5\n"), e);
+  e = cast(string) ob[0..<rc_block(m, "x = edit('shapes.coax', '// shapes', '// shapes and sizes')\nprint(known())\nprint(changed())\nprint(lines('shapes.coax', 1, 1))", ob[..])];
+  rc_expect_true(c[..], "an edit makes the file's reads and findings stale: known drops them, changed has the edit, and its lines read as new", !rc_has(e, "F0 guess") && rc_has(e, "F1 guess: a guess with no file") && !rc_has(e, "shapes.coax 1-5") && rc_has(e, "R0 main.coax 1-3") && rc_has(e, "Changes:\nC0 shapes.coax 1-1 ") && rc_has(e, "\n     1\t// shapes and sizes\n") && !rc_has(e, "already read"), e);
+  x := mc_run_command(cwd, "git checkout -q shapes.coax", 30, o[..]);
+
+  // a whole run with both flags: the model's FINAL is refused while the task's check fails
+  roots := [4] string.[
+    "```repl\nt = show('area')\nprint(t)\nprint(uses('area'))\nr = sh('sh test.sh')\nprint(r['exit'])\nFINAL('done')\n```",
+    "```repl\nh = t.split('hash ')[1][0:12]\nprint(replace('area', h, 'area :: (s: Shape) -> int {\\n  return s.h * s.w;\\n}'))\nprint(show('area'))\nprint(lines('shapes.coax', 4, 6))\n```",
+    "FINAL(done now)",
+    "```repl\nr = sh('sh test.sh 2>&1')\nd = check('shapes.coax')\nif r['exit'] == 0 and len(d) == 0:\n    FINAL('area is h * w; sh test.sh passes')\n```"];
+  why = rc_scripted_more(m, RC_LIMITS, cwd, profile, roots[..], true, coax, mem2);
+  rc_drive(m[0].env[..], m[0].r[..], m[0].st[..], "Make area multiply h by w in shapes.coax. The check is `sh test.sh`: it must pass. `area` is in `shapes.coax`.", false);
+  st := m[0].st[..]; env := m[0].env[..];
+  tr := cast(string) st[0].trace[0..<st[0].ntr];
+  rc_expect(c[..], "both flags: the run ends with the FINAL given after the check passed", st[0].answer, "area is h * w; sh test.sh passes");
+  rc_expect_true(c[..], "FINAL in the block of a failing check is refused with what is open, after that turn's output", rc_said(st, "FINAL was refused (1 of at most 2 refusals): a check the task names has not passed on the files as they are now.\nOpen:\ncheck sh test.sh: check's latest run failed: sh test.sh\nRun it again and call FINAL when it passes. If it can't pass, say why in FINAL.\n\nREPL output:\nshapes.coax:4-4  proc area  hash "), tr);
+  rc_expect_true(c[..], "FINAL with no code is refused the same way, a second time", rc_said(st, "FINAL was refused (2 of at most 2 refusals)") && env[0].finish_refused == 2 && st[0].turns == 4, tr);
+  rc_expect_true(c[..], "the turn note says how many of the turn's reads were repeats", rc_said(st, "\nReads this turn: 1; repeats (lines you already had): 0.\nTurn 2/40 (") && rc_said(st, "[already read at turn 2: you have these lines, and known() lists what you have]\n     4\tarea :: (s: Shape) -> int {\n") && rc_said(st, "\nReads this turn: 2; repeats (lines you already had): 1. known() lists what you have.\nTurn 3/40 ("), tr);
+  rc_expect(c[..], "the replace is in the file", rc_file(m, cwd, "shapes.coax"), "// shapes\nShape :: struct { w: int; h: int; }\nUNIT :: 1;\narea :: (s: Shape) -> int {\n  return s.h * s.w;\n}\n#test \"area of a unit square\" { #assert area(Shape.{w = UNIT, h = UNIT}) == 1; }\n");
+  line = rc_report(m, ln[..], lbuf[..], 1000);
+  rc_expect_true(c[..], "the report line: both flags' counts, and nothing unproven", rc_has(line, "\"intel\":{\"asked\":5,\"unanswered\":0,\"stale_edits\":0,") && rc_has(line, "\"reads\":3,\"repeat_reads\":1,\"finishes_refused\":2,\"checks\":1,\"runs\":2,\"changes\":1,") && rc_has(line, "\"unproven\":[]}") && rc_has(line, "\"final\":\"area is h * w; sh test.sh passes\"}"), line);
+  print("%\n", line);
+
+  // the memory outlives the run: a new run on its folder has it; a check that passed before an edit is open again, and after two refusals FINAL stands with it unproven
+  roots2 := [3] string.[
+    "```repl\nprint(known())\nr = sh('sh test.sh')\nprint(r['exit'], lines('shapes.coax', 4, 6))\nx = edit('shapes.coax', '// shapes', '// shapes, again')\nFINAL('one')\n```",
+    "FINAL(two)", "FINAL(three)"];
+  why = rc_scripted_more(m, RC_LIMITS, cwd, profile, roots2[..], false, "", mem2);
+  rc_drive(m[0].env[..], m[0].r[..], m[0].st[..], "Say again that these are shapes. The check is `sh test.sh`.", false);
+  st = m[0].st[..]; env = m[0].env[..];
+  tr = cast(string) st[0].trace[0..<st[0].ntr];
+  rc_expect_true(c[..], "a new run on the same folder knows what the last one read, and says a read of it is a repeat", why == "" && rc_said(st, "Reads (current):\n") && rc_said(st, "shapes.coax 4-6\n") && rc_said(st, "0 [already read in an earlier run: you have these lines, and known() lists what you have]\n     4\tarea :: (s: Shape) -> int {\n"), tr);
+  rc_expect_true(c[..], "a check that passed before an edit is open again", rc_said(st, "FINAL was refused (1 of at most 2 refusals)") && rc_said(st, "check sh test.sh: check passed before the tree changed; run it again: sh test.sh\n"), tr);
+  rc_expect_true(c[..], "after two refusals FINAL is accepted, and the report says what is unproven", st[0].answer == "three" && env[0].finish_refused == 2 && st[0].turns == 3, tr);
+  line = rc_report(m, ln[..], lbuf[..], 1000);
+  rc_expect_true(c[..], "the report line: finishes refused and the unproven check", rc_has(line, "\"finishes_refused\":2,") && rc_has(line, "\"unproven\":[\"check sh test.sh: check passed before the tree changed; run it again: sh test.sh\"]}") && !rc_has(line, "\"intel\""), line);
+  print("%\n", line);
+  why = rc_scripted_more(m, RC_LIMITS, outside, profile, none[0..<0], false, "", mem2);
+  rc_expect(c[..], "a memory of another folder is refused", why, "that memory is of another folder: give another --session or --memory-dir");
+
+  print("selftest (--intel, --memory): % passed, % failed\n", c[0].pass, c[0].fail);
+  x = mc_run_command("", rs_cat(m[0].r[..], rs_cat(m[0].r[..], "rm -rf '", cwd), rs_cat(m[0].r[..], "' '", rs_cat(m[0].r[..], outside, "'"))), 30, o[..]);
   return ifx c[0].fail == 0 then 0 else 1;
 }

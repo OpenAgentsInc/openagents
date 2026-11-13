@@ -60,6 +60,7 @@ RlmState :: struct {
   // two add up to the totals above
   d0: RlmUse;
   kids: [RLM_KIDS] RlmKid; nkids: int;
+  note_line: string;             // a caller's line before each turn's note (code.coax --memory: the turn's repeat reads); "" for none
 }
 
 // What some calls used: their count by role, tokens and the card's price.
@@ -373,7 +374,8 @@ rlm_root_call :: (r: [] Rs, st: [] RlmState, system: string, base: int) -> strin
 
 rlm_turn_note :: (r: [] Rs, st: [] RlmState, turn: int, max: int) -> string {
   at := r[0].nh;
-  ok := rs_put(r, "Turn ") && rs_put_int(r, turn) && rs_put(r, "/") && rs_put_int(r, max);
+  ok := st[0].note_line.count == 0 || (rs_put(r, st[0].note_line) && rs_putc(r, 10));
+  ok = ok && rs_put(r, "Turn ") && rs_put_int(r, turn) && rs_put(r, "/") && rs_put_int(r, max);
   if st[0].budget {
     l := st[0].limits;
     ok = ok && rs_put(r, " (") && rlm_put_usd(r, st[0].spent.usd_micros);
@@ -977,9 +979,11 @@ rlm_test_block :: (r: [] Rs, st: [] RlmState, src: string) {
 // order (the caller's fake workspace): what it printed (or "Error: ..."), and each request with
 // its zero bytes as '|' in reqs.
 RlmFxTest :: struct { reqs: [16] string; n: int; buf: [4096] u8; nb: int; }
-rlm_test_fx :: (mem: [] RlmTestMem, r: [] Rs, src: string, answers: [] string, t: [] RlmFxTest) -> string {
+rlm_test_fx :: (mem: [] RlmTestMem, r: [] Rs, src: string, answers: [] string, t: [] RlmFxTest) -> string { return rlm_test_fx_more(mem, r, src, answers, t, mem[0].none[0..<0]); }
+// The same, with more environment functions the caller serves (Rs.env_more).
+rlm_test_fx_more :: (mem: [] RlmTestMem, r: [] Rs, src: string, answers: [] string, t: [] RlmFxTest, more: [] string) -> string {
   rlm_test_run(r, mem, RlmLimits.{max_steps = 200000}, mem[0].none[0..<0], mem[0].none[0..<0]);
-  r[0].env_on = true;
+  r[0].env_on = true; r[0].env_more = more;
   st := mem[0].st[..];
   st[0].spent = RlmSpent.{};
   x := rlm_push_level(st, "", rs_nil(), 0, 0);
@@ -1015,6 +1019,25 @@ rlm_test_fx :: (mem: [] RlmTestMem, r: [] Rs, src: string, answers: [] string, t
   #assert out == "2 b.c:9:foo(1) -1 True      4\tnew\n\n" && t[0].reqs[0] == "search|foo(||5|0" && t[0].reqs[1] == "sh|sleep 9|120" && t[0].reqs[2] == "replace_lines|a.c|4|4|new";
   out = rlm_test_fx(mem, r, "print(search('a.b', 'src/', regex=True), write('n.txt', 'hi'), lines('a.c', 2, 3))", answers2[..], t[..]);
   #assert t[0].reqs[0] == "search|a.b|src/|40|1" && t[0].reqs[1] == "write|n.txt|hi" && t[0].reqs[2] == "lines|a.c|2|3";
+}
+
+#test "a caller's own environment functions (env_more): none unless it sets them; they suspend and rerun as the rest; check's records come back as dicts" {
+  mb: [1] RlmTestMem; rb: [1] Rs; t: [1] RlmFxTest; mem := mb[..]; r := rb[..]; none := mem[0].none[0..<0];
+  #assert rlm_test_fx(mem, r, "print(check('a.coax'))", none, t[..]) == "Error: line 1: name 'check' is not defined" && t[0].n == 0;
+  #assert rlm_test_fx(mem, r, "print(known())", none, t[..]) == "Error: line 1: name 'known' is not defined";
+  more := [3] string.["check path:s", "known", "show name:s file:s="];
+  // two records: code, line, message, fix parted by byte 31, each ended by byte 30
+  rec: [64] u8; n := 0;
+  for part, i: [8] string.["E0325", "2", "x is string", "", "more", "0", "3 more", "add ;"] { for c: part { rec[n] = c; n += 1; } rec[n] = ifx i % 4 == 3 then 30 else 31; n += 1; }
+  answers := [4] string.[cast(string) rec[0..<n], "", "nothing yet", "a.coax:4-4  proc area  hash 0123456789ab\n     4\tarea\n"];
+  out := rlm_test_fx_more(mem, r, "d = check('a.coax')\nprint(len(d), d[0]['code'], d[0]['line'] + 1, d[0]['message'], repr(d[0]['fix']), d[1])\nprint(check('b.coax'), known(), show('area').split('hash ')[1][0:12])", answers[..], t[..], more[..]);
+  #assert out == "2 E0325 3 x is string '' {'code': 'more', 'line': 0, 'message': '3 more', 'fix': 'add ;'}\n[] nothing yet 0123456789ab\n";
+  #assert t[0].n == 4 && t[0].reqs[0] == "check|a.coax" && t[0].reqs[1] == "check|b.coax" && t[0].reqs[2] == "known" && t[0].reqs[3] == "show|area|" && mem[0].st[0].reruns == 4;
+  // a caller's line goes before each turn's note; "" is no line
+  st := mem[0].st[..];
+  plain := rlm_turn_note(r, st, 2, 20);
+  st[0].note_line = "Reads this turn: 2; repeats: 1.";
+  #assert rlm_turn_note(r, st, 2, 20) == rs_cat(r, "Reads this turn: 2; repeats: 1.\n", plain) && plain == "Turn 2/20:";
 }
 
 #test "the code environment's functions: wrong arguments are refused before any effect, and without a workspace each one fails" {
