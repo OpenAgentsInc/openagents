@@ -1,5 +1,17 @@
 # Owner actions
 
+## Claude Code dev boxes on boat, stages 1 to 6 (#13474, 2026-11-13)
+
+The SDK, the policy, `tool.sh boat`, Coder's `--on boat:ID` and /chat's devbox conversations are on `main` and checked against a loopback fake. Nothing has called hosted boat yet, because no box or agent holds a boat key. These steps make it live:
+
+1. **A scoped boat key, never `account.admin`.** In boat's dashboard (or `boat api-key create oa-devbox-runner`), create a key limited to sandboxes, commands, files, saved snapshots, SSH keys and usage, with an expiry. Put it in Secret Manager as `oa-boat-api-key` in `openagentsgemini`, and give the runner's service account (`oa-agent-runner@`) read access.
+2. **Give the runner the key, then deploy the API and the runner.** Add `OA_BOAT_API_KEY` from that secret to the `oa-agent` Cloud Run service. Deploy the API first (migration `0189_chat_devbox.sql`), then the runner (`coax/web/agent/deploy.sh`: the image now has `oa-chat-devbox` and `curl`). Until then, a devbox turn fails with "This runner has no boat key yet".
+3. **On the Mac, for `tool.sh boat` and `coder --on boat:ID`:** put a key in `~/.openagents/boat/api-key` (mode 0600), `export BOAT_HOSTED=1`, then run `coax/web/tool.sh boat conform --box bx_fwh3xnws`. It is read-only, and every line should say ok. `--lifecycle` makes and deletes one `small` box (a few cents), and needs your yes.
+4. **Daily template rotation:** a cron line on a machine that is up every day: `0 6 * * * cd ~/work/openagents && BOAT_HOSTED=1 coax/web/tool.sh boat refresh bx_fwh3xnws`. It keeps the newest 2 templates.
+5. **Name a box on a conversation:** `POST /api/chat/devbox {"c": ID, "box": "bx_fwh3xnws"}` from the signed-in site. The page has no control for it yet.
+6. **The caps are yours to change** in `coax/lib/boat/policy.coax`: 2 boxes, auto-stop 15 min to 24 h (12 h default), $5.00 a UTC day.
+7. **Stage 6 (our own Boat-shaped service on GCP) is not built.** It needs paid GCE resources. `docs/cloud/boat-exit-plan.md` says when to build it, what it must answer, and how `tool.sh boat conform` checks it.
+
 ## Native app crash logs on real devices (#13379, 2026-11-13)
 
 The reporters are built for the iPhone, the Mac and Android. No real device has sent a report. The issue's "Done when" needs these two proofs.

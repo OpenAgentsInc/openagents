@@ -15,6 +15,13 @@
 //                  most 4 times, after boat's Retry-After (60 s at most) or
 //                  1, 2, 4, 8 s
 //
+//   templates      saved daily as oa-devbox-YYYYMMDD; the newest 2 are kept,
+//                  older ones deleted (stage 5)
+//   size           from the box's own load: large when it is busy or short of
+//                  memory, small when it idles, default between
+//   fallback       when boat itself is down (no answer, 5xx), Coder's sessions
+//                  go to coderos-4080 instead
+//
 // Money is in millicents (1/100,000 of a dollar), whole numbers.
 //   coax/bin/coax test coax/lib/boat/policy.coax
 //   coax/bin/coax mutate coax/lib/boat/policy.coax
@@ -111,6 +118,73 @@ bp_retry_wait :: (safe: bool, retryable: bool, retry_after_s: int, attempt: int)
   if retry_after_s > BP_RETRY_AFTER_MAX_S { return -1; }   // an hour or a day limit: waiting here won't help
   if retry_after_s > 0 { return retry_after_s; }
   return 1 << attempt;
+}
+
+BP_TEMPLATE_PREFIX :: "oa-devbox-";
+BP_TEMPLATES_KEPT :: 2;
+BP_FALLBACK :: "ssh:coderos-4080";
+
+// Whether name is one of our daily templates: oa-devbox- and 8 digits.
+bp_template :: (name: string) -> bool #effects(all) {
+  if name.count != BP_TEMPLATE_PREFIX.count + 8 || !bp_ours(name) || name[9] != '-' { return false; }
+  for i: BP_TEMPLATE_PREFIX.count..<name.count { if name[i] < '0' || name[i] > '9' { return false; } }
+  return true;
+}
+
+// A template's day as a number (20261113); 0 for any other name.
+bp_template_day :: (name: string) -> int #effects(all) {
+  if !bp_template(name) { return 0; }
+  v := 0;
+  for i: BP_TEMPLATE_PREFIX.count..<name.count { v = v * 10 + cast(int) (name[i] - '0'); }
+  return v;
+}
+
+// Whether the template name goes, among names (every saved snapshot's): a
+// template older than the newest BP_TEMPLATES_KEPT goes; nothing else does.
+bp_drop_template :: (name: string, names: [] string) -> bool #effects(all) {
+  day := bp_template_day(name);
+  if day == 0 { return false; }
+  newer := 0;
+  for n: names { if bp_template_day(n) > day { newer += 1; } }
+  return newer >= BP_TEMPLATES_KEPT;
+}
+
+// The size a box's load asks for, from what it reported: load_x100 is its
+// 15-minute load average times 100, vcpu its cores, mem_pct its memory in use.
+bp_size_for :: (load_x100: int, vcpu: int, mem_pct: int) -> string #effects(all) {
+  if vcpu <= 0 { return BP_TYPE; }
+  per := load_x100 / vcpu;               // load per core, times 100
+  if per >= 70 || mem_pct >= 75 { return "large"; }
+  if per >= 20 || mem_pct >= 40 { return "default"; }
+  return "small";
+}
+
+// Whether boat is down rather than refusing: no answer at all, or a server
+// error. Then a session goes to BP_FALLBACK. A refusal (a cap, a key, a box
+// that is gone) is not boat being down.
+bp_boat_down :: (status: int, transport: bool) -> bool #effects(all) {
+  return transport || status >= 500;
+}
+
+#test "templates: ours by name, the newest 2 kept" {
+  #assert bp_template("oa-devbox-19991999") && !bp_template("oa-devbox-2026111:") && !bp_template("oa-devbox-2026111/") && bp_template("oa-devbox-20261113") && !bp_template("oa-devbox-2026111") && !bp_template("oa-devbox-2026111x") && !bp_template("oa-devbox-1") && !bp_template("other-20261113") && !bp_template("oa-devboxx20261113");
+  names := [5] string.["oa-devbox-20261113", "oa-devbox-20261115", "oa-devbox-20261114", "keep-me", "oa-devbox-20261112"];
+  #assert bp_drop_template("oa-devbox-20261113", names[..]) && bp_drop_template("oa-devbox-20261112", names[..]);
+  #assert !bp_drop_template("oa-devbox-20261114", names[..]) && !bp_drop_template("oa-devbox-20261115", names[..]) && !bp_drop_template("keep-me", names[..]);
+  #assert bp_template_day("oa-devbox-20261113") == 20261113 && bp_template_day("keep-me") == 0;
+  two := [2] string.["oa-devbox-20261113", "oa-devbox-20261114"];
+  #assert !bp_drop_template("oa-devbox-20261113", two[..]);
+}
+
+#test "size from the box's own load" {
+  #assert bp_size_for(560, 8, 10) == "large" && bp_size_for(559, 8, 10) == "default" && bp_size_for(0, 8, 75) == "large" && bp_size_for(0, 8, 74) == "default";
+  #assert bp_size_for(160, 8, 10) == "default" && bp_size_for(159, 8, 39) == "small" && bp_size_for(0, 8, 40) == "default" && bp_size_for(500, 0, 0) == "large";
+  #assert bp_size_for(70, 1, 0) == "large" && bp_size_for(69, 1, 0) == "default" && bp_size_for(20, 1, 0) == "default" && bp_size_for(19, 1, 0) == "small";
+}
+
+#test "boat is down only when it doesn't answer or fails" {
+  #assert bp_boat_down(0, true) && bp_boat_down(500, false) && bp_boat_down(502, false) && !bp_boat_down(499, false) && !bp_boat_down(429, false) && !bp_boat_down(0, false);
+  #assert BP_FALLBACK == "ssh:coderos-4080";
 }
 
 #test "prices: by the second, rounded up; sizes we don't use cost -1" {

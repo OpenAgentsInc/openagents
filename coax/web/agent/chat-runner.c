@@ -466,6 +466,29 @@ static void chat_turn(const char *next) {
   mkdir(store, 0700);
   snprintf(dir, sizeof dir, "%s/chat-%lld-%d", env("OA_AGENT_WORK", "/tmp/oa-agent"), id, (int)getpid());
   snprintf(home, sizeof home, "%s/home", dir); snprintf(cfg, sizeof cfg, "%s/cfg", dir);
+  {
+    // A devbox conversation (#13474, docs/cloud/boat-devbox.md): the turn runs on that boat dev box, through
+    // the devbox engine, which holds the boat key alone (OA_BOAT_API_KEY, a scoped key from Secret Manager)
+    // and no Claude credential: the box has its own. No checkout here, no session kept here.
+    char *box = jstr(turn_json, "devbox", "");
+    if (*box) {
+      free(box);
+      if (!boat_key[0]) { chat_end(id, "failed", "\"\"", "\"This runner has no boat key yet, so it can't reach dev boxes.\"", 0, false); goto out; }
+      if (mkdir(dir, 0700) || mkdir(home, 0700)) { chat_end(id, "failed", "\"\"", "\"the runner could not make a work directory\"", 0, false); goto out; }
+      text first = {0};
+      char *history = jraw(next, "history", "[]");
+      char today[16]; time_t now = time(NULL); struct tm tm; localtime_r(&now, &tm); strftime(today, sizeof today, "%Y-%m-%d", &tm);
+      WIRE(&first, rw_chat_turn_write(cs(turn_json), cs(chat_model(model)), 0, false, cs(sid), cs(history), cs(""), cs(""), false, cs(today), room));
+      engine_bin = env("OA_CHAT_DEVBOX_ENGINE", "/usr/local/bin/oa-chat-devbox");
+      engine_cred_name = "BOAT_API_KEY"; engine_cred = boat_key;
+      run_engine("runner", first.p, id, dir, home, &answer, &error, &cost, status);
+      engine_bin = NULL; engine_cred_name = "ANTHROPIC_API_KEY"; engine_cred = anthropic_key;
+      chat_end(id, status, answer.p, error.p, cost, false);
+      free(first.p); free(history);
+      goto out;
+    }
+    free(box);
+  }
   if (!uuid_ok(sid)) { chat_end(id, "failed", "\"\"", "\"the conversation has no session\"", 0, false); goto out; }
   if (chat_service()) {
     // this turn's read grant on the repository, an hour at most (coax/web/repo/grant.coax)

@@ -60,7 +60,8 @@ bt_day :: (c: BoatClient, d: [] BtDay, list: [] u8, out: [] u8, ar: [] ClArena) 
   if bt_failed(r.error) { d[0].error = r.error; d[0].what = "list"; return; }
   d[0].n = bt_read_list(ar, r.body, d[0].boxes[..]);
   if d[0].n < 0 { d[0].n = 0; }
-  db: [64] u8; day := bt_day_start(db[..]);
+  db: [64] u8;
+  day := ifx c.fake.count > 0 then "2026-11-13T00:00:00.000Z" else bt_day_start(db[..]);   // a fake's checks have no wall clock
   for i: 0..<d[0].n {
     b := d[0].boxes[i];
     if !bp_ours(b.name) { continue; }
@@ -88,9 +89,10 @@ BtUp :: struct {
 
 // Brings our box id up: as it is when it is up; resumed for ttl_s (0: the
 // policy's default) when it is stopped and start is set, if the policy
-// admits it; else a refusal. Waits for ready. The sandbox read may borrow
-// from list or out.
-bt_bring_up :: (c: BoatClient, id_in: string, start: bool, ttl_s: int, list: [] u8, out: [] u8, ar: [] ClArena) -> BtUp {
+// admits it; else a refusal. Waits for ready. type_in "" resumes it at its
+// size, else at that one (stage 5: the size its load asks for, bp_size_for).
+// The sandbox read may borrow from list or out.
+bt_bring_up :: (c: BoatClient, id_in: string, start: bool, ttl_s: int, type_in: string, list: [] u8, out: [] u8, ar: [] ClArena) -> BtUp {
   u: BtUp;
   ib: [16] u8;
   if !bt_id_ok(id_in) { u.error = bt_err(BtErrKind.config, "not a sandbox id"); return u; }
@@ -106,11 +108,14 @@ bt_bring_up :: (c: BoatClient, id_in: string, start: bool, ttl_s: int, list: [] 
   if !start { u.error = bt_err(BtErrKind.not_running, "the box is stopped: coax/web/tool.sh boat resume ID"); return u; }
   ttl := bp_ttl(ttl_s);
   if ttl < 0 { u.refused = BP_CAP; return u; }
-  u.refused = bp_admit(b.type, bp_ours(b.name), d[0].up, d[0].limits.can_start, ttl, d[0].spent_mc, d[0].committed_mc);
+  tb: [16] u8; for ch, i: (ifx type_in.count > 0 && type_in.count <= 16 then type_in else b.type) { if i < 16 { tb[i] = ch; } }
+  type := cast(string) tb[0..<(ifx type_in.count > 0 && type_in.count <= 16 then type_in.count else ifx b.type.count <= 16 then b.type.count else 0)];
+  u.refused = bp_admit(type, bp_ours(b.name), d[0].up, d[0].limits.can_start, ttl, d[0].spent_mc, d[0].committed_mc);
   if u.refused != BP_OK { return u; }
-  u.run = bp_run(b.type, ttl, d[0].spent_mc, d[0].committed_mc);
-  r := bt_resume(c, id, BtResume.{ttl_s = u.run.ttl_s}, out, ar);
-  if r.error.kind == BtErrKind.stopping { bt_pause(c, 5); r = bt_resume(c, id, BtResume.{ttl_s = u.run.ttl_s}, out, ar); }
+  u.run = bp_run(type, ttl, d[0].spent_mc, d[0].committed_mc);
+  rs := BtResume.{ttl_s = u.run.ttl_s, type = ifx type_in.count > 0 then type else ""};
+  r := bt_resume(c, id, rs, out, ar);
+  if r.error.kind == BtErrKind.stopping { bt_pause(c, 5); r = bt_resume(c, id, rs, out, ar); }
   if bt_failed(r.error) { u.error = r.error; return u; }
   u.resumed = true;
   w := bt_wait_up(c, id, 180, out, ar);
@@ -146,3 +151,67 @@ bt_ssh_refresh :: (c: BoatClient, id: string, out: [] u8, ar: [] ClArena) -> str
   if nc.count == 0 || nk.count == 0 || !fs_write(cfg, nc) || !fs_write(known, nk) { return "could not write ~/.ssh/config or the known hosts"; }
   return "";
 }
+
+// The newest ready template (oa-devbox-YYYYMMDD) among the saved snapshots, into out; "" when none.
+bt_newest_template :: (c: BoatClient, out: [] u8, buf: [] u8, ar: [] ClArena) -> string {
+  r := bt_saved(c, BP_TEMPLATE_PREFIX, buf, ar);
+  if bt_failed(r.error) { return ""; }
+  l: [64] BtSaved; n := bt_read_saved_list(ar, r.body, l[..]);
+  best := 0; k := 0;
+  for i: 0..<n {
+    d := bp_template_day(l[i].name);
+    if l[i].status == "ready" && d > best { best = d; k = 0; for ch: l[i].name { if k < out.count { out[k] = ch; k += 1; } } }
+  }
+  return cast(string) out[0..<k];
+}
+
+// Today's template name, oa-devbox-YYYYMMDD, from the wall clock (a fake's: 2026-11-14).
+bt_today_template :: (c: BoatClient, out: [] u8) -> string {
+  db: [64] u8;
+  day := ifx c.fake.count > 0 then "2026-11-14T00:00:00.000Z" else bt_day_start(db[..]);
+  if day.count < 10 { return ""; }
+  n := json_raw(out, 0, BP_TEMPLATE_PREFIX);
+  n = json_raw(out, n, cast(string) day[0..<4]); n = json_raw(out, n, cast(string) day[5..<7]); n = json_raw(out, n, cast(string) day[8..<10]);
+  return ifx n < 0 then "" else cast(string) out[0..<n];
+}
+
+BtRefresh :: struct { saved: string; dropped: int; error: BtError; }
+
+// Stage 5's daily rotation: saves box id as today's template, waits until it is ready (up to
+// wait_s), then deletes the templates the policy no longer keeps (bp_drop_template).
+bt_refresh :: (c: BoatClient, id: string, wait_s: int, name_buf: [] u8, out: [] u8, ar: [] ClArena) -> BtRefresh {
+  f: BtRefresh;
+  name := bt_today_template(c, name_buf);
+  f.saved = name;
+  if name.count == 0 { f.error = bt_err(BtErrKind.config, "no wall clock for today's name"); return f; }
+  r := bt_save(c, id, name, out, ar);
+  if bt_failed(r.error) && r.error.code != "named_snapshot_exists" { f.error = r.error; return f; }
+  polls := ifx wait_s <= 5 then 1 else wait_s / 5;
+  ready := false;
+  for i: 0..<polls {
+    ar[0].at = 0;
+    g := bt_saved_get(c, name, out, ar);
+    if !bt_failed(g.error) {
+      st := bt_read_saved(ar, g.body).status;
+      if st == "ready" { ready = true; break; }
+      if st == "failed" { f.error = bt_err(BtErrKind.http, "boat failed to save the template"); return f; }
+    }
+    if i + 1 < polls { bt_pause(c, 5); }
+  }
+  if !ready { f.error = bt_err(BtErrKind.deadline, "the template is still saving; old ones are kept until it is ready"); return f; }
+  ar[0].at = 0;
+  lr := bt_saved(c, BP_TEMPLATE_PREFIX, out, ar);
+  if bt_failed(lr.error) { f.error = lr.error; return f; }
+  l: [64] BtSaved; n := bt_read_saved_list(ar, lr.body, l[..]);
+  names: [64] string; for i: 0..<n { names[i] = l[i].name; }
+  // names borrow from out, which a delete overwrites: copy the ones that go first
+  gone: [64] [32] u8; ng: [64] int; k := 0;
+  for i: 0..<n { if bp_drop_template(l[i].name, names[0..<n]) && l[i].name.count <= 32 { for ch, j: l[i].name { gone[k][j] = ch; } ng[k] = l[i].name.count; k += 1; } }
+  for i: 0..<k {
+    ar[0].at = 0;
+    d := bt_saved_delete(c, cast(string) gone[i][0..<ng[i]], out, ar);
+    if !bt_failed(d.error) { f.dropped += 1; }
+  }
+  return f;
+}
+#load "local-checks.coax" #test;

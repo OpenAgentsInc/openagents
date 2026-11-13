@@ -44,6 +44,9 @@
 //                       derives the public key both ways and refuses to start if they differ (#12630).
 //   OA_AGENT_REPOS      "slug=git-url=key-file" entries, ';' between them; key-file empty for none
 //   ANTHROPIC_API_KEY   handed to the engine only, then removed from this process's environment
+//   OA_BOAT_API_KEY     a scoped boat key (never account.admin), handed to a /chat devbox turn's engine only,
+//                       then removed from this process's environment; OA_BOAT_API_BASE another Boat-shaped
+//                       service for it (#13474, coax/web/agent/devbox.coax)
 //   OA_AGENT_MODEL      claude-sonnet-5-5
 //   OA_AGENT_ENGINE     the engine's path (/usr/local/bin/oa-turn)
 //   OA_AGENT_WORK       where checkouts go (/tmp/oa-agent)
@@ -87,6 +90,7 @@ static void say(const char *fmt, ...) {
 }
 static double now_ms(void) { struct timeval t; gettimeofday(&t, NULL); return t.tv_sec * 1000.0 + t.tv_usec / 1000.0; }
 static char anthropic_key[512];
+static char boat_key[512];      // OA_BOAT_API_KEY: a scoped boat key for /chat's devbox turns (#13474), read and removed
 // What the engine gets: the project engine with our key, unless a /chat turn
 // (chat-runner.c) sets another engine, credential and CLI config directory.
 static const char *engine_cred_name = "ANTHROPIC_API_KEY";
@@ -444,7 +448,12 @@ static bool engine_start(engine *e, const char *dir, const char *home) {
     if (slash && slash != cli) *slash = 0; else strcpy(cli, "/usr/local/bin");
     snprintf(path, sizeof path, "PATH=%s:/usr/local/bin:/usr/bin:/bin", cli);
     char quiet[] = "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1", noup[] = "DISABLE_AUTOUPDATER=1";
-    char *envp[] = {key, h, path, model, quiet, noup, engine_cfg[0] ? cfg : NULL, NULL};
+    // a devbox turn's engine (coax/web/agent/devbox.coax, #13474) holds the boat key as its one credential;
+    // hosted boat is opt-in (BOAT_HOSTED=1), and OA_BOAT_API_BASE points it at another Boat-shaped service
+    bool boat = !strcmp(engine_cred_name, "BOAT_API_KEY");
+    char hosted[] = "BOAT_HOSTED=1", base[600];
+    snprintf(base, sizeof base, "BOAT_API_BASE=%s", env("OA_BOAT_API_BASE", ""));
+    char *envp[] = {key, h, path, model, quiet, noup, boat ? hosted : noup, boat && base[14] ? base : noup, engine_cfg[0] ? cfg : NULL, NULL};
     const char *argv[] = {engine_bin ? engine_bin : env("OA_AGENT_ENGINE", "/usr/local/bin/oa-turn"), NULL};
     execve(argv[0], (char *const *)argv, envp);
     _exit(127);
@@ -920,6 +929,8 @@ int main(int argc, char **argv) {
   if (!load_key()) { say("OA_RUNNER_KEY is missing or not a key"); return 2; }
   snprintf(anthropic_key, sizeof anthropic_key, "%s", env("ANTHROPIC_API_KEY", ""));
   unsetenv("ANTHROPIC_API_KEY");   // only the engine gets it
+  snprintf(boat_key, sizeof boat_key, "%s", env("OA_BOAT_API_KEY", ""));
+  unsetenv("OA_BOAT_API_KEY");     // only a devbox turn's engine gets it
   if (!seal_load()) say("OA_CHAT_SEAL_KEY is missing: /chat cannot save keys");
   repo_key_load();
   if (*env("OA_REPO_URL", "")) say(repo_key[0] ? "/chat reads the repository through %s" : "OA_REPO_URL is %s but OA_REPO_GRANT_KEY is missing: /chat uses a checkout", env("OA_REPO_URL", ""));

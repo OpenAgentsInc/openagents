@@ -1,0 +1,101 @@
+// devbox.coax's checks: the command and the task, line assembly across cut chunks, the session
+// log read as the chat's events, the cost line, and a whole turn against the boat fake
+// (coax/lib/boat/checks.coax: nothing is sent): the box's day, the message written, the command
+// started detached, its output followed across a reconnect, the reply as the answer.
+//   coax/bin/coax test coax/web/agent/devbox.coax
+
+DB_FX_ATTACH_1 :: "HTTP/2 200 \r\ncontent-type: application/x-ndjson\r\n\r\n{\"type\":\"attached\",\"processId\":4242,\"stdoutOffset\":0,\"stderrOffset\":0}\n{\"type\":\"stdout\",\"data\":\"{\\\"kind\\\":\\\"session\\\",\\\"schema\\\":\\\"openagents.s\",\"nextOffset\":40}\n{\"type\":\"stdout\",\"data\":\"e\",\"nextOffset\":41}\n{\"type\":\"stdout\",\"data\":\"ssion.v1\\\",\\\"id\\\":\\\"20261113-200000-001\\\",\\\"version\\\":\\\"0.1.0\\\",\\\"engine\\\":\\\"claude\\\",\\\"cwd\\\":\\\"/home/user/oa\\\",\\\"started_us\\\":1}\\n{\\\"kind\\\":\\\"user\\\",\\\"text\\\":\\\"fix the build\\\"}\\n{\\\"kind\\\":\\\"\",\"nextOffset\":200}\n{\"type\":\"reconnect\",\"stdoutOffset\":200,\"stderrOffset\":0}\n";
+DB_FX_ATTACH_2 :: "HTTP/2 200 \r\ncontent-type: application/x-ndjson\r\n\r\n{\"type\":\"attached\",\"processId\":4242,\"stdoutOffset\":200,\"stderrOffset\":0}\n{\"type\":\"stdout\",\"data\":\"thinking\\\",\\\"text\\\":\\\"Look at the error first.\\\"}\\n{\\\"kind\\\":\\\"tool\\\",\\\"id\\\":\\\"t1\\\",\\\"tool\\\":\\\"Bash\\\",\\\"name\\\":\\\"Bash\\\",\\\"label\\\":\\\"Bash(coax/build.sh)\\\",\\\"arg\\\"\",\"nextOffset\":333}\n{\"type\":\"stdout\",\"data\":\":\\\"coax/build.sh\\\"}\\n{\\\"kind\\\":\\\"result\\\",\\\"id\\\":\\\"t1\\\",\\\"output\\\":\\\"ok\\\",\\\"error\\\":false}\\n{\\\"kind\\\":\\\"repl\",\"nextOffset\":420}\n{\"type\":\"stdout\",\"data\":\"y\\\",\\\"text\\\":\\\"The build passes now: a missing load in wire.coax.\\\"}\\n{\\\"kind\\\":\\\"end\\\",\\\"ending\\\":\\\"finished\\\",\\\"ms\\\":61000,\\\"steps\\\":3}\\n\",\"nextOffset\":540}\n{\"type\":\"exit\",\"status\":\"exited\",\"exitCode\":0,\"stdoutOffset\":540,\"stderrOffset\":0}\n";
+DB_FX_OFFSET :: 540;
+
+db_has :: (s: string, part: string) -> bool {
+  i := 0;
+  while i + part.count <= s.count { if cast(string) s[i..<i + part.count] == part { return true; } i += 1; }
+  return false;
+}
+
+#test "devbox: the command runs Coder on our Claude engine with the message from a file" {
+  b: [512] u8;
+  #assert db_command(b[..], 42, "claude-opus-5-5") == "coder/tui/coder.sh run --json --engine claude --model claude-opus-5-5 \"$(cat /home/user/.oa-turn-42.txt)\"; s=$?; rm -f /home/user/.oa-turn-42.txt; exit $s";
+  #assert db_command(b[..], 42, "") == "coder/tui/coder.sh run --json --engine claude \"$(cat /home/user/.oa-turn-42.txt)\"; s=$?; rm -f /home/user/.oa-turn-42.txt; exit $s";
+  #assert db_command(b[..], 42, "x; rm -rf /") == "" && db_command(b[..], 0, "m") == "";
+  ab: [4096] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+  t: [1024] u8;
+  #assert db_task(ar[..], "{\"history\":[]}", "fix it", t[..]) == "fix it";
+  #assert db_task(ar[..], "{\"history\":[{\"text\":\"hi\",\"answer\":\"hello\"}]}", "fix it", t[..]) == "The conversation so far, on this dev box:\n\nThe member: hi\nYou: hello\n\nNow the member says:\nfix it";
+}
+
+#test "devbox: whole lines out of chunks cut anywhere; a line too long is dropped whole" {
+  l: [1] DbLines; o: [64] u8;
+  db_feed(l[..], "{\"a\":1}\n{\"b\"");
+  #assert db_take(l[..], o[..]) == "{\"a\":1}" && db_take(l[..], o[..]) == "";
+  db_feed(l[..], ":2}\n\n");
+  #assert db_take(l[..], o[..]) == "{\"b\":2}" && db_take(l[..], o[..]) == "" && l[0].n == 0;
+}
+
+#test "devbox: Coder's session log, read as the chat's events" {
+  ab: [4096] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+  e := db_event(ar[..], "{\"kind\":\"reply\",\"text\":\"Fixed.\"}");
+  #assert e.kind == DB_REPLY && e.text == "Fixed.";
+  e = db_event(ar[..], "{\"kind\":\"tool\",\"label\":\"Bash(ls -la)\"}");
+  #assert e.kind == DB_TOOL && e.name == "Bash" && e.detail == "Bash(ls -la)";
+  e = db_event(ar[..], "{\"kind\":\"tool\",\"label\":\"edit(/w/desk.coax)\",\"tool\":\"edit\",\"id\":\"t1\"}");
+  #assert e.kind == DB_TOOL && e.name == "edit";
+  #assert db_event(ar[..], "{\"kind\":\"end\",\"ending\":\"finished\",\"ms\":1}").ending == "finished";
+  #assert db_event(ar[..], "{\"kind\":\"thinking\",\"text\":\"x\"}").kind == DB_THINKING;
+  #assert db_event(ar[..], "{\"kind\":\"user\",\"text\":\"x\"}").kind == DB_NONE && db_event(ar[..], "not json").kind == DB_NONE;
+}
+
+#test "devbox: a whole turn on the box, through the boat fake, across a reconnect" {
+  k: [1] BtCheck;
+  answers := [11] string.[BT_FX_LIMITS, BT_FX_LIST, BT_FX_USAGE, BT_FX_LIMITS, BT_FX_LIST, BT_FX_USAGE, BT_FX_WRITE, BT_FX_STARTED, DB_FX_ATTACH_1, DB_FX_ATTACH_2, BT_FX_KILL];
+  c := bt_check_init(k[..], answers[..]);
+  r: [1] DbRun; r[0].c = c;
+  s: [1] DbSink;
+  st := db_start(r[..], s[..], "bx_fwh3xnws", 42, "claude-opus-5-5", "fix the build", k[0].out[..], k[0].ar[..]);
+  #assert st == DB_RUNNING && r[0].pid == 4242;
+  for i: 0..<20 { if st != DB_RUNNING { break; } st = db_step(r[..], s[..], k[0].ar[..], 0); }
+  #assert st == DB_FINISHED && r[0].status == "done" && r[0].error == "" && r[0].reconnects == 1;
+  #assert cast(string) r[0].answer[0..<r[0].nanswer] == "The build passes now: a missing load in wire.coax.";
+  #assert r[0].f[0].at.stdout == DB_FX_OFFSET;
+  lines := cast(string) s[0].buf[0..<s[0].n];
+  #assert db_has(lines, "{\"t\":\"event\",\"type\":\"working\",\"data\":{\"text\":\"starting the dev box\"}}\n");
+  #assert db_has(lines, "{\"t\":\"event\",\"type\":\"agent.tool_use\",\"data\":{\"name\":\"boat\",\"detail\":\"bx_fwh3xnws up · today $0.07 of $5.00, $0.86 more if the boxes up run to their auto-stop · auto-stop in 12 h 0 min\"}}\n");
+  #assert db_has(lines, "{\"t\":\"event\",\"type\":\"agent.tool_use\",\"data\":{\"name\":\"Bash\",\"detail\":\"Bash(coax/build.sh)\"}}\n");
+  #assert db_has(lines, "{\"t\":\"event\",\"type\":\"agent.message\",\"data\":{\"text\":\"The build passes now: a missing load in wire.coax.\"}}\n");
+  sent := bt_check_log(k[..]);
+  #assert db_has(sent, "PUT /sandboxes/bx_fwh3xnws/files {\"path\":\"/home/user/.oa-turn-42.txt\",\"content\":\"fix the build\"}\n");
+  #assert db_has(sent, "POST /sandboxes/bx_fwh3xnws/commands {\"command\":\"coder/tui/coder.sh run --json --engine claude --model claude-opus-5-5 \\\"$(cat /home/user/.oa-turn-42.txt)\\\"; s=$?; rm -f /home/user/.oa-turn-42.txt; exit $s\",\"cwd\":\"/home/user/oa\",\"detached\":true}\n");
+  #assert db_has(sent, "GET /sandboxes/bx_fwh3xnws/commands/4242/stream?stdoutOffset=0&stderrOffset=0\n");
+  #assert !db_has(sent, "resume");
+  db_stop(r[..], k[0].out[..], k[0].ar[..]);
+  #assert r[0].status == "stopped" && db_has(bt_check_log(k[..]), "DELETE /sandboxes/bx_fwh3xnws/commands/4242\n");
+}
+
+#test "devbox: a box the policy refuses, a box that is gone, a bad id" {
+  k: [1] BtCheck; a := [3] string.[BT_FX_LIMITS, "HTTP/2 200 \r\n\r\n{\"ok\":true,\"sandboxes\":[{\"id\":\"bx_fwh3xnws\",\"name\":\"someone-else\",\"state\":\"archived\"}]}", BT_FX_USAGE];
+  c := bt_check_init(k[..], a[..]);
+  r: [1] DbRun; r[0].c = c; s: [1] DbSink;
+  #assert db_start(r[..], s[..], "bx_fwh3xnws", 1, "", "x", k[0].out[..], k[0].ar[..]) == DB_FINISHED && r[0].status == "failed" && r[0].error == "not a dev box: their names start oa-devbox";
+  k2: [1] BtCheck; a2 := [1] string.[BT_FX_UNAUTHORIZED];
+  c2 := bt_check_init(k2[..], a2[..]);
+  r2: [1] DbRun; r2[0].c = c2;
+  #assert db_start(r2[..], s[..], "bx_fwh3xnws", 1, "", "x", k2[0].out[..], k2[0].ar[..]) == DB_FINISHED && r2[0].error == "the dev box did not come up: boat said unauthorized (unauthorized)";
+  r3: [1] DbRun; r3[0].c = c2;
+  #assert db_start(r3[..], s[..], "nope", 1, "", "x", k2[0].out[..], k2[0].ar[..]) == DB_FINISHED && r3[0].error == "the conversation's dev box is not a boat id";
+  k4: [1] BtCheck; a4 := [1] string.[BT_FX_STOP];
+  c4 := bt_check_init(k4[..], a4[..]);
+  #assert db_stop_box(c4, "bx_fwh3xnws", k4[0].out[..], k4[0].ar[..]) == "The dev box is stopping. Its disk stays; your next message starts it again.";
+  #assert db_stop_box(c4, "bx_fwh3xnws", k4[0].out[..], k4[0].ar[..]) == "" && db_stop_box(c4, "x", k4[0].out[..], k4[0].ar[..]) == "";
+}
+
+#test "devbox: a turn the agent ends with an error says what the agent said" {
+  k: [1] BtCheck;
+  att := "HTTP/2 200 \r\n\r\n{\"type\":\"attached\",\"processId\":4242,\"stdoutOffset\":0,\"stderrOffset\":0}\n{\"type\":\"stdout\",\"data\":\"{\\\"kind\\\":\\\"reply\\\",\\\"text\\\":\\\"Not logged in\\\"}\\n{\\\"kind\\\":\\\"end\\\",\\\"ending\\\":\\\"failed\\\"}\\n\",\"nextOffset\":70}\n{\"type\":\"exit\",\"status\":\"exited\",\"exitCode\":1,\"stdoutOffset\":70,\"stderrOffset\":0}\n";
+  answers := [10] string.[BT_FX_LIMITS, BT_FX_LIST, BT_FX_USAGE, BT_FX_LIMITS, BT_FX_LIST, BT_FX_USAGE, BT_FX_WRITE, BT_FX_STARTED, att, BT_FX_KILL];
+  c := bt_check_init(k[..], answers[..]);
+  r: [1] DbRun; r[0].c = c; s: [1] DbSink;
+  st := db_start(r[..], s[..], "bx_fwh3xnws", 9, "", "x", k[0].out[..], k[0].ar[..]);
+  for i: 0..<5 { if st != DB_RUNNING { break; } st = db_step(r[..], s[..], k[0].ar[..], 0); }
+  #assert st == DB_FINISHED && r[0].status == "failed" && r[0].error == "the agent failed on the dev box: Not logged in";
+}

@@ -207,6 +207,30 @@ s, b = cpage("POST", "tab", {"c": str(C)})
 check("chat: opening it again puts it last", s == 200 and json.loads(b).get("tab") == 2 and tabs() == {str(C): "2", str(C2): "1"}, (s, b, tabs()))
 s, b = cpage("POST", "tab", {"c": "999999"})
 check("chat: no tab for a conversation that isn't yours", s == 404, (s, b))
+
+# ---- a devbox conversation (#13474, migrations/0189_chat_devbox.sql): an admin names a boat dev box,
+# and its turns go to the devbox engine (coax/web/agent/devbox.coax); this runner holds no boat key
+s, b = cpage("POST", "new", {"model": "claude-haiku-5-5"})
+D = json.loads(b).get("c") if s == 200 else None
+s, b = cpage("POST", "devbox", {"c": str(D), "box": "bx_nope"})
+check("chat devbox: a box is a boat sandbox id", s == 400 and "bx_" in b, (s, b))
+s, b = cpage("POST", "devbox", {"c": "999999999", "box": "bx_fwh3xnws"})
+check("chat devbox: only on the admin's own conversation", s == 404, (s, b))
+s, b = cpage("POST", "devbox", {"c": str(D), "box": "bx_fwh3xnws"}, origin="https://evil.example")
+check("chat devbox: never from another site", s == 403, (s, b))
+s, b = cpage("GET", "devbox", query=f"?c={D}")
+check("chat devbox: a write, so POST only", s == 405, (s, b))
+s, b = cpage("POST", "devbox", {"c": str(D), "box": "bx_fwh3xnws"})
+check("chat devbox: an admin names the box", s == 200 and json.loads(b) == {"c": D, "devbox": "bx_fwh3xnws"}
+      and sql(f"select devbox from chat.conversations where id = {D}") == "bx_fwh3xnws", (s, b))
+s, b = cpage("POST", "send", {"c": str(D), "text": "on the box, please"})
+TD = json.loads(b).get("turn") if s == 200 else None
+b, u = until_turn(D, TD, ("done", "failed"))
+check("chat devbox: the runner gives the turn to the devbox engine, which needs the boat key this runner lacks",
+      u and u[2] == "failed" and sql(f"select error from chat.turns where id = {TD}") == "This runner has no boat key yet, so it can't reach dev boxes.", u)
+s, b = cpage("POST", "devbox", {"c": str(D), "box": ""})
+check("chat devbox: and clears it", s == 200 and sql(f"select devbox from chat.conversations where id = {D}") == "", (s, b))
+cpage("POST", "tab", {"c": str(D), "open": False})   # back to the tabs the checks after this one expect
 s, b = cpage("POST", "record", {"c": str(C)})
 check("chat: the record is read with GET", s == 405, (s, b))
 s, b = cpage("GET", "record", query=f"?c={C}")

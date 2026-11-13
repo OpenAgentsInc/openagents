@@ -10,8 +10,8 @@ boat's v1 HTTP API: no CLI wrapper, no generated client.
 | `wire.coax` | The one codec (`proto/registry.json`, `boat.v1`): every request body and path, and readers from boat's answers into our records (`BtSandbox`, `BtLimits`, `BtCommand`, `BtFrame`, `BtSaved`, `BtSsh`, `BtUsage`, `BtEnv`) and a typed `BtError` |
 | `client.coax` | `BoatClient` on the gateway's curl transport (`coax/lib/gateway/transport.coax`): one synchronous call, or an NDJSON stream read line by line without blocking. Holds the hosted guard, and a fake for checks |
 | `boat.coax` | The calls: limits; create, get, list, stop, resume, set the auto-stop, delete, usage, wait until up; commands synchronous, streamed, and detached with attach, status and kill; files; saved snapshots; SSH keys; environments |
-| `policy.coax` | `#authority`, zero surviving mutants: the sizes we use, 2 boxes at once, auto-stop 15 minutes to 24 hours (12 by default, never off), $5.00 of box time a UTC day, and which calls may be retried and when |
-| `local.coax` | The SDK on the machine you work from: the key from `~/.openagents/boat/api-key`, today's spend and boxes, a box brought up under the policy (`bt_bring_up`), and the SSH entry refreshed (`bt_ssh_refresh`). `tool.sh boat` and Coder's `--on boat:ID` share it |
+| `policy.coax` | `#authority`, zero surviving mutants: the sizes we use, 2 boxes at once, auto-stop 15 minutes to 24 hours (12 by default, never off), $5.00 of box time a UTC day, which calls may be retried and when, which templates to keep, the size a box's load asks for, and when boat counts as down |
+| `local.coax` | The SDK on the machine you work from: the key from `~/.openagents/boat/api-key`, today's spend and boxes, a box brought up under the policy (`bt_bring_up`), and the SSH entry refreshed (`bt_ssh_refresh`), the newest template and the daily rotation (`bt_refresh`). `tool.sh boat`, Coder's `--on boat:ID` and /chat's devbox engine (`coax/web/agent/devbox.coax`) share it |
 | `ssh.coax` | The `~/.ssh/config` block (`Host boat-ID`) and the strict known-hosts line, rewritten from boat's `sshkey` answer after every resume |
 | `checks.coax` | Every call and error against canned answers. No check sends anything |
 
@@ -53,19 +53,22 @@ w := bt_wait_up(c, "bx_fwh3xnws", 120, out[..], ar[..]);
 ## From a terminal
 
 `coax/web/tool.sh boat` (`coax/web/boat.coax`) is the SDK and the policy for
-people: `ls`, `up`, `resume`, `stop`, `ssh`, `cost`. Every cap is printed by
+people: `ls`, `up`, `resume`, `stop`, `ssh`, `cost`, `size`, `refresh` and
+`conform` (does a Boat-shaped service answer every call we make?). Every cap is printed by
 `ls` and `cost`. The key comes from `BOAT_API_KEY`, or
 `~/.openagents/boat/api-key` (mode 0600).
 
 ## Switching to our own service
 
 `BOAT_API_BASE` points the whole SDK at any Boat-shaped service (stage 6, the
-exit plan). Nothing else changes.
+exit plan, [docs/cloud/boat-exit-plan.md](../../../docs/cloud/boat-exit-plan.md)).
+Nothing else changes, and `tool.sh boat conform` checks the new service.
 
 ## Checks
 
 ```sh
 coax/bin/coax test --library coax/lib/boat/boat.coax
+coax/bin/coax test --library coax/lib/boat/local.coax
 coax/bin/coax test coax/lib/boat/policy.coax && coax/bin/coax mutate coax/lib/boat/policy.coax
 ```
 

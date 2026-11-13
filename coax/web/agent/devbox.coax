@@ -1,0 +1,343 @@
+// /chat's devbox engine (GitHub #13474, stage 4; docs/cloud/boat-devbox.md): a turn of a
+// conversation that names a boat dev box (migrations/0189, POST /api/chat/devbox) runs on that
+// box. The runner (chat-runner.c) starts this engine with the turn's first line (the chat turn's
+// line, its turn carrying "devbox": the box's id) and the boat key as its one credential
+// (BOAT_API_KEY, with BOAT_HOSTED=1); it holds no Claude credential, because the box has its own.
+//
+// A turn:
+//   1. the box comes up: resumed under the dev box policy when it is stopped (coax/lib/boat/
+//      policy.coax: 2 boxes at once, auto-stop 15 minutes to 24 hours, $5.00 a UTC day), else
+//      refused with the policy's words;
+//   2. the page gets the box's cost line as a tool event ("boat": today's spend, the cap, the
+//      auto-stop);
+//   3. the message (after the conversation so far) goes into a file on the box, and our Claude
+//      engine runs there as a detached command: Coder's `run --json --engine claude` in the box's
+//      checkout, so a turn can run longer than any request;
+//   4. its output is followed through boat's attach stream (reconnecting from the stored offsets),
+//      read as Coder's session log (openagents.session.v1, coax/lib/agent/session/log.coax), and
+//      passed on as the chat's events: a working line, a tool use per tool call, the reply;
+//   5. STOP kills the command on the box; the box stays up until its auto-stop.
+// A message that is only "/stop" stops the box itself (its disk stays); the next message starts it.
+//
+//   coax/bin/coax test coax/web/agent/devbox.coax
+
+#import "Basic";
+#load "../../lib/boat/local.coax";
+#load "engine-line.coax";
+
+TURN_LINE :: 1048576;
+DB_HOME :: "/home/user";                 // the template's user on a box
+DB_REPO :: "/home/user/oa";              // its checkout
+DB_LINE :: 1048576;                      // one session-log line from the box, at most
+DB_ANSWER :: 60000;                      // the API keeps this much of an answer
+
+// ---- what runs on the box
+
+// A model name a shell line can carry as it is.
+db_plain :: (s: string) -> bool {
+  for c: s { if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '.' || c == '_' || c == '/') { return false; } }
+  return true;
+}
+
+// Where the turn's message waits on the box.
+db_prompt_path :: (out: [] u8, turn: int) -> string {
+  n := json_raw(out, 0, DB_HOME); n = json_raw(out, n, "/.oa-turn-"); n = json_write_int(out, n, turn); n = json_raw(out, n, ".txt");
+  return ifx n < 0 then "" else cast(string) out[0..<n];
+}
+
+// The detached command: Coder's run on our Claude engine, the message read from its file (so no
+// text of the member's reaches a shell line), the file removed after.
+db_command :: (out: [] u8, turn: int, model: string) -> string {
+  if turn <= 0 || !db_plain(model) { return ""; }
+  pb: [256] u8; p := db_prompt_path(pb[..], turn);
+  n := json_raw(out, 0, "coder/tui/coder.sh run --json --engine claude");
+  if model.count > 0 { n = json_raw(out, n, " --model "); n = json_raw(out, n, model); }
+  n = json_raw(out, n, " \"$(cat "); n = json_raw(out, n, p); n = json_raw(out, n, ")\"; s=$?; rm -f "); n = json_raw(out, n, p); n = json_raw(out, n, "; exit $s");
+  return ifx n < 0 then "" else cast(string) out[0..<n];
+}
+
+// The task: the conversation so far (its last 10 turns, from the turn line's history), then this message.
+db_task :: (ar: [] ClArena, line: string, text: string, out: [] u8) -> string {
+  history := cl_raw(line, "history");
+  turns := cl_count(history);
+  n := 0;
+  if turns > 0 {
+    n = json_raw(out, n, "The conversation so far, on this dev box:\n");
+    start := ifx turns > 10 then turns - 10 else 0;
+    for i: start..<turns {
+      t := cl_json(history, cl_item(history, i));
+      n = json_raw(out, n, "\nThe member: "); n = json_raw(out, n, cl_str(ar, t, "text"));
+      n = json_raw(out, n, "\nYou: "); n = json_raw(out, n, cl_str(ar, t, "answer"));
+      n = json_raw(out, n, "\n");
+    }
+    n = json_raw(out, n, "\nNow the member says:\n");
+  }
+  n = json_raw(out, n, text);
+  return ifx n < 0 then "" else cast(string) out[0..<n];
+}
+
+// ---- reading the box's output
+
+// The attach stream's chunks cut lines anywhere: whole lines out, the rest kept for the next chunk.
+DbLines :: struct { buf: [DB_LINE] u8; n: int; cut: bool; }
+
+db_feed :: (l: [] DbLines, data: string) {
+  for c: data {
+    if l[0].n < l[0].buf.count { l[0].buf[l[0].n] = c; l[0].n += 1; }
+    else if c == '\n' { l[0].n = 0; l[0].cut = false; }   // a line too long: dropped whole
+    else { l[0].cut = true; }
+  }
+}
+
+// The next whole line into out ("" with false when none is whole yet).
+db_take :: (l: [] DbLines, out: [] u8) -> string {
+  e := 0; while e < l[0].n && l[0].buf[e] != '\n' { e += 1; }
+  if e >= l[0].n { return ""; }
+  k := ifx e < out.count then e else out.count;
+  for i: 0..<k { out[i] = l[0].buf[i]; }
+  rest := l[0].n - e - 1;
+  for i: 0..<rest { l[0].buf[i] = l[0].buf[e + 1 + i]; }
+  l[0].n = rest;
+  return cast(string) out[0..<k];
+}
+
+DB_NONE :: 0; DB_REPLY :: 1; DB_TOOL :: 2; DB_END :: 3; DB_THINKING :: 4; DB_SESSION :: 5;
+
+// What one line of Coder's session log is to the chat.
+DbEv :: struct { kind: int; text: string; name: string; detail: string; ending: string; }
+
+db_event :: (ar: [] ClArena, line: string) -> DbEv {
+  r: [1] SlReader; r[0] = SlReader.{text = line}; l: [1] SlLine;
+  if !sl_next(r[..], l[..]) { return DbEv.{}; }
+  sl_read(ar, l[..]);
+  k := l[0].kind;
+  if k == SK_REPLY { return DbEv.{kind = DB_REPLY, text = l[0].text}; }
+  if k == SK_THINKING { return DbEv.{kind = DB_THINKING}; }
+  if k == SK_TOOL {
+    // a tool line's label is how Coder shows it ("Bash(coax/build.sh)"); its name is the label's head
+    lab := l[0].label; h := 0; while h < lab.count && lab[h] != '(' { h += 1; }
+    name := ifx l[0].tool.count > 0 then l[0].tool else cast(string) lab[0..<h];
+    return DbEv.{kind = DB_TOOL, name = name, detail = lab};
+  }
+  if k == SK_END { return DbEv.{kind = DB_END, ending = l[0].ending}; }
+  if k == SK_SESSION { return DbEv.{kind = DB_SESSION, text = l[0].header.id}; }
+  return DbEv.{};
+}
+
+// ---- the lines the runner gets, gathered until the engine writes them
+
+DbSink :: struct { buf: [262144] u8; n: int; }
+
+db_put :: (s: [] DbSink, o: [] ClOut) {
+  if o[0].failed { return; }
+  if s[0].n + o[0].len + 1 > s[0].buf.count { return; }
+  for i: 0..<o[0].len { s[0].buf[s[0].n + i] = o[0].buf[i]; }
+  s[0].n += o[0].len; s[0].buf[s[0].n] = 10; s[0].n += 1;
+}
+db_event_line :: (s: [] DbSink, type: string, key: string, value: string) {
+  b: [8192] u8; o: [1] ClOut; o[0].buf = b[..];
+  rw_event(o[..], type, key, ifx value.count > 4000 then cast(string) value[0..<4000] else value); db_put(s, o[..]);
+}
+db_tool_line :: (s: [] DbSink, name: string, detail: string) {
+  b: [8192] u8; o: [1] ClOut; o[0].buf = b[..];
+  rw_tool(o[..], ifx name.count > 60 then cast(string) name[0..<60] else name, ifx detail.count > 300 then cast(string) detail[0..<300] else detail); db_put(s, o[..]);
+}
+
+// "$0.07" for millicents.
+db_money :: (out: [] u8, mc: int) -> string {
+  c := (mc + 500) / 1000;
+  n := json_raw(out, 0, "$"); n = json_write_int(out, n, c / 100); n = json_raw(out, n, ".");
+  if c % 100 < 10 { n = json_raw(out, n, "0"); }
+  n = json_write_int(out, n, c % 100);
+  return ifx n < 0 then "" else cast(string) out[0..<n];
+}
+
+// The cost line the conversation shows each turn (stage 5): the box, today's spend against the cap,
+// what the boxes up will add, and this box's auto-stop.
+db_cost_line :: (out: [] u8, box: string, d: [] BtDay, ttl_s: int, resumed: bool) -> string {
+  a: [32] u8; b: [32] u8; m: [32] u8;
+  n := json_raw(out, 0, box); n = json_raw(out, n, ifx resumed then " resumed" else " up");
+  n = json_raw(out, n, " · today "); n = json_raw(out, n, db_money(a[..], d[0].spent_mc));
+  n = json_raw(out, n, " of "); n = json_raw(out, n, db_money(m[..], BP_DAY_CAP_MC));
+  n = json_raw(out, n, ", "); n = json_raw(out, n, db_money(b[..], d[0].committed_mc)); n = json_raw(out, n, " more if the boxes up run to their auto-stop");
+  if ttl_s > 0 { n = json_raw(out, n, " · auto-stop in "); n = json_write_int(out, n, ttl_s / 3600); n = json_raw(out, n, " h "); n = json_write_int(out, n, (ttl_s % 3600) / 60); n = json_raw(out, n, " min"); }
+  return ifx n < 0 then "" else cast(string) out[0..<n];
+}
+
+// ---- one turn, step by step
+
+DB_RUNNING :: 0; DB_FINISHED :: 1;
+
+DbRun :: struct {
+  c: BoatClient;
+  box: [16] u8; nbox: int;
+  pid: int;
+  f: [1] BtFollow;
+  fline: [65536] u8;
+  lines: [1] DbLines;
+  line: [DB_LINE] u8;
+  answer: [DB_ANSWER] u8; nanswer: int;
+  status: string;            // done, failed, stopped once finished
+  error: string;
+  ending: string;
+  ebuf: [512] u8;
+  reconnects: int;
+}
+
+db_box :: (r: [] DbRun) -> string { return cast(string) r[0].box[0..<r[0].nbox]; }
+
+db_fail :: (r: [] DbRun, why: string) -> int {
+  r[0].status = "failed";
+  n := 0; for c: why { if n < r[0].ebuf.count { r[0].ebuf[n] = c; n += 1; } }
+  r[0].error = cast(string) r[0].ebuf[0..<n];
+  return DB_FINISHED;
+}
+
+db_err_words :: (out: [] u8, what: string, e: BtError) -> string {
+  n := json_raw(out, 0, what); n = json_raw(out, n, ": boat said "); n = json_raw(out, n, bt_kind_name(e.kind));
+  if e.code.count > 0 { n = json_raw(out, n, " ("); n = json_raw(out, n, e.code); n = json_raw(out, n, ")"); }
+  if e.why.count > 0 { n = json_raw(out, n, ": "); n = json_raw(out, n, e.why); }
+  return ifx n < 0 then cast(string) out[0..<0] else cast(string) out[0..<n];
+}
+
+// Brings the box up, says what it costs, puts the message there and starts the command.
+// DB_RUNNING when the command runs; DB_FINISHED (status failed) when it could not.
+db_start :: (r: [] DbRun, s: [] DbSink, box: string, turn: int, model: string, task: string, out: [] u8, ar: [] ClArena) -> int {
+  if !bt_id_ok(box) { return db_fail(r, "the conversation's dev box is not a boat id"); }
+  for c, i: box { r[0].box[i] = c; } r[0].nbox = box.count;
+  db_event_line(s, "working", "text", "starting the dev box");
+  lb: [262144] u8;
+  u := bt_bring_up(r[0].c, box, true, 0, "", lb[..], out, ar);
+  wb: [512] u8;
+  if u.refused != BP_OK { return db_fail(r, bp_words(u.refused)); }
+  if bt_failed(u.error) { return db_fail(r, db_err_words(wb[..], "the dev box did not come up", u.error)); }
+  d: [1] BtDay; ar[0].at = 0;
+  bt_day(r[0].c, d[..], lb[..], out, ar);
+  cb: [512] u8;
+  ttl := ifx u.run.ttl_s > 0 then u.run.ttl_s else u.sandbox.ttl_s;
+  if !bt_failed(d[0].error) { db_tool_line(s, "boat", db_cost_line(cb[..], box, d[..], ttl, u.resumed)); }
+  pb: [256] u8; mb: [2048] u8;
+  cmd := db_command(mb[..], turn, model);
+  if cmd.count == 0 { return db_fail(r, "the turn's model can't go on a command line"); }
+  ar[0].at = 0;
+  w := bt_write_file(r[0].c, box, db_prompt_path(pb[..], turn), task, false, out, ar);
+  if bt_failed(w.error) { return db_fail(r, db_err_words(wb[..], "the message could not be put on the dev box", w.error)); }
+  ar[0].at = 0;
+  st := bt_detach(r[0].c, box, cmd, DB_REPO, out, ar);
+  if bt_failed(st.error) { return db_fail(r, db_err_words(wb[..], "the agent could not start on the dev box", st.error)); }
+  started := bt_read_started(ar, st.body);
+  if !started.ok { return db_fail(r, "boat started the agent but named no process"); }
+  r[0].pid = started.pid;
+  db_event_line(s, "working", "text", "working on the dev box");
+  e := bt_attach(r[0].c, r[0].f[..], box, r[0].pid, BtCursor.{}, r[0].fline[..]);
+  if bt_failed(e) { return db_fail(r, db_err_words(wb[..], "the agent's output could not be followed", e)); }
+  return DB_RUNNING;
+}
+
+// Reads what has come (waiting up to wait_ms) and turns it into the chat's lines.
+db_step :: (r: [] DbRun, s: [] DbSink, ar: [] ClArena, wait_ms: int) -> int {
+  for guard: 0..<256 {
+    ar[0].at = 0; ar[0].full = false;
+    nx := bt_frame_next(r[0].f[..], ar, ifx guard == 0 then wait_ms else 0);
+    if !nx.got {
+      if !r[0].f[0].done { return DB_RUNNING; }
+      wb: [512] u8;
+      return db_fail(r, db_err_words(wb[..], "the agent's output stopped", r[0].f[0].error));
+    }
+    fr := nx.frame;
+    if fr.kind == BtFrameKind.stdout { db_feed(r[0].lines[..], fr.data); }
+    while true {
+      lr := db_take(r[0].lines[..], r[0].line[..]);
+      if lr.count == 0 { break; }
+      ear: [65536] u8; eal: [1] ClArena; eal[0] = ClArena.{buf = ear[..]};
+      ev := db_event(eal[..], lr);
+      if ev.kind == DB_REPLY {
+        n := 0; for c: ev.text { if n < r[0].answer.count { r[0].answer[n] = c; n += 1; } }
+        r[0].nanswer = n;
+        db_event_line(s, "agent.message", "text", ev.text);
+      } else if ev.kind == DB_TOOL {
+        db_tool_line(s, ev.name, ev.detail);
+        db_event_line(s, "working", "text", ev.name);
+      } else if ev.kind == DB_THINKING {
+        db_event_line(s, "working", "text", "thinking");
+      } else if ev.kind == DB_END {
+        r[0].ending = ifx ev.ending == "finished" then "finished" else "other";
+      }
+    }
+    if fr.kind == BtFrameKind.reconnect {
+      if r[0].reconnects >= 1000 { return db_fail(r, "the agent ran too long"); }
+      r[0].reconnects += 1;
+      e := bt_attach(r[0].c, r[0].f[..], db_box(r), r[0].pid, r[0].f[0].at, r[0].fline[..]);
+      if bt_failed(e) { wb: [512] u8; return db_fail(r, db_err_words(wb[..], "the agent's output could not be followed again", e)); }
+      continue;
+    }
+    if fr.kind == BtFrameKind.exit {
+      if fr.exit_code == 0 && r[0].ending == "finished" { r[0].status = "done"; return DB_FINISHED; }
+      // what the agent said last tells the member why (a login it lacks, a limit)
+      wb: [512] u8;
+      n := json_raw(wb[..], 0, ifx fr.exit_code == 0 then "the agent ended without finishing" else "the agent failed on the dev box");
+      if r[0].nanswer > 0 { n = json_raw(wb[..], n, ": "); n = json_raw(wb[..], n, cast(string) r[0].answer[0..<(ifx r[0].nanswer > 300 then 300 else r[0].nanswer)]); }
+      return db_fail(r, ifx n < 0 then "the agent failed on the dev box" else cast(string) wb[0..<n]);
+    }
+    if fr.kind == BtFrameKind.error { return db_fail(r, "boat lost the agent's command"); }
+  }
+  return DB_RUNNING;
+}
+
+// STOP: the command on the box is killed (its process tree); the box stays up.
+db_stop :: (r: [] DbRun, out: [] u8, ar: [] ClArena) {
+  bt_follow_close(r[0].f[..]);
+  if r[0].pid > 0 { ar[0].at = 0; k := bt_kill(r[0].c, db_box(r), r[0].pid, out, ar); }
+  r[0].status = "stopped";
+}
+
+// "/stop": the box itself stops; its disk stays, and the next message starts it again.
+db_stop_box :: (c: BoatClient, box: string, out: [] u8, ar: [] ClArena) -> string {
+  if !bt_id_ok(box) { return ""; }
+  st := bt_stop(c, box, false, out, ar);
+  return ifx bt_failed(st.error) then "" else "The dev box is stopping. Its disk stays; your next message starts it again.";
+}
+
+db_flush :: (s: [] DbSink) {
+  for i: 0..<s[0].n { x := eio_put(cast(int) s[0].buf[i]); }
+  if s[0].n > 0 { x := eio_flush(); }
+  s[0].n = 0;
+}
+
+main :: () {
+  first: [TURN_LINE] u8;
+  n := eio_read_line(60000);
+  out: [131072] u8;
+  if n <= 0 || n > TURN_LINE { el_done(out[..], RW_DONE_CHAT, "failed", "", "the agent got no turn", 0.0, false); return; }
+  for i: 0..<n { first[i] = cast(u8) eio_line_byte(i); }
+  line := cast(string) first[0..<n];
+  tar: [262144] u8; targ: [1] ClArena; targ[0].buf = tar[..];
+  text := cl_str(targ[..], line, "turn.text");
+  box := cl_str(targ[..], line, "turn.devbox");
+  model := cl_str(targ[..], line, "model");
+  tid := cl_int(line, "turn.id");
+  bb: [512] u8; kb: [512] u8;
+  r: [1] DbRun; r[0].c = bt_local_client(bb[..], kb[..]);
+  big: [262144] u8; abuf: [65536] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = abuf[..]};
+  if text.count == 0 || !tid.ok { el_done(out[..], RW_DONE_CHAT, "failed", "", "the turn has no message", 0.0, false); return; }
+  if text == "/stop" {
+    said := db_stop_box(r[0].c, box, big[..], ar[..]);
+    el_done(out[..], RW_DONE_CHAT, ifx said.count > 0 then "done" else "failed", said, ifx said.count > 0 then "" else "boat did not stop the dev box", 0.0, false);
+    return;
+  }
+  taskb: [196608] u8;
+  task := db_task(targ[..], line, text, taskb[..]);
+  if task.count == 0 { el_done(out[..], RW_DONE_CHAT, "failed", "", "the conversation is too long for one turn", 0.0, false); return; }
+  s: [1] DbSink;
+  st := db_start(r[..], s[..], box, tid.value, model, task, big[..], ar[..]);
+  db_flush(s[..]);
+  while st == DB_RUNNING {
+    if el_stop_waiting(0) { db_stop(r[..], big[..], ar[..]); st = DB_FINISHED; break; }
+    st = db_step(r[..], s[..], ar[..], 1000);
+    db_flush(s[..]);
+  }
+  answer := cast(string) r[0].answer[0..<r[0].nanswer];
+  el_done(out[..], RW_DONE_CHAT, r[0].status, ifx r[0].status == "done" then answer else "", r[0].error, 0.0, false);
+}
+
+#load "devbox-checks.coax" #test;

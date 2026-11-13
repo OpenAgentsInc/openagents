@@ -26,6 +26,7 @@ CdRoute2 :: struct {
   box: [16] u8; nbox: int;              // the box's id
   task: [512] u8; ntask: int;           // a boat session's task and engine, recorded for the chat's list
   engine: [32] u8; nengine: int;
+  boat_down: bool;                      // boat gave no answer or a 5xx (bp_boat_down)
   dest: [256] u8; ndest: int;           // ssh destination, or the pool host's name
   zone: [64] u8; nzone: int;
   project: [64] u8; nproject: int;
@@ -68,7 +69,11 @@ cd_r2_route :: (on: string, repo: string, start: bool, r: [] CdRoute2) -> bool {
   }
   if on.count > 5 && cast(string) on[0..<5] == "boat:" {
     if repo.count == 0 { r[0].nrepo = cd_cat(r[0].repo[..], 0, CD_BOAT_REPO); }
-    return cd_r2_boat(r, cast(string) on[5..<on.count], start);
+    if cd_r2_boat(r, cast(string) on[5..<on.count], start) { return true; }
+    // boat itself is down (stage 5): a new session goes to the fallback machine instead
+    if !(start && r[0].boat_down) { return false; }
+    tool_err("coder: boat is down ("); tool_err(cd_r2_s(r[0].why[..], r[0].nwhy)); tool_err("); running on "); tool_errln(BP_FALLBACK);
+    return cd_r2_route(BP_FALLBACK, "", start, r);
   }
   if on != "cloud" { return cd_r2_fail(r, "--on is local, ssh:DEST, boat:ID or cloud"); }
   r[0].cloud = true;
@@ -91,9 +96,10 @@ cd_r2_boat_fresh :: (r: [] CdRoute2, start: bool) -> bool {
   bb: [512] u8; kb: [512] u8;
   c := bt_local_client(bb[..], kb[..]);
   lb: [262144] u8; ob: [262144] u8; arb: [65536] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = arb[..]};
-  u := bt_bring_up(c, id, start, 0, lb[..], ob[..], ar[..]);
+  u := bt_bring_up(c, id, start, 0, "", lb[..], ob[..], ar[..]);
   if u.refused != BP_OK { return cd_r2_fail(r, bp_words(u.refused)); }
   if bt_failed(u.error) {
+    r[0].boat_down = bp_boat_down(u.error.status, u.error.kind == BtErrKind.transport || u.error.kind == BtErrKind.deadline);
     wb: [512] u8; w := cd_cat(wb[..], 0, "boat: "); w = cd_cat(wb[..], w, bt_kind_name(u.error.kind));
     if u.error.code.count > 0 { w = cd_cat(wb[..], w, " "); w = cd_cat(wb[..], w, u.error.code); }
     if u.error.why.count > 0 { w = cd_cat(wb[..], w, ": "); w = cd_cat(wb[..], w, u.error.why); }

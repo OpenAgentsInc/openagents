@@ -11,6 +11,11 @@
 //   coax/web/tool.sh boat stop ID                 push your work first: the disk stays, processes don't
 //   coax/web/tool.sh boat ssh ID [-- COMMAND...]  refresh the SSH entry (Host boat-ID); with a command, run it there
 //   coax/web/tool.sh boat cost                    today's spend, what the boxes up will add, the plan's hours left
+//   coax/web/tool.sh boat size ID                 the size the box's own load asks for (stage 5)
+//   coax/web/tool.sh boat resume ID --type auto   resume it at that size (or --type small|default|large)
+//   coax/web/tool.sh boat conform [--box ID] [--lifecycle]   does BOAT_API_BASE answer every call the SDK makes,
+//                                                 in shapes our codec reads? (stage 6; docs/cloud/boat-exit-plan.md)
+//   coax/web/tool.sh boat refresh ID              save it as today's template (oa-devbox-YYYYMMDD), drop all but the newest 2
 //
 // The key: BOAT_API_KEY, else ~/.openagents/boat/api-key (mode 0600). Hosted
 // boat needs BOAT_HOSTED=1 (the SDK refuses boat.dev without it);
@@ -113,7 +118,9 @@ bx_up :: (c: BoatClient, io: [] BxIo, args: [] Args) -> int {
   u: BtUp; u.run = bp_run(type, bp_ttl(ttl), d[0].spent_mc, d[0].committed_mc);
   ib: [96] u8; idem := cast(string) ib[0..<json_write_int(ib[..], json_raw(ib[..], json_raw(ib[..], 0, name), "-"), proc_now_ns() / 1000000)];
   bx_reset(io);
-  r := bt_create(c, BtCreate.{from = args_value(args, "--from", BT_TEMPLATE), type = type, environment = args_value(args, "--env", BT_ENV), name = name, ttl_s = u.run.ttl_s}, idem, io[0].out[..], io[0].ar[..]);
+  tb: [64] u8; newest := bt_newest_template(c, tb[..], io[0].out[..], io[0].ar[..]);
+  bx_reset(io);
+  r := bt_create(c, BtCreate.{from = args_value(args, "--from", ifx newest.count > 0 then newest else BT_TEMPLATE), type = type, environment = args_value(args, "--env", BT_ENV), name = name, ttl_s = u.run.ttl_s}, idem, io[0].out[..], io[0].ar[..]);
   if bt_failed(r.error) { return bx_fail("create", r.error); }
   s := bt_read_sandbox(io[0].ar[..], r.body);
   idb: [16] u8; for ch, i: s.id { if i < 16 { idb[i] = ch; } }
@@ -128,7 +135,14 @@ bx_up :: (c: BoatClient, io: [] BxIo, args: [] Args) -> int {
 bx_resume :: (c: BoatClient, io: [] BxIo, id: string, args: [] Args) -> int {
   ttl := bx_hours(args);
   if ttl < 0 { tool_errln("boat: --hours is 1 to 24"); return 2; }
-  u := bt_bring_up(c, id, true, ttl, io[0].list[..], io[0].out[..], io[0].ar[..]);
+  type := args_value(args, "--type", "");
+  sb: [16] u8;
+  if type == "auto" {
+    // the size its load asked for when it last ran: only a box that is up can say, so ask now or keep its size
+    type = bx_size_of(c, io, id, sb[..]);
+  }
+  if type.count > 0 && bp_rate_mc(type) < 0 { tool_errln("boat: --type is small, default, large or auto"); return 2; }
+  u := bt_bring_up(c, id, true, ttl, type, io[0].list[..], io[0].out[..], io[0].ar[..]);
   if u.refused != BP_OK { tool_err("boat: no: "); tool_errln(bp_words(u.refused)); return 1; }
   if bt_failed(u.error) { return bx_fail("resume", u.error); }
   if u.resumed { bx_up_said(id, u); } else { print("% is up already\n", id); }
@@ -161,10 +175,115 @@ bx_ssh :: (c: BoatClient, io: [] BxIo, id: string, args: [] Args) -> int {
   return r.status;
 }
 
+// The size box id's load asks for, into out: "" when it is not up or can't say.
+bx_size_of :: (c: BoatClient, io: [] BxIo, id: string, out: [] u8) -> string {
+  bx_reset(io);
+  r := bt_run(c, id, "cut -d' ' -f3 /proc/loadavg; nproc; free | awk '/Mem:/{print int($3*100/$2)}'", "", 30, io[0].out[..], io[0].ar[..]);
+  if bt_failed(r.error) { return ""; }
+  m := bt_read_command(io[0].ar[..], r.body);
+  if !m.success { return ""; }
+  v: [3] int; k := 0; at := 0; t := m.stdout;
+  while at < t.count && k < 3 {
+    e := at; while e < t.count && t[e] != '\n' { e += 1; }
+    line := cast(string) t[at..<e];
+    x := 0; frac := -1;
+    for ch: line { if ch == '.' { frac = 0; } else if ch >= '0' && ch <= '9' { if frac < 0 || frac < 2 { x = x * 10 + cast(int) (ch - '0'); if frac >= 0 { frac += 1; } } } }
+    if k == 0 { while frac < 2 { x *= 10; frac += 1; } }   // the load, times 100
+    v[k] = x; k += 1; at = e + 1;
+  }
+  if k < 3 { return ""; }
+  s := bp_size_for(v[0], v[1], v[2]);
+  for ch, i: s { out[i] = ch; }
+  print("% load %/100 over % cores, % %% of memory in use: %\n", id, v[0], v[1], v[2], s);
+  return cast(string) out[0..<s.count];
+}
+
+bx_refresh :: (c: BoatClient, io: [] BxIo, id: string) -> int {
+  nb: [64] u8;
+  f := bt_refresh(c, id, 600, nb[..], io[0].out[..], io[0].ar[..]);
+  if bt_failed(f.error) { return bx_fail("refresh", f.error); }
+  print("saved % from %; dropped % older template%\n", f.saved, id, f.dropped, ifx f.dropped == 1 then "" else "s");
+  return 0;
+}
+
+// One line of the conformance report.
+bx_conf :: (what: string, ok: bool, e: BtError, fails: [] int) {
+  if ok { print("ok    %\n", what); return; }
+  fails[0] += 1;
+  print("FAIL  %: % % %\n", what, bt_kind_name(e.kind), e.code, e.why);
+}
+
+// Stage 6: the calls our SDK makes, against BOAT_API_BASE, each answer read with our codec. Read-only
+// unless --lifecycle, which makes a small box (under the policy), runs commands, writes and reads a
+// file, stops it and deletes it: boat bills that box, so it runs only when asked.
+bx_conform :: (c: BoatClient, io: [] BxIo, args: [] Args) -> int {
+  fails: [1] int;
+  print("conform: %\n", c.base);
+  bx_reset(io); r := bt_limits(c, io[0].out[..], io[0].ar[..]);
+  bx_conf("GET /limits", !bt_failed(r.error) && bt_read_limits(io[0].ar[..], r.body).ok, r.error, fails[..]);
+  bx_reset(io); r = bt_list(c, "", "", "", io[0].out[..], io[0].ar[..]);
+  l: [32] BtSandbox;
+  bx_conf("GET /sandboxes", !bt_failed(r.error) && bt_read_list(io[0].ar[..], r.body, l[..]) >= 0, r.error, fails[..]);
+  bx_reset(io); r = bt_saved(c, "", io[0].out[..], io[0].ar[..]);
+  sv: [32] BtSaved;
+  bx_conf("GET /saved-snapshots", !bt_failed(r.error) && bt_read_saved_list(io[0].ar[..], r.body, sv[..]) >= 0, r.error, fails[..]);
+  bx_reset(io); r = bt_envs(c, io[0].out[..], io[0].ar[..]);
+  ev: [32] BtEnv;
+  bx_conf("GET /environments", !bt_failed(r.error) && bt_read_envs(io[0].ar[..], r.body, ev[..]) >= 0, r.error, fails[..]);
+  bx_reset(io); r = bt_get(c, "bx_22222222", io[0].out[..], io[0].ar[..]);
+  bx_conf("GET /sandboxes/{unknown} is a typed not_found", r.error.kind == BtErrKind.not_found, r.error, fails[..]);
+  box := args_value(args, "--box", "");
+  if bt_id_ok(box) {
+    bx_reset(io); r = bt_get(c, box, io[0].out[..], io[0].ar[..]);
+    bx_conf("GET /sandboxes/{id}", !bt_failed(r.error) && bt_read_sandbox(io[0].ar[..], r.body).ok, r.error, fails[..]);
+    bx_reset(io); r = bt_usage(c, box, "", io[0].out[..], io[0].ar[..]);
+    bx_conf("GET /sandboxes/{id}/usage", !bt_failed(r.error) && bt_read_usage(io[0].ar[..], r.body).ok, r.error, fails[..]);
+  }
+  if args_has(args, "--lifecycle") {
+    d: [1] BtDay; bt_day(c, d[..], io[0].list[..], io[0].out[..], io[0].ar[..]);
+    code := ifx bt_failed(d[0].error) then BP_BOAT else bp_admit("small", true, d[0].up, d[0].limits.can_start, BP_TTL_MIN_S, d[0].spent_mc, d[0].committed_mc);
+    if code != BP_OK { tool_err("boat conform: no lifecycle: "); tool_errln(bp_words(code)); return 1; }
+    bx_reset(io);
+    r = bt_create(c, BtCreate.{type = "small", name = "oa-devbox-conform", ttl_s = BP_TTL_MIN_S}, "oa-devbox-conform", io[0].out[..], io[0].ar[..]);
+    s := bt_read_sandbox(io[0].ar[..], r.body);
+    bx_conf("POST /sandboxes (small, no environment)", !bt_failed(r.error) && s.ok, r.error, fails[..]);
+    if !s.ok { return 1; }
+    idb: [16] u8; for ch, i: s.id { idb[i] = ch; } id := cast(string) idb[0..<s.id.count];
+    w := bt_wait_up(c, id, 180, io[0].out[..], io[0].ar[..]);
+    bx_conf("the box comes up", !bt_failed(w.error), w.error, fails[..]);
+    bx_reset(io); r = bt_run(c, id, "echo conform", "", 30, io[0].out[..], io[0].ar[..]);
+    bx_conf("POST /commands, synchronous", !bt_failed(r.error) && bt_read_command(io[0].ar[..], r.body).stdout == "conform\n", r.error, fails[..]);
+    bx_reset(io); r = bt_write_file(c, id, "/tmp/conform.txt", "one\ntwo\n", false, io[0].out[..], io[0].ar[..]);
+    bx_conf("PUT /files", !bt_failed(r.error), r.error, fails[..]);
+    bx_reset(io); r = bt_read_file_at(c, id, "/tmp/conform.txt", io[0].out[..], io[0].ar[..]);
+    bx_conf("GET /files", !bt_failed(r.error) && bt_read_file(io[0].ar[..], r.body).content == "one\ntwo\n", r.error, fails[..]);
+    bx_reset(io); r = bt_detach(c, id, "for i in 1 2 3; do echo $i; sleep 1; done", "", io[0].out[..], io[0].ar[..]);
+    st := bt_read_started(io[0].ar[..], r.body);
+    bx_conf("POST /commands, detached", !bt_failed(r.error) && st.ok, r.error, fails[..]);
+    if st.ok {
+      f: [1] BtFollow; fl: [65536] u8; got: [64] u8; ng := 0; ended := false;
+      e := bt_attach(c, f[..], id, st.pid, BtCursor.{}, fl[..]);
+      for guard: 0..<120 {
+        bx_reset(io); nx := bt_frame_next(f[..], io[0].ar[..], 1000);
+        if nx.got && nx.frame.kind == BtFrameKind.stdout { for ch: nx.frame.data { if ng < 64 { got[ng] = ch; ng += 1; } } }
+        if nx.got && nx.frame.kind == BtFrameKind.exit { ended = true; break; }
+        if f[0].done { break; }
+      }
+      bx_conf("GET /commands/{pid}/stream: every byte, then exit", ended && cast(string) got[0..<ng] == "1\n2\n3\n", f[0].error, fails[..]);
+    }
+    bx_reset(io); r = bt_stop(c, id, false, io[0].out[..], io[0].ar[..]);
+    bx_conf("POST /stop", !bt_failed(r.error), r.error, fails[..]);
+    bx_reset(io); r = bt_delete(c, id, io[0].out[..], io[0].ar[..]);
+    bx_conf("DELETE /sandboxes/{id}", !bt_failed(r.error), r.error, fails[..]);
+  }
+  print("conform: % failed\n", fails[0]);
+  return ifx fails[0] == 0 then 0 else 1;
+}
+
 tool_main :: () -> int #export_c #effects(all) {
   args: [1] Args;
   if !args_load(args[..]) || args_count(args[..]) == 0 {
-    tool_errln("usage: coax/web/tool.sh boat ls | up [--name N] [--from T] [--type S] [--hours H] | resume ID [--hours H] | stop ID | ssh ID [-- CMD] | cost");
+    tool_errln("usage: coax/web/tool.sh boat ls | up [--name N] [--from T] [--type S] [--hours H] | resume ID [--hours H] | stop ID | ssh ID [-- CMD] | cost | size ID | refresh ID | conform [--box ID] [--lifecycle]");
     return 2;
   }
   io: [1] BxIo;
@@ -174,10 +293,13 @@ tool_main :: () -> int #export_c #effects(all) {
   if verb == "ls" { return bx_ls(c, io[..], true); }
   if verb == "cost" { return bx_ls(c, io[..], false); }
   if verb == "up" { return bx_up(c, io[..], args[..]); }
+  if verb == "conform" { return bx_conform(c, io[..], args[..]); }
   if !bt_id_ok(id) { tool_errln("boat: name the box by its id (bx_...): coax/web/tool.sh boat ls"); return 2; }
   if verb == "resume" { return bx_resume(c, io[..], id, args[..]); }
   if verb == "stop" { return bx_stop(c, io[..], id); }
   if verb == "ssh" { return bx_ssh(c, io[..], id, args[..]); }
+  if verb == "refresh" { return bx_refresh(c, io[..], id); }
+  if verb == "size" { sb: [16] u8; s := bx_size_of(c, io[..], id, sb[..]); if s.count == 0 { tool_errln("boat: the box must be up to say its load"); return 1; } return 0; }
   tool_err("boat: no verb "); tool_errln(verb);
   return 2;
 }

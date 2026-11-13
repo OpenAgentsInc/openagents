@@ -135,6 +135,55 @@ box's own sshd: the SSH entry with strict host-key checking, `coder ls` and
 `run` on the box, its record, and `/sessions` and `/log` through
 `coder mcp --http`.
 
+## From the phone: a devbox conversation in /chat
+
+Stage 4 made a /chat conversation able to run on a box. A conversation that
+names a box (`POST /api/chat/devbox {c, box}`, an admin's own conversation,
+migration `0189_chat_devbox.sql`) sends each turn to the runner's devbox
+engine (`coax/web/agent/devbox.coax`). The engine:
+
+1. brings the box up, resuming it under the dev box policy if it is stopped,
+   or refuses in the policy's words;
+2. shows the cost line in the conversation as a `boat` tool line (today's
+   spend against the $5.00 cap, what the boxes up will add, the auto-stop);
+3. puts the message on the box in a file and runs Coder on our Claude engine
+   there as a detached command (`coder/tui/coder.sh run --json --engine
+   claude`, in `~/oa`);
+4. follows its output through boat's attach stream, reading Coder's session
+   log as the chat's events: tool uses, the working line, the reply as the
+   answer;
+5. on STOP, kills the command on the box. The box stays up until its
+   auto-stop. A message that is only `/stop` stops the box itself, and the
+   next message starts it again.
+
+The runner holds the boat key (`OA_BOAT_API_KEY`, read and removed from its
+environment) and gives it to that engine alone, as its one credential, with
+`BOAT_HOSTED=1`. The engine gets no Claude credential: the box has its own.
+Until the runner has a key, a devbox turn fails with "This runner has no boat
+key yet".
+
+## Keeping it dependable (stage 5)
+
+- **A fresh template every day.** `coax/web/tool.sh boat refresh bx_fwh3xnws`
+  saves the box as `oa-devbox-YYYYMMDD`, waits until it is ready, then
+  deletes every template but the newest 2 (`bp_drop_template`). `up` starts
+  from the newest ready one.
+- **The size from the box's load.** `coax/web/tool.sh boat size ID` reads the
+  15-minute load, the cores and the memory in use, and says `small`,
+  `default` or `large` (`bp_size_for`). `resume ID --type auto` resumes at
+  that size.
+- **The cost line** is in `ls`, `cost` and every devbox turn.
+- **When boat is down** (no answer, or a 5xx), `coder run|fork --on boat:ID`
+  runs the session on `ssh:coderos-4080` instead and says so. A refusal (the
+  cap, a bad key, a box that is gone) is not boat being down, and stops there.
+
+The daily refresh should run on a machine that is up every day (the Mac, or
+`coderos-4080`), from cron:
+`0 6 * * * cd ~/work/openagents && BOAT_HOSTED=1 coax/web/tool.sh boat refresh bx_fwh3xnws`.
+It needs the box up, so it fits the start of a working day.
+
+Leaving boat: [the exit plan](boat-exit-plan.md).
+
 ## Stop
 
 ```sh

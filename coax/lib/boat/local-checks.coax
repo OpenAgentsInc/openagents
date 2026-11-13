@@ -1,0 +1,54 @@
+// local.coax's checks, against the boat fake (checks.coax): a box brought up at the size its load
+// asks for, the newest template, and the daily rotation. Loaded by local.coax with #test.
+//   coax/bin/coax test --library coax/lib/boat/local.coax
+
+BT_FX_THREE :: "HTTP/2 200 \r\n\r\n{\"ok\":true,\"type\":\"savedSnapshot.list\",\"snapshots\":[{\"name\":\"oa-devbox-20261113\",\"status\":\"ready\",\"sourceSandboxId\":\"bx_fwh3xnws\",\"createdAt\":\"x\"},{\"name\":\"oa-devbox-20261114\",\"status\":\"ready\",\"sourceSandboxId\":\"bx_fwh3xnws\",\"createdAt\":\"x\"},{\"name\":\"oa-devbox-20261112\",\"status\":\"ready\",\"sourceSandboxId\":\"bx_fwh3xnws\",\"createdAt\":\"x\"},{\"name\":\"oa-devbox-20261115\",\"status\":\"saving\",\"sourceSandboxId\":\"bx_fwh3xnws\",\"createdAt\":\"x\"}]}";
+BT_FX_SAVED_READY :: "HTTP/2 200 \r\n\r\n{\"ok\":true,\"type\":\"savedSnapshot.info\",\"snapshot\":{\"name\":\"oa-devbox-20261114\",\"status\":\"ready\",\"sourceSandboxId\":\"bx_fwh3xnws\",\"createdAt\":\"x\"}}";
+BT_FX_SAVED_DELETED :: "HTTP/2 200 \r\n\r\n{\"ok\":true,\"type\":\"savedSnapshot.deleted\",\"status\":\"deleted\"}";
+BT_FX_LIST_DOWN :: "HTTP/2 200 \r\n\r\n{\"ok\":true,\"type\":\"sandbox.list\",\"sandboxes\":[{\"id\":\"bx_fwh3xnws\",\"name\":\"oa-devbox-1\",\"state\":\"archived\",\"type\":\"large\",\"ttlSeconds\":43200}],\"pageInfo\":{\"hasMore\":false}}";
+
+lc_has :: (s: string, part: string) -> bool {
+  i := 0;
+  while i + part.count <= s.count { if cast(string) s[i..<i + part.count] == part { return true; } i += 1; }
+  return false;
+}
+
+#test "local: the newest ready template, today's name, and the rotation keeps the newest 2" {
+  k: [1] BtCheck; a := [6] string.[BT_FX_THREE, BT_FX_SAVE, BT_FX_SAVED_READY, BT_FX_THREE, BT_FX_SAVED_DELETED, BT_FX_SAVED_DELETED];
+  c := bt_check_init(k[..], a[..]);
+  tb: [64] u8;
+  #assert bt_newest_template(c, tb[..], k[0].out[..], k[0].ar[..]) == "oa-devbox-20261114";
+  nb: [64] u8;
+  #assert bt_today_template(c, nb[..]) == "oa-devbox-20261114";
+  f := bt_refresh(c, "bx_fwh3xnws", 60, nb[..], k[0].out[..], k[0].ar[..]);
+  #assert !bt_failed(f.error) && f.saved == "oa-devbox-20261114" && f.dropped == 2;
+  sent := bt_check_log(k[..]);
+  #assert lc_has(sent, "POST /saved-snapshots {\"sandboxId\":\"bx_fwh3xnws\",\"name\":\"oa-devbox-20261114\"}\n");
+  #assert lc_has(sent, "DELETE /saved-snapshots/oa-devbox-20261113\n") && lc_has(sent, "DELETE /saved-snapshots/oa-devbox-20261112\n");
+  #assert !lc_has(sent, "DELETE /saved-snapshots/oa-devbox-20261114") && !lc_has(sent, "DELETE /saved-snapshots/oa-devbox-20261115");
+}
+
+#test "local: a template still saving keeps every old one" {
+  k: [1] BtCheck; a := [2] string.[BT_FX_SAVE, BT_FX_SAVE];
+  c := bt_check_init(k[..], a[..]);
+  nb: [64] u8;
+  f := bt_refresh(c, "bx_fwh3xnws", 5, nb[..], k[0].out[..], k[0].ar[..]);
+  #assert f.error.kind == BtErrKind.deadline && f.dropped == 0;
+}
+
+#test "local: a stopped box resumes at the size asked, under the policy; a running one is left alone" {
+  k: [1] BtCheck; a := [5] string.[BT_FX_LIMITS, BT_FX_LIST_DOWN, BT_FX_USAGE, BT_FX_RESUME, BT_FX_GET_READY];
+  c := bt_check_init(k[..], a[..]);
+  lb: [65536] u8;
+  u := bt_bring_up(c, "bx_fwh3xnws", true, 3600, "default", lb[..], k[0].out[..], k[0].ar[..]);
+  #assert u.refused == BP_OK && !bt_failed(u.error) && u.resumed && u.run.ttl_s == 3600 && bt_up(u.sandbox);
+  #assert lc_has(bt_check_log(k[..]), "POST /sandboxes/bx_fwh3xnws/resume {\"failFast\":true,\"type\":\"default\",\"ttlSeconds\":3600}\n");
+  k2: [1] BtCheck; a2 := [3] string.[BT_FX_LIMITS, BT_FX_LIST_DOWN, BT_FX_USAGE];
+  c2 := bt_check_init(k2[..], a2[..]);
+  u = bt_bring_up(c2, "bx_fwh3xnws", false, 0, "", lb[..], k2[0].out[..], k2[0].ar[..]);
+  #assert u.error.kind == BtErrKind.not_running && !u.resumed;
+  k3: [1] BtCheck; a3 := [3] string.[BT_FX_LIMITS, BT_FX_LIST_DOWN, BT_FX_USAGE];
+  c3 := bt_check_init(k3[..], a3[..]);
+  u = bt_bring_up(c3, "bx_fwh3xnws", true, 0, "xlarge", lb[..], k3[0].out[..], k3[0].ar[..]);
+  #assert u.refused == BP_SIZE;
+}

@@ -11,6 +11,8 @@
 //   POST /api/chat/model {c, model}        the model the next turn uses
 //   POST /api/chat/stop {c}        STOP
 //   POST /api/chat/tab {c, open}   open (true) or close (false) a conversation's tab (migrations/0139)
+//   POST /api/chat/devbox {c, box} the boat dev box the conversation's turns run on ("" for none; migrations/0189,
+//                                  #13474): the runner gives such a turn to the devbox engine (coax/web/agent/devbox.coax)
 //   GET  /api/chat/record?c=ID     the conversation as the shared session log (openagents.session.v1, one JSON a line)
 //   POST /api/chat/key {credential}        an Anthropic API key or a Claude subscription token: the runner
 //                                  checks it (a models list, or a one-line Haiku turn) and seals it; only
@@ -271,7 +273,7 @@ bool chat_route(const request *q) {
   const char *op = q->path + 10;
   bool runner = !strncmp(op, "runner/", 7);
   if (runner) op += 7;
-  static const char *const member_ops[] = {"state", "new", "send", "model", "stop", "tab", "record", "key", "key_remove", "complete", "account", "turn", NULL};
+  static const char *const member_ops[] = {"state", "new", "send", "model", "stop", "tab", "record", "key", "key_remove", "complete", "account", "turn", "devbox", NULL};
   static const char *const runner_ops[] = {"next", "event", "end", "complete", NULL};
   bool known = false;
   for (const char *const *o = runner ? runner_ops : member_ops; *o; o++) if (!strcmp(*o, op)) known = true;
