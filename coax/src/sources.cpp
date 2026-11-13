@@ -61,7 +61,8 @@ std::string declaration_id(const Source *src, uint8_t kind, Str name, Loc loc) {
 // this bridge removes only those token spans, never parses declarations itself.
 static bool source_unit_syntax(const Source *source,const std::vector<Token> &tokens,
                                const std::vector<coax_t_SU_Load> &loads,int64_t load_count,const coax_t_SU_Scan &unit,
-                               const std::vector<coax_t_SU_Export> &exports,int64_t export_count,const std::vector<Loc> &lexed) {
+                               const std::vector<coax_t_SU_Export> &exports,int64_t export_count,const std::vector<Loc> &lexed,
+                               std::pair<int64_t,int64_t> script) {
   auto input=parser_tokens(tokens);auto caps=PS_caps((int64_t)input.size(),(int64_t)source->text.size());
   std::vector<coax_t_PS_Import> imports((size_t)caps.imports);
   auto scan=PS_imports({input.data(),(int64_t)input.size()},{imports.data(),(int64_t)imports.size()},false);
@@ -74,6 +75,7 @@ static bool source_unit_syntax(const Source *source,const std::vector<Token> &to
     bool suppressed=false;
     for(int64_t n=0;n<load_count;n++)suppressed=suppressed || (token.loc.offset>=loads[(size_t)n].begin && token.loc.offset<loads[(size_t)n].end);
     suppressed=suppressed || (unit.claims && token.loc.offset>=unit.owner_begin && token.loc.offset<unit.owner_end);
+    suppressed=suppressed || (token.loc.offset>=script.first && token.loc.offset<script.second);
     for(int64_t n=0;n<export_count;n++)suppressed=suppressed || (token.loc.offset>=exports[(size_t)n].begin && token.loc.offset<exports[(size_t)n].end);
     for(int64_t n=0;n<scan.count;n++)suppressed=suppressed || (token.loc.offset>=imports[(size_t)n].loc.offset && token.loc.offset<imports[(size_t)n].end);
     if(!suppressed || token.kind==Tok::eof)kept.push_back(token);
@@ -207,13 +209,38 @@ static bool load_sources(Arena *arena, Source *src, const char *path, std::vecto
       return stop();
     }
     capacity_use("exports in one source unit","E0613",(uint64_t)list.count,(uint64_t)SU_export_limit());
+    // A realm-script directive (#script "name"; or #script_api;) is scanned by
+    // the checked Coax profile and blanked like #module. The bootstrap compiler
+    // has no profile: there the directive reaches the parser and is refused.
+    std::pair<int64_t,int64_t> script_span{0,0};
+#ifndef COAX_BOOTSTRAP_IMPORTER
+    {
+      auto script=SP_scan({records.data(),(int64_t)records.size()});
+      if (script.error) {
+        Loc at{1,1,(int32_t)script.offset};
+        for (const auto &t:tokens) if (t.loc.offset==at.offset) {at=t.loc;break;}
+        if (script.error==2) error_at(&local,at,"E0980","a realm-script directive stands at file scope","write #script \"name\"; once, outside every block");
+        else if (script.error==3) error_at(&local,at,"E0980","a unit has one realm-script directive","keep one #script \"name\"; or one #script_api; a unit");
+        else if (script.error==4) error_at(&local,at,"E0980","a realm script's name is 1 to 48 lowercase letters, digits and hyphens, and starts with a letter","#script \"patrol-in-pairs\";");
+        else error_at(&local,at,"E0980","#script requires a name string followed by ';', and #script_api only ';'","#script \"patrol-in-pairs\";");
+        return stop();
+      }
+      if (script.kind) {
+        u->source->script=(uint8_t)script.kind;u->source->script_name.assign(script.name.data,(size_t)script.name.count);
+        Loc at{1,1,(int32_t)script.begin};
+        for (const auto &t:tokens) if (t.loc.offset==at.offset) {at=t.loc;break;}
+        u->source->script_at=at;script_span={script.begin,script.end};
+      }
+    }
+#endif
     // After lexer errors the unit's syntax errors are still reported, then it stops.
-    if (!lexed_ok) {source_unit_syntax(&local,tokens,loads,scan.count,scan,exported,list.count,lexed);return stop();}
+    if (!lexed_ok) {source_unit_syntax(&local,tokens,loads,scan.count,scan,exported,list.count,lexed,script_span);return stop();}
     u->source->authority=scan.authority;u->balanced=scan.balanced;u->masked=local.text;
     {
       std::vector<std::pair<int64_t,int64_t>> blank;  // as blanked in masked below
       for (int64_t i=0;i<scan.count;i++) blank.push_back({loads[(size_t)i].begin,loads[(size_t)i].end});
       if (scan.claims) blank.push_back({scan.owner_begin,scan.owner_end});
+      if (script_span.second) blank.push_back(script_span);
       for (int64_t i=0;i<list.count;i++) blank.push_back({exported[(size_t)i].begin,exported[(size_t)i].end});
       u->tokens.reserve(tokens.size());
       for (const auto &t:tokens) {
@@ -230,7 +257,7 @@ static bool load_sources(Arena *arena, Source *src, const char *path, std::vecto
       error_at(&local,{1,1,0},"E0604","source delimiters must balance within a unit and fit depth 128");return stop();
     }
     if (composition && !kept->syntax) {
-      if (!source_unit_syntax(&local,tokens,loads,scan.count,scan,exported,list.count,lexed)) return stop();
+      if (!source_unit_syntax(&local,tokens,loads,scan.count,scan,exported,list.count,lexed,script_span)) return stop();
       kept->syntax=true;learned=true;
     }
     if (learned) serve_keep_unit(kept);
@@ -241,6 +268,7 @@ static bool load_sources(Arena *arena, Source *src, const char *path, std::vecto
       for (int64_t b=e.begin;b<e.end;b++) if (u->masked[(size_t)b]!='\n' && u->masked[(size_t)b]!='\r')u->masked[(size_t)b]=' ';
     }
     if (scan.claims) for (int64_t at=scan.owner_begin;at<scan.owner_end;at++) if (u->masked[(size_t)at]!='\n' && u->masked[(size_t)at]!='\r')u->masked[(size_t)at]=' ';
+    for (int64_t at=script_span.first;at<script_span.second;at++) if (u->masked[(size_t)at]!='\n' && u->masked[(size_t)at]!='\r')u->masked[(size_t)at]=' ';
     // Keep the original bytes for diagnostics; only the compiler's flat input is blanked.
     // A load that fails is reported and the next one is still tried.
     bool loaded=true;

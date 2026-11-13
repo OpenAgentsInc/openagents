@@ -1,0 +1,85 @@
+// Writes what the script API table generates (GitHub #13467): metaverse-engine/script/api.coax, the unit a
+// realm script loads, and docs/protocol/realm-script-api.md, the table as a page. Run at the repository root:
+//   coax/web/tool.sh metaverse-engine/tools/script-api.coax --write    write both
+//   coax/web/tool.sh metaverse-engine/tools/script-api.coax --check    fail when either is stale
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../script/host.coax";
+
+SAG_API :: "metaverse-engine/script/api.coax";
+SAG_DOC :: "docs/protocol/realm-script-api.md";
+SagOut :: struct { n: int; full: bool; }
+sag_put :: (out: [] u8, w: [] SagOut, s: string) {
+  for c: s { if w[0].n < out.count { out[w[0].n] = c; w[0].n += 1; } else { w[0].full = true; } }
+}
+sag_int :: (out: [] u8, w: [] SagOut, v: int) {
+  digits: [20] u8; n := 0; x := v;
+  if x <= 0 { sag_put(out, w, "0"); return; }
+  while x > 0 { digits[n] = cast(u8) ('0' + x % 10); x = x / 10; n += 1; }
+  for i: 0..<n { one := [1] u8.[digits[n - 1 - i]]; sag_put(out, w, cast(string) one[..]); }
+}
+// A row's Coax effects, as #effects(...) names: what its kind charges a caller.
+sag_effects :: (effect: string) -> string {
+  if effect == "read" { return "foreign, reads"; }
+  return "foreign, writes";
+}
+#test "a read charges reads and anything else writes" {
+  #assert sag_effects("read") == "foreign, reads" && sag_effects("write") == "foreign, writes" && sag_effects("engine") == "foreign, writes";
+}
+sag_api :: (out: [] u8) -> string {
+  w: [1] SagOut;
+  sag_put(out, w[..], "// The script API: what a realm script loads to call the engine (GitHub #13467).\n");
+  sag_put(out, w[..], "// GENERATED from metaverse-engine/script/api-table.coax by\n");
+  sag_put(out, w[..], "//   coax/web/tool.sh metaverse-engine/tools/script-api.coax --write\n");
+  sag_put(out, w[..], "// Do not edit: change the table. Each procedure is an import of the script's module; the engine\n");
+  sag_put(out, w[..], "// answers a read from this tick's frame, queues a write for the thing the handler was called for\n");
+  sag_put(out, w[..], "// and refuses a write that names any other thing. docs/protocol/realm-script-api.md has the table.\n");
+  sag_put(out, w[..], "#script_api;\n\n");
+  for c: SCRIPT_API {
+    if c.effect == "trap" { continue; }
+    sag_put(out, w[..], "// "); sag_put(out, w[..], c.help); sag_put(out, w[..], "\n");
+    sag_put(out, w[..], c.name); sag_put(out, w[..], " :: ("); sag_put(out, w[..], c.params); sag_put(out, w[..], ")");
+    if c.result != "" { sag_put(out, w[..], " -> "); sag_put(out, w[..], c.result); }
+    sag_put(out, w[..], " #foreign #effects("); sag_put(out, w[..], sag_effects(c.effect)); sag_put(out, w[..], ");\n");
+  }
+  if w[0].full { return ""; }
+  return cast(string) out[0..<w[0].n];
+}
+sag_doc :: (out: [] u8) -> string {
+  w: [1] SagOut;
+  sag_put(out, w[..], "# The realm-script API\n\n");
+  sag_put(out, w[..], "Generated from `metaverse-engine/script/api-table.coax` by\n`coax/web/tool.sh metaverse-engine/tools/script-api.coax --write`. Do not edit: change the table.\n\n");
+  sag_put(out, w[..], "A realm script calls the engine only through these. A read asks this tick's frame. A write changes\nrunning state of the thing the handler was called for, and is refused for any other thing. An engine\ncall asks the engine to do something it caps itself. No call writes the world document, a character or\nthe ledger. See [realm-script-v1.md](realm-script-v1.md) for the module, the limits and the diagnostics.\n\n");
+  sag_put(out, w[..], "| Call | Effect | Cost | What it does |\n| --- | --- | ---: | --- |\n");
+  for c: SCRIPT_API {
+    sag_put(out, w[..], "| `"); sag_put(out, w[..], c.name); sag_put(out, w[..], "("); sag_put(out, w[..], c.params); sag_put(out, w[..], ")");
+    if c.result != "" { sag_put(out, w[..], " -> "); sag_put(out, w[..], c.result); }
+    sag_put(out, w[..], "` | "); sag_put(out, w[..], c.effect); sag_put(out, w[..], " | "); sag_int(out, w[..], c.cost); sag_put(out, w[..], " | "); sag_put(out, w[..], c.help); sag_put(out, w[..], " |\n");
+  }
+  sag_put(out, w[..], "\nCost is in instructions of the call's budget, on top of the instructions that made the call.\n\n## Limits\n\n| Limit | Value |\n| --- | ---: |\n");
+  names := [16] string.["A module's bytes", "A script's memory, in 64 KiB pages", "The things one script drives (state slots)", "A state record's bytes", "Instructions one handler call may spend", "Instructions a world's scripts may spend in one tick", "Failed calls in a row before a script is switched off", "Scripts one world loads", "Things in a frame", "Events in a frame", "Commands a tick's scripts may queue", "A thing's running numbers", "A thing's authored points", "A realm's running numbers", "A thing's timers", "Things a trigger tracks inside itself"];
+  values := [16] int.[WM_BYTES, WM_PAGES, WM_SLOTS, SH_STATE, SH_CALL_FUEL, SH_TICK_FUEL, SH_STRIKES, SH_SCRIPTS, SH_THINGS, SH_EVENTS, SH_COMMANDS, SH_VARS, SH_POINTS, SH_WORLD, SH_TIMERS, SH_INSIDE];
+  for name, i: names { sag_put(out, w[..], "| "); sag_put(out, w[..], name); sag_put(out, w[..], " | "); sag_int(out, w[..], values[i]); sag_put(out, w[..], " |\n"); }
+  if w[0].full { return ""; }
+  return cast(string) out[0..<w[0].n];
+}
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) != 1 || (args_at(a[..], 0) != "--write" && args_at(a[..], 0) != "--check") {
+    tool_errln("usage: script-api.coax --write | --check");
+    return 2;
+  }
+  write := args_at(a[..], 0) == "--write";
+  made: [2] [32768] u8; have: [32768] u8; stale := 0;
+  texts := [2] string.[sag_api(made[0][..]), sag_doc(made[1][..])]; paths := [2] string.[SAG_API, SAG_DOC];
+  for text, i: texts {
+    if text == "" { tool_errln("script-api: the output did not fit"); return 2; }
+    n := fs_read(paths[i], have[..]);
+    same := n >= 0 && cast(string) have[0..<n] == text;
+    if same { continue; }
+    if write { if !fs_write(paths[i], text) { tool_err("script-api: cannot write "); tool_errln(paths[i]); return 2; } print("wrote %\n", paths[i]); }
+    else { print("stale: % (coax/web/tool.sh metaverse-engine/tools/script-api.coax --write)\n", paths[i]); stale += 1; }
+  }
+  return ifx stale == 0 then 0 else 1;
+}

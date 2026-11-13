@@ -1,0 +1,7 @@
+// expect: E0985 one state record
+#script "two";
+#load "api.coax";
+Mind :: struct #persisted { n: int; }
+Other :: struct #persisted { n: int; }
+on_tick :: (me: u64, mind: [] Mind, dt: f32) #export_c #effects(reads, writes, traps) { mind[0].n += 1; }
+on_use :: (me: u64, mind: [] Other, other: u64) #export_c #effects(reads, writes, traps) { mind[0].n += 1; }

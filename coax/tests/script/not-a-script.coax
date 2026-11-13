@@ -1,0 +1,5 @@
+// An ordinary program that loads the same API and library units: nothing of
+// the profile applies to it (it prints, recurses and exports what it likes).
+#load "api.coax";
+#load "lib.coax";
+any_name :: (a: int) -> int #export_c #effects(all) { return lib_loud(lib_down(a)); }

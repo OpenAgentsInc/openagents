@@ -1,0 +1,5 @@
+// expect: E0984 on_hit
+#script "shape";
+#load "api.coax";
+Mind :: struct #persisted { n: int; }
+on_hit :: (me: u64, mind: [] Mind, other: u64) #export_c #effects(reads, writes, traps) { mind[0].n += 1; }

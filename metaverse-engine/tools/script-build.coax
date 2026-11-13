@@ -1,0 +1,174 @@
+// Builds a realm script (GitHub #13467, docs/research/2026-11-13-realm-scripts.md): a `#script` Coax unit
+// in, a checked WebAssembly module and its manifest out. Run at the repository root, through its wrapper
+// (which finds the Wasm toolchain):
+//   coax/web/script.sh SOURCE.coax [--out DIR] [--quiet]
+// It writes DIR/NAME.wasm and DIR/NAME.json (realm.script.v1; NAME is the script's own, from its
+// `#script "name";`) and prints the manifest. The steps:
+//   1. coax script SOURCE           the profile's refusals, the name, the state record's fields
+//   2. coax c SOURCE --library      the script as C; coax script --face: its module's flat exports
+//   3. clang, wasm32, freestanding  against metaverse-engine/script/rt (no libc: printing is nothing, a
+//                                   failed check is the import sa_trap), then wasm-ld with no entry
+//   4. the module check and a load  (metaverse-engine/script/wasm.coax, host.coax): the same check a
+//                                   server, a page and a room run on the bytes they are handed
+// Step 4 is the one that decides. Steps 1 to 3 run tools that are not a sandbox; whoever compiles source
+// they did not write runs this in a job with no secrets and hard limits (metaverse-engine/tools/script-job.coax).
+// Exit 0 with a module; 1 when the source or the module is refused (the reason is printed); 2 for usage
+// or a missing toolchain.
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/proc.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../script/manifest.coax";
+
+SB_RT :: "metaverse-engine/script/rt";
+SB_STATE_BYTES :: 65536;    // the state of all a script's slots together
+SB_STEP_MS :: 60000;        // each tool's time limit
+SbWork :: struct { script: [2] ScriptSlot; text: [SM_TEXT] u8; wasm: [WM_BYTES + 1] u8; err: [65536] u8; out: [65536] u8; }
+
+sb_cat :: (out: [] u8, a: string, b: string) -> string {
+  n := 0;
+  for c: a { if n < out.count { out[n] = c; n += 1; } }
+  for c: b { if n < out.count { out[n] = c; n += 1; } }
+  return cast(string) out[0..<n];
+}
+#test "paths join in order and stop at the buffer" {
+  out: [8] u8;
+  #assert sb_cat(out[..], "ab/", "c.o") == "ab/c.o" && sb_cat(out[..], "abcdef", "ghij") == "abcdefgh" && sb_cat(out[..], "", "") == "";
+}
+// The most slots (up to WM_SLOTS) whose state fits SB_STATE_BYTES, for a record of this size.
+sb_slots :: (size: int) -> int {
+  if size < 1 || size > SH_STATE { return 0; }
+  fit := SB_STATE_BYTES / size;
+  return ifx fit > WM_SLOTS then WM_SLOTS else fit;
+}
+#test "slots: as many as fit the state, up to the limit" {
+  #assert sb_slots(1) == WM_SLOTS && sb_slots(256) == 256 && sb_slots(0) == 0 && sb_slots(257) == 0 && sb_slots(24) == 256;
+}
+sb_decimal :: (v: int, out: [] u8) -> string {
+  n := 0; x := v; digits: [20] u8;
+  if x <= 0 { out[0] = '0'; return cast(string) out[0..<1]; }
+  while x > 0 { digits[n] = cast(u8) ('0' + x % 10); x = x / 10; n += 1; }
+  for i: 0..<n { out[i] = digits[n - 1 - i]; }
+  return cast(string) out[0..<n];
+}
+#test "decimal text of a count" {
+  out: [20] u8;
+  #assert sb_decimal(0, out[..]) == "0" && sb_decimal(256, out[..]) == "256" && sb_decimal(65536, out[..]) == "65536";
+}
+// Runs one tool; true when it ended with status 0. Its stderr is in w[0].err, its stdout in w[0].out.
+sb_step :: (w: [] SbWork, argv: [] string, what: string, quiet: bool) -> bool {
+  r := proc_run(argv, SB_STEP_MS, w[0].out[..], w[0].err[..]);
+  if r.started == 0 && r.status == 0 && !r.timed_out { return true; }
+  if r.started != 0 { tool_err("script-build: cannot run "); tool_errln(argv[0]); return false; }
+  if true { tool_err("script-build: "); tool_err(what); tool_errln(ifx r.timed_out then " ran past its time limit" else " refused the script:"); tool_errln(cast(string) w[0].err[0..<r.err_n]); }
+  return false;
+}
+// The import's name at byte `at` of a module the check refused with WM_IMPORT: "module.name".
+sb_import_name :: (b: [] u8, at: int, out: [] u8) -> string {
+  cur: [1] WmCur; cur[0] = WmCur.{at = at, end = b.count, ok = true}; n := 0;
+  for part: 0..<2 {
+    size := wm_u32(b, cur[..]);
+    if !cur[0].ok || size > b.count - cur[0].at { return ""; }
+    if part == 1 && n < out.count { out[n] = '.'; n += 1; }
+    for i: 0..<size { if n < out.count { out[n] = b[cur[0].at + i]; n += 1; } }
+    cur[0].at += size;
+  }
+  return cast(string) out[0..<n];
+}
+#test "a refused import is named" {
+  b := [12] u8.[3, 'e', 'n', 'v', 3, 'p', 'o', 'w', 0, 0, 0, 0]; out: [32] u8;
+  #assert sb_import_name(b[..], 0, out[..]) == "env.pow" && sb_import_name(b[..], 10, out[..]) == "." && sb_import_name(b[0..<3], 0, out[..]) == "";
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) < 1 || args_at(a[..], 0).count == 0 || args_at(a[..], 0)[0] == '-' {
+    tool_errln("usage: coax/web/script.sh SOURCE.coax [--out DIR] [--quiet]");
+    return 2;
+  }
+  source := args_at(a[..], 0); out_dir := args_value(a[..], "--out", "."); quiet := args_has(a[..], "--quiet");
+  envbuf: [3] [1024] u8;
+  compiler := proc_getenv("COAX", envbuf[0][..]); clang := proc_getenv("COAXIAL_CLANG", envbuf[1][..]); resources := proc_getenv("COAXIAL_RESOURCES", envbuf[2][..]);
+  if compiler == "" { compiler = "coax/bin/coax"; }
+  if clang == "" || resources == "" { tool_errln("script-build: no Wasm toolchain (COAXIAL_CLANG, COAXIAL_RESOURCES): run it through coax/web/script.sh"); return 2; }
+  if !fs_exists(source) { tool_err("script-build: no file "); tool_errln(source); return 2; }
+  tmp: [1024] u8; dir := fs_temp("realm-script-", tmp[..]);
+  if dir == "" { tool_errln("script-build: no temporary directory"); return 2; }
+  p: [10] [1200] u8;
+  manifest := sb_cat(p[0][..], dir, "/manifest.json"); c_file := sb_cat(p[1][..], dir, "/script.c"); h_file := sb_cat(p[2][..], dir, "/script.h");
+  face := sb_cat(p[3][..], dir, "/face.c"); o_script := sb_cat(p[4][..], dir, "/script.o"); o_face := sb_cat(p[5][..], dir, "/face.o");
+  o_rt := sb_cat(p[6][..], dir, "/rt.o"); wasm := sb_cat(p[7][..], dir, "/script.wasm");
+  rt_c := sb_cat(p[8][..], SB_RT, "/rt.c"); builtins := sb_cat(p[9][..], resources, "/lib/wasm32-unknown-wasip1/libclang_rt.builtins.a");
+  work: [1] SbWork; w := work[..];
+  code := sb_build(w, a[..], source, out_dir, quiet, compiler, clang, dir, manifest, c_file, h_file, face, o_script, o_face, o_rt, wasm, rt_c, builtins);
+  files := [8] string.[manifest, c_file, h_file, face, o_script, o_face, o_rt, wasm];
+  for f: files { gone := fs_remove(f); }
+  gone := fs_remove(dir);
+  return code;
+}
+sb_build :: (w: [] SbWork, a: [] Args, source: string, out_dir: string, quiet: bool, compiler: string, clang: string, dir: string,
+             manifest: string, c_file: string, h_file: string, face: string, o_script: string, o_face: string, o_rt: string, wasm: string, rt_c: string, builtins: string) -> int {
+  // 1. The profile and the script's own facts.
+  first := [5] string.[compiler, "script", source, "-o", manifest];
+  if !sb_step(w, first[..], "the compiler", quiet) { return 1; }
+  n := fs_read(manifest, w[0].text[..]);
+  name: [SM_NAME] u8; layout: [1] ScriptLayout;
+  name_n := ifx n > 0 then sm_from_compiler(cast(string) w[0].text[0..<n], name[..], layout[..]) else -1;
+  if name_n < 0 { tool_errln("script-build: the compiler's manifest did not read"); return 1; }
+  nodes: [512] JvNode; d: [1] Jv;
+  parsed := jv_parse(d[..], cast(string) w[0].text[0..<n], nodes[..]);
+  size := jv_int(d[0], jv_path(d[0], 0, "state.size"), 0); slots := sb_slots(size);
+  if slots < 1 {
+    tool_errln("script-build: the state record is over 256 bytes; a script keeps at most 256 bytes for each thing it drives");
+    return 1;
+  }
+  // 2. C.
+  second := [8] string.[compiler, "c", source, "--library", "--header", h_file, "-o", c_file];
+  if !sb_step(w, second[..], "the compiler", quiet) { return 1; }
+  third := [6] string.[compiler, "script", source, "--face", "-o", face];
+  if !sb_step(w, third[..], "the compiler", quiet) { return 1; }
+  // 3. Objects and the module.
+  nbuf: [20] u8; slots_flag: [40] u8;
+  define := sb_cat(slots_flag[..], "-DRS_SLOTS=", sb_decimal(slots, nbuf[..]));
+  include: [1200] u8; inc := sb_cat(include[..], "-I", dir);
+  units := [3] [2] string.[[2] string.[c_file, o_script], [2] string.[face, o_face], [2] string.[rt_c, o_rt]];
+  for u: units {
+    cc := [18] string.[clang, "--target=wasm32-unknown-unknown", "-mcpu=mvp", "-nostdlib", "-ffreestanding", "-std=c11", "-Os", "-ffp-contract=off", "-fno-fast-math",
+                       "-Wno-unused-function", "-Wno-unused-variable", "-isystem", SB_RT, inc, define, "-c", u[0], "-o"];
+    full: [19] string; for part, i: cc { full[i] = part; } full[18] = u[1];
+    if !sb_step(w, full[..], "clang", quiet) { return 1; }
+  }
+  link := [15] string.["wasm-ld", "--no-entry", "--allow-undefined", "--strip-all", "--gc-sections", "-z", "stack-size=16384", "--initial-memory=131072", "--max-memory=131072",
+                       o_script, o_face, o_rt, builtins, "-o", wasm];
+  if !sb_step(w, link[..], "the linker", quiet) { return 1; }
+  // 4. The check that decides.
+  bytes := fs_read(wasm, w[0].wasm[..]);
+  if bytes < 0 { tool_errln("script-build: the module did not read"); return 1; }
+  if bytes > WM_BYTES {
+    print("refused: too-big: the module is % bytes; the limit is %\n", bytes, WM_BYTES);
+    return 1;
+  }
+  code := sh_load(w[0].script[0..<1], w[0].script[1..<2], w[0].wasm[0..<bytes], layout[0]);
+  if code != 0 {
+    last := w[0].script[1].last; why := cast(int) last.detail;
+    if code == SD_REFUSED && why >= 0 && why < WM_REFUSALS {
+      print("refused: % at byte %", WM_REFUSAL_NAMES[why], last.line);
+      nb: [80] u8;
+      if why == WM_IMPORT { print(": % is not a call of the script API (a math routine such as tan or pow, or a print)", sb_import_name(w[0].wasm[0..<bytes], cast(int) last.line, nb[..])); }
+      print("\n");
+    } else { print("refused: the module's face answers are out of range\n"); }
+    return 1;
+  }
+  mf := sm_of(w[0].script[0..<1], cast(string) name[0..<name_n], layout[0]);
+  text := sm_write(mf, w[0].text[..]);
+  if text == "" { tool_errln("script-build: the manifest did not fit"); return 1; }
+  base: [1200] u8; json_path: [1200] u8; wasm_path: [1200] u8; slash: [1100] u8;
+  stem := sb_cat(base[..], sb_cat(slash[..], out_dir, "/"), cast(string) name[0..<name_n]);
+  made := fs_mkdir(out_dir);
+  if !fs_write(sb_cat(wasm_path[..], stem, ".wasm"), cast(string) w[0].wasm[0..<bytes]) || !fs_write(sb_cat(json_path[..], stem, ".json"), text) {
+    tool_err("script-build: cannot write to "); tool_errln(out_dir);
+    return 2;
+  }
+  print("%\n", text);
+  return 0;
+}

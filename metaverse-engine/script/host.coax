@@ -1,0 +1,380 @@
+// The realm-script host (GitHub #13467, docs/research/2026-11-13-realm-scripts.md): what runs a world's
+// scripts for one tick, the same on the page and in a room. A realm hands it a frame (ScriptFrame: the
+// things a script may see, this tick's events, the time, a seed) and gets back commands (ScriptCommand)
+// that the realm applies to its own running state. The host never touches a realm's state itself, and
+// a script never touches anything but its own memory and this file's answers.
+//
+// Every handler call is a transaction:
+//   - it has a budget of SH_CALL_FUEL instructions, and all calls of a tick share SH_TICK_FUEL;
+//   - its writes are commands queued here and a script's own memory; when the call returns, both are
+//     kept; when it traps, runs out of budget or is refused, both are undone and the call never happened;
+//   - a failure is a typed diagnostic (ScriptDiag, SD_*) that names the script, the handler, the thing
+//     and why. A script that fails SH_STRIKES calls in a row is switched off until it is loaded again.
+// A script writes only the thing its handler was called for (SD_NOT_YOURS otherwise), and only running
+// state: there is no command that changes the world document, a character or the ledger
+// (INVARIANTS.md, "A realm script writes running state only").
+//
+// Time and chance are arguments: dt, the frame's time and a draw seeded by (seed, tick, thing, handler),
+// so the same frames give the same commands, instruction for instruction, wherever this runs.
+//   coax/bin/coax test metaverse-engine/script/host.coax --library
+
+#load "interp.coax";
+#load "frame.coax";
+#load "../core/rand.coax";
+
+// The limits, the frame, the commands and the diagnostics are frame.coax's: a realm loads that file
+// alone to fill frames and read results, without this one.
+ScriptField :: struct { name: [SH_NAME] u8; name_n: s32; type: [SH_NAME] u8; type_n: s32; at: s32; size: s32; }
+ScriptLayout :: struct { n: int; fields: [SH_FIELDS] ScriptField; }
+// One loaded script: its bytes, its checked description, its instance and what the host keeps for it.
+ScriptSlot :: struct {
+  loaded: bool; off: bool; starved: bool;
+  n: int;                 // the module's bytes
+  state_at: int; state_size: int; slots: int;
+  strikes: int; calls: int; failures: int;
+  spent: int;             // instructions this tick
+  peak: int;              // the most one call has spent since the load
+  last: ScriptDiag;
+  layout: ScriptLayout;
+  owner: [WM_SLOTS] u64;                   // the thing each state slot belongs to, 0 for free
+  seen: [WM_SLOTS] int;                    // the tick the owner was last in a frame
+  timers: [WM_SLOTS * SH_TIMERS] f32;      // seconds left, 0 for none
+  inside: [WM_SLOTS * SH_INSIDE] u64;      // the things inside each trigger
+  m: [1] WmModule;
+  vm: [1] WiVm;
+  b: [WM_BYTES] u8;
+  jump: [WM_BYTES] s32;
+  keep: [WM_SLOTS * SH_STATE] u8;          // the old state during a swap
+}
+
+// ---- loading ----
+// Calls a face function that takes nothing and returns an i32, with a small budget. -1 when it fails.
+sh_face_call :: (s: [] ScriptSlot, entry: int) -> int {
+  none: [1] u64;
+  func := cast(int) s[0].m[0].entry[entry];
+  if func < 0 || !wi_call(s[0].m[..], s[0].vm[..], func, none[0..<0], 64) { return -1; }
+  if wi_run(s[0].b[0..<s[0].n], s[0].m[..], s[0].jump[..], s[0].vm[..]) != WI_DONE { return -1; }
+  return wi_s32(wi_result(s[0].vm[..]));
+}
+// Checks and loads bytes into a slot, fresh: no state is kept. 0, or SD_REFUSED / SD_FACE with the
+// reason in s[0].last (detail: the WM_* code; line: the byte).
+sh_load_fresh :: (s: [] ScriptSlot, bytes: [] u8) -> int {
+  s[0].loaded = false; s[0].off = false; s[0].starved = false; s[0].strikes = 0; s[0].calls = 0; s[0].failures = 0; s[0].spent = 0; s[0].peak = 0;
+  s[0].last = ScriptDiag.{};
+  if bytes.count > WM_BYTES { s[0].last = ScriptDiag.{code = SD_REFUSED, detail = WM_TOO_BIG}; return SD_REFUSED; }
+  for v, i: bytes { s[0].b[i] = v; }
+  s[0].n = bytes.count;
+  if !wm_check(s[0].b[0..<s[0].n], s[0].m[..], s[0].jump[..]) {
+    s[0].last = ScriptDiag.{code = SD_REFUSED, detail = cast(s32) s[0].m[0].code, line = cast(s32) s[0].m[0].at};
+    return SD_REFUSED;
+  }
+  if !wi_load(s[0].b[0..<s[0].n], s[0].m[..], s[0].vm[..]) { s[0].last = ScriptDiag.{code = SD_FACE}; return SD_FACE; }
+  abi := sh_face_call(s, RS_ABI); at := sh_face_call(s, RS_STATE); size := sh_face_call(s, RS_STATE_SIZE); slots := sh_face_call(s, RS_SLOTS);
+  mem := cast(int) s[0].m[0].pages * WM_PAGE;
+  if abi != 1 || size < 1 || size > SH_STATE || slots < 1 || slots > WM_SLOTS || at < 0 || at > mem - size * slots {
+    s[0].last = ScriptDiag.{code = SD_FACE, detail = cast(s32) abi, line = cast(s32) size};
+    return SD_FACE;
+  }
+  // The face calls ran outside any transaction; start from a clean instance.
+  if !wi_load(s[0].b[0..<s[0].n], s[0].m[..], s[0].vm[..]) { s[0].last = ScriptDiag.{code = SD_FACE}; return SD_FACE; }
+  s[0].state_at = at; s[0].state_size = size; s[0].slots = slots;
+  for i: 0..<WM_SLOTS { s[0].owner[i] = 0; s[0].seen[i] = 0; }
+  for i: 0..<WM_SLOTS * SH_TIMERS { s[0].timers[i] = 0; }
+  for i: 0..<WM_SLOTS * SH_INSIDE { s[0].inside[i] = 0; }
+  s[0].layout = ScriptLayout.{};
+  s[0].loaded = true;
+  return 0;
+}
+sh_same :: (a: [] u8, an: int, b: [] u8, bn: int) -> bool {
+  if an != bn || an < 0 || an > a.count || bn > b.count { return false; }
+  for i: 0..<an { if a[i] != b[i] { return false; } }
+  return true;
+}
+// Loads bytes into a slot. `scratch` is a slot nothing runs in: the bytes are checked there first, so a
+// refused module leaves the script that was running untouched (the code comes back, and scratch's last
+// diagnostic says why). When a script was loaded, the things it drives keep their slots, timers and
+// every state field whose name, type and size are the same in both layouts; other fields start at zero.
+sh_load :: (s: [] ScriptSlot, scratch: [] ScriptSlot, bytes: [] u8, layout: ScriptLayout) -> int {
+  code := sh_load_fresh(scratch, bytes);
+  if code != 0 { return code; }
+  was := s[0].loaded; old_size := s[0].state_size; old_slots := s[0].slots; old_layout := s[0].layout;
+  if was {
+    for i: 0..<old_slots * old_size { s[0].keep[i] = wi_peek(s[0].vm[..], s[0].state_at + i); }
+  }
+  owners: [WM_SLOTS] u64; seen: [WM_SLOTS] int;
+  for i: 0..<WM_SLOTS { owners[i] = s[0].owner[i]; seen[i] = s[0].seen[i]; }
+  code = sh_load_fresh(s, bytes);
+  if code != 0 { return code; }
+  s[0].layout = layout;
+  if !was { return 0; }
+  for slot: 0..<WM_SLOTS {
+    if slot >= old_slots || slot >= s[0].slots || owners[slot] == 0 { continue; }
+    s[0].owner[slot] = owners[slot]; s[0].seen[slot] = seen[slot];
+    for f: 0..<layout.n {
+      new := layout.fields[f];
+      for g: 0..<old_layout.n {
+        old := old_layout.fields[g];
+        if new.size != old.size || new.size < 1 || !sh_same(new.name[..], cast(int) new.name_n, old.name[..], cast(int) old.name_n) || !sh_same(new.type[..], cast(int) new.type_n, old.type[..], cast(int) old.type_n) { continue; }
+        if cast(int) old.at + cast(int) old.size > old_size || cast(int) new.at + cast(int) new.size > s[0].state_size || old.at < 0 || new.at < 0 { continue; }
+        for k: 0..<cast(int) new.size {
+          kept := wi_poke(s[0].vm[..], s[0].state_at + slot * s[0].state_size + cast(int) new.at + k, s[0].keep[slot * old_size + cast(int) old.at + k]);
+        }
+      }
+    }
+  }
+  return 0;
+}
+sh_unload :: (s: [] ScriptSlot) { s[0].loaded = false; s[0].off = false; s[0].n = 0; }
+
+// ---- frames ----
+sh_find :: (f: [] ScriptFrame, id: u64) -> int {
+  if id == 0 { return -1; }
+  for i: 0..<f[0].n_things { if f[0].things[i].id == id { return i; } }
+  return -1;
+}
+sh_slot_of :: (s: [] ScriptSlot, id: u64) -> int {
+  for i: 0..<s[0].slots { if s[0].owner[i] == id { return i; } }
+  return -1;
+}
+// The thing's state slot, given one (zeroed) when it has none; -1 when the script's slots are all taken.
+sh_bind :: (s: [] ScriptSlot, id: u64, tick: int) -> int {
+  slot := sh_slot_of(s, id);
+  if slot < 0 {
+    for i: 0..<s[0].slots { if s[0].owner[i] == 0 { slot = i; break; } }
+    if slot < 0 { return -1; }
+    s[0].owner[slot] = id;
+    for k: 0..<s[0].state_size { zeroed := wi_poke(s[0].vm[..], s[0].state_at + slot * s[0].state_size + k, 0); }
+    for k: 0..<SH_TIMERS { s[0].timers[slot * SH_TIMERS + k] = 0; }
+    for k: 0..<SH_INSIDE { s[0].inside[slot * SH_INSIDE + k] = 0; }
+  }
+  s[0].seen[slot] = tick;
+  return slot;
+}
+sh_diag :: (s: [] ScriptSlot, run: [] ScriptRun, d: ScriptDiag) {
+  s[0].last = d;
+  if run[0].n_diags < SH_DIAGS { run[0].diags[run[0].n_diags] = d; run[0].n_diags += 1; } else { run[0].more_diags += 1; }
+}
+sh_finite :: (v: f32) -> bool { return v == v && v > -SH_FAR && v < SH_FAR; }
+sh_bits :: (v: f32) -> u64 { return cast(u64) f32_bits(v); }
+sh_float :: (bits: u64) -> f32 { return f32_from_bits(cast,trunc(u32) bits); }
+sh_distance :: (a: ScriptThing, b: ScriptThing) -> f32 {
+  dx := a.x - b.x; dz := a.z - b.z;
+  return sqrt(dx * dx + dz * dz);
+}
+
+// What one call carries while it runs.
+ScriptCall1 :: struct { script: int; handler: int; me: u64; slot: int; draws: int; line: int; }
+// Answers the import the run stopped at. 0, or the SD_* code that fails the call.
+sh_import :: (s: [] ScriptSlot, run: [] ScriptRun, f: [] ScriptFrame, c: [] ScriptCall1) -> int {
+  m := s[0].m[..]; vm := s[0].vm[..];
+  if vm[0].import < 0 || vm[0].import >= cast(int) m[0].n_imports { return SD_TRAP; }
+  row := cast(int) m[0].import_row[vm[0].import];
+  if !wi_charge(vm, SCRIPT_API[row].cost) { return SD_OVER_BUDGET; }
+  a0 := wi_arg(m, vm, 0); a1 := wi_arg(m, vm, 1); a2 := wi_arg(m, vm, 2); a3 := wi_arg(m, vm, 3);
+  if row == SA_TRAP { c[0].line = wi_s32(a0); return SD_TRAP; }
+  result: u64 = 0;
+  if row == SA_COUNT { result = cast(u64) f[0].n_things; }
+  else if row == SA_AT { i := wi_s32(a0); if i >= 0 && i < f[0].n_things { result = f[0].things[i].id; } }
+  else if row == SA_TIME { result = sh_bits(f[0].time); }
+  else if row == SA_DAY { result = sh_bits(f[0].day); }
+  else if row == SA_WORLD { i := wi_s32(a0); if i >= 0 && i < SH_WORLD { result = sh_bits(f[0].world[i]); } }
+  else if row == SA_RANDOM {
+    stream := cast(int) (a0 & 9223372036854775807);
+    result = sh_bits(rand_unit(f[0].seed, stream, (f[0].tick * 8 + c[0].handler) * 64 + (c[0].draws & 63)));
+    c[0].draws += 1;
+  }
+  else if row == SA_DISTANCE {
+    i := sh_find(f, a0); j := sh_find(f, a1);
+    result = sh_bits(ifx i >= 0 && j >= 0 then sh_distance(f[0].things[i], f[0].things[j]) else cast(f32) SH_FAR);
+  }
+  else if row == SA_NEAR {
+    i := sh_find(f, a0); kind := wi_s32(a1); radius := sh_float(a2);
+    if i >= 0 && radius == radius {
+      best := radius; found := -1;
+      for j: 0..<f[0].n_things {
+        o := f[0].things[j];
+        if j == i || !o.alive || (kind >= 0 && cast(int) o.kind != kind) { continue; }
+        d := sh_distance(f[0].things[i], o);
+        if d <= best && (found < 0 || d < best) { best = d; found = j; }
+      }
+      if found >= 0 { result = f[0].things[found].id; }
+    }
+  }
+  else if row <= SA_PLAN_ON {
+    // A read of one thing: a thing that is not in the frame reads as 0 (kind and plan: -1).
+    i := sh_find(f, a0); slot := wi_s32(a1);
+    if i < 0 { if row == SA_KIND || row == SA_PLAN_ON { result = WI_LOW; } }
+    else {
+      t := f[0].things[i];
+      if row == SA_ALIVE { result = wi_bool(t.alive); }
+      else if row == SA_KIND { result = wi_from_s(cast(int) t.kind) & WI_LOW; }
+      else if row == SA_TEAM { result = wi_from_s(cast(int) t.team) & WI_LOW; }
+      else if row == SA_X { result = sh_bits(t.x); }
+      else if row == SA_Y { result = sh_bits(t.y); }
+      else if row == SA_Z { result = sh_bits(t.z); }
+      else if row == SA_FACING { result = sh_bits(t.facing); }
+      else if row == SA_SPEED { result = sh_bits(t.speed); }
+      else if row == SA_HEALTH { result = sh_bits(t.health); }
+      else if row == SA_VAR { if slot >= 0 && slot < SH_VARS { result = sh_bits(t.vars[slot]); } }
+      else if row == SA_POINT_X { if slot >= 0 && slot < SH_POINTS { result = sh_bits(t.px[slot]); } }
+      else if row == SA_POINT_Z { if slot >= 0 && slot < SH_POINTS { result = sh_bits(t.pz[slot]); } }
+      else if row == SA_GOAL_X { result = sh_bits(t.goal_x); }
+      else if row == SA_GOAL_Z { result = sh_bits(t.goal_z); }
+      else if row == SA_GOAL_SPEED { result = sh_bits(t.goal_speed); }
+      else if row == SA_NOTICE { result = sh_bits(t.notice); }
+      else if row == SA_PLAN_ON { result = wi_from_s(cast(int) t.plan_on) & WI_LOW; }
+    }
+  }
+  else {
+    // A write or an engine call: only for the thing this handler was called for.
+    if a0 != c[0].me { return SD_NOT_YOURS; }
+    if row == SA_TIMER {
+      timer := wi_s32(a1); seconds := sh_float(a2);
+      if timer < 0 || timer >= SH_TIMERS || !sh_finite(seconds) { return SD_BAD_ARGUMENT; }
+      s[0].timers[c[0].slot * SH_TIMERS + timer] = ifx seconds > 0.0 then seconds else cast(f32) 0.0;
+    } else {
+      cmd := ScriptCommand.{op = cast(s32) row, thing = a0};
+      if row == SA_MOVE {
+        cmd.a = sh_float(a1); cmd.b = sh_float(a2); cmd.c = sh_float(a3);
+        if !sh_finite(cmd.a) || !sh_finite(cmd.b) || !sh_finite(cmd.c) { return SD_BAD_ARGUMENT; }
+        i := sh_find(f, a0); top := ifx i >= 0 then f[0].things[i].speed else cast(f32) 0.0;
+        if cmd.c > top { cmd.c = top; }
+        if cmd.c < 0.0 { cmd.c = 0.0; }
+      }
+      else if row == SA_FACE { cmd.a = sh_float(a1); if !sh_finite(cmd.a) { return SD_BAD_ARGUMENT; } }
+      else if row == SA_SET_VAR {
+        cmd.i = cast(s32) wi_s32(a1); cmd.a = sh_float(a2);
+        if cmd.i < 0 || cmd.i >= SH_VARS || !sh_finite(cmd.a) { return SD_BAD_ARGUMENT; }
+      }
+      else if row == SA_STRIKE { cmd.target = a1; }
+      else if row == SA_SAY { cmd.i = cast(s32) wi_s32(a1); }
+      else if row == SA_EMIT { cmd.i = cast(s32) wi_s32(a1); cmd.a = sh_float(a2); if !sh_finite(cmd.a) { return SD_BAD_ARGUMENT; } }
+      if run[0].n_commands >= SH_COMMANDS { return SD_COMMANDS_FULL; }
+      run[0].commands[run[0].n_commands] = cmd; run[0].n_commands += 1;
+    }
+  }
+  wi_answer(m, vm, result);
+  return 0;
+}
+
+// One handler call for one thing, as a transaction. True when it was kept (or the script has no such
+// handler); false when it failed and was undone, or was skipped for want of budget.
+sh_call :: (s: [] ScriptSlot, run: [] ScriptRun, f: [] ScriptFrame, script: int, handler: int, me: u64, slot: int, other: u64, amount: u64) -> bool {
+  if !s[0].loaded || s[0].off || handler < 0 || handler >= RS_HANDLERS || slot < 0 || slot >= s[0].slots { return false; }
+  entry := cast(int) s[0].m[0].entry[RS_FIRST_HANDLER + handler];
+  if entry < 0 { return true; }
+  if run[0].fuel <= 0 {
+    if !s[0].starved { s[0].starved = true; sh_diag(s, run, ScriptDiag.{code = SD_TICK_BUDGET, script = cast(s32) script, handler = cast(s32) handler, thing = me, tick = f[0].tick}); }
+    return false;
+  }
+  fuel := ifx run[0].fuel < SH_CALL_FUEL then run[0].fuel else SH_CALL_FUEL;
+  args: [4] u64; args[0] = me; args[1] = cast(u64) slot; n := 2;
+  first := RH_EXTRA[handler * 2]; second := RH_EXTRA[handler * 2 + 1];
+  if first != 0 { args[2] = ifx handler == RH_TICK then sh_bits(f[0].dt) else ifx handler == RH_TIMER then amount & WI_LOW else other; n = 3; }
+  if second != 0 { args[3] = amount & WI_LOW; n = 4; }
+  m := s[0].m[..]; vm := s[0].vm[..];
+  kept_commands := run[0].n_commands; kept_timers: [SH_TIMERS] f32;
+  for k: 0..<SH_TIMERS { kept_timers[k] = s[0].timers[slot * SH_TIMERS + k]; }
+  call: [1] ScriptCall1; call[0] = ScriptCall1.{script = script, handler = handler, me = me, slot = slot};
+  wi_begin(vm);
+  code := 0; status := WI_TRAP_MALFORMED;
+  if !wi_call(m, vm, entry, args[0..<n], fuel) { code = SD_TRAP; }
+  while code == 0 {
+    status = wi_run(s[0].b[0..<s[0].n], m, s[0].jump[..], vm);
+    if status != WI_IMPORT { break; }
+    code = sh_import(s, run, f, call[..]);
+  }
+  left := ifx vm[0].fuel > 0 then vm[0].fuel else 0;
+  used := fuel - left;
+  run[0].fuel -= used; run[0].calls += 1; s[0].spent += used; s[0].calls += 1;
+  if used > s[0].peak { s[0].peak = used; }
+  if code == 0 && status == WI_DONE { wi_commit(vm); s[0].strikes = 0; return true; }
+  // Failed: undo the memory, the commands and the timers, and say why.
+  if code == 0 { code = ifx status == WI_FUEL then SD_OVER_BUDGET else SD_TRAP; }
+  if code == SD_TRAP && call[0].line != 0 { status = WI_TRAP_UNREACHABLE; }
+  wi_rollback(vm);
+  run[0].n_commands = kept_commands;
+  for k: 0..<SH_TIMERS { s[0].timers[slot * SH_TIMERS + k] = kept_timers[k]; }
+  run[0].failed += 1; s[0].failures += 1; s[0].strikes += 1;
+  sh_diag(s, run, ScriptDiag.{code = cast(s32) code, script = cast(s32) script, handler = cast(s32) handler, status = cast(s32) status, line = cast(s32) call[0].line, thing = me, tick = f[0].tick, used = used});
+  if s[0].strikes >= SH_STRIKES {
+    s[0].off = true;
+    sh_diag(s, run, ScriptDiag.{code = SD_SWITCHED_OFF, script = cast(s32) script, handler = cast(s32) handler, thing = me, tick = f[0].tick, detail = cast(s32) code});
+  }
+  return false;
+}
+
+// A trigger's enters and leaves this tick: thing `ti` (reach > 0) against every other living thing.
+sh_trigger :: (s: [] ScriptSlot, run: [] ScriptRun, f: [] ScriptFrame, script: int, ti: int, slot: int) {
+  t := f[0].things[ti]; base := slot * SH_INSIDE;
+  // Leaves first: whoever was inside and is now gone, dead or out of reach.
+  for k: 0..<SH_INSIDE {
+    who := s[0].inside[base + k];
+    if who == 0 { continue; }
+    j := sh_find(f, who);
+    if j >= 0 && f[0].things[j].alive && sh_distance(t, f[0].things[j]) <= t.reach { continue; }
+    s[0].inside[base + k] = 0;
+    left := sh_call(s, run, f, script, RH_LEAVE, t.id, slot, who, 0);
+  }
+  for j: 0..<f[0].n_things {
+    o := f[0].things[j];
+    if j == ti || !o.alive || sh_distance(t, o) > t.reach { continue; }
+    known := false; free := -1;
+    for k: 0..<SH_INSIDE { if s[0].inside[base + k] == o.id { known = true; } if s[0].inside[base + k] == 0 && free < 0 { free = k; } }
+    if known || free < 0 { continue; }
+    s[0].inside[base + free] = o.id;
+    entered := sh_call(s, run, f, script, RH_ENTER, t.id, slot, o.id, 0);
+  }
+}
+
+// One tick of a world's scripts over one frame. The order is fixed: the realm's events in frame order,
+// then each thing in frame order: its timers, its trigger, its tick.
+sh_tick :: (scripts: [] ScriptSlot, run: [] ScriptRun, f: [] ScriptFrame) {
+  run[0].fuel = SH_TICK_FUEL; run[0].n_commands = 0; run[0].n_diags = 0; run[0].more_diags = 0; run[0].calls = 0; run[0].failed = 0;
+  if f[0].n_things < 0 { f[0].n_things = 0; } if f[0].n_things > SH_THINGS { f[0].n_things = SH_THINGS; }
+  if f[0].n_events < 0 { f[0].n_events = 0; } if f[0].n_events > SH_EVENTS { f[0].n_events = SH_EVENTS; }
+  for si: 0..<scripts.count { scripts[si].spent = 0; scripts[si].starved = false; }
+  // Every living thing with a script has a slot before any handler runs.
+  for ti: 0..<f[0].n_things {
+    t := f[0].things[ti]; si := cast(int) t.script;
+    if si < 0 || si >= scripts.count || !t.alive || t.id == 0 || !scripts[si].loaded || scripts[si].off { continue; }
+    if sh_bind(scripts[si..<si + 1], t.id, f[0].tick) < 0 && !scripts[si].starved {
+      sh_diag(scripts[si..<si + 1], run, ScriptDiag.{code = SD_NO_SLOT, script = cast(s32) si, thing = t.id, tick = f[0].tick});
+    }
+  }
+  for ei: 0..<f[0].n_events {
+    e := f[0].events[ei]; ti := sh_find(f, e.thing);
+    if ti < 0 || e.handler < RH_ENTER || e.handler > RH_USE { continue; }
+    si := cast(int) f[0].things[ti].script;
+    if si < 0 || si >= scripts.count || !f[0].things[ti].alive { continue; }
+    slot := sh_slot_of(scripts[si..<si + 1], e.thing);
+    if slot >= 0 { delivered := sh_call(scripts[si..<si + 1], run, f, si, cast(int) e.handler, e.thing, slot, e.other, sh_bits(e.amount)); }
+  }
+  for ti: 0..<f[0].n_things {
+    t := f[0].things[ti]; si := cast(int) t.script;
+    if si < 0 || si >= scripts.count || !t.alive || t.id == 0 { continue; }
+    s := scripts[si..<si + 1];
+    if !s[0].loaded || s[0].off { continue; }
+    slot := sh_slot_of(s, t.id);
+    if slot < 0 { continue; }
+    for k: 0..<SH_TIMERS {
+      left := s[0].timers[slot * SH_TIMERS + k];
+      if left <= 0.0 { continue; }
+      left -= f[0].dt;
+      if left > 0.0 { s[0].timers[slot * SH_TIMERS + k] = left; continue; }
+      s[0].timers[slot * SH_TIMERS + k] = 0;
+      rang := sh_call(s, run, f, si, RH_TIMER, t.id, slot, 0, cast(u64) k);
+    }
+    if t.reach > 0.0 && (s[0].m[0].handlers & 6) != 0 { sh_trigger(s, run, f, si, ti, slot); }
+    ticked := sh_call(s, run, f, si, RH_TICK, t.id, slot, 0, 0);
+  }
+  // A thing that left the frame (or died) gives its slot back: it starts fresh if it returns.
+  for si: 0..<scripts.count {
+    if !scripts[si].loaded { continue; }
+    for slot: 0..<scripts[si].slots {
+      if scripts[si].owner[slot] != 0 && scripts[si].seen[slot] != f[0].tick { scripts[si].owner[slot] = 0; }
+    }
+  }
+}
+
+#load "host-checks.coax" #test;

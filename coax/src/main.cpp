@@ -865,7 +865,7 @@ static bool import_protos(Source *src, const EmitOptions &opts, std::vector<Toke
   return true;
 }
 
-enum class Output : uint8_t { none, c, header, layout, deps, declarations, modules, lowering, effects };
+enum class Output : uint8_t { none, c, header, layout, deps, declarations, modules, lowering, effects, script, script_face };
 
 // `coax deps --declarations` (schema coax.declarations.v1): each unit's
 // logical owner, every top-level declaration's nominal ID and every resolved
@@ -2218,6 +2218,7 @@ static bool front_end(const char *path, Source *src, Arena *arena, File *file, c
     if(ok && skeleton.made) {skeleton_passed(&skeleton,tokens,file);serve_keep_passed(tree_path(src->units[0]->canonical),std::make_shared<PassedSkeleton>(std::move(skeleton.skeleton)));}
     if(ok)ok=check_unit_calls(file);
     if(ok)ok=inline_notes(file);
+    if(ok)ok=script_profile(file);
     if(ok){TimedPhase phase{"effect contracts"};ok=effect_contracts(file,opts);}
     if(ok)record_tree_costs(file);
     // --run-steps overrides the entry file's #run_steps; either replaces the default.
@@ -2255,6 +2256,7 @@ static bool compile(const char *path, const EmitOptions &opts, Output what, std:
   else if (what == Output::modules) *text = modules_report(&src, &file, opts);
   else if (what == Output::lowering) *text = lowering_report(&src, &file, opts);
   else if (what == Output::effects) {if(!effects_report(&src,&file,opts,g_lower_proc,text))return false;}
+  else if (what == Output::script || what == Output::script_face) {if(!script_report(&file,what==Output::script_face,text))return false;}
   else if (what == Output::deps) {
     *text="{\"schema_version\":1,\"run_steps\":" + std::to_string(file.run_steps) + ",\"aggregate_slot_limit\":" + std::to_string(CtMemory::max_slots()) + ",\"aggregate_container_limit\":" + std::to_string(CtMemory::max_containers()) + ",\"aggregate_traversal_limit\":" + std::to_string(g_traversal_limit ? g_traversal_limit : CB_traversal_limit()) + ",\"string_live_byte_limit\":" + std::to_string(CB_string_live_limit()) + ",\"string_materialization_work_limit\":" + std::to_string(CB_string_work_limit()) + ",\"sources\":[";
     bool first=true;
@@ -2340,6 +2342,7 @@ static int usage() {
           "       coax check   file.coax [--slots N]  (--slots also on run, build, lib, header, c: a smaller slot limit for #authority checks)\n"
           "       coax proto   profile.pb --prefix Name [-o output.coax]\n"
           "       coax layout  file.coax\n"
+          "       coax script  file.coax [--face] [-o out]         a realm script's manifest JSON, or its module's C face\n"
           "       coax deps    file.coax                           JSON source/descriptor inputs\n"
           "       coax deps    file.coax --declarations            JSON logical owners, declaration IDs, references\n"
           "       coax query   file.coax defines NAME | uses NAME | exports [MODULE] [--json] [--fresh]\n"
@@ -2610,7 +2613,7 @@ static int main_impl(int argc, char **argv) {
   if (cmd == "vocab") return vocab_command(argc, argv);
   if (cmd == "check-cache") return check_cache_command(argc, argv);
   if (cmd != "run" && cmd != "build" && cmd != "c" && cmd != "checks-c" && cmd != "check" && cmd != "lib" && cmd != "header" &&
-      cmd != "layout" && cmd != "deps" && cmd != "metal" && cmd != "cuda" && cmd != "metal-compute" && cmd != "spirv" && cmd != "wgsl" && cmd != "test" && cmd != "mutate" && cmd != "proto" && cmd != "query")
+      cmd != "layout" && cmd != "deps" && cmd != "metal" && cmd != "cuda" && cmd != "metal-compute" && cmd != "spirv" && cmd != "wgsl" && cmd != "test" && cmd != "mutate" && cmd != "proto" && cmd != "query" && cmd != "script")
     return usage();
 
   const char *input = nullptr;
@@ -2621,7 +2624,7 @@ static int main_impl(int argc, char **argv) {
   std::string arithmetic,optimization,build_profile;
   MutationOptions mutation;
   bool keep_c = false;
-  bool declarations = false, modules = false, lowering = false, effects = false;
+  bool declarations = false, modules = false, lowering = false, effects = false, script_face = false;
   bool run_steps_seen = false;
   uint64_t steps = TEST_STEPS;
   const char *only = nullptr;
@@ -2745,6 +2748,7 @@ static int main_impl(int argc, char **argv) {
     else if (a == "--lowering" && cmd == "deps" && !declarations && !modules && !lowering && !effects) lowering = true;
     else if (a == "--effects" && cmd == "deps" && !declarations && !modules && !lowering && !effects) effects=true;
     else if (a == "--proc" && (lowering || effects) && i + 1 < argc) g_lower_proc = argv[++i];
+    else if (a == "--face" && cmd == "script" && !script_face) script_face = true;
     else if (a == "--target" && (cmd == "deps" || cmd == "layout") && i + 1 < argc) g_target = argv[++i];
     else if (a == "--json") g_json_errors = true;
     else if (a == "--traversal" && cmd != "proto") {
@@ -2831,7 +2835,7 @@ static int main_impl(int argc, char **argv) {
   // one of the source commands admitted by the checked Coax resolver.
   if(cmd!="proto" || request.arithmetic_count || request.optimization_count || request.build_profile_count || request.debug_count || request.source_map || !g_semantic.path.empty()) {
     // coax wgsl takes the shader subset's profile, spirv's (lib/compiler/wgsl.coax)
-    const std::string profile_cmd=cmd=="wgsl" || (cmd=="metal" && (!vertex.empty() || !fragment.empty()))?"spirv":cmd=="query"?"deps":cmd;
+    const std::string profile_cmd=cmd=="wgsl" || (cmd=="metal" && (!vertex.empty() || !fragment.empty()))?"spirv":cmd=="query" || cmd=="script"?"deps":cmd;
     auto profile=CP_resolve({profile_cmd.data(),(int64_t)profile_cmd.size()},request);
     if(profile.error!=COAX_CP_Error_none) {
       auto message=CP_message(profile.error);fprintf(stderr,"coax: %.*s\n",(int)message.count,message.data);return 1;
@@ -2992,6 +2996,12 @@ static int main_impl(int argc, char **argv) {
   }
   std::string text;
   if (cmd == "check") return compile(input, opts, Output::none, &text, opts.library ? 1 : 2) ? 0 : 1;
+  if (cmd == "script") {
+    if (!compile(input, opts, script_face ? Output::script_face : Output::script, &text, 1)) return 1;
+    if (out.empty()) fwrite(text.data(), 1, text.size(), stdout);
+    else if (!write_file(out, text)) { fprintf(stderr, "coax: cannot write '%s'\n", out.c_str()); return 1; }
+    return 0;
+  }
   if (cmd == "layout" || cmd == "deps") {
     if (!compile(input, opts, cmd == "deps" ? (declarations ? Output::declarations : modules ? Output::modules : lowering ? Output::lowering : effects ? Output::effects : Output::deps) : Output::layout, &text, 2)) return 1;
     fwrite(text.data(), 1, text.size(), stdout);

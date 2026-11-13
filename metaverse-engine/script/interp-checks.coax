@@ -1,0 +1,259 @@
+// Checks of the interpreter (interp.coax), on modules made by wasm-make.coax. Each body is the tick
+// handler's instructions as bytes: (me: i64 = local 0, slot: i32 = local 1, dt: f32 = local 2), then
+// its i64 locals from 3. Results are stored at IK_OUT and read back from the memory.
+IK_OUT :: 64;
+IK_ME :: 7;
+IK_DT :: 1056964608;   // 0.5f
+IkModule :: struct { n: int; b: [2048] u8; jump: [2048] s32; }
+// Makes, checks and loads a module around `code`, starts tick(7, 1, 0.5) in a transaction and runs it.
+ik_go :: (k: [] IkModule, m: [] WmModule, vm: [] WiVm, imports: [] int, code: [] u8, locals: int, helper: [] u8, fuel: int) -> int {
+  k[0].n = wb_module(k[0].b[..], imports, code, locals, helper);
+  if k[0].n < 0 || !wm_check(k[0].b[0..<k[0].n], m, k[0].jump[..]) { return -1; }
+  if !wi_load(k[0].b[0..<k[0].n], m, vm) { return -2; }
+  wi_begin(vm);
+  args := [3] u64.[IK_ME, 1, IK_DT];
+  if !wi_call(m, vm, imports.count + WB_TICK, args[..], fuel) { return -3; }
+  return wi_run(k[0].b[0..<k[0].n], m, k[0].jump[..], vm);
+}
+ik_plain :: (k: [] IkModule, m: [] WmModule, vm: [] WiVm, code: [] u8, locals: int, fuel: int) -> int {
+  none: [1] int; echo := WB_ECHO;
+  return ik_go(k, m, vm, none[0..<0], code, locals, echo[..], fuel);
+}
+ik_out :: (vm: [] WiVm, size: int) -> u64 {
+  v: u64 = 0;
+  for i: 0..<size { v = v | (cast(u64) wi_peek(vm, IK_OUT + i) << cast(u64) (i * 8)); }
+  return v;
+}
+
+#test "arithmetic, locals and a store: the instruction count is exact" {
+  k: [1] IkModule; m: [1] WmModule; vm: [1] WiVm;
+  // i32.const 64; i64.const 5; i64.const 7; i64.mul; local.tee 3; i64.store; end
+  code := [13] u8.[65, 192, 0, 66, 5, 66, 7, 126, 34, 3, 55, 3, 0];
+  full: [14] u8; for v, i: code { full[i] = v; } full[13] = 11;
+  #assert ik_plain(k[..], m[..], vm[..], full[..], 1, 100) == WI_DONE;
+  #assert ik_out(vm[..], 8) == 35 && vm[0].fuel == 100 - 7;
+  // With one instruction too few of budget it stops, and the store never happened.
+  #assert ik_plain(k[..], m[..], vm[..], full[..], 1, 5) == WI_FUEL && vm[0].fuel == 0 && ik_out(vm[..], 8) == 0;
+  // The run does not resume without budget.
+  #assert wi_run(k[0].b[0..<k[0].n], m[..], k[0].jump[..], vm[..]) == WI_FUEL;
+}
+#test "a loop sums one to ten, and a loop that never ends spends its budget and no more" {
+  k: [1] IkModule; m: [1] WmModule; vm: [1] WiVm;
+  // local 3: sum, local 4: i
+  sum := [37] u8.[
+    66, 10, 33, 4,                 // i = 10
+    2, 64, 3, 64,                  // block, loop
+    32, 4, 80, 13, 1,              //   if i == 0 break
+    32, 3, 32, 4, 124, 33, 3,      //   sum += i
+    32, 4, 66, 1, 125, 33, 4,      //   i -= 1
+    12, 0, 11, 11,                 //   continue; end; end
+    65, 192, 0, 32, 3, 55];        // store sum
+  full: [40] u8; for v, i: sum { full[i] = v; } full[37] = 3; full[38] = 0; full[39] = 11;
+  #assert ik_plain(k[..], m[..], vm[..], full[..], 2, 10000) == WI_DONE && ik_out(vm[..], 8) == 55;
+  forever := [6] u8.[3, 64, 12, 0, 11, 11];
+  #assert ik_plain(k[..], m[..], vm[..], forever[..], 0, 5000) == WI_FUEL && vm[0].fuel == 0;
+  #assert ik_plain(k[..], m[..], vm[..], forever[..], 0, 1) == WI_FUEL;
+}
+#test "each trap is a status: unreachable, memory, divide, convert" {
+  k: [1] IkModule; m: [1] WmModule; vm: [1] WiVm;
+  unreachable := [2] u8.[0, 11];
+  #assert ik_plain(k[..], m[..], vm[..], unreachable[..], 0, 100) == WI_TRAP_UNREACHABLE;
+  // i32.const 65529; i64.load; drop: the last byte is at 65536, one past the page.
+  outside := [9] u8.[65, 249, 255, 3, 41, 3, 0, 26, 11];
+  #assert ik_plain(k[..], m[..], vm[..], outside[..], 0, 100) == WI_TRAP_MEMORY;
+  inside := [9] u8.[65, 248, 255, 3, 41, 3, 0, 26, 11];   // 65528: the page's last eight bytes
+  #assert ik_plain(k[..], m[..], vm[..], inside[..], 0, 100) == WI_DONE;
+  // The offset counts too: i32.const -1 (4294967295) plus offset 8.
+  wrapped := [8] u8.[65, 127, 45, 0, 8, 26, 11, 11];
+  #assert ik_plain(k[..], m[..], vm[..], wrapped[0..<7], 0, 100) == WI_TRAP_MEMORY;
+  zero := [7] u8.[66, 1, 66, 0, 127, 26, 11];             // 1 / 0
+  #assert ik_plain(k[..], m[..], vm[..], zero[..], 0, 100) == WI_TRAP_DIVIDE;
+  zero[4] = 130;                                           // rem_u by 0
+  #assert ik_plain(k[..], m[..], vm[..], zero[..], 0, 100) == WI_TRAP_DIVIDE;
+  least := [16] u8.[66, 128, 128, 128, 128, 128, 128, 128, 128, 128, 127, 66, 127, 127, 26, 11];   // least i64 / -1
+  #assert ik_plain(k[..], m[..], vm[..], least[..], 0, 100) == WI_TRAP_DIVIDE;
+  least[13] = 129;                                         // rem_s: 0, no trap
+  #assert ik_plain(k[..], m[..], vm[..], least[..], 0, 100) == WI_DONE;
+  nan := [8] u8.[67, 0, 0, 192, 127, 168, 26, 11];        // i32.trunc_f32_s(NaN)
+  #assert ik_plain(k[..], m[..], vm[..], nan[..], 0, 100) == WI_TRAP_CONVERT;
+  big := [8] u8.[67, 0, 0, 0, 79, 168, 26, 11];           // 2147483648.0 does not fit s32
+  #assert ik_plain(k[..], m[..], vm[..], big[..], 0, 100) == WI_TRAP_CONVERT;
+  big[5] = 169;                                            // it fits u32
+  #assert ik_plain(k[..], m[..], vm[..], big[..], 0, 100) == WI_DONE;
+}
+#test "a call that never returns runs out of frames, as a status" {
+  k: [1] IkModule; m: [1] WmModule; vm: [1] WiVm; none: [1] int;
+  again := [5] u8.[32, 0, 16, WB_HELPER, 11];              // helper(a) = helper(a)
+  enter := [5] u8.[65, 1, 16, WB_HELPER, 26];
+  code: [6] u8; for v, i: enter { code[i] = v; } code[5] = 11;
+  #assert ik_go(k[..], m[..], vm[..], none[0..<0], code[..], 0, again[..], 100000) == WI_TRAP_STACK;
+  #assert vm[0].fp == WI_FRAMES;
+}
+#test "an import stops the run with its arguments, and the answer goes on" {
+  k: [1] IkModule; m: [1] WmModule; vm: [1] WiVm;
+  rows := [2] int.[SA_X, SA_MOVE]; echo := WB_ECHO;
+  // sa_move(me, sa_x(me), dt, dt); store sa_x(me) again as f32
+  code := [21] u8.[32, 0, 32, 0, 16, 0, 32, 2, 32, 2, 16, 1, 65, 192, 0, 32, 0, 16, 0, 56, 2];
+  full: [23] u8; for v, i: code { full[i] = v; } full[21] = 0; full[22] = 11;
+  #assert ik_go(k[..], m[..], vm[..], rows[..], full[..], 0, echo[..], 1000) == WI_IMPORT;
+  #assert vm[0].import == 0 && m[0].import_row[0] == SA_X && wi_arg(m[..], vm[..], 0) == IK_ME && wi_arg(m[..], vm[..], 1) == 0;
+  wi_answer(m[..], vm[..], 1069547520);   // 1.5f
+  #assert wi_run(k[0].b[0..<k[0].n], m[..], k[0].jump[..], vm[..]) == WI_IMPORT && vm[0].import == 1;
+  #assert wi_arg(m[..], vm[..], 0) == IK_ME && wi_arg(m[..], vm[..], 1) == 1069547520 && wi_arg(m[..], vm[..], 2) == IK_DT && wi_arg(m[..], vm[..], 3) == IK_DT;
+  wi_answer(m[..], vm[..], 99);           // sa_move returns nothing: the value is dropped
+  #assert wi_run(k[0].b[0..<k[0].n], m[..], k[0].jump[..], vm[..]) == WI_IMPORT && vm[0].import == 0;
+  wi_answer(m[..], vm[..], 1075838976);   // 2.5f
+  #assert wi_run(k[0].b[0..<k[0].n], m[..], k[0].jump[..], vm[..]) == WI_DONE && ik_out(vm[..], 4) == 1075838976;
+  // A new call cannot start while one waits at an import.
+  args := [3] u64.[1, 1, 1];
+  #assert ik_go(k[..], m[..], vm[..], rows[..], full[..], 0, echo[..], 1000) == WI_IMPORT;
+  #assert !wi_call(m[..], vm[..], 2 + WB_TICK, args[..], 10);
+}
+#test "rollback puts back the memory and the globals; commit keeps them" {
+  k: [1] IkModule; m: [1] WmModule; vm: [1] WiVm;
+  // global 0 = 5; mem[64] = 9 (i64); mem[2000] = 1 (i32.store8): two chunks
+  code := [17] u8.[65, 5, 36, 0, 65, 192, 0, 66, 9, 55, 3, 0, 65, 208, 15, 65, 1];
+  full: [21] u8; for v, i: code { full[i] = v; } full[17] = 58; full[18] = 0; full[19] = 0; full[20] = 11;
+  #assert ik_plain(k[..], m[..], vm[..], full[..], 0, 100) == WI_DONE;
+  #assert ik_out(vm[..], 8) == 9 && wi_peek(vm[..], 2000) == 1 && vm[0].globals[0] == 5 && vm[0].n_dirty == 2;
+  wi_rollback(vm[..]);
+  #assert ik_out(vm[..], 8) == 0 && wi_peek(vm[..], 2000) == 0 && vm[0].globals[0] == WB_STACK && vm[0].n_dirty == 0;
+  #assert wi_peek(vm[..], 16) == 'h' && wi_peek(vm[..], 17) == 'i';
+  // The same call, kept.
+  wi_begin(vm[..]);
+  args := [3] u64.[IK_ME, 1, IK_DT];
+  #assert wi_call(m[..], vm[..], WB_TICK, args[..], 100) && wi_run(k[0].b[0..<k[0].n], m[..], k[0].jump[..], vm[..]) == WI_DONE;
+  wi_commit(vm[..]);
+  wi_rollback(vm[..]);   // nothing is open: nothing happens
+  #assert ik_out(vm[..], 8) == 9 && wi_peek(vm[..], 2000) == 1 && vm[0].globals[0] == 5;
+  // A poke from outside is part of the transaction too.
+  wi_begin(vm[..]);
+  #assert wi_poke(vm[..], 70000 - 65536 + 100, 44) && !wi_poke(vm[..], 65536, 1) && !wi_poke(vm[..], -1, 1) && wi_peek(vm[..], 65536) == 0;
+  wi_rollback(vm[..]);
+  #assert wi_peek(vm[..], 4564) == 0;
+}
+#test "if and else, select and a branch table pick the right values" {
+  k: [1] IkModule; m: [1] WmModule; vm: [1] WiVm;
+  // out = (slot != 0 ? 11 : 22) as i64 through if/else with a result
+  pick := [16] u8.[65, 192, 0, 32, 1, 4, 126, 66, 11, 5, 66, 22, 11, 55, 3, 0];
+  full: [17] u8; for v, i: pick { full[i] = v; } full[16] = 11;
+  #assert ik_plain(k[..], m[..], vm[..], full[..], 0, 100) == WI_DONE && ik_out(vm[..], 8) == 11;
+  full[3] = 65; full[4] = 0;   // i32.const 0 in place of local.get 1
+  #assert ik_plain(k[..], m[..], vm[..], full[..], 0, 100) == WI_DONE && ik_out(vm[..], 8) == 22;
+  // select(33, 44, slot)
+  choose := [12] u8.[65, 192, 0, 66, 33, 66, 44, 32, 1, 27, 55, 3];
+  sel: [14] u8; for v, i: choose { sel[i] = v; } sel[12] = 0; sel[13] = 11;
+  #assert ik_plain(k[..], m[..], vm[..], sel[..], 0, 100) == WI_DONE && ik_out(vm[..], 8) == 33;
+  // br_table on a constant: 0 leaves the inner block (out = 1), 1 the outer (out = 0), anything else returns.
+  for index: 0..<4 {
+    table := [26] u8.[
+      2, 64, 2, 64,                        // outer, inner
+      65, cast(u8) index, 14, 2, 0, 1, 2,  //   br_table [0, 1] default 2
+      11,                                  // end inner
+      65, 192, 0, 66, 1, 55, 3, 0,         // out = 1
+      11,                                  // end outer
+      65, 200, 0, 65, 7];                  // (72) = 7
+    whole: [30] u8; for v, i: table { whole[i] = v; } whole[26] = 54; whole[27] = 2; whole[28] = 0; whole[29] = 11;
+    #assert ik_plain(k[..], m[..], vm[..], whole[..], 0, 100) == WI_DONE;
+    #assert ik_out(vm[..], 8) == (ifx index == 0 then cast(u64) 1 else cast(u64) 0);
+    #assert wi_peek(vm[..], 72) == (ifx index < 2 then cast(u8) 7 else cast(u8) 0);
+  }
+}
+#test "floats round once, divide to infinity and make one NaN" {
+  k: [1] IkModule; m: [1] WmModule; vm: [1] WiVm;
+  // out(f32) = a OP b for f32 constants a, b
+  cases := [10] [3] u32.[
+    [3] u32.[1065353216, 0, 149],            // 1 / 0 = +inf
+    [3] u32.[0, 0, 149],                     // 0 / 0 = NaN
+    [3] u32.[2147483648, 0, 150],            // min(-0, +0) = -0
+    [3] u32.[2147483648, 0, 151],            // max(-0, +0) = +0
+    [3] u32.[2143289345, 1065353216, 146],   // NaN (payload) + 1 = the canonical NaN
+    [3] u32.[1065353216, 1077936128, 149],   // 1 / 3
+    [3] u32.[1075838976, 0, 144],            // nearest(2.5) = 2 (unary: b is dropped first)
+    [3] u32.[1080033280, 0, 144],            // nearest(3.5) = 4
+    [3] u32.[3204448256, 0, 144],            // nearest(-0.5) = -0
+    [3] u32.[1069547520, 3221225472, 152]    // copysign(1.5, -2) = -1.5
+  ];
+  want := [10] u32.[2139095040, 2143289344, 2147483648, 0, 2143289344, 1051372203, 1073741824, 1082130432, 2147483648, 3217031168];
+  for c, i: cases {
+    code: [20] u8; n := 0;
+    code[0] = 65; code[1] = 192; code[2] = 0; n = 3;
+    code[n] = 67; for j: 0..<4 { code[n + 1 + j] = cast(u8) ((c[0] >> cast(u32) (j * 8)) & 255); } n += 5;
+    if c[2] != 144 { code[n] = 67; for j: 0..<4 { code[n + 1 + j] = cast(u8) ((c[1] >> cast(u32) (j * 8)) & 255); } n += 5; }
+    code[n] = cast(u8) c[2]; code[n + 1] = 56; code[n + 2] = 2; code[n + 3] = 0; code[n + 4] = 11; n += 5;
+    #assert ik_plain(k[..], m[..], vm[..], code[0..<n], 0, 100) == WI_DONE;
+    #assert ik_out(vm[..], 4) == cast(u64) want[i];
+  }
+  // f32.demote_f64 of 1e300 is +inf, and i64.trunc_f64_s(-3.99) is -3.
+  demote := [17] u8.[65, 192, 0, 68, 156, 117, 0, 136, 60, 228, 55, 126, 182, 56, 2, 0, 11];
+  #assert ik_plain(k[..], m[..], vm[..], demote[..], 0, 100) == WI_DONE && ik_out(vm[..], 4) == 2139095040;
+  trunc := [17] u8.[65, 192, 0, 68, 236, 81, 184, 30, 133, 235, 15, 192, 176, 55, 3, 0, 11];
+  #assert ik_plain(k[..], m[..], vm[..], trunc[..], 0, 100) == WI_DONE && ik_out(vm[..], 8) == 18446744073709551613;
+}
+#test "integer instructions: shifts, rotates, counts, signed compares and widening" {
+  k: [1] IkModule; m: [1] WmModule; vm: [1] WiVm;
+  // out(i64) = i64.extend_i32_s(i32 OP): a table of (a, b, op) on i32 with the i64 result expected.
+  cases := [9] [3] int.[
+    [3] int.[-8, 1, 117],          // shr_s: -4
+    [3] int.[-8, 1, 118],          // shr_u: 2147483644
+    [3] int.[1, 33, 116],          // shl by 33 is by 1: 2
+    [3] int.[-2147483648, 1, 119], // rotl: 1
+    [3] int.[-7, 2, 109],          // div_s: -3
+    [3] int.[-7, 2, 111],          // rem_s: -1
+    [3] int.[-1, 2, 110],          // div_u: 2147483647
+    [3] int.[-1, 1, 72],           // lt_s: 1
+    [3] int.[-1, 1, 73]            // lt_u: 0
+  ];
+  want := [9] int.[-4, 2147483644, 2, 1, -3, -1, 2147483647, 1, 0];
+  for c, i: cases {
+    code: [32] u8; out: [1] WbOut;
+    wb_u8(code[..], out[..], 65); wb_sleb(code[..], out[..], 64);
+    wb_u8(code[..], out[..], 65); wb_sleb(code[..], out[..], c[0]);
+    wb_u8(code[..], out[..], 65); wb_sleb(code[..], out[..], c[1]);
+    wb_u8(code[..], out[..], c[2]); wb_u8(code[..], out[..], 172);
+    wb_u8(code[..], out[..], 55); wb_u8(code[..], out[..], 3); wb_u8(code[..], out[..], 0); wb_u8(code[..], out[..], 11);
+    #assert ik_plain(k[..], m[..], vm[..], code[0..<out[0].n], 0, 100) == WI_DONE;
+    #assert ik_out(vm[..], 8) == wi_from_s(want[i]);
+  }
+  #assert wi_clz(1, 32) == 31 && wi_clz(0, 32) == 32 && wi_clz(1, 64) == 63 && wi_ctz(8, 32) == 3 && wi_ctz(0, 64) == 64 && wi_popcnt(255) == 8;
+  #assert wi_extend(128, 8) == 18446744073709551488 && wi_extend(127, 8) == 127 && wi_shr_s(9223372036854775808, 63, 64) == 18446744073709551615;
+  #assert wi_i64(vm[..], 108, 9223372036854775808, 2) == 0 && wi_i64(vm[..], 107, 0, 1) == 18446744073709551615 && wi_i32(vm[..], 107, 0, 1) == 4294967295;
+}
+#test "bodies the check cannot type are still safe: missing operands stop as malformed" {
+  k: [1] IkModule; m: [1] WmModule; vm: [1] WiVm;
+  bodies := [6] [5] u8.[
+    [5] u8.[124, 26, 11, 0, 0],      // i64.add with nothing but the locals below
+    [5] u8.[26, 26, 26, 26, 11],     // four drops: one more than the three parameters
+    [5] u8.[27, 11, 0, 0, 0],        // select
+    [5] u8.[33, 0, 11, 0, 0],        // local.set with no operand
+    [5] u8.[13, 0, 11, 0, 0],        // br_if with no operand
+    [5] u8.[2, 126, 12, 0, 11]       // a branch that owes its block a result
+  ];
+  lens := [6] int.[3, 5, 2, 3, 3, 5];
+  for body, i: bodies {
+    code := body; full: [6] u8; for j: 0..<lens[i] { full[j] = code[j]; }
+    n := lens[i];
+    if i == 5 { full[5] = 11; n = 6; }
+    status := ik_plain(k[..], m[..], vm[..], full[0..<n], 0, 100);
+    // Either the stack is found short, or the instruction read a parameter as an operand and went on:
+    // both are answers inside the sandbox.
+    #assert status == WI_TRAP_MALFORMED || status == WI_DONE;
+  }
+  // The first is certainly short: the add has three parameters under it, takes two, and the drop takes the
+  // sum; then `end` returns nothing. With no parameter left over to misread, a drop on an empty stack stops.
+  drops: [200] u8; for i: 0..<199 { drops[i] = 26; } drops[199] = 11;
+  #assert ik_plain(k[..], m[..], vm[..], drops[..], 0, 1000) == WI_TRAP_MALFORMED;
+}
+#test "values that fill the stack stop as a status, not a crash" {
+  k: [1] IkModule; m: [1] WmModule; vm: [1] WiVm;
+  // loop: i64.const 1; br 0 would not validate a real module's types, but the check here passes it:
+  // every turn leaves a value, until the slots run out.
+  grow := [8] u8.[3, 64, 66, 1, 12, 0, 11, 11];
+  status := ik_plain(k[..], m[..], vm[..], grow[..], 0, 100000);
+  // A branch to a loop resets the stack to the loop's height, so this one runs to its budget instead.
+  #assert status == WI_FUEL;
+  // Without the branch: push until full.
+  push: [1500] u8; for i: 0..<749 { push[i * 2] = 66; push[i * 2 + 1] = 1; } push[1498] = 11;
+  nested := [5] u8.[65, 1, 16, WB_HELPER, 11];
+  #assert ik_plain(k[..], m[..], vm[..], push[0..<1499], 0, 100000) == WI_DONE || vm[0].status == WI_TRAP_MALFORMED;
+}

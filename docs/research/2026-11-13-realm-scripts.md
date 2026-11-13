@@ -1,6 +1,8 @@
 # Realm scripts: what Epic's Verse split means for the Metaverse Engine
 
-Status: analysis and proposal, 2026-11-13. Nothing here is built.
+Status: approved 2026-11-13 and being built (#13467). [What is built](#what-is-built)
+at the end says where each stage stands and where the build differs from
+the proposal below.
 "Epic's Verse" means the language for Unreal Engine 6 and UEFN.
 [coax/from-epic-verse.md](../../coax/from-epic-verse.md) already covers what
 the Coax language takes from it. This document asks a narrower question:
@@ -206,3 +208,45 @@ confirms.
   own rules code.
 - If we decide rooms should never run code we did not review, stop after
   stage 3 and keep scripts as page-side prediction and presentation only.
+
+## What is built
+
+Kept current as stages land (#13467). The contract as built is
+[docs/protocol/realm-script-v1.md](../protocol/realm-script-v1.md),
+[docs/protocol/realm-script-api.md](../protocol/realm-script-api.md) and
+[coax/script-profile.md](../../coax/script-profile.md).
+
+| Piece | State | Where |
+| --- | --- | --- |
+| `#script` profile in the compiler | built | `coax/lib/compiler/script-profile.coax`, `coax/src/effects.cpp` |
+| The script API as one table | built | `metaverse-engine/script/api-table.coax` |
+| The build: source to a checked module | built | `coax/web/script.sh`, `metaverse-engine/tools/script-build.coax` |
+| The module check | built | `metaverse-engine/script/wasm.coax` |
+| The interpreter: budget, owned memory, traps as values, rollback | built | `metaverse-engine/script/interp.coax` |
+| The host: a tick of a world's scripts, diagnostics, switch-off | built | `metaverse-engine/script/host.coax` |
+| The manifest and the frame and result bytes | built | `metaverse-engine/script/manifest.coax`, `frame.coax` |
+
+Where the build differs from the proposal:
+
+- **The page runs the interpreter too.** The proposal had the page
+  instantiate a script's module with the browser's own WebAssembly engine
+  and a room interpret it. The browser has no instruction budget and no
+  rollback for a module it runs natively, and two engines would count
+  differently. So the page runs the same interpreter the room does, in a
+  module of its own beside the engine. Page and room then agree instruction
+  for instruction by construction, and the budget shown in the editor is the
+  budget a room enforces.
+- **Writes are commands.** A script does not write the World directly. A
+  write queues a command, and the realm applies a kept call's commands to
+  its own running state. A failed call's commands are dropped, which is the
+  rollback. A handler does not see its own writes until the next tick.
+- **A script writes only its own thing.** The host refuses a write that
+  names any thing but the one the handler was called for.
+- **The module check does not type-check operands.** It checks structure,
+  imports, limits and every index. The interpreter checks the stack and the
+  memory on every step, so a type-confused module computes nonsense inside
+  its own memory.
+- **Plan data reaches a script as a goal.** A thing's plan (#13466) still
+  decides where it walks when calm: `sa_goal_x`, `sa_goal_z` and
+  `sa_goal_speed` give a script the plan's goal for the tick, so a script
+  adds a reaction to a plan and does not replace it.

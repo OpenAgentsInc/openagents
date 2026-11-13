@@ -1,0 +1,5 @@
+// expect: E0982 ta_now
+#script "api-clock";
+#load "bad-api.coax";
+Mind :: struct #persisted { n: int; }
+on_tick :: (me: u64, mind: [] Mind, dt: f32) #export_c #effects(reads, writes, traps) { mind[0].n += 1; }

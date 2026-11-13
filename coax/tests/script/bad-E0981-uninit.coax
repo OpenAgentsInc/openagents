@@ -1,0 +1,5 @@
+// expect: E0981 unsafe
+#script "raw";
+#load "api.coax";
+Mind :: struct #persisted { n: int; }
+on_tick :: (me: u64, mind: [] Mind, dt: f32) #export_c #effects(reads, writes, traps) { x: int = ---; mind[0].n = x; }

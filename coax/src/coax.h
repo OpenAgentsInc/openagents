@@ -153,6 +153,12 @@ struct SourceUnit {
   // `module` is its owner's ID, or empty when no owner is available (legacy).
   bool claims = false;
   std::string module;
+  // Realm scripts (coax/script-profile.md): 1 when this unit declares
+  // `#script "name";`, 2 for `#script_api;`. script_at is the directive's
+  // place within this unit.
+  uint8_t script = 0;
+  std::string script_name;
+  Loc script_at{1,1,0};
   std::vector<int32_t> loads; // indices in Source::units this unit #loads, in written order
   // `#load "FILE.coax" #test;`: for each of loads, whether it is a check load. A unit
   // reached from the entry only through check loads is a check unit: its procedures are

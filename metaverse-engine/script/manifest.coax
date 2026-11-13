@@ -1,0 +1,187 @@
+// The realm-script manifest, `realm.script.v1` (GitHub #13467, proto/world/script-v1.json,
+// docs/protocol/realm-script-v1.md): what a script module is and may do, as one line of JSON. A world
+// document names a script by its hash; the manifest travels with the bytes so that a reader can show,
+// before anything runs, which handlers the script has, which kinds of call it can make and what it costs
+// to hold.
+//
+// Everything in a manifest but the name and the state fields is a fact of the bytes, and sm_of reads it
+// from the module the check passed, never from what an author sent: hash, size, memory, state size and
+// slots, handlers, powers and calls. The name and the fields are the author's; they only decide how the
+// script's own state is kept across a swap.
+//   coax/bin/coax test metaverse-engine/script/manifest.coax --library
+
+#load "host.coax";
+#load "../../coax/lib/json/json.coax";
+#load "../../coax/lib/script/compiler-manifest.coax";
+#load "../../coax/lib/crypto/sha256-kernel.coax";
+
+SM_SCHEMA :: "realm.script.v1";
+SM_NAME :: 48;
+SM_TEXT :: 8192;        // a manifest's bytes
+ScriptManifest :: struct {
+  ok: bool;
+  name: [SM_NAME] u8; name_n: int;
+  hash: [64] u8;        // SHA-256 of the module, lowercase hex
+  bytes: int; pages: int;
+  state: int; slots: int;
+  handlers: int;        // bit h for handler h (RH_*)
+  powers: int;          // read 1, write 2, engine 4, trap 8
+  calls: int;           // bit r for API row r
+  layout: ScriptLayout;
+}
+SM_POWERS :: [4] string.["read", "write", "engine", "trap"];
+
+// Lowercase letters, digits and hyphens, a letter first: the compiler's rule for #script names.
+sm_name_ok :: (name: string) -> bool {
+  if name.count < 1 || name.count > SM_NAME { return false; }
+  for c, i: name {
+    lower := c >= 'a' && c <= 'z';
+    if !lower && (i == 0 || !((c >= '0' && c <= '9') || c == '-')) { return false; }
+  }
+  return true;
+}
+// A field name or type as the compiler prints it: printable ASCII without quotes or backslashes.
+sm_word_ok :: (word: string) -> bool {
+  if word.count < 1 || word.count > SH_NAME { return false; }
+  for c: word { if c < 32 || c > 126 || c == '"' || c == '\\' { return false; } }
+  return true;
+}
+// The manifest of a loaded script (host.coax, sh_load): the facts come from the checked module.
+sm_of :: (s: [] ScriptSlot, name: string, layout: ScriptLayout) -> ScriptManifest {
+  mf: ScriptManifest;
+  if !s[0].loaded || !sm_name_ok(name) { return mf; }
+  for c, i: name { mf.name[i] = c; } mf.name_n = name.count;
+  if !S_hex(S_hash(cast(string) s[0].b[0..<s[0].n]), mf.hash[..]) { return mf; }
+  mf.bytes = s[0].n; mf.pages = cast(int) s[0].m[0].pages; mf.state = s[0].state_size; mf.slots = s[0].slots;
+  mf.handlers = cast(int) s[0].m[0].handlers; mf.powers = cast(int) s[0].m[0].powers;
+  for i: 0..<cast(int) s[0].m[0].n_imports { mf.calls = mf.calls | (1 << cast(int) s[0].m[0].import_row[i]); }
+  mf.layout = layout;
+  mf.ok = true;
+  return mf;
+}
+sm_write :: (given: ScriptManifest, out: [] u8) -> string {
+  mf := given;
+  if !mf.ok { return ""; }
+  o: [1] Jo; jo_start(o[..], out);
+  jo_obj(o[..]);
+  jo_key(o[..], "schema"); jo_str(o[..], SM_SCHEMA);
+  jo_key(o[..], "name"); jo_str(o[..], cast(string) mf.name[0..<mf.name_n]);
+  jo_key(o[..], "hash"); jo_str(o[..], cast(string) mf.hash[..]);
+  jo_key(o[..], "bytes"); jo_int(o[..], mf.bytes);
+  jo_key(o[..], "pages"); jo_int(o[..], mf.pages);
+  jo_key(o[..], "state"); jo_obj(o[..]);
+  jo_key(o[..], "size"); jo_int(o[..], mf.state);
+  jo_key(o[..], "slots"); jo_int(o[..], mf.slots);
+  jo_key(o[..], "fields"); jo_arr(o[..]);
+  for i: 0..<mf.layout.n {
+    f := mf.layout.fields[i];
+    jo_obj(o[..]);
+    jo_key(o[..], "name"); jo_str(o[..], cast(string) f.name[0..<cast(int) f.name_n]);
+    jo_key(o[..], "type"); jo_str(o[..], cast(string) f.type[0..<cast(int) f.type_n]);
+    jo_key(o[..], "at"); jo_int(o[..], cast(int) f.at);
+    jo_key(o[..], "size"); jo_int(o[..], cast(int) f.size);
+    jo_end(o[..]);
+  }
+  jo_end(o[..]); jo_end(o[..]);
+  jo_key(o[..], "handlers"); jo_arr(o[..]);
+  for name, h: RH_NAMES { if (mf.handlers & (1 << h)) != 0 { jo_str(o[..], name); } }
+  jo_end(o[..]);
+  jo_key(o[..], "powers"); jo_arr(o[..]);
+  for name, p: SM_POWERS { if (mf.powers & (1 << p)) != 0 { jo_str(o[..], name); } }
+  jo_end(o[..]);
+  jo_key(o[..], "calls"); jo_arr(o[..]);
+  for c, r: SCRIPT_API { if (mf.calls & (1 << r)) != 0 { jo_str(o[..], c.name); } }
+  jo_end(o[..]);
+  jo_end(o[..]);
+  if o[0].bad { return ""; }
+  return jo_text(o[..]);
+}
+// A state record's fields from a JSON array of {"name","type","at","size"}: the compiler's manifest
+// (coax script FILE, "state"."fields") and this one's have the same shape. False for anything else.
+sm_fields :: (d: Jv, at: int, layout: [] ScriptLayout) -> bool {
+  layout[0] = ScriptLayout.{};
+  if jv_kind(d, at) != JV_ARRAY || jv_len(d, at) > SH_FIELDS { return false; }
+  for i: 0..<jv_len(d, at) {
+    row := jv_at(d, at, i); f: ScriptField; name: [SH_NAME] u8; type: [SH_NAME] u8;
+    nn := jv_str(d, jv_get(d, row, "name"), name[..]); tn := jv_str(d, jv_get(d, row, "type"), type[..]);
+    where := jv_int(d, jv_get(d, row, "at"), -1); size := jv_int(d, jv_get(d, row, "size"), -1);
+    if nn < 1 || tn < 1 || !sm_word_ok(cast(string) name[0..<nn]) || !sm_word_ok(cast(string) type[0..<tn]) { return false; }
+    if where < 0 || size < 1 || where + size > SH_STATE { return false; }
+    f.name = name; f.name_n = cast(s32) nn; f.type = type; f.type_n = cast(s32) tn; f.at = cast(s32) where; f.size = cast(s32) size;
+    layout[0].fields[i] = f;
+  }
+  layout[0].n = jv_len(d, at);
+  return true;
+}
+// Reads the name and the state fields from the compiler's manifest (`coax script FILE`), whose one
+// reader says whether a text is one (coax/lib/script/compiler-manifest.coax). The name's length, or -1.
+sm_from_compiler :: (text: string, name: [] u8, layout: [] ScriptLayout) -> int {
+  nodes: [512] JvNode; d: [1] Jv;
+  if !jv_parse(d[..], text, nodes[..]) || !csm_is(d[0]) { return -1; }
+  n := jv_str(d[0], jv_get(d[0], 0, "name"), name);
+  if n < 1 || !sm_name_ok(cast(string) name[0..<n]) { return -1; }
+  if !sm_fields(d[0], jv_path(d[0], 0, "state.fields"), layout) { return -1; }
+  return n;
+}
+sm_bits :: (d: Jv, at: int, rows: bool) -> int {
+  bits := 0; word: [SH_NAME] u8;
+  if jv_kind(d, at) != JV_ARRAY { return -1; }
+  for i: 0..<jv_len(d, at) {
+    n := jv_str(d, jv_at(d, at, i), word[..]); found := -1;
+    if n < 1 { return -1; }
+    if rows { found = sa_row(cast(string) word[0..<n]); }
+    else { for name, p: SM_POWERS { if name == cast(string) word[0..<n] { found = p; } } }
+    // In order, each once: one form.
+    if found < 0 || (bits >> found) != 0 { return -1; }
+    bits = bits | (1 << found);
+  }
+  return bits;
+}
+// Reads a manifest. True when it is exactly what sm_write would write for those values: one form.
+sm_read :: (text: string, mf: [] ScriptManifest) -> bool {
+  mf[0] = ScriptManifest.{};
+  nodes: [512] JvNode; d: [1] Jv; word: [80] u8;
+  if text.count > SM_TEXT || !jv_parse(d[..], text, nodes[..]) { return false; }
+  v := d[0]; r: ScriptManifest;
+  n := jv_str(v, jv_get(v, 0, "schema"), word[..]);
+  if n < 0 || cast(string) word[0..<n] != SM_SCHEMA { return false; }
+  n = jv_str(v, jv_get(v, 0, "name"), word[..]);
+  if n < 1 || !sm_name_ok(cast(string) word[0..<n]) { return false; }
+  for i: 0..<n { r.name[i] = word[i]; } r.name_n = n;
+  n = jv_str(v, jv_get(v, 0, "hash"), word[..]);
+  if n != 64 { return false; }
+  for i: 0..<64 { c := word[i]; if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) { return false; } r.hash[i] = c; }
+  r.bytes = jv_int(v, jv_get(v, 0, "bytes"), -1); r.pages = jv_int(v, jv_get(v, 0, "pages"), -1);
+  r.state = jv_int(v, jv_path(v, 0, "state.size"), -1); r.slots = jv_int(v, jv_path(v, 0, "state.slots"), -1);
+  if r.bytes < 8 || r.bytes > WM_BYTES || r.pages < 1 || r.pages > WM_PAGES || r.state < 1 || r.state > SH_STATE || r.slots < 1 || r.slots > WM_SLOTS { return false; }
+  layout: [1] ScriptLayout;
+  if !sm_fields(v, jv_path(v, 0, "state.fields"), layout[..]) { return false; }
+  r.layout = layout[0];
+  handlers := jv_get(v, 0, "handlers");
+  if jv_kind(v, handlers) != JV_ARRAY { return false; }
+  for i: 0..<jv_len(v, handlers) {
+    n = jv_str(v, jv_at(v, handlers, i), word[..]); found := -1;
+    if n < 1 { return false; }
+    for name, h: RH_NAMES { if name == cast(string) word[0..<n] { found = h; } }
+    if found < 0 || (r.handlers >> found) != 0 { return false; }
+    r.handlers = r.handlers | (1 << found);
+  }
+  r.powers = sm_bits(v, jv_get(v, 0, "powers"), false); r.calls = sm_bits(v, jv_get(v, 0, "calls"), true);
+  if r.handlers == 0 || r.powers < 0 || r.calls < 0 { return false; }
+  r.ok = true;
+  again: [SM_TEXT] u8;
+  if sm_write(r, again[..]) != text { return false; }
+  mf[0] = r;
+  return true;
+}
+// Whether `new` may replace `old` without a confirmation (the publish rule, INVARIANTS.md "A script's
+// new version may do less, never more, unasked"): it has no handler, power or call the old one lacks.
+// What it adds, as bits, is in the result for the confirmation to show.
+ScriptGrowth :: struct { handlers: int; powers: int; calls: int; }
+sm_growth :: (old: ScriptManifest, new: ScriptManifest) -> ScriptGrowth {
+  // (new | old) ^ old: the bits new has and old does not.
+  return ScriptGrowth.{handlers = (new.handlers | old.handlers) ^ old.handlers, powers = (new.powers | old.powers) ^ old.powers, calls = (new.calls | old.calls) ^ old.calls};
+}
+sm_grows :: (g: ScriptGrowth) -> bool { return g.handlers != 0 || g.powers != 0 || g.calls != 0; }
+
+#load "manifest-checks.coax" #test;

@@ -1,0 +1,5 @@
+// expect: E0980 one realm-script directive
+#script "a";
+#script_api;
+Mind :: struct #persisted { n: int; }
+on_tick :: (me: u64, mind: [] Mind, dt: f32) #export_c #effects(reads, writes, traps) { mind[0].n += 1; }

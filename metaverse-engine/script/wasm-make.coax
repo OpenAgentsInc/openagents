@@ -1,0 +1,106 @@
+// A small WebAssembly writer for the script checks and the fuzzer (wasm-checks.coax, interp-checks.coax,
+// metaverse-engine/tools/script-fuzz.coax): it assembles a module with the script face around one
+// handler body the caller gives as bytes. It is test equipment, not a compiler: scripts are compiled
+// by coax and clang (metaverse-engine/tools/script-build.coax). Whoever loads this loads wasm.coax too
+// (wasm.coax loads its checks, which load this, so this file cannot load it back).
+
+WbOut :: struct { n: int; full: bool; }
+wb_u8 :: (out: [] u8, w: [] WbOut, v: int) {
+  if w[0].n >= out.count { w[0].full = true; return; }
+  out[w[0].n] = cast(u8) (v & 255); w[0].n += 1;
+}
+wb_leb :: (out: [] u8, w: [] WbOut, value: int) {
+  v := value;
+  while true {
+    low := v & 127; v = v >> 7;
+    if v == 0 { wb_u8(out, w, low); return; }
+    wb_u8(out, w, low | 128);
+  }
+}
+// A signed LEB128.
+wb_sleb :: (out: [] u8, w: [] WbOut, value: int) {
+  v := value;
+  while true {
+    low := v & 127; v = v >> 7;
+    if (v == 0 && (low & 64) == 0) || (v == -1 && (low & 64) != 0) { wb_u8(out, w, low); return; }
+    wb_u8(out, w, low | 128);
+  }
+}
+wb_bytes :: (out: [] u8, w: [] WbOut, bytes: [] u8) { for v: bytes { wb_u8(out, w, cast(int) v); } }
+wb_name :: (out: [] u8, w: [] WbOut, name: string) { wb_leb(out, w, name.count); for v: name { wb_u8(out, w, cast(int) v); } }
+wb_section :: (out: [] u8, w: [] WbOut, id: int, body: [] u8) { wb_u8(out, w, id); wb_leb(out, w, body.count); wb_bytes(out, w, body); }
+// A function body: `i64s` locals of type i64 beyond the parameters, then the code (which ends in 0x0b).
+wb_func :: (out: [] u8, w: [] WbOut, i64s: int, code: [] u8) {
+  scratch: [16] u8; s: [1] WbOut;
+  if i64s > 0 { wb_leb(scratch[..], s[..], 1); wb_leb(scratch[..], s[..], i64s); wb_u8(scratch[..], s[..], 126); } else { wb_leb(scratch[..], s[..], 0); }
+  wb_leb(out, w, s[0].n + code.count); wb_bytes(out, w, scratch[0..<s[0].n]); wb_bytes(out, w, code);
+}
+
+// What the made module is: its imports are API rows, in order; function `imports.count + WB_TICK` is
+// rs_on_tick (me: i64, slot: i32, dt: f32) with the caller's body and `locals` i64 locals (numbered 3 up);
+// function `imports.count + WB_HELPER` is helper (a: i32) -> i32 with the caller's helper body.
+// rs_state answers WB_STATE, rs_state_size WB_STATE_SIZE and rs_slots WB_STATE_SLOTS; global 0 is a
+// mutable i32 that starts at WB_STACK. One page of memory, with "hi" at byte 16.
+WB_ABI :: 0; WB_STATE_FN :: 1; WB_SIZE_FN :: 2; WB_SLOTS_FN :: 3; WB_TICK :: 4; WB_HELPER :: 5;
+WB_STATE :: 1024; WB_STATE_SIZE :: 16; WB_STATE_SLOTS :: 4; WB_STACK :: 32768;
+wb_module :: (out: [] u8, imports: [] int, tick: [] u8, locals: int, helper: [] u8) -> int {
+  w: [1] WbOut; body: [2048] u8; s: [1] WbOut; types: [WM_PARAMS] u8;
+  magic := [8] u8.[0, 97, 115, 109, 1, 0, 0, 0];
+  wb_bytes(out, w[..], magic[..]);
+  // types: 0 () -> i32; 1 (i64, i32, f32); 2 (i32) -> i32; then one for each import.
+  s[0] = WbOut.{};
+  wb_leb(body[..], s[..], 3 + imports.count);
+  wb_u8(body[..], s[..], 96); wb_leb(body[..], s[..], 0); wb_leb(body[..], s[..], 1); wb_u8(body[..], s[..], 127);
+  wb_u8(body[..], s[..], 96); wb_leb(body[..], s[..], 3); wb_u8(body[..], s[..], 126); wb_u8(body[..], s[..], 127); wb_u8(body[..], s[..], 125); wb_leb(body[..], s[..], 0);
+  wb_u8(body[..], s[..], 96); wb_leb(body[..], s[..], 1); wb_u8(body[..], s[..], 127); wb_leb(body[..], s[..], 1); wb_u8(body[..], s[..], 127);
+  for row: imports {
+    np := sa_params(SCRIPT_API[row].params, types[..]); result := sa_type(SCRIPT_API[row].result);
+    wb_u8(body[..], s[..], 96); wb_leb(body[..], s[..], np);
+    for p: 0..<np { wb_u8(body[..], s[..], cast(int) types[p]); }
+    if result == 0 { wb_leb(body[..], s[..], 0); } else { wb_leb(body[..], s[..], 1); wb_u8(body[..], s[..], result); }
+  }
+  wb_section(out, w[..], 1, body[0..<s[0].n]);
+  if imports.count > 0 {
+    s[0] = WbOut.{};
+    wb_leb(body[..], s[..], imports.count);
+    for row, i: imports { wb_name(body[..], s[..], "env"); wb_name(body[..], s[..], SCRIPT_API[row].name); wb_u8(body[..], s[..], 0); wb_leb(body[..], s[..], 3 + i); }
+    wb_section(out, w[..], 2, body[0..<s[0].n]);
+  }
+  s[0] = WbOut.{};
+  kinds := [6] int.[0, 0, 0, 0, 1, 2];
+  wb_leb(body[..], s[..], 6); for k: kinds { wb_leb(body[..], s[..], k); }
+  wb_section(out, w[..], 3, body[0..<s[0].n]);
+  s[0] = WbOut.{};
+  wb_leb(body[..], s[..], 1); wb_u8(body[..], s[..], 1); wb_leb(body[..], s[..], 1); wb_leb(body[..], s[..], 1);
+  wb_section(out, w[..], 5, body[0..<s[0].n]);
+  s[0] = WbOut.{};
+  wb_leb(body[..], s[..], 1); wb_u8(body[..], s[..], 127); wb_u8(body[..], s[..], 1); wb_u8(body[..], s[..], 65); wb_sleb(body[..], s[..], WB_STACK); wb_u8(body[..], s[..], 11);
+  wb_section(out, w[..], 6, body[0..<s[0].n]);
+  s[0] = WbOut.{};
+  names := [5] string.["rs_abi", "rs_state", "rs_state_size", "rs_slots", "rs_on_tick"];
+  wb_leb(body[..], s[..], 6);
+  wb_name(body[..], s[..], "memory"); wb_u8(body[..], s[..], 2); wb_leb(body[..], s[..], 0);
+  for name, i: names { wb_name(body[..], s[..], name); wb_u8(body[..], s[..], 0); wb_leb(body[..], s[..], imports.count + i); }
+  wb_section(out, w[..], 7, body[0..<s[0].n]);
+  s[0] = WbOut.{};
+  answers := [4] int.[1, WB_STATE, WB_STATE_SIZE, WB_STATE_SLOTS];
+  wb_leb(body[..], s[..], 6);
+  for a: answers {
+    code: [8] u8; c: [1] WbOut;
+    wb_u8(code[..], c[..], 65); wb_sleb(code[..], c[..], a); wb_u8(code[..], c[..], 11);
+    wb_func(body[..], s[..], 0, code[0..<c[0].n]);
+  }
+  wb_func(body[..], s[..], locals, tick);
+  wb_func(body[..], s[..], 0, helper);
+  wb_section(out, w[..], 10, body[0..<s[0].n]);
+  s[0] = WbOut.{};
+  wb_leb(body[..], s[..], 1); wb_leb(body[..], s[..], 0); wb_u8(body[..], s[..], 65); wb_sleb(body[..], s[..], 16); wb_u8(body[..], s[..], 11);
+  wb_leb(body[..], s[..], 2); wb_u8(body[..], s[..], 104); wb_u8(body[..], s[..], 105);
+  wb_section(out, w[..], 11, body[0..<s[0].n]);
+  if w[0].full || s[0].full { return -1; }
+  return w[0].n;
+}
+// The helper most checks use: helper (a) = a.
+WB_ECHO :: [3] u8.[32, 0, 11];
+// The smallest tick body: nothing.
+WB_NOTHING :: [1] u8.[11];

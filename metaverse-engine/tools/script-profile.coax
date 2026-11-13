@@ -1,0 +1,148 @@
+// Checks proto/world/script-v1.json against the realm-script modules (GitHub #13467): the profile is
+// written from the code, so the check is that the file is exactly what the code writes now. It pins
+//   - the limits, the handlers, the module refusals, the interpreter's statuses and the diagnostics
+//     (number, id, name, retry, meaning) of metaverse-engine/script/;
+//   - every row of the script API (name, parameters, result, effect, cost);
+//   - the frame and result layouts, and four fixtures made here: a module's bytes, its manifest
+//     (realm.script.v1, through manifest.coax), a frame's bytes (frame.coax) and the result's bytes
+//     after the host ran that module over that frame. The result pins the interpreter and the host end
+//     to end: the commands, the diagnostics and the instructions spent.
+// Usage, at the repository root:
+//   coax/web/tool.sh metaverse-engine/tools/script-profile.coax proto/world/script-v1.json           check
+//   coax/web/tool.sh metaverse-engine/tools/script-profile.coax proto/world/script-v1.json --write   write
+#import "Basic";
+#load "../script/manifest.coax";
+#load "../script/wasm-make.coax";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+
+SPF_CHECK :: "coax/web/tool.sh metaverse-engine/tools/script-profile.coax proto/world/script-v1.json";
+SPF_BYTES :: 131072;
+SpfOut :: struct { n: int; full: bool; }
+SpfWork :: struct { s: [2] ScriptSlot; run: [1] ScriptRun; f: [1] ScriptFrame; made: [2048] u8; bytes: [SF_BYTES] u8; row: [4096] u8; text: [SM_TEXT] u8; }
+
+spf_put :: (out: [] u8, w: [] SpfOut, s: string) {
+  for c: s { if w[0].n < out.count { out[w[0].n] = c; w[0].n += 1; } else { w[0].full = true; } }
+}
+spf_hex :: (out: [] u8, w: [] SpfOut, bytes: [] u8) {
+  digits := "0123456789abcdef";
+  for v: bytes { pair := [2] u8.[digits[cast(int) v >> 4], digits[cast(int) v & 15]]; spf_put(out, w, cast(string) pair[..]); }
+}
+#test "hex writes two lowercase digits a byte" {
+  out: [8] u8; w: [1] SpfOut; b := [3] u8.[0, 171, 255];
+  spf_hex(out[..], w[..], b[..]);
+  #assert cast(string) out[0..<w[0].n] == "00abff" && !w[0].full;
+  spf_hex(out[..], w[..], b[..]);
+  #assert w[0].full;
+}
+// One "name": value member line; `last` leaves the comma off.
+spf_member :: (out: [] u8, w: [] SpfOut, key: string, json: string, last: bool) {
+  spf_put(out, w, " \""); spf_put(out, w, key); spf_put(out, w, "\": "); spf_put(out, w, json); spf_put(out, w, ifx last then "\n" else ",\n");
+}
+spf_type_name :: (t: u8) -> string { return ifx t == 127 then "i32" else ifx t == 126 then "i64" else ifx t == 125 then "f32" else "f64"; }
+
+// The fixture module: rs_on_tick(me, slot, dt) = sa_move(me, sa_x(me), dt, dt).
+SPF_ROWS :: [2] int.[SA_X, SA_MOVE];
+SPF_TICK :: [13] u8.[32, 0, 32, 0, 16, 0, 32, 2, 32, 2, 16, 1, 11];
+spf_frame :: (f: [] ScriptFrame) {
+  f[0] = ScriptFrame.{tick = 7, seed = 2026, dt = 0.25, time = 1.75, day = 0.5, n_things = 2, n_events = 1};
+  f[0].world[0] = 12.0;
+  f[0].things[0] = ScriptThing.{id = 41, kind = 1, team = 2, script = 0, alive = true, x = 3.0, y = 0.0, z = -4.0, facing = 1.5, speed = 2.0, health = 3.0, reach = 0.0, goal_x = 1.0, goal_z = 2.0, goal_speed = 1.5, notice = 5.0, plan_on = 1};
+  f[0].things[0].px[0] = 1.0; f[0].things[0].pz[0] = 2.0; f[0].things[0].vars[1] = 9.0;
+  f[0].things[1] = ScriptThing.{id = 42, kind = 0, team = 1, script = -1, alive = true, x = 5.5, z = 6.5, speed = 4.0, health = 5.0};
+  f[0].events[0] = ScriptEvent.{handler = RH_HIT, thing = 41, other = 42, amount = 1.0};
+}
+
+spf_text :: (k: [] SpfWork, out: [] u8) -> string {
+  w: [1] SpfOut; o: [1] Jo; row := k[0].row[..];
+  spf_put(out, w[..], "{\n");
+  spf_member(out, w[..], "profile", "\"realm-script-v1\"", false);
+  spf_member(out, w[..], "version", "1", false);
+  spf_member(out, w[..], "title", "\"Realm scripts v1: the module, the manifest (realm.script.v1), the frame and the result\"", false);
+  jo_start(o[..], row); jo_str(o[..], SPF_CHECK); spf_member(out, w[..], "check", jo_text(o[..]), false);
+  spf_member(out, w[..], "spec", "\"docs/protocol/realm-script-v1.md\"", false);
+  jo_start(o[..], row); jo_str(o[..], SM_SCHEMA); spf_member(out, w[..], "schema", jo_text(o[..]), false);
+  spf_member(out, w[..], "rule", "\"A number is never changed and never used again. A script API row keeps its number, name and signature; new rows are added at the end.\"", false);
+  // limits
+  names := [18] string.["module_bytes", "memory_pages", "state_slots", "state_bytes", "module_functions", "function_locals", "block_nesting", "call_fuel", "tick_fuel", "strikes", "scripts", "things", "events", "commands", "value_slots", "call_depth", "manifest_bytes", "rollback_chunk"];
+  values := [18] int.[WM_BYTES, WM_PAGES, WM_SLOTS, SH_STATE, WM_FUNCS, WM_LOCALS, WM_NEST, SH_CALL_FUEL, SH_TICK_FUEL, SH_STRIKES, SH_SCRIPTS, SH_THINGS, SH_EVENTS, SH_COMMANDS, WI_STACK, WI_FRAMES, SM_TEXT, WI_CHUNK];
+  jo_start(o[..], row); jo_obj(o[..]);
+  for name, i: names { jo_key(o[..], name); jo_int(o[..], values[i]); }
+  jo_end(o[..]); spf_member(out, w[..], "limits", jo_text(o[..]), false);
+  // handlers
+  spf_put(out, w[..], " \"handlers\": [\n");
+  for name, h: RH_NAMES {
+    jo_start(o[..], row); jo_obj(o[..]);
+    jo_key(o[..], "number"); jo_int(o[..], h); jo_key(o[..], "name"); jo_str(o[..], name); jo_key(o[..], "export"); jo_str(o[..], RS_NAMES[RS_FIRST_HANDLER + h]);
+    jo_key(o[..], "params"); jo_arr(o[..]); jo_str(o[..], "i64"); jo_str(o[..], "i32");
+    for e: 0..<2 { if RH_EXTRA[h * 2 + e] != 0 { jo_str(o[..], spf_type_name(RH_EXTRA[h * 2 + e])); } }
+    jo_end(o[..]); jo_end(o[..]);
+    spf_put(out, w[..], "  "); spf_put(out, w[..], jo_text(o[..])); spf_put(out, w[..], ifx h == RS_HANDLERS - 1 then "\n" else ",\n");
+  }
+  spf_put(out, w[..], " ],\n");
+  jo_start(o[..], row); jo_arr(o[..]); for name: WM_REFUSAL_NAMES { jo_str(o[..], name); } jo_end(o[..]); spf_member(out, w[..], "refusals", jo_text(o[..]), false);
+  jo_start(o[..], row); jo_arr(o[..]); for name: WI_STATUS_NAMES { jo_str(o[..], name); } jo_end(o[..]); spf_member(out, w[..], "statuses", jo_text(o[..]), false);
+  spf_put(out, w[..], " \"diagnostics\": [\n");
+  for name, c: SD_NAMES {
+    if c == 0 { continue; }
+    jo_start(o[..], row); jo_obj(o[..]);
+    jo_key(o[..], "number"); jo_int(o[..], c); jo_key(o[..], "id"); jo_str(o[..], SD_IDS[c]); jo_key(o[..], "name"); jo_str(o[..], name);
+    jo_key(o[..], "retry"); jo_bool(o[..], SD_RETRY[c]); jo_key(o[..], "means"); jo_str(o[..], SD_MEANS[c]);
+    jo_end(o[..]);
+    spf_put(out, w[..], "  "); spf_put(out, w[..], jo_text(o[..])); spf_put(out, w[..], ifx c == SD_CODES - 1 then "\n" else ",\n");
+  }
+  spf_put(out, w[..], " ],\n \"api\": [\n");
+  for call, r: SCRIPT_API {
+    jo_start(o[..], row); jo_obj(o[..]);
+    jo_key(o[..], "row"); jo_int(o[..], r); jo_key(o[..], "name"); jo_str(o[..], call.name); jo_key(o[..], "params"); jo_str(o[..], call.params);
+    jo_key(o[..], "result"); jo_str(o[..], call.result); jo_key(o[..], "effect"); jo_str(o[..], call.effect); jo_key(o[..], "cost"); jo_int(o[..], call.cost);
+    jo_end(o[..]);
+    spf_put(out, w[..], "  "); spf_put(out, w[..], jo_text(o[..])); spf_put(out, w[..], ifx r == SA_ROWS - 1 then "\n" else ",\n");
+  }
+  spf_put(out, w[..], " ],\n");
+  spf_member(out, w[..], "frame", "{\"id\": \"script.frame.v1\", \"magic\": \"SFR1\", \"endian\": \"little\", \"head_bytes\": 68, \"thing_bytes\": 120, \"event_bytes\": 24, \"max_bytes\": 32324, \"head\": \"magic u32, things u16, events u16, tick s64, seed s64, dt f32, time f32, day f32, world 8 x f32\", \"thing\": \"id u64, kind s32, team s32, script s32, flags u32 (bit 0: alive), x y z facing speed health reach f32, goal x, goal z, goal speed, notice f32, plan on s32, vars 4 x f32, points x 4 x f32, points z 4 x f32\", \"event\": \"handler s32, thing u64, other u64, amount f32\"}", false);
+  spf_member(out, w[..], "result", "{\"id\": \"script.result.v1\", \"magic\": \"SRS1\", \"endian\": \"little\", \"head_bytes\": 24, \"command_bytes\": 36, \"diag_bytes\": 44, \"max_bytes\": 19160, \"head\": \"magic u32, commands u16, diagnostics u16, more diagnostics s32, budget left s32, calls s32, failed s32\", \"command\": \"op s32 (the API row), i s32, thing u64, target u64, a b c f32\", \"diag\": \"code status-free s32 x 6 (code, script, handler, status, line, detail), thing u64, tick s64, used s32\"}", false);
+  // fixtures
+  rows := SPF_ROWS; tick := SPF_TICK; echo := WB_ECHO;
+  n := wb_module(k[0].made[..], rows[..], tick[..], 0, echo[..]);
+  if n < 0 || sh_load(k[0].s[0..<1], k[0].s[1..<2], k[0].made[0..<n], ScriptLayout.{}) != 0 { return ""; }
+  spf_put(out, w[..], " \"fixtures\": {\n  \"about\": \"A module whose tick is sa_move(me, sa_x(me), dt, dt), its manifest, a frame of two things and one event, and the result of running the module over the frame.\",\n  \"module_hex\": \"");
+  spf_hex(out, w[..], k[0].made[0..<n]);
+  spf_put(out, w[..], "\",\n  \"manifest\": ");
+  text := sm_write(sm_of(k[0].s[0..<1], "fixture", ScriptLayout.{}), k[0].text[..]);
+  back: [1] ScriptManifest;
+  if text == "" || !sm_read(text, back[..]) { return ""; }
+  jo_start(o[..], row); jo_str(o[..], text); spf_put(out, w[..], jo_text(o[..]));
+  spf_frame(k[0].f[..]);
+  fn := sf_write(k[0].f[..], k[0].bytes[..]);
+  again: [1] ScriptFrame;
+  if fn < 0 || !sf_read(k[0].bytes[0..<fn], again[..]) { return ""; }
+  spf_put(out, w[..], ",\n  \"frame_hex\": \""); spf_hex(out, w[..], k[0].bytes[0..<fn]);
+  sh_tick(k[0].s[0..<1], k[0].run[..], k[0].f[..]);
+  rn := sr_write(k[0].run[..], k[0].bytes[..]);
+  if rn < 0 || k[0].run[0].n_commands != 1 || k[0].run[0].failed != 0 { return ""; }
+  spf_put(out, w[..], "\",\n  \"result_hex\": \""); spf_hex(out, w[..], k[0].bytes[0..<rn]);
+  spf_put(out, w[..], "\"\n }\n}\n");
+  if w[0].full { return ""; }
+  return cast(string) out[0..<w[0].n];
+}
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) < 1 || args_count(a[..]) > 2 || (args_count(a[..]) == 2 && args_at(a[..], 1) != "--write") {
+    tool_errln("usage: script-profile.coax PROFILE.json [--write]");
+    return 2;
+  }
+  path := args_at(a[..], 0); write := args_count(a[..]) == 2;
+  work: [1] SpfWork; made: [SPF_BYTES] u8; have: [SPF_BYTES] u8;
+  text := spf_text(work[..], made[..]);
+  if text == "" { tool_errln("script-profile: the profile could not be written from the code"); return 1; }
+  n := fs_read(path, have[..]);
+  if n >= 0 && cast(string) have[0..<n] == text { print("script-profile: % is what the code writes (% bytes)\n", path, text.count); return 0; }
+  if write {
+    if !fs_write(path, text) { tool_err("script-profile: cannot write "); tool_errln(path); return 2; }
+    print("wrote %\n", path);
+    return 0;
+  }
+  print("script-profile: % is not what the code writes now. If the change is meant, write it: % --write\n", path, SPF_CHECK);
+  return 1;
+}

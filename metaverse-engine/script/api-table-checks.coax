@@ -1,0 +1,35 @@
+// Checks of the script API table (api-table.coax).
+#test "every row has a known effect, a parseable signature, a cost and help, and a name of its own" {
+  types: [8] u8;
+  for c, i: SCRIPT_API {
+    #assert c.name.count > 3 && c.name[0] == 's' && c.name[1] == 'a' && c.name[2] == '_';
+    #assert sa_effect_bit(c.effect) != 0 && c.help.count > 8 && c.cost >= 0 && c.cost <= 64;
+    #assert sa_params(c.params, types[..]) >= 0;
+    #assert c.result == "" || sa_type(c.result) != 0;
+    #assert sa_row(c.name) == i;
+  }
+  #assert sa_row("sa_nothing") == -1 && sa_row("") == -1;
+}
+#test "the row numbers the host switches on are their names' rows" {
+  names := [SA_ROWS] string.["sa_trap", "sa_count", "sa_at", "sa_alive", "sa_kind", "sa_team", "sa_x", "sa_y", "sa_z", "sa_facing", "sa_speed", "sa_health", "sa_var", "sa_point_x", "sa_point_z", "sa_goal_x", "sa_goal_z", "sa_goal_speed", "sa_notice", "sa_plan_on", "sa_distance", "sa_near", "sa_time", "sa_day", "sa_world", "sa_random", "sa_move", "sa_stop", "sa_face", "sa_set_var", "sa_timer", "sa_strike", "sa_say", "sa_emit"];
+  for name, i: names { #assert SCRIPT_API[i].name == name; }
+  #assert SA_TRAP == 0 && SA_NEAR == 21 && SA_RANDOM == 25 && SA_MOVE == 26 && SA_TIMER == 30 && SA_EMIT == 33;
+}
+#test "a write or an engine call names the thing it is for first, and returns nothing" {
+  types: [8] u8;
+  for c: SCRIPT_API {
+    if c.effect != "write" && c.effect != "engine" { continue; }
+    #assert c.result == "" && sa_params(c.params, types[..]) >= 1 && types[0] == SA_I64;
+    #assert c.params.count >= 10 && c.params[0..<10] == "thing: u64";
+  }
+}
+#test "parameter text maps to value types, and malformed text refuses" {
+  t: [4] u8;
+  #assert sa_params("", t[..]) == 0;
+  #assert sa_params("thing: u64, slot: s32, value: f32", t[..]) == 3 && t[0] == SA_I64 && t[1] == SA_I32 && t[2] == SA_F32;
+  #assert sa_params("on: bool", t[..]) == 1 && t[0] == SA_I32;
+  #assert sa_params("thing u64", t[..]) == -1 && sa_params("thing: f64", t[..]) == -1 && sa_params(": u64", t[..]) == -1;
+  #assert sa_params("a: u64,b: u64", t[..]) == -1 && sa_params("a: u64, ", t[..]) == -1 && sa_params("a:u64", t[..]) == -1;
+  #assert sa_params("a: s32, b: s32, c: s32, d: s32, e: s32", t[..]) == -1;
+  #assert sa_type("u64") == 126 && sa_type("s32") == 127 && sa_type("f32") == 125 && sa_type("string") == 0;
+}

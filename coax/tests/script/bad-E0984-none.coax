@@ -1,0 +1,5 @@
+// expect: E0984 exports no handler
+#script "none";
+#load "api.coax";
+Mind :: struct #persisted { n: int; }
+quiet :: (a: int) -> int { return a; }

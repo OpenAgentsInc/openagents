@@ -1,0 +1,6 @@
+// expect: E0982 clock_now
+#script "clock";
+#load "api.coax";
+Mind :: struct #persisted { n: int; }
+clock_now :: () -> int #foreign #effects(foreign, clock);
+on_tick :: (me: u64, mind: [] Mind, dt: f32) #export_c #effects(reads, writes, traps) { mind[0].n += 1; }

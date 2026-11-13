@@ -181,6 +181,13 @@ struct EffectFacts {
 // Old source is inspected under its original declaration profile by compat;
 // every normal build requires explicit boundary and authority contracts.
 static bool g_require_effect_declarations = true;
+// ---- Realm scripts (coax/script-profile.md) ----
+// The compilation is a realm script when its entry unit declares #script. The
+// Coax profile (lib/compiler/script-profile.coax) owns every decision; the
+// bootstrap compiler has no profile and never sees a script unit.
+static uint8_t script_unit_kind(const File *file,Loc loc){const auto *u=source_unit_at(file->src,loc);return u?u->script:0;}
+static bool script_compilation(const File *file){return !file->src->units.empty()&&file->src->units[0]->script==1;}
+static Loc script_directive(const SourceUnit &u){return {u.first_line+u.script_at.line-1,u.script_at.col,u.begin+u.script_at.offset};}
 static bool effect_contracts(const File *file,const EmitOptions &opts) {
   if(file->has_transactions&&opts.quantity_device){error_at(file->src,{1,1,0},"E0971","transaction undo scopes are not qualified for device output");return false;}
   auto unit=[&](const ProcDecl *p){const auto *u=source_unit_at(file->src,p->loc);return u?u->canonical:std::string();};
@@ -208,11 +215,28 @@ static bool effect_contracts(const File *file,const EmitOptions &opts) {
   std::vector<coax_t_EC_Procedure> procedures(n);
   std::vector<coax_t_EC_Edge> edges;for(const auto &e:f.edges)edges.push_back({e.from,e.to});
   std::vector<coax_t_EC_Site> sites;for(const auto &s:f.sites)sites.push_back({s.procedure,EC_observe(s.kind,opts.wrapping)});
+  const bool script=script_compilation(file);std::vector<uint8_t> script_roots(n,0);
   for(size_t i=0;i<n;i++){
     const auto *p=f.procedures[i];auto &row=procedures[i];row.declared=p->effect_present;row.foreign=p->foreign;
     bool check=false;for(const auto *c:file->checks)check=check||c->proc==p;
     row.required=EC_required(g_require_effect_declarations,p->authority,p->export_c,p->foreign,check||to_std(p->name)=="main");
     row.allowed=f.transaction_roots.count(p)?TX_effects():declaration(p);
+#ifndef COAX_BOOTSTRAP_IMPORTER
+    if(!script||check)continue;
+    const uint8_t kind=script_unit_kind(file,p->loc);
+    if(kind==2&&p->foreign){
+      // An API import: the script that calls it is charged its declared effects, without `foreign`.
+      const int64_t charged=SP_import(p->effect_present,row.allowed);
+      if(charged<0){error_at(file->src,p->loc,"E0982","script API import '"+to_std(p->name)+"' declares its effects within foreign, reads, writes and traps","write #foreign #effects(foreign, reads); or #effects(foreign, writes);");valid=false;continue;}
+      row.foreign=false;row.declared=true;row.required=false;row.allowed=(uint32_t)charged;
+      for(size_t k=0;k<f.sites.size();k++)if(f.sites[k].procedure==(int64_t)i&&f.sites[k].kind==2)sites[k].effects=(uint32_t)charged;
+    }else if(kind==1&&!f.transaction_roots.count(p)){
+      // A script's procedure: bounded whether or not it says so.
+      const uint32_t bits=p->effect_present?row.allowed:SP_bound();
+      if(!SP_within(bits)){error_at(file->src,p->effect_loc,"E0981","realm script procedure '"+to_std(p->name)+"' may declare only reads, writes and traps","write #effects(reads, writes, traps), or leave the declaration out");valid=false;continue;}
+      row.declared=true;row.required=true;row.allowed=bits;script_roots[i]=1;
+    }
+#endif
   }
   if(!valid)return false;
   // Each root's trace reads the graph and writes its own scratch: the roots
@@ -245,9 +269,135 @@ static bool effect_contracts(const File *file,const EmitOptions &opts) {
     std::vector<int64_t> path;for(int64_t at=r.terminal;at>=0;at=parent.at((size_t)at))path.push_back(at);
     std::reverse(path.begin(),path.end());std::string calls;
     for(int64_t at:path){if(!calls.empty())calls+=" -> ";calls+=to_std(f.procedures[(size_t)at]->name);}
-    error_at(file->src,p->effect_loc,"E0941","effect contract of '"+to_std(p->name)+"' excludes "+missing+"; call path: "+calls);valid=false;
+    if(script_roots[root])error_at(file->src,p->effect_present?p->effect_loc:p->loc,"E0981","realm script procedure '"+to_std(p->name)+"' may only read, write and trap; it reaches "+missing+"; call path: "+calls,"a realm script computes and calls the script API: no printing, clock, native call or unchecked storage");
+    else error_at(file->src,p->effect_loc,"E0941","effect contract of '"+to_std(p->name)+"' excludes "+missing+"; call path: "+calls);
+    valid=false;
   }
   return valid;
+}
+
+// What a script compilation is, for the manifest and the module face: the
+// handlers it exports, its state record and the API imports it can reach.
+struct ScriptShape {
+  std::string name;
+  std::vector<const ProcDecl *> handlers;  // by handler number; null when absent
+  Type state = nullptr;                    // the handlers' state record
+  std::vector<const ProcDecl *> imports;   // API imports some handler reaches, in declaration order
+};
+// The structural rules: placement of #foreign and #export_c, handler
+// signatures, one fixed-size state record, and no recursion. Effects are
+// bounded by effect_contracts.
+static bool script_profile(const File *file,ScriptShape *shape=nullptr) {
+#ifdef COAX_BOOTSTRAP_IMPORTER
+  (void)file;(void)shape;return true;
+#else
+  const auto &units=file->src->units;if(units.empty())return true;
+  bool valid=true;
+  for(size_t i=1;i<units.size();i++)if(units[i]->script==1){
+    error_at(file->src,script_directive(*units[i]),"E0980","realm script '"+units[i]->script_name+"' is loaded by another unit; a script is the entry file of its own compilation","compile the script by itself; share code through a library unit both load");valid=false;
+  }
+  if(units[0]->script!=1)return valid;
+  const Loc script_loc=script_directive(*units[0]);
+  auto is_check=[&](const ProcDecl *p){for(const auto *c:file->checks)if(c->proc==p)return true;return p->check_unit;};
+  const int64_t handler_count=SP_handlers();
+  std::vector<const ProcDecl *> handlers((size_t)handler_count,nullptr);Type state=nullptr;
+  std::string names;for(int64_t h=0;h<handler_count;h++){auto n=SP_handler_name(h);if(h)names+=", ";names.append(n.data,(size_t)n.count);}
+  for(const auto *p:file->procs){
+    if(is_check(p))continue;
+    const uint8_t kind=script_unit_kind(file,p->loc);const std::string name=to_std(p->name);
+    const int64_t handler=SP_handler({name.data(),(int64_t)name.size()});
+    const uint32_t verdict=SP_proc(kind,p->foreign,p->export_c,handler>=0,name=="main");
+    if(verdict==1){error_at(file->src,p->loc,"E0982","#foreign '"+name+"' is outside the script API; a realm script reaches native code only through a #script_api unit","call a procedure of the script API instead");valid=false;continue;}
+    if(verdict==2){error_at(file->src,p->loc,"E0984","'"+name+"' is exported, but a realm script exports only its handlers, from its own unit","the handlers are "+names);valid=false;continue;}
+    if(verdict==3){error_at(file->src,p->loc,"E0984","a realm script has no main; the engine calls its handlers","the handlers are "+names);valid=false;continue;}
+    if(kind!=1||!p->export_c)continue;
+    // A handler: (me: u64, mind: [] State, then its own parameters), no result.
+    std::string want="(me: u64, mind: [] State";
+    int32_t extra=0;for(;extra<2;extra++){const uint32_t k=SP_handler_param(handler,extra);if(!k)break;want+=k==1?", other: u64":k==2?", amount: f32":", timer: s32";}
+    want+=")";
+    bool shape_ok=p->ret==&T_VOID&&p->params.count==2+extra&&p->params[0].type==&T_U64;
+    for(int32_t k=0;shape_ok&&k<extra;k++){const uint32_t want_kind=SP_handler_param(handler,k);Type t=p->params[2+k].type;shape_ok=want_kind==1?t==&T_U64:want_kind==2?t==&T_F32:t==&T_S32;}
+    if(!shape_ok){error_at(file->src,p->loc,"E0984","handler '"+name+"' takes "+want+" and returns nothing","write "+name+" :: "+want+" #export_c #effects(reads, writes, traps) { ... }");valid=false;continue;}
+    Type view=p->params[1].type;
+    const bool fixed=view->kind==TypeKind::view&&view->length==0&&view->elem&&view->elem->kind==TypeKind::struct_&&view->elem->struct_decl&&view->elem->struct_decl->persisted&&script_unit_kind(file,view->elem->struct_decl->loc)==1;
+    if(!fixed){error_at(file->src,p->params[1].loc,"E0985","handler '"+name+"' takes its state as a writable view of a #persisted struct the script declares","declare Mind :: struct #persisted { ... } with scalars, enums and fixed arrays, and take mind: [] Mind");valid=false;continue;}
+    if(state&&state!=view->elem){error_at(file->src,p->params[1].loc,"E0985","a realm script has one state record; '"+name+"' takes "+std::string(type_name(view->elem))+" where another handler takes "+std::string(type_name(state)),"give every handler the same state type");valid=false;continue;}
+    state=view->elem;handlers[(size_t)handler]=p;
+  }
+  bool any=false;for(const auto *h:handlers)any=any||h;
+  if(valid&&!any){error_at(file->src,script_loc,"E0984","realm script '"+units[0]->script_name+"' exports no handler","the handlers are "+names);valid=false;}
+  if(!valid)return false;
+  // No recursion from any procedure the script declares.
+  EffectFacts f{file,true};f.collect();const size_t n=f.procedures.size();
+  std::vector<coax_t_SP_Edge> edges;for(const auto &e:f.edges)edges.push_back({e.from,e.to});
+  std::vector<uint8_t> seen(n);std::vector<int64_t> stack(n),cursor(n);
+  for(size_t root=0;root<n;root++){
+    const auto *p=f.procedures[root];if(script_unit_kind(file,p->loc)!=1||is_check(p))continue;
+    const int64_t at=SP_cycle((int64_t)n,{edges.data(),(int64_t)edges.size()},(int64_t)root,{seen.data(),(int64_t)n},{stack.data(),(int64_t)n},{cursor.data(),(int64_t)n});
+    if(at==-2){error_at(file->src,p->loc,"E0983","the script's call graph was refused");return false;}
+    if(at<0)continue;
+    error_at(file->src,p->loc,"E0983","realm script procedure '"+to_std(p->name)+"' reaches recursion through '"+to_std(f.procedures[(size_t)at]->name)+"'","a realm script's stack has a known bound: use a loop over a fixed array instead");
+    return false;
+  }
+  if(shape){
+    shape->name=units[0]->script_name;shape->handlers=handlers;shape->state=state;
+    // The imports some handler reaches: a breadth-first walk of the call edges.
+    std::vector<uint8_t> reached(n,0);std::vector<size_t> work;
+    for(size_t i=0;i<n;i++)for(const auto *h:handlers)if(h&&f.procedures[i]==h&&!reached[i]){reached[i]=1;work.push_back(i);}
+    while(!work.empty()){const size_t at=work.back();work.pop_back();for(const auto &e:f.edges)if((size_t)e.from==at&&!reached[(size_t)e.to]){reached[(size_t)e.to]=1;work.push_back((size_t)e.to);}}
+    for(const auto *p:file->procs)if(p->foreign)for(size_t i=0;i<n;i++)if(f.procedures[i]==p&&reached[i])shape->imports.push_back(p);
+  }
+  return true;
+#endif
+}
+
+// `coax script FILE`: the manifest (coax.script.v1) of a realm script, or with
+// --face the C that gives its module flat exports: rs_abi, rs_state,
+// rs_state_size, rs_slots and one rs_<handler> for each handler it declares.
+// The state of every thing a script drives is one static array in the module.
+static bool script_report(const File *file,bool face,std::string *text) {
+#ifdef COAX_BOOTSTRAP_IMPORTER
+  (void)file;(void)face;(void)text;
+  fprintf(stderr,"coax: realm scripts are unavailable in the bootstrap compiler\n");return false;
+#else
+  if(!script_compilation(file)){fprintf(stderr,"coax: not a realm script: the entry file declares no #script \"name\";\n");return false;}
+  ScriptShape shape;if(!script_profile(file,&shape))return false;
+  std::string out;
+  if(face){
+    const std::string record=c_type(shape.state);
+    out="/* Generated by `coax script --face`: the flat exports of realm script '"+shape.name+"'. */\n#include \"script.h\"\n#ifndef RS_SLOTS\n#define RS_SLOTS 64\n#endif\n#define RS_EXPORT(name) __attribute__((export_name(name)))\n";
+    out+="static "+record+" rs_minds[RS_SLOTS];\n";
+    out+="RS_EXPORT(\"rs_abi\") int32_t rs_abi(void) { return 1; }\n";
+    out+="RS_EXPORT(\"rs_state\") int32_t rs_state(void) { return (int32_t)(uintptr_t)rs_minds; }\n";
+    out+="RS_EXPORT(\"rs_state_size\") int32_t rs_state_size(void) { return (int32_t)sizeof("+record+"); }\n";
+    out+="RS_EXPORT(\"rs_slots\") int32_t rs_slots(void) { return RS_SLOTS; }\n";
+    for(size_t h=0;h<shape.handlers.size();h++){
+      const auto *p=shape.handlers[h];if(!p)continue;
+      const std::string name=to_std(p->name);std::string params,args;
+      for(int32_t k=2;k<p->params.count;k++){params+=", "+c_type(p->params[k].type)+" a"+std::to_string(k);args+=", a"+std::to_string(k);}
+      out+="RS_EXPORT(\"rs_"+name+"\") void rs_"+name+"(uint64_t me, int32_t slot"+params+") { if ((uint32_t)slot >= RS_SLOTS) __builtin_trap(); "+name+"(me, ("+c_type(p->params[1].type)+"){&rs_minds[slot], 1}"+args+"); }\n";
+    }
+  }else{
+    out="{\"schema\":\"coax.script.v1\",\"name\":"+json_string(shape.name)+",\"handlers\":[";
+    bool comma=false;
+    for(const auto *p:shape.handlers)if(p){out+=(comma?",":"")+json_string(to_std(p->name));comma=true;}
+    out+="],\"state\":{\"type\":"+json_string(type_name(shape.state))+",\"size\":"+std::to_string(shape.state->size)+",\"align\":"+std::to_string(shape.state->align)+",\"fields\":[";
+    // The record's own fields, so a code swap keeps each one whose name, type and size are unchanged.
+    comma=false;
+    for(const auto &field:shape.state->struct_decl->fields){
+      out+=(comma?",":"")+std::string("{\"name\":")+json_string(to_std(field.name))+",\"type\":"+json_string(type_name(field.type))+",\"at\":"+std::to_string(field.offset)+",\"size\":"+std::to_string(field.type->size)+"}";comma=true;
+    }
+    out+="]},\"imports\":[";
+    comma=false;
+    for(const auto *p:shape.imports){
+      out+=(comma?",":"")+std::string("{\"name\":")+json_string(to_std(p->name))+",\"effects\":[";comma=true;
+      bool inner=false;for(const auto &e:p->effect_names){const std::string name=to_std(e.name);if(name=="foreign")continue;out+=(inner?",":"")+json_string(name);inner=true;}
+      out+="]}";
+    }
+    out+="]}\n";
+  }
+  *text=std::move(out);return true;
+#endif
 }
 
 static bool effects_report(const Source *,const File *file,const EmitOptions &opts,const std::string &selected,std::string *text) {

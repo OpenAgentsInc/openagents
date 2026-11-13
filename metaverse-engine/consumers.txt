@@ -55,3 +55,7 @@ book metaverse-engine/audio/score.coax metaverse-engine/book/ch067-scores-mixing
 book metaverse-engine/audio/epic.coax metaverse-engine/book/ch067-scores-mixing-and-a-soundtrack.md
 book metaverse-engine/audio/voice.coax metaverse-engine/book/ch069-voices-in-a-realm.md
 pipeline metaverse-engine/export/ metaverse-engine/tools/unreal-axes-fixture.coax  # the Unreal exporter writes worlds as glTF (#13399; the world exporter is #13400)
+
+# Realm scripts (#13467): the module check, the interpreter, the host and the manifest. Until a realm loads the frame
+# codec and a page module loads the host, their consumers are the build tool and the checks.
+adopt metaverse-engine/script/ #13467  # stage 2 loads the host from the page's script module and the frame codec from Splice; stage 4 from the room

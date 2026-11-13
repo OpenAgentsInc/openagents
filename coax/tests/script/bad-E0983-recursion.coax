@@ -1,0 +1,6 @@
+// expect: E0983 lib_down
+#script "deep";
+#load "api.coax";
+#load "lib.coax";
+Mind :: struct #persisted { n: int; }
+on_tick :: (me: u64, mind: [] Mind, dt: f32) #export_c #effects(reads, writes, traps) { mind[0].n = lib_down(mind[0].n); }

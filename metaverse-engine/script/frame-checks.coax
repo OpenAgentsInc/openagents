@@ -1,0 +1,77 @@
+// Checks of the frame and result codecs (frame.coax).
+fk_frame :: (f: [] ScriptFrame) {
+  f[0] = ScriptFrame.{tick = 12345678901, seed = -7, dt = 0.0333, time = 99.5, day = 0.25, n_things = 3, n_events = 2};
+  for i: 0..<SH_WORLD { f[0].world[i] = cast(f32) i * 1.5; }
+  for i: 0..<3 {
+    t := ScriptThing.{id = cast(u64) (1000 + i), kind = cast(s32) i, team = cast(s32) (0 - i), script = cast(s32) (i - 1), alive = i != 1, x = cast(f32) i, y = 0.5, z = -2.0, facing = 3.0, speed = 4.25, health = 2.0, reach = 6.0, goal_x = cast(f32) i + 0.5, goal_z = -7.5, goal_speed = 1.25, notice = 5.0, plan_on = cast(s32) (i - 1)};
+    for k: 0..<SH_VARS { t.vars[k] = cast(f32) (k + i); }
+    for k: 0..<SH_POINTS { t.px[k] = cast(f32) (10 + k); t.pz[k] = cast(f32) (20 + k + i); }
+    f[0].things[i] = t;
+  }
+  f[0].events[0] = ScriptEvent.{handler = RH_HIT, thing = 1000, other = 1002, amount = 1.5};
+  f[0].events[1] = ScriptEvent.{handler = RH_USE, thing = 1002, other = 18446744073709551615, amount = 0.0};
+}
+#test "a frame's bytes read back to the same frame, and are the stated length" {
+  a: [1] ScriptFrame; b: [1] ScriptFrame; bytes: [SF_BYTES] u8;
+  fk_frame(a[..]);
+  n := sf_write(a[..], bytes[..]);
+  #assert n == SF_HEAD + 3 * SF_THING + 2 * SF_EVENT && bytes[0] == 'S' && bytes[1] == 'F' && bytes[2] == 'R' && bytes[3] == '1';
+  #assert sf_read(bytes[0..<n], b[..]);
+  #assert b[0].tick == 12345678901 && b[0].seed == -7 && b[0].dt == a[0].dt && b[0].time == 99.5 && b[0].day == 0.25 && b[0].n_things == 3 && b[0].n_events == 2;
+  for i: 0..<SH_WORLD { #assert b[0].world[i] == a[0].world[i]; }
+  for i: 0..<3 {
+    x := a[0].things[i]; y := b[0].things[i];
+    #assert x.id == y.id && x.kind == y.kind && x.team == y.team && x.script == y.script && x.alive == y.alive;
+    #assert x.x == y.x && x.y == y.y && x.z == y.z && x.facing == y.facing && x.speed == y.speed && x.health == y.health && x.reach == y.reach;
+    #assert x.goal_x == y.goal_x && x.goal_z == y.goal_z && x.goal_speed == y.goal_speed && x.notice == y.notice && x.plan_on == y.plan_on;
+    for k: 0..<SH_VARS { #assert x.vars[k] == y.vars[k]; }
+    for k: 0..<SH_POINTS { #assert x.px[k] == y.px[k] && x.pz[k] == y.pz[k]; }
+  }
+  #assert b[0].events[0].handler == RH_HIT && b[0].events[0].other == 1002 && b[0].events[0].amount == 1.5 && b[0].events[1].other == 18446744073709551615;
+  // Writing what was read gives the same bytes.
+  again: [SF_BYTES] u8; m := sf_write(b[..], again[..]);
+  #assert m == n;
+  for i: 0..<n { #assert again[i] == bytes[i]; }
+}
+#test "a frame that is short, long, over a limit or not a frame is refused" {
+  a: [1] ScriptFrame; b: [1] ScriptFrame; bytes: [SF_BYTES] u8;
+  fk_frame(a[..]);
+  n := sf_write(a[..], bytes[..]);
+  #assert !sf_read(bytes[0..<n - 1], b[..]) && !sf_read(bytes[0..<n + 1], b[..]) && !sf_read(bytes[0..<3], b[..]) && !sf_read(bytes[0..<0], b[..]);
+  bytes[0] = 'X'; #assert !sf_read(bytes[0..<n], b[..]); bytes[0] = 'S';
+  bytes[4] = 1; bytes[5] = 1;   // 257 things
+  #assert !sf_read(bytes[0..<n], b[..]);
+  small: [100] u8;
+  #assert sf_write(a[..], small[..]) == -1;
+  a[0].n_things = SH_THINGS + 1; #assert sf_write(a[..], bytes[..]) == -1;
+  a[0].n_things = 0; a[0].n_events = 0;
+  #assert sf_write(a[..], bytes[..]) == SF_HEAD && sf_read(bytes[0..<SF_HEAD], b[..]) && b[0].n_things == 0;
+}
+#test "a result's bytes read back to the same commands and diagnostics" {
+  a: [1] ScriptRun; b: [1] ScriptRun; bytes: [SR_BYTES] u8;
+  a[0].fuel = 399000; a[0].calls = 9; a[0].failed = 1; a[0].more_diags = 2; a[0].n_commands = 2; a[0].n_diags = 1;
+  a[0].commands[0] = ScriptCommand.{op = SA_MOVE, thing = 1000, a = 1.5, b = -2.5, c = 3.0};
+  a[0].commands[1] = ScriptCommand.{op = SA_STRIKE, thing = 1001, target = 1000, i = -3};
+  a[0].diags[0] = ScriptDiag.{code = SD_TRAP, script = 2, handler = RH_TICK, status = 3, line = 41, detail = -1, thing = 1001, tick = 77, used = 1234};
+  n := sr_write(a[..], bytes[..]);
+  #assert n == SR_HEAD + 2 * SR_COMMAND + SR_DIAG && sr_read(bytes[0..<n], b[..]);
+  #assert b[0].fuel == 399000 && b[0].calls == 9 && b[0].failed == 1 && b[0].more_diags == 2 && b[0].n_commands == 2 && b[0].n_diags == 1;
+  #assert b[0].commands[0].op == SA_MOVE && b[0].commands[0].a == 1.5 && b[0].commands[0].b == -2.5 && b[0].commands[0].c == 3.0 && b[0].commands[1].target == 1000 && b[0].commands[1].i == -3;
+  d := b[0].diags[0];
+  #assert d.code == SD_TRAP && d.script == 2 && d.handler == RH_TICK && d.status == 3 && d.line == 41 && d.detail == -1 && d.thing == 1001 && d.tick == 77 && d.used == 1234;
+  #assert !sr_read(bytes[0..<n - 1], b[..]) && !sr_read(bytes[0..<n + 1], b[..]);
+  bytes[1] = 'F'; #assert !sr_read(bytes[0..<n], b[..]);
+  #assert SF_BYTES == 32324 && SR_BYTES == 19160;
+}
+#test "every diagnostic has an id that carries its name, and words for what it means" {
+  for name, i: SD_NAMES {
+    if i == 0 { #assert SD_IDS[0] == "" && SD_MEANS[0] == ""; continue; }
+    id := SD_IDS[i]; head := "engine.diagnostic.script-";
+    #assert id.count == head.count + name.count + 3 && id[0..<head.count] == head && id[head.count..<head.count + name.count] == name && id[id.count - 3..<id.count] == ".v1";
+    #assert SD_MEANS[i].count > 20;
+  }
+  #assert SD_RETRY[SD_TICK_BUDGET] && SD_RETRY[SD_COMMANDS_FULL] && !SD_RETRY[SD_TRAP] && !SD_RETRY[SD_SWITCHED_OFF];
+}
+#test "the diagnostic names cover every code" {
+  #assert SD_NAMES.count == SD_CODES && SD_NAMES[SD_OVER_BUDGET] == "over-budget" && SD_NAMES[SD_FACE] == "bad-face" && SD_NAMES[SD_NOT_YOURS] == "not-yours";
+}

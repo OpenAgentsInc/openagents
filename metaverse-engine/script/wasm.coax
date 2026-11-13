@@ -1,0 +1,453 @@
+// The module check for realm scripts (GitHub #13467, docs/research/2026-11-13-realm-scripts.md,
+// docs/protocol/realm-script-v1.md): a server, a page and a room hand this the bytes of a WebAssembly
+// module and get back either a description the interpreter (interp.coax) can run or a typed refusal.
+// It trusts nothing about where the bytes came from: not the source, not the compiler. A module passes
+// only when
+//   - it is at most WM_BYTES long and every section, count and immediate decodes inside it;
+//   - every import is a row of the script API (api-table.coax): module "env", the row's name, the
+//     row's signature. A module can call nothing else, so it can do nothing else;
+//   - it has one memory with a stated maximum of at most WM_PAGES pages, no start function and no
+//     element or passive data. The linker always writes one function table; it is admitted empty, and
+//     nothing can fill or call through it (no element section, no call_indirect);
+//   - its exports are the module face's (rs_abi, rs_state, rs_state_size, rs_slots and rs_<handler>),
+//     each with its exact signature, with at least one handler;
+//   - every instruction is one of the WebAssembly 1.0 instructions listed in wm_body, and every index
+//     it names (local, global, function, label depth) exists.
+// Operand types are not checked here. The interpreter owns the value stack and the memory and checks
+// both on every step, so a module that confuses types computes nonsense inside its own sandbox and
+// nothing else (the fuzzer, metaverse-engine/tools/script-fuzz.coax, runs such modules by the million).
+//
+// Nothing here allocates or traps: every read is bounds-checked first and every refusal is a value.
+//   coax/bin/coax test metaverse-engine/script/wasm.coax --library
+
+#load "api-table.coax";
+
+// ---- limits (stated on screen: the editor's script pane and docs/protocol/realm-script-v1.md) ----
+WM_BYTES :: 65536;     // a module's bytes
+WM_PAGES :: 4;         // its memory, in 64 KiB pages
+WM_PAGE :: 65536;
+WM_TYPES :: 64;
+WM_FUNCS :: 512;       // the functions it defines
+WM_IMPORTS :: 40;
+WM_GLOBALS :: 8;
+WM_DATA :: 32;
+WM_PARAMS :: 8;        // a signature's parameters
+WM_LOCALS :: 128;      // a function's parameters and locals together
+WM_NEST :: 64;         // blocks inside blocks
+WM_SLOTS :: 256;       // the things one script can drive (rs_slots)
+
+// ---- refusals (proto/registry.json: realm-script.diagnostic.*) ----
+WM_OK :: 0;
+WM_TOO_BIG :: 1;       // over WM_BYTES
+WM_MAGIC :: 2;         // not a WebAssembly 1.0 module
+WM_SECTION :: 3;       // a section that is unknown, repeated, out of order or not allowed
+WM_MALFORMED :: 4;     // an encoding that does not decode inside its bounds
+WM_LIMIT :: 5;         // more of something than a limit above
+WM_TYPE :: 6;          // a signature outside i32, i64, f32, f64 with at most one result
+WM_IMPORT :: 7;        // an import that is not a row of the script API
+WM_MEMORY :: 8;        // no memory, more than one, no maximum, or over WM_PAGES
+WM_EXPORT :: 9;        // an export that is not the module face's, or has the wrong signature
+WM_CODE :: 10;         // an instruction that is not allowed, or an index that does not exist
+WM_GLOBAL :: 11;
+WM_DATA_SEGMENT :: 12; // a data segment that is passive or lies outside the memory
+WM_NO_HANDLER :: 13;   // the face is incomplete: no handler, or rs_abi, rs_state, rs_state_size or rs_slots is missing
+WM_REFUSALS :: 14;
+WM_REFUSAL_NAMES :: [WM_REFUSALS] string.["ok", "too-big", "not-wasm", "section", "malformed", "limit", "signature", "import", "memory", "export", "instruction", "global", "data", "no-handler"];
+
+// ---- the module face ----
+RS_ABI :: 0; RS_STATE :: 1; RS_STATE_SIZE :: 2; RS_SLOTS :: 3; RS_FIRST_HANDLER :: 4;
+RS_ENTRIES :: 11;
+RS_NAMES :: [RS_ENTRIES] string.["rs_abi", "rs_state", "rs_state_size", "rs_slots", "rs_on_tick", "rs_on_enter", "rs_on_leave", "rs_on_notice", "rs_on_hit", "rs_on_use", "rs_on_timer"];
+// The handler numbers and their parameters are api-table.coax's (RH_*).
+
+WmType :: struct { np: s32; params: [WM_PARAMS] u8; result: u8; }
+// body: the offset of its first instruction; end: one past its final `end`; locals: beyond its parameters.
+WmFunc :: struct { type: s32; body: s32; end: s32; locals: s32; }
+WmGlobal :: struct { type: u8; writable: bool; init: u64; }
+WmData :: struct { to: s32; at: s32; n: s32; }
+WmModule :: struct {
+  code: int;            // WM_OK, or why it was refused
+  at: int;              // the byte the refusal is about
+  n_types: s32; n_imports: s32; n_funcs: s32; n_globals: s32; n_data: s32;
+  pages: s32;
+  powers: s32;          // the effect kinds its imports use: read 1, write 2, engine 4, trap 8
+  handlers: s32;        // bit h for handler h
+  types: [WM_TYPES] WmType;
+  import_row: [WM_IMPORTS] s32;
+  import_type: [WM_IMPORTS] s32;
+  funcs: [WM_FUNCS] WmFunc;
+  globals: [WM_GLOBALS] WmGlobal;
+  data: [WM_DATA] WmData;
+  entry: [RS_ENTRIES] s32;   // the function each face export names, -1 when absent
+}
+
+// ---- reading ----
+WmCur :: struct { at: int; end: int; ok: bool; }
+wm_byte :: (b: [] u8, c: [] WmCur) -> int {
+  if !c[0].ok || c[0].at >= c[0].end { c[0].ok = false; return 0; }
+  v := cast(int) b[c[0].at]; c[0].at += 1;
+  return v;
+}
+// An unsigned LEB128 of at most 32 bits.
+wm_u32 :: (b: [] u8, c: [] WmCur) -> int {
+  v := 0; shift := 0;
+  for i: 0..<5 {
+    x := wm_byte(b, c);
+    if !c[0].ok { return 0; }
+    if i == 4 && x > 15 { c[0].ok = false; return 0; }
+    v = v | ((x & 127) << shift); shift += 7;
+    if x < 128 { return v; }
+  }
+  c[0].ok = false;
+  return 0;
+}
+// A signed LEB128 of at most `bits` bits (32 or 64), as its two's complement in a u64.
+wm_signed :: (b: [] u8, c: [] WmCur, bits: int) -> u64 {
+  v: u64 = 0; shift: u64 = 0; most := (bits + 6) / 7;
+  for i: 0..<most {
+    x := cast(u64) wm_byte(b, c);
+    if !c[0].ok { return 0; }
+    v = v | ((x & 127) << shift); shift += 7;
+    if x < 128 {
+      if shift < 64 && (x & 64) != 0 { v = v | (18446744073709551615 << shift); }
+      if bits == 32 {
+        // The value fits 32 bits when bits 31 and up agree.
+        high := v >> 31;
+        if high != 0 && high != 8589934591 { c[0].ok = false; return 0; }
+        return v & 4294967295;
+      }
+      return v;
+    }
+  }
+  c[0].ok = false;
+  return 0;
+}
+wm_valtype :: (t: int) -> bool { return t == 127 || t == 126 || t == 125 || t == 124; }
+wm_refuse :: (m: [] WmModule, code: int, at: int) -> bool { m[0].code = code; m[0].at = at; return false; }
+// Whether the next `name.count` bytes at the cursor are the name; the cursor moves past them either way.
+wm_name_is :: (b: [] u8, at: int, n: int, name: string) -> bool {
+  if n != name.count { return false; }
+  for ch, i: name { if b[at + i] != ch { return false; } }
+  return true;
+}
+// A constant expression `T.const V; end`: the value's bits, and c[0].ok false for anything else.
+wm_const :: (b: [] u8, c: [] WmCur, type: int) -> u64 {
+  op := wm_byte(b, c); v: u64 = 0;
+  if op == 65 && type == 127 { v = wm_signed(b, c, 32); }
+  else if op == 66 && type == 126 { v = wm_signed(b, c, 64); }
+  else if op == 67 && type == 125 { for i: 0..<4 { v = v | (cast(u64) wm_byte(b, c) << cast(u64) (i * 8)); } }
+  else if op == 68 && type == 124 { for i: 0..<8 { v = v | (cast(u64) wm_byte(b, c) << cast(u64) (i * 8)); } }
+  else { c[0].ok = false; }
+  if wm_byte(b, c) != 11 { c[0].ok = false; }
+  return v;
+}
+
+// ---- sections ----
+wm_types :: (b: [] u8, c: [] WmCur, m: [] WmModule) -> bool {
+  n := wm_u32(b, c);
+  if !c[0].ok { return wm_refuse(m, WM_MALFORMED, c[0].at); }
+  if n > WM_TYPES { return wm_refuse(m, WM_LIMIT, c[0].at); }
+  for i: 0..<n {
+    at := c[0].at;
+    if wm_byte(b, c) != 96 { return wm_refuse(m, ifx c[0].ok then WM_TYPE else WM_MALFORMED, at); }
+    t: WmType; np := wm_u32(b, c);
+    if !c[0].ok { return wm_refuse(m, WM_MALFORMED, at); }
+    if np > WM_PARAMS { return wm_refuse(m, WM_LIMIT, at); }
+    t.np = cast(s32) np;
+    for p: 0..<np {
+      v := wm_byte(b, c);
+      if !c[0].ok { return wm_refuse(m, WM_MALFORMED, at); }
+      if !wm_valtype(v) { return wm_refuse(m, WM_TYPE, at); }
+      t.params[p] = cast(u8) v;
+    }
+    nr := wm_u32(b, c);
+    if !c[0].ok { return wm_refuse(m, WM_MALFORMED, at); }
+    if nr > 1 { return wm_refuse(m, WM_TYPE, at); }
+    if nr == 1 {
+      v := wm_byte(b, c);
+      if !c[0].ok { return wm_refuse(m, WM_MALFORMED, at); }
+      if !wm_valtype(v) { return wm_refuse(m, WM_TYPE, at); }
+      t.result = cast(u8) v;
+    }
+    m[0].types[i] = t;
+  }
+  m[0].n_types = cast(s32) n;
+  return true;
+}
+// Whether type `type` of the module is exactly a row's signature.
+wm_type_is_row :: (m: [] WmModule, type: int, row: int) -> bool {
+  want: [WM_PARAMS] u8; np := sa_params(SCRIPT_API[row].params, want[..]);
+  t := m[0].types[type];
+  if np < 0 || cast(int) t.np != np { return false; }
+  for i: 0..<np { if t.params[i] != want[i] { return false; } }
+  return cast(int) t.result == sa_type(SCRIPT_API[row].result);
+}
+wm_imports :: (b: [] u8, c: [] WmCur, m: [] WmModule) -> bool {
+  n := wm_u32(b, c);
+  if !c[0].ok { return wm_refuse(m, WM_MALFORMED, c[0].at); }
+  if n > WM_IMPORTS { return wm_refuse(m, WM_LIMIT, c[0].at); }
+  for i: 0..<n {
+    at := c[0].at;
+    mod_n := wm_u32(b, c); mod_at := c[0].at;
+    if !c[0].ok || mod_n > c[0].end - mod_at { return wm_refuse(m, WM_MALFORMED, at); }
+    c[0].at += mod_n;
+    name_n := wm_u32(b, c); name_at := c[0].at;
+    if !c[0].ok || name_n > c[0].end - name_at { return wm_refuse(m, WM_MALFORMED, at); }
+    c[0].at += name_n;
+    kind := wm_byte(b, c); type := wm_u32(b, c);
+    if !c[0].ok { return wm_refuse(m, WM_MALFORMED, at); }
+    // Only functions, only from "env", only rows of the API with the row's own signature.
+    if kind != 0 || !wm_name_is(b, mod_at, mod_n, "env") || name_n > 32 { return wm_refuse(m, WM_IMPORT, at); }
+    row := sa_row(cast(string) b[name_at..<name_at + name_n]);
+    if row < 0 || type >= cast(int) m[0].n_types || !wm_type_is_row(m, type, row) { return wm_refuse(m, WM_IMPORT, at); }
+    m[0].import_row[i] = cast(s32) row; m[0].import_type[i] = cast(s32) type;
+    m[0].powers = m[0].powers | cast(s32) sa_effect_bit(SCRIPT_API[row].effect);
+  }
+  m[0].n_imports = cast(s32) n;
+  return true;
+}
+wm_functions :: (b: [] u8, c: [] WmCur, m: [] WmModule) -> bool {
+  n := wm_u32(b, c);
+  if !c[0].ok { return wm_refuse(m, WM_MALFORMED, c[0].at); }
+  if n > WM_FUNCS { return wm_refuse(m, WM_LIMIT, c[0].at); }
+  for i: 0..<n {
+    at := c[0].at; type := wm_u32(b, c);
+    if !c[0].ok { return wm_refuse(m, WM_MALFORMED, at); }
+    if type >= cast(int) m[0].n_types { return wm_refuse(m, WM_CODE, at); }
+    m[0].funcs[i].type = cast(s32) type;
+  }
+  m[0].n_funcs = cast(s32) n;
+  return true;
+}
+wm_memory :: (b: [] u8, c: [] WmCur, m: [] WmModule) -> bool {
+  at := c[0].at; n := wm_u32(b, c); flags := wm_byte(b, c); low := wm_u32(b, c);
+  if !c[0].ok { return wm_refuse(m, WM_MALFORMED, at); }
+  if n != 1 || flags != 1 { return wm_refuse(m, WM_MEMORY, at); }
+  high := wm_u32(b, c);
+  if !c[0].ok { return wm_refuse(m, WM_MALFORMED, at); }
+  if low < 1 || low > high || high > WM_PAGES { return wm_refuse(m, WM_MEMORY, at); }
+  m[0].pages = cast(s32) low;
+  return true;
+}
+// The one table the linker writes: function references, never filled (there is no element section) and
+// never called through (call_indirect is refused).
+wm_table :: (b: [] u8, c: [] WmCur, m: [] WmModule) -> bool {
+  at := c[0].at; n := wm_u32(b, c); kind := wm_byte(b, c); flags := wm_byte(b, c); low := wm_u32(b, c);
+  if !c[0].ok { return wm_refuse(m, WM_MALFORMED, at); }
+  if n != 1 || kind != 112 || flags > 1 { return wm_refuse(m, WM_SECTION, at); }
+  if flags == 1 { high := wm_u32(b, c); if !c[0].ok { return wm_refuse(m, WM_MALFORMED, at); } }
+  return true;
+}
+wm_globals :: (b: [] u8, c: [] WmCur, m: [] WmModule) -> bool {
+  n := wm_u32(b, c);
+  if !c[0].ok { return wm_refuse(m, WM_MALFORMED, c[0].at); }
+  if n > WM_GLOBALS { return wm_refuse(m, WM_LIMIT, c[0].at); }
+  for i: 0..<n {
+    at := c[0].at; type := wm_byte(b, c); mutable := wm_byte(b, c);
+    if !c[0].ok { return wm_refuse(m, WM_MALFORMED, at); }
+    if !wm_valtype(type) || mutable > 1 { return wm_refuse(m, WM_GLOBAL, at); }
+    init := wm_const(b, c, type);
+    if !c[0].ok { return wm_refuse(m, WM_GLOBAL, at); }
+    m[0].globals[i] = WmGlobal.{type = cast(u8) type, writable = mutable == 1, init = init};
+  }
+  m[0].n_globals = cast(s32) n;
+  return true;
+}
+// Whether function `func` (in the whole index space) has face entry `entry`'s signature.
+wm_entry_shape :: (m: [] WmModule, func: int, entry: int) -> bool {
+  if func < cast(int) m[0].n_imports { return false; }
+  t := m[0].types[m[0].funcs[func - cast(int) m[0].n_imports].type];
+  if entry < RS_FIRST_HANDLER { return t.np == 0 && t.result == 127; }
+  h := entry - RS_FIRST_HANDLER; a := RH_EXTRA[h * 2]; z := RH_EXTRA[h * 2 + 1];
+  extra := ifx a == 0 then 0 else ifx z == 0 then 1 else 2;
+  if cast(int) t.np != 2 + extra || t.result != 0 || t.params[0] != 126 || t.params[1] != 127 { return false; }
+  return (extra < 1 || t.params[2] == a) && (extra < 2 || t.params[3] == z);
+}
+wm_exports :: (b: [] u8, c: [] WmCur, m: [] WmModule) -> bool {
+  n := wm_u32(b, c);
+  if !c[0].ok { return wm_refuse(m, WM_MALFORMED, c[0].at); }
+  if n > RS_ENTRIES + 1 { return wm_refuse(m, WM_LIMIT, c[0].at); }
+  for i: 0..<n {
+    at := c[0].at; name_n := wm_u32(b, c); name_at := c[0].at;
+    if !c[0].ok || name_n > c[0].end - name_at { return wm_refuse(m, WM_MALFORMED, at); }
+    c[0].at += name_n;
+    kind := wm_byte(b, c); index := wm_u32(b, c);
+    if !c[0].ok { return wm_refuse(m, WM_MALFORMED, at); }
+    // The linker exports the memory by name; nothing reads it through the export.
+    if kind == 2 && index == 0 && wm_name_is(b, name_at, name_n, "memory") { continue; }
+    entry := -1;
+    for name, e: RS_NAMES { if wm_name_is(b, name_at, name_n, name) { entry = e; } }
+    if kind != 0 || entry < 0 || m[0].entry[entry] >= 0 { return wm_refuse(m, WM_EXPORT, at); }
+    if index >= cast(int) m[0].n_imports + cast(int) m[0].n_funcs || !wm_entry_shape(m, index, entry) { return wm_refuse(m, WM_EXPORT, at); }
+    m[0].entry[entry] = cast(s32) index;
+    if entry >= RS_FIRST_HANDLER { m[0].handlers = m[0].handlers | (cast(s32) 1 << cast(s32) (entry - RS_FIRST_HANDLER)); }
+  }
+  return true;
+}
+wm_data :: (b: [] u8, c: [] WmCur, m: [] WmModule) -> bool {
+  n := wm_u32(b, c);
+  if !c[0].ok { return wm_refuse(m, WM_MALFORMED, c[0].at); }
+  if n > WM_DATA { return wm_refuse(m, WM_LIMIT, c[0].at); }
+  for i: 0..<n {
+    at := c[0].at; flags := wm_u32(b, c);
+    if !c[0].ok { return wm_refuse(m, WM_MALFORMED, at); }
+    if flags != 0 { return wm_refuse(m, WM_DATA_SEGMENT, at); }
+    to := wm_const(b, c, 127); size := wm_u32(b, c); from := c[0].at;
+    if !c[0].ok || size > c[0].end - from { return wm_refuse(m, WM_MALFORMED, at); }
+    if to > cast(u64) (cast(int) m[0].pages * WM_PAGE) || size > cast(int) m[0].pages * WM_PAGE - cast(int) to { return wm_refuse(m, WM_DATA_SEGMENT, at); }
+    c[0].at += size;
+    m[0].data[i] = WmData.{to = cast(s32) to, at = cast(s32) from, n = cast(s32) size};
+  }
+  m[0].n_data = cast(s32) n;
+  return true;
+}
+
+// ---- function bodies ----
+// One function's instructions: every opcode is allowed, every immediate decodes and names something
+// that exists, and blocks nest and close. Writes the block targets the interpreter jumps by:
+//   jump[at of block/loop/if]     where a false `if` goes: past its `else`, or to its `end`
+//   jump[at + 1]                  where the block continues after its `end` (a loop: its first instruction)
+//   jump[at of else]              the `if`'s `end`
+// `jump` is as long as the module.
+WmOpen :: struct { at: s32; kind: u8; has_else: bool; }
+wm_body :: (b: [] u8, m: [] WmModule, f: int, jump: [] s32) -> bool {
+  fn := m[0].funcs[f]; type := m[0].types[fn.type];
+  locals := cast(int) type.np + cast(int) fn.locals; funcs := cast(int) m[0].n_imports + cast(int) m[0].n_funcs;
+  open: [WM_NEST] WmOpen; depth := 0;
+  cur: [1] WmCur; cur[0] = WmCur.{at = cast(int) fn.body, end = cast(int) fn.end, ok = true}; c := cur[..];
+  while c[0].at < c[0].end {
+    at := c[0].at; op := wm_byte(b, c);
+    if op == 2 || op == 3 || op == 4 {
+      bt := wm_byte(b, c);
+      if !c[0].ok || (bt != 64 && !wm_valtype(bt)) { return wm_refuse(m, WM_CODE, at); }
+      if depth >= WM_NEST { return wm_refuse(m, WM_LIMIT, at); }
+      open[depth] = WmOpen.{at = cast(s32) at, kind = cast(u8) op}; depth += 1;
+      if op == 3 { jump[at + 1] = cast(s32) (at + 2); }
+    } else if op == 5 {
+      if depth == 0 || open[depth - 1].kind != 4 || open[depth - 1].has_else { return wm_refuse(m, WM_CODE, at); }
+      open[depth - 1].has_else = true;
+      jump[open[depth - 1].at] = cast(s32) (at + 1);
+      // The else's own target is written when its `end` is found; remember it through the open entry.
+      jump[at] = -1;
+    } else if op == 11 {
+      if depth == 0 {
+        // The function's own end: it must be the body's last byte.
+        if c[0].at != c[0].end { return wm_refuse(m, WM_CODE, at); }
+        return true;
+      }
+      depth -= 1; o := open[depth];
+      if o.kind == 4 {
+        if o.has_else { jump[jump[o.at] - 1] = cast(s32) at; } else { jump[o.at] = cast(s32) at; }
+      }
+      if o.kind != 3 { jump[o.at + 1] = cast(s32) (at + 1); }
+    } else if op == 12 || op == 13 {
+      d := wm_u32(b, c);
+      if !c[0].ok || d > depth { return wm_refuse(m, WM_CODE, at); }
+    } else if op == 14 {
+      n := wm_u32(b, c);
+      if !c[0].ok || n > c[0].end - c[0].at { return wm_refuse(m, WM_CODE, at); }
+      for i: 0..<n + 1 {
+        d := wm_u32(b, c);
+        if !c[0].ok || d > depth { return wm_refuse(m, WM_CODE, at); }
+      }
+    } else if op == 16 {
+      callee := wm_u32(b, c);
+      if !c[0].ok || callee >= funcs { return wm_refuse(m, WM_CODE, at); }
+    } else if op == 32 || op == 33 || op == 34 {
+      l := wm_u32(b, c);
+      if !c[0].ok || l >= locals { return wm_refuse(m, WM_CODE, at); }
+    } else if op == 35 || op == 36 {
+      g := wm_u32(b, c);
+      if !c[0].ok || g >= cast(int) m[0].n_globals || (op == 36 && !m[0].globals[g].writable) { return wm_refuse(m, WM_CODE, at); }
+    } else if op >= 40 && op <= 62 {
+      align := wm_u32(b, c); offset := wm_u32(b, c);
+      if !c[0].ok || align > 3 { return wm_refuse(m, WM_CODE, at); }
+    } else if op == 63 || op == 64 {
+      if wm_byte(b, c) != 0 || !c[0].ok { return wm_refuse(m, WM_CODE, at); }
+    } else if op == 65 {
+      v := wm_signed(b, c, 32);
+      if !c[0].ok { return wm_refuse(m, WM_CODE, at); }
+    } else if op == 66 {
+      v := wm_signed(b, c, 64);
+      if !c[0].ok { return wm_refuse(m, WM_CODE, at); }
+    } else if op == 67 || op == 68 {
+      width := ifx op == 67 then 4 else 8;
+      if width > c[0].end - c[0].at { return wm_refuse(m, WM_CODE, at); }
+      c[0].at += width;
+    } else if op == 0 || op == 1 || op == 15 || op == 26 || op == 27 || (op >= 69 && op <= 196) {
+      // unreachable, nop, return, drop, select and the numeric instructions: no immediates.
+    } else {
+      // call_indirect, tables, references, bulk memory, vectors, threads: not in the profile.
+      return wm_refuse(m, WM_CODE, at);
+    }
+    if !c[0].ok { return wm_refuse(m, WM_CODE, at); }
+  }
+  // The body ran out before its function's `end`.
+  return wm_refuse(m, WM_CODE, cast(int) fn.end);
+}
+wm_code :: (b: [] u8, c: [] WmCur, m: [] WmModule, jump: [] s32) -> bool {
+  n := wm_u32(b, c);
+  if !c[0].ok { return wm_refuse(m, WM_MALFORMED, c[0].at); }
+  if n != cast(int) m[0].n_funcs { return wm_refuse(m, WM_CODE, c[0].at); }
+  for f: 0..<n {
+    at := c[0].at; size := wm_u32(b, c); start := c[0].at;
+    if !c[0].ok || size > c[0].end - start || size < 1 { return wm_refuse(m, WM_MALFORMED, at); }
+    body: [1] WmCur; body[0] = WmCur.{at = start, end = start + size, ok = true};
+    groups := wm_u32(b, body[..]); locals := 0;
+    np := cast(int) m[0].types[m[0].funcs[f].type].np;
+    for g: 0..<groups {
+      count := wm_u32(b, body[..]); type := wm_byte(b, body[..]);
+      if !body[0].ok { return wm_refuse(m, WM_MALFORMED, at); }
+      if !wm_valtype(type) { return wm_refuse(m, WM_TYPE, at); }
+      if count > WM_LOCALS - np - locals { return wm_refuse(m, WM_LIMIT, at); }
+      locals += count;
+    }
+    if !body[0].ok { return wm_refuse(m, WM_MALFORMED, at); }
+    m[0].funcs[f].body = cast(s32) body[0].at; m[0].funcs[f].end = cast(s32) (start + size); m[0].funcs[f].locals = cast(s32) locals;
+    if !wm_body(b, m, f, jump) { return false; }
+    c[0].at = start + size;
+  }
+  return true;
+}
+
+// Checks a module. On true, m describes it and jump holds its block targets; on false, m[0].code and
+// m[0].at say why. `jump` must be at least as long as the bytes.
+wm_check :: (b: [] u8, m: [] WmModule, jump: [] s32) -> bool {
+  m[0] = WmModule.{};
+  for i: 0..<RS_ENTRIES { m[0].entry[i] = -1; }
+  if b.count > WM_BYTES || jump.count < b.count { return wm_refuse(m, WM_TOO_BIG, 0); }
+  magic := [8] u8.[0, 97, 115, 109, 1, 0, 0, 0];
+  if b.count < 8 { return wm_refuse(m, WM_MAGIC, 0); }
+  for v, i: magic { if b[i] != v { return wm_refuse(m, WM_MAGIC, i); } }
+  cur: [1] WmCur; cur[0] = WmCur.{at = 8, end = b.count, ok = true}; c := cur[..];
+  last := 0; seen_code := false; seen_memory := false;
+  while c[0].at < b.count {
+    at := c[0].at; id := wm_byte(b, c); size := wm_u32(b, c);
+    if !c[0].ok || size > b.count - c[0].at { return wm_refuse(m, WM_MALFORMED, at); }
+    stop := c[0].at + size;
+    if id == 0 { c[0].at = stop; continue; }   // a custom section: names, producers; skipped
+    // Sections 1 to 11 once each, in order. Start (8), element (9) and data count (12) are refused.
+    if id <= last || id > 11 || id == 8 || id == 9 { return wm_refuse(m, WM_SECTION, at); }
+    last = id;
+    c[0].end = stop;
+    passed := true;
+    if id == 1 { passed = wm_types(b, c, m); }
+    else if id == 2 { passed = wm_imports(b, c, m); }
+    else if id == 3 { passed = wm_functions(b, c, m); }
+    else if id == 4 { passed = wm_table(b, c, m); }
+    else if id == 5 { passed = wm_memory(b, c, m); seen_memory = true; }
+    else if id == 6 { passed = wm_globals(b, c, m); }
+    else if id == 7 { passed = wm_exports(b, c, m); }
+    else if id == 10 { passed = wm_code(b, c, m, jump); seen_code = true; }
+    else if id == 11 { passed = wm_data(b, c, m); }
+    if !passed { return false; }
+    if !c[0].ok || c[0].at != stop { return wm_refuse(m, WM_MALFORMED, at); }
+    c[0].end = b.count;
+  }
+  if !seen_memory { return wm_refuse(m, WM_MEMORY, 0); }
+  if m[0].n_funcs > 0 && !seen_code { return wm_refuse(m, WM_CODE, 0); }
+  if m[0].handlers == 0 || m[0].entry[RS_ABI] < 0 || m[0].entry[RS_STATE] < 0 || m[0].entry[RS_STATE_SIZE] < 0 || m[0].entry[RS_SLOTS] < 0 { return wm_refuse(m, WM_NO_HANDLER, 0); }
+  return true;
+}
+
+#load "wasm-checks.coax" #test;

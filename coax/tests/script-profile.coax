@@ -1,0 +1,96 @@
+// The realm-script profile's refusals and outputs, on real source files
+// (coax/tests/script/). Run at the repository root:
+//   coax/web/tool.sh coax/tests/script-profile.coax COMPILER
+// Each bad-CODE-*.coax must be refused with its code and the text its row
+// names; good-patrol.coax must check, pass its own #test, print its manifest
+// and face, and an ordinary program must still compile unchanged beside it.
+#import "Basic";
+#load "../lib/sys/tool.coax";
+#load "../lib/sys/proc.coax";
+#load "../lib/sys/fs.coax";
+
+SP_DIR :: "coax/tests/script/";
+SpCase :: struct { file: string; code: string; says: string; }
+SP_CASES :: [17] SpCase.[
+  SpCase.{file = "bad-E0980-loaded.coax", code = "E0980", says = "is loaded by another unit"},
+  SpCase.{file = "bad-E0980-name.coax", code = "E0980", says = "lowercase"},
+  SpCase.{file = "bad-E0980-twice.coax", code = "E0980", says = "one realm-script directive"},
+  SpCase.{file = "bad-E0981-declared.coax", code = "E0981", says = "'helper' may declare only"},
+  SpCase.{file = "bad-E0981-handler-all.coax", code = "E0981", says = "'on_tick' may declare only"},
+  SpCase.{file = "bad-E0981-print.coax", code = "E0981", says = "it reaches io; call path: on_tick -> lib_loud"},
+  SpCase.{file = "bad-E0981-uninit.coax", code = "E0981", says = "it reaches unsafe"},
+  SpCase.{file = "bad-E0982-api-clock.coax", code = "E0982", says = "script API import 'ta_now'"},
+  SpCase.{file = "bad-E0982-foreign.coax", code = "E0982", says = "#foreign 'clock_now' is outside the script API"},
+  SpCase.{file = "bad-E0983-recursion.coax", code = "E0983", says = "reaches recursion through 'lib_down'"},
+  SpCase.{file = "bad-E0984-export.coax", code = "E0984", says = "'helper' is exported"},
+  SpCase.{file = "bad-E0984-main.coax", code = "E0984", says = "has no main"},
+  SpCase.{file = "bad-E0984-none.coax", code = "E0984", says = "exports no handler"},
+  SpCase.{file = "bad-E0984-signature.coax", code = "E0984", says = "handler 'on_hit' takes (me: u64, mind: [] State, other: u64, amount: f32)"},
+  SpCase.{file = "bad-E0985-state.coax", code = "E0985", says = "#persisted struct the script declares"},
+  SpCase.{file = "bad-E0985-two.coax", code = "E0985", says = "one state record"},
+  SpCase.{file = "not-a-script.coax", code = "", says = "not a realm script"},
+];
+SP_MANIFEST :: "{\"schema\":\"coax.script.v1\",\"name\":\"patrol\",\"handlers\":[\"on_tick\",\"on_hit\"],\"state\":{\"type\":\"Mind\",\"size\":28,\"align\":4,\"fields\":[{\"name\":\"turn_at\",\"type\":\"f32\",\"at\":0,\"size\":4},{\"name\":\"steps\",\"type\":\"s32\",\"at\":4,\"size\":4},{\"name\":\"mode\",\"type\":\"Mode\",\"at\":8,\"size\":1},{\"name\":\"marks\",\"type\":\"[4] s32\",\"at\":12,\"size\":16}]},\"imports\":[{\"name\":\"ta_x\",\"effects\":[\"reads\"]},{\"name\":\"ta_move_to\",\"effects\":[\"writes\"]}]}";   // proc_run keeps lines without the last newline
+
+sp_find :: (text: string, part: string) -> int {
+  for at: 0..<text.count - part.count + 1 {
+    same := true;
+    for j: 0..<part.count { if text[at + j] != part[j] { same = false; break; } }
+    if same { return at; }
+  }
+  return -1;
+}
+#test "markers match exact bytes and refuse a missing marker" {
+  #assert sp_find("abc", "bc") == 1 && sp_find("abc", "abcd") == -1 && sp_find("abc", "cb") == -1 && sp_find("abc", "") == 0;
+}
+#test "every refusal row names a file, and all but the last a code that its name carries" {
+  for c, i: SP_CASES {
+    #assert c.file.count > 0 && c.says.count > 0;
+    if i < SP_CASES.count - 1 { #assert c.code.count == 5 && sp_find(c.file, c.code) == 4; }
+  }
+}
+
+SpRun :: struct { ok: bool; status: int; out_n: int; err_n: int; }
+sp_run :: (compiler: string, command: string, file: string, flag: string, out: [] u8, err: [] u8) -> SpRun {
+  pathbuf: [512] u8; path := fs_join(SP_DIR, file, pathbuf[..]);
+  argv: [4] string; argv[0] = compiler; argv[1] = command; argv[2] = path; argv[3] = flag;
+  r := proc_run(argv[..], 120000, out, err);
+  return SpRun.{ok = r.started == 0 && !r.cut && !r.timed_out, status = r.status, out_n = r.out_n, err_n = r.err_n};
+}
+sp_say :: (ok: bool, what: string, detail: string) -> int {
+  print("%: %\n", ifx ok then "ok" else "FAIL", what);
+  if !ok { tool_errln(detail); }
+  return ifx ok then 0 else 1;
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  args: [1] Args;
+  if !args_load(args[..]) || args_count(args[..]) != 1 { tool_errln("usage: script-profile.coax COMPILER"); return 2; }
+  compiler := args_at(args[..], 0);
+  out: [16384] u8; err: [32768] u8; bad := 0;
+  for c, i: SP_CASES {
+    script := i == SP_CASES.count - 1;   // the last row: an ordinary file handed to `coax script`
+    r := sp_run(compiler, ifx script then "script" else "check", c.file, ifx script then "--json" else "--library", out[..], err[..]);
+    said := cast(string) err[0..<r.err_n];
+    ok := r.ok && r.status == 1 && sp_find(said, c.says) >= 0 && (script || sp_find(said, c.code) >= 0);
+    bad += sp_say(ok, c.file, said);
+  }
+  // The admitted script: it checks, its own check passes, and its manifest and face are exact.
+  r := sp_run(compiler, "check", "good-patrol.coax", "--library", out[..], err[..]);
+  bad += sp_say(r.ok && r.status == 0, "good-patrol.coax checks", cast(string) err[0..<r.err_n]);
+  r = sp_run(compiler, "test", "good-patrol.coax", "--library", out[..], err[..]);
+  bad += sp_say(r.ok && r.status == 0 && sp_find(cast(string) out[0..<r.out_n], "1 check, 1 passed, 0 failed") >= 0, "good-patrol.coax passes its own check", cast(string) err[0..<r.err_n]);
+  r = sp_run(compiler, "script", "good-patrol.coax", "--json", out[..], err[..]);
+  bad += sp_say(r.ok && r.status == 0 && cast(string) out[0..<r.out_n] == SP_MANIFEST, "good-patrol.coax manifest", cast(string) out[0..<r.out_n]);
+  r = sp_run(compiler, "script", "good-patrol.coax", "--face", out[..], err[..]);
+  face := cast(string) out[0..<r.out_n];
+  face_ok := r.ok && r.status == 0 && sp_find(face, "static coax_t_Mind rs_minds[RS_SLOTS];") >= 0 &&
+    sp_find(face, "RS_EXPORT(\"rs_on_tick\") void rs_on_tick(uint64_t me, int32_t slot, float a2)") >= 0 &&
+    sp_find(face, "RS_EXPORT(\"rs_on_hit\") void rs_on_hit(uint64_t me, int32_t slot, uint64_t a2, float a3)") >= 0 &&
+    sp_find(face, "rs_on_enter") < 0 && sp_find(face, "if ((uint32_t)slot >= RS_SLOTS) __builtin_trap();") >= 0;
+  bad += sp_say(face_ok, "good-patrol.coax face", face);
+  // The same library and API units in an ordinary program: nothing of the profile applies.
+  r = sp_run(compiler, "check", "not-a-script.coax", "--library", out[..], err[..]);
+  bad += sp_say(r.ok && r.status == 0, "not-a-script.coax compiles unchanged", cast(string) err[0..<r.err_n]);
+  return ifx bad == 0 then 0 else 1;
+}

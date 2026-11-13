@@ -188,6 +188,7 @@ schema. Keep signed protocol/schema identities in their own version domains.
 | Enforced procedure effects | Transitive capability subset checks with shortest paths; declarations required on authority, C exports and foreign procedures; native summaries remain trusted and callback values remain planned | partial | 0.52.0 |
 | In-memory transactions | Scoped reachable-state before-images; undo escaping Result errors or optional absence, including try and nested cleanup; no external effects, fatal traps do not roll back | partial | 0.52.0 |
 | Owned persisted records | #persisted recursively admits owned values and stable IDs, refusing borrowed descriptors and process-local handles; generic instances are checked | works | 0.52.0 |
+| Realm-script profile (`#script`) | A #script unit may only read, write and trap through its whole call graph, reaches native code only through a #script_api unit, has no recursion, one fixed-size #persisted state record and a fixed set of typed handlers; coax script prints its manifest or its module's C face; the compiler is still not a sandbox: a server checks the module it is handed | works | 0.52.0 |
 | Published surface compatibility | coax compat compares concrete native LP64 signatures, C ABI, effects, saved fields and defaults; production baselines suppress only pre-existing failures; serializers and generic facades have separate contracts | partial | 0.52.0 |
 
 Annotations such as `@range` and `@unit` are lexed but not accepted yet.

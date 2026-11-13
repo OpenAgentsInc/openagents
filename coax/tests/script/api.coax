@@ -1,0 +1,6 @@
+// A small script API for the compiler's own checks (the engine's is
+// metaverse-engine/script/api.coax).
+#script_api;
+ta_x :: (thing: u64) -> f32 #foreign #effects(foreign, reads);
+ta_move_to :: (thing: u64, x: f32, z: f32, speed: f32) #foreign #effects(foreign, writes);
+ta_unused :: (thing: u64) -> s32 #foreign #effects(foreign, reads);

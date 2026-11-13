@@ -16,6 +16,7 @@ Building a Coaxial page or a realm? Read [start-here.md](start-here.md) first.
 | [`web.md`](web.md) | Proposal: the Coax web framework for openagents.com (Coaxial), with open questions |
 | [`font.md`](font.md) | Proposal: Filament, the stroke font Coaxial pages draw text with |
 | [`grammar.ebnf`](grammar.ebnf) | The bootstrap grammar for what coax0 accepts |
+| [`script-profile.md`](script-profile.md) | The realm-script profile: what `#script "name";` makes the compiler enforce, and `coax script` |
 | [`QUANTITIES.md`](QUANTITIES.md) | Initial compiler-owned scalar quantities, native layout evidence and remaining R12 work |
 | [`LIBRARIES.md`](LIBRARIES.md) | Selected reusable entry points, maturity, targets, link inputs, storage/error contracts and offline recipes |
 | [`book/`](book/README.md) | *The Coax Programming Language*, source for the published book |
@@ -82,6 +83,7 @@ coax/build.sh test
 | `coax deps FILE` | Print a checked JSON source/descriptor input inventory |
 | `coax deps FILE --effects [--proc NAME]` | Inspect conservative transitive may-effects and source witness paths; [scope and unknown obligations](EFFECTS.md) |
 | `coax layout FILE` | Print every struct's size, alignment, offsets and padding, and every enum |
+| `coax script FILE [--face] [-o OUT]` | A realm script's manifest (`coax.script.v1`: name, handlers, state record and fields, API imports), or with `--face` the C that gives its module flat exports; refuses a file that is not a `#script` unit ([script-profile.md](script-profile.md)) |
 | `coax test FILE [--steps N] [--slots N] [--only SUBSTR] [--list]` | Run every `#test` and `#forall`; print counterexamples. Each check's line is written as it ends, with its steps and time. `--only SUBSTR` runs just the checks whose name contains SUBSTR (an `#authority` file's coverage check needs every check, so a filtered run skips it and says so); `--list` names the checks and runs none. Checks have their own aggregate storage limits (33554432 value slots, 2097152 arrays and structs; a compile has 1572864 and 131072; `--slots N` lowers the checks' slot limit) |
 | `coax mutate FILE` | Change the checked code one site at a time; report mutants no check fails. `--jobs N` (default: the machine's build-worker budget, shared with every other coax process; see `coax status --jobs`) runs mutants in parallel; `--shard I/N` and `--merge RECORD...` split a file across processes or machines. Optional `--root-only` mutates entry-source procedures while retaining all baseline checks; it reports a scoped result. `--unit PART.coax` mutates one loaded unit's procedures, every check still running. `--killers FILE` runs each mutant's last killing check first and records this run's; verdicts are unchanged. Each mutant then tries its procedure's likely killers and the checks that reach it, cheapest first; `--source-order` (implied by `--mutation-trace`) keeps source order. The report is identical across worker/shard modes within one scope |
 | `coax explain CODE` / `--all [--markdown]` | Explain an error code |

@@ -37,6 +37,16 @@ Commit: [`09101c58f972b76c8fcdd6f9315d1026b6a95837`](https://github.com/OpenAgen
   of a generic procedure carries its template's note. `secp_fe.coax` uses it
   for the field product and square, which makes signature verification about
   a quarter faster.
+- Follow-up 2026-11-13 (#13467): `#script "name";` marks a unit a realm
+  script and `#script_api;` marks the unit that declares the script API's
+  imports. A script's procedures may only read, write and trap through their
+  whole call graph (E0981), reach native code only through the API (E0982),
+  never recurse (E0983), export only the seven typed handlers (E0984) and
+  keep one fixed-size `#persisted` state record (E0985). `coax script FILE`
+  prints the script's manifest, and `--face` the C that gives its module flat
+  exports. The policy is `lib/compiler/script-profile.coax`; the contract is
+  [script-profile.md](script-profile.md). The compiler is still not a
+  sandbox: a server checks the module it is handed.
 
 ## 0.51.2 — Phase Storage Accounting — 2026-11-05
 

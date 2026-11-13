@@ -1,0 +1,26 @@
+// The compiler's realm-script manifest, `coax.script.v1`: what `coax script FILE` prints
+// (coax/script-profile.md, coax/src/effects.cpp script_report). This file is the id's one reader
+// outside the compiler: a tool parses the text, asks here whether it is that manifest, and then reads
+// the fields it needs from the parsed tree.
+//   {"schema":"coax.script.v1","name":NAME,"handlers":[...],
+//    "state":{"type":T,"size":N,"align":N,"fields":[{"name","type","at","size"}...]},
+//    "imports":[{"name":IMPORT,"effects":[...]}...]}
+//   coax/bin/coax test coax/lib/script/compiler-manifest.coax --library
+#load "../json/json.coax";
+
+CSM_SCHEMA :: "coax.script.v1";
+// Whether a parsed text is a coax.script.v1 manifest: an object whose schema is the id.
+csm_is :: (d: Jv) -> bool {
+  word: [32] u8;
+  if !d.ok || jv_kind(d, 0) != JV_OBJECT { return false; }
+  n := jv_str(d, jv_get(d, 0, "schema"), word[..]);
+  return n >= 0 && cast(string) word[0..<n] == CSM_SCHEMA;
+}
+#test "only an object with the schema id is the compiler's manifest" {
+  nodes: [16] JvNode; d: [1] Jv;
+  #assert jv_parse(d[..], "{\"schema\":\"coax.script.v1\",\"name\":\"a\"}", nodes[..]) && csm_is(d[0]);
+  #assert jv_parse(d[..], "{\"schema\":\"coax.script.v2\"}", nodes[..]) && !csm_is(d[0]);
+  #assert jv_parse(d[..], "{\"name\":\"a\"}", nodes[..]) && !csm_is(d[0]);
+  #assert jv_parse(d[..], "[\"coax.script.v1\"]", nodes[..]) && !csm_is(d[0]);
+  #assert !jv_parse(d[..], "nope", nodes[..]) && !csm_is(d[0]);
+}

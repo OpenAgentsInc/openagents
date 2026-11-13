@@ -1,0 +1,2 @@
+#script_api;
+ta_now :: () -> int #foreign #effects(foreign, clock);

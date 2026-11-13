@@ -12,6 +12,7 @@
 #load "compute.coax";
 #load "native-checks.coax";
 #load "effects.coax";
+#load "script-profile.coax";
 #load "native-execution.coax";
 #load "quantified-execution.coax";
 #load "native-semantics.coax";

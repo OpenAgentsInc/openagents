@@ -8196,6 +8196,106 @@ answered, another text refused, the frame unreadable from the site);
 `realm-frame.coax` (242 mutants, 0 survivors) and `realm-origin.coax` (88
 mutants, 0 survivors); `realm-frame-profile.coax`.
 
+## A realm script is held to its profile by the compiler, and to its module by everyone else
+
+A realm script (#13467; [docs/research/2026-11-13-realm-scripts.md](docs/research/2026-11-13-realm-scripts.md),
+[coax/script-profile.md](coax/script-profile.md),
+[docs/protocol/realm-script-v1.md](docs/protocol/realm-script-v1.md)) is a
+Coax unit marked `#script "name";`, compiled to its own WebAssembly module.
+Two walls stand between a script and anything it should not touch, and
+neither depends on the other.
+
+- **The profile.** The compiler refuses a script whose procedures reach an
+  effect outside reads, writes and traps through their whole call graph
+  (E0981), a `#foreign` outside a `#script_api;` unit (E0982), recursion
+  (E0983), an export that is not one of the seven typed handlers (E0984) or
+  state that is not one fixed-size `#persisted` record (E0985). The policy
+  is `coax/lib/compiler/script-profile.coax`, an `#authority` unit with a
+  zero-survivor mutation gate in the bootstrap. No existing check is
+  weakened: a unit without the directive compiles as before.
+- **The module check.** A server, a page and a room each run
+  `metaverse-engine/script/wasm.coax` on the bytes they are handed, and load
+  only what passes: every import is a row of the script API
+  (`metaverse-engine/script/api-table.coax`) with the row's signature, the
+  memory has a maximum of at most 4 pages, the module is at most 65,536
+  bytes, the exports are the module face's and every instruction is in the
+  profile. The check trusts neither the source nor the compiler. A compiler
+  bug cannot grant a module a power, because a module can call only what it
+  imports.
+- **No trap ends the process.** The check, the interpreter
+  (`metaverse-engine/script/interp.coax`) and the host bound every index
+  before they use it. A refusal and a trap are values.
+- **The API is one table.** `api.coax` (what a script loads) and
+  `docs/protocol/realm-script-api.md` are generated from the table; a row
+  keeps its number, name and signature, and new rows go at the end.
+
+Checks: `coax/tests/run.sh --only script_profile` (the policy's 65 checks,
+214 mutants with 0 survivors, and every refusal in `coax/tests/script/`);
+`coax/bin/coax test metaverse-engine/script/wasm.coax --library`;
+`coax/bin/coax test metaverse-engine/script/interp.coax --library`;
+`coax/web/tool.sh metaverse-engine/tools/script-api.coax --check`;
+`coax/web/tool.sh metaverse-engine/tools/script-profile.coax proto/world/script-v1.json`.
+
+## A script's handler call is a transaction with a budget, and its failure is a typed diagnostic
+
+`metaverse-engine/script/host.coax` runs a world's scripts for a tick
+(#13467). The same file runs on the page and in a room.
+
+- **A budget.** One handler call may spend 20,000 instructions and all of a
+  world's scripts 400,000 a tick (`SH_CALL_FUEL`, `SH_TICK_FUEL`). A call
+  past its budget stops; calls past the tick's are skipped and said once.
+  The numbers are stated in `proto/world/script-v1.json` and shown where a
+  script is edited.
+- **A rollback.** A call's writes are the commands it queues and its own
+  memory. A call that traps, runs out of budget or is refused leaves
+  neither: the interpreter restores the memory it wrote and the host drops
+  the commands and timers. A failed call never ends the tick, the page or
+  the room.
+- **A diagnostic.** Every failure is a `ScriptDiag` with a code registered in
+  `proto/registry.json` (`engine.diagnostic.script-NAME.v1`), the script, the
+  handler, the thing and the line when the script knows it. A number is
+  never changed and never used again.
+- **A switch.** Three failed calls in a row switch the script off until it
+  is loaded again.
+- **The same everywhere.** Time and chance reach a script as arguments (dt,
+  the frame's time, a seeded draw), so the same frames give the same
+  commands and spend the same instructions on the page and in a room.
+
+Checks: `coax/bin/coax test metaverse-engine/script/host.coax --library`
+("a call that never ends loses that call; three in a row switch the script
+off", "a world's scripts share one budget a tick ...", "the module's own
+trap names its line ...", "reads answer from the frame ... and a seeded
+draw"); the profile's `result_hex` fixture, which pins the commands and the
+instructions spent for a pinned module over a pinned frame.
+
+## A realm script writes running state only, and only its own thing
+
+A script's writes are rows of the script API with the effect `write` or
+`engine` (#13467; `metaverse-engine/script/api-table.coax`). There are no
+others.
+
+- **Its own thing.** Each names the thing it is for first, and the host
+  refuses one that names any thing but the one the handler was called for
+  (`not-yours`); the whole call is undone.
+- **Running state.** A write becomes a command the realm applies to its own
+  running state: where a thing walks, how it faces, one of its four running
+  numbers, a timer. An engine call asks the engine for something it caps
+  itself: a strike, a spoken line, an event.
+- **Never authored or durable state.** No row edits the world document, and
+  no row reaches a character record or the item ledger. A script module
+  cannot name what it does not import, so this holds for any bytes that pass
+  the module check, whatever compiled them. Anything with value goes through
+  an engine call that the engine caps.
+- **Finite numbers.** A write with a number that is not finite is refused
+  (`bad-argument`), so a script cannot put a NaN into a realm.
+
+Checks: `coax/bin/coax test metaverse-engine/script/api-table.coax --library`
+("a write or an engine call names the thing it is for first, and returns
+nothing"); `coax/bin/coax test metaverse-engine/script/host.coax --library`
+("a write to another thing is refused and the whole call is undone");
+`coax/web/tool.sh layer-check` (the engine's script folder loads neither
+durable context).
+
 ## Attachments are private and never reach a player or a pack
 
 A world's attachments and its project's (#13468;

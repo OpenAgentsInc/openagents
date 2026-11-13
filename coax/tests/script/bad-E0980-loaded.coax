@@ -1,0 +1,3 @@
+// expect: E0980 is loaded by another unit
+#load "good-patrol.coax";
+extra :: (a: int) -> int { return a; }

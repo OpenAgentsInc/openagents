@@ -1,0 +1,22 @@
+// A realm script the profile admits: bounded effects, the API, a library,
+// one fixed-size state record and two handlers.
+#script "patrol";
+#load "api.coax";
+#load "lib.coax";
+Mode :: enum u8 { idle; walk; }
+Mind :: struct #persisted { turn_at: f32; steps: s32; mode: Mode; marks: [4] s32; }
+pace :: (mind: [] Mind, dt: f32) -> bool {
+  mind[0].turn_at += dt; mind[0].steps += 1;
+  return mind[0].turn_at > 2.0;
+}
+on_tick :: (me: u64, mind: [] Mind, dt: f32) #export_c #effects(reads, writes, traps) {
+  if pace(mind, dt) { mind[0].turn_at = 0; mind[0].mode = Mode.walk; lib_step(me, lib_wave(dt)); }
+  mind[0].marks[mind[0].steps % 4] = mind[0].steps;
+}
+on_hit :: (me: u64, mind: [] Mind, other: u64, amount: f32) #export_c #effects(reads, writes, traps) {
+  if amount > 1.0 && other != me { mind[0].mode = Mode.idle; }
+}
+#test "pacing turns after two seconds" {
+  m: [1] Mind;
+  #assert !pace(m[..], 1.5) && pace(m[..], 1.0) && m[0].steps == 2;
+}

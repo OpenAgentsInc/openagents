@@ -1,0 +1,6 @@
+// Library code a script may load: it computes, and it calls the API.
+lib_wave :: (a: f32) -> f32 { return sin(a) * 2.0; }
+lib_step :: (thing: u64, by: f32) { ta_move_to(thing, ta_x(thing) + by, 0.0, 1.0); }
+lib_loud :: (a: int) -> int { print("%\n", a); return a; }
+lib_down :: (a: int) -> int { if a <= 0 { return 0; } return lib_up(a - 1); }
+lib_up :: (a: int) -> int { return lib_down(a); }

@@ -219,6 +219,11 @@ unit_effect_contracts() {
     "$COAX" mutate lib/compiler/effect-contract.coax --root-only &&
     (cd .. && COAX="$COAX_ABS" coax/web/tool.sh coax/tests/effect-contracts.coax "$COAX_ABS")
 }
+unit_script_profile() {
+  "$COAX" test lib/compiler/script-profile.coax &&
+    "$COAX" mutate lib/compiler/script-profile.coax --root-only &&
+    (cd .. && COAX="$COAX_ABS" coax/web/tool.sh coax/tests/script-profile.coax "$COAX_ABS")
+}
 unit_transactions() {
   "$COAX" test tests/transactions.coax &&
     "$COAX" run tests/transactions.coax && "$COAX" run tests/transactions.coax --release &&
@@ -284,7 +289,7 @@ unit_spatial() {
 UNITS=(pass fail examples pulse python native strict_math native_checks lexer parser budget strings traversal
   provenance query steps library_checks authority_cache check_reuse serve parallel_checks job_budget loaded release mutation_schedule
   build_profiles semantic_profiles checker systemone results book sources reflection library_tools
-  sequence bounded kept clock debugging nostr constant_time wrapping inline integer_ops nominal_ids handles effect_contracts transactions compat mul_wide cuda proto_cap proto proto_policy
+  sequence bounded kept clock debugging nostr constant_time wrapping inline integer_ops nominal_ids handles effect_contracts script_profile transactions compat mul_wide cuda proto_cap proto proto_policy
   proto_message verify wire_checks generated_checks wire_core importer_checks fingerprint_checks
   unit_algebra unit_forms spatial_policy borrow_summary spatial_operators spatial proto_json)
 

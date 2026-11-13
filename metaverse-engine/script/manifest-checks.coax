@@ -1,0 +1,85 @@
+// Checks of the manifest codec (manifest.coax).
+mk_slot :: (s: [] ScriptSlot, rows: [] int) -> bool {
+  b: [2048] u8; nothing := WB_NOTHING; echo := WB_ECHO;
+  n := wb_module(b[..], rows, nothing[..], 0, echo[..]);
+  return n > 0 && sh_load_fresh(s, b[0..<n]) == 0;
+}
+#test "a manifest's facts come from the module, and its text reads back to the same values" {
+  s: [1] ScriptSlot; rows := [3] int.[SA_X, SA_MOVE, SA_STRIKE];
+  #assert mk_slot(s[..], rows[..]);
+  layout: ScriptLayout; layout.n = 1;
+  name := "turn_at"; type := "f32";
+  for c, i: name { layout.fields[0].name[i] = c; } layout.fields[0].name_n = 7;
+  for c, i: type { layout.fields[0].type[i] = c; } layout.fields[0].type_n = 3;
+  layout.fields[0].at = 4; layout.fields[0].size = 4;
+  mf := sm_of(s[..], "raider", layout);
+  #assert mf.ok && mf.bytes == s[0].n && mf.pages == 1 && mf.state == WB_STATE_SIZE && mf.slots == WB_STATE_SLOTS;
+  #assert mf.handlers == 1 && mf.powers == 7 && mf.calls == (1 << SA_X) | (1 << SA_MOVE) | (1 << SA_STRIKE);
+  out: [SM_TEXT] u8; text := sm_write(mf, out[..]);
+  want_tail := "\"state\":{\"size\":16,\"slots\":4,\"fields\":[{\"name\":\"turn_at\",\"type\":\"f32\",\"at\":4,\"size\":4}]},\"handlers\":[\"on_tick\"],\"powers\":[\"read\",\"write\",\"engine\"],\"calls\":[\"sa_x\",\"sa_move\",\"sa_strike\"]}";
+  #assert text.count > want_tail.count && text[text.count - want_tail.count..<text.count] == want_tail;
+  head := "{\"schema\":\"realm.script.v1\",\"name\":\"raider\",\"hash\":\"";
+  #assert text[0..<head.count] == head;
+  back: [1] ScriptManifest;
+  #assert sm_read(text, back[..]) && back[0].ok && back[0].calls == mf.calls && back[0].handlers == 1 && back[0].layout.n == 1 && back[0].layout.fields[0].at == 4;
+  #assert cast(string) back[0].hash[..] == cast(string) mf.hash[..] && cast(string) back[0].name[0..<back[0].name_n] == "raider";
+  // The hash is the module's SHA-256: one changed byte changes it.
+  other: [1] ScriptSlot; fewer := [2] int.[SA_X, SA_MOVE];
+  #assert mk_slot(other[..], fewer[..]);
+  mo := sm_of(other[..], "raider", layout);
+  #assert cast(string) mo.hash[..] != cast(string) mf.hash[..];
+  #assert !sm_of(s[..], "Raider", layout).ok && !sm_of(s[..], "", layout).ok && sm_write(sm_of(s[..], "9a", layout), out[..]) == "";
+}
+#test "a manifest that is not in the one form is refused" {
+  s: [1] ScriptSlot; rows := [2] int.[SA_X, SA_MOVE]; back: [1] ScriptManifest;
+  #assert mk_slot(s[..], rows[..]);
+  out: [SM_TEXT] u8; text := sm_write(sm_of(s[..], "a", ScriptLayout.{}), out[..]);
+  #assert sm_read(text, back[..]);
+  bad: [SM_TEXT] u8;
+  // A space after a comma, an unknown power, a reordered list, a short hash, another schema.
+  edits := [5] [2] string.[
+    [2] string.["\"bytes\":", "\"bytes\": "],
+    [2] string.["\"read\"", "\"reads\""],
+    [2] string.["[\"sa_x\",\"sa_move\"]", "[\"sa_move\",\"sa_x\"]"],
+    [2] string.["\"hash\":\"", "\"hash\":\"0"],
+    [2] string.["realm.script.v1", "realm.script.v2"]
+  ];
+  for e: edits {
+    at := -1;
+    for i: 0..<text.count - e[0].count + 1 { same := true; for c, j: e[0] { if text[i + j] != c { same = false; break; } } if same { at = i; break; } }
+    #assert at >= 0;
+    n := 0;
+    for i: 0..<at { bad[n] = text[i]; n += 1; }
+    for c: e[1] { bad[n] = c; n += 1; }
+    for i: at + e[0].count..<text.count { bad[n] = text[i]; n += 1; }
+    #assert !sm_read(cast(string) bad[0..<n], back[..]) && !back[0].ok;
+  }
+  #assert !sm_read("", back[..]) && !sm_read("{}", back[..]) && !sm_read("[1]", back[..]);
+}
+#test "the compiler's manifest gives the name and the state fields" {
+  name: [SM_NAME] u8; layout: [1] ScriptLayout;
+  text := "{\"schema\":\"coax.script.v1\",\"name\":\"patrol\",\"handlers\":[\"on_tick\"],\"state\":{\"type\":\"Mind\",\"size\":28,\"align\":4,\"fields\":[{\"name\":\"turn_at\",\"type\":\"f32\",\"at\":0,\"size\":4},{\"name\":\"marks\",\"type\":\"[4] s32\",\"at\":12,\"size\":16}]},\"imports\":[]}";
+  n := sm_from_compiler(text, name[..], layout[..]);
+  #assert n == 6 && cast(string) name[0..<n] == "patrol" && layout[0].n == 2;
+  #assert cast(string) layout[0].fields[1].type[0..<cast(int) layout[0].fields[1].type_n] == "[4] s32" && layout[0].fields[1].at == 12 && layout[0].fields[1].size == 16;
+  #assert sm_from_compiler("{\"schema\":\"coax.script.v2\"}", name[..], layout[..]) == -1 && sm_from_compiler("nope", name[..], layout[..]) == -1;
+  // A field past the state record's limit is refused.
+  far := "{\"schema\":\"coax.script.v1\",\"name\":\"p\",\"state\":{\"fields\":[{\"name\":\"a\",\"type\":\"f32\",\"at\":254,\"size\":4}]}}";
+  #assert sm_from_compiler(far, name[..], layout[..]) == -1;
+}
+#test "the publish rule: a version that adds a handler, a power or a call grows; one that only drops does not" {
+  old: ScriptManifest; new: ScriptManifest;
+  old.handlers = 1; old.powers = 3; old.calls = (1 << SA_X) | (1 << SA_MOVE);
+  new = old;
+  #assert !sm_grows(sm_growth(old, new));
+  new.calls = 1 << SA_X; new.powers = 1;
+  #assert !sm_grows(sm_growth(old, new));
+  new.calls = (1 << SA_X) | (1 << SA_STRIKE);
+  g := sm_growth(old, new);
+  #assert sm_grows(g) && g.calls == 1 << SA_STRIKE && g.handlers == 0 && g.powers == 0;
+  new = old; new.powers = 7;
+  #assert sm_growth(old, new).powers == 4;
+  new = old; new.handlers = 1 | (1 << RH_HIT);
+  #assert sm_growth(old, new).handlers == 1 << RH_HIT && sm_grows(sm_growth(old, new));
+  #assert sm_growth(new, old).handlers == 0 && !sm_grows(sm_growth(new, old));
+}

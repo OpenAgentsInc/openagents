@@ -1,0 +1,29 @@
+// A first realm script (docs/research/2026-11-13-realm-scripts.md): a thing that follows its plan until
+// something of kind 1 comes within its notice, chases it, strikes when close, and goes back to its plan
+// a moment after it loses it.
+//   coax/web/script.sh metaverse-engine/script/examples/pacer.coax --out /tmp/scripts
+#script "pacer";
+#load "../api.coax";
+
+Mind :: struct #persisted { chasing: u64; waited: f32; }
+
+on_tick :: (me: u64, mind: [] Mind, dt: f32) #export_c #effects(reads, writes, traps) {
+  near := sa_near(me, 1, sa_notice(me));
+  if near != 0 {
+    mind[0].chasing = near; mind[0].waited = 0.0;
+    sa_move(me, sa_x(near), sa_z(near), sa_speed(me));
+    if sa_distance(me, near) < 1.0 { sa_strike(me, near); }
+    return;
+  }
+  if mind[0].chasing != 0 {
+    // Lost it: wait a moment, then go back to the plan.
+    mind[0].waited += dt;
+    if mind[0].waited < 1.5 { sa_stop(me); return; }
+    mind[0].chasing = 0;
+  }
+  sa_move(me, sa_goal_x(me), sa_goal_z(me), sa_goal_speed(me));
+}
+on_hit :: (me: u64, mind: [] Mind, other: u64, amount: f32) #export_c #effects(reads, writes, traps) {
+  mind[0].chasing = other; mind[0].waited = 0.0;
+  sa_set_var(me, 0, 1.0);
+}

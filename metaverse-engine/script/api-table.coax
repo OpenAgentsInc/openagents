@@ -1,0 +1,113 @@
+// The script API as a table (GitHub #13467, docs/research/2026-11-13-realm-scripts.md): every call a
+// realm script may make, one row each, in the style of REALM_COMMANDS (apps/openagents-cli/commands.coax).
+// This table is the one source: api.coax (what a script loads) is generated from it
+// (coax/web/tool.sh metaverse-engine/tools/script-api.coax --write), the module check
+// (metaverse-engine/script/wasm.coax) admits an import only when its name and signature are a row's, the
+// host (host.coax) answers by row number, and a script's manifest lists its rows' effects before it runs.
+//
+// effect: "read" asks the frame the engine gave the script; "write" changes running state of the thing the
+// handler was called for, and nothing else; "engine" asks the engine to do something it caps itself (a
+// strike, a spoken line, an event); "trap" is the module's own failure report. No row writes authored or
+// durable state (INVARIANTS.md, "A realm script writes running state only").
+// cost: instruction-budget units a call is charged, on top of the instructions that made it.
+//   coax/bin/coax test metaverse-engine/script/api-table.coax --library
+
+SA_EFFECTS :: "read|write|engine|trap";
+ScriptCall :: struct {
+  name: string;      // the import's name, in module "env"
+  params: string;    // Coax parameters, "name: type" separated by ", "; types u64, s32, f32, bool
+  result: string;    // a Coax type, or "" for none
+  effect: string;    // one of SA_EFFECTS
+  cost: int;
+  help: string;
+}
+SA_ROWS :: 34;
+SCRIPT_API :: [SA_ROWS] ScriptCall.[
+  ScriptCall.{name = "sa_trap", params = "line: s32", result = "", effect = "trap", cost = 0, help = "the module's own failed check: a bounds, arithmetic or cast trap at this source line (the runtime calls it; api.coax does not declare it)"},
+  ScriptCall.{name = "sa_count", params = "", result = "s32", effect = "read", cost = 2, help = "how many things this frame holds"},
+  ScriptCall.{name = "sa_at", params = "index: s32", result = "u64", effect = "read", cost = 2, help = "the id of thing INDEX in the frame's order, 0 past the end"},
+  ScriptCall.{name = "sa_alive", params = "thing: u64", result = "bool", effect = "read", cost = 2, help = "whether the thing is in this frame and alive"},
+  ScriptCall.{name = "sa_kind", params = "thing: u64", result = "s32", effect = "read", cost = 2, help = "the thing's kind number, the realm's (-1 when it is not in the frame)"},
+  ScriptCall.{name = "sa_team", params = "thing: u64", result = "s32", effect = "read", cost = 2, help = "the thing's team number, the realm's"},
+  ScriptCall.{name = "sa_x", params = "thing: u64", result = "f32", effect = "read", cost = 2, help = "the thing's x, in metres"},
+  ScriptCall.{name = "sa_y", params = "thing: u64", result = "f32", effect = "read", cost = 2, help = "the thing's height, in metres"},
+  ScriptCall.{name = "sa_z", params = "thing: u64", result = "f32", effect = "read", cost = 2, help = "the thing's z, in metres"},
+  ScriptCall.{name = "sa_facing", params = "thing: u64", result = "f32", effect = "read", cost = 2, help = "the thing's yaw, in radians"},
+  ScriptCall.{name = "sa_speed", params = "thing: u64", result = "f32", effect = "read", cost = 2, help = "the fastest the thing may move, in metres a second"},
+  ScriptCall.{name = "sa_health", params = "thing: u64", result = "f32", effect = "read", cost = 2, help = "the thing's health"},
+  ScriptCall.{name = "sa_var", params = "thing: u64, slot: s32", result = "f32", effect = "read", cost = 2, help = "one of the thing's four running numbers (slot 0 to 3)"},
+  ScriptCall.{name = "sa_point_x", params = "thing: u64, point: s32", result = "f32", effect = "read", cost = 2, help = "x of one of the thing's four authored points (its plan's anchors)"},
+  ScriptCall.{name = "sa_point_z", params = "thing: u64, point: s32", result = "f32", effect = "read", cost = 2, help = "z of one of the thing's four authored points"},
+  ScriptCall.{name = "sa_goal_x", params = "thing: u64", result = "f32", effect = "read", cost = 2, help = "x of where the thing's plan sends it this tick (its own x when it has no plan)"},
+  ScriptCall.{name = "sa_goal_z", params = "thing: u64", result = "f32", effect = "read", cost = 2, help = "z of where the thing's plan sends it this tick"},
+  ScriptCall.{name = "sa_goal_speed", params = "thing: u64", result = "f32", effect = "read", cost = 2, help = "how fast the thing's plan walks it there, in metres a second"},
+  ScriptCall.{name = "sa_notice", params = "thing: u64", result = "f32", effect = "read", cost = 2, help = "how far the thing's plan lets it see, in metres (0: never)"},
+  ScriptCall.{name = "sa_plan_on", params = "thing: u64", result = "s32", effect = "read", cost = 2, help = "what the thing's plan does on seeing someone: 0 chase, 1 call, 2 flee, 3 ignore (-1 with no plan)"},
+  ScriptCall.{name = "sa_distance", params = "a: u64, b: u64", result = "f32", effect = "read", cost = 4, help = "the distance between two things on the ground, a large number when either is missing"},
+  ScriptCall.{name = "sa_near", params = "thing: u64, kind: s32, radius: f32", result = "u64", effect = "read", cost = 16, help = "the nearest other living thing of a kind (any kind when negative) within a radius, 0 when none"},
+  ScriptCall.{name = "sa_time", params = "", result = "f32", effect = "read", cost = 2, help = "the world's running time in seconds, the same on the page and in a room"},
+  ScriptCall.{name = "sa_day", params = "", result = "f32", effect = "read", cost = 2, help = "the time of day, 0 to 1"},
+  ScriptCall.{name = "sa_world", params = "slot: s32", result = "f32", effect = "read", cost = 2, help = "one of the realm's eight running numbers (slot 0 to 7)"},
+  ScriptCall.{name = "sa_random", params = "thing: u64", result = "f32", effect = "read", cost = 4, help = "the handler's next seeded draw in [0, 1): the same on the page and in a room"},
+  ScriptCall.{name = "sa_move", params = "thing: u64, x: f32, z: f32, speed: f32", result = "", effect = "write", cost = 8, help = "walk toward a point at a speed; the engine caps the speed at sa_speed"},
+  ScriptCall.{name = "sa_stop", params = "thing: u64", result = "", effect = "write", cost = 8, help = "stand still"},
+  ScriptCall.{name = "sa_face", params = "thing: u64, yaw: f32", result = "", effect = "write", cost = 8, help = "turn to a yaw"},
+  ScriptCall.{name = "sa_set_var", params = "thing: u64, slot: s32, value: f32", result = "", effect = "write", cost = 8, help = "set one of the thing's four running numbers"},
+  ScriptCall.{name = "sa_timer", params = "thing: u64, timer: s32, seconds: f32", result = "", effect = "write", cost = 8, help = "call on_timer with this timer number after so many seconds (timers 0 to 3; 0 seconds or less cancels)"},
+  ScriptCall.{name = "sa_strike", params = "thing: u64, target: u64", result = "", effect = "engine", cost = 16, help = "ask the engine for the thing's strike on a target; the engine checks reach and its own cooldown"},
+  ScriptCall.{name = "sa_say", params = "thing: u64, line: s32", result = "", effect = "engine", cost = 16, help = "show line number LINE of the thing's authored lines"},
+  ScriptCall.{name = "sa_emit", params = "thing: u64, event: s32, value: f32", result = "", effect = "engine", cost = 16, help = "raise a realm event with a number; the realm decides what it means"},
+];
+// Row numbers the host switches on (the checks below pin them to their names).
+SA_TRAP :: 0; SA_COUNT :: 1; SA_AT :: 2; SA_ALIVE :: 3; SA_KIND :: 4; SA_TEAM :: 5; SA_X :: 6; SA_Y :: 7; SA_Z :: 8;
+SA_FACING :: 9; SA_SPEED :: 10; SA_HEALTH :: 11; SA_VAR :: 12; SA_POINT_X :: 13; SA_POINT_Z :: 14;
+SA_GOAL_X :: 15; SA_GOAL_Z :: 16; SA_GOAL_SPEED :: 17; SA_NOTICE :: 18; SA_PLAN_ON :: 19; SA_DISTANCE :: 20;
+SA_NEAR :: 21; SA_TIME :: 22; SA_DAY :: 23; SA_WORLD :: 24; SA_RANDOM :: 25; SA_MOVE :: 26; SA_STOP :: 27; SA_FACE :: 28;
+SA_SET_VAR :: 29; SA_TIMER :: 30; SA_STRIKE :: 31; SA_SAY :: 32; SA_EMIT :: 33;
+
+// The handlers a script may have, by number; the compiler's profile has the same order
+// (coax/lib/compiler/script-profile.coax, and metaverse-engine/tools/script-check.coax compiles a script
+// with all seven to hold the two tables together).
+RS_HANDLERS :: 7;
+RH_TICK :: 0; RH_ENTER :: 1; RH_LEAVE :: 2; RH_NOTICE :: 3; RH_HIT :: 4; RH_USE :: 5; RH_TIMER :: 6;
+RH_NAMES :: [RS_HANDLERS] string.["on_tick", "on_enter", "on_leave", "on_notice", "on_hit", "on_use", "on_timer"];
+// A handler's parameters after (me: i64, slot: i32): two value types, 0 for none.
+RH_EXTRA :: [14] u8.[125, 0,  126, 0,  126, 0,  126, 0,  126, 125,  126, 0,  127, 0];
+
+// WebAssembly value types: i32 0x7f, i64 0x7e, f32 0x7d.
+SA_I32 :: 127; SA_I64 :: 126; SA_F32 :: 125;
+// The value type of a Coax type an API row may use, 0 for any other text.
+sa_type :: (text: string) -> int {
+  if text == "u64" { return SA_I64; }
+  if text == "s32" || text == "bool" { return SA_I32; }
+  if text == "f32" { return SA_F32; }
+  return 0;
+}
+// The row's parameter value types into out; how many, or -1 when the text is not "name: type, ...".
+sa_params :: (params: string, out: [] u8) -> int {
+  n := 0; at := 0;
+  while at < params.count {
+    colon := at; while colon < params.count && params[colon] != ':' { colon += 1; }
+    if colon == at || colon + 2 > params.count || params[colon + 1] != ' ' { return -1; }
+    end := colon + 2; while end < params.count && params[end] != ',' { end += 1; }
+    t := sa_type(params[colon + 2..<end]);
+    if t == 0 || n >= out.count { return -1; }
+    out[n] = cast(u8) t; n += 1;
+    at = end;
+    if at < params.count { if at + 2 >= params.count || params[at + 1] != ' ' { return -1; } at += 2; }
+  }
+  return n;
+}
+// The row an import names, or -1.
+sa_row :: (name: string) -> int {
+  for c, i: SCRIPT_API { if c.name == name { return i; } }
+  return -1;
+}
+// Which effect kinds a set of rows uses, as bits: read 1, write 2, engine 4, trap 8.
+sa_effect_bit :: (effect: string) -> int {
+  if effect == "read" { return 1; } if effect == "write" { return 2; }
+  if effect == "engine" { return 4; } if effect == "trap" { return 8; }
+  return 0;
+}
+
+#load "api-table-checks.coax" #test;

@@ -1,0 +1,187 @@
+// Checks of the script host (host.coax), on modules made by wasm-make.coax: one tick handler each,
+// written as bytes. Real compiled scripts are checked by metaverse-engine/tools/script-check.coax.
+HkWorld :: struct { s: [2] ScriptSlot; run: [1] ScriptRun; f: [1] ScriptFrame; n: int; b: [2048] u8; }
+// The state slot's address on the stack: WB_STATE + slot * WB_STATE_SIZE.
+HK_STATE_AT :: [8] u8.[65, 128, 8, 32, 1, 65, 4, 116];   // i32.const 1024; local.get 1; i32.const 4; i32.shl  (then i32.add)
+hk_load :: (w: [] HkWorld, imports: [] int, code: [] u8, locals: int) -> int {
+  echo := WB_ECHO;
+  w[0].n = wb_module(w[0].b[..], imports, code, locals, echo[..]);
+  if w[0].n < 0 { return -1; }
+  return sh_load(w[0].s[0..<1], w[0].s[1..<2], w[0].b[0..<w[0].n], ScriptLayout.{});
+}
+hk_frame :: (w: [] HkWorld, things: int, tick: int) {
+  w[0].f[0] = ScriptFrame.{tick = tick, seed = 2026, dt = 0.5, time = cast(f32) tick * 0.5, n_things = things};
+  for i: 0..<things {
+    w[0].f[0].things[i] = ScriptThing.{id = cast(u64) (100 + i), kind = cast(s32) (i % 2), script = 0, alive = true, x = cast(f32) i * 3.0, z = 0.0, speed = 0.25, health = 2.0};
+  }
+}
+hk_state :: (w: [] HkWorld, slot: int) -> u64 {
+  v: u64 = 0;
+  for i: 0..<8 { v = v | (cast(u64) wi_peek(w[0].s[0].vm[..], WB_STATE + slot * WB_STATE_SIZE + i) << cast(u64) (i * 8)); }
+  return v;
+}
+// state[slot] += 1 (an i64), then the rest of the body.
+hk_counting :: (out: [] u8, rest: [] u8) -> int {
+  n := 0; at := HK_STATE_AT;
+  for pass: 0..<2 { for v: at { out[n] = v; n += 1; } out[n] = 106; n += 1; }
+  tail := [7] u8.[41, 3, 0, 66, 1, 124, 55];
+  for v: tail { out[n] = v; n += 1; }
+  out[n] = 3; out[n + 1] = 0; n += 2;
+  for v: rest { out[n] = v; n += 1; }
+  return n;
+}
+
+#test "a tick queues a command for its own thing, with the speed capped, and keeps its state per thing" {
+  w: [1] HkWorld; rows := [1] int.[SA_MOVE]; code: [64] u8;
+  move := [9] u8.[32, 0, 32, 2, 32, 2, 32, 2, 16];   // sa_move(me, dt, dt, dt)
+  rest: [11] u8; for v, i: move { rest[i] = v; } rest[9] = 0; rest[10] = 11;
+  n := hk_counting(code[..], rest[..]);
+  #assert hk_load(w[..], rows[..], code[0..<n], 0) == 0;
+  #assert w[0].s[0].state_at == WB_STATE && w[0].s[0].state_size == WB_STATE_SIZE && w[0].s[0].slots == WB_STATE_SLOTS;
+  for tick: 1..<4 {
+    hk_frame(w[..], 2, tick);
+    sh_tick(w[0].s[0..<1], w[0].run[..], w[0].f[..]);
+    #assert w[0].run[0].n_commands == 2 && w[0].run[0].n_diags == 0 && w[0].run[0].calls == 2 && w[0].run[0].failed == 0;
+    c := w[0].run[0].commands[1];
+    #assert c.op == SA_MOVE && c.thing == 101 && c.a == 0.5 && c.b == 0.5 && c.c == 0.25;
+    #assert hk_state(w[..], 0) == cast(u64) tick && hk_state(w[..], 1) == cast(u64) tick;
+  }
+  #assert w[0].s[0].owner[0] == 100 && w[0].s[0].owner[1] == 101 && w[0].s[0].spent > 0 && w[0].s[0].peak > 0 && w[0].s[0].peak <= w[0].s[0].spent;
+  #assert w[0].run[0].fuel == SH_TICK_FUEL - w[0].s[0].spent;
+  // Thing 100 leaves the frame: its slot is free, and it starts from zero when it returns.
+  hk_frame(w[..], 2, 4); w[0].f[0].things[0].alive = false;
+  sh_tick(w[0].s[0..<1], w[0].run[..], w[0].f[..]);
+  #assert w[0].run[0].calls == 1 && w[0].s[0].owner[0] == 0 && hk_state(w[..], 1) == 4;
+  hk_frame(w[..], 2, 5);
+  sh_tick(w[0].s[0..<1], w[0].run[..], w[0].f[..]);
+  #assert w[0].s[0].owner[0] == 100 && hk_state(w[..], 0) == 1 && hk_state(w[..], 1) == 5;
+}
+#test "a write to another thing is refused and the whole call is undone" {
+  w: [1] HkWorld; rows := [2] int.[SA_MOVE, SA_STOP]; code: [64] u8;
+  // sa_stop(me); sa_move(101, dt, dt, dt): thing 100's call names 101.
+  other := [13] u8.[32, 0, 16, 1, 66, 229, 0, 32, 2, 32, 2, 32, 2];
+  rest: [16] u8; for v, i: other { rest[i] = v; } rest[13] = 16; rest[14] = 0; rest[15] = 11;
+  n := hk_counting(code[..], rest[..]);
+  #assert hk_load(w[..], rows[..], code[0..<n], 0) == 0;
+  hk_frame(w[..], 2, 1);
+  sh_tick(w[0].s[0..<1], w[0].run[..], w[0].f[..]);
+  // Thing 100 failed: no stop, no move, no count. Thing 101's call named itself and was kept.
+  #assert w[0].run[0].calls == 2 && w[0].run[0].failed == 1 && w[0].run[0].n_diags == 1;
+  d := w[0].run[0].diags[0];
+  #assert d.code == SD_NOT_YOURS && d.thing == 100 && d.handler == RH_TICK && d.script == 0 && d.tick == 1 && d.used > 0;
+  #assert w[0].run[0].n_commands == 2 && w[0].run[0].commands[0].thing == 101 && w[0].run[0].commands[0].op == SA_STOP && w[0].run[0].commands[1].op == SA_MOVE;
+  #assert hk_state(w[..], 0) == 0 && hk_state(w[..], 1) == 1 && w[0].s[0].strikes == 0;
+}
+#test "a call that never ends loses that call; three in a row switch the script off" {
+  w: [1] HkWorld; none: [1] int; code: [64] u8;
+  forever := [6] u8.[3, 64, 12, 0, 11, 11];
+  n := hk_counting(code[..], forever[..]);
+  #assert hk_load(w[..], none[0..<0], code[0..<n], 0) == 0;
+  hk_frame(w[..], 1, 1);
+  sh_tick(w[0].s[0..<1], w[0].run[..], w[0].f[..]);
+  #assert w[0].run[0].failed == 1 && w[0].run[0].diags[0].code == SD_OVER_BUDGET && w[0].run[0].diags[0].used == SH_CALL_FUEL && w[0].run[0].diags[0].status == WI_FUEL;
+  #assert hk_state(w[..], 0) == 0 && !w[0].s[0].off && w[0].s[0].strikes == 1 && w[0].run[0].fuel == SH_TICK_FUEL - SH_CALL_FUEL;
+  hk_frame(w[..], 1, 2); sh_tick(w[0].s[0..<1], w[0].run[..], w[0].f[..]);
+  hk_frame(w[..], 1, 3); sh_tick(w[0].s[0..<1], w[0].run[..], w[0].f[..]);
+  #assert w[0].s[0].off && w[0].run[0].n_diags == 2 && w[0].run[0].diags[1].code == SD_SWITCHED_OFF && w[0].run[0].diags[1].detail == SD_OVER_BUDGET;
+  hk_frame(w[..], 1, 4); sh_tick(w[0].s[0..<1], w[0].run[..], w[0].f[..]);
+  #assert w[0].run[0].calls == 0 && w[0].run[0].n_diags == 0 && w[0].run[0].fuel == SH_TICK_FUEL;
+  // Loading it again switches it back on.
+  #assert sh_load(w[0].s[0..<1], w[0].s[1..<2], w[0].b[0..<w[0].n], ScriptLayout.{}) == 0 && !w[0].s[0].off && w[0].s[0].strikes == 0;
+}
+#test "a world's scripts share one budget a tick: the calls past it are skipped and said once" #steps 400000000 {
+  w: [1] HkWorld; none: [1] int;
+  // local 3 = 2000; loop { if local 3 == 0 break; local 3 -= 1 }: eight instructions a turn, about 16,000.
+  burn := [24] u8.[66, 208, 15, 33, 3, 2, 64, 3, 64, 32, 3, 80, 13, 1, 32, 3, 66, 1, 125, 33, 3, 12, 0, 11];
+  code: [26] u8; for v, i: burn { code[i] = v; } code[24] = 11; code[25] = 11;
+  // The made module has four state slots; this check wants more things than that, so it builds its own
+  // frame of 4 things and runs the tick budget down by hand first.
+  #assert hk_load(w[..], none[0..<0], code[..], 1) == 0;
+  hk_frame(w[..], 4, 1);
+  sh_tick(w[0].s[0..<1], w[0].run[..], w[0].f[..]);
+  each := w[0].s[0].peak;
+  #assert w[0].run[0].calls == 4 && w[0].run[0].failed == 0 && each > 15000 && each < SH_CALL_FUEL && w[0].s[0].spent == each * 4;
+  // With the budget cut to two and a half calls: two finish, the third is over budget and undone, the fourth skipped.
+  hk_frame(w[..], 4, 2);
+  w[0].run[0].fuel = each * 2 + each / 2;
+  for si: 0..<1 { w[0].s[si].spent = 0; w[0].s[si].starved = false; }
+  w[0].run[0].n_diags = 0; w[0].run[0].calls = 0; w[0].run[0].failed = 0;
+  for ti: 0..<4 { ok := sh_call(w[0].s[0..<1], w[0].run[..], w[0].f[..], 0, RH_TICK, cast(u64) (100 + ti), ti, 0, 0); }
+  #assert w[0].run[0].calls == 3 && w[0].run[0].failed == 1 && w[0].run[0].fuel == 0 && w[0].run[0].n_diags == 2;
+  #assert w[0].run[0].diags[0].code == SD_OVER_BUDGET && w[0].run[0].diags[0].thing == 102 && w[0].run[0].diags[1].code == SD_TICK_BUDGET && w[0].run[0].diags[1].thing == 103;
+  // A fifth thing has no slot.
+  hk_frame(w[..], 5, 3);
+  sh_tick(w[0].s[0..<1], w[0].run[..], w[0].f[..]);
+  #assert w[0].run[0].calls == 4 && w[0].run[0].n_diags == 1 && w[0].run[0].diags[0].code == SD_NO_SLOT && w[0].run[0].diags[0].thing == 104;
+}
+#test "the module's own trap names its line, and a refused or bad module never loads" {
+  w: [1] HkWorld; rows := [1] int.[SA_TRAP]; code: [64] u8;
+  trap := [5] u8.[65, 42, 16, 0, 0];   // sa_trap(42); unreachable
+  rest: [6] u8; for v, i: trap { rest[i] = v; } rest[5] = 11;
+  n := hk_counting(code[..], rest[..]);
+  #assert hk_load(w[..], rows[..], code[0..<n], 0) == 0;
+  hk_frame(w[..], 1, 1);
+  sh_tick(w[0].s[0..<1], w[0].run[..], w[0].f[..]);
+  d := w[0].run[0].diags[0];
+  #assert d.code == SD_TRAP && d.line == 42 && d.status == WI_TRAP_UNREACHABLE && hk_state(w[..], 0) == 0;
+  // A damaged copy is refused in the scratch slot; the loaded script keeps running.
+  w[0].b[4] = 9;
+  #assert sh_load(w[0].s[0..<1], w[0].s[1..<2], w[0].b[0..<w[0].n], ScriptLayout.{}) == SD_REFUSED;
+  #assert w[0].s[1].last.code == SD_REFUSED && w[0].s[1].last.detail == WM_MAGIC && w[0].s[0].loaded && !w[0].s[1].loaded;
+  hk_frame(w[..], 1, 2);
+  sh_tick(w[0].s[0..<1], w[0].run[..], w[0].f[..]);
+  #assert w[0].run[0].calls == 1 && w[0].run[0].diags[0].line == 42;
+  big: [WM_BYTES + 1] u8;
+  #assert sh_load(w[0].s[0..<1], w[0].s[1..<2], big[..], ScriptLayout.{}) == SD_REFUSED && w[0].s[1].last.detail == WM_TOO_BIG;
+}
+#test "reads answer from the frame: near, distance, kind, a missing thing, and a seeded draw" {
+  w: [1] HkWorld; rows := [4] int.[SA_NEAR, SA_SET_VAR, SA_RANDOM, SA_KIND]; none: [1] u8;
+  // sa_set_var(me, 0, f32(sa_near(me, 1, 100.0) as number)); sa_set_var(me, 1, sa_random(me));
+  // sa_set_var(me, 2, f32(sa_kind(999)))
+  code := [48] u8.[
+    32, 0, 65, 0, 32, 0, 65, 1, 67, 0, 0, 200, 66, 16, 0, 181, 16, 1,   // var 0 = near id as f32 (f32.convert_i64_u)
+    32, 0, 65, 1, 32, 0, 16, 2, 16, 1,                                  // var 1 = random
+    32, 0, 65, 2, 66, 231, 7, 16, 3, 178, 16, 1,                        // var 2 = kind of 999 (f32.convert_i32_s)
+    32, 0, 65, 3, 32, 0, 16, 2];                                        // var 3 = a second draw
+  full: [51] u8; for v, i: code { full[i] = v; } full[48] = 16; full[49] = 1; full[50] = 11;
+  #assert hk_load(w[..], rows[..], full[..], 0) == 0;
+  hk_frame(w[..], 4, 7);   // things 100..103 at x = 0, 3, 6, 9; kinds 0, 1, 0, 1
+  sh_tick(w[0].s[0..<1], w[0].run[..], w[0].f[..]);
+  #assert w[0].run[0].failed == 0 && w[0].run[0].n_commands == 16;
+  // Thing 100 (x 0): nearest of kind 1 is 101. Thing 102 (x 6): 101 and 103 are both 3 away; the first in the frame wins.
+  #assert w[0].run[0].commands[0].a == 101.0 && w[0].run[0].commands[0].i == 0 && w[0].run[0].commands[8].a == 101.0 && w[0].run[0].commands[4].a == 103.0;
+  #assert w[0].run[0].commands[2].a == -1.0 && w[0].run[0].commands[2].i == 2;
+  first := w[0].run[0].commands[1].a; second := w[0].run[0].commands[3].a;
+  #assert first >= 0.0 && first < 1.0 && second >= 0.0 && second < 1.0 && first != second;
+  #assert first == rand_unit(2026, 100, (7 * 8 + RH_TICK) * 64) && second == rand_unit(2026, 100, (7 * 8 + RH_TICK) * 64 + 1);
+  // The same frame again gives the same commands, bit for bit, and spends the same instructions.
+  spent := w[0].s[0].spent; kept := w[0].run[0].commands[5];
+  sh_tick(w[0].s[0..<1], w[0].run[..], w[0].f[..]);
+  #assert w[0].s[0].spent == spent && w[0].run[0].commands[5].a == kept.a && w[0].run[0].commands[1].a == first;
+}
+#test "a swap keeps the fields both layouts share, by name, type and size" {
+  w: [1] HkWorld; none: [1] int; code: [64] u8; nothing := WB_NOTHING;
+  n := hk_counting(code[..], nothing[..]);
+  one: ScriptLayout; one.n = 2;
+  count := "count"; kind := "s64"; other := "seen";
+  for ch, i: count { one.fields[0].name[i] = ch; } one.fields[0].name_n = 5;
+  for ch, i: kind { one.fields[0].type[i] = ch; one.fields[1].type[i] = ch; } one.fields[0].type_n = 3; one.fields[1].type_n = 3;
+  one.fields[0].at = 0; one.fields[0].size = 8;
+  for ch, i: other { one.fields[1].name[i] = ch; } one.fields[1].name_n = 4;
+  one.fields[1].at = 8; one.fields[1].size = 8;
+  echo := WB_ECHO;
+  w[0].n = wb_module(w[0].b[..], none[0..<0], code[0..<n], 0, echo[..]);
+  #assert sh_load(w[0].s[0..<1], w[0].s[1..<2], w[0].b[0..<w[0].n], one) == 0;
+  hk_frame(w[..], 2, 1); sh_tick(w[0].s[0..<1], w[0].run[..], w[0].f[..]);
+  hk_frame(w[..], 2, 2); sh_tick(w[0].s[0..<1], w[0].run[..], w[0].f[..]);
+  marked := wi_poke(w[0].s[0].vm[..], WB_STATE + 8, 77);   // slot 0's second field
+  #assert hk_state(w[..], 0) == 2 && hk_state(w[..], 1) == 2 && marked;
+  // The new layout keeps "count" where it was and changes "seen" to another type: count stays, seen starts over.
+  two := one; two.fields[1].type[0] = 'u';
+  #assert sh_load(w[0].s[0..<1], w[0].s[1..<2], w[0].b[0..<w[0].n], two) == 0;
+  #assert hk_state(w[..], 0) == 2 && hk_state(w[..], 1) == 2 && wi_peek(w[0].s[0].vm[..], WB_STATE + 8) == 0 && w[0].s[0].owner[0] == 100;
+  hk_frame(w[..], 2, 3); sh_tick(w[0].s[0..<1], w[0].run[..], w[0].f[..]);
+  #assert hk_state(w[..], 0) == 3 && hk_state(w[..], 1) == 3;
+  // A layout that shares nothing starts every field over.
+  #assert sh_load(w[0].s[0..<1], w[0].s[1..<2], w[0].b[0..<w[0].n], ScriptLayout.{}) == 0 && hk_state(w[..], 0) == 0;
+}

@@ -1,0 +1,6 @@
+// expect: E0981 may declare only
+#script "wide";
+#load "api.coax";
+Mind :: struct #persisted { n: int; }
+helper :: (a: int) -> int #effects(reads, clock) { return a; }
+on_tick :: (me: u64, mind: [] Mind, dt: f32) #export_c #effects(reads, writes, traps) { mind[0].n = helper(mind[0].n); }
