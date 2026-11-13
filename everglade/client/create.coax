@@ -23,7 +23,8 @@ E2C_SWING :: 3.0;        // s: the controls fade and the camera swings round beh
 E2C_RUN :: 20.0;         // s: the run out of the glade and down the path, on its own
 E2C_EASE :: 1.5;         // s: the camera eases into the follow camera, then the keys are yours
 E2C_FADE :: 0.8;         // s: the controls fade out
-E2C_RECORD :: 58;        // the longest record (CC4: a class past level 1)
+E2C_RECORD :: 58;        // the longest record read (CC4, an older save: a class past level 1)
+E2C_KEEP :: 56;          // the record kept (CC2: the look, no class or level)
 E2C_SAVE :: 16;          // host.js: keep the outbox as the shared character record; message 17 says it was kept
 E2C_KEPT :: 17;
 E2C_ADDRESS :: 19;       // host.js: this same-origin path in the address bar (history.replaceState), nothing loaded
@@ -259,13 +260,18 @@ e2c_value :: (s: [] E2, f: int) -> string {
 }
 
 // The shared character record: SAVE PLAYER keeps it; USE IN EVERGLADE keeps it, then runs.
+// The browser keeps your look only (CC2, 56 bytes). Your class is the room's: the one you pick
+// here goes with the hello as a new character's request, and the room says it back (#13290). An
+// older record with a class or level after the look still restores; it is kept without them.
 e2c_request :: (s: [] E2, go: bool) {
   c := s[0].cz[..]; cr := s[0].creator[..];
   if c[0].pending { return; }
   if c[0].editing { e2c_name_done(s); }
   cc.ensure(cr);
+  klass := cr[0].klass; cr[0].klass = -1;
   n := cc.save(cr[0], c[0].bytes[..]);
-  if n < 56 || n > E2C_RECORD { return; }
+  cr[0].klass = klass;
+  if n != E2C_KEEP { return; }
   c[0].n = n; c[0].at_rev = cr[0].revision; c[0].pending = true; c[0].request = true; c[0].want_go = go; c[0].failed = false;
 }
 e2c_reply :: (s: [] E2, t: string) {
@@ -357,7 +363,7 @@ e2c_action :: (s: [] E2) {
     s[0].out_n = path.count; s[0].action = E2C_ADDRESS; c[0].address = false;
   }
 }
-#test "create: USE IN EVERGLADE keeps the record with its class, then runs and says Everglade II's address" #steps 2000000000 {
+#test "create: USE IN EVERGLADE keeps the look without the class, then runs and says Everglade II's address" #steps 2000000000 {
   s: [1] E2;
   e2_message(s[..], E2_HOST_PAGE, "url=http://127.0.0.1/worlds/character-creator\nnow=1000");
   #assert e2c_creating(s[..]) && s[0].creator[0].configured && s[0].creator[0].klass == E2C_DRUID && e2c_value(s[..], E2C_CLASS) == "DRUID";
@@ -366,22 +372,27 @@ e2c_action :: (s: [] E2) {
   // the studio holds you still: no keys reach the walk
   #assert e2_key(s[..], 'w', 0) && s[0].held == 0;
   e2c_request(s[..], true); e2c_action(s[..]);
-  #assert s[0].action == E2C_SAVE && s[0].out_n == 57 && s[0].outbox[2] == '3';
-  b: [E2C_RECORD] u8; for i: 0..<57 { b[i] = s[0].outbox[i]; }
+  #assert s[0].action == E2C_SAVE && s[0].out_n == E2C_KEEP && s[0].outbox[2] == '2';
+  b: [E2C_RECORD] u8; for i: 0..<E2C_KEEP { b[i] = s[0].outbox[i]; }
   s[0].action = 0;
-  e2_message(s[..], E2C_KEPT, cast(string) b[0..<57]);
+  e2_message(s[..], E2C_KEPT, cast(string) b[0..<E2C_KEEP]);
   #assert !e2c_creating(s[..]) && e2c_running(s[..]) && s[0].reseat;
+  // the class picked is still yours for the hello: it was never in the record
+  #assert e2c_class_of(s[..]) == 2;
+  // the kept record restores the look on its own page and says no class or level
+  t: [1] E2; e2_message(t[..], 16, cast(string) b[0..<E2C_KEEP]);
+  #assert t[0].creator[0].profile_ok && t[0].creator[0].female && t[0].creator[0].eye_color == 3 && t[0].creator[0].klass == -1 && t[0].creator[0].level == 1;
   e2c_action(s[..]);
   #assert s[0].action == E2C_ADDRESS && cast(string) s[0].outbox[0..<s[0].out_n] == "/worlds/everglade2";
 }
-#test "create: the record kept is the one Everglade II restores on its own page, class and all" #steps 1000000000 {
+#test "create: an older record with a class after the look still restores on Everglade II's page" #steps 1000000000 {
   s: [1] E2; e2_message(s[..], E2_HOST_PAGE, "url=/worlds/character-creator\n");
   e2c_change(s[..], 0, 1); e2c_change(s[..], 12, 3); e2c_change(s[..], E2C_CLASS, -1);
   b: [E2C_RECORD] u8; n := cc.save(s[0].creator[0], b[..]); #assert n == 57;
   t: [1] E2; e2_message(t[..], 16, cast(string) b[0..<n]);
   #assert t[0].creator[0].female && t[0].creator[0].eye_color == 3 && t[0].creator[0].klass == 2 && e2c_level_of(t[..]) == 1;
 }
-#test "create: the LEVEL row steps 1 to 6 round, and the record keeps it for Everglade II (#13046)" #steps 1000000000 {
+#test "create: the LEVEL row steps 1 to 6 round, and the record kept leaves it out (#13046, #13290)" #steps 1000000000 {
   s: [1] E2; e2_message(s[..], E2_HOST_PAGE, "url=/worlds/character-creator\n");
   #assert e2c_value(s[..], E2C_LEVEL) == "1";
   e2c_change(s[..], E2C_LEVEL, -1); #assert e2c_value(s[..], E2C_LEVEL) == "6" && s[0].creator[0].focused == E2C_LEVEL;
@@ -393,6 +404,7 @@ e2c_action :: (s: [] E2) {
   s[0].creator[0].focused = E2C_CLASS; #assert e2c_key(s[..], -15) && s[0].creator[0].focused == E2C_LEVEL && e2c_key(s[..], -15) && s[0].creator[0].focused == 0;
   r: [E2C_RECORD] u8; n := cc.save(s[0].creator[0], r[..]); #assert n == 58 && r[2] == '4' && r[57] == '4';
   t: [1] E2; e2_message(t[..], 16, cast(string) r[0..<n]); #assert e2c_level_of(t[..]) == 4 && t[0].creator[0].klass == E2C_DRUID;
+  e2c_request(s[..], false); #assert s[0].cz[0].n == E2C_KEEP && s[0].cz[0].bytes[2] == '2' && e2c_level_of(s[..]) == 4;
 }
 #test "create: a refused keep stays in the studio, and Everglade II's own page is not the studio" #steps 1000000000 {
   u: [1] E2; e2_message(u[..], E2_HOST_PAGE, "url=/worlds/character-creator\n");
