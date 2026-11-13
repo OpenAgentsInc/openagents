@@ -115,7 +115,7 @@ sb_mark :: (g: [] SpGame, id: int, x: f32, z: f32) -> Point { m := sc_mark(g[0].
 sb_reset :: (g: [] SpGame) {
   t := g[0].bt[..];
   t[0] = SpBattle.{};
-  t[0].bots[SB_DIGGER] = bb_bot(SB_DIGGER, 12, 60, 8);
+  t[0].bots[SB_DIGGER] = bb_bot(SB_DIGGER, 12, 60, 8); t[0].bots[SB_DIGGER].vit = g[0].dr[0].hp;   // his health is the Director's (director.coax)
   t[0].bots[SB_MECH] = bb_bot(SB_MECH, 45, 100, 12);
   t[0].bots[SB_SNIPER] = bb_bot(SB_SNIPER, 24, 80, 10);
   t[0].bots[SB_RAIDER] = bb_bot(SB_RAIDER, 16, 60, 8);
@@ -153,7 +153,7 @@ sb_weak_at :: (g: [] SpGame, i: int) -> Point {
 // The boss's weak points can be stunned while it reels from a hit, is dazed after a charge, or has no health left.
 sb_open :: (g: [] SpGame) -> bool {
   t := g[0].bt[0]; b := sb_boss(g);
-  return !g[0].boss_down && g[0].wall_gone && (t.daze > 0 || b.down || (t.kind == SBF_BOSS && t.fight[0].now < b.stun_until));
+  return !g[0].boss_down && g[0].wall_gone && (t.daze > 0 || b.vit.down || (t.kind == SBF_BOSS && t.fight[0].now < b.stun_until));
 }
 // The boss's record: in the battle while one is on, else the kept one.
 sb_boss :: (g: [] SpGame) -> BbBot { t := g[0].bt[0]; return ifx t.kind == SBF_BOSS then bb_active(t.fight[0], 1) else t.bots[SB_BOSS]; }
@@ -165,10 +165,10 @@ sb_weak_near :: (g: [] SpGame) -> int {
 }
 // Where the banned core lies once the boss is down: under its chest.
 sb_core_at :: (g: [] SpGame) -> Point { return fp(sb_dino_frame(g), 0, 0, 1.6); }
-// Digger's body sits still while his core is in the mech, unless a battle has him fielded.
+// Digger's body sits still while his core is in the mech, or a battle has him fielded. Powered down,
+// the Director's tow and charger have him (director.coax).
 sb_holds_digger :: (g: [] SpGame) -> bool {
   t := g[0].bt[0];
-  if t.bots[SB_DIGGER].down { return true; }
   if t.kind != SBF_NONE && t.fight[0].on && sb_fielded(g) == SB_DIGGER { return true; }
   return t.mech_core;
 }
@@ -188,6 +188,7 @@ sb_body_at :: (g: [] SpGame, b: int) -> Point {
 // Begins a battle: your crew (by bot) against one foe. Each body's cards are what it holds now.
 sb_begin :: (g: [] SpGame, kind: int, crew: [] int, foe: int) {
   t := g[0].bt[..];
+  t[0].bots[SB_DIGGER].vit = g[0].dr[0].hp;
   mine: [BB_CREW] BbBot; n := 0;
   for b: crew { if n < BB_CREW { sb_arm(g, b); mine[n] = t[0].bots[b]; t[0].crew[n] = b; n += 1; } }
   t[0].crew_n = n;
@@ -239,9 +240,9 @@ sb_use :: (g: [] SpGame) -> bool {
   if g[0].mode != M_PLAY { return false; }
   if sb_fighting(g) { return sb_swap(g); }
   if g[0].zone == Z_MINE {
-    // a pickup or the banned core in reach comes first
+    // the banned core in reach comes first
     co := sb_core_at(g);
-    if g_reach(g) >= 0 || (g[0].boss_down && !g[0].core_taken && dist2(g[0].px, g[0].pz, co.x, co.z) < T_PICK_RANGE) { return false; }
+    if (g[0].boss_down && !g[0].core_taken && dist2(g[0].px, g[0].pz, co.x, co.z) < T_PICK_RANGE) { return false; }
     // the hallway: the mech, with Digger's core, drills it down
     if !g[0].wall_gone && t[0].drill_t <= 0 && dist2(g[0].px, g[0].pz, 0, g[0].at.wall_z + 1) < SB_HALL_REACH {
       if t[0].mech_core && dist2(t[0].mech_x, t[0].mech_z, 0, g[0].at.wall_z + 1) < 14 { t[0].drill_t = SB_DRILL_TIME; g_say(g, SBM_DRILLING); }
@@ -249,7 +250,7 @@ sb_use :: (g: [] SpGame) -> bool {
       return true;
     }
     // the mech: Digger's core in, or back out
-    if g[0].bot && !t[0].bots[SB_DIGGER].down && dist2(g[0].px, g[0].pz, t[0].mech_x, t[0].mech_z) < SB_MECH_REACH {
+    if g[0].bot && !d_down(g) && dist2(g[0].px, g[0].pz, t[0].mech_x, t[0].mech_z) < SB_MECH_REACH {
       t[0].mech_core = !t[0].mech_core; t[0].mech_used = true; g[0].flash = 0.25;
       if !t[0].mech_core { g_bot_home(g); }
       g_say(g, ifx t[0].mech_core then SBM_CORE_IN else SBM_CORE_OUT);
@@ -257,11 +258,11 @@ sb_use :: (g: [] SpGame) -> bool {
     }
   }
   // the raider mech near Sniper: get in and battle it, Digger beside Sniper to swap in when he is built
-  if sb_desert(g) && t[0].rm_hunt && !t[0].rm_down && !t[0].bots[SB_SNIPER].down && near_rover(g, T_USE_RANGE) {
+  if sb_desert(g) && t[0].rm_hunt && !t[0].rm_down && !t[0].bots[SB_SNIPER].vit.down && near_rover(g, T_USE_RANGE) {
     s := sb_sniper_at(g);
     if dist2(t[0].rm_x, t[0].rm_z, s.x, s.z) < SB_SNIPER_REACH {
       crew: [2] int; n := 1; crew[0] = SB_SNIPER;
-      if g[0].bot && !t[0].bots[SB_DIGGER].down { crew[1] = SB_DIGGER; n = 2; }
+      if g[0].bot && !d_down(g) { crew[1] = SB_DIGGER; n = 2; }
       sb_begin(g, SBF_DESERT, crew[0..<n], SB_RAIDER);
       return true;
     }
@@ -291,10 +292,22 @@ sb_boss_down :: (g: [] SpGame) {
   g[0].boss_down = true; g[0].phase = PH_NIGHT; g[0].flash = 0.6; g_say(g, SBM_CORE_DROP);
   g[0].bt[0].daze = 0; g[0].bt[0].rush = 0; g[0].bt[0].wind = 0;
 }
-// A key in play: 1 to 4 are moves while a battle is on.
-sb_key :: (g: [] SpGame, key: int) -> bool {
-  if key >= '1' && key <= '4' { return sb_move(g, key - '1'); }
-  return false;
+// Keys 1 to 4 in play: the Director hands each press over once (d_take_move); a battle makes it a move.
+sb_keys :: (g: [] SpGame) {
+  for i: 0..<8 { m := d_take_move(g); if m <= 0 { return; } _ := sb_move(g, m - 1); }
+}
+// Digger's health is the Director's (dr.hp, director.coax): the battle reads it before a step and,
+// while he is in a battle's crew, writes his hits back after it.
+sb_digger_in :: (g: [] SpGame) {
+  t := g[0].bt[..];
+  t[0].bots[SB_DIGGER].vit = g[0].dr[0].hp;
+  if t[0].kind == SBF_NONE { return; }
+  for i: 0..<t[0].crew_n { if t[0].crew[i] == SB_DIGGER { t[0].fight[0].sides[0].bots[i].vit = g[0].dr[0].hp; } }
+}
+sb_digger_out :: (g: [] SpGame) {
+  t := g[0].bt[..];
+  if t[0].kind != SBF_NONE { for i: 0..<t[0].crew_n { if t[0].crew[i] == SB_DIGGER { t[0].bots[SB_DIGGER] = t[0].fight[0].sides[0].bots[i]; } } }
+  g[0].dr[0].hp = t[0].bots[SB_DIGGER].vit;
 }
 
 // ---- a step
@@ -309,6 +322,8 @@ sb_toward :: (x: [] f32, z: [] f32, yaw: [] f32, tx: f32, tz: f32, speed: f32, s
 sb_step :: (g: [] SpGame, dt: f32) {
   t := g[0].bt[..];
   if t[0].hit_t > 0 { t[0].hit_t -= dt; }
+  sb_digger_in(g);
+  sb_keys(g);
   // a run kept from the boss chamber on (front.coax): Digger's core is in the mech, beside the open hallway
   if g[0].wall_gone && !g[0].boss_down && !t[0].mech_used { t[0].mech_used = true; t[0].mech_core = true; t[0].mech_x = 2.5; t[0].mech_z = g[0].at.wall_z - 2; }
   sb_mech_step(g, dt);
@@ -316,6 +331,7 @@ sb_step :: (g: [] SpGame, dt: f32) {
   sb_boss_step(g, dt);
   sb_battle_step(g, dt);
   sb_repair_step(g, dt);
+  sb_digger_out(g);
 }
 // The drill mech: it follows you while Digger's core is in it, and drills the hallway when asked.
 sb_mech_step :: (g: [] SpGame, dt: f32) {
@@ -364,7 +380,7 @@ sb_boss_step :: (g: [] SpGame, dt: f32) {
   t := g[0].bt[..];
   if g[0].zone != Z_MINE || !g[0].wall_gone || g[0].boss_down { return; }
   for i: 0..<3 { if g[0].stun[i] > 0 { g[0].stun[i] -= dt; if g[0].stun[i] <= 0 { g_say(g, MSG_WAKE); } } }
-  if t[0].kind == SBF_NONE && sb_in_chamber(g, g[0].pz) && (t[0].mech_core || g[0].bot) && !t[0].bots[SB_MECH].down {
+  if t[0].kind == SBF_NONE && sb_in_chamber(g, g[0].pz) && (t[0].mech_core || g[0].bot) && !t[0].bots[SB_MECH].vit.down {
     crew := [2] int.[SB_MECH, SB_DIGGER];
     sb_begin(g, SBF_BOSS, crew[..], SB_BOSS);
     if !t[0].mech_core { _ := bb_swap(t[0].fight[..], 0, 1); t[0].fight[0].sides[0].swap_until = 0; }
@@ -372,7 +388,7 @@ sb_boss_step :: (g: [] SpGame, dt: f32) {
   }
   if t[0].kind != SBF_BOSS { return; }
   b := bb_active(t[0].fight[0], 1);
-  if b.down { t[0].rush = 0; t[0].wind = 0; return; }   // no health left: it slumps and its weak points stay open
+  if b.vit.down { t[0].rush = 0; t[0].wind = 0; return; }   // no health left: it slumps and its weak points stay open
   stunned := t[0].fight[0].now < b.stun_until;
   if !t[0].half && bb_health(b) <= 0.5 { t[0].half = true; t[0].charge_t = 0; g_say(g, SBM_CHARGES); }
   dx := [1] f32.[t[0].dino_x]; dz := [1] f32.[t[0].dino_z]; dy := [1] f32.[t[0].dino_yaw];
@@ -443,13 +459,13 @@ sb_battle_step :: (g: [] SpGame, dt: f32) {
     if k >= 0 { h := bb_use(f, 1, k, sb_gap(g)); if h.verdict == BbVerdict.ok { t[0].hit_t = 0.9; t[0].hit_side = 0; t[0].hit_dmg = h.damage; g[0].flash = hi(g[0].flash, 0.2); } }
   }
   // a fielded bot down: the next one standing comes in; Digger down is said
-  if bb_active(f[0], 0).down {
+  if bb_active(f[0], 0).vit.down {
     if sb_fielded(g) == SB_DIGGER { g_say(g, SBM_DIGGER_DOWN); }
     nx := bb_next(f[0].sides[0]);
     if nx >= 0 && bb_swap(f, 0, nx) { b := t[0].crew[nx]; if b == SB_MECH || b == SB_DIGGER { t[0].mech_core = b == SB_MECH; } }
   }
   // the end: the foe down, or your side down (the mech down in the boss's battle is a loss)
-  mech_lost := t[0].kind == SBF_BOSS && f[0].sides[0].bots[0].down;
+  mech_lost := t[0].kind == SBF_BOSS && f[0].sides[0].bots[0].vit.down;
   if f[0].winner == 0 && t[0].kind == SBF_DESERT {
     sb_finish(g); t[0].rm_down = true; t[0].rm_hunt = false; g[0].scrap += 1; g_say(g, SBM_RM_DOWN);
   } else if (f[0].winner == 1 || mech_lost) && t[0].kind == SBF_DESERT {
@@ -459,18 +475,17 @@ sb_battle_step :: (g: [] SpGame, dt: f32) {
     g[0].mode = M_BANNER; g[0].banner = B_CUT; g[0].banner_t = T_BANNER;
   }
 }
-// Sniper's charger: standing by the rover out of a battle repairs Digger and Sniper after a moment.
+// Sniper's charger: standing by the rover out of a battle repairs Sniper after a
+// moment. Digger charges there on the Director's charger (d_bot, director.coax).
 sb_repair_step :: (g: [] SpGame, dt: f32) {
   t := g[0].bt[..];
   if sb_fighting(g) { t[0].repair_t = 0; return; }
-  hurt := t[0].bots[SB_DIGGER].hp < t[0].bots[SB_DIGGER].hp_max || t[0].bots[SB_DIGGER].down || t[0].bots[SB_SNIPER].hp < t[0].bots[SB_SNIPER].hp_max;
+  hurt := t[0].bots[SB_SNIPER].vit.hp < t[0].bots[SB_SNIPER].vit.most;
   if !hurt || !near_rover(g, T_COOL_RANGE) { t[0].repair_t = 0; return; }
   t[0].repair_t += dt;
   if t[0].repair_t < SB_REPAIR { return; }
   t[0].repair_t = 0;
-  was_down := t[0].bots[SB_DIGGER].down;
-  bb_repair(t[0].bots[SB_DIGGER..<SB_DIGGER + 1]); bb_repair(t[0].bots[SB_SNIPER..<SB_SNIPER + 1]);
-  if was_down && !t[0].mech_core { g_bot_home(g); }   // he wakes beside you
+  bb_repair(t[0].bots[SB_SNIPER..<SB_SNIPER + 1]);
   g_say(g, SBM_REPAIR);
 }
 // Back at the checkpoint after a loss: the boss is whole again at home, the mech repaired with Digger's core
@@ -623,7 +638,7 @@ sb_head_bar :: (g: [] SpGame, out: [] f32, u: [] f32, n: int, q: Ui, b: BbBot, a
   if !sp.ahead || sp.x < 0 || sp.x > q.w || sp.y < 0 || sp.y > q.h { return n; }
   k := q.k; w := 70 * k;
   ui_panel(g, u, sp.x - w * 0.5 - 4 * k, sp.y - 9 * k, sp.x + w * 0.5 + 4 * k, sp.y + 9 * k, PAPER(), 0.85);
-  return sb_bar(out, n, sp.x - w * 0.5, sp.y, sp.x + w * 0.5, k, ifx b.down then 0.0f32 else bb_health(b), c);
+  return sb_bar(out, n, sp.x - w * 0.5, sp.y, sp.x + w * 0.5, k, ifx b.vit.down then 0.0f32 else bb_health(b), c);
 }
 // The record a bar shows: the battle's while it fights, else the kept one.
 sb_rec :: (g: [] SpGame, b: int) -> BbBot {
@@ -638,9 +653,8 @@ sb_hud :: (g: [] SpGame, out: [] f32, u: [] f32, q: Ui, n0: int) -> int {
   n := n0; t := g[0].bt[0]; k := q.k; w := q.w; h := q.h; pad := 18 * k; ink := INK(); paper := PAPER();
   mine := kit_tint(0.20, 0.52, 0.36);
   buf: [64] u8;
-  // a bar over every bot in the scene
+  // a bar over the battle's bots (the Director's plates draw Digger's and the foot foes', director.coax)
   if g[0].zone == Z_MINE {
-    if g[0].bot { n = sb_head_bar(g, out, u, n, q, sb_rec(g, SB_DIGGER), v3(g[0].bot_x, ground_y(g, g[0].bot_x, g[0].bot_z) + 2.0, g[0].bot_z), mine); }
     if t.mech_used || dist2(g[0].px, g[0].pz, t.mech_x, t.mech_z) < 20 { n = sb_head_bar(g, out, u, n, q, sb_rec(g, SB_MECH), v3(t.mech_x, 6.4, t.mech_z), mine); }
     if g[0].wall_gone && !g[0].boss_down { n = sb_head_bar(g, out, u, n, q, sb_rec(g, SB_BOSS), v3(t.dino_x, 4.4, t.dino_z), GLOW_INK()); }
   }
@@ -648,7 +662,6 @@ sb_hud :: (g: [] SpGame, out: [] f32, u: [] f32, q: Ui, n0: int) -> int {
     s := sb_sniper_at(g);
     n = sb_head_bar(g, out, u, n, q, sb_rec(g, SB_SNIPER), v3(s.x, 3.2, s.z), mine);
     if !t.rm_down { n = sb_head_bar(g, out, u, n, q, sb_rec(g, SB_RAIDER), v3(t.rm_x, 4.4, t.rm_z), HEAT()); }
-    if g[0].bot { n = sb_head_bar(g, out, u, n, q, sb_rec(g, SB_DIGGER), v3(g[0].bot_x, 2.0, g[0].bot_z), mine); }
   }
   if t.kind == SBF_NONE { return n; }
   f := t.fight[0];
@@ -658,7 +671,7 @@ sb_hud :: (g: [] SpGame, out: [] f32, u: [] f32, q: Ui, n0: int) -> int {
   ui_panel(g, u, fx0, fy, fx1, fy + 52 * k, paper, 0.96);
   n = ui_box(out, n, fx0, fy, fx1, fy + 52 * k, 3 * k, ink);
   n = ui_title(out, n, sb_bot_name(t.foe), fx0 + 14 * k, fy + 22 * k, 10 * k, ifx t.foe == SB_BOSS then GLOW_INK() else ink);
-  n = ui_right(out, n, num(buf[..], "", foe.hp, num_tail(foe)), fx1 - 14 * k, fy + 22 * k, 9 * k, ink);
+  n = ui_right(out, n, num(buf[..], "", bb_hp(foe), num_tail(foe)), fx1 - 14 * k, fy + 22 * k, 9 * k, ink);
   n = sb_bar(out, n, fx0 + 14 * k, fy + 38 * k, fx1 - 14 * k, k, bb_health(foe), ifx t.foe == SB_BOSS then GLOW() else HEAT());
   if t.foe == SB_BOSS && t.half { n = ui_mid(out, n, "PHASE 2 · IT CHARGES", w * 0.5, fy + 70 * k, 8 * k, HEAT()); }
   // yours: the fielded bot, its health and battery, and its four cards on keys 1 to 4
@@ -696,7 +709,7 @@ sb_hud :: (g: [] SpGame, out: [] f32, u: [] f32, q: Ui, n0: int) -> int {
   }
   return n;
 }
-num_tail :: (b: BbBot) -> string { return ifx b.down then " · DOWN" else " HP"; }
+num_tail :: (b: BbBot) -> string { return ifx b.vit.down then " · DOWN" else " HP"; }
 
 // ---- the ending: the memory hologram, SCENE RESTORED, the mission's teaser
 // The hologram (15 seconds): the empty throne room in orbit, machines still stamping out mandates;

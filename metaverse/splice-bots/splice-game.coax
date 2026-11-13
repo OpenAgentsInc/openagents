@@ -30,6 +30,7 @@
 #load "why.coax";                  // the answers to `why ID` (metaverse-engine/agent/why.coax, #13429)
 #load "why-checks.coax" #test;
 #load "imports-checks.coax" #test;   // a piece kind whose mesh is a mesh of the world's import pack (#13420)
+#load "splice-battle.coax";        // bot battles, the drill mech, the boss and the ending (#13505 part C)
 
 // ---- Tuning (the document's DA_Tuning): every number the run is balanced with
 T_WALK :: 5.6f32; T_TURN :: 2.5f32; T_LOOK :: 0.0032f32; T_RADIUS :: 0.45f32;
@@ -135,6 +136,7 @@ SpGame :: struct {
   events: [EVENTS] int; event_n: int;
   fr: [1] SpFront;             // the front door (front.coax): the menus, your character, the kept run; outlives a reset
   dr: [1] SpDir;               // the Director's systems (director.coax): her stance, Digger's errands and health, the grid, the map, pause
+  bt: [1] SpBattle;            // the bots' battles, the drill mech, the raider mech, the boss and the ending (splice-battle.coax)
 }
 
 // ---- Things and events, for a host that shows the game with its own models and sounds
@@ -243,7 +245,8 @@ g_foes :: (g: [] SpGame) {
 }
 // The time of day the foes keep and the light is: the editor's when it set one, else the story's phase.
 g_phase :: (g: [] SpGame) -> int { return ifx g[0].view >= 0 then g[0].view else g[0].phase; }
-weak_at :: (g: [] SpGame, i: int) -> Point { a := ifx i == 0 then 0.0f32 else ifx i == 1 then 2.2f32 else -2.2f32; return v3(g[0].at.boss_x + sin(a) * 2.7, 1.5, g[0].at.boss_z + cos(a) * 2.7); }
+// The boss's weak points ride on its body (splice-battle.coax).
+weak_at :: (g: [] SpGame, i: int) -> Point { return sb_weak_at(g, i); }
 // The rail line: s metres along it, a gentle curve north.
 rail_at :: (g: [] SpGame, s: f32) -> Point { return v3(g[0].at.rail_x + sin(s * 0.03) * 8, 0, g[0].at.rail_z + s); }
 rail_yaw :: (g: [] SpGame, s: f32) -> f32 { a := rail_at(g, s); b := rail_at(g, s + 1); return atan2(b.x - a.x, b.z - a.z); }
@@ -269,6 +272,7 @@ g_respawn :: (g: [] SpGame) {
   if k >= 0 { s := g[0].c[0].starts[k]; g[0].px = sc_m(s.x); g[0].pz = sc_m(s.z); g[0].yaw = sl_rad(s.yaw); }
   g_foes(g);
   g[0].bot = true; g_bot_home(g); d_respawn(g);
+  sb_respawn(g);   // the boss whole again, the mech repaired (splice-battle.coax)
 }
 g_reset :: (g: [] SpGame) {
   gray := g[0].gray;   // the graybox toggle is the viewer's, not the run's
@@ -292,6 +296,7 @@ g_reset :: (g: [] SpGame) {
   g[0].px = g[0].at.vil_x; g[0].pz = g[0].at.vil_z - 3; g[0].yaw = 0; g[0].hearts = T_HEARTS; g[0].rail_v = T_RAIL_SPEED;
   g_foes(g);
   g[0].bot = true; g_bot_home(g);   // Digger is with her from the first step (director.coax)
+  sb_reset(g);
 }
 g_say :: (g: [] SpGame, m: int) { g[0].msg = m; g[0].msg_t = 3.5; g_event(g, m); }
 // The Digger beside you: where it stands when it is not at work.
@@ -366,11 +371,7 @@ g_reach :: (g: [] SpGame) -> int {
   }
   return best;
 }
-g_weak_near :: (g: [] SpGame) -> int {
-  if !g[0].wall_gone || g[0].boss_down { return -1; }
-  for i: 0..<3 { w := weak_at(g, i); if g[0].stun[i] <= 0 && dist2(g[0].px, g[0].pz, w.x, w.z) < T_STUN_RANGE { return i; } }
-  return -1;
-}
+g_weak_near :: (g: [] SpGame) -> int { return sb_weak_near(g); }   // only while they are open (splice-battle.coax)
 
 // ---- The Digger's run: its cards in order, one every T_CARD_TIME
 g_deploy :: (g: [] SpGame) {
@@ -389,6 +390,7 @@ bot_toward :: (g: [] SpGame, tx: f32, tz: f32, speed: f32, dt: f32) -> f32 {
 }
 g_bot :: (g: [] SpGame, dt: f32) {
   if !g[0].bot || (d_busy(g) && g[0].bot_state == BOT_FOLLOW) { return; }   // on an errand of his own, or powered down (director.coax)
+  if sb_holds_digger(g) { return; }   // his core is in the drill mech, or he is fielded in a battle (splice-battle.coax)
   face := ifx g[0].bot_wall then g[0].at.wall_z + 1 else g[0].at.rubble_z + 1;
   if g[0].bot_state == BOT_FOLLOW {
     // always next to you: a step behind and to your right
@@ -418,8 +420,7 @@ g_bot :: (g: [] SpGame, dt: f32) {
   if card == H_MOVE { g[0].bot_from = g[0].bot_z; }
   if card == H_DRILL || card == H_PLUS {
     if g[0].bot_z - face > T_DRILL_REACH { g_say(g, MSG_AIR); }
-    else if g[0].bot_wall && card == H_DRILL { g_say(g, MSG_WEAK); }
-    else if g[0].bot_wall { g[0].wall_gone = true; g[0].flash = 0.5; g_say(g, MSG_BROKE); g[0].bot_state = BOT_FOLLOW; return; }
+    else if g[0].bot_wall { g_say(g, SBM_NEED_MECH); g[0].bot_state = BOT_FOLLOW; return; }   // only the drill mech breaks the hallway
     else { g[0].rubble_gone = true; g[0].phase = PH_DUSK; g[0].flash = 0.5; g_say(g, MSG_OPEN); g[0].bot_state = BOT_FOLLOW; return; }
   }
   g[0].bot_step += 1;
@@ -529,6 +530,7 @@ g_step :: (g: [] SpGame, dt: f32) {
   if g[0].msg_t > 0 { g[0].msg_t -= dt; if g[0].msg_t <= 0 { g[0].msg = MSG_NONE; } }
   if g[0].flash > 0 { g[0].flash = hi(0, g[0].flash - dt * 1.6); }
   if g[0].mode == M_BANNER { g[0].banner_t -= dt; if g[0].banner_t <= 0 { g_respawn(g); g[0].mode = M_PLAY; } return; }
+  sb_end_step(g, dt);   // SCENE RESTORED, then the mission's teaser
   if g[0].mode == M_MEMORY { g[0].mem_t += dt; if g[0].mem_t >= T_MEMORY { g[0].mode = M_RESTORED; g_event(g, EV_RESTORED); } return; }
   if g[0].mode == M_BAY { if g[0].heat > 0 { g[0].heat = hi(0, g[0].heat - T_HEAT_COOL * dt); } return; }
   if g[0].mode == M_RIDE {
@@ -552,6 +554,7 @@ g_step :: (g: [] SpGame, dt: f32) {
     return;
   }
   g_move(g, dt);
+  sb_step(g, dt);   // battles, the drill mech, the raider mech and the boss (splice-battle.coax)
   if g[0].zone == Z_RAIL { d_post(g, dt); g_bot(g, dt); return; }
   if g[0].hit_cool > 0 { g[0].hit_cool -= dt; }
   if g[0].rubble_gone && g[0].phase == PH_DUSK && g[0].pz < g[0].at.rubble_z - 1 { g[0].phase = PH_NIGHT; }   // into the passage: night
@@ -565,19 +568,6 @@ g_step :: (g: [] SpGame, dt: f32) {
   // As shipped, raiders dance where they stand and fight only if you hit them; Imperial robots patrol,
   // notice you (from further at higher Heat), chase, and give up at the catwalk or far away
   g_foes_step(g, dt);
-  // the banned bot: its arm sweeps round every T_SWEEP_EVERY; a stunned weak point wakes after T_STUN_TIME
-  if g[0].wall_gone && !g[0].boss_down {
-    for i: 0..<3 { if g[0].stun[i] > 0 { g[0].stun[i] -= dt; if g[0].stun[i] <= 0 { g_say(g, MSG_WAKE); } } }
-    g[0].boss_t += dt;
-    if g[0].boss_t > T_SWEEP_EVERY + T_SWEEP_TIME { g[0].boss_t = 0; }
-    if g[0].boss_t > T_SWEEP_EVERY {
-      a := boss_arm(g);
-      dx := g[0].px - g[0].at.boss_x; dz := g[0].pz - g[0].at.boss_z; d := sqrt(dx * dx + dz * dz);
-      diff := atan2(dx, dz) - a;
-      while diff > PI { diff -= TAU; } while diff < -PI { diff += TAU; }
-      if d < T_ARM && abs(diff) < 0.4 { g_hurt(g); }
-    }
-  }
   d_post(g, dt);   // Heat's floor, and Digger's own errands (director.coax)
   g_bot(g, dt);
 }
@@ -673,12 +663,7 @@ g_foe_near :: (g: [] SpGame) -> int {
 // F: stun a weak point of the banned bot, or a robot within 2 m: it stands still for T_FOE_STUN.
 // Fights are Digger's now (director.coax: a left click points him at a foe).
 g_stun :: (g: [] SpGame) {
-  i := g_weak_near(g);
-  if i >= 0 {
-    g[0].stun[i] = T_STUN_TIME; g[0].flash = 0.25; g_say(g, MSG_STUN);
-    if g[0].stun[0] > 0 && g[0].stun[1] > 0 && g[0].stun[2] > 0 { g[0].boss_down = true; g_say(g, MSG_DOWN); }
-    return;
-  }
+  if sb_stun(g) { return; }   // the boss's weak points, the raider mech (splice-battle.coax)
   f := g_foe_near(g);
   if f < 0 { return; }
   g[0].fstag[f] = T_FOE_STUN; g[0].flash = 0.2; d_say(g, DS_STUN);
@@ -688,10 +673,11 @@ g_stun :: (g: [] SpGame) {
 // at the ping. Parts are Digger's to pick up (director.coax); the edit bay is Tab, inside Sniper.
 g_use :: (g: [] SpGame) {
   if d_use(g) { return; }
+  if sb_use(g) { return; }   // a core swap, the drill mech, the hallway, a battle from Sniper (splice-battle.coax)
   // a portal of the world's (a vehicle's door into a room, the room's door out): through it
   w := g_portal(g);
   if w >= 0 { p := g[0].c[0].portals[w]; g_go(g, sc_m(p.to_x), sc_m(p.to_z), p.yaw); g[0].flash = 0.3; return; }
-  if g[0].zone == Z_MINE && g[0].boss_down && !g[0].core_taken && dist2(g[0].px, g[0].pz, g[0].at.boss_x, g[0].at.boss_z + 4.5) < T_PICK_RANGE { g[0].core_taken = true; g[0].have[H_CORE] = true; g_say(g, MSG_CORE); return; }
+  if g[0].zone == Z_MINE && g[0].boss_down && !g[0].core_taken && dist2(g[0].px, g[0].pz, sb_core_at(g).x, sb_core_at(g).z) < T_PICK_RANGE { g[0].core_taken = true; g[0].have[H_CORE] = true; g_say(g, MSG_CORE); return; }
   if g[0].zone == Z_RAIL && near_rover(g, T_USE_RANGE) { if g[0].have[H_BATTERY] { g[0].mode = M_RIDE; } else { g_say(g, MSG_FIRST); } return; }
 }
 // A key the page uses returns true (the browser then keeps it from scrolling or moving focus).
@@ -708,6 +694,7 @@ g_key :: (g: [] SpGame, key: int, down: bool) -> bool {
   if key == ' ' { g[0].jump = down; g_jump_key(g, down); if g[0].mode == M_PLAY { return true; } }   // on foot you jump, on the board it hops
   if !down { return false; }
   enter := key == -2 || key == ' ';
+  if sb_restored_key(g, key) { return true; }   // SCENE RESTORED goes on to the mission's teaser
   if g[0].mode == M_RESTORED { if enter || key == 'r' || key == 'R' { g_reset(g); g_begin(g); return true; } return false; }
   if g[0].mode == M_MEMORY { g[0].mode = M_RESTORED; return true; }
   if g[0].mode == M_BAY {
@@ -768,7 +755,7 @@ g_look :: (g: [] SpGame, dx: f32, dy: f32) {
 g_lock :: (g: [] SpGame, status: int) { d_lock(g, status); g[0].look_free = status != 1; }
 
 // A moment of the run to stand in (the page's message 610, "N"): for stills and checks of each beat.
-g_stage :: (g: [] SpGame, n: int) { g_stage_set(g, n); if g[0].bot { g_bot_home(g); } }
+g_stage :: (g: [] SpGame, n: int) { g_stage_set(g, n); if g[0].bot { g_bot_home(g); } sb_stage(g, n); }
 g_stage_set :: (g: [] SpGame, n: int) {
   g_reset(g); g[0].mode = M_PLAY;
   if n == 0 { g[0].mode = M_TITLE; return; }
@@ -953,15 +940,7 @@ g_live :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
   t := g[0].t; blue := GLOW();
   g[0].thing_n = 0;
   if fr_front(g) { fr_live(g, buf, p); return; }
-  if g[0].mode == M_MEMORY {
-    // robots and people working side by side, all hologram blue
-    for i: 0..<3 {
-      k := cast(f32) i; bob := sin(t * 2 + k * 2) * 0.08;
-      cast_digger(buf, p, frame_at(v3(g[0].at.mem_x - 6 + k * 6, 0.05 + bob, g[0].at.mem_z - 2), 0.6 + k * 0.4), 1.2, 50 + i * 20, blue, true, true, true, t * 6, cast_mono(ifx i == 1 then GLOW_INK() else blue));
-      cast_smuggler(buf, p, frame_at(v3(g[0].at.mem_x - 4 + k * 6, 0.05, g[0].at.mem_z + 0.5 + sin(t * 0.7 + k) * 0.6), 2.4 + k * 0.5), 1.0, 60 + i * 20, t * 4 + k, cast_mono(ifx i == 1 then blue else GLOW_INK()));
-    }
-    return;
-  }
+  if g[0].mode == M_MEMORY { sb_memory_live(g, buf, p); return; }   // the hologram (splice-battle.coax)
   if g[0].mode == M_BAY {
     // the Digger on the bay's stage, wearing the hardware spliced into it
     cast_digger(buf, p, frame_at(v3(g[0].at.bay_x, 0.05, g[0].at.bay_z), 0.7 + sin(t * 0.5) * 0.25), 1.15, 50, ifx g[0].have[H_PLUS] then blue else CAST_AMBER(),
@@ -996,6 +975,7 @@ g_live :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
     if riding && sk >= 0 { kit_hoverboard(buf, p, frame_move(pf, fp(pf, 0, -0.075, 0)), 1, 196, INK(), HEAT(), blue, bd.rush + 0.15); }
     g_thing_end(g, p, sk);
   }
+  sb_live(g, buf, p);   // the drill mech, the raider mech, the boss (splice-battle.coax)
   if g[0].zone != Z_MINE { return; }
   if g[0].have[H_CORE] { kit_pen(p, 66, MAT_GLOW, blue); ball(buf, p, v3(g[0].px - sin(g[0].yaw) * 0.45, y + 1.2, g[0].pz - cos(g[0].yaw) * 0.45), 0.24, 10); }
   // pickups: hardware in sand and orange, cards as film frames, banned tech glowing blue
@@ -1032,7 +1012,7 @@ g_live :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
     df := frame_at(v3(g[0].bot_x + shake, ground_y(g, g[0].bot_x, g[0].bot_z), g[0].bot_z), g[0].bot_yaw);
     dk := g_thing(g, p, TK_DIGGER, ifx g[0].have[H_PLUS] then 1 else 0, df, 0.85, t);
     if dk >= 0 {
-    cast_digger(buf, p, df, 0.85, 190, d_tint(g, ifx g[0].have[H_PLUS] then blue else CAST_AMBER()), true, true, true, g[0].bot_spin, cast_colour());
+    cast_digger(buf, p, df, 0.85, 190, d_tint(g, ifx sb_holds_digger(g) && sb_fielded(g) != SB_DIGGER then t3(0.32, 0.32, 0.34) else ifx g[0].have[H_PLUS] then blue else CAST_AMBER()), true, true, true, g[0].bot_spin, cast_colour());   // his lights go dark while his core is in the drill mech
     g_thing_end(g, p, dk); }
   }
   // the party's people: raiders dancing where they stand, Imperial robots on patrol
@@ -1083,28 +1063,6 @@ g_live :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
     kit_pen(p, 170 + i, MAT_GLOW, ifx i % 2 == 0 then t3(1.0, 0.36, 0.62) else t3(0.36, 0.86, 0.96));
     limb(buf, p, v3(-12.5, 6.1, -55 + cast(f32) i * 2.4), v3(-4 + sin(a) * 6, 0.1, -50 + cos(a * 0.7) * 5), 0.05, 0.3, v3(0, 1, 0), 6);
   }
-  // the banned bot, its arm and its three weak points
-  bf := frame_at(v3(g[0].at.boss_x, 0, g[0].at.boss_z), 0);
-  grey := t3(0.40, 0.40, 0.46);
-  swinging := !g[0].boss_down && g[0].wall_gone;
-  bk := g_thing(g, p, TK_BOSS, ifx g[0].boss_down then 1 else 0, bf, 1, g[0].boss_t);
-  if bk >= 0 {
-  cast_boss(buf, p, bf, 1, 210, ifx g[0].boss_down then grey else t3(0.22, 0.34, 0.56), t3(0.12, 0.14, 0.24), ifx g[0].boss_down then t3(0.3, 0.3, 0.34) else blue, !swinging, cast_colour());
-  g_thing_end(g, p, bk); }
-  if swinging {
-    a := boss_arm(g);
-    warn := g[0].boss_t > T_SWEEP_EVERY - T_SWEEP_WARN && g[0].boss_t <= T_SWEEP_EVERY && fract(t * 6) < 0.5;
-    kit_pen(p, 136, ifx warn then MAT_GLOW else MAT_SKIN, ifx warn then t3(1.0, 0.36, 0.14) else t3(0.22, 0.34, 0.56));
-    ball(buf, p, v3(g[0].at.boss_x + 1.88, 4.15, g[0].at.boss_z), 0.62, 10);
-    limb(buf, p, v3(g[0].at.boss_x + 1.88, 4.15, g[0].at.boss_z), v3(g[0].at.boss_x + sin(a) * T_ARM, 1.1, g[0].at.boss_z + cos(a) * T_ARM), 0.5, 0.34, v3(0, 1, 0), 8);
-    ball(buf, p, v3(g[0].at.boss_x + sin(a) * T_ARM, 1.1, g[0].at.boss_z + cos(a) * T_ARM), 0.6, 10);
-  }
-  for i: 0..<3 {
-    w := weak_at(g, i); out := g[0].stun[i] > 0 || g[0].boss_down;
-    if out { kit_pen(p, 140 + i, MAT_SKIN, t3(0.5, 0.5, 0.54)); } else { kit_pen(p, 140 + i, MAT_GLOW, blue); }
-    ball(buf, p, v3(w.x, w.y + (ifx out then 0.0f32 else sin(t * 3 + cast(f32) i) * 0.1), w.z), 0.36, 12);
-  }
-  if g[0].boss_down && !g[0].core_taken { kit_pen(p, 145, MAT_GLOW, blue); ball(buf, p, v3(g[0].at.boss_x, 0.9 + sin(t * 2) * 0.15, g[0].at.boss_z + 4.5), 0.4, 12); }
 }
 
 // The party's lamps (up to eight point lights): the stage in magenta, the dance floor in cyan,
@@ -1148,7 +1106,7 @@ g_plan_marks :: (g: [] SpGame, buf: [] u32, p: [] Pen, i: int) {
 g_camera :: (g: [] SpGame) -> CamNow {
   t := g[0].t;
   if g[0].mode == M_BAY { return CamNow.{eye = v3(g[0].at.bay_x + 3.4, 2.4, g[0].at.bay_z + 8.6), at = v3(g[0].at.bay_x, 0.6, g[0].at.bay_z), fov = 0.62}; }
-  if g[0].mode == M_MEMORY || g[0].mode == M_RESTORED { k := g[0].mem_t / T_MEMORY; return CamNow.{eye = v3(g[0].at.mem_x - 9 + k * 16, 2.0, g[0].at.mem_z + 9), at = v3(g[0].at.mem_x - 3 + k * 6, 1.3, g[0].at.mem_z - 1), fov = 0.7}; }
+  if g[0].mode == M_MEMORY || g[0].mode == M_RESTORED { return sb_memory_camera(g); }
   if fr_front(g) { return fr_camera(g); }   // the rover on the rail and the dolly past it (front.coax)
   if g[0].mode == M_RIDE {
     c := rail_at(g, g[0].rail_s); y := rail_yaw(g, g[0].rail_s);
@@ -1335,6 +1293,7 @@ item_name :: (i: int) -> string { return ifx i == H_ARM then "DRILL ARM" else if
 pick_name :: (i: int) -> string { return ifx i == PICK_PLUS then "DRILL+ special part +25 HEAT" else ifx i >= PICK_CELL then "Battery cell" else ifx i == H_MOVE then "MOVE card" else ifx i == H_DRILL then "DRILL card" else ifx i == H_ARM then "Drill Arm" else ifx i == H_TREADS then "Treads" else "Battery"; }
 msg_text :: (g: [] SpGame) -> string {
   m := g[0].msg;
+  if m >= SBM_FIRST { return sb_msg_text(g); }   // the battles' (splice-battle.coax)
   if m == MSG_BAD_CUT { return "Bad cut. Re-edit at the rover."; }
   if m == MSG_AIR { return "The Digger drilled air. It was out of reach."; }
   if m == MSG_WEAK { return "DRILL can't break this wall. It needs DRILL+."; }
@@ -1358,6 +1317,7 @@ msg_text :: (g: [] SpGame) -> string {
   return "";
 }
 objective :: (g: [] SpGame) -> string {
+  o := sb_objective(g); if o != "" { return o; }   // the mech, the raider mech, the boss (splice-battle.coax)
   if g[0].zone == Z_VILLAGE { return "Leave through the scanner gate."; }
   if g[0].zone == Z_RAIL {
     if g[0].mode == M_RIDE { return "Ride the rail to the mine."; }
@@ -1439,11 +1399,13 @@ g_hud :: (g: [] SpGame, out: [] f32, u: [] f32, q: Ui) -> int {
   else if g[0].bot && d_down(g) && dist2(g[0].px, g[0].pz, g[0].bot_x, g[0].bot_z) < T_TOW_REACH { prompt = ifx d_towing(g) then "Let go of Digger" else "Tow Digger to Sniper"; }
   else if g_weak_near(g) >= 0 { prompt = "Stun the weak point"; key = "F"; }
   else if g_foe_near(g) >= 0 { prompt = ifx g_foe_near(g) < F_RAIDERS then "Stun the raider" else "Stun the Imperial robot"; key = "F"; }
-  else if g[0].zone == Z_MINE && g[0].boss_down && !g[0].core_taken && dist2(g[0].px, g[0].pz, g[0].at.boss_x, g[0].at.boss_z + 4.5) < T_PICK_RANGE { prompt = "PICK UP · Banned core"; }
+  else if g[0].zone == Z_MINE && g[0].boss_down && !g[0].core_taken && dist2(g[0].px, g[0].pz, sb_core_at(g).x, sb_core_at(g).z) < T_PICK_RANGE { prompt = "PICK UP · Banned core"; }
   else if g[0].zone == Z_RAIL && near_rover(g, T_USE_RANGE) { prompt = "Board the rover"; }
   else if g_portal(g) >= 0 { prompt = prt_name(g[0].c[0].portals[..], g_portal(g)); }
   else if d_in_rover(g) { prompt = "Open the edit bay"; key = "TAB"; }
+  sp := sb_prompt(g); if sp.text != "" && reach < 0 { prompt = sp.text; key = sp.key; }   // the battles' (splice-battle.coax)
   if g[0].dr[0].bag || g[0].dr[0].map { prompt = ""; }   // an open window covers the prompt
+  n = sb_hud(g, out, u, q, n);   // health bars over the bots, and a battle's panels
   if prompt != "" {
     extra := ifx reach >= 0 then pick_name(reach) else "";
     cw := cap_w(key, 26 * k); pw0 := ui_w(F_MONO, prompt, 10.5 * k);
@@ -1515,7 +1477,7 @@ g_bay :: (g: [] SpGame, out: [] f32, u: [] f32, q: Ui) -> int {
   n = ui_button(g, out, n, "SPLICE CORE", mx - 30 * k, bot - 58 * k, mx + 290 * k, bot - 14 * k, ifx g[0].have[H_CORE] then 2 else 3, 'x');
   // right: the cards you carry
   n = ui_title(out, n, "CARDS", rx + 24 * k, top + 38 * k, 10 * k, ink);
-  desc := [3] string.["Follow the path", "Breaks rubble", "Special part · breaks the boss wall"];
+  desc := [3] string.["Follow the path", "Breaks rubble", "Special part · drills hardest"];
   for i: 0..<3 {
     c := H_MOVE + i; y0 := top + (58 + cast(f32) i * 74) * k; has := g[0].have[c]; col := ifx c == H_PLUS then blue else ink;
     if c == H_PLUS && !has { n = ui_dash(out, n, rx + 24 * k, y0, w - 24 * k, y0 + 62 * k, 2 * k, col); } else { n = ui_box(out, n, rx + 24 * k, y0, w - 24 * k, y0 + 62 * k, 2 * k, col); }
@@ -1586,25 +1548,8 @@ g_overlay :: (g: [] SpGame, out: [] f32, u: [] f32, w: f32, h: f32) -> int {
     }
     return n;
   }
-  if g[0].mode == M_MEMORY {
-    // scanlines, a caption line, click to skip; a fade in from black and a fade out
-    for i: 0..<40 { y := (cast(f32) i + fract(g[0].t * 0.4)) * h / 40; n = ui_seg(out, n, 0, y, w, y, 1 * k, t3(0.02, 0.05, 0.12), 0.35); }
-    ui_panel(g, u, -20, h - 150 * k, w + 20, h + 20, t3(0.02, 0.05, 0.12), 0.8);
-    c := cast(int) (g[0].mem_t / 5);
-    line := ifx c == 0 then "Before the Emperor, we built them to dig beside us." else ifx c == 1 then "Nobody owned the work. We shared it." else "He cut this scene. You put it back.";
-    n = ui_mid(out, n, line, w * 0.5, h - 86 * k, 15 * k, GLOW());
-    n = ui_title_mid(out, n, "CLICK TO SKIP", w * 0.5, h - 44 * k, 8 * k, GLOW());
-    fade := hi(1 - g[0].mem_t / T_FADE, (g[0].mem_t - (T_MEMORY - T_FADE)) / T_FADE);
-    if fade > 0 { ui_panel(g, u, -20, -20, w + 20, h + 20, t3(0, 0, 0), lo(fade, 1)); }
-    return n;
-  }
-  // SCENE RESTORED
-  ui_panel(g, u, -20, -20, w + 20, h + 20, ink, 1);
-  n = ui_sprockets(out, n, 0, w, 32 * k, 16 * k, paper); n = ui_sprockets(out, n, 0, w, h - 32 * k, 16 * k, paper);
-  n = ui_title_mid(out, n, "SCENE RESTORED", w * 0.5, h * 0.46, 44 * k, paper);
-  n = ui_mid(out, n, "Director's Cut · 1 of ? erased scenes", w * 0.5, h * 0.55, 12 * k, GLOW());
-  n = ui_button(g, out, n, "RESTART", w * 0.5 - 130 * k, h * 0.63, w * 0.5 + 130 * k, h * 0.63 + 48 * k, 1, -2);
-  return n;
+  if g[0].mode == M_MEMORY { return sb_memory_overlay(g, out, u, q); }   // the hologram and its captions (splice-battle.coax)
+  return sb_restored_overlay(g, out, u, q);   // SCENE RESTORED, then the mission's teaser
 }
 
 // The landmarks moved from constants to the content tables (#13404): every value is the one the run
@@ -1648,14 +1593,14 @@ g_overlay :: (g: [] SpGame, out: [] f32, u: [] f32, w: f32, h: f32) -> int {
   g_deploy(g[..]);
   for i: 0..<400 { g_bot(g[..], 0.05); }
   #assert g[0].rubble_gone && g[0].phase == PH_DUSK;
-  // the boss wall needs DRILL+
+  // the blocked hallway: no card of Digger's breaks it, DRILL+ neither; only the drill mech (splice-battle.coax)
   g_deploy(g[..]);
   for i: 0..<400 { g_bot(g[..], 0.05); }
-  #assert !g[0].wall_gone;
+  #assert !g[0].wall_gone && g[0].msg == SBM_NEED_MECH;
   g[0].have[H_PLUS] = true; g[0].strip[1] = H_PLUS;
   g_deploy(g[..]);
   for i: 0..<400 { g_bot(g[..], 0.05); }
-  #assert g[0].wall_gone;
+  #assert !g[0].wall_gone && g[0].msg == SBM_NEED_MECH;
 }
 #test "the Digger will not deploy until all three hardware slots are filled" {
   g := [1] SpGame.[SpGame.{}];
@@ -1706,7 +1651,11 @@ g_overlay :: (g: [] SpGame, out: [] f32, u: [] f32, w: f32, h: f32) -> int {
 #test "a stunned weak point wakes, so all three must be down together" #steps 60000000 {
   g := [1] SpGame.[SpGame.{}];
   g_stage(g[..], 10); g[0].stun[0] = 0; g[0].boss_t = 0;
+  g_step(g[..], 0.02);
   w := weak_at(g[..], 0); g[0].px = w.x; g[0].pz = w.z + 1.0;
+  _ = g_key(g[..], 'f', true);
+  #assert g[0].stun[0] <= 0;                                // shut while it stands firm
+  g[0].bt[0].daze = 2;                                      // dazed (after a charge): they open
   #assert g_key(g[..], 'f', true) && g[0].stun[0] > 0 && !g[0].boss_down;
   g[0].px = 9; g[0].pz = -64;                               // out of the arm's reach
   for i: 0..<700 { g_step(g[..], 0.02); }
@@ -1995,15 +1944,26 @@ g_play_run :: (g: [] SpGame) -> int {
   for i: 0..<500 { g_step(g, 0.02); }
   if !(g[0].zone == Z_RAIL && g[0].mode == M_RIDE && g[0].phase == PH_DAY) { return 3; }
   // the rail: the ping stops the rover; the Battery is at the marker
-  for i: 0..<600 { g_step(g, 0.02); }
+  for i: 0..<600 { g_step(g, 0.02); if g[0].mode == M_PLAY { break; } }   // off at the ping: the raider mech hears it too
   if !(g[0].mode == M_PLAY && g[0].rail_s == T_RAIL_PING) { return 4; }
   if !(g_key(g, 'w', false)) { return 5; }
   if !(g_key(g, 'e', true) && g[0].mode == M_PLAY) { return 6; }   // no boarding without what the sensor found
   // Digger picks up what his sensor finds: she only walks near it
   g[0].px = pick_x(g, H_BATTERY); g[0].pz = pick_z(g, H_BATTERY) - 1;
-  for i: 0..<200 { g_step(g, 0.02); if g[0].have[H_BATTERY] { break; } }
-  if !(g[0].have[H_BATTERY]) { return 7; }
+  // the raider mech hears the ping and comes for her: F stuns it as it closes in
+  for i: 0..<200 {
+    g_step(g, 0.02);
+    if g[0].bt[0].rm_stun <= 0 && dist2(g[0].px, g[0].pz, g[0].bt[0].rm_x, g[0].bt[0].rm_z) < SB_RM_STUN_RANGE - 0.1 { _ = g_key(g, 'f', true); }
+    if g[0].have[H_BATTERY] { break; }
+  }
+  if !(g[0].have[H_BATTERY] && g[0].hearts == T_HEARTS) { return 7; }
   c := rail_at(g, T_RAIL_PING); g[0].px = c.x + 2.6; g[0].pz = c.z;
+  // the raider mech hunts her: she gets into Sniper and battles it with Sniper's cards, keys 1 to 3
+  for i: 0..<800 { s := sb_sniper_at(g); if g[0].bt[0].rm_hunt && dist2(g[0].bt[0].rm_x, g[0].bt[0].rm_z, s.x, s.z) < SB_SNIPER_REACH - 1 { break; } g_step(g, 0.02); }
+  if !(g[0].bt[0].rm_hunt) { return 42; }
+  if !(g_key(g, 'e', true) && sb_fighting(g) && sb_fielded(g) == SB_SNIPER) { return 43; }
+  for i: 0..<2000 { if g[0].bt[0].rm_down { break; } _ = g_key(g, '1' + i % 3, true); g_step(g, 0.02); }
+  if !(g[0].bt[0].rm_down && !sb_fighting(g) && g[0].scrap == 1) { return 44; }
   if !(g_key(g, 'e', true) && g[0].mode == M_RIDE) { return 8; }
   for i: 0..<1000 { g_step(g, 0.02); }
   if !(g[0].zone == Z_MINE && g[0].mode == M_PLAY && g[0].pz == g[0].at.start_z) { return 9; }
@@ -2027,13 +1987,13 @@ g_play_run :: (g: [] SpGame) -> int {
   g[0].px = pick_x(g, PICK_CELL) + 1; g[0].pz = pick_z(g, PICK_CELL) - 1;
   for i: 0..<200 { g_step(g, 0.02); if g[0].cells == 1 { break; } }
   if !(g[0].cells == 1) { return 21; }
-  // sneaking (Shift), F stuns a raider; pointed at it, Digger fights it down and takes a robot piece
+  // sneaking (Shift), F stuns a raider; pointed at it, Digger fights it down and takes a robot piece (the raider mech's was the first)
   if !(g_key(g, -13, true) && d_sneaking(g)) { return 22; }
   g[0].px = g[0].fx[4] + 1.5; g[0].pz = g[0].fz[4];
   if !(g_key(g, 'f', true) && g[0].fstag[4] > 0) { return 22; }
   g[0].dr[0].task = DJ_FIGHT; g[0].dr[0].task_i = 4;
   for i: 0..<300 { g_step(g, 0.02); if g[0].fhp[4] <= 0 { break; } }
-  if !(g[0].scrap == 1 && g[0].heat == 10) { return 23; }
+  if !(g[0].scrap == 2 && g[0].heat == 10) { return 23; }
   _ = g_key(g, -13, false);
   g[0].px = pick_x(g, PICK_PLUS) + 1; g[0].pz = pick_z(g, PICK_PLUS) + 1;
   for i: 0..<200 { g_step(g, 0.02); if g[0].have[H_PLUS] { break; } }
@@ -2044,17 +2004,30 @@ g_play_run :: (g: [] SpGame) -> int {
   g[0].px = g[0].at.rover_x - 3; g[0].pz = g[0].at.rover_z; g_step(g, 0.02);
   if !(g_key(g, -15, true) && g[0].mode == M_BAY) { return 26; }   // the edit bay is in Sniper
   if !(g_key(g, 'c', true)) { return 27; } if !(g_key(g, '1', true)) { return 28; } if !(g_key(g, '3', true)) { return 29; } if !(g_key(g, -2, true)) { return 30; }
-  g[0].px = 13; g[0].pz = -50;
-  for i: 0..<1500 { g_step(g, 0.02); }
-  if !(g[0].wall_gone) { return 31; }
-  // the boss: a sweep costs a heart; three stuns power it down
-  g[0].px = g[0].at.boss_x + 4; g[0].pz = g[0].at.boss_z;
+  for i: 0..<300 { g_step(g, 0.02); }   // Digger goes to the hallway and comes back: only the drill mech breaks it
+  // the drill mech: Digger's core in, it follows her to the blocked hallway and drills it down
+  g[0].px = g[0].bt[0].mech_x + 2; g[0].pz = g[0].bt[0].mech_z;
+  if !(g_key(g, 'e', true) && g[0].bt[0].mech_core) { return 31; }
+  g[0].px = 1; g[0].pz = g[0].at.wall_z + 3;
+  for i: 0..<200 { g_step(g, 0.02); }
+  if !(g_key(g, 'e', true) && g[0].bt[0].drill_t > 0) { return 32; }
   for i: 0..<400 { g_step(g, 0.02); }
-  if !(g[0].hearts < T_HEARTS && g[0].hearts > 0) { return 32; }
-  for i: 0..<3 { w := weak_at(g, i); g[0].px = w.x; g[0].pz = w.z + 0.1; g_collide(g); if !(g_key(g, 'f', true)) { return 33; } }
-  if !(g[0].boss_down) { return 34; }
-  g[0].px = g[0].at.boss_x; g[0].pz = g[0].at.boss_z + 4.5;
+  if !(g[0].wall_gone) { return 33; }
+  // the boss: the mech battles it with keys 1 to 4; while it reels she stuns its three weak points
+  g[0].px = 6; g[0].pz = g[0].at.wall_z - 3;
+  for i: 0..<6000 {
+    g_step(g, 0.02);
+    if g[0].mode != M_PLAY || g[0].boss_down { break; }
+    _ = g_key(g, '1' + i % 4, true);
+    if sb_open(g) {
+      for k: 0..<3 { if g[0].stun[k] <= 0 { w := weak_at(g, k); g[0].px = w.x + 0.3; g[0].pz = w.z + 0.3; _ = g_key(g, 'f', true); } }
+      g[0].px = 6; g[0].pz = g[0].at.wall_z - 3;
+    }
+  }
+  if !(g[0].boss_down && g[0].phase == PH_NIGHT && g[0].hearts > 0 && !sb_fighting(g)) { return 34; }
+  co := sb_core_at(g); g[0].px = co.x; g[0].pz = co.z + 0.5;
   if !(g_key(g, 'e', true) && g[0].have[H_CORE]) { return 35; }
+  // back at Sniper: the core spliced in the edit bay
   g[0].px = g[0].at.rover_x - 3; g[0].pz = g[0].at.rover_z;
   if !(g_key(g, -15, true)) { return 36; } if !(g_key(g, 'x', true)) { return 37; }
   if !(g[0].mode == M_MEMORY) { return 38; }
@@ -2110,4 +2083,132 @@ FlowTest :: struct { o: [4] [CT_BODY] u8; }
   #assert g_pointer(g[..], 5, 5, 0) && g[0].drag == H_DRILL;
   #assert g_pointer(g[..], 150, 150, 1);
   #assert g_pointer(g[..], 150, 150, 2) && g[0].drag == -1 && g[0].strip_n == 2 && g[0].strip[1] == H_DRILL;
+}
+
+// ---- Battles, the drill mech, the boss and the ending (splice-battle.coax, #13505 part C)
+#test "the drill mech: E swaps Digger's core in, its lights turn his, it follows you, and only it drills the blocked hallway" #steps 60000000 {
+  g := [1] SpGame.[SpGame.{}];
+  g_stage(g[..], 7);   // dusk past the rubble, Digger built with MOVE and DRILL
+  t := g[0].bt[..];
+  #assert !t[0].mech_core && !sb_holds_digger(g[..]);
+  g[0].px = 1; g[0].pz = g[0].at.wall_z + 3;                              // the hallway without the mech: nothing
+  #assert g_key(g[..], 'e', true) && g[0].msg == SBM_NEED_MECH && t[0].drill_t == 0;
+  g[0].px = t[0].mech_x + 2; g[0].pz = t[0].mech_z;
+  #assert sb_prompt(g[..]).text == "Swap Digger's core into the drill mech";
+  #assert g_key(g[..], 'e', true) && t[0].mech_core && sb_holds_digger(g[..]) && g[0].msg == SBM_CORE_IN;
+  bx := g[0].bot_x; bz := g[0].bot_z;
+  g[0].px = 0; g[0].pz = -48;
+  for i: 0..<200 { g_step(g[..], 0.02); }
+  #assert dist2(t[0].mech_x, t[0].mech_z, g[0].px, g[0].pz) < 5 && g[0].bot_x == bx && g[0].bot_z == bz;   // the mech follows; Digger's body waits
+  g[0].px = 1; g[0].pz = g[0].at.wall_z + 3;
+  for i: 0..<100 { g_step(g[..], 0.02); }
+  #assert g_key(g[..], 'e', true) && t[0].drill_t > 0 && g[0].msg == SBM_DRILLING;
+  for i: 0..<400 { g_step(g[..], 0.02); }
+  #assert g[0].wall_gone && t[0].drill_t == 0;
+  // E beside it again swaps the core back: Digger follows, the mech stays
+  g[0].px = t[0].mech_x + 2; g[0].pz = t[0].mech_z;
+  #assert g_key(g[..], 'e', true) && !t[0].mech_core && !sb_holds_digger(g[..]);
+}
+#test "the raider mech hunts you on the desert route: run and it gives up, F stuns it, and Sniper battles it with cards on keys 1 to 4" #steps 60000000 {
+  g := [1] SpGame.[SpGame.{}];
+  g_stage(g[..], 4); g[0].mode = M_PLAY;
+  t := g[0].bt[..];
+  g_step(g[..], 0.02);
+  #assert t[0].rm_hunt && g[0].msg == SBM_HUNT;
+  // F within reach stuns it: it holds still
+  g[0].px = t[0].rm_x + 1.5; g[0].pz = t[0].rm_z;
+  #assert g_key(g[..], 'f', true) && t[0].rm_stun > 0;
+  x := t[0].rm_x; for i: 0..<50 { g_step(g[..], 0.02); } #assert t[0].rm_x == x;
+  // far away it gives up
+  g[0].px = t[0].rm_x + 24; g_step(g[..], 0.02); g_step(g[..], 0.02);
+  t[0].rm_stun = 0; g_step(g[..], 0.02);
+  #assert !t[0].rm_hunt;
+  // E at Sniper while it is near: a battle, Sniper fielded with its three cards
+  c := rail_at(g[..], T_RAIL_PING); g[0].px = c.x + 2.6; g[0].pz = c.z;
+  t[0].rm_x = c.x + 5; t[0].rm_z = c.z + 3; t[0].rm_hunt = true;
+  #assert g_key(g[..], 'e', true) && sb_fighting(g[..]) && t[0].kind == SBF_DESERT && sb_fielded(g[..]) == SB_SNIPER;
+  // the Director takes keys 1 to 4 and hands each press to the battle once (sb_keys, each step)
+  #assert g_key(g[..], '2', true); sb_keys(g[..]);
+  #assert sb_rec(g[..], SB_RAIDER).vit.hp == 13 && sb_rec(g[..], SB_SNIPER).charge == 68;   // ARM: 3 damage, 12 charge
+  #assert g_key(g[..], '2', true); sb_keys(g[..]);
+  #assert sb_rec(g[..], SB_RAIDER).vit.hp == 13;                                         // cooling: nothing
+  #assert g_key(g[..], '4', true); sb_keys(g[..]);
+  #assert g[0].msg == SBM_REFUSED && t[0].refusal == cast(int) BbVerdict.no_card;      // Sniper holds three cards
+  for i: 0..<1500 { if t[0].rm_down { break; } _ = g_key(g[..], '1' + i % 3, true); g_step(g[..], 0.02); }
+  #assert t[0].rm_down && !sb_fighting(g[..]) && g[0].scrap == 1 && g[0].msg == SBM_RM_DOWN;
+  #assert sb_rec(g[..], SB_SNIPER).vit.hp < sb_rec(g[..], SB_SNIPER).vit.most;   // it fought back
+}
+#test "the boss: phase one sweeps, phase two charges below half health and is dazed after; its weak points open only while it reels; three stuns power it down and night falls" #steps 60000000 {
+  g := [1] SpGame.[SpGame.{}];
+  g_stage(g[..], 10); for i: 0..<3 { g[0].stun[i] = 0; }
+  t := g[0].bt[..];
+  g_step(g[..], 0.02);
+  #assert t[0].kind == SBF_BOSS && sb_fielded(g[..]) == SB_MECH && !sb_open(g[..]) && g[0].msg == SBM_BOSS;
+  // phase one: the sweep catches the mech in its arc
+  g[0].boss_t = T_SWEEP_EVERY + 0.05; a := sb_arm_angle(g[..]);
+  t[0].mech_x = t[0].dino_x + sin(a) * 4; t[0].mech_z = t[0].dino_z + cos(a) * 4; t[0].think = 10;
+  hp := sb_rec(g[..], SB_MECH).vit.hp;
+  g_step(g[..], 0.02);
+  #assert sb_rec(g[..], SB_MECH).vit.hp == hp - SB_SWEEP_HIT && !t[0].half;
+  // phase two below half health: it winds up, charges, and is dazed after; dazed, its weak points open
+  t[0].fight[0].sides[1].bots[0].vit.hp = 30; g[0].px = 4; g[0].pz = -76;
+  g_step(g[..], 0.02);
+  #assert t[0].half && g[0].msg == SBM_CHARGES;
+  t[0].charge_t = SB_CHARGE_EVERY; g_step(g[..], 0.02);
+  #assert t[0].wind > 0;
+  rushed := false; for i: 0..<300 { g_step(g[..], 0.02); if t[0].rush > 0 { rushed = true; } if t[0].daze > 0 { break; } }
+  #assert rushed && t[0].daze > 0 && sb_open(g[..]);
+  for k: 0..<3 { w := weak_at(g[..], k); g[0].px = w.x + 0.3; g[0].pz = w.z + 0.3; #assert g_key(g[..], 'f', true); }
+  #assert g[0].boss_down && g[0].phase == PH_NIGHT && !sb_fighting(g[..]) && g[0].msg == SBM_CORE_DROP;
+  co := sb_core_at(g[..]); g[0].px = co.x; g[0].pz = co.z + 0.5;
+  #assert g_key(g[..], 'e', true) && g[0].have[H_CORE];
+}
+#test "losing to the boss: the mech's health running out is a cut, and the boss is whole again after" #steps 60000000 {
+  g := [1] SpGame.[SpGame.{}];
+  g_stage(g[..], 10);
+  t := g[0].bt[..];
+  g_step(g[..], 0.02);
+  #assert t[0].kind == SBF_BOSS;
+  t[0].fight[0].sides[1].bots[0].vit.hp = 20;
+  #assert bb_strike(t[0].fight[..], 0, 100);
+  g_step(g[..], 0.02);
+  #assert g[0].mode == M_BANNER && g[0].banner == B_CUT && !sb_fighting(g[..]);
+  for i: 0..<200 { g_step(g[..], 0.02); }
+  #assert g[0].mode == M_PLAY && t[0].bots[SB_BOSS].vit.hp == 70 && t[0].bots[SB_MECH].vit.hp == 45 && t[0].mech_core && g[0].wall_gone;
+}
+#test "a bot's cards are its moves, big moves cost more charge, and Digger's health is the Director's, and Sniper at zero powers down until its charger repairs it" #steps 60000000 {
+  g := [1] SpGame.[SpGame.{}];
+  g_stage(g[..], 7);
+  t := g[0].bt[..];
+  sb_arm(g[..], SB_DIGGER); sb_arm(g[..], SB_MECH);
+  d := t[0].bots[SB_DIGGER]; m := t[0].bots[SB_MECH];
+  #assert d.card_n == 2 && d.cards[0].id == SBC_MOVE && d.cards[1].id == SBC_DRILL && d.cards[1].cost > d.cards[0].cost;
+  #assert m.card_n == 4 && m.cards[1].id == SBC_DRILL && m.cards[1].power > d.cards[1].power && m.cards[2].id == SBC_SLAM;
+  // Digger's health is the Director's bar: a battle's hit on him lands there
+  crew := [1] int.[SB_DIGGER]; sb_begin(g[..], SBF_DESERT, crew[..], SB_RAIDER);
+  hp := g[0].dr[0].hp.hp;
+  #assert !bb_strike(t[0].fight[..], 0, 3);
+  sb_digger_out(g[..]);
+  #assert g[0].dr[0].hp.hp == hp - 3 && sb_holds_digger(g[..]);
+  sb_finish(g[..]);
+  // Sniper at zero powers down until it stands by its own charger with her
+  #assert bb_hurt(t[0].bots[SB_SNIPER..<SB_SNIPER + 1], 99) && t[0].bots[SB_SNIPER].vit.down;
+  g[0].px = g[0].at.rover_x - 3; g[0].pz = g[0].at.rover_z;
+  for i: 0..<100 { g_step(g[..], 0.02); }
+  #assert !t[0].bots[SB_SNIPER].vit.down && t[0].bots[SB_SNIPER].vit.hp == 24 && g[0].msg == SBM_REPAIR;
+}
+#test "the ending: three captions over the 15-second hologram, then SCENE RESTORED, then the mission's teaser with RESTART" #steps 60000000 {
+  g := [1] SpGame.[SpGame.{}];
+  #assert sb_caption(1) == "The orders kept coming. No one was giving them." && sb_caption(7) == "The Emperor has been gone for years. Only his machines remained." && sb_caption(12) == "Someone has to tell the others, Director.";
+  g_stage(g[..], 11);
+  #assert g[0].mode == M_MEMORY && g[0].mem_t == 6;
+  for i: 0..<460 { g_step(g[..], 0.02); }
+  #assert g[0].mode == M_RESTORED && !g[0].bt[0].teaser;
+  for i: 0..<160 { g_step(g[..], 0.02); }
+  #assert g[0].bt[0].teaser;
+  #assert g_key(g[..], -2, true) && g[0].mode == M_PLAY;   // RESTART
+  // a click on SCENE RESTORED goes on to the teaser at once, and the next starts again
+  g_stage(g[..], 12);
+  #assert g_key(g[..], -2, true) && g[0].mode == M_RESTORED && g[0].bt[0].teaser;
+  #assert g_key(g[..], -2, true) && g[0].mode == M_PLAY;
 }

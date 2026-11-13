@@ -11,7 +11,9 @@ The run follows the Splice Bots game design document, Tier 1 and Tier 2.
 1. **Title.** Click to play.
 2. **Dome village, dawn.** Walk out through the scanner gate: "HEAT: COOL. PASS."
 3. **Rail drive, day.** The rover follows the rail; W and S change its speed. Halfway a sensor
-   ping stops it. Walk to the marker: the Digger picks up the Battery, and you board again.
+   ping stops it. Walk to the marker: the Digger picks up the Battery, and you board again. A raider
+   mech hunts you there: run until it gives up, stun it with F, or press E at the rover to get into
+   Sniper and battle it.
 4. **Day mine.** The Digger follows you from the start and picks up every part within his
    sensor's range: the Drill Arm, the Treads and the MOVE and DRILL cards. A better sensor in the
    scrap room doubles his range.
@@ -29,12 +31,25 @@ The run follows the Splice Bots game design document, Tier 1 and Tier 2.
    strikes him back. Each one he beats drops a robot piece into your inventory and adds 10 Heat.
 8. **Battery cells.** Four lie in the rooms. Cells and robot pieces are kept to trade for
    battery juice later; nothing spends them yet.
-9. **The one blue piece.** The special part, DRILL+, is in the vault. It adds 25 Heat. Put
-   MOVE, DRILL+ on the strip in the rover; only DRILL+ breaks the boss wall.
-10. **The banned bot.** Its arm sweeps round every few seconds. Stun its three weak points with
-    F; a stunned point wakes after 12 seconds, so all three must be down together. Take its core.
-11. **The memory.** Splice the core in the rover. A hologram of the old world plays,
-    then SCENE RESTORED.
+9. **The one blue piece.** The special part, DRILL+, is in the vault. It adds 25 Heat. Put it on
+   the strip in the rover: it is Digger's hardest-hitting card.
+10. **The drill mech.** A giant mech with a drill arm stands by the blocked hallway. Press E
+    beside it to swap Digger's core into it: its lights turn Digger's and it follows you. Press E
+    at the hallway and it drills through. Nothing else breaks it.
+11. **The boss.** A dinosaur bot glowing blue. The mech battles it with its cards (keys 1 to 4);
+    it sweeps its arm, then below half health it charges. While it reels from a hit, is dazed after
+    a charge, or has no health left, its three weak points glow: stun all three with F (a stunned
+    point wakes after 12 seconds). It powers down, drops its core, and night falls. If your health
+    or the mech's runs out, you are back at the checkpoint.
+12. **The memory.** Splice the core in the rover. A hologram plays, then SCENE RESTORED, then
+    what comes next.
+
+## Battles
+
+Every bot has a health bar and a battery. Its cards are its moves: keys **1 to 4**. A move costs
+battery charge (big moves cost more) and needs a moment before it is ready again. In a battle,
+**E** swaps Digger's core into your other bot. A bot at zero powers down: tow a powered-down Digger
+to Sniper's charger with **E**, and stand by the rover for a moment to repair Sniper.
 
 You, the Digger and every foe have a health bar. At zero health or 100 Heat you are back at the
 rover with the inventory you had when you last left it; banned pieces picked up since are lost.
@@ -57,8 +72,8 @@ slots: press I and click a slot to drop what is in it.
 - **I** opens the inventory. Click a slot to drop it.
 - **Left click** points the Digger at what is under the crosshair: he digs it, picks it up or
   attacks it.
-- **F** stuns a robot within 2 m, or a weak point of the banned bot.
-- **1, 2, 3, 4** are a bot's battle moves.
+- **F** stuns a robot within 2 m, the raider mech, or a weak point of the banned bot.
+- **1, 2, 3, 4** are a bot's battle moves; in a battle **E** swaps Digger's core into your other bot.
 - **M** shows the deep-garage map.
 - **Esc** pauses and lists the controls.
 - **G** switches graybox on and off: the whole world in grays, with only orange, yellow and cyan

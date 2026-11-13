@@ -12,6 +12,7 @@ for people and agents who change the code.
 | `splice-game.coax` | The game: tuning, world, rules, interface, and checks that play the whole run |
 | `front.coax`, `front-checks.coax` | The front door: the title, character creation, the credits, the run this browser keeps, and you drawn as your character |
 | `splice-bots.coax` | The page's frame, the still scenes, and the host's exports |
+| `splice-battle.coax` | Bot battles, the drill mech, the raider mech, the boss and the ending (below) |
 | `splice-cast.coax` | The five characters of the slice |
 | `director.coax` | The Director's systems (#13505): the key map, sneaking, Digger picking up parts by his sensor's range, pointing him with a left click, the inventory grid, Heat's sensing range, the health bars, towing and charging Digger, the map and pause |
 | `gpu/splice-bots.coax` | The shaders: Anime Lab's cel pass, the placed pieces' instances, and the ink overlay |
@@ -116,6 +117,35 @@ Everyone has a health bar: yours top left (your hearts), Digger's under it and o
 over each foe. At zero you are back at Sniper with the inventory you had when you last left it;
 banned pieces picked up since are lost. Digger at zero powers down where he is: press E beside him
 to tow him, and Sniper's charger charges him back up. A foe Digger fights strikes back at him.
+
+## Battles, the drill mech, the boss and the ending
+
+`splice-battle.coax` (#13505, part C) runs on the Metaverse Engine's bot battles
+(`metaverse-engine/action/bot-battle.coax`).
+
+- **Bots.** Digger, the drill mech, Sniper, the raider mech and the boss each have health and a
+  battery. Each holds up to four cards, which are its moves: keys 1 to 4 in a battle (the
+  Director's `d_take_move` hands each press over). A move costs
+  charge (big ones more) and cools down. A bot at zero powers down. Digger's health is the Director's
+  (above): his bar, his tow and Sniper's charger. Standing by the charger for 1.5 s repairs Sniper. A
+  bar over each battling bot shows its health, and a battle's hits on Digger land on his own bar.
+- **Cards.** Digger's cards are the ones spliced onto his strip (MOVE, DRILL, DRILL+), the software
+  in his core. The drill mech uses the same cards with its giant arm (DRILL hits twice as hard) and
+  adds SLAM and STOMP. Sniper holds MOVE, ARM and FLARE.
+- **The drill mech.** It waits in an empty section (landmark 91, else beside the boss wall). E beside
+  it swaps Digger's core in: its lenses turn Digger's amber and it follows you; Digger's body waits
+  dark. E at the blocked hallway (the boss wall) has it drill through; nothing else breaks it.
+- **The raider mech.** On the desert route it keeps watch (landmark 92, else near the rail stop),
+  hunts you within 16 m and gives up past 20 m. F within 2.6 m stuns it for 6 s. E at Sniper while
+  it is near starts a battle with Sniper fielded (and Digger to swap in, once built).
+- **The boss.** A dinosaur-shaped bot glowing blue. Its battle begins when you are in its chamber
+  with the mech. Phase one: its arm sweeps. Below half health, phase two: it winds up, charges and
+  is dazed after. Its three weak points open while it reels from a stunning hit, is dazed, or has no
+  health left; stun all three with F (each stays down 12 s) and it powers down, drops its banned core,
+  and night falls. You lose if your health or the mech's runs out: back at the checkpoint, the boss
+  whole again and the mech repaired at the hallway.
+- **The ending.** SPLICE CORE in Sniper's edit bay plays the 15-second memory hologram with its
+  three captions, then SCENE RESTORED, then the mission's teaser with RESTART.
 
 ## Edit layer
 

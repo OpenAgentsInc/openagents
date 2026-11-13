@@ -1,7 +1,8 @@
 // Bot battles (#13505): machines fight with the cards they hold, in real time. Each bot holds up to
 // four cards, and each card is a move a key uses (1 to 4). A bot's battery is its energy: a move costs
 // charge, big moves cost more, and the battery fills again over time. Every bot has health; a bot at
-// zero powers down and stays down until it is repaired. A side fields one bot at a time and may swap
+// zero powers down and stays down until it is repaired (its health is the engine's vitals,
+// vitals.coax, the same a realm keeps for a machine outside a battle). A side fields one bot at a time and may swap
 // in another of its crew (a core swap), which takes a moment in which the side can't act.
 //
 // The ruleset keeps its own health, charge and turns, as metaverse-engine/action/README.md asks; a
@@ -16,6 +17,7 @@
 
 #module "metaverse.engine.action.botbattle";
 #load "deed.coax";
+#load "vitals.coax";   // a bot's health: points out of a most, powered down at zero
 
 BB_CARDS :: 4;          // cards one bot holds: its moves
 BB_CREW :: 3;           // bots one side may field, one at a time
@@ -37,13 +39,12 @@ BbCard :: struct {
 }
 BbBot :: struct {
   id: int;                // the realm's own
-  hp: int; hp_max: int;
+  vit: Vitals;            // its health (vitals.coax): down at zero, no moves, no recharge, until repaired
   charge: f32; charge_max: f32;
   recharge: f32;          // charge a second while standing
   cards: [BB_CARDS] BbCard; card_n: int;
   bar: [1] DeedBar;         // its moves' slots: asked, answered, cooling, greyed
   stun_until: int;        // the tick its stun ends
-  down: bool;             // powered down: no moves, no recharge, until repaired
 }
 BbSide :: struct { bots: [BB_CREW] BbBot; n: int; active: int; swap_until: int; }
 // What a press did: the verdict, the card, the damage dealt, and whether the foe went down.
@@ -63,7 +64,7 @@ bb_card :: (id: int, power: int, cost: int, cool_s: f32, reach: f32, stun_s: f32
   return BbCard.{id = id, power = power, cost = cost, cool = deed_tick(cool_s), reach = reach, stun = deed_tick(stun_s), feel = feel};
 }
 bb_bot :: (id: int, hp: int, charge: f32, recharge: f32) -> BbBot {
-  return BbBot.{id = id, hp = hp, hp_max = hp, charge = charge, charge_max = charge, recharge = recharge};
+  return BbBot.{id = id, vit = vitals_make(f32(hp)), charge = charge, charge_max = charge, recharge = recharge};
 }
 // Gives a bot a card: false when it already holds four, or the card's feel is missing a part.
 bb_give :: (b: [] BbBot, c: BbCard) -> bool {
@@ -74,20 +75,21 @@ bb_give :: (b: [] BbBot, c: BbCard) -> bool {
 // Takes every card away (a re-splice gives them again).
 bb_clear :: (b: [] BbBot) { b[0].card_n = 0; b[0].bar[0] = DeedBar.{}; }
 // Back to full health and a full battery, standing (a charger's repair).
-bb_repair :: (b: [] BbBot) { b[0].hp = b[0].hp_max; b[0].charge = b[0].charge_max; b[0].down = false; b[0].stun_until = 0; b[0].bar[0] = DeedBar.{}; }
+bb_repair :: (b: [] BbBot) { b[0].vit = vitals_make(b[0].vit.most); b[0].charge = b[0].charge_max; b[0].stun_until = 0; b[0].bar[0] = DeedBar.{}; }
 // Takes health: true when this took it to zero and the bot powered down.
 bb_hurt :: (b: [] BbBot, damage: int) -> bool {
-  if b[0].down || damage <= 0 { return false; }
-  b[0].hp -= damage;
-  if b[0].hp > 0 { return false; }
-  b[0].hp = 0; b[0].down = true; b[0].charge = 0;
+  if b[0].vit.down || damage <= 0 { return false; }
+  b[0].vit = vitals_hit(b[0].vit, f32(damage));
+  if !b[0].vit.down { return false; }
+  b[0].charge = 0;
   return true;
 }
-bb_health :: (b: BbBot) -> f32 { return ifx b.hp_max > 0 then f32(b.hp) / f32(b.hp_max) else 0.0f32; }
+bb_health :: (b: BbBot) -> f32 { return vitals_share(b.vit); }
+bb_hp :: (b: BbBot) -> int { return cast(int) b.vit.hp; }
 bb_battery :: (b: BbBot) -> f32 { return ifx b.charge_max > 0 then b.charge / b.charge_max else 0.0f32; }
 bb_bearing :: (b: BbBot, now: int) -> DeedBearing {
   free: DeedBearing;
-  if b.down { return deed_bear(free, DeedPose.down, DEED_LOCK_ALL); }
+  if b.vit.down { return deed_bear(free, DeedPose.down, DEED_LOCK_ALL); }
   if now < b.stun_until { return deed_bear(free, DeedPose.reel, DEED_LOCK_ACT | DEED_LOCK_MOVE); }
   return free;
 }
@@ -97,7 +99,7 @@ bb_side_set :: (s: [] BbSide, crew: [] BbBot) {
   s[0] = BbSide.{};
   for i: 0..<crew.count { if s[0].n < BB_CREW { s[0].bots[s[0].n] = crew[i]; s[0].n += 1; } }
   // the first bot standing goes in first
-  for i: 0..<s[0].n { if !s[0].bots[i].down { s[0].active = i; break; } }
+  for i: 0..<s[0].n { if !s[0].bots[i].vit.down { s[0].active = i; break; } }
 }
 // Begins a battle between two crews (one bot each, or more to swap between).
 bb_begin :: (b: [] BbBattle, mine: [] BbBot, theirs: [] BbBot) {
@@ -107,7 +109,7 @@ bb_begin :: (b: [] BbBattle, mine: [] BbBot, theirs: [] BbBot) {
 }
 bb_end :: (b: [] BbBattle) { b[0].on = false; }
 bb_active :: (b: BbBattle, side: int) -> BbBot { return b.sides[side].bots[b.sides[side].active]; }
-bb_standing :: (s: BbSide) -> int { k := 0; for i: 0..<s.n { if !s.bots[i].down { k += 1; } } return k; }
+bb_standing :: (s: BbSide) -> int { k := 0; for i: 0..<s.n { if !s.bots[i].vit.down { k += 1; } } return k; }
 // A side with no bot standing has lost.
 bb_judge :: (b: [] BbBattle) {
   if b[0].winner >= 0 { return; }
@@ -122,7 +124,7 @@ bb_can :: (b: BbBattle, side: int, slot: int, dist: f32) -> BbVerdict {
   s := b.sides[side];
   if b.now < s.swap_until { return BbVerdict.swapping; }
   me := s.bots[s.active];
-  if me.down { return BbVerdict.down; }
+  if me.vit.down { return BbVerdict.down; }
   if slot < 0 || slot >= me.card_n { return BbVerdict.no_card; }
   c := me.cards[slot];
   v := deed_can(me.bar[0], slot, b.now, bb_bearing(me, b.now), c.feel);
@@ -149,7 +151,7 @@ bb_use :: (b: [] BbBattle, side: int, slot: int, dist: f32) -> BbHit {
   _ := deed_answer(me[0].bar[..], seq, true, b[0].now, c.cool);
   me[0].charge -= f32(c.cost);
   fa := b[0].sides[1 - side].active; foe := b[0].sides[1 - side].bots[fa..<fa + 1];
-  hit.damage = ifx foe[0].down then 0 else bb_lo(c.power, foe[0].hp);
+  hit.damage = ifx foe[0].vit.down then 0 else bb_lo(c.power, bb_hp(foe[0]));
   hit.downed = bb_hurt(foe, c.power);
   if !hit.downed && c.stun > 0 { foe[0].stun_until = bb_hi(foe[0].stun_until, b[0].now + c.stun); }
   b[0].last = hit; b[0].moves += 1;
@@ -171,13 +173,13 @@ bb_stun :: (b: [] BbBattle, side: int, ticks: int) {
 // the side can't act; a powered-down bot can't be swapped in, nor the one already fielded.
 bb_swap :: (b: [] BbBattle, side: int, to: int) -> bool {
   s := b[0].sides[side..<side + 1];
-  if !b[0].on || b[0].winner >= 0 || to < 0 || to >= s[0].n || to == s[0].active || s[0].bots[to].down || b[0].now < s[0].swap_until { return false; }
+  if !b[0].on || b[0].winner >= 0 || to < 0 || to >= s[0].n || to == s[0].active || s[0].bots[to].vit.down || b[0].now < s[0].swap_until { return false; }
   s[0].active = to; s[0].swap_until = b[0].now + BB_SWAP;
   return true;
 }
 // The next crew bot standing after the fielded one, or -1.
 bb_next :: (s: BbSide) -> int {
-  for k: 1..<s.n { i := (s.active + k) % s.n; if !s.bots[i].down { return i; } }
+  for k: 1..<s.n { i := (s.active + k) % s.n; if !s.bots[i].vit.down { return i; } }
   return -1;
 }
 // `dt` seconds of battle: the clock moves on and every bot standing refills its battery.
@@ -189,7 +191,7 @@ bb_step :: (b: [] BbBattle, dt: f32) {
   for side: 0..<2 {
     for i: 0..<b[0].sides[side].n {
       bot := b[0].sides[side].bots[i..<i + 1];
-      if bot[0].down { continue; }
+      if bot[0].vit.down { continue; }
       bot[0].charge = bb_lof(bot[0].charge_max, bot[0].charge + bot[0].recharge * dt);
       deed_expire(bot[0].bar[..], b[0].now);
     }
@@ -260,16 +262,16 @@ bb_test_bot :: (id: int) -> BbBot {
   bb_begin(b[..], mine[..], theirs[..]);
   #assert b[0].on && b[0].winner == -1;
   h := bb_use(b[..], 0, 1, 2);
-  #assert h.verdict == BbVerdict.ok && h.damage == 4 && h.card == 2 && bb_active(b[0], 1).hp == 6 && bb_active(b[0], 0).charge == 60;
+  #assert h.verdict == BbVerdict.ok && h.damage == 4 && h.card == 2 && bb_active(b[0], 1).vit.hp == 6 && bb_active(b[0], 0).charge == 60;
   // the same slot again at once: cooling, and nothing changes
   h = bb_use(b[..], 0, 1, 2);
-  #assert h.verdict == BbVerdict.cooling && bb_active(b[0], 1).hp == 6 && bb_active(b[0], 0).charge == 60;
+  #assert h.verdict == BbVerdict.cooling && bb_active(b[0], 1).vit.hp == 6 && bb_active(b[0], 0).charge == 60;
   // the jab is ready; the long reach works from afar and the jab doesn't
   #assert bb_use(b[..], 0, 0, 2).verdict == BbVerdict.ok && bb_active(b[0], 0).charge == 50;
   #assert bb_use(b[..], 0, 0, 5).verdict == BbVerdict.cooling;
   bb_step(b[..], 0.6);
   #assert bb_use(b[..], 0, 0, 5).verdict == BbVerdict.far && bb_look(b[0], 0, 0).grey == 1;
-  #assert bb_use(b[..], 0, 2, 10).verdict == BbVerdict.ok && bb_active(b[0], 1).hp == 3;
+  #assert bb_use(b[..], 0, 2, 10).verdict == BbVerdict.ok && bb_active(b[0], 1).vit.hp == 3;
   // a bot whose battery is low can't pay for the big move until it refills
   b[0].sides[0].bots[0].charge = 30; bb_step(b[..], 2.0);
   #assert bb_active(b[0], 0).charge == 50 && bb_use(b[..], 0, 1, 2).verdict == BbVerdict.ok;
@@ -281,22 +283,22 @@ bb_test_bot :: (id: int) -> BbBot {
   #assert bb_use(b[..], 0, 1, 2).verdict == BbVerdict.ok;     // stuns for a second
   #assert bb_use(b[..], 1, 0, 2).verdict == BbVerdict.locked && bb_look(b[0], 1, 0).grey == 1;
   bb_step(b[..], 1.1);
-  #assert bb_use(b[..], 1, 0, 2).verdict == BbVerdict.ok && bb_active(b[0], 0).hp == 9;
-  #assert bb_strike(b[..], 1, 6) && bb_active(b[0], 1).down && bb_active(b[0], 1).hp == 0 && b[0].winner == 0;
+  #assert bb_use(b[..], 1, 0, 2).verdict == BbVerdict.ok && bb_active(b[0], 0).vit.hp == 9;
+  #assert bb_strike(b[..], 1, 6) && bb_active(b[0], 1).vit.down && bb_active(b[0], 1).vit.hp == 0 && b[0].winner == 0;
   #assert bb_use(b[..], 1, 2, 2).verdict == BbVerdict.over;
   // down stays down: no recharge, no moves, until it is repaired
   bot := [1] BbBot.[bb_active(b[0], 1)];
   #assert !bb_hurt(bot[..], 3) && bot[0].charge == 0;
   bb_repair(bot[..]);
-  #assert !bot[0].down && bot[0].hp == 10 && bot[0].charge == 100;
+  #assert !bot[0].vit.down && bot[0].vit.hp == 10 && bot[0].charge == 100;
 }
 #test "bot battle: a core swap fields another bot, takes a moment, and never fields a downed one" {
   b := [1] BbBattle.[BbBattle.{}];
   mine := [2] BbBot.[bb_test_bot(1), bb_test_bot(3)]; theirs := [1] BbBot.[bb_test_bot(2)];
-  mine[0].down = true;   // the first is down: the second goes in first
+  mine[0].vit.down = true;   // the first is down: the second goes in first
   bb_begin(b[..], mine[..], theirs[..]);
   #assert b[0].sides[0].active == 1 && bb_next(b[0].sides[0]) == -1 && !bb_swap(b[..], 0, 0);
-  b[0].sides[0].bots[0].down = false;
+  b[0].sides[0].bots[0].vit.down = false;
   #assert bb_next(b[0].sides[0]) == 0 && bb_swap(b[..], 0, 0) && bb_active(b[0], 0).id == 1;
   #assert bb_use(b[..], 0, 0, 1).verdict == BbVerdict.swapping && !bb_swap(b[..], 0, 1);
   bb_step(b[..], 0.8);
