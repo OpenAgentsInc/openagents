@@ -28,8 +28,8 @@ not hold.
 
    ```sh
    (cd apps/openagents-web && COAXIAL_MODE=dev ../../coax/web/wasm.sh \
-     ../../metaverse/splice/splice.coax ../../metaverse/splice/splice-face.c \
-     build/splice.wasm animelab-style.coax)
+     ../../metaverse/splice-bots/splice-bots.coax ../../metaverse/splice-bots/splice-face.c \
+     build/splice-bots.wasm animelab-style.coax)
    COAXIAL_MODE=dev coax/web/tool.sh coax/web/wgsl-module.coax --site
    coax/web/serve.sh apps/openagents-web --listen 127.0.0.1:9538 --build true
    ```
@@ -66,10 +66,10 @@ canvas's corner and says where that corner is. The game starts with Enter and
 holds the pointer to look round; `type - key Escape` lets go of it, as the
 browser's own Escape does, so the panes take presses again.
 
-The code steps save two of Splice's sources (`metaverse/splice/splice-game.coax`
-and `gpu/splice.coax`) and then save them back as they were. If the run stops
-between the two saves, `git diff metaverse/splice` shows the one changed
-number; put it back with `git checkout -- metaverse/splice`.
+The code steps save two of Splice's sources (`metaverse/splice-bots/splice-game.coax`
+and `gpu/splice-bots.coax`) and then save them back as they were. If the run stops
+between the two saves, `git diff metaverse/splice-bots` shows the one changed
+number; put it back with `git checkout -- metaverse/splice-bots`.
 
 ## WorldBuilder
 
@@ -173,7 +173,7 @@ shows.
 | Remove | The piece is gone, one revision. |
 | Undo, then Redo | The piece comes back, then goes again. |
 | Change a line of game code | In the Code pane, one constant of `splice-game.coax` is changed and saved. The engine swaps, and again when it is put back. The run waits up to 30 s for each, since a rebuild takes 10 s or more on a busy machine; the step says how long it took, and the bar on an idle machine is 2 s. |
-| Change a shader | The same in `gpu/splice.coax`, the Coax that writes Splice's WGSL. The shaders swap, twice. |
+| Change a shader | The same in `gpu/splice-bots.coax`, the Coax that writes Splice's WGSL. The shaders swap, twice. |
 | The world after four swaps | The same revision and the same pieces: the run kept its state. The agent's turns that follow show at once (#13457). |
 | Place through the agent | In the conversation in the editor's foot, a turn places two crates: one batch, a revision for each. |
 | Move and remove through the agent | One turn, one batch. |

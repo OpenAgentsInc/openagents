@@ -1,6 +1,6 @@
 // A content tables file as a Coax string (#13381, #13404): the copy of its tables a page is built
 // with. A game's content check (everglade/model/tools/content-check.coax,
-// metaverse/splice/tools/content-check.coax) writes `head`, which ends by opening a string constant,
+// metaverse/splice-bots/tools/content-check.coax) writes `head`, which ends by opening a string constant,
 // then the file's bytes with a backslash, a quote and a newline escaped and nothing else changed,
 // then the closing quote. The same bytes in give the same file out, so a check compares the two.
 //   coax/bin/coax test metaverse-engine/tools/content-carry.coax --library

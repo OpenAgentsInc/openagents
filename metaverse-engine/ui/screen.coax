@@ -4,7 +4,7 @@
 // the pointer: rows that are picked, and rows whose value steps left and right.
 //
 // It only lays out and decides. It returns boxes and what a key or a press did; the realm draws
-// them in its own look (Splice draws its tactical panels, metaverse/splice/front.coax). Every size
+// them in its own look (Splice draws its tactical panels, metaverse/splice-bots/front.coax). Every size
 // is in the design's pixels at 1280 by 720 and scales with the screen, so a 2560 by 1440 screen is
 // the same picture twice as big.
 //   coax/bin/coax test metaverse-engine/ui/screen.coax

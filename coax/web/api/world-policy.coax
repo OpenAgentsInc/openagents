@@ -18,7 +18,7 @@
 //                         (wr_asset_stored); a wrong object is deleted (#13420)
 //   the bytes             metaverse-engine/editor/world-edit.coax's: a batch's head and edits, an
 //                         event, a state, a refusal; a card's are coax/lib/agent/world/turn.coax's
-// Whether an edit may stand is the world's own Coax (Splice: metaverse/splice/world-api.coax).
+// Whether an edit may stand is the world's own Coax (Splice: metaverse/splice-bots/world-api.coax).
 //   coax/bin/coax test coax/web/api/world-policy.coax --library
 //   coax/bin/coax mutate coax/web/api/world-policy.coax --library --root-only
 #authority;

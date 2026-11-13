@@ -216,90 +216,90 @@ rc_file_at :: (page: string, lines: string, at: int) -> RcFile #effects(all) {
 // ---------------------------------------------------------------- checks
 
 #test "a page's own realm sources are the only paths: nothing above, beside or hidden, and only Coax and WGSL" {
-  yes := [5] string.["metaverse/splice/walk.coax", "metaverse/splice/gpu/splice.coax", "metaverse/splice/content/shipped.coax", "metaverse/splice/a_b-c.9.wgsl", "metaverse/splice/A.coax"];
-  for p: yes { #assert rc_path_ok("splice", p); }
-  no := [22] string.["", "walk.coax", "/metaverse/splice/walk.coax", "metaverse/splice/../orbit/orbit.coax", "metaverse/splice/./walk.coax", "metaverse/splice//walk.coax",
-    "metaverse/splice/.hidden.coax", "metaverse/splice/.git/x.coax", "metaverse/orbit/orbit.coax", "metaverse/splice-two/walk.coax", "metaverse/splice", "metaverse/splice/",
-    "metaverse/splice/splice-face.c", "metaverse/splice/README.md", "metaverse/splice/walk.coax/", "metaverse/splice/walk coax.coax", "metaverse/splice/w\\x.coax",
-    "metaverse/splice/walk.coax\n", "metaverse/splice/~x.coax", "metaverse/splice/.coax", "metaverse/splice/x/.wgsl", "Metaverse/splice/walk.coax"];
-  for p: no { #assert !rc_path_ok("splice", p); }
-  #assert !rc_path_ok("orbit", "metaverse/splice/walk.coax") && !rc_path_ok("", "metaverse//walk.coax") && !rc_path_ok("..", "metaverse/../walk.coax") && !rc_path_ok("Splice", "metaverse/Splice/walk.coax");
-  #assert rc_page_ok("splice") && rc_page_ok("everglade-2") && !rc_page_ok("2a") && !rc_page_ok("a/b") && !rc_page_ok("a.b") && !rc_page_ok("abcdefghijklmnopqrstuvwxyzabcdefg");
-  long: [RC_PATH + 8] u8; n := ct_put(long[..], 0, "metaverse/splice/");
+  yes := [5] string.["metaverse/splice-bots/walk.coax", "metaverse/splice-bots/gpu/splice-bots.coax", "metaverse/splice-bots/content/shipped.coax", "metaverse/splice-bots/a_b-c.9.wgsl", "metaverse/splice-bots/A.coax"];
+  for p: yes { #assert rc_path_ok("splice-bots", p); }
+  no := [22] string.["", "walk.coax", "/metaverse/splice-bots/walk.coax", "metaverse/splice-bots/../orbit/orbit.coax", "metaverse/splice-bots/./walk.coax", "metaverse/splice-bots//walk.coax",
+    "metaverse/splice-bots/.hidden.coax", "metaverse/splice-bots/.git/x.coax", "metaverse/orbit/orbit.coax", "metaverse/splice-two/walk.coax", "metaverse/splice-bots", "metaverse/splice-bots/",
+    "metaverse/splice-bots/splice-face.c", "metaverse/splice-bots/README.md", "metaverse/splice-bots/walk.coax/", "metaverse/splice-bots/walk coax.coax", "metaverse/splice-bots/w\\x.coax",
+    "metaverse/splice-bots/walk.coax\n", "metaverse/splice-bots/~x.coax", "metaverse/splice-bots/.coax", "metaverse/splice-bots/x/.wgsl", "Metaverse/splice-bots/walk.coax"];
+  for p: no { #assert !rc_path_ok("splice-bots", p); }
+  #assert !rc_path_ok("orbit", "metaverse/splice-bots/walk.coax") && !rc_path_ok("", "metaverse//walk.coax") && !rc_path_ok("..", "metaverse/../walk.coax") && !rc_path_ok("Splice", "metaverse/Splice/walk.coax");
+  #assert rc_page_ok("splice-bots") && rc_page_ok("everglade-2") && !rc_page_ok("2a") && !rc_page_ok("a/b") && !rc_page_ok("a.b") && !rc_page_ok("abcdefghijklmnopqrstuvwxyzabcdefg");
+  long: [RC_PATH + 8] u8; n := ct_put(long[..], 0, "metaverse/splice-bots/");
   while n < RC_PATH - 5 { long[n] = 'a'; n += 1; }
   n = ct_put(long[..], n, ".coax");
-  #assert n == RC_PATH && rc_path_ok("splice", cast(string) long[0..<n]);
-  long[20] = 'b'; m := ct_put(long[..], RC_PATH - 5, "a.coax");
-  #assert m == RC_PATH + 1 && !rc_path_ok("splice", cast(string) long[0..<m]);
+  #assert n == RC_PATH && rc_path_ok("splice-bots", cast(string) long[0..<n]);
+  long[24] = 'b'; m := ct_put(long[..], RC_PATH - 5, "a.coax");
+  #assert m == RC_PATH + 1 && !rc_path_ok("splice-bots", cast(string) long[0..<m]);
 }
 
 #test "a saved file is checked as its module loads it: the realm's module, the shaders' for a file under gpu/, none for WGSL" {
   out: [RC_PATH] u8;
-  #assert rc_root("splice", "metaverse/splice/walk.coax", out[..]) == "metaverse/splice/splice.coax" && rc_root("splice", "metaverse/splice/splice.coax", out[..]) == "metaverse/splice/splice.coax";
-  #assert rc_root("splice", "metaverse/splice/content/shipped.coax", out[..]) == "metaverse/splice/splice.coax" && rc_root("splice", "metaverse/splice/gpu/splice.coax", out[..]) == "metaverse/splice/gpu/splice.coax";
-  #assert rc_root("splice", "metaverse/splice/gpu/sky.coax", out[..]) == "metaverse/splice/gpu/splice.coax" && rc_root("splice", "metaverse/splice/gpuzzle.coax", out[..]) == "metaverse/splice/splice.coax";
-  #assert rc_root("splice", "metaverse/splice/sky.wgsl", out[..]) == "" && rc_root("splice", "metaverse/orbit/orbit.coax", out[..]) == "" && rc_root("splice", "metaverse/splice/walk.coax", out[0..<8]) == "";
-  #assert realm_code_root("splice", "metaverse/splice/walk.coax", out[..]) == 28 && realm_code_root("splice", "../x.coax", out[..]) == 0;
+  #assert rc_root("splice-bots", "metaverse/splice-bots/walk.coax", out[..]) == "metaverse/splice-bots/splice-bots.coax" && rc_root("splice-bots", "metaverse/splice-bots/splice-bots.coax", out[..]) == "metaverse/splice-bots/splice-bots.coax";
+  #assert rc_root("splice-bots", "metaverse/splice-bots/content/shipped.coax", out[..]) == "metaverse/splice-bots/splice-bots.coax" && rc_root("splice-bots", "metaverse/splice-bots/gpu/splice-bots.coax", out[..]) == "metaverse/splice-bots/gpu/splice-bots.coax";
+  #assert rc_root("splice-bots", "metaverse/splice-bots/gpu/sky.coax", out[..]) == "metaverse/splice-bots/gpu/splice-bots.coax" && rc_root("splice-bots", "metaverse/splice-bots/gpuzzle.coax", out[..]) == "metaverse/splice-bots/splice-bots.coax";
+  #assert rc_root("splice-bots", "metaverse/splice-bots/sky.wgsl", out[..]) == "" && rc_root("splice-bots", "metaverse/orbit/orbit.coax", out[..]) == "" && rc_root("splice-bots", "metaverse/splice-bots/walk.coax", out[0..<8]) == "";
+  #assert realm_code_root("splice-bots", "metaverse/splice-bots/walk.coax", out[..]) == 38 && realm_code_root("splice-bots", "../x.coax", out[..]) == 0;
   #assert realm_code_limit(0) == RC_TEXT && realm_code_limit(1) == RC_ERRORS && realm_code_limit(2) == RC_FILES && realm_code_limit(3) == 0 && realm_code_limit(-1) == 0;
 }
 
 #test "an ask writes and reads back as it was: list, read, and save with its text; any other bytes are refused" {
   out: [RC_HEAD + 64] u8;
-  l := rc_ask(RC_LIST, "splice", "", "", out[..]);
-  #assert l == "realm.code.v1 list splice\n";
+  l := rc_ask(RC_LIST, "splice-bots", "", "", out[..]);
+  #assert l == "realm.code.v1 list splice-bots\n";
   a := rc_ask_read(l);
-  #assert a.ok && a.op == RC_LIST && a.page == "splice" && a.path.count == 0;
-  r := rc_ask(RC_READ, "splice", "metaverse/splice/walk.coax", "", out[..]);
-  #assert r == "realm.code.v1 read splice metaverse/splice/walk.coax\n";
+  #assert a.ok && a.op == RC_LIST && a.page == "splice-bots" && a.path.count == 0;
+  r := rc_ask(RC_READ, "splice-bots", "metaverse/splice-bots/walk.coax", "", out[..]);
+  #assert r == "realm.code.v1 read splice-bots metaverse/splice-bots/walk.coax\n";
   a = rc_ask_read(r);
-  #assert a.ok && a.op == RC_READ && a.path == "metaverse/splice/walk.coax" && a.text.count == 0;
-  s := rc_ask(RC_SAVE, "splice", "metaverse/splice/walk.coax", "x :: 1;\n// two\n", out[..]);
-  #assert s == "realm.code.v1 save splice metaverse/splice/walk.coax 15\nx :: 1;\n// two\n";
+  #assert a.ok && a.op == RC_READ && a.path == "metaverse/splice-bots/walk.coax" && a.text.count == 0;
+  s := rc_ask(RC_SAVE, "splice-bots", "metaverse/splice-bots/walk.coax", "x :: 1;\n// two\n", out[..]);
+  #assert s == "realm.code.v1 save splice-bots metaverse/splice-bots/walk.coax 15\nx :: 1;\n// two\n";
   a = rc_ask_read(s);
-  #assert a.ok && a.op == RC_SAVE && a.path == "metaverse/splice/walk.coax" && a.text == "x :: 1;\n// two\n";
-  e := rc_ask(RC_SAVE, "splice", "metaverse/splice/walk.coax", "", out[..]);
-  #assert e == "realm.code.v1 save splice metaverse/splice/walk.coax 0\n" && rc_ask_read(e).ok && rc_ask_read(e).text.count == 0;
+  #assert a.ok && a.op == RC_SAVE && a.path == "metaverse/splice-bots/walk.coax" && a.text == "x :: 1;\n// two\n";
+  e := rc_ask(RC_SAVE, "splice-bots", "metaverse/splice-bots/walk.coax", "", out[..]);
+  #assert e == "realm.code.v1 save splice-bots metaverse/splice-bots/walk.coax 0\n" && rc_ask_read(e).ok && rc_ask_read(e).text.count == 0;
   // what is not an ask
-  #assert rc_ask(RC_READ, "splice", "metaverse/orbit/orbit.coax", "", out[..]) == "" && rc_ask(RC_SAVE, "splice", "../x.coax", "x", out[..]) == "" && rc_ask(3, "splice", "", "", out[..]) == "" && rc_ask(-1, "splice", "", "", out[..]) == "";
-  #assert rc_ask(RC_LIST, "Splice", "", "", out[..]) == "" && rc_ask(RC_READ, "splice", "metaverse/splice/walk.coax", "", out[0..<20]) == "";
-  bad := [14] string.["", "realm.code.v1 list splice", "realm.code.v2 list splice\n", "realm.code.v1 list splice\nmore", "realm.code.v1 list splice x\n", "realm.code.v1 drop splice\n",
-    "realm.code.v1 read splice metaverse/orbit/orbit.coax\n", "realm.code.v1 read splice metaverse/splice/../x.coax\n", "realm.code.v1 read splice\n",
-    "realm.code.v1 save splice metaverse/splice/walk.coax 3\nab", "realm.code.v1 save splice metaverse/splice/walk.coax 03\nabc", "realm.code.v1 save splice metaverse/splice/walk.coax -1\n",
-    "realm.code.v1 save splice metaverse/splice/walk.coax 3\na\0b", "realm.code.v1  list splice\n"];
+  #assert rc_ask(RC_READ, "splice-bots", "metaverse/orbit/orbit.coax", "", out[..]) == "" && rc_ask(RC_SAVE, "splice-bots", "../x.coax", "x", out[..]) == "" && rc_ask(3, "splice-bots", "", "", out[..]) == "" && rc_ask(-1, "splice-bots", "", "", out[..]) == "";
+  #assert rc_ask(RC_LIST, "Splice", "", "", out[..]) == "" && rc_ask(RC_READ, "splice-bots", "metaverse/splice-bots/walk.coax", "", out[0..<20]) == "";
+  bad := [14] string.["", "realm.code.v1 list splice-bots", "realm.code.v2 list splice\n", "realm.code.v1 list splice-bots\nmore", "realm.code.v1 list splice-bots x\n", "realm.code.v1 drop splice-bots\n",
+    "realm.code.v1 read splice-bots metaverse/orbit/orbit.coax\n", "realm.code.v1 read splice-bots metaverse/splice-bots/../x.coax\n", "realm.code.v1 read splice-bots\n",
+    "realm.code.v1 save splice-bots metaverse/splice-bots/walk.coax 3\nab", "realm.code.v1 save splice-bots metaverse/splice-bots/walk.coax 03\nabc", "realm.code.v1 save splice-bots metaverse/splice-bots/walk.coax -1\n",
+    "realm.code.v1 save splice-bots metaverse/splice-bots/walk.coax 3\na\0b", "realm.code.v1  list splice-bots\n"];
   for b: bad { #assert !rc_ask_read(b).ok; }
 }
 
 #test "an answer writes and reads back: the files with their sizes, a file's text, saved, the compiler's words, a refusal in words" {
   out: [1024] u8;
-  n := rc_head(out[..], 0, RC_FILES_ARE, "splice", 2);
-  n = rc_file_line(out[..], n, "metaverse/splice/splice.coax", 46171);
-  n = rc_file_line(out[..], n, "metaverse/splice/gpu/splice.coax", 900);
+  n := rc_head(out[..], 0, RC_FILES_ARE, "splice-bots", 2);
+  n = rc_file_line(out[..], n, "metaverse/splice-bots/splice-bots.coax", 46171);
+  n = rc_file_line(out[..], n, "metaverse/splice-bots/gpu/splice-bots.coax", 900);
   files := cast(string) out[0..<n];
-  #assert files == "realm.code.v1 files splice 2\nf metaverse/splice/splice.coax 46171\nf metaverse/splice/gpu/splice.coax 900\n";
+  #assert files == "realm.code.v1 files splice-bots 2\nf metaverse/splice-bots/splice-bots.coax 46171\nf metaverse/splice-bots/gpu/splice-bots.coax 900\n";
   a := rc_answer_read(files);
-  #assert a.ok && a.what == RC_FILES_ARE && a.name == "splice" && a.n == 2;
+  #assert a.ok && a.what == RC_FILES_ARE && a.name == "splice-bots" && a.n == 2;
   f := rc_file_at(a.name, a.rest, 0);
-  #assert f.ok && f.path == "metaverse/splice/splice.coax" && f.bytes == 46171;
+  #assert f.ok && f.path == "metaverse/splice-bots/splice-bots.coax" && f.bytes == 46171;
   g := rc_file_at(a.name, a.rest, f.next);
-  #assert g.ok && g.path == "metaverse/splice/gpu/splice.coax" && g.bytes == 900 && g.next == a.rest.count && !rc_file_at(a.name, a.rest, g.next).ok;
+  #assert g.ok && g.path == "metaverse/splice-bots/gpu/splice-bots.coax" && g.bytes == 900 && g.next == a.rest.count && !rc_file_at(a.name, a.rest, g.next).ok;
   two: [256] u8;
-  m := rc_head(two[..], 0, RC_FILE, "metaverse/splice/walk.coax", 8); m = ct_put(two[..], m, "x :: 1;\n");
+  m := rc_head(two[..], 0, RC_FILE, "metaverse/splice-bots/walk.coax", 8); m = ct_put(two[..], m, "x :: 1;\n");
   b := rc_answer_read(cast(string) two[0..<m]);
-  #assert b.ok && b.what == RC_FILE && b.name == "metaverse/splice/walk.coax" && b.rest == "x :: 1;\n";
-  m = rc_head(two[..], 0, RC_SAVED, "metaverse/splice/walk.coax", 0);
-  #assert cast(string) two[0..<m] == "realm.code.v1 saved metaverse/splice/walk.coax 0\n" && rc_answer_read(cast(string) two[0..<m]).what == RC_SAVED && rc_answer_read(cast(string) two[0..<m]).ok;
-  m = rc_head(two[..], 0, RC_ERRORS_ARE, "metaverse/splice/walk.coax", 5); m = ct_put(two[..], m, "E0302");
+  #assert b.ok && b.what == RC_FILE && b.name == "metaverse/splice-bots/walk.coax" && b.rest == "x :: 1;\n";
+  m = rc_head(two[..], 0, RC_SAVED, "metaverse/splice-bots/walk.coax", 0);
+  #assert cast(string) two[0..<m] == "realm.code.v1 saved metaverse/splice-bots/walk.coax 0\n" && rc_answer_read(cast(string) two[0..<m]).what == RC_SAVED && rc_answer_read(cast(string) two[0..<m]).ok;
+  m = rc_head(two[..], 0, RC_ERRORS_ARE, "metaverse/splice-bots/walk.coax", 5); m = ct_put(two[..], m, "E0302");
   c := rc_answer_read(cast(string) two[0..<m]);
   #assert c.ok && c.what == RC_ERRORS_ARE && c.rest == "E0302" && c.n == 5;
   m = rc_head(two[..], 0, RC_REFUSED, "That file is not one of this realm's.", 0);
   #assert cast(string) two[0..<m] == "realm.code.v1 refused 0 That file is not one of this realm's.\n";
   r := rc_answer_read(cast(string) two[0..<m]);
   #assert r.ok && r.what == RC_REFUSED && r.name == "That file is not one of this realm's.";
-  #assert realm_code_head(RC_SAVED, "metaverse/splice/walk.coax", 0, two[..]) == 49 && realm_code_head(RC_SAVED, "metaverse/splice/walk.coax", 0, two[0..<10]) == 0 && realm_code_head(9, "x", 0, two[..]) == 0;
-  #assert realm_code_file_line("metaverse/splice/walk.coax", 12, two[..]) == 32 && realm_code_file_line("metaverse/splice/walk.coax", 12, two[0..<4]) == 0;
-  bad := [13] string.["", "realm.code.v1 files splice 1\n", "realm.code.v1 files splice 1\nf metaverse/orbit/orbit.coax 1\n", "realm.code.v1 files splice 0\nf metaverse/splice/walk.coax 1\n",
-    "realm.code.v1 files splice 1\nf metaverse/splice/walk.coax 1", "realm.code.v1 file metaverse/splice/walk.coax 3\nab", "realm.code.v1 saved metaverse/splice/walk.coax 1\n",
-    "realm.code.v1 saved metaverse/splice/walk.coax 0\nx", "realm.code.v1 errors metaverse/splice/walk.coax 0\n", "realm.code.v1 refused 0 \n", "realm.code.v1 refused 1 words\n",
-    "realm.code.v2 saved metaverse/splice/walk.coax 0\n", "realm.code.v1 gone metaverse/splice/walk.coax 0\n"];
+  #assert realm_code_head(RC_SAVED, "metaverse/splice-bots/walk.coax", 0, two[..]) == 49 && realm_code_head(RC_SAVED, "metaverse/splice-bots/walk.coax", 0, two[0..<10]) == 0 && realm_code_head(9, "x", 0, two[..]) == 0;
+  #assert realm_code_file_line("metaverse/splice-bots/walk.coax", 12, two[..]) == 32 && realm_code_file_line("metaverse/splice-bots/walk.coax", 12, two[0..<4]) == 0;
+  bad := [13] string.["", "realm.code.v1 files splice-bots 1\n", "realm.code.v1 files splice-bots 1\nf metaverse/orbit/orbit.coax 1\n", "realm.code.v1 files splice-bots 0\nf metaverse/splice-bots/walk.coax 1\n",
+    "realm.code.v1 files splice-bots 1\nf metaverse/splice-bots/walk.coax 1", "realm.code.v1 file metaverse/splice-bots/walk.coax 3\nab", "realm.code.v1 saved metaverse/splice-bots/walk.coax 1\n",
+    "realm.code.v1 saved metaverse/splice-bots/walk.coax 0\nx", "realm.code.v1 errors metaverse/splice-bots/walk.coax 0\n", "realm.code.v1 refused 0 \n", "realm.code.v1 refused 1 words\n",
+    "realm.code.v2 saved metaverse/splice-bots/walk.coax 0\n", "realm.code.v1 gone metaverse/splice-bots/walk.coax 0\n"];
   for x: bad { #assert !rc_answer_read(x).ok; }
 }

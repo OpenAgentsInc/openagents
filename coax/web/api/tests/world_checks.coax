@@ -20,7 +20,7 @@
 #load "../../../../metaverse-engine/editor/asset-wire.coax";
 
 WC_PATH :: "/api/worlds/splice";
-// A palm by the scanner gate and a small crate by the rover's door, as metaverse/splice/world-checks.coax places them.
+// A palm by the scanner gate and a small crate by the rover's door, as metaverse/splice-bots/world-checks.coax places them.
 WC_SPAWNS :: "{\"op\":\"spawn\",\"id\":0,\"kind\":113,\"x\":17720,\"y\":0,\"z\":-7060,\"yaw\":0,\"scale\":100},{\"op\":\"spawn\",\"id\":0,\"kind\":117,\"x\":280,\"y\":0,\"z\":150,\"yaw\":0,\"scale\":100}";
 WC_IN_GATE :: "{\"op\":\"spawn\",\"id\":0,\"kind\":113,\"x\":17500,\"y\":0,\"z\":-6700,\"yaw\":0,\"scale\":100}";
 

@@ -40,7 +40,7 @@
 // This file moves facts in and answers out. The rules are Coax: who may write, the revision
 // fence, the undo log and the dev and live rule are world-policy.coax's (#authority); whether an
 // edit may stand is the world's own code, the code its page runs (Splice:
-// metaverse/splice/world-api.coax, linked as splice-world). Every byte this file answers is
+// metaverse/splice-bots/world-api.coax, linked as splice-world). Every byte this file answers is
 // written by metaverse-engine/editor/world-edit.coax through world-policy.coax. SQL
 // (migrations/0181_worlds.sql, 0183_world_assets.sql) stores the rows, holds the row lock for a write and keeps the
 // outbox; it decides nothing. A saved edit is one outbox row, written in the transaction that
@@ -56,9 +56,9 @@
 #include <string.h>
 #include <unistd.h>
 
-#define WORLD_DOC 131072     // a document's bytes at most (metaverse/splice/world.coax SPW_DOC)
+#define WORLD_DOC 131072     // a document's bytes at most (metaverse/splice-bots/world.coax SPW_DOC)
 #define WORLD_BATCH 65536    // a batch's (world-edit.coax WE_BATCH_BODY)
-#define WORLD_TABLES 16384   // the content tables' bytes at most (metaverse/splice/world.coax SPW_TABLES)
+#define WORLD_TABLES 16384   // the content tables' bytes at most (metaverse/splice-bots/world.coax SPW_TABLES)
 #define WORLD_EDIT 1400      // an edit's (WE_LINE)
 #define WORLD_EVENTS 200     // events one read answers
 #define WORLD_ASK 400        // an import's ask (asset-wire.coax: two lines)
@@ -576,7 +576,7 @@ static void world_card(const request *q, PGconn *db, const char *id) {
 }
 
 // ---- a world's imported assets (#13420; docs/protocol/world-assets-v1.md). The importer, its limits and every byte
-// answered are Coax (metaverse/splice/world-assets.coax, the code the dev server runs); who may import and what makes a
+// answered are Coax (metaverse/splice-bots/world-assets.coax, the code the dev server runs); who may import and what makes a
 // stored object the file that was named are world-policy.coax's. The bucket's part is drops.c's.
 
 // Whoever asks may import into this world: the verdict (0: yes), by the rule a write is held to.

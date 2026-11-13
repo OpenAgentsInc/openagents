@@ -4,7 +4,7 @@ Issue: [#13412](https://github.com/OpenAgentsInc/openagents/issues/13412), the
 browser editor's E3 ([spec](../editor/2026-11-12-browser-editor.md)).
 Code: `metaverse-engine/editor/world-edit.coax` (the one codec),
 `coax/web/api/worlds.c` with `coax/web/api/world-policy.coax` (the routes and
-their rules, `#authority`), `metaverse/splice/world.coax` (Splice, the first
+their rules, `#authority`), `metaverse/splice-bots/world.coax` (Splice, the first
 world).
 Profile: `proto/world/edit-v1.json`, checked by
 `coax/web/tool.sh metaverse-engine/tools/world-edit-profile.coax proto/world/edit-v1.json`.
@@ -223,7 +223,7 @@ the dev lane's newest 200 events again each time the revision moves.
 ## A page follows the world
 
 Code: `metaverse-engine/editor/world-follow.coax` (what to ask, and what an
-answer is), `metaverse/splice/world.coax` `spw_page_*` (Splice carries a
+answer is), `metaverse/splice-bots/world.coax` `spw_page_*` (Splice carries a
 document and each event out).
 
 1. The page opens a lane: dev with `?edit`, else live. It reads the lane's
@@ -244,7 +244,7 @@ document and each event out).
 
 `coax serve` answers `/api/worlds/...` itself, so a page, a second tab, the
 CLI and `coax drive` share one world before anything is deployed. The request
-goes to `metaverse/splice/tools/world-local.coax`: the API's rules
+goes to `metaverse/splice-bots/tools/world-local.coax`: the API's rules
 (`world-policy.coax`) and Splice's own check, with files under
 `apps/openagents-web/build/.worlds/` for rows. Everyone on this computer is
 the admin. A saved write is told to every tab over the live channel

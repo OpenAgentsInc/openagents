@@ -65,7 +65,7 @@ realm_origin_host :: (host: string, realm: string) -> bool #export_c #effects(re
 }
 
 #test "the realm origin answers a realm's page and what it loads, and nothing of the site's" {
-  yes := [9] string.["/worlds", "/worlds/splice", "/worlds/splice/", "/worlds/splice/llms.txt", "/realms/splice/assets/fonts/a.woff2", "/build/splice.0e7b9526d8a2.wasm", "/coaxial/host.js", "/worlds/splice?frame=1", "/build/x.wgsl#a"];
+  yes := [9] string.["/worlds", "/worlds/splice", "/worlds/splice/", "/worlds/splice/llms.txt", "/realms/splice/assets/fonts/a.woff2", "/build/splice-bots.0e7b9526d8a2.wasm", "/coaxial/host.js", "/worlds/splice?frame=1", "/build/x.wgsl#a"];
   for u: yes { #assert realm_origin_serves(u); }
   no := [16] string.["/", "", "/api/playtest/realms", "/api", "/login", "/chat", "/settings/agents", "/coaxial/live", "/coaxial/live?x", "/worldsx", "/world", "/builder", "/realmsx/a", "/index.html", "/llms.txt", "/?next=/worlds/splice"];
   // (a shader's name is the whole of the address: "/login.wgsl" is a shader's, "/login" is not)
@@ -73,7 +73,7 @@ realm_origin_host :: (host: string, realm: string) -> bool #export_c #effects(re
   #assert realm_origin_serves("/coaxial/liveness.js") && !realm_origin_serves("/coaxial/live/x") && !realm_origin_serves("worlds/splice") && !realm_origin_serves("/WORLDS/splice");
   #assert realm_origin_under("/build", "/build") && realm_origin_under("/build/a", "/build") && !realm_origin_under("/buil", "/build") && !realm_origin_under("/buildx", "/build");
   // a page's shader at the root, by name; nothing else at the root but the icon
-  #assert realm_origin_serves("/splice.wgsl") && realm_origin_serves("/everglade-2.wgsl?v=1") && realm_origin_serves("/a.wgsl") && realm_origin_serves("/az09-.wgsl") && realm_origin_serves("/favicon.svg");
+  #assert realm_origin_serves("/splice-bots.wgsl") && realm_origin_serves("/everglade-2.wgsl?v=1") && realm_origin_serves("/a.wgsl") && realm_origin_serves("/az09-.wgsl") && realm_origin_serves("/favicon.svg");
   #assert !realm_origin_serves("/.wgsl") && !realm_origin_serves("/a/b.wgsl") && !realm_origin_serves("/A.wgsl") && !realm_origin_serves("/a.wgslx") && !realm_origin_serves("/a.wgs") && !realm_origin_serves("/a_b.wgsl") && !realm_origin_serves("a.wgsl") && !realm_origin_serves("/favicon.svgx") && !realm_origin_serves("/favicon.sv");
   #assert !realm_origin_shader("/`.wgsl") && !realm_origin_shader("/{.wgsl") && !realm_origin_shader("//.wgsl") && !realm_origin_shader("/:.wgsl") && !realm_origin_shader("/,.wgsl") && !realm_origin_shader("/..wgsl") && !realm_origin_shader("xa.wgsl") && realm_origin_shader("/z.wgsl") && realm_origin_shader("/9.wgsl") && realm_origin_shader("/0.wgsl");
   // the first byte counts too, and only ? and # end the path

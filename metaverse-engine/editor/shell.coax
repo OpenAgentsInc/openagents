@@ -1551,10 +1551,10 @@ es_test_answer :: (h: [] EsTest, status: int, body: string) {
 es_test_code :: (h: [] EsTest) {
   s := h[0].s[..];
   es_test_model(h[..], 0, 7, 3, "");
-  for c, i: "splice" { s[0].inbox[i] = c; }
-  coaxial_editor_event(s, ES_CODE_HERE, 0, 6);
+  for c, i: "splice-bots" { s[0].inbox[i] = c; }
+  coaxial_editor_event(s, ES_CODE_HERE, 0, 11);
   coaxial_editor_asked(s);
-  es_test_answer(h, 200, "realm.code.v1 files splice 3\nf metaverse/splice/gpu/splice.coax 900\nf metaverse/splice/splice-game.coax 300000\nf metaverse/splice/walk.coax 9\n");
+  es_test_answer(h, 200, "realm.code.v1 files splice-bots 3\nf metaverse/splice-bots/gpu/splice-bots.coax 900\nf metaverse/splice-bots/splice-game.coax 300000\nf metaverse/splice-bots/walk.coax 9\n");
 }
 es_test_ask :: (h: [] EsTest) -> string {
   s := h[0].s[..];
@@ -1576,25 +1576,25 @@ es_test_ask :: (h: [] EsTest) -> string {
   coaxial_editor_event(s, ES_CODE_HERE, 0, 6);
   #assert coaxial_editor_asking(s) == 0 && s[0].code_page_n == 0;
   // the dev server's page: the shell asks for the realm's files at the code route
-  for c, i: "splice" { s[0].inbox[i] = c; }
-  coaxial_editor_event(s, ES_CODE_HERE, 0, 6);
-  #assert cast(string) s[0].code_door[0..<s[0].code_door_n] == "/coaxial/code" && es_test_ask(h[..]) == "realm.code.v1 list splice\n" && coaxial_editor_asking(s) == 0;
+  for c, i: "splice-bots" { s[0].inbox[i] = c; }
+  coaxial_editor_event(s, ES_CODE_HERE, 0, 11);
+  #assert cast(string) s[0].code_door[0..<s[0].code_door_n] == "/coaxial/code" && es_test_ask(h[..]) == "realm.code.v1 list splice-bots\n" && coaxial_editor_asking(s) == 0;
   // a server with no such route (--static), or one that lists nothing: still no button
   es_test_answer(h[..], 405, "GET only\n");
   es_test_frames(h[..], 1);
   #assert s[0].nfiles == 0 && tr_find(t, "code") < 0 && s[0].code_flight == ES_FLY_NONE;
   h2: [1] EsTest; s2 := h2[0].s[..]; t2 := s2[0].tree[..];
   es_test_model(h2[..], 0, 7, 3, "");
-  for c, i: "splice" { s2[0].inbox[i] = c; }
-  coaxial_editor_event(s2, ES_CODE_HERE, 0, 6);
-  es_test_answer(h2[..], 200, "realm.code.v1 files splice 0\n");
+  for c, i: "splice-bots" { s2[0].inbox[i] = c; }
+  coaxial_editor_event(s2, ES_CODE_HERE, 0, 11);
+  es_test_answer(h2[..], 200, "realm.code.v1 files splice-bots 0\n");
   es_test_frames(h2[..], 1);
   #assert s2[0].nfiles == 0 && tr_find(t2, "code") < 0;
   // another page's files are not this page's
   h3: [1] EsTest; s3 := h3[0].s[..];
   es_test_model(h3[..], 0, 7, 3, "");
-  for c, i: "splice" { s3[0].inbox[i] = c; }
-  coaxial_editor_event(s3, ES_CODE_HERE, 0, 6);
+  for c, i: "splice-bots" { s3[0].inbox[i] = c; }
+  coaxial_editor_event(s3, ES_CODE_HERE, 0, 11);
   es_test_answer(h3[..], 200, "realm.code.v1 files orbit 1\nf metaverse/orbit/orbit.coax 9\n");
   #assert s3[0].nfiles == 0;
 }
@@ -1608,14 +1608,14 @@ es_test_ask :: (h: [] EsTest) -> string {
   #assert tr_text_of(t, tr_find(t, "code.l")) == "Hide code" && tr_class(t, tr_find(t, "code.pane")) == "pane pane-r pane-w" && tr_find(t, "one") < 0;
   #assert tr_text_of(t, tr_find(t, "file.l")) == "Pick a file" && tr_find(t, "code.none") > 0 && tr_find(t, "code.text") < 0 && tr_find(t, "code.save") < 0;
   es_test_press(h[..], "file");
-  #assert s[0].open == ES_OPEN_FILE && tr_text_of(t, tr_find(t, "file.0.t")) == "gpu/splice.coax" && tr_text_of(t, tr_find(t, "file.2.t")) == "walk.coax" && tr_text_of(t, tr_find(t, "file.1.m")) == "Too long to open here";
+  #assert s[0].open == ES_OPEN_FILE && tr_text_of(t, tr_find(t, "file.0.t")) == "gpu/splice-bots.coax" && tr_text_of(t, tr_find(t, "file.2.t")) == "walk.coax" && tr_text_of(t, tr_find(t, "file.1.m")) == "Too long to open here";
   // a file longer than the editor opens is said, not asked for
   es_test_press(h[..], "file.1");
   #assert coaxial_editor_asking(s) == 0 && tr_text_of(t, tr_find(t, "code.said.t")) == "That file is longer than the editor opens (192 KB)." && s[0].open == ES_OPEN_NONE;
   es_test_press(h[..], "file");
   es_test_press(h[..], "file.2");
-  #assert es_test_ask(h[..]) == "realm.code.v1 read splice metaverse/splice/walk.coax\n" && tr_text_of(t, tr_find(t, "code.state")) == "Opening" && tr_find(t, "code.none") < 0;
-  es_test_answer(h[..], 200, "realm.code.v1 file metaverse/splice/walk.coax 9\nx :: 1;\n\n");
+  #assert es_test_ask(h[..]) == "realm.code.v1 read splice-bots metaverse/splice-bots/walk.coax\n" && tr_text_of(t, tr_find(t, "code.state")) == "Opening" && tr_find(t, "code.none") < 0;
+  es_test_answer(h[..], 200, "realm.code.v1 file metaverse/splice-bots/walk.coax 9\nx :: 1;\n\n");
   n := coaxial_editor_frame(s, 0.016, true);
   // the field is made and filled in one flush, with the file's own bytes
   #assert s[0].code_at == 2 && n > 0 && dm_test_count(d, n, DC_VALUE) == 1 && !s[0].code_fill && cast(string) s[0].code_text[0..<s[0].code_n] == "x :: 1;\n\n";
@@ -1628,8 +1628,8 @@ es_test_ask :: (h: [] EsTest) -> string {
   n = coaxial_editor_frame(s, 0.016, true);
   #assert dm_test_count(d, n, DC_VALUE) == 0 && !tr_has(t, tr_find(t, "code.save"), AT_DISABLED) && tr_text_of(t, tr_find(t, "code.state")) == "Not saved" && coaxial_editor_asking(s) == 0 && s[0].nacts == 0;
   es_test_press(h[..], "code.save");
-  #assert es_test_ask(h[..]) == "realm.code.v1 save splice metaverse/splice/walk.coax 16\nx :: 2;\ny :: 3;\n" && tr_text_of(t, tr_find(t, "code.state")) == "Saving" && tr_has(t, tr_find(t, "code.save"), AT_DISABLED);
-  es_test_answer(h[..], 200, "realm.code.v1 saved metaverse/splice/walk.coax 0\n");
+  #assert es_test_ask(h[..]) == "realm.code.v1 save splice-bots metaverse/splice-bots/walk.coax 16\nx :: 2;\ny :: 3;\n" && tr_text_of(t, tr_find(t, "code.state")) == "Saving" && tr_has(t, tr_find(t, "code.save"), AT_DISABLED);
+  es_test_answer(h[..], 200, "realm.code.v1 saved metaverse/splice-bots/walk.coax 0\n");
   es_test_frames(h[..], 1);
   #assert tr_text_of(t, tr_find(t, "code.said.k")) == "Saved" && tr_text_of(t, tr_find(t, "code.said.t")) == "The world reloads." && tr_find(t, "code.errors") < 0 && tr_find(t, "code.state") < 0 && tr_has(t, tr_find(t, "code.save"), AT_DISABLED);
   // a save the compiler refuses: its words, in a code block, and the file is saved all the same
@@ -1638,14 +1638,14 @@ es_test_ask :: (h: [] EsTest) -> string {
   es_test_frames(h[..], 1);
   #assert tr_find(t, "code.said") < 0;
   es_test_press(h[..], "code.save");
-  #assert es_test_ask(h[..]) == "realm.code.v1 save splice metaverse/splice/walk.coax 7\nx :: ;\n";
-  es_test_answer(h[..], 200, "realm.code.v1 errors metaverse/splice/walk.coax 44\nmetaverse/splice/walk.coax:1:6: error[E0101]");
+  #assert es_test_ask(h[..]) == "realm.code.v1 save splice-bots metaverse/splice-bots/walk.coax 7\nx :: ;\n";
+  es_test_answer(h[..], 200, "realm.code.v1 errors metaverse/splice-bots/walk.coax 49\nmetaverse/splice-bots/walk.coax:1:6: error[E0101]");
   es_test_frames(h[..], 1);
   #assert tr_text_of(t, tr_find(t, "code.said.k")) == "Compile errors" && tr_text_of(t, tr_find(t, "code.said.t")) == "The file is saved. The last good build keeps running.";
-  #assert tr_text_of(t, tr_find(t, "code.errors.pre")) == "metaverse/splice/walk.coax:1:6: error[E0101]" && tr_find(t, "code.state") < 0;
+  #assert tr_text_of(t, tr_find(t, "code.errors.pre")) == "metaverse/splice-bots/walk.coax:1:6: error[E0101]" && tr_find(t, "code.state") < 0;
   // Copy puts the compiler's words by for the clipboard
   es_test_press(h[..], "code.errors.copy");
-  #assert coaxial_editor_clip_len(s) == 44 && cast(string) s[0].clip[0..<44] == "metaverse/splice/walk.coax:1:6: error[E0101]";
+  #assert coaxial_editor_clip_len(s) == 44 && cast(string) s[0].clip[0..<44] == "metaverse/splice-bots/walk.coax:1:6: error[E0101]";
   coaxial_editor_clip_done(s);
   #assert coaxial_editor_clip_len(s) == 0;
   // the words stay while the file is mended, and go with the next save
@@ -1681,7 +1681,7 @@ es_test_ask :: (h: [] EsTest) -> string {
   es_test_press(h[..], "file");
   es_test_press(h[..], "file.2");
   _ := es_test_ask(h[..]);
-  es_test_answer(h[..], 200, "realm.code.v1 file metaverse/splice/walk.coax 9\nx :: 1;\n\n");
+  es_test_answer(h[..], 200, "realm.code.v1 file metaverse/splice-bots/walk.coax 9\nx :: 1;\n\n");
   es_test_frames(h[..], 1);
   for c, i: "y" { s[0].inbox[i] = c; }
   coaxial_editor_event(s, ES_INPUT, dm_find(d, "code.text"), 1);
@@ -1690,8 +1690,8 @@ es_test_ask :: (h: [] EsTest) -> string {
   #assert coaxial_editor_asking(s) == 0 && s[0].code_at == 2 && tr_text_of(t, tr_find(t, "code.said.t")) == "This file has changes that are not saved. Save it, or pick the other file again to drop them.";
   es_test_press(h[..], "file");
   es_test_press(h[..], "file.0");
-  #assert es_test_ask(h[..]) == "realm.code.v1 read splice metaverse/splice/gpu/splice.coax\n";
-  es_test_answer(h[..], 200, "realm.code.v1 file metaverse/splice/gpu/splice.coax 3\nabc");
+  #assert es_test_ask(h[..]) == "realm.code.v1 read splice-bots metaverse/splice-bots/gpu/splice-bots.coax\n";
+  es_test_answer(h[..], 200, "realm.code.v1 file metaverse/splice-bots/gpu/splice-bots.coax 3\nabc");
   n := coaxial_editor_frame(s, 0.016, true);
   #assert s[0].code_at == 0 && dm_test_count(d, n, DC_VALUE) == 1 && !es_code_changed(s) && tr_find(t, "code.said") < 0;
   // more than a file the editor saves
@@ -1705,7 +1705,7 @@ es_test_ask :: (h: [] EsTest) -> string {
   coaxial_editor_event(s, ES_INPUT, dm_find(d, "code.text"), 2);
   es_test_press(h[..], "code.save");
   _ = es_test_ask(h[..]);
-  es_test_answer(h[..], 200, "realm.code.v1 errors metaverse/splice/gpu/splice.coax 5\nE0302");
+  es_test_answer(h[..], 200, "realm.code.v1 errors metaverse/splice-bots/gpu/splice-bots.coax 5\nE0302");
   es_test_press(h[..], "file");
   seen := 0;
   for i: 0..<t[0].n {

@@ -24,12 +24,12 @@ coax/web/tool.sh metaverse-engine/tools/assets-profile.coax proto/world/assets-v
 | `POST /api/worlds/ID/assets` | An import. The body is `world.asset.import.v1`. The answer is the list with a `did` line, or `422` with `{"error":WORDS}` | A file named before it is sent. The body is a `world.asset.upload.v1` ask. The answer says where the bytes go, or `422` with `{"error":WORDS}` |
 | `POST /api/worlds/ID/assets/done` | None | The same ask again, after the file is sent. The answer is the list with a `did` line, or `422` with `{"error":WORDS}` |
 
-The dev server answers through `metaverse/splice/tools/asset-local.coax`
+The dev server answers through `metaverse/splice-bots/tools/asset-local.coax`
 (`coax/web/serve.c`, `assets_local`) and keeps the pack and each dropped file
 by content hash under `apps/openagents-web/build/.worlds/`. The API answers
 in `coax/web/api/worlds.c` and keeps the pack in Postgres and each file in
 its private bucket (`migrations/0183_world_assets.sql`). Both carry an import
-out with the same code, `metaverse/splice/world-assets.coax`, so the list and
+out with the same code, `metaverse/splice-bots/world-assets.coax`, so the list and
 every refusal are the same bytes.
 
 On the API, who may import is who may write the world: an admin, from this

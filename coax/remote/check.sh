@@ -257,7 +257,7 @@ reports() {
   step serve-image coax/web/serve-parts.sh --check || status=1   # the production serve image's Dockerfile compiles serve.c with every part (#13447)
   step everglade-parity coax/web/tool.sh everglade-parity || status=1
   # Splice's page is built with its content tables' own bytes (#13404)
-  step splice-content coax/web/tool.sh metaverse/splice/tools/content-check.coax metaverse/splice/content/splice.content --check || status=1
+  step splice-content coax/web/tool.sh metaverse/splice-bots/tools/content-check.coax metaverse/splice-bots/content/splice.content --check || status=1
   # Everglade's tables hold their rules, and the kept tables of the release before are the revision before them (#13408)
   step everglade-content coax/web/tool.sh everglade/model/tools/content-check.coax everglade/content/everglade.content || status=1
   step wire-check coax/web/tool.sh wire-check || status=1
@@ -552,7 +552,7 @@ reports_since() {
     # the production serve image compiles: a few seconds, and a part's loads can be anywhere (#13447)
     step serve-image coax/web/serve-parts.sh --check || status=1
     step everglade-parity coax/web/tool.sh everglade-parity || status=1
-    step splice-content coax/web/tool.sh metaverse/splice/tools/content-check.coax metaverse/splice/content/splice.content --check || status=1
+    step splice-content coax/web/tool.sh metaverse/splice-bots/tools/content-check.coax metaverse/splice-bots/content/splice.content --check || status=1
     step everglade-content coax/web/tool.sh everglade/model/tools/content-check.coax everglade/content/everglade.content || status=1   # and the kept tables before (#13408)
     # every wire shape registered (proto/registry.json, #13236); the allowlist against the base's copy
     step wire-check coax/web/tool.sh wire-check --base "$arg" || status=1

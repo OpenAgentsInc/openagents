@@ -74,14 +74,14 @@ presets: dawn, day, dusk and night.
 
 ## Source
 
-The code is in `metaverse/splice/`, and `metaverse/splice/README.md` describes it file by file:
+The code is in `metaverse/splice-bots/`, and `metaverse/splice-bots/README.md` describes it file by file:
 
-- `metaverse/splice/splice-game.coax`: the game: tuning, world, rules, interface, and tests
+- `metaverse/splice-bots/splice-game.coax`: the game: tuning, world, rules, interface, and tests
   that play the whole run.
-- `metaverse/splice/splice.coax`: the page's frame, and the still scenes below.
-- `metaverse/splice/gpu/splice.coax`: Anime Lab's shaders plus Splice's own overlay pass
+- `metaverse/splice-bots/splice-bots.coax`: the page's frame, and the still scenes below.
+- `metaverse/splice-bots/gpu/splice-bots.coax`: Anime Lab's shaders plus Splice's own overlay pass
   (ink on paper needs source-over blending) and the placed pieces' instances.
-- `metaverse/splice/content/splice.content`: the content tables: the pieces that can be placed, the
+- `metaverse/splice-bots/content/splice.content`: the content tables: the pieces that can be placed, the
   landmarks, and the zones the run keeps clear.
 - `metaverse-engine/kit/machines.coax`, `metaverse-engine/kit/land.coax`, `metaverse-engine/render/cel-mesh.coax`: the engine's
   cel kits and mesh writers.
@@ -97,7 +97,7 @@ Things can be placed in Splice as data, without changing its code. A placed piec
 content table, a collider, and a typed edit that can be undone. An edit is refused when it would
 stand in a zone the run needs, and a walk of the whole run is the second check. Nothing is placed
 on this page yet: a saved world and the tools that edit it are the next steps. The developer
-notes are in `metaverse/splice/README.md`, "Edit layer".
+notes are in `metaverse/splice-bots/README.md`, "Edit layer".
 
 ## Still scenes
 

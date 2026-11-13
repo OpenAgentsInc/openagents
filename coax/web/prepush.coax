@@ -529,7 +529,7 @@ pp_only_docs :: (changed: string) -> bool {
 pp_drives :: (changed: string) -> bool { return pp_has(changed, "coax/web/drive") || pp_has(changed, "coax/lib/net/cdp"); }
 #test "the drive hit check runs for a push that changes the driver, and for no other" {
   #assert pp_drives("docs/a.md\ncoax/web/drive-dom.coax\n") && pp_drives("coax/web/drive.coax\n") && pp_drives("coax/lib/net/cdp.coax\n");
-  #assert !pp_drives("coax/web/host.js\nmetaverse/splice/world.coax\n") && !pp_drives("");
+  #assert !pp_drives("coax/web/host.js\nmetaverse/splice-bots/world.coax\n") && !pp_drives("");
 }
 
 // The checks for a push whose merge base with main is base and whose changes are `changed`;

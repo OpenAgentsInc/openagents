@@ -26,52 +26,52 @@
  ],
  "asks": [
   {
-   "wire": "realm.code.v1 list splice\n",
+   "wire": "realm.code.v1 list splice-bots\n",
    "op": "list",
-   "page": "splice",
+   "page": "splice-bots",
    "path": "",
    "text": ""
   },
   {
-   "wire": "realm.code.v1 read splice metaverse/splice/walk.coax\n",
+   "wire": "realm.code.v1 read splice-bots metaverse/splice-bots/walk.coax\n",
    "op": "read",
-   "page": "splice",
-   "path": "metaverse/splice/walk.coax",
+   "page": "splice-bots",
+   "path": "metaverse/splice-bots/walk.coax",
    "text": ""
   },
   {
-   "wire": "realm.code.v1 save splice metaverse/splice/walk.coax 15\nx :: 1;\n// two\n",
+   "wire": "realm.code.v1 save splice-bots metaverse/splice-bots/walk.coax 15\nx :: 1;\n// two\n",
    "op": "save",
-   "page": "splice",
-   "path": "metaverse/splice/walk.coax",
+   "page": "splice-bots",
+   "path": "metaverse/splice-bots/walk.coax",
    "text": "x :: 1;\n// two\n"
   },
   {
-   "wire": "realm.code.v1 save splice metaverse/splice/gpu/splice.coax 0\n",
+   "wire": "realm.code.v1 save splice-bots metaverse/splice-bots/gpu/splice-bots.coax 0\n",
    "op": "save",
-   "page": "splice",
-   "path": "metaverse/splice/gpu/splice.coax",
+   "page": "splice-bots",
+   "path": "metaverse/splice-bots/gpu/splice-bots.coax",
    "text": ""
   }
  ],
  "answers": [
   {
-   "wire": "realm.code.v1 files splice 3\nf metaverse/splice/gpu/splice.coax 7400\nf metaverse/splice/splice.coax 46171\nf metaverse/splice/walk.coax 9438\n",
+   "wire": "realm.code.v1 files splice-bots 3\nf metaverse/splice-bots/gpu/splice-bots.coax 7400\nf metaverse/splice-bots/splice-bots.coax 46171\nf metaverse/splice-bots/walk.coax 9438\n",
    "what": "files",
-   "name": "splice",
+   "name": "splice-bots",
    "n": 3,
-   "rest": "f metaverse/splice/gpu/splice.coax 7400\nf metaverse/splice/splice.coax 46171\nf metaverse/splice/walk.coax 9438\n",
+   "rest": "f metaverse/splice-bots/gpu/splice-bots.coax 7400\nf metaverse/splice-bots/splice-bots.coax 46171\nf metaverse/splice-bots/walk.coax 9438\n",
    "files": [
     [
-     "metaverse/splice/gpu/splice.coax",
+     "metaverse/splice-bots/gpu/splice-bots.coax",
      7400
     ],
     [
-     "metaverse/splice/splice.coax",
+     "metaverse/splice-bots/splice-bots.coax",
      46171
     ],
     [
-     "metaverse/splice/walk.coax",
+     "metaverse/splice-bots/walk.coax",
      9438
     ]
    ]
@@ -85,25 +85,25 @@
    "files": []
   },
   {
-   "wire": "realm.code.v1 file metaverse/splice/walk.coax 9\nx :: 1;\n\n",
+   "wire": "realm.code.v1 file metaverse/splice-bots/walk.coax 9\nx :: 1;\n\n",
    "what": "file",
-   "name": "metaverse/splice/walk.coax",
+   "name": "metaverse/splice-bots/walk.coax",
    "n": 9,
    "rest": "x :: 1;\n\n"
   },
   {
-   "wire": "realm.code.v1 saved metaverse/splice/walk.coax 0\n",
+   "wire": "realm.code.v1 saved metaverse/splice-bots/walk.coax 0\n",
    "what": "saved",
-   "name": "metaverse/splice/walk.coax",
+   "name": "metaverse/splice-bots/walk.coax",
    "n": 0,
    "rest": ""
   },
   {
-   "wire": "realm.code.v1 errors metaverse/splice/walk.coax 97\nmetaverse/splice/walk.coax:1:6: error[E0201]: expected an expression, found ';'\n  x :: ;\n       ^",
+   "wire": "realm.code.v1 errors metaverse/splice-bots/walk.coax 97\nmetaverse/splice-bots/walk.coax:1:6: error[E0201]: expected an expression, found ';'\n  x :: ;\n       ^",
    "what": "errors",
-   "name": "metaverse/splice/walk.coax",
+   "name": "metaverse/splice-bots/walk.coax",
    "n": 97,
-   "rest": "metaverse/splice/walk.coax:1:6: error[E0201]: expected an expression, found ';'\n  x :: ;\n       ^"
+   "rest": "metaverse/splice-bots/walk.coax:1:6: error[E0201]: expected an expression, found ';'\n  x :: ;\n       ^"
   },
   {
    "wire": "realm.code.v1 refused 0 That file is not one of this realm's.\n",
@@ -114,54 +114,54 @@
   }
  ],
  "paths": {
-  "page": "splice",
+  "page": "splice-bots",
   "own": [
-   "metaverse/splice/splice.coax",
-   "metaverse/splice/walk.coax",
-   "metaverse/splice/gpu/splice.coax",
-   "metaverse/splice/content/shipped.coax",
-   "metaverse/splice/sky.wgsl"
+   "metaverse/splice-bots/splice-bots.coax",
+   "metaverse/splice-bots/walk.coax",
+   "metaverse/splice-bots/gpu/splice-bots.coax",
+   "metaverse/splice-bots/content/shipped.coax",
+   "metaverse/splice-bots/sky.wgsl"
   ],
   "not_own": [
    "",
    "walk.coax",
    "/etc/hosts",
-   "/metaverse/splice/walk.coax",
-   "metaverse/splice/../orbit/orbit.coax",
-   "metaverse/splice/./walk.coax",
-   "metaverse/splice//walk.coax",
-   "metaverse/splice/.hidden.coax",
-   "metaverse/splice/.git/x.coax",
+   "/metaverse/splice-bots/walk.coax",
+   "metaverse/splice-bots/../orbit/orbit.coax",
+   "metaverse/splice-bots/./walk.coax",
+   "metaverse/splice-bots//walk.coax",
+   "metaverse/splice-bots/.hidden.coax",
+   "metaverse/splice-bots/.git/x.coax",
    "metaverse/orbit/orbit.coax",
    "metaverse/splice-two/walk.coax",
-   "metaverse/splice/",
-   "metaverse/splice/splice-face.c",
-   "metaverse/splice/README.md",
-   "metaverse/splice/walk coax.coax",
-   "metaverse/splice/walk.coax\n",
-   "Metaverse/splice/walk.coax",
+   "metaverse/splice-bots/",
+   "metaverse/splice-bots/splice-face.c",
+   "metaverse/splice-bots/README.md",
+   "metaverse/splice-bots/walk coax.coax",
+   "metaverse/splice-bots/walk.coax\n",
+   "Metaverse/splice-bots/walk.coax",
    "apps/openagents-web/build.sh",
    "coax/web/serve.c"
   ],
   "roots": [
    [
-    "metaverse/splice/walk.coax",
-    "metaverse/splice/splice.coax"
+    "metaverse/splice-bots/walk.coax",
+    "metaverse/splice-bots/splice-bots.coax"
    ],
    [
-    "metaverse/splice/content/shipped.coax",
-    "metaverse/splice/splice.coax"
+    "metaverse/splice-bots/content/shipped.coax",
+    "metaverse/splice-bots/splice-bots.coax"
    ],
    [
-    "metaverse/splice/gpu/splice.coax",
-    "metaverse/splice/gpu/splice.coax"
+    "metaverse/splice-bots/gpu/splice-bots.coax",
+    "metaverse/splice-bots/gpu/splice-bots.coax"
    ],
    [
-    "metaverse/splice/gpu/sky.coax",
-    "metaverse/splice/gpu/splice.coax"
+    "metaverse/splice-bots/gpu/sky.coax",
+    "metaverse/splice-bots/gpu/splice-bots.coax"
    ],
    [
-    "metaverse/splice/sky.wgsl",
+    "metaverse/splice-bots/sky.wgsl",
     ""
    ],
    [
@@ -172,35 +172,35 @@
  },
  "rejected_asks": [
   "",
-  "realm.code.v1 list splice",
+  "realm.code.v1 list splice-bots",
   "realm.code.v2 list splice\n",
-  "realm.code.v1 list splice\nmore",
-  "realm.code.v1 list splice x\n",
-  "realm.code.v1 drop splice\n",
+  "realm.code.v1 list splice-bots\nmore",
+  "realm.code.v1 list splice-bots x\n",
+  "realm.code.v1 drop splice-bots\n",
   "realm.code.v1 list Splice\n",
-  "realm.code.v1 read splice metaverse/orbit/orbit.coax\n",
-  "realm.code.v1 read splice metaverse/splice/../x.coax\n",
-  "realm.code.v1 read splice /etc/hosts\n",
-  "realm.code.v1 read splice\n",
-  "realm.code.v1 save splice metaverse/splice/walk.coax 3\nab",
-  "realm.code.v1 save splice metaverse/splice/walk.coax 03\nabc",
-  "realm.code.v1 save splice metaverse/splice/walk.coax -1\n",
-  "realm.code.v1 save splice metaverse/splice/walk.coax 3\na\u0000b",
-  "realm.code.v1  list splice\n"
+  "realm.code.v1 read splice-bots metaverse/orbit/orbit.coax\n",
+  "realm.code.v1 read splice-bots metaverse/splice-bots/../x.coax\n",
+  "realm.code.v1 read splice-bots /etc/hosts\n",
+  "realm.code.v1 read splice-bots\n",
+  "realm.code.v1 save splice-bots metaverse/splice-bots/walk.coax 3\nab",
+  "realm.code.v1 save splice-bots metaverse/splice-bots/walk.coax 03\nabc",
+  "realm.code.v1 save splice-bots metaverse/splice-bots/walk.coax -1\n",
+  "realm.code.v1 save splice-bots metaverse/splice-bots/walk.coax 3\na\u0000b",
+  "realm.code.v1  list splice-bots\n"
  ],
  "rejected_answers": [
   "",
-  "realm.code.v1 files splice 1\n",
-  "realm.code.v1 files splice 1\nf metaverse/orbit/orbit.coax 1\n",
-  "realm.code.v1 files splice 0\nf metaverse/splice/walk.coax 1\n",
-  "realm.code.v1 files splice 1\nf metaverse/splice/walk.coax 1",
-  "realm.code.v1 file metaverse/splice/walk.coax 3\nab",
-  "realm.code.v1 saved metaverse/splice/walk.coax 1\n",
-  "realm.code.v1 saved metaverse/splice/walk.coax 0\nx",
-  "realm.code.v1 errors metaverse/splice/walk.coax 0\n",
+  "realm.code.v1 files splice-bots 1\n",
+  "realm.code.v1 files splice-bots 1\nf metaverse/orbit/orbit.coax 1\n",
+  "realm.code.v1 files splice-bots 0\nf metaverse/splice-bots/walk.coax 1\n",
+  "realm.code.v1 files splice-bots 1\nf metaverse/splice-bots/walk.coax 1",
+  "realm.code.v1 file metaverse/splice-bots/walk.coax 3\nab",
+  "realm.code.v1 saved metaverse/splice-bots/walk.coax 1\n",
+  "realm.code.v1 saved metaverse/splice-bots/walk.coax 0\nx",
+  "realm.code.v1 errors metaverse/splice-bots/walk.coax 0\n",
   "realm.code.v1 refused 0 \n",
   "realm.code.v1 refused 1 words\n",
-  "realm.code.v2 saved metaverse/splice/walk.coax 0\n",
-  "realm.code.v1 gone metaverse/splice/walk.coax 0\n"
+  "realm.code.v2 saved metaverse/splice-bots/walk.coax 0\n",
+  "realm.code.v1 gone metaverse/splice-bots/walk.coax 0\n"
  ]
 }

@@ -1,4 +1,4 @@
-// metaverse/splice/world-api.coax's C (splice-world.generated.c: Splice's game, its edit layer, its
+// metaverse/splice-bots/world-api.coax's C (splice-world.generated.c: Splice's game, its edit layer, its
 // walk replay and the world document's codec) as one unit of the API (#13412): the code the page
 // at /worlds/splice runs, so the server checks an edit exactly as the page does.
 // The game's code leaves parameters and values unused in places; those warnings stay quiet for

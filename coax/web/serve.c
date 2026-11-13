@@ -44,12 +44,12 @@
 //
 // A world's routes (/api/worlds/..., the browser editor's E4, #13413) are answered here on the dev
 // server, so a page, a second tab, the CLI and `coax drive` share one world before anything is
-// deployed: the request goes to the world's own tool (metaverse/splice/tools/world-local.coax: the
+// deployed: the request goes to the world's own tool (metaverse/splice-bots/tools/world-local.coax: the
 // API's rules and Splice's own check, with files under APP_DIR/build/.worlds for rows), and a saved
 // write is told to every tab. --static serves none of it.
 //
 // A world's imported assets (/api/worlds/ID/assets..., the editor's E11, #13420) are answered here
-// too: a dropped file is packed by the world's asset tool (metaverse/splice/tools/asset-local.coax,
+// too: a dropped file is packed by the world's asset tool (metaverse/splice-bots/tools/asset-local.coax,
 // the editor's importer under the realm's limits), the pack and the file are kept by content hash
 // under APP_DIR/build/.worlds, and every tab is told the pack's new hash ("asset"), so each fetches
 // it again and swaps it in. --static serves none of it (assets_local has the rules).
@@ -510,7 +510,7 @@ static void worlds_local(client *c, const char *method, const char *url) {
     if (!f || fwrite(c->buf + head, 1, c->n - head, f) != c->n - head) { if (f) fclose(f); respond(c->fd, 500, "Error", "application/json", "{\"error\":\"not saved\"}", 21); drop(c); return; }
     fclose(f);
   }
-  snprintf(cmd, sizeof cmd, "'%s/tool.sh' '%s/../../metaverse/splice/tools/world-local.coax' '%s' %s '%s' %s%s%s 2>/dev/null", host_dir, host_dir, dir, post ? "POST" : "GET", url,
+  snprintf(cmd, sizeof cmd, "'%s/tool.sh' '%s/../../metaverse/splice-bots/tools/world-local.coax' '%s' %s '%s' %s%s%s 2>/dev/null", host_dir, host_dir, dir, post ? "POST" : "GET", url,
            post ? "'" : "", body_file, post ? "'" : "");
   FILE *run = popen(cmd, "r");
   size_t cap = 1 << 20, n = 0; char *out = malloc(cap); size_t k;
@@ -538,7 +538,7 @@ static void worlds_local(client *c, const char *method, const char *url) {
 // source, POST .../scripts?name=NAME stores a module (X-Script-Fields: its state fields), and POST
 // .../scripts/compile?name=NAME compiles a source with the compile job (coax/web/script-job.sh, the
 // API's OA_SCRIPT_JOB) and stores what it made. The world's script tool answers
-// (metaverse/splice/tools/script-local.coax: the API's checks, files under APP_DIR/build/.worlds).
+// (metaverse/splice-bots/tools/script-local.coax: the API's checks, files under APP_DIR/build/.worlds).
 static bool scripts_route(const char *url) {
   char id[40]; int end = 0;
   if (sscanf(url, "/api/worlds/%39[a-z0-9-]/scripts%n", id, &end) != 1 || end == 0) return false;
@@ -603,7 +603,7 @@ static void scripts_local(client *c, const char *method, const char *url) {
   // the files given: BODY, then EXTRA (or none), then SOURCE
   char files[PATH_MAX * 3 + 64] = "";
   if (post) snprintf(files, sizeof files, "'%s' '%s'%s%s%s", body, extra[0] ? extra : "/dev/null", src[0] ? " '" : "", src, src[0] ? "'" : "");
-  snprintf(cmd, sizeof cmd, "'%s/tool.sh' '%s/../../metaverse/splice/tools/script-local.coax' '%s' %s '%s%s' %s 2>/dev/null", host_dir, host_dir, dir, post ? "POST" : "GET", path, tail, files);
+  snprintf(cmd, sizeof cmd, "'%s/tool.sh' '%s/../../metaverse/splice-bots/tools/script-local.coax' '%s' %s '%s%s' %s 2>/dev/null", host_dir, host_dir, dir, post ? "POST" : "GET", path, tail, files);
   FILE *run = popen(cmd, "r");
   size_t cap = (1u << 20), n = 0; char *res = malloc(cap); size_t k;
   while (run && res && n < cap && (k = fread(res + n, 1, cap - n, run)) > 0) n += k;
@@ -684,7 +684,7 @@ static void assets_local(client *c, const char *method, const char *url) {
     if (f) fclose(f);
     if (!ok) { unlink(body_file); respond(c->fd, 400, "Bad Request", "application/json", "{\"error\":\"the file did not arrive whole\"}", 39); drop(c); return; }
   }
-  snprintf(cmd, sizeof cmd, "'%s/tool.sh' '%s/../../metaverse/splice/tools/asset-local.coax' '%s' %s '%s' %s%s%s 2>/dev/null", host_dir, host_dir, dir, post ? "POST" : "GET", path,
+  snprintf(cmd, sizeof cmd, "'%s/tool.sh' '%s/../../metaverse/splice-bots/tools/asset-local.coax' '%s' %s '%s' %s%s%s 2>/dev/null", host_dir, host_dir, dir, post ? "POST" : "GET", path,
            post ? "'" : "", body_file, post ? "'" : "");
   FILE *run = popen(cmd, "r");
   size_t cap = (2u << 20) + 64, n = 0; char *out = malloc(cap); size_t k;

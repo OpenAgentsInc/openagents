@@ -36,8 +36,8 @@ esa_open :: (h: [] EsTest, list: string) {
 // The page is the dev server's: it is told its module, as the host tells it.
 esa_dev :: (h: [] EsTest) {
   s := h[0].s[..];
-  for c, i: "splice" { s[0].inbox[i] = c; }
-  coaxial_editor_event(s, ES_CODE_HERE, 0, 6);
+  for c, i: "splice-bots" { s[0].inbox[i] = c; }
+  coaxial_editor_event(s, ES_CODE_HERE, 0, 11);
   coaxial_editor_asked(s);
 }
 ESA_LIST_URL :: "/api/worlds/splice/assets?lane=dev&write=1";

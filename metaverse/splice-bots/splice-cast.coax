@@ -1,0 +1,304 @@
+// Splice's cast: the five characters of the vertical slice (the Characters board in
+// ~/games/cakbag/docs/design/splice-gdd.md, section 9), each written from the cel kit's shapes
+// (metaverse-engine/render/cel-mesh.coax). The designs are our own, in the comic-ink manner the board asks
+// for: flat fills, clean contours, a tall silhouette you can read from far off.
+//
+//   cast_smuggler   the player: a pointed hat, an orange coat, a film reel on the pack, a stun baton
+//   cast_rover      home base: a bulbous six-wheeler with the edit bay's housing on its back
+//   cast_digger     the first restore: a round body on treads, a drill arm, a battery of cells
+//   cast_raider     the party mine's dark silhouette: spiked shoulders, a crest, a pipe
+//   cast_boss       the banned bot: an old-world factory giant with two blue eyes
+//
+// The game draws them (splice-game.coax g_live, g_world) and ?scene=17..22 stands them on a plinth
+// to review (splice-bots.coax). Every one faces its frame's z.
+#load "../../metaverse-engine/kit/machines.coax";
+
+// Short forms: a shape placed in the character's frame, all lengths times its scale.
+ca_box :: (buf: [] u32, p: [] Pen, f: Frame, s: f32, x: f32, y: f32, z: f32, hx: f32, hy: f32, hz: f32) { box(buf, p, kit_at(f, x * s, y * s, z * s), hx * s, hy * s, hz * s); }
+ca_egg :: (buf: [] u32, p: [] Pen, f: Frame, s: f32, x: f32, y: f32, z: f32, rx: f32, ry: f32, rz: f32, seg: int) { ellipsoid(buf, p, kit_at(f, x * s, y * s, z * s), rx * s, ry * s, rz * s, seg, hi_i(seg / 2, 4), 0); }
+ca_limb :: (buf: [] u32, p: [] Pen, f: Frame, s: f32, x0: f32, y0: f32, z0: f32, x1: f32, y1: f32, z1: f32, r0: f32, r1: f32, sides: int) {
+  limb(buf, p, fp(f, x0 * s, y0 * s, z0 * s), fp(f, x1 * s, y1 * s, z1 * s), r0 * s, r1 * s, fd(f, 0.31, 0.2, 0.93), sides);
+}
+// An upright tube: its foot at (x, y, z), `tall` high, radius r0 at the foot and r1 at the top.
+ca_tube :: (buf: [] u32, p: [] Pen, f: Frame, s: f32, x: f32, y: f32, z: f32, tall: f32, r0: f32, r1: f32, sides: int) { tube(buf, p, kit_at(f, x * s, y * s, z * s), tall * s, r0 * s, r0 * s, r1 * s, r1 * s, sides, true); }
+
+// The Smuggler's colours.
+CAST_CREAM :: () -> KitTint { return kit_tint(0.93, 0.88, 0.76); }
+CAST_SHADE :: () -> KitTint { return kit_tint(0.80, 0.70, 0.56); }
+CAST_ORANGE :: () -> KitTint { return kit_tint(0.76, 0.30, 0.15); }
+CAST_INK :: () -> KitTint { return kit_tint(0.15, 0.13, 0.15); }
+CAST_PLUM :: () -> KitTint { return kit_tint(0.20, 0.16, 0.24); }
+CAST_TEAL :: () -> KitTint { return kit_tint(0.14, 0.38, 0.50); }
+CAST_SKIN :: () -> KitTint { return kit_tint(0.86, 0.66, 0.52); }
+CAST_AMBER :: () -> KitTint { return kit_tint(1.0, 0.72, 0.30); }
+CAST_CYAN :: () -> KitTint { return kit_tint(0.310, 0.702, 0.851); }
+// One colour for every part (the memory's hologram): `on` and the tint.
+CastMono :: struct { on: bool; c: KitTint; }
+cast_colour :: () -> CastMono { return CastMono.{}; }
+cast_mono :: (c: KitTint) -> CastMono { return CastMono.{on = true, c = c}; }
+ca_pen :: (p: [] Pen, obj: int, mat: int, c: KitTint, m: CastMono) { if m.on { kit_pen(p, obj, ifx mat == MAT_GLOW then MAT_GLOW else MAT_FLAT, m.c); } else { kit_pen(p, obj, mat, c); } }
+
+// The Smuggler: thin legs, an orange coat under a cream mantle, a teal scarf with its tail blown out behind, goggles,
+// and a tall pointed hat that leans back. A film reel sits flat on the pack; the right hand holds the
+// stun baton, its tip cyan. `stride` (radians) swings legs and arms. 2.3 m to the hat's tip at s 1.
+// Uses objects obj to obj + 9.
+cast_smuggler :: (buf: [] u32, p: [] Pen, f: Frame, s: f32, obj: int, stride: f32, m: CastMono) {
+  sw := sin(stride) * 0.26;
+  ca_pen(p, obj, MAT_CLOTH, CAST_PLUM(), m);   // legs
+  ca_limb(buf, p, f, s, -0.13, 0.92, 0, -0.15, 0.14, sw, 0.09, 0.07, 7);
+  ca_limb(buf, p, f, s, 0.13, 0.92, 0, 0.15, 0.14, -sw, 0.09, 0.07, 7);
+  ca_pen(p, obj + 1, MAT_SKIN, CAST_CREAM(), m);   // boots, mantle, hat
+  ca_egg(buf, p, f, s, -0.15, 0.09, sw + 0.05, 0.11, 0.09, 0.19, 8);
+  ca_egg(buf, p, f, s, 0.15, 0.09, -sw + 0.05, 0.11, 0.09, 0.19, 8);
+  tube(buf, p, kit_at(f, 0, 1.30 * s, 0), 0.30 * s, 0.38 * s, 0.31 * s, 0.13 * s, 0.13 * s, 12, true);
+  ca_tube(buf, p, f, s, 0, 1.86, -0.02, 0.03, 0.36, 0.36, 14);
+  hat := frame_turn(kit_at(f, 0, 1.88 * s, -0.02 * s), 0, -0.30);
+  tube(buf, p, hat, 0.56 * s, 0.17 * s, 0.17 * s, 0.025 * s, 0.025 * s, 10, true);
+  ca_pen(p, obj + 2, MAT_CLOTH, CAST_ORANGE(), m);   // the coat and its sleeves
+  tube(buf, p, kit_at(f, 0, 0.66 * s, 0), 0.74 * s, 0.40 * s, 0.33 * s, 0.22 * s, 0.19 * s, 12, true);
+  ca_limb(buf, p, f, s, -0.29, 1.42, 0, -0.38, 0.98, sw * 0.6, 0.08, 0.065, 7);
+  ca_limb(buf, p, f, s, 0.29, 1.42, 0, 0.36, 1.02, 0.24 - sw * 0.4, 0.08, 0.065, 7);
+  tube(buf, p, kit_at(hat, 0, 0.03 * s, 0), 0.07 * s, 0.175 * s, 0.175 * s, 0.16 * s, 0.16 * s, 10, false);   // the hat's band
+  ca_pen(p, obj + 3, MAT_FLAT, CAST_CREAM(), m);   // the coat's hem
+  tube(buf, p, kit_at(f, 0, 0.64 * s, 0), 0.07 * s, 0.415 * s, 0.345 * s, 0.405 * s, 0.335 * s, 12, false);
+  ca_pen(p, obj + 4, MAT_CLOTH, CAST_TEAL(), m);   // the scarf and its tail
+  ca_egg(buf, p, f, s, 0, 1.57, 0.01, 0.19, 0.08, 0.19, 10);
+  ca_limb(buf, p, f, s, 0.10, 1.60, -0.13, 0.46, 1.66 + abs(sw) * 0.2, -0.52, 0.055, 0.03, 5);
+  ca_pen(p, obj + 5, MAT_SKIN, CAST_SKIN(), m);   // head and hands
+  ca_egg(buf, p, f, s, 0, 1.73, 0.01, 0.155, 0.17, 0.16, 10);
+  ball(buf, p, fp(f, -0.38 * s, 0.94 * s, sw * 0.6 * s), 0.06 * s, 6);
+  ball(buf, p, fp(f, 0.36 * s, 0.99 * s, (0.26 - sw * 0.4) * s), 0.06 * s, 6);
+  ca_pen(p, obj + 6, MAT_FLAT, CAST_INK(), m);   // goggles, the baton, the reel
+  ca_limb(buf, p, f, s, -0.07, 1.75, 0.11, -0.07, 1.75, 0.185, 0.058, 0.058, 8);
+  ca_limb(buf, p, f, s, 0.07, 1.75, 0.11, 0.07, 1.75, 0.185, 0.058, 0.058, 8);
+  ca_box(buf, p, f, s, 0, 1.75, 0.05, 0.165, 0.025, 0.12);
+  ca_limb(buf, p, f, s, 0.36, 0.97, 0.22 - sw * 0.4, 0.36, 1.06, 0.80 - sw * 0.4, 0.028, 0.022, 6);
+  ca_limb(buf, p, f, s, 0, 1.18, -0.41, 0, 1.18, -0.455, 0.17, 0.17, 14);
+  ca_pen(p, obj + 7, MAT_GLOW, CAST_AMBER(), m);   // the lenses
+  ball(buf, p, fp(f, -0.07 * s, 1.75 * s, 0.19 * s), 0.036 * s, 6);
+  ball(buf, p, fp(f, 0.07 * s, 1.75 * s, 0.19 * s), 0.036 * s, 6);
+  ca_pen(p, obj + 8, MAT_CLOTH, CAST_SHADE(), m);   // the pack, its bedroll and the reel's hub
+  ca_box(buf, p, f, s, 0, 1.18, -0.31, 0.20, 0.22, 0.10);
+  ca_limb(buf, p, f, s, -0.25, 0.86, -0.42, 0.25, 0.86, -0.42, 0.085, 0.085, 8);
+  ca_limb(buf, p, f, s, 0, 1.18, -0.455, 0, 1.18, -0.475, 0.06, 0.06, 8);
+  ca_pen(p, obj + 9, MAT_GLOW, CAST_CYAN(), m);   // the baton's tip
+  ball(buf, p, fp(f, 0.36 * s, 1.07 * s, (0.83 - sw * 0.4) * s), 0.055 * s, 8);
+}
+
+// The Rover: a bulbous cream hull on six balloon wheels, a dark bubble cab, and on its back the
+// orange housing that hides the edit bay, a film strip painted down each side. A dish, a bedroll
+// and a crate ride the roof; a whip mast flies an orange pennant. `roll` turns the wheels' caps.
+// 2.3 m to the roof and 3.6 m to the pennant at s 1, 3.7 m long. Uses objects obj to obj + 8.
+cast_rover :: (buf: [] u32, p: [] Pen, f: Frame, s: f32, obj: int, roll: f32, m: CastMono) {
+  ca_pen(p, obj, MAT_SKIN, CAST_CREAM(), m);   // hull, roof, hubs
+  ca_egg(buf, p, f, s, 0, 0.98, 0, 0.92, 0.52, 1.80, 14);
+  ca_egg(buf, p, f, s, 0, 1.76, 0.72, 0.50, 0.13, 0.56, 10);
+  ca_box(buf, p, f, s, 0, 2.02, -0.78, 0.84, 0.05, 0.92);
+  tube(buf, p, kit_at(f, 0.42 * s, 2.07 * s, -1.15 * s), 0.20 * s, 0.05 * s, 0.05 * s, 0.30 * s, 0.30 * s, 10, false);
+  for i: 0..<6 {
+    sx := ifx i % 2 == 0 then -1.0f32 else 1.0f32; z := (cast(f32) (i / 2) - 1) * 1.28;
+    ca_limb(buf, p, f, s, sx * 1.12, 0.44, z, sx * 1.17, 0.44, z, 0.22, 0.20, 10);
+  }
+  ca_pen(p, obj + 1, MAT_CLOTH, CAST_SHADE(), m);   // belly, the rear door, the bedroll
+  ca_box(buf, p, f, s, 0, 0.66, 0, 0.72, 0.20, 1.45);
+  ca_box(buf, p, f, s, 0, 1.46, -1.64, 0.46, 0.36, 0.02);
+  ca_limb(buf, p, f, s, -0.55, 2.20, -0.30, 0.55, 2.20, -0.30, 0.14, 0.14, 8);
+  ca_pen(p, obj + 2, MAT_WINDOW, kit_tint(0.16, 0.22, 0.30), m);   // the bubble cab
+  ca_egg(buf, p, f, s, 0, 1.44, 0.74, 0.64, 0.42, 0.72, 12);
+  ca_pen(p, obj + 3, MAT_CLOTH, CAST_ORANGE(), m);   // the edit bay's housing, the pennant, wheel caps
+  ca_box(buf, p, f, s, 0, 1.52, -0.78, 0.78, 0.46, 0.86);
+  ca_box(buf, p, f, s, -0.55, 3.42, -1.57, 0.012, 0.10, 0.24);
+  for i: 0..<6 {
+    sx := ifx i % 2 == 0 then -1.0f32 else 1.0f32; z := (cast(f32) (i / 2) - 1) * 1.28;
+    a := roll + cast(f32) i;
+    ca_box(buf, p, f, s, sx * 1.175, 0.44 + sin(a) * 0.10, z + cos(a) * 0.10, 0.012, 0.05, 0.05);
+  }
+  ca_pen(p, obj + 4, MAT_CLOTH, CAST_INK(), m);   // wheels, bumper, the film strip, the mast
+  for i: 0..<6 {
+    sx := ifx i % 2 == 0 then -1.0f32 else 1.0f32; z := (cast(f32) (i / 2) - 1) * 1.28;
+    ca_limb(buf, p, f, s, sx * 0.70, 0.44, z, sx * 1.12, 0.44, z, 0.44, 0.44, 14);
+  }
+  ca_box(buf, p, f, s, 0, 0.56, 1.80, 0.72, 0.08, 0.08);
+  ca_box(buf, p, f, s, -0.785, 1.52, -0.78, 0.01, 0.14, 0.82);
+  ca_box(buf, p, f, s, 0.785, 1.52, -0.78, 0.01, 0.14, 0.82);
+  ca_tube(buf, p, f, s, -0.55, 2.07, -1.35, 1.48, 0.03, 0.018, 6);
+  ca_limb(buf, p, f, s, -0.45, 0.98, 1.66, -0.45, 0.98, 1.76, 0.17, 0.17, 10);
+  ca_limb(buf, p, f, s, 0.45, 0.98, 1.66, 0.45, 0.98, 1.76, 0.17, 0.17, 10);
+  ca_pen(p, obj + 5, MAT_FLAT, CAST_CREAM(), m);   // the strip's sprocket holes
+  for i: 0..<12 {
+    sx := ifx i % 2 == 0 then -1.0f32 else 1.0f32; z := -1.43 + cast(f32) (i / 2) * 0.26;
+    ca_box(buf, p, f, s, sx * 0.80, 1.61, z, 0.006, 0.025, 0.045);
+    ca_box(buf, p, f, s, sx * 0.80, 1.43, z, 0.006, 0.025, 0.045);
+  }
+  ca_pen(p, obj + 6, MAT_GLOW, CAST_AMBER(), m);   // headlamps, the lamp over the bay's door
+  ball(buf, p, fp(f, -0.45 * s, 0.98 * s, 1.76 * s), 0.12 * s, 8);
+  ball(buf, p, fp(f, 0.45 * s, 0.98 * s, 1.76 * s), 0.12 * s, 8);
+  ca_box(buf, p, f, s, 0, 1.88, -1.65, 0.20, 0.03, 0.012);
+  ca_pen(p, obj + 7, MAT_CLOTH, kit_tint(0.66, 0.48, 0.34), m);   // the crate
+  ca_box(buf, p, f, s, -0.28, 2.24, -0.86, 0.30, 0.17, 0.26);
+}
+
+// The Digger: a round cream body with a turret head and one dark visor, on two treads with cream
+// wheels; a drill arm ahead on an orange shoulder, its cone ringed dark; on its back a battery of
+// three cells and a stack. A part is drawn only when the caller has it (arm, treads, battery), so
+// a half-built Digger shows what is missing: no treads and it sits on stands, no battery and its
+// eyes are dark. `spin` turns the drill; `glow` is the cells' and the eyes' light. 2.1 m to the
+// antenna's tip at s 1. Uses objects obj to obj + 7.
+cast_digger :: (buf: [] u32, p: [] Pen, f: Frame, s: f32, obj: int, glow: KitTint, arm: bool, treads: bool, battery: bool, spin: f32, m: CastMono) {
+  ca_pen(p, obj, MAT_SKIN, CAST_CREAM(), m);   // body, turret
+  ca_egg(buf, p, f, s, 0, 0.98, 0, 0.66, 0.46, 0.84, 14);
+  ca_tube(buf, p, f, s, 0, 1.34, 0.22, 0.30, 0.35, 0.31, 12);
+  ca_egg(buf, p, f, s, 0, 1.64, 0.22, 0.31, 0.11, 0.31, 12);
+  ca_pen(p, obj + 1, MAT_WINDOW, CAST_INK(), m);   // the visor
+  ca_box(buf, p, f, s, 0, 1.50, 0.50, 0.25, 0.085, 0.05);
+  ca_pen(p, obj + 2, MAT_CLOTH, CAST_INK(), m);   // treads or stands, the stack, the antenna
+  if treads {
+    for side: 0..<2 {
+      sx := ifx side == 0 then -1.0f32 else 1.0f32;
+      ca_box(buf, p, f, s, sx * 0.84, 0.30, 0, 0.20, 0.30, 0.86);
+      ca_limb(buf, p, f, s, sx * 0.64, 0.30, 0.86, sx * 1.04, 0.30, 0.86, 0.30, 0.30, 10);
+      ca_limb(buf, p, f, s, sx * 0.64, 0.30, -0.86, sx * 1.04, 0.30, -0.86, 0.30, 0.30, 10);
+    }
+  } else {
+    ca_box(buf, p, f, s, -0.36, 0.26, 0, 0.13, 0.26, 0.50);
+    ca_box(buf, p, f, s, 0.36, 0.26, 0, 0.13, 0.26, 0.50);
+  }
+  ca_tube(buf, p, f, s, 0.30, 1.26, -0.46, 0.56, 0.075, 0.09, 8);
+  ca_tube(buf, p, f, s, -0.20, 1.70, 0.12, 0.40, 0.014, 0.010, 5);
+  ca_pen(p, obj + 3, MAT_FLAT, CAST_ORANGE(), m);   // the chest plate, the antenna's tip, the arm's shoulder
+  ca_box(buf, p, f, s, 0.36, 1.02, 0.70, 0.14, 0.10, 0.05);
+  ball(buf, p, fp(f, -0.20 * s, 2.10 * s, 0.12 * s), 0.04 * s, 6);
+  if arm { ca_limb(buf, p, f, s, 0, 1.0, 0.66, 0, 0.95, 1.30, 0.20, 0.24, 9); }
+  if treads {
+    ca_pen(p, obj + 4, MAT_SKIN, CAST_CREAM(), m);   // tread guards and road wheels
+    for side: 0..<2 {
+      sx := ifx side == 0 then -1.0f32 else 1.0f32;
+      ca_box(buf, p, f, s, sx * 0.84, 0.63, 0, 0.24, 0.035, 1.0);
+      for w: 0..<3 { z := (cast(f32) w - 1) * 0.56; ca_limb(buf, p, f, s, sx * 1.04, 0.30, z, sx * 1.07, 0.30, z, 0.15, 0.13, 8); }
+    }
+  }
+  if arm {
+    a := fp(f, 0, 0.95 * s, 1.30 * s); b := fp(f, 0, 0.90 * s, 2.40 * s);
+    g := frame_turn(frame_along(a, b, fd(f, 1, 0, 0)), 1, spin);
+    ca_pen(p, obj + 5, MAT_SKIN, CAST_CREAM(), m);   // the drill's cone
+    tube(buf, p, kit_at(g, 0, 0.12 * s, 0), 0.98 * s, 0.34 * s, 0.34 * s, 0.02 * s, 0.02 * s, 6, true);
+    ca_pen(p, obj + 6, MAT_CLOTH, CAST_INK(), m);   // its collar and rings
+    tube(buf, p, g, 0.13 * s, 0.30 * s, 0.30 * s, 0.36 * s, 0.36 * s, 10, true);
+    for i: 1..<4 { k := cast(f32) i * 0.24; r := 0.34 * (1 - k) + 0.035; tube(buf, p, kit_at(g, 0, (0.12 + k * 0.98) * s, 0), 0.05 * s, r * s, r * s, (r - 0.02) * s, (r - 0.02) * s, 6, false); }
+  }
+  if battery {
+    ca_pen(p, obj + 6, MAT_CLOTH, CAST_INK(), m);   // the battery's case
+    ca_box(buf, p, f, s, 0, 1.18, -0.66, 0.38, 0.30, 0.16);
+    ca_pen(p, obj + 7, MAT_GLOW, glow, m);   // its cells, and the eyes they light
+    for i: 0..<3 { ca_box(buf, p, f, s, (cast(f32) i - 1) * 0.23, 1.18, -0.83, 0.08, 0.22, 0.02); }
+    ball(buf, p, fp(f, -0.10 * s, 1.50 * s, 0.55 * s), 0.048 * s, 6);
+    ball(buf, p, fp(f, 0.10 * s, 1.50 * s, 0.55 * s), 0.048 * s, 6);
+  }
+}
+
+// A raider: a dark, hunched silhouette. Broad shoulders under two spikes, a helmet with a crest
+// and one lit slit (`eye`), breathing tubes, a long coat with ragged tails, arms that hang past
+// the knees and a length of pipe in the right fist. A scrap plate swings from the belt (what they
+// take from robots). `stride` (radians) swings legs and arms. 2.25 m to the crest at s 1.
+// Uses objects obj to obj + 4.
+cast_raider :: (buf: [] u32, p: [] Pen, f: Frame, s: f32, obj: int, eye: KitTint, stride: f32, m: CastMono) {
+  sw := sin(stride) * 0.26;
+  coat := kit_tint(0.165, 0.129, 0.251); deep := kit_tint(0.10, 0.08, 0.14); trim := kit_tint(0.34, 0.24, 0.44);
+  ca_pen(p, obj, MAT_CLOTH, deep, m);   // legs, boots, helmet, fists
+  ca_limb(buf, p, f, s, -0.17, 0.95, 0, -0.20, 0.12, sw, 0.12, 0.10, 7);
+  ca_limb(buf, p, f, s, 0.17, 0.95, 0, 0.20, 0.12, -sw, 0.12, 0.10, 7);
+  ca_box(buf, p, f, s, -0.20, 0.07, sw + 0.07, 0.12, 0.07, 0.21);
+  ca_box(buf, p, f, s, 0.20, 0.07, -sw + 0.07, 0.12, 0.07, 0.21);
+  ca_egg(buf, p, f, s, 0, 1.80, 0.13, 0.17, 0.20, 0.19, 10);
+  ball(buf, p, fp(f, -0.58 * s, 0.70 * s, (0.10 + sw * 0.6) * s), 0.10 * s, 7);
+  ball(buf, p, fp(f, 0.58 * s, 0.70 * s, (0.10 - sw * 0.6) * s), 0.10 * s, 7);
+  ca_pen(p, obj + 1, MAT_CLOTH, coat, m);   // the coat, its tails, shoulders, arms
+  tube(buf, p, kit_at(f, 0, 0.58 * s, 0), 0.88 * s, 0.44 * s, 0.34 * s, 0.26 * s, 0.21 * s, 12, true);
+  ca_box(buf, p, f, s, -0.26, 0.42, -0.30, 0.09, 0.20, 0.02);
+  ca_box(buf, p, f, s, 0.0, 0.36, -0.34, 0.09, 0.24, 0.02);
+  ca_box(buf, p, f, s, 0.26, 0.44, -0.30, 0.09, 0.18, 0.02);
+  ca_egg(buf, p, f, s, 0, 1.50, -0.02, 0.52, 0.22, 0.30, 12);
+  ca_limb(buf, p, f, s, -0.50, 1.46, 0, -0.58, 0.74, 0.10 + sw * 0.6, 0.11, 0.085, 7);
+  ca_limb(buf, p, f, s, 0.50, 1.46, 0, 0.58, 0.74, 0.10 - sw * 0.6, 0.11, 0.085, 7);
+  ca_pen(p, obj + 2, MAT_CLOTH, trim, m);   // the spikes, the crest, the tubes
+  tube(buf, p, frame_turn(kit_at(f, -0.46 * s, 1.58 * s, 0), 2, 0.75), 0.52 * s, 0.15 * s, 0.15 * s, 0, 0, 7, true);
+  tube(buf, p, frame_turn(kit_at(f, 0.46 * s, 1.58 * s, 0), 2, -0.75), 0.52 * s, 0.15 * s, 0.15 * s, 0, 0, 7, true);
+  ca_box(buf, p, f, s, 0, 2.04, 0.05, 0.02, 0.17, 0.21);
+  ca_limb(buf, p, f, s, -0.09, 1.70, 0.26, -0.22, 1.44, 0.22, 0.035, 0.035, 5);
+  ca_limb(buf, p, f, s, 0.09, 1.70, 0.26, 0.22, 1.44, 0.22, 0.035, 0.035, 5);
+  ca_pen(p, obj + 3, MAT_SKIN, kit_tint(0.50, 0.47, 0.54), m);   // the pipe and the scrap plate
+  ca_limb(buf, p, f, s, 0.58, 0.72, -0.10 - sw * 0.6, 0.64, 0.60, 0.86 - sw * 0.6, 0.04, 0.04, 6);
+  ca_box(buf, p, f, s, 0.64, 0.60, 0.86 - sw * 0.6, 0.07, 0.07, 0.09);
+  ca_box(buf, p, f, s, -0.22, 0.98, 0.34, 0.09, 0.11, 0.015);
+  ca_pen(p, obj + 4, MAT_GLOW, eye, m);   // the slit
+  ca_box(buf, p, f, s, 0, 1.82, 0.315, 0.11, 0.025, 0.012);
+}
+
+// The banned bot: an old-world factory giant, hunched under a yoke of shoulders. A barrel chest
+// with four lit ribs, a small domed head sunk between the shoulders with two eyes, two stacks on
+// its back, cables from head to yoke, short thick legs. Its left arm rests a fist on the floor;
+// the right is drawn resting too when `both` (the game swings that arm itself in a fight).
+// `shell`, `dark` and `glow` are its colours (grey and unlit once it is down). 5.9 m to the
+// stacks' tops at s 1. Uses objects obj to obj + 3.
+cast_boss :: (buf: [] u32, p: [] Pen, f: Frame, s: f32, obj: int, shell: KitTint, dark: KitTint, glow: KitTint, both: bool, m: CastMono) {
+  ca_pen(p, obj, MAT_CLOTH, dark, m);   // legs, pelvis, stacks, cables, brow and jaw, fists
+  ca_limb(buf, p, f, s, -0.80, 1.95, 0, -0.95, 0.35, 0.15, 0.50, 0.42, 10);
+  ca_limb(buf, p, f, s, 0.80, 1.95, 0, 0.95, 0.35, 0.15, 0.50, 0.42, 10);
+  ca_egg(buf, p, f, s, 0, 2.05, 0, 1.12, 0.50, 0.84, 12);
+  ca_tube(buf, p, f, s, -0.70, 4.40, -0.72, 1.45, 0.21, 0.17, 8);
+  ca_tube(buf, p, f, s, 0.70, 4.40, -0.72, 1.20, 0.21, 0.17, 8);
+  ca_limb(buf, p, f, s, -0.46, 4.74, 0.05, -1.30, 4.42, -0.35, 0.07, 0.07, 5);
+  ca_limb(buf, p, f, s, 0.46, 4.74, 0.05, 1.30, 4.42, -0.35, 0.07, 0.07, 5);
+  ca_box(buf, p, f, s, 0, 5.00, 0.64, 0.50, 0.08, 0.14);
+  ca_box(buf, p, f, s, 0, 4.60, 0.68, 0.30, 0.10, 0.08);
+  ca_box(buf, p, f, s, -2.12, 0.50, 0.82, 0.50, 0.50, 0.55);
+  if both { ca_box(buf, p, f, s, 2.12, 0.50, 0.82, 0.50, 0.50, 0.55); }
+  ca_pen(p, obj + 1, MAT_SKIN, shell, m);   // the barrel, the yoke, the head, feet, arms
+  tube(buf, p, kit_at(f, 0, 2.20 * s, 0), 1.95 * s, 1.22 * s, 0.98 * s, 1.55 * s, 1.15 * s, 14, true);
+  ca_egg(buf, p, f, s, 0, 4.25, 0, 1.78, 0.52, 1.16, 14);
+  ca_egg(buf, p, f, s, 0, 4.85, 0.25, 0.55, 0.50, 0.55, 12);
+  ca_box(buf, p, f, s, -0.95, 0.22, 0.36, 0.56, 0.22, 0.82);
+  ca_box(buf, p, f, s, 0.95, 0.22, 0.36, 0.56, 0.22, 0.82);
+  for side: 0..<2 {
+    if side == 1 && !both { continue; }
+    sx := ifx side == 0 then -1.0f32 else 1.0f32;
+    ball(buf, p, fp(f, sx * 1.88 * s, 4.15 * s, 0), 0.62 * s, 10);
+    ca_limb(buf, p, f, s, sx * 1.95, 4.0, 0, sx * 2.25, 2.60, 0.20, 0.44, 0.36, 9);
+    ca_limb(buf, p, f, s, sx * 2.25, 2.60, 0.20, sx * 2.12, 0.95, 0.74, 0.38, 0.50, 9);
+  }
+  ca_pen(p, obj + 2, MAT_FLAT, dark, m);   // elbows, knees, the yoke's plates
+  ball(buf, p, fp(f, -2.25 * s, 2.60 * s, 0.20 * s), 0.44 * s, 8);
+  if both { ball(buf, p, fp(f, 2.25 * s, 2.60 * s, 0.20 * s), 0.44 * s, 8); }
+  ball(buf, p, fp(f, -0.88 * s, 1.15 * s, 0.30 * s), 0.34 * s, 8);
+  ball(buf, p, fp(f, 0.88 * s, 1.15 * s, 0.30 * s), 0.34 * s, 8);
+  ca_box(buf, p, f, s, -1.05, 4.38, 0.98, 0.34, 0.16, 0.05);
+  ca_box(buf, p, f, s, 1.05, 4.38, 0.98, 0.34, 0.16, 0.05);
+  ca_pen(p, obj + 3, MAT_GLOW, glow, m);   // the eyes, the ribs, a strip on the resting fist
+  ca_egg(buf, p, f, s, -0.22, 4.82, 0.74, 0.13, 0.09, 0.07, 8);
+  ca_egg(buf, p, f, s, 0.22, 4.82, 0.74, 0.13, 0.09, 0.07, 8);
+  for i: 0..<4 { k := cast(f32) i; ca_box(buf, p, f, s, 0, 2.62 + k * 0.36, 1.02 + k * 0.035, 0.52 + k * 0.05, 0.05, 0.03); }
+  ca_box(buf, p, f, s, -2.12, 0.78, 1.38, 0.36, 0.05, 0.02);
+}
+
+#test "each of the cast fits a small store, uses it, and takes one colour when asked" {
+  buf: [240000] u32;
+  for who: 0..<5 {
+    pen := [1] Pen.[Pen.{}];
+    f := frame_at(v3(0, 0, 0), 0); c := cast_colour();
+    if who == 0 { cast_smuggler(buf[..], pen[..], f, 1, 10, 0.5, c); }
+    if who == 1 { cast_rover(buf[..], pen[..], f, 1, 10, 0, c); }
+    if who == 2 { cast_digger(buf[..], pen[..], f, 1, 10, CAST_AMBER(), true, true, true, 0, c); }
+    if who == 3 { cast_raider(buf[..], pen[..], f, 1, 10, CAST_AMBER(), 0.5, c); }
+    if who == 4 { cast_boss(buf[..], pen[..], f, 1, 10, CAST_TEAL(), CAST_INK(), CAST_CYAN(), true, c); }
+    #assert pen[0].n > 600 && !pen[0].over;
+  }
+  // a half-built Digger is fewer vertices than a whole one
+  a := [1] Pen.[Pen.{}]; b := [1] Pen.[Pen.{}];
+  cast_digger(buf[..], a[..], frame_at(v3(0, 0, 0), 0), 1, 10, CAST_AMBER(), false, false, false, 0, cast_colour());
+  cast_digger(buf[..], b[..], frame_at(v3(0, 0, 0), 0), 1, 10, CAST_AMBER(), true, true, true, 0, cast_colour());
+  #assert a[0].n < b[0].n;
+  // the hologram: every vertex the one tint
+  h := [1] Pen.[Pen.{}];
+  cast_raider(buf[..], h[..], frame_at(v3(0, 0, 0), 0), 1, 10, CAST_AMBER(), 0, cast_mono(kit_tint(0, 0, 1)));
+  for i: 0..<h[0].n { #assert (buf[i * VERTEX_WORDS + 4] & 0xffffff) == 0xff0000; }
+}

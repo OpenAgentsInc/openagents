@@ -241,7 +241,7 @@ is one optional source of edits, not the only one.
 
 | Commit | What landed |
 |---|---|
-| `a4c1c7ddbe`, `46f7f36d21` | Splice's own folder and context. It is `metaverse/splice/`: the repository root is for projects with a book |
+| `a4c1c7ddbe`, `46f7f36d21` | Splice's own folder and context. It is `metaverse/splice-bots/`: the repository root is for projects with a book |
 | `f0a0759359` | The content tables, and the game reading every landmark from them |
 | `53505717f7` | The colliders as World entities, the edit layer as typed edits, and the check |
 | `3efca3f506` | The walk replay, the fixture layer and the mutant check |
@@ -258,22 +258,22 @@ What was built differently from the text below, and why:
   game's own step and collision. The protocol bots speak a room's wire, and Splice has no room.
   The agent driver's `walk-to` goes straight at its target, so it would refuse a crate a player
   walks round. `coax drive` isn't wired to Splice's page yet.
-- **The fixture layer is typed edits in Coax** (`metaverse/splice/layer-fixture.coax`), loaded with
+- **The fixture layer is typed edits in Coax** (`metaverse/splice-bots/layer-fixture.coax`), loaded with
   `?layer=fixture` on the dev server only. A layer file needs the wire shape of slice 2.
 - **The host could already draw instances.** `coax/web/host.js` passes a draw's instance count
   and first instance through, and binds every store a page declares. The new work was Splice's
-  two stores and its vertex stages (`metaverse/splice/gpu/splice.coax`); the host didn't change.
+  two stores and its vertex stages (`metaverse/splice-bots/gpu/splice.coax`); the host didn't change.
 - **Not done here:** the Unreal host draws no placed pieces (its face passes the stores but
-  draws two). The developer notes are `metaverse/splice/README.md`, "Edit layer".
+  draws two). The developer notes are `metaverse/splice-bots/README.md`, "Edit layer".
 
 New work in Splice and the engine. The rule is "never hand-roll", and the AAA
 program (#13257) has already built most of what this needs. The section
 "Checked against the AAA program" below says which issue each part follows.
 
 - **Splice gets its own folder and context first.** Its code moves from
-  `apps/openagents-web/splice*` to `metaverse/splice/` (realms without a book live under `metaverse/`), as Everglade's moved to
+  `apps/openagents-web/splice*` to `metaverse/splice-bots/` (realms without a book live under `metaverse/`), as Everglade's moved to
   `everglade/` (P1.2, #13268). It also gets a row in `contexts.txt`
-  (`splice folders: metaverse/splice/ may load: engine realm-authoring toolchain`), so
+  (`splice folders: metaverse/splice-bots/ may load: engine realm-authoring toolchain`), so
   `layer-check` (P0.7, DDD.6) judges it. The page stays at `/worlds/splice`.
 - **The catalogue and the landmarks are content, not code** (P4.5, #13294).
   Splice gets an `aethyr.content.v1` document, read and validated by
@@ -474,7 +474,7 @@ applies to the plan, and what changed because of it.
 | AAA or DDD issue | State | What it asks | In this plan |
 |---|---|---|---|
 | P0.7 layer-check, DDD.6 contexts | Closed | No upward loads; each context loads only what `contexts.txt` allows | **Changed.** The chat never loads a world module; the pane is the world's own page, and the card is a proto shape. Splice gets a context. `place.coax` loads nothing from `apps/` |
-| P1.2 game code leaves `apps/openagents-web` | Open | One game module in its own folder | **Changed.** Splice moves to `metaverse/splice/` before its edit layer lands |
+| P1.2 game code leaves `apps/openagents-web` | Open | One game module in its own folder | **Changed.** Splice moves to `metaverse/splice-bots/` before its edit layer lands |
 | P1.4 Aethyr layers | Open | Engine code sits in its layer folders | `place.coax` is realm-authoring (`metaverse-engine/editor/`); kit pieces stay in `metaverse-engine/kit/` |
 | P1.6 every engine module has a consumer | Closed | No unused modules | `place.coax` has two consumers on the day it lands; WorldBuilder's copy is deleted |
 | P2.1 Aethyr World | Closed | Every entity lives in one World with columns, systems and a spatial index | **Changed.** Placed pieces are World entities, not draw calls added to `g_world` |

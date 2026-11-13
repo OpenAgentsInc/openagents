@@ -1,0 +1,182 @@
+// Splice's placeable pieces (GitHub #13404; docs/audits/2026-11-12-chat-and-world-building.md,
+// slice 0): which engine kit piece a row of the `pieces` content table draws, and how big it is on
+// the ground. The kit pieces stay engine code (metaverse-engine/kit/); a row names one, its size and its
+// look, and this file writes that kind's cel mesh once, standing at the origin and facing +z. The
+// page keeps the mesh on the GPU and draws each placed piece as an instance with its own
+// transform (layer.coax, gpu/splice-bots.coax).
+//
+// A piece's footprint is measured from the triangles it writes (sp_piece_measure): how far its
+// body reaches to each side and ahead, up to a walker's height. The table's footprint must be
+// that measurement, so a collider is never wider than what you see (the checks in layer-checks.coax).
+//   coax/bin/coax test metaverse/splice-bots/pieces.coax --library
+// A row may also name a mesh of the world's import pack (GitHub #13420, the browser editor's E11):
+// its `kit` is "pack/NAME", NAME a mesh the editor imported (metaverse-engine/editor/pack-import.coax).
+// Its mesh is the pack's triangles at the row's size, each vertex's own colour tinted by the look's
+// first colour, and its footprint is the mesh's bounds.
+#load "../../metaverse-engine/kit/props.coax";
+#load "../../metaverse-engine/editor/pack-import-read.coax";
+
+// The kit pieces a row may name, by the `kit` column's word.
+PK_ROVER :: 0; PK_CRAB :: 1; PK_WALKER :: 2; PK_SPIDER :: 3; PK_BEAST :: 4; PK_TANK :: 5; PK_MECH :: 6; PK_ROBOT :: 7;
+PK_TURBINE :: 8; PK_DIGGER :: 9; PK_FIGURE :: 10; PK_PALM :: 11; PK_DOME :: 12; PK_CRATE :: 13;
+PK_SOLAR :: 14; PK_CHARGER :: 15; PK_MESA :: 16; PK_TRAIN :: 17; PK_BUNK :: 18; PK_DESK :: 19; PK_ARM :: 20; PK_WINDOW :: 21; PK_SOFA :: 22; PK_KITS :: 23;
+PK_NAME :: [PK_KITS] string.["rover", "crab", "walker", "spider", "beast", "tank", "mech", "robot", "turbine", "digger", "figure", "palm", "dome_house", "crate",
+                             "solar", "charger", "mesa", "train", "bunk", "desk", "arm", "window", "sofa"];
+PK_MESH :: PK_KITS;   // not a kit: a mesh of the world's import pack
+PK_PACK :: "pack/";
+// The mesh a word names ("pack/NAME"), or "": a name is 1 to 24 letters, digits, - and _ (pack-import-policy.coax pip_name).
+pk_mesh :: (kit: string) -> string {
+  if kit.count <= PK_PACK.count || kit.count > PK_PACK.count + PIP_NAME || kit[0..<PK_PACK.count] != PK_PACK { return ""; }
+  name := kit[PK_PACK.count..<kit.count];
+  for c: name { if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '_') { return ""; } }
+  return name;
+}
+// The kit a word names, PK_MESH for a mesh of the pack, or -1.
+pk_of :: (kit: string) -> int {
+  for k: 0..<PK_KITS { if PK_NAME[k] == kit { return k; } }
+  if pk_mesh(kit).count > 0 { return PK_MESH; }
+  return -1;
+}
+
+PIECE_OBJ :: 180;        // the first object number a placed piece's mesh uses (the ink pass tells objects apart)
+PIECE_BODY :: 2.0f32;    // m: a walker's height and a little; what stands lower than this is the footprint
+PIECE_VERTS :: 24000;    // vertices one kind's mesh may take
+
+// A colour as the content tables keep it: red, green and blue bytes in one number.
+sp_tint :: (rgb: int) -> KitTint { return kit_tint(cast(f32) ((rgb >> 16) & 255) / 255, cast(f32) ((rgb >> 8) & 255) / 255, cast(f32) (rgb & 255) / 255); }
+
+// One kind's mesh: kit piece `kit` at size s, in the look's three colours and the game's ink,
+// standing on frame f, its objects numbered from o. Machines stand still (no stride, no spin).
+// The layer writes each kind once at the origin, facing +z (PIECE_ORIGIN). The look's colours go
+// to a kit as its main surface (a), its accent (b) and its light (c); solar panels' glass is a and
+// their frame b, and a sofa's cover is b and its cushion a, so one cream-and-orange look dresses a
+// rover's room.
+sp_piece_write :: (buf: [] u32, p: [] Pen, kit: int, s: f32, f: Frame, o: int, a: KitTint, b: KitTint, c: KitTint, ink: KitTint) {
+  if kit == PK_ROVER { kit_rover(buf, p, f, s, o, a, b, ink); }
+  else if kit == PK_CRAB { kit_crab(buf, p, f, s, o, a, b, ink); }
+  else if kit == PK_WALKER { kit_walker(buf, p, f, s, o, a, b, ink); }
+  else if kit == PK_SPIDER { kit_spider(buf, p, f, s, o, a, b, ink); }
+  else if kit == PK_BEAST { kit_beast(buf, p, f, s, o, a, ink, b, true); }
+  else if kit == PK_TANK { kit_tank(buf, p, f, s, o, a, ink, c); }
+  else if kit == PK_MECH { kit_mech(buf, p, f, s, o, a, b, ink, c); }
+  else if kit == PK_ROBOT { kit_robot(buf, p, f, s, o, a, b, c, ink, 0.62); }
+  else if kit == PK_TURBINE { kit_turbine(buf, p, f, s, o, a, b, 0.4); }
+  else if kit == PK_DIGGER { kit_digger(buf, p, f, s, o, a, ink, b, c, true, true, true, 0); }
+  else if kit == PK_FIGURE { kit_figure(buf, p, f, s, o, a, b, ink, c, 0); }
+  else if kit == PK_PALM { kit_palm(buf, p, f, s, o, a, b); }
+  else if kit == PK_DOME { kit_dome_house(buf, p, f, o, a, b, 6 * s, 5 * s); }
+  else if kit == PK_CRATE { kit_crate(buf, p, f, o, a, ink, c, s); }
+  else if kit == PK_SOLAR { kit_solar(buf, p, f, s, o, a, b, ink); }
+  else if kit == PK_CHARGER { kit_charger(buf, p, f, s, o, a, b, c, ink); }
+  else if kit == PK_MESA { kit_mesa(buf, p, f, s, o, a, b); }
+  else if kit == PK_TRAIN { kit_train(buf, p, f, s, o, a, b, c, ink); }
+  else if kit == PK_BUNK { kit_bunk(buf, p, f, s, o, a, b, ink); }
+  else if kit == PK_DESK { kit_desk(buf, p, f, s, o, a, b, c, ink); }
+  else if kit == PK_ARM { kit_arm(buf, p, f, s, o, a, b, c, ink); }
+  else if kit == PK_WINDOW { kit_window(buf, p, f, s, o, a, b, ink); }
+  else if kit == PK_SOFA { kit_sofa(buf, p, f, s, o, b, a, ink); }
+}
+
+// ---- a mesh of the world's import pack
+
+SP_IMPORT_PACK :: 1048576;   // bytes a world's import pack may be: its budget, and the room a page keeps for it
+SP_IMPORT_FILE :: 524288;    // bytes one imported file may be
+SP_IMPORT_TRIS :: 4000;      // triangles one imported mesh may have (a kind's mesh takes PIECE_VERTS vertices at most)
+SP_IMPORT_SIDE :: 1024;      // texels an imported texture may be wide or tall
+// What Splice holds a world's imports to: shown before a file is sent, enforced where it is packed.
+sp_import_limits :: () -> PipLimits { return PipLimits.{file = SP_IMPORT_FILE, budget = SP_IMPORT_PACK, triangles = SP_IMPORT_TRIS, side = SP_IMPORT_SIDE, meshes = PI_ITEMS, textures = PI_ITEMS, sounds = PI_ITEMS}; }
+// The pack's meshes as the game keeps them: each one's name and its reach in millimetres (to each
+// side, ahead and up). checked: a row that names a pack mesh is held to this table (the server's
+// check); a page is not strict, since an edit may reach it before the pack that edit names does.
+SpImport :: struct { name: [PIP_NAME] u8; n: int; hx: int; hz: int; top: int; }
+SpImports :: struct { m: [PI_ITEMS] SpImport; n: int; checked: bool; gen: int; }
+// Reads a world's import pack into the table ("": a world with no imports). False, and the table
+// as it was, for a pack that does not read.
+sp_imports_read :: (t: [] SpImports, pack: string) -> bool {
+  p: [1] PiPack; r: [1] PackRead; why: [1] string;
+  if !pi_open(pack, p[..], r[..], why[..]) { return false; }
+  for k: 0..<p[0].mesh_n {
+    m := p[0].meshes[k]; e := SpImport.{hx = pi_reach(m, 0), hz = pi_reach(m, 2), top = pi_reach(m, 1)};
+    if m.name.count > PIP_NAME { return false; }
+    for c, i: m.name { e.name[i] = c; }
+    e.n = m.name.count;
+    t[0].m[k] = e;
+  }
+  t[0].n = p[0].mesh_n; t[0].gen += 1;
+  return true;
+}
+sp_import :: (t: [] SpImports, name: string) -> int {
+  for k: 0..<t[0].n { if cast(string) t[0].m[k].name[0..<t[0].m[k].n] == name { return k; } }
+  return -1;
+}
+// A footprint column for a mesh's reach at a size in thousandths: centimetres that cover it.
+sp_import_cm :: (mm: int, scale: int) -> int { return pi_cm((mm * scale + 999) / 1000); }
+// A pack mesh's triangles into the piece store at size s, tinted: true when the pack has the mesh.
+// Each vertex keeps its own colour times the tint; the pen's object number tells the ink pass it
+// is one thing.
+sp_mesh_write :: (buf: [] u32, p: [] Pen, pack: string, name: string, s: f32, o: int, tint: KitTint) -> bool {
+  pk: [1] PiPack; r: [1] PackRead; why: [1] string;
+  if pack.count == 0 || !pi_open(pack, pk[..], r[..], why[..]) { return false; }
+  at := pi_find(pk[..], PIP_MESH, name);
+  if at < 0 { return false; }
+  m := pk[0].meshes[at]; v := pk[0].vertices;
+  p[0].obj = o; p[0].mat = MAT_WORLD; p[0].param = 1;
+  for t: 0..<m.count / 3 {
+    if !room(buf, p, 3) { return true; }
+    for j: 0..<3 {
+      b := pack_u32(pk[0].indices, (m.first + t * 3 + j) * 4) * PI_VERTEX;
+      point := v3(f32_from_bits(cast(u32) pack_u32(v, b)) * s, f32_from_bits(cast(u32) pack_u32(v, b + 4)) * s, f32_from_bits(cast(u32) pack_u32(v, b + 8)) * s);
+      n := v3(f32_from_bits(cast(u32) pack_u32(v, b + 12)), f32_from_bits(cast(u32) pack_u32(v, b + 16)), f32_from_bits(cast(u32) pack_u32(v, b + 20)));
+      p[0].r = cast(f32) v[b + 32] / 255 * tint.r; p[0].g = cast(f32) v[b + 33] / 255 * tint.g; p[0].b = cast(f32) v[b + 34] / 255 * tint.b;
+      vtx(buf, p, point, n);
+    }
+  }
+  return true;
+}
+
+// What a mesh covers: how far its body (the part under PIECE_BODY) reaches to each side (hx) and
+// ahead or behind (hz), how tall the whole of it is, and how many vertices it took.
+SpFoot :: struct { hx: f32; hz: f32; top: f32; n: int; over: bool; }
+sp_mesh_foot :: (buf: [] u32, n: int) -> SpFoot {
+  m := SpFoot.{n = n};
+  for i: 0..<n {
+    o := i * VERTEX_WORDS;
+    x := f32_from_bits(buf[o]); y := f32_from_bits(buf[o + 1]); z := f32_from_bits(buf[o + 2]);
+    m.top = hi(m.top, y);
+    if y > PIECE_BODY { continue; }
+    m.hx = hi(m.hx, abs(x)); m.hz = hi(m.hz, abs(z));
+  }
+  return m;
+}
+SpMeshScratch :: struct { v: [PIECE_VERTS * VERTEX_WORDS] u32; }
+sp_piece_measure :: (w: [] SpMeshScratch, kit: int, s: f32) -> SpFoot {
+  pen := [1] Pen.[Pen.{}];
+  t := kit_tint(0.5, 0.5, 0.5);
+  sp_piece_write(w[0].v[..], pen[..], kit, s, frame_at(v3(0, 0, 0), 0), PIECE_OBJ, t, t, t, t);
+  m := sp_mesh_foot(w[0].v[..], pen[0].n);
+  m.over = pen[0].over;
+  return m;
+}
+
+#test "every kit word names its kit, and no other word does" {
+  for k: 0..<PK_KITS { #assert pk_of(PK_NAME[k]) == k; }
+  #assert pk_of("") == -1 && pk_of("Rover") == -1 && pk_of("dome") == -1 && pk_of("solar") == PK_SOLAR && pk_of("sofa") == PK_SOFA && pk_of("trains") == -1;
+  t := sp_tint(0xEDE0C2);
+  #assert abs(t.r - 0.929) < 0.001 && abs(t.g - 0.878) < 0.001 && abs(t.b - 0.761) < 0.001;
+}
+#test "every kit writes a mesh that fits, stands on the ground and is twice as big at twice the size" {
+  w: [1] SpMeshScratch;
+  for k: 0..<PK_KITS {
+    one := sp_piece_measure(w[..], k, 0.5); two := sp_piece_measure(w[..], k, 0.25);
+    #assert !one.over && one.n >= 3 && one.n % 3 == 0 && one.hx > 0 && one.hz > 0 && one.top > 0;
+    #assert abs(one.top - two.top * 2) < 0.02;
+  }
+}
+// The rover train and a mesa are big pieces: at the sizes a scene gives them they still fit a
+// kind's mesh, and their footprint is what stands under 2 m.
+#test "a mesa 20 m tall and a rover train twice its size still fit a kind's mesh" {
+  w: [1] SpMeshScratch;
+  mesa := sp_piece_measure(w[..], PK_MESA, 2); train := sp_piece_measure(w[..], PK_TRAIN, 2);
+  #assert !mesa.over && mesa.top > 20 && mesa.hx > 14 && !train.over && train.hz > 17 && train.top > 7;
+  for k: PK_SOLAR..<PK_KITS { #assert !sp_piece_measure(w[..], k, 1).over; }
+}

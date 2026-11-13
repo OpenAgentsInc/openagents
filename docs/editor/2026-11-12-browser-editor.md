@@ -36,7 +36,7 @@ keeps its state.
 | Area | State | Where |
 |---|---|---|
 | Live channel | **Partial.** `serve` rebuilds on change and pushes over the `/coaxial/live` WebSocket: `wasm` swaps the engine, `wgsl` swaps shaders, `page` reloads, `error` keeps the last good engine. It watches only the top level of the app and host folders (`MAX_WATCH 256`), not shared code in `metaverse-engine/` or `components/`, packs or textures | `coax/web/serve.c`, `coax/web/host.js` `live()` |
-| Outside edits on a page | **Exists for Splice (E4, #13413).** A page reads its lane's document once, then takes each saved edit in order through its edit log; the dev server answers the world's routes and tells every tab when it was written | `metaverse-engine/editor/world-follow.coax`, `metaverse/splice/world.coax`, `metaverse/splice/tools/world-local.coax`, `coax/web/world-tabs.coax` |
+| Outside edits on a page | **Exists for Splice (E4, #13413).** A page reads its lane's document once, then takes each saved edit in order through its edit log; the dev server answers the world's routes and tells every tab when it was written | `metaverse-engine/editor/world-follow.coax`, `metaverse/splice-bots/world.coax`, `metaverse/splice-bots/tools/world-local.coax`, `coax/web/world-tabs.coax` |
 | Rebuild time | **Good.** A one-line edit is running in about 2.5 s (resident and incremental compiler, #13138, #13142); a dev engine build takes 118-135 ms; type errors show in 0.63 s | `coax/book/ch46-resident-compilation.md` |
 | State across a code reload | **Good on the dev server (#13411).** A development module carries its state's field table. A reload that changes the state's layout keeps every field both layouts name, starts new fields from their defaults and names the new and dropped fields in the dev note. Not built: declared migrations (a renamed field) and a rollback when the first frame traps | `coax/web/state-keep.js`, `host.js` `loadEngine`, `metaverse-engine/book/ch082-change-code-while-it-runs.md` |
 | One function swapped live | **Experiment.** `door_ease` only, 900 ms from edit to running | `coax/web/fast-edit.*` |
@@ -46,12 +46,12 @@ keeps its state.
 | Content tables | **Exists, CLI only.** The editor isn't reachable from a page; the page doesn't load the tables yet (#13381) | `metaverse-engine/content/tables.coax`, `metaverse-engine/editor/content-edit.coax` |
 | Picking | **Partial.** `query_ray` exists; every editor picks its own way (Everglade by 56 px screen distance) | `metaverse-engine/physics/query.coax` |
 | Gizmos, outliner, inspector, fly camera, snapping, asset browser, play/simulate | **Missing** | — |
-| In-world editors | **Two in the shell, two separate.** Splice's layer and WorldBuilder run in the editor shell (E13, #13422). Everglade admin EDIT and the realm edit layer with its agent pane are still their own | `metaverse/splice/world.coax`, `worldbuilder-world.coax`, `everglade-edit.coax`, `metaverse/edit/` |
+| In-world editors | **Two in the shell, two separate.** Splice's layer and WorldBuilder run in the editor shell (E13, #13422). Everglade admin EDIT and the realm edit layer with its agent pane are still their own | `metaverse/splice-bots/world.coax`, `worldbuilder-world.coax`, `everglade-edit.coax`, `metaverse/edit/` |
 | Programmatic building | **Exists for worlds with an ID (E6, #13415).** The edit verbs are rows of `REALM_COMMANDS`: `realm world`, `world-place`, `world-move` and the rest, each also a `realm_*` MCP tool and a `coax drive` verb. There is no second `world_*` family. Every row has an effect and an approval rule, and answers one result shape | `apps/openagents-cli/commands.coax`, `realm-world.coax`, `metaverse-engine/editor/op-result.coax`, `coax/web/drive.coax` |
 | Code changes from a browser | **Exists on the dev server** (E12, #13421): the editor's Code pane opens and saves the realm's own sources, and the dev server checks and rebuilds them. A deployed page has no such path | `coax/web/serve.c`, `metaverse-engine/editor/code-wire.coax` |
 | Agents in `/chat` | **Exists.** Claude Code, Codex, Antigravity and Microcoder through the local Coder | `apps/openagents-web/chat-web.coax`, `coder/tui/mcp_http.coax` |
 | UI components | **Exist.** The frames set (frame, text, button, field, select, card, row, header, menu, notice, composer, tool call, code block), skinned by `mono.coax`, drawn by the browser through `dom.coax`: real text, Find, selection and screen readers | `components/kit/frames.coax`, `components/skin/mono.coax`, `components/backend/dom.coax` |
-| Retained rendering | **Splice's layer only.** Shared retained rendering is P6.1 (#13303) | `metaverse/splice/layer-draw.coax` |
+| Retained rendering | **Splice's layer only.** Shared retained rendering is P6.1 (#13303) | `metaverse/splice-bots/layer-draw.coax` |
 
 ## What the sessions teach
 
@@ -198,7 +198,7 @@ not a flat folder scan.
   The shell's strip picks the tool, the grid and the rest, and Add places a
   new thing at "here". `coax drive` taps and drags at points of the page
   (`tap X Y`, `drag X0 Y0 X1 Y1`). Splice is the first realm
-  (`metaverse/splice/world.coax`, `spv_*`).
+  (`metaverse/splice-bots/world.coax`, `spv_*`).
 - **As built (E10, #13419):** where a realm names the table its kinds are
   rows of, the inspector shows the selected thing's content row as fields. A
   changed cell is a `cell` edit of the world's one log, checked by the server
@@ -238,7 +238,7 @@ not a flat folder scan.
     the licences an import may declare (CC0 1.0, CC BY 4.0, CC BY-SA 4.0,
     chosen by number, never typed) and the limits. Splice's are a 512 KB
     file, a 1,024 KB pack, 4,000 triangles a mesh and 1,024 texels a side
-    (`metaverse/splice/pieces.coax`, `sp_import_limits`). Each refusal names
+    (`metaverse/splice-bots/pieces.coax`, `sp_import_limits`). Each refusal names
     the file in words.
   - **A pack-mesh kind.** A row of Splice's `pieces` table whose `kit` is
     `pack/NAME` draws that mesh from the world's import pack. The page takes
@@ -275,7 +275,7 @@ not a flat folder scan.
   private bucket `openagentsgemini-project-drops`, the API's own identity and
   the upload opener in `coax/web/api/drops.c` that the project drops use.
   The importer, its limits and its words are the dev server's: both call
-  `metaverse/splice/world-assets.coax`.
+  `metaverse/splice-bots/world-assets.coax`.
 
   1. **The file is named before it is sent.** The page sends
      `POST /api/worlds/ID/assets` with the licence, the file's size and name,
@@ -373,7 +373,7 @@ not a flat folder scan.
     module and the live channel swaps the engine with its state kept (E1,
     E2): 1.9 s from Save to the new engine on Splice. A failed build keeps
     the last good engine running.
-  - **Shaders.** `metaverse/splice/gpu/splice.coax`, the Coax that writes
+  - **Shaders.** `metaverse/splice-bots/gpu/splice.coax`, the Coax that writes
     Splice's WGSL, is in the list. Saving it writes the WGSL again and the
     live channel swaps the shaders.
   - **Not built:** the paired Coder for a deployed page, and a hosted build
@@ -474,7 +474,7 @@ you watch it in the editor.
   range; and what it does on noticing you (chase, call, flee, ignore). The
   rules run with no model call (`metaverse-engine/ai/npc-plan.coax`,
   `ai/plan.coax`). Splice's old fixed movement is the shipped plans, so play is
-  unchanged ([the tables](../../metaverse/splice/README.md#foes-plans)).
+  unchanged ([the tables](../../metaverse/splice-bots/README.md#foes-plans)).
 - **Plans are cells of the world's content tables,** so they go through
   `world.edit.v1` with the server's checks, undo and revisions. A route out of
   the mine, of the wrong shape for its DO, or through a wall is refused in
@@ -492,7 +492,7 @@ you watch it in the editor.
   notice ring; the HUD's phase chips follow the editor's time. Simulate runs
   the foes with nobody there for them to see.
 - **Outcome replay** checks plans and the clock in the live World and in the
-  saved tables (`metaverse/splice/replay.coax`, `PR_PLAN`, `PR_CLOCK`). A kept
+  saved tables (`metaverse/splice-bots/replay.coax`, `PR_PLAN`, `PR_CLOCK`). A kept
   world earns a probe for each plan, and each broken variant fails them.
 - **Scripted run:** `docs/editor/acceptance/foes-run.ops` (README, "Foes").
 

@@ -19,7 +19,7 @@
 //   (apps/openagents-cli/realm-world.coax), and so does the editor's agent with realm_world_board.
 //
 // Nothing here draws: the board's mesh is metaverse-engine/kit/machines.coax kit_hoverboard.
-// Splice Bots (metaverse/splice/splice-game.coax) rides it.
+// Splice Bots (metaverse/splice-bots/splice-game.coax) rides it.
 //   coax/bin/coax test metaverse-engine/action/hoverboard.coax --library
 #module "metaverse.engine.action.hoverboard";
 #load "mount.coax";

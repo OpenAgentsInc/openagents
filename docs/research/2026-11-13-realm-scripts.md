@@ -229,11 +229,11 @@ Kept current as stages land (#13467). The contract as built is
 | Scripts in the world document: stored by hash behind the check, the edit rule, the publish rule | built | `coax/web/api/scripts.c`, `script-policy.coax`, `script-store.coax`, `metaverse-engine/script/store.coax`; [the contract](../protocol/world-scripts-v1.md) |
 | Other authors: the compile job, quotas, reports and the switch-off | built for a developer's machine; a server has no job yet | `metaverse-engine/tools/script-job.coax`, `coax/web/script-job.sh`, `OA_SCRIPT_JOB` |
 | A world's script rows (`ID\|NAME\|HASH\|FOR` in a content table) | built | `metaverse-engine/script/rows.coax`, Splice's `scripts` table |
-| Splice's raider and Imperial robot as scripts | built | `metaverse/splice/scripts/`, `metaverse/splice/scripts.coax` |
+| Splice's raider and Imperial robot as scripts | built | `metaverse/splice-bots/scripts/`, `metaverse/splice-bots/scripts.coax` |
 | The page's script module and its loader | built | `apps/openagents-web/script-host.coax`, `metaverse-engine/script/loader.coax`, `coax/web/host.js` "A realm's scripts" |
 | The room's script unit | built, not yet called by a room game | `coax/web/room/room-scripts.coax` |
 | Page and room agree step for step | proven | `coax/web/tool.sh coax/web/room/room-scripts-check.coax` |
-| The plan world and the scripted world play the same | proven natively | `coax/web/tool.sh metaverse/splice/tools/script-play.coax` |
+| The plan world and the scripted world play the same | proven natively | `coax/web/tool.sh metaverse/splice-bots/tools/script-play.coax` |
 | A fuzzer of the check, the interpreter, the host and the codecs | built | `metaverse-engine/tools/script-fuzz.coax` |
 | The interpreter against V8, on a compiled torture script | built | `metaverse-engine/tools/script-oracle.coax`, `metaverse-engine/tests/script-oracle.mjs`, `metaverse-engine/script/examples/torture.coax` |
 

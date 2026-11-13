@@ -11,7 +11,7 @@
 #load "../../lib/sys/proc.coax";
 #load "../../lib/sys/fs.coax";
 #load "room-scripts.coax";
-#load "../../../metaverse/splice/splice-game.coax";
+#load "../../../metaverse/splice-bots/splice-game.coax";
 
 RSK_DT :: 0.02f32;
 RskWork :: struct {
@@ -62,7 +62,7 @@ tool_main :: () -> int #export_c #effects(all) {
   modules := rsk_cat(p[0][..], dir, "/modules.txt"); frames := rsk_cat(p[1][..], dir, "/frames.bin"); page := rsk_cat(p[2][..], dir, "/page.bin"); host := rsk_cat(p[3][..], dir, "/script-host.wasm");
   cleared := fs_write(modules, "") && fs_write(frames, "");
   hashes: [2] [64] u8;
-  if !cleared || !rsk_load(k, dir, "metaverse/splice/scripts/raider.coax", "splice-raider", 0, hashes[0][..]) || !rsk_load(k, dir, "metaverse/splice/scripts/imperial.coax", "splice-imperial", 1, hashes[1][..]) { return 1; }
+  if !cleared || !rsk_load(k, dir, "metaverse/splice-bots/scripts/raider.coax", "splice-raider", 0, hashes[0][..]) || !rsk_load(k, dir, "metaverse/splice-bots/scripts/imperial.coax", "splice-imperial", 1, hashes[1][..]) { return 1; }
   build := [4] string.["coax/web/wasm.sh", "apps/openagents-web/script-host.coax", "apps/openagents-web/script-host-face.c", host];
   if !rsk_run(k, build[..], "the page module's build") { return 1; }
   // Splice with a script row for each kind of foe.

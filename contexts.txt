@@ -25,7 +25,7 @@ projects folders: coax/web/api/private.c coax/web/api/drops.c coax/web/project/ 
 nostr folders: nostr/ coax/lib/nostr/ may load: toolchain
 psionic folders: psionic/ coax/lib/systemone/ coax/web/api/inference.c coax/web/api/mesh may load: nostr protocol toolchain
 engine folders: metaverse-engine/ metaverse-engine/session/lifecycle.coax coax/web/map-points.coax may load: toolchain
-splice folders: metaverse/splice/ may load: engine realm-authoring toolchain
+splice folders: metaverse/splice-bots/ may load: engine realm-authoring toolchain
 realm-seat folders: coax/lib/media/realm_seat.coax may load: realm-authoring toolchain
 realm-tools folders: metaverse/tools/ may load: engine realm-authoring nostr toolchain
 protocol folders: proto/ may load:

@@ -1,0 +1,35 @@
+// Checks Splice's content tables file (#13404; metaverse/splice-bots/content.coax): it is a content document
+// (aethyr-content-v1) with exactly Splice's tables, every piece a kit piece with a footprint.
+// Usage: coax/web/tool.sh metaverse/splice-bots/tools/content-check.coax metaverse/splice-bots/content/splice.content
+//        ... splice.content --carry   also writes metaverse/splice-bots/content/shipped.coax, the copy of the
+//                                     tables a page is built with: run it after every edit of the tables
+//        ... splice.content --check   fails when that copy is not the file's bytes
+#import "Basic";
+#load "../content.coax";
+#load "../../../coax/lib/sys/tool.coax";
+#load "../../../coax/lib/sys/fs.coax";
+#load "../../../metaverse-engine/tools/content-carry.coax";
+
+CARRY_PATH :: "metaverse/splice-bots/content/shipped.coax";
+CARRY_HEAD :: "// Splice's content tables as a page is built with them (#13404): the bytes of\n// metaverse/splice-bots/content/splice.content, written by\n//   coax/web/tool.sh metaverse/splice-bots/tools/content-check.coax metaverse/splice-bots/content/splice.content --carry\n// Never edit it by hand: edit the tables (docs/protocol/aethyr-content-v1.md) and write it again.\n// The same tool with --check fails when the two differ.\nSC_SHIPPED :: \"";
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) < 1 || args_count(a[..]) > 2 || (args_count(a[..]) == 2 && args_at(a[..], 1) != "--carry" && args_at(a[..], 1) != "--check") { tool_errln("usage: content-check FILE [--carry | --check]"); return 2; }
+  raw: [CT_BODY] u8; n := fs_read(args_at(a[..], 0), raw[..]);
+  c: [1] SpContent;
+  if n <= 0 || !sc_load(c[..], cast(string) raw[0..<n]) { print("splice content: not Splice's content tables (a content document with Splice's tables, kits and footprints)\n"); return 1; }
+  print("splice content: revision % holds (% pieces, % landmarks, % kept-clear zones, % areas)\n", c[0].rev, c[0].piece_n, c[0].mark_n, c[0].kept_n, c[0].area_n);
+  if args_count(a[..]) == 2 {
+    o: [2 * CT_BODY + 2048] u8;
+    carried := content_carry(CARRY_HEAD, cast(string) raw[0..<n], o[..]);
+    if args_at(a[..], 1) == "--check" {
+      if cast(string) raw[0..<n] != SC_SHIPPED { print("splice content: % is not the file's bytes; write it again with --carry\n", CARRY_PATH); return 1; }
+      print("splice content: % is the file's bytes\n", CARRY_PATH);
+      return 0;
+    }
+    if carried.count == 0 || !fs_write(CARRY_PATH, carried) { print("splice content: could not write %\n", CARRY_PATH); return 1; }
+    print("splice content: % written (revision %)\n", CARRY_PATH, c[0].rev);
+  }
+  return 0;
+}

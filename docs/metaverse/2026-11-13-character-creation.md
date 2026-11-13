@@ -17,7 +17,7 @@ A player makes their own character in two moves:
    work clothes with white stitch lines. Every garment fits every body.
 
 The result is a 3D character in the cel style Splice's cast of five already
-uses (`metaverse/splice/splice-cast.coax`): flat fills, clean ink contours, a
+uses (`metaverse/splice-bots/splice-cast.coax`): flat fills, clean ink contours, a
 silhouette you can read from far away.
 
 ## The two reference sheets

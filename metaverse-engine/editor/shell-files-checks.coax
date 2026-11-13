@@ -63,8 +63,8 @@ esf_open :: (h: [] EsTest) {
 
 #test "a file dropped on the dev server goes in one POST, to the scope chosen, and the answer lists it" {
   h: [1] EsTest; s := h[0].s[..]; t := s[0].tree[..];
-  for c, i: "splice" { s[0].inbox[i] = c; }
-  coaxial_editor_event(s, ES_CODE_HERE, 0, 6); coaxial_editor_asked(s);
+  for c, i: "splice-bots" { s[0].inbox[i] = c; }
+  coaxial_editor_event(s, ES_CODE_HERE, 0, 11); coaxial_editor_asked(s);
   esf_open(h[..]);
   d := tr_find(t, "files.drop");
   #assert tr_attr_of(t, d, AT_DROP) == FW_TAKES;

@@ -68,7 +68,7 @@ answers 503 and the page says compiling is not available here.
 `openagents realm world-scripts`, `world-script-put` and `world-script-compile`
 work with `--origin http://127.0.0.1:PORT`, and the page fetches the modules
 its rows name, before anything is deployed (#13485). The checks, the manifest
-and every refusal are the API's (`metaverse/splice/tools/script-local.coax`
+and every refusal are the API's (`metaverse/splice-bots/tools/script-local.coax`
 loads `coax/web/api/script-store.coax`). The modules are files under
 `apps/openagents-web/build/.worlds/ID.scripts/`: `HASH.wasm`, `HASH.json` (its
 manifest) and `HASH.coax` (the source, for a compiled one). The dev server runs

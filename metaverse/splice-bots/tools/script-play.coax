@@ -1,0 +1,149 @@
+// Splice's foes as realm scripts play as its foes on their plans (GitHub #13467). This tool builds the
+// two scripts (metaverse/splice-bots/scripts/raider.coax, imperial.coax), then steps two Splice worlds side by
+// side through the same run: one whose foes react by their plans (splice-game.coax, g_foes_step), and one
+// whose content names the scripts for the raiders and the Imperial robots, with the script host run
+// between steps exactly as a page and a room run it: a frame's bytes out, a result's bytes in
+// (metaverse-engine/script/world.coax). It fails when the scripted world's foes are not where the plan
+// world's are, or do not fight, give up and strike as they do.
+//
+// A script's word reaches its foe one step after the plan's own reaction would (the host runs between
+// steps), so a foe may turn hostile one step late; the limits below are that one step and no more.
+// Run at the repository root:
+//   coax/web/tool.sh metaverse/splice-bots/tools/script-play.coax [--keep DIR]
+#import "Basic";
+#load "../../../coax/lib/sys/tool.coax";
+#load "../../../coax/lib/sys/proc.coax";
+#load "../../../coax/lib/sys/fs.coax";
+#load "../splice-game.coax";
+#load "../../../metaverse-engine/script/world.coax";
+
+SPP_DT :: 0.02f32;
+SPP_GAP :: 0.25f32;       // metres a scripted foe may stand from its plan twin
+SPP_LAG :: 2;             // steps a flag may differ in a row
+SppWork :: struct {
+  plan: [1] SpGame; scripted: [1] SpGame;
+  w: [1] ScriptWorld; f: [1] ScriptFrame; r: [1] ScriptRun;
+  frame: [SF_BYTES] u8; result: [SR_BYTES] u8;
+  wasm: [WM_BYTES] u8; json: [SM_TEXT] u8; tables: [CT_BODY] u8; out: [65536] u8; err: [65536] u8;
+}
+SppTally :: struct { steps: int; gap: f32; lag: int; worst_lag: int; calls: int; peak: int; failed: int; hostile_steps: int; }
+
+spp_cat :: (out: [] u8, a: string, b: string) -> string {
+  n := 0;
+  for c: a { if n < out.count { out[n] = c; n += 1; } }
+  for c: b { if n < out.count { out[n] = c; n += 1; } }
+  return cast(string) out[0..<n];
+}
+// Builds a script into dir and loads it into place `at`; its hash into hash. False with words on stderr.
+spp_load :: (k: [] SppWork, dir: string, source: string, name: string, at: int, hash: [] u8) -> bool {
+  argv := [4] string.["coax/web/script.sh", source, "--out", dir];
+  run := proc_run(argv[..], 300000, k[0].out[..], k[0].err[..]);
+  if run.started != 0 || run.status != 0 { tool_err("script-play: the build refused "); tool_errln(source); tool_errln(cast(string) k[0].out[0..<run.out_n]); tool_errln(cast(string) k[0].err[0..<run.err_n]); return false; }
+  a: [1200] u8; b: [1200] u8; stem: [1100] u8;
+  base := spp_cat(stem[..], spp_cat(a[..], dir, "/"), name);
+  n := fs_read(spp_cat(a[..], base, ".wasm"), k[0].wasm[..]); jn := fs_read(spp_cat(b[..], base, ".json"), k[0].json[..]);
+  mf: [1] ScriptManifest;
+  if n < 8 || jn < 1 || !sm_read(cast(string) k[0].json[0..<jn], mf[..]) { tool_errln("script-play: the built module or its manifest did not read"); return false; }
+  nodes: [512] JvNode; d: [1] Jv; fields: [2048] u8;
+  parsed := jv_parse(d[..], cast(string) k[0].json[0..<jn], nodes[..]);
+  raw := jv_raw(d[0], jv_path(d[0], 0, "state.fields")); fn := 0;
+  for c: raw { if fn < fields.count { fields[fn] = c; fn += 1; } }
+  if !parsed || sw_load(k[0].w[..], at, name, k[0].wasm[0..<n], cast(string) fields[0..<fn]) != 0 { tool_errln("script-play: the host refused the built module"); return false; }
+  for c, i: mf[0].hash { hash[i] = c; }
+  return true;
+}
+// One step of both worlds with the player at (x, z); the scripted world's host runs after its step.
+spp_step :: (k: [] SppWork, t: [] SppTally, x: f32, z: f32, strike: bool) -> bool {
+  games := [2] int.[0, 1];
+  for which: games {
+    g := ifx which == 0 then k[0].plan[..] else k[0].scripted[..];
+    g[0].px = x; g[0].pz = z;
+    if strike { hit := g_key(g, 'f', true); up := g_key(g, 'f', false); }
+    g_step(g, SPP_DT);
+  }
+  sps_frame(k[0].scripted[..], k[0].f[..], SPP_DT);
+  fn := sf_write(k[0].f[..], k[0].frame[..]);
+  rn := ifx fn > 0 then sw_tick(k[0].w[..], k[0].frame[0..<fn], k[0].result[..]) else -1;
+  if rn < 0 || !sr_read(k[0].result[0..<rn], k[0].r[..]) { tool_errln("script-play: a frame or a result did not cross as bytes"); return false; }
+  sps_apply(k[0].scripted[..], k[0].r[..]);
+  t[0].steps += 1; t[0].calls += k[0].r[0].calls; t[0].failed += k[0].r[0].failed + k[0].r[0].n_diags;
+  differs := false;
+  for i: 0..<FOES {
+    a := k[0].plan[..]; b := k[0].scripted[..];
+    if a[0].fhp[i] != b[0].fhp[i] { tool_errln("script-play: a foe's health differs"); return false; }
+    if a[0].fhp[i] <= 0 { continue; }
+    gap := dist2(a[0].fx[i], a[0].fz[i], b[0].fx[i], b[0].fz[i]);
+    if gap > t[0].gap { t[0].gap = gap; }
+    if a[0].fhost[i] != b[0].fhost[i] || a[0].fflee[i] != b[0].fflee[i] { differs = true; }
+    if a[0].fhost[i] { t[0].hostile_steps += 1; }
+  }
+  t[0].lag = ifx differs then t[0].lag + 1 else 0;
+  if t[0].lag > t[0].worst_lag { t[0].worst_lag = t[0].lag; }
+  for at: 0..<2 { if k[0].w[0].slots[at].peak > t[0].peak { t[0].peak = k[0].w[0].slots[at].peak; } }
+  return true;
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) { tool_errln("usage: script-play.coax [--keep DIR]"); return 2; }
+  work: [1] SppWork; k := work[..];
+  tmp: [1024] u8; keep := args_value(a[..], "--keep", "");
+  dir := ifx keep.count > 0 then keep else fs_temp("splice-scripts-", tmp[..]);
+  if dir == "" { tool_errln("script-play: no temporary directory"); return 2; }
+  hashes: [2] [64] u8;
+  if !spp_load(k, dir, "metaverse/splice-bots/scripts/raider.coax", "splice-raider", 0, hashes[0][..]) { return 1; }
+  if !spp_load(k, dir, "metaverse/splice-bots/scripts/imperial.coax", "splice-imperial", 1, hashes[1][..]) { return 1; }
+  // The scripted world's tables: the shipped ones with a row for each kind.
+  head := "table scripts id name:text hash:text for:text\n"; rows: [512] u8; n := 0;
+  n = ct_put(rows[..], n, head);
+  n = ct_put(rows[..], n, "1|splice-raider|"); n = ct_put(rows[..], n, cast(string) hashes[0][..]); n = ct_put(rows[..], n, "|kind 1\n");
+  n = ct_put(rows[..], n, "2|splice-imperial|"); n = ct_put(rows[..], n, cast(string) hashes[1][..]); n = ct_put(rows[..], n, "|kind 2\n");
+  at := sc_at(SC_SHIPPED, head);
+  if at < 0 { tool_errln("script-play: the shipped tables have no scripts table"); return 1; }
+  tn := ct_put(k[0].tables[..], 0, SC_SHIPPED[0..<at]); tn = ct_put(k[0].tables[..], tn, cast(string) rows[0..<n]); tn = ct_put(k[0].tables[..], tn, SC_SHIPPED[at + head.count..<SC_SHIPPED.count]);
+  g_stage(k[0].plan[..], 8); g_stage(k[0].scripted[..], 8);
+  if !sc_load(k[0].scripted[0].c[..], cast(string) k[0].tables[0..<tn]) || k[0].scripted[0].c[0].script_n != 2 { tool_errln("script-play: the tables with the script rows did not load"); return 1; }
+  k[0].plan[0].heat = 0; k[0].scripted[0].heat = 0;
+  if sps_script(k[0].scripted[..], 0) != 0 || sps_script(k[0].scripted[..], 5) != 1 || sps_script(k[0].plan[..], 0) != -1 { tool_errln("script-play: the script rows do not pick the foes"); return 1; }
+  tally: [1] SppTally; t := tally[..]; g := k[0].plan[..];
+  // 1. Beside a dancing raider: nobody minds.
+  x := g[0].fx[1] + 1.5; z := g[0].fz[1];
+  for i: 0..<100 { if !spp_step(k, t, x, z, false) { return 1; } }
+  calm := !g[0].fhost[1] && !k[0].scripted[0].fhost[1];
+  // 2. On the floor beside an Imperial robot's patrol: it notices and chases while the player backs away.
+  x = g[0].fx[5] - 3; z = g[0].fz[5] + 1;
+  for i: 0..<45 { if !spp_step(k, t, x, z, false) { return 1; } }            // it arrives and strikes once
+  for i: 0..<130 { if !spp_step(k, t, x - 2.0 - cast(f32) i * 0.07, z, false) { return 1; } }   // the player breaks away and outruns it
+  if args_has(a[..], "--trace") { print("  after the chase: gap % lag %\n", t[0].gap, t[0].worst_lag); }
+  chased := g[0].fhost[5] && k[0].scripted[0].fhost[5];
+  hearts_plan := g[0].hearts; hearts_scripted := k[0].scripted[0].hearts;
+  for i: 0..<150 { if !spp_step(k, t, 9.0, 0.0, false) { return 1; } }   // out of the mine: the robot gives up and goes back to its post
+  // 3. Strike a raider: it fights back, in both worlds.
+  x = g[0].fx[0] + 1.0; z = g[0].fz[0];
+  if !spp_step(k, t, x, z, true) { return 1; }
+  for i: 0..<25 { if !spp_step(k, t, x, z, false) { return 1; } }   // it reels (a foe that is struck staggers), then comes for you
+  fought := g[0].fhost[0] && k[0].scripted[0].fhost[0] && g[0].fhp[0] == k[0].scripted[0].fhp[0];
+  if args_has(a[..], "--trace") { print("  after the fight: gap % lag % host0 % % hp % %\n", t[0].gap, t[0].worst_lag, g[0].fhost[0], k[0].scripted[0].fhost[0], g[0].fhp[0], k[0].scripted[0].fhp[0]); }
+  // 4. Far away: everyone gives up and walks back to the plan.
+  for i: 0..<60 { if !spp_step(k, t, x + 2.5 + cast(f32) i * 0.08, z, false) { return 1; } }   // it chases; the player keeps ahead
+  chasing := g[0].fhost[0] && k[0].scripted[0].fhost[0];
+  for i: 0..<400 { if !spp_step(k, t, 9.0, 0.0, false) { return 1; } }
+  quiet := true;
+  for i: 0..<FOES { if g[0].fhost[i] || k[0].scripted[0].fhost[i] { quiet = false; } }
+  print("script-play: % steps, % script calls, the most one call spent % of % instructions, % failed\n", t[0].steps, t[0].calls, t[0].peak, SH_CALL_FUEL, t[0].failed);
+  print("script-play: scripted foes stood at most % m from their plan twins (limit %); a flag differed for at most % steps in a row (limit %); hostile foe-steps %\n", t[0].gap, SPP_GAP, t[0].worst_lag, SPP_LAG, t[0].hostile_steps);
+  print("script-play: hearts plan % scripted % after the chase; at the end plan % scripted %\n", hearts_plan, hearts_scripted, g[0].hearts, k[0].scripted[0].hearts);
+  struck := hearts_plan < T_HEARTS && hearts_plan > 0;
+  ok := calm && chased && struck && fought && chasing && quiet && t[0].failed == 0 && t[0].gap <= SPP_GAP && t[0].worst_lag <= SPP_LAG && t[0].hostile_steps > 100 && t[0].calls > 4000 && g[0].hearts == k[0].scripted[0].hearts;
+  if !ok {
+    print("script-play: FAILED (calm %, chased %, struck %, fought %, quiet %)\n", calm, chased, struck, fought, quiet);
+    return 1;
+  }
+  print("script-play: the scripted world played as the plan world\n");
+  if keep.count == 0 {
+    names := [4] string.["/splice-raider.wasm", "/splice-raider.json", "/splice-imperial.wasm", "/splice-imperial.json"]; pb: [1200] u8;
+    for name: names { gone := fs_remove(spp_cat(pb[..], dir, name)); }
+    gone := fs_remove(dir);
+  }
+  return 0;
+}

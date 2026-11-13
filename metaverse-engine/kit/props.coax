@@ -3,7 +3,7 @@
 // (metaverse-engine/render/cel-mesh.coax) like the other kits. Each is written from a Frame and a
 // scale in the colours it is handed, standing on the ground and facing the frame's z, its parts
 // numbered from the `obj` it is given (at most obj + 7) so ink separates them. Nothing here draws
-// or decides; it only writes triangles. Splice's pieces (metaverse/splice/pieces.coax) name them.
+// or decides; it only writes triangles. Splice's pieces (metaverse/splice-bots/pieces.coax) name them.
 //   coax/bin/coax test --library metaverse-engine/kit/props.coax
 #load "land.coax";
 

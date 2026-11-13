@@ -97,14 +97,14 @@ ar_lit :: (o: [] Ar, raw: string) {
 ar_realm :: (page: string, r: [] ArRealm) -> bool {
   none: ArRealm; r[0] = none;
   if page == "splice" {
-    r[0].page = "splice"; r[0].title = "Splice"; r[0].authority = "splice"; r[0].app = "splice"; r[0].content = "metaverse/splice/content/splice.content";
-    r[0].code = "metaverse/splice/"; r[0].world = true;
-    ar_root(r, "metaverse/splice/"); ar_root(r, "metaverse-engine/content/"); ar_root(r, "metaverse-engine/editor/edit.coax"); ar_root(r, "metaverse-engine/editor/doc.coax"); ar_root(r, "metaverse-engine/agent/");
-    ar_limit(r, "metaverse/splice/layer.coax", "SL_CAP", "entities in the World of colliders, placed pieces among them");
-    ar_limit(r, "metaverse/splice/layer.coax", "SL_ITEMS", "placed pieces the edit layer holds");
-    ar_limit(r, "metaverse/splice/layer.coax", "SL_STEPS", "steps the edit layer's undo keeps");
-    ar_limit(r, "metaverse/splice/layer.coax", "SL_NEAR", "entities one collision question looks at");
-    ar_limit(r, "metaverse/splice/content.coax", "SC_PIECE_MAX", "kinds of piece in the pieces table");
+    r[0].page = "splice"; r[0].title = "Splice"; r[0].authority = "splice"; r[0].app = "splice"; r[0].content = "metaverse/splice-bots/content/splice.content";
+    r[0].code = "metaverse/splice-bots/"; r[0].world = true;
+    ar_root(r, "metaverse/splice-bots/"); ar_root(r, "metaverse-engine/content/"); ar_root(r, "metaverse-engine/editor/edit.coax"); ar_root(r, "metaverse-engine/editor/doc.coax"); ar_root(r, "metaverse-engine/agent/");
+    ar_limit(r, "metaverse/splice-bots/layer.coax", "SL_CAP", "entities in the World of colliders, placed pieces among them");
+    ar_limit(r, "metaverse/splice-bots/layer.coax", "SL_ITEMS", "placed pieces the edit layer holds");
+    ar_limit(r, "metaverse/splice-bots/layer.coax", "SL_STEPS", "steps the edit layer's undo keeps");
+    ar_limit(r, "metaverse/splice-bots/layer.coax", "SL_NEAR", "entities one collision question looks at");
+    ar_limit(r, "metaverse/splice-bots/content.coax", "SC_PIECE_MAX", "kinds of piece in the pieces table");
     ar_engine_limits(r);
     return true;
   }

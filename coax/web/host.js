@@ -1330,7 +1330,7 @@ async function loadPageFont() {
   const title = new FontFace(titleFamily, await titleResponse.arrayBuffer(), { weight: "100 900" });
   await title.load();document.fonts.add(title);
   // data-ui-title-font-scale (0.4 to 1): a wide title face is drawn that much smaller so its widest
-  // glyphs fit their cells; the realm's layout scales its quads back up (metaverse/splice/splice-game.coax).
+  // glyphs fit their cells; the realm's layout scales its quads back up (metaverse/splice-bots/splice-game.coax).
   const titleScale = Math.min(1, Math.max(0.4, Number(script?.dataset.uiTitleFontScale) || 1));
   pageTitleFont = { family: JSON.stringify(titleFamily), weight: script?.dataset.uiTitleFontWeight || "400", scale: titleScale };
 }

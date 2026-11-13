@@ -9,7 +9,7 @@ The site's index is [llms.txt](https://openagents.com/llms.txt). Look a Coax nam
 - realm: splice
 - page: `/worlds/splice` (module `splice`, source `apps/openagents-web/realms/splice/`)
 - wire: none. The page decides the simulation; there is no room to speak to
-- content: `metaverse/splice/content/splice.content`, revision 2, sha256 `0d003e1c690ff7e7853f74906efff02b5ee3c055226c08cf57f0792f42761830`
+- content: `metaverse/splice-bots/content/splice.content`, revision 2, sha256 `0d003e1c690ff7e7853f74906efff02b5ee3c055226c08cf57f0792f42761830`
 - diagnostics: `engine-diagnostics-v1`, 17 codes, sha256 `55aa5a9b50ff02e1256e64909abf901a29f9c98a1575ae6b669281410b69c31c` (`proto/verse/engine-diagnostics-v1.json`)
 - language: Coax; the compiler's version is in `coax/release-status.json` and what it claims to do in `coax/book/capability-claims.json`
 - reference: the last line of this file is the sha256 of everything above it. Two builds with the same line have the same reference
@@ -67,7 +67,7 @@ A table's first column is `id`. Another column is `NAME:int`, `NAME:text`, `NAME
 
 ## Wire and stored shapes
 
-The rows of `proto/registry.json` whose codec or files are this realm's (under `metaverse/splice/`, `metaverse-engine/content/`, `metaverse-engine/editor/edit.coax`, `metaverse-engine/editor/doc.coax`, `metaverse-engine/agent/`). Each has one codec file; read a shape through it and never write its bytes by hand (proto/README.md).
+The rows of `proto/registry.json` whose codec or files are this realm's (under `metaverse/splice-bots/`, `metaverse-engine/content/`, `metaverse-engine/editor/edit.coax`, `metaverse-engine/editor/doc.coax`, `metaverse-engine/agent/`). Each has one codec file; read a shape through it and never write its bytes by hand (proto/README.md).
 
 | Id | Kind | Owner | Schema |
 | --- | --- | --- | --- |
@@ -90,11 +90,11 @@ Every limit is shown here and none is hidden. Past one, the engine refuses or dr
 
 | Limit | Value | Where |
 | --- | --- | --- |
-| entities in the World of colliders, placed pieces among them | 256 | `SL_CAP` in `metaverse/splice/layer.coax` |
-| placed pieces the edit layer holds | 64 | `SL_ITEMS` in `metaverse/splice/layer.coax` |
-| steps the edit layer's undo keeps | 64 | `SL_STEPS` in `metaverse/splice/layer.coax` |
-| entities one collision question looks at | 64 | `SL_NEAR` in `metaverse/splice/layer.coax` |
-| kinds of piece in the pieces table | 32 | `SC_PIECE_MAX` in `metaverse/splice/content.coax` |
+| entities in the World of colliders, placed pieces among them | 256 | `SL_CAP` in `metaverse/splice-bots/layer.coax` |
+| placed pieces the edit layer holds | 64 | `SL_ITEMS` in `metaverse/splice-bots/layer.coax` |
+| steps the edit layer's undo keeps | 64 | `SL_STEPS` in `metaverse/splice-bots/layer.coax` |
+| entities one collision question looks at | 64 | `SL_NEAR` in `metaverse/splice-bots/layer.coax` |
+| kinds of piece in the pieces table | 32 | `SC_PIECE_MAX` in `metaverse/splice-bots/content.coax` |
 | bytes in a content document | 65536 | `CT_BODY` in `metaverse-engine/content/tables.coax` |
 | tables in a content document | 24 | `CT_TABLES` in `metaverse-engine/content/tables.coax` |
 | columns in a table, its id among them | 8 | `CT_COLS` in `metaverse-engine/content/tables.coax` |
@@ -150,7 +150,7 @@ Every limit is shown here and none is hidden. Past one, the engine refuses or dr
 
 ## The realm's code
 
-The realm's code is the Coax under `metaverse/splice/`: the module `metaverse/splice/splice.coax` and the files it loads, and its GPU code under `metaverse/splice/gpu/`. On the dev server (`coax serve`), saving one of them builds the module again and swaps the engine in every open page: the world, its placed things and its tables stay. A build that fails keeps the last good engine running. `coax/bin/coax check metaverse/splice/splice.coax` prints the compiler's words for it, and `coax/bin/coax test metaverse/splice/splice.coax` runs its checks. A deployed page takes no code: there, every change is a world command above.
+The realm's code is the Coax under `metaverse/splice-bots/`: the module `metaverse/splice-bots/splice-bots.coax` and the files it loads, and its GPU code under `metaverse/splice-bots/gpu/`. On the dev server (`coax serve`), saving one of them builds the module again and swaps the engine in every open page: the world, its placed things and its tables stay. A build that fails keeps the last good engine running. `coax/bin/coax check metaverse/splice-bots/splice-bots.coax` prints the compiler's words for it, and `coax/bin/coax test metaverse/splice-bots/splice-bots.coax` runs its checks. A deployed page takes no code: there, every change is a world command above.
 
 ## Diagnostic codes
 

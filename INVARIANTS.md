@@ -8014,7 +8014,7 @@ Worlds with an ID (#13412; `docs/protocol/world-edit-v1.md`, `world-doc-v1.md`,
   revision it was made from. Any other revision is refused whole, 409
   (`coax/web/api/world-policy.coax` `wr_write`, `#authority`).
 - The server carries a batch out with the world's own Coax, the code its page
-  runs (Splice: `metaverse/splice/world.coax` `spw_batch`). One refused edit
+  runs (Splice: `metaverse/splice-bots/world.coax` `spw_batch`). One refused edit
   refuses the batch, in words. The client is never trusted for placement.
 - The stored document is the one a fresh game builds from its own pieces. A
   document this build would not write is refused (`spw_open`).
@@ -8040,7 +8040,7 @@ Worlds with an ID (#13412; `docs/protocol/world-edit-v1.md`, `world-doc-v1.md`,
   session, and live keeps the revision before it for one release
   (`metaverse-engine/editor/world-live.coax`, `#authority`).
 
-Checks: `coax/bin/coax test metaverse/splice/splice-game.coax --only "Splice's world"`,
+Checks: `coax/bin/coax test metaverse/splice-bots/splice-game.coax --only "Splice's world"`,
 `coax/web/api/tests/world_checks.coax`, `coax mutate` on the two
 `#authority` files, and for an agent's turn the checks of `turn.coax`,
 `metaverse-engine/editor/shell.coax` ("a hosted turn's plan") and
@@ -8146,11 +8146,11 @@ dropped glTF binary, PNG or sound file into an entry of a world's asset pack.
 - **A pack mesh's collider is what you see.** A `pieces` row that draws a pack
   mesh (`kit` is `pack/NAME`) is saved only when the world's pack has that
   mesh and the row's footprint and height are the mesh's bounds at the row's
-  size (`metaverse/splice/world.coax`, `spw_mesh_rows`). The server checks
+  size (`metaverse/splice-bots/world.coax`, `spw_mesh_rows`). The server checks
   this; a page does not, since an edit may reach it before the pack does.
 - **A page takes a new pack whole or keeps the one it has.** The page reads
   the pack with `pack_read` and the importer's catalog reader before it uses a
-  byte (`metaverse/splice/splice.coax`, `splice_imports`).
+  byte (`metaverse/splice-bots/splice-bots.coax`, `splice_imports`).
 - **An import is authoring.** It writes the world's pack and the files kept
   beside it, which are authored state. It reaches neither the character record
   nor the item ledger (`coax/web/tool.sh layer-check`, the `durable` gate).
@@ -8168,7 +8168,7 @@ dropped glTF binary, PNG or sound file into an entry of a world's asset pack.
   (`wr_asset_stored`). An object that is not the file named is deleted and
   never imported. The file's bytes never pass through an API request.
 - **One importer for both servers.** The dev server's tool and the API call
-  `metaverse/splice/world-assets.coax`, so the list, the limits and every
+  `metaverse/splice-bots/world-assets.coax`, so the list, the limits and every
   refusal are the same bytes.
 - **A lane's pack goes with its document.** An import changes dev's pack. A
   publish makes live's pack dev's, in the statement that makes live's
@@ -8180,13 +8180,13 @@ and `coax/bin/coax mutate metaverse-engine/editor/pack-import-policy.coax
 --root-only` (121 mutants, none survive);
 `coax/bin/coax test metaverse-engine/editor/pack-import.coax` ("import: no
 licence, an oversize file, a pack over its budget ..." and the three beside
-it); `coax/bin/coax test metaverse/splice/world-api.coax --only "pack mesh"`;
-`coax/bin/coax test metaverse/splice/world-api.coax --only "a world's server"`;
+it); `coax/bin/coax test metaverse/splice-bots/world-api.coax --only "pack mesh"`;
+`coax/bin/coax test metaverse/splice-bots/world-api.coax --only "a world's server"`;
 `coax/bin/coax mutate coax/web/api/world-policy.coax --library --root-only`
 (301 mutants, none survive); the API's checks named "assets: ..." in
 `coax/web/api/tests/world_checks.coax` (a build host:
 `coax/remote/remote.sh run -- env API_TESTS_ONLY=world_checks.coax coax/web/api/test.sh`);
-`coax/bin/coax test metaverse/splice/splice.coax --only "import pack"`;
+`coax/bin/coax test metaverse/splice-bots/splice-bots.coax --only "import pack"`;
 `coax/bin/coax test metaverse-engine/editor/shell.coax` ("a file the rules
 never take is refused in words before it is sent ...");
 `coax/web/tool.sh metaverse-engine/tools/assets-profile.coax proto/world/assets-v1.json`.
@@ -8345,7 +8345,7 @@ durable context).
 ## A world never waits on a script: a thing whose script said nothing walks its plan
 
 A script adds a reaction to a thing's plan; it does not replace the plan
-(#13467, #13466). In Splice (`metaverse/splice/scripts.coax`,
+(#13467, #13466). In Splice (`metaverse/splice-bots/scripts.coax`,
 `splice-game.coax` `g_foes_step`) a foe a script row drives does what its
 script said for the step being taken. A foe whose script said nothing for
 that step walks and reacts by its plan, as a foe with no script does. That
@@ -8359,14 +8359,14 @@ was undone, and a staggered foe.
 - **Splice's own rules still hold.** A scripted foe's walls stop it, its run
   speed caps it, and a strike lands only when the foe is hostile and within
   reach and the hit's cool-down allows.
-- **The scripts are the plan's reaction.** `metaverse/splice/scripts/`
+- **The scripts are the plan's reaction.** `metaverse/splice-bots/scripts/`
   holds the raider's and the Imperial robot's reaction as realm scripts.
 
-Checks: `coax/web/tool.sh metaverse/splice/tools/script-play.coax` (builds
+Checks: `coax/web/tool.sh metaverse/splice-bots/tools/script-play.coax` (builds
 both scripts and steps a plan world and a scripted world through the same
 run, with the host between steps as a page and a room run it: the foes stand
 within 0.25 m of their plan twins, fight, give up and strike as they do, and
-no call fails); `coax/bin/coax test metaverse/splice/content.coax --library`
+no call fails); `coax/bin/coax test metaverse/splice-bots/content.coax --library`
 ("a script row names a module by its hash and whom it drives ...", "tables
 saved before ... the scripts table came ...").
 

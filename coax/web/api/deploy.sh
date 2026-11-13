@@ -87,8 +87,8 @@ done
 for m in lnaddr-policy:lnaddr-policy wallet-policy:wallet-policy wallet-vault-store:wallet-vault; do
   "$work/source/coax/bin/coax" c "$work/source/pay/${m%%:*}.coax" --run-steps 250000000 --library --header "$stage/gen/${m##*:}.generated.h" > "$stage/gen/${m##*:}.generated.c"
 done
-# A world's own rules are its realm's Coax, the code its page runs (metaverse/splice/, #13412): SOURCE:GENERATED from the root.
-for m in metaverse/splice/world-api:splice-world; do
+# A world's own rules are its realm's Coax, the code its page runs (metaverse/splice-bots/, #13412): SOURCE:GENERATED from the root.
+for m in metaverse/splice-bots/world-api:splice-world; do
   "$work/source/coax/bin/coax" c "$work/source/${m%%:*}.coax" --run-steps 250000000 --library --header "$stage/gen/${m##*:}.generated.h" > "$stage/gen/${m##*:}.generated.c"
 done
 tag="$region-docker.pkg.dev/$project/cloud-run-source-deploy/oa-api:${commit:0:12}-$(date +%Y%m%d-%H%M%S)"

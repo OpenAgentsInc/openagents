@@ -32,7 +32,7 @@ WM_TIMEOUT_MS :: 300000;   // each coax wgsl (wm_module)
 // app's, then the game's scene and client: everglade/scene/gpu/, everglade/client/gpu/) to
 // apps/openagents-web/NAME.wgsl. gpu/nip.coax is the NIP pages' (nip01.wgsl, generated
 // and ignored), which build.sh writes itself.
-WM_GPU :: [4] string.["apps/openagents-web/gpu", "everglade/scene/gpu", "everglade/client/gpu", "metaverse/splice/gpu"];
+WM_GPU :: [4] string.["apps/openagents-web/gpu", "everglade/scene/gpu", "everglade/client/gpu", "metaverse/splice-bots/gpu"];
 WM_APP :: "apps/openagents-web";
 WM_SKIP :: "nip";
 // wm_module's answers.

@@ -109,31 +109,31 @@ tool_main :: () -> int #export_c #effects(all) {
   folders := [9] string.["coax", "coax/web", "coax/bin", "apps", "apps/web", "apps/web/build", "apps/web/build/.drive", "apps/web/build/.live", "metaverse"];
   ok := true;
   for f: folders { ok = ok && fs_mkdir(cr_path(dir, f, p[..])); }
-  ok = ok && fs_mkdir(cr_path(dir, "metaverse/splice", p[..])) && fs_mkdir(cr_path(dir, "metaverse/orbit", p[..]));
-  ok = ok && fs_write(cr_path(dir, "metaverse/splice/splice.coax", p[..]), "#load \"walk.coax\";\n");
-  ok = ok && fs_write(cr_path(dir, "metaverse/splice/walk.coax", p[..]), "speed :: 4;\n");
-  ok = ok && fs_write(cr_path(dir, "metaverse/splice/secret.coax", p[..]), "not the module's\n");
-  ok = ok && fs_write(cr_path(dir, "metaverse/splice/notes.md", p[..]), "notes\n");
+  ok = ok && fs_mkdir(cr_path(dir, "metaverse/splice-bots", p[..])) && fs_mkdir(cr_path(dir, "metaverse/orbit", p[..]));
+  ok = ok && fs_write(cr_path(dir, "metaverse/splice-bots/splice-bots.coax", p[..]), "#load \"walk.coax\";\n");
+  ok = ok && fs_write(cr_path(dir, "metaverse/splice-bots/walk.coax", p[..]), "speed :: 4;\n");
+  ok = ok && fs_write(cr_path(dir, "metaverse/splice-bots/secret.coax", p[..]), "not the module's\n");
+  ok = ok && fs_write(cr_path(dir, "metaverse/splice-bots/notes.md", p[..]), "notes\n");
   ok = ok && fs_write(cr_path(dir, "metaverse/orbit/orbit.coax", p[..]), "another realm's\n");
   // SLOW: a check that takes up to 5 s and passes only if the module's rebuild (its unit's command,
   // below) has begun meanwhile, so a save must start the rebuild before the check holds the server
-  ok = ok && fs_write(cr_path(dir, "coax/bin/coax", p[..]), "#!/bin/sh\nif grep -rq BROKEN metaverse/splice; then echo \"metaverse/splice/walk.coax:1:1: error[E0000]: the word is broken\"; exit 1; fi\nif grep -rq SLOW metaverse/splice; then i=0; while [ $i -lt 50 ] && ! grep -q built apps/web/build/splice.wasm; do sleep 0.1; i=$((i+1)); done; grep -q built apps/web/build/splice.wasm || { echo \"metaverse/splice/walk.coax:1:1: error[E0000]: not rebuilt while checked\"; exit 1; }; fi\nexit 0\n");
+  ok = ok && fs_write(cr_path(dir, "coax/bin/coax", p[..]), "#!/bin/sh\nif grep -rq BROKEN metaverse/splice-bots; then echo \"metaverse/splice-bots/walk.coax:1:1: error[E0000]: the word is broken\"; exit 1; fi\nif grep -rq SLOW metaverse/splice-bots; then i=0; while [ $i -lt 50 ] && ! grep -q built apps/web/build/splice-bots.wasm; do sleep 0.1; i=$((i+1)); done; grep -q built apps/web/build/splice-bots.wasm || { echo \"metaverse/splice-bots/walk.coax:1:1: error[E0000]: not rebuilt while checked\"; exit 1; }; fi\nexit 0\n");
   mode := [3] string.["/bin/chmod", "755", cr_path(dir, "coax/bin/coax", p[..])];
   ok = ok && proc_run(mode[..], 2000, out[..], err[..]).status == 0;
-  link := [4] string.["/bin/ln", "-s", cr_path(dir, "metaverse/orbit/orbit.coax", p[..]), cr_path(dir, "metaverse/splice/link.coax", p2[..])];
+  link := [4] string.["/bin/ln", "-s", cr_path(dir, "metaverse/orbit/orbit.coax", p[..]), cr_path(dir, "metaverse/splice-bots/link.coax", p2[..])];
   ok = ok && proc_run(link[..], 2000, out[..], err[..]).status == 0;
   hash := "0000000000000000000000000000000000000000000000000000000000000000  ";
   list: [2048] u8; n := 0;
-  listed := [6] string.["metaverse/orbit/orbit.coax", "metaverse/splice/link.coax", "metaverse/splice/notes.md", "metaverse/splice/splice.coax", "metaverse/splice/walk.coax", "metaverse/splice/gone.coax"];
+  listed := [6] string.["metaverse/orbit/orbit.coax", "metaverse/splice-bots/link.coax", "metaverse/splice-bots/notes.md", "metaverse/splice-bots/splice-bots.coax", "metaverse/splice-bots/walk.coax", "metaverse/splice-bots/gone.coax"];
   for f: listed { n = ws_put(list[..], n, hash); n = ws_put(list[..], n, f); n = ws_put(list[..], n, "\n"); }
-  ok = ok && fs_write(cr_path(dir, "apps/web/build/.drive/splice.sources", p[..]), cast(string) list[0..<n]);
-  // the module's unit, as wasm.sh writes it: a save of walk.coax rebuilds splice.wasm
-  wasm_b: [1200] u8; wasm := cr_path(dir, "apps/web/build/splice.wasm", wasm_b[..]);
+  ok = ok && fs_write(cr_path(dir, "apps/web/build/.drive/splice-bots.sources", p[..]), cast(string) list[0..<n]);
+  // the module's unit, as wasm.sh writes it: a save of walk.coax rebuilds splice-bots.wasm
+  wasm_b: [1200] u8; wasm := cr_path(dir, "apps/web/build/splice-bots.wasm", wasm_b[..]);
   deps: [8192] u8; d := ws_put(deps[..], 0, "coax-live-1\nkind wasm\nout "); d = ws_put(deps[..], d, wasm);
   d = ws_put(deps[..], d, "\ncmd echo built > '"); d = ws_put(deps[..], d, wasm); d = ws_put(deps[..], d, "'\n");
-  srcs := [2] string.["metaverse/splice/splice.coax", "metaverse/splice/walk.coax"];
+  srcs := [2] string.["metaverse/splice-bots/splice-bots.coax", "metaverse/splice-bots/walk.coax"];
   for f: srcs { d = ws_put(deps[..], d, "src "); d = ws_put(deps[..], d, cr_path(dir, f, p2[..])); d = ws_put(deps[..], d, "\n"); }
-  ok = ok && fs_write(wasm, "old\n") && fs_write(cr_path(dir, "apps/web/build/.live/splice.deps", p[..]), cast(string) deps[0..<d]);
+  ok = ok && fs_write(wasm, "old\n") && fs_write(cr_path(dir, "apps/web/build/.live/splice-bots.deps", p[..]), cast(string) deps[0..<d]);
   if !ok { tool_errln("code-route-check: the fixture could not be made"); return 2; }
   ab: [1200] u8; hb: [1200] u8;
   app := cr_path(dir, "apps/web", ab[..]); host_dir := cr_path(dir, "coax/web", hb[..]);
@@ -145,38 +145,38 @@ tool_main :: () -> int #export_c #effects(all) {
   lh: [64] u8; ln := ws_put(lh[..], 0, "localhost:"); ln = ws_digits(lh[..], ln, port); local := cast(string) lh[0..<ln];
   h := cr_serve(serve, app, host_dir, address, "--build", "");
   if h < 0 || !cr_up(port, address, w) { tool_errln("code-route-check: the dev server did not start"); return 2; }
-  g := cr_ask(port, address, w, RC_LIST, "splice", "", "");
-  f0 := rc_file_at("splice", g.a.rest, 0); f1 := rc_file_at("splice", g.a.rest, f0.next);
-  failed += cr_check(g.status == 200 && g.a.ok && g.a.what == RC_FILES_ARE && g.a.n == 2 && f0.path == "metaverse/splice/splice.coax" && f1.path == "metaverse/splice/walk.coax" && f1.bytes == 12,
+  g := cr_ask(port, address, w, RC_LIST, "splice-bots", "", "");
+  f0 := rc_file_at("splice-bots", g.a.rest, 0); f1 := rc_file_at("splice-bots", g.a.rest, f0.next);
+  failed += cr_check(g.status == 200 && g.a.ok && g.a.what == RC_FILES_ARE && g.a.n == 2 && f0.path == "metaverse/splice-bots/splice-bots.coax" && f1.path == "metaverse/splice-bots/walk.coax" && f1.bytes == 12,
     "the list is the module's own sources under the realm's folder: no other realm's file, no link, no file that is not Coax or WGSL, none that is gone");
   g = cr_ask(port, address, w, RC_LIST, "orbit", "", "");
   failed += cr_check(g.status == 200 && g.a.ok && g.a.n == 0, "a page with no source list has no files");
-  g = cr_ask(port, local, w, RC_READ, "splice", "metaverse/splice/walk.coax", "");
+  g = cr_ask(port, local, w, RC_READ, "splice-bots", "metaverse/splice-bots/walk.coax", "");
   failed += cr_check(g.status == 200 && g.a.ok && g.a.what == RC_FILE && g.a.rest == "speed :: 4;\n", "a listed file is read byte for byte (and localhost is this computer too)");
-  g = cr_ask(port, address, w, RC_SAVE, "splice", "metaverse/splice/walk.coax", "speed :: 5;\n// faster\n");
-  failed += cr_check(g.status == 200 && g.a.ok && g.a.what == RC_SAVED && g.a.name == "metaverse/splice/walk.coax" && cr_file(dir, "metaverse/splice/walk.coax", w) == "speed :: 5;\n// faster\n",
+  g = cr_ask(port, address, w, RC_SAVE, "splice-bots", "metaverse/splice-bots/walk.coax", "speed :: 5;\n// faster\n");
+  failed += cr_check(g.status == 200 && g.a.ok && g.a.what == RC_SAVED && g.a.name == "metaverse/splice-bots/walk.coax" && cr_file(dir, "metaverse/splice-bots/walk.coax", w) == "speed :: 5;\n// faster\n",
     "a save writes exactly the bytes sent and answers saved when the compiler finds nothing");
-  g = cr_ask(port, address, w, RC_SAVE, "splice", "metaverse/splice/walk.coax", "speed :: BROKEN;\n");
-  failed += cr_check(g.status == 200 && g.a.ok && g.a.what == RC_ERRORS_ARE && g.a.rest == "metaverse/splice/walk.coax:1:1: error[E0000]: the word is broken" && cr_file(dir, "metaverse/splice/walk.coax", w) == "speed :: BROKEN;\n",
+  g = cr_ask(port, address, w, RC_SAVE, "splice-bots", "metaverse/splice-bots/walk.coax", "speed :: BROKEN;\n");
+  failed += cr_check(g.status == 200 && g.a.ok && g.a.what == RC_ERRORS_ARE && g.a.rest == "metaverse/splice-bots/walk.coax:1:1: error[E0000]: the word is broken" && cr_file(dir, "metaverse/splice-bots/walk.coax", w) == "speed :: BROKEN;\n",
     "a save the compiler refuses is written and answers with the compiler's words");
-  g = cr_ask(port, address, w, RC_SAVE, "splice", "metaverse/splice/walk.coax", "");
-  failed += cr_check(g.status == 200 && g.a.what == RC_SAVED && cr_file(dir, "metaverse/splice/walk.coax", w) == "", "an empty file is a file");
+  g = cr_ask(port, address, w, RC_SAVE, "splice-bots", "metaverse/splice-bots/walk.coax", "");
+  failed += cr_check(g.status == 200 && g.a.what == RC_SAVED && cr_file(dir, "metaverse/splice-bots/walk.coax", w) == "", "an empty file is a file");
   proc_sleep(300);   // the rebuilds of the saves above end
   ok = fs_write(wasm, "old\n");
-  g = cr_ask(port, address, w, RC_SAVE, "splice", "metaverse/splice/walk.coax", "speed :: SLOW;\n");
+  g = cr_ask(port, address, w, RC_SAVE, "splice-bots", "metaverse/splice-bots/walk.coax", "speed :: SLOW;\n");
   failed += cr_check(ok && g.status == 200 && g.a.what == RC_SAVED, "a save starts the module's rebuild before a slow compiler's check of it ends");
   // what is not the realm's own listed source
-  g = cr_ask(port, address, w, RC_SAVE, "splice", "metaverse/splice/secret.coax", "written\n");
-  failed += cr_check(g.status == 404 && g.a.ok && g.a.what == RC_REFUSED && cr_file(dir, "metaverse/splice/secret.coax", w) == "not the module's\n", "a file the module was not built from is refused and untouched");
-  g = cr_ask(port, address, w, RC_READ, "splice", "metaverse/splice/secret.coax", "");
+  g = cr_ask(port, address, w, RC_SAVE, "splice-bots", "metaverse/splice-bots/secret.coax", "written\n");
+  failed += cr_check(g.status == 404 && g.a.ok && g.a.what == RC_REFUSED && cr_file(dir, "metaverse/splice-bots/secret.coax", w) == "not the module's\n", "a file the module was not built from is refused and untouched");
+  g = cr_ask(port, address, w, RC_READ, "splice-bots", "metaverse/splice-bots/secret.coax", "");
   failed += cr_check(g.status == 404 && g.a.what == RC_REFUSED, "and is not read");
-  g = cr_ask(port, address, w, RC_SAVE, "splice", "metaverse/splice/link.coax", "written\n");
+  g = cr_ask(port, address, w, RC_SAVE, "splice-bots", "metaverse/splice-bots/link.coax", "written\n");
   failed += cr_check(g.status == 404 && g.a.what == RC_REFUSED && cr_file(dir, "metaverse/orbit/orbit.coax", w) == "another realm's\n", "a link out of the realm is refused, and what it leads to is untouched");
-  g = cr_ask(port, address, w, RC_READ, "splice", "metaverse/splice/link.coax", "");
+  g = cr_ask(port, address, w, RC_READ, "splice-bots", "metaverse/splice-bots/link.coax", "");
   failed += cr_check(g.status == 404 && g.a.what == RC_REFUSED, "and is not read");
   // paths the codec will not write as an ask, sent as bytes
-  raw := [5] string.["realm.code.v1 read splice metaverse/splice/../orbit/orbit.coax\n", "realm.code.v1 read splice metaverse/orbit/orbit.coax\n", "realm.code.v1 read splice /etc/hosts\n",
-    "realm.code.v1 save splice metaverse/splice/../orbit/orbit.coax 2\nx\n", "realm.code.v1 read orbit metaverse/orbit/orbit.coax\n"];
+  raw := [5] string.["realm.code.v1 read splice-bots metaverse/splice-bots/../orbit/orbit.coax\n", "realm.code.v1 read splice-bots metaverse/orbit/orbit.coax\n", "realm.code.v1 read splice-bots /etc/hosts\n",
+    "realm.code.v1 save splice-bots metaverse/splice-bots/../orbit/orbit.coax 2\nx\n", "realm.code.v1 read orbit metaverse/orbit/orbit.coax\n"];
   what := [4] string.["a path that climbs out of the realm is refused", "another realm's path is refused", "a path from the root of the disk is refused", "a save that climbs out of the realm is refused"];
   for k: 0..<4 {
     got := cr_send(port, "POST", address, "same-origin", raw[k], w[0].got[..]);
@@ -185,7 +185,7 @@ tool_main :: () -> int #export_c #effects(all) {
   got := cr_send(port, "POST", address, "same-origin", raw[4], w[0].got[..]);
   failed += cr_check(cr_status(got) == 404 && cr_file(dir, "metaverse/orbit/orbit.coax", w) == "another realm's\n", "another realm's file is not this page's even by its own page's name, with no source list for it");
   // who may ask
-  list_ask := "realm.code.v1 list splice\n";
+  list_ask := "realm.code.v1 list splice-bots\n";
   failed += cr_check(cr_status(cr_send(port, "POST", address, "", list_ask, w[0].got[..])) == 403, "a request that does not say it is same-origin is refused");
   failed += cr_check(cr_status(cr_send(port, "POST", address, "cross-site", list_ask, w[0].got[..])) == 403 && cr_status(cr_send(port, "POST", address, "same-site", list_ask, w[0].got[..])) == 403, "another site's request is refused");
   failed += cr_check(cr_status(cr_send(port, "POST", "evil.example", "same-origin", list_ask, w[0].got[..])) == 403 && cr_status(cr_send(port, "POST", "127.0.0.1.evil.example", "same-origin", list_ask, w[0].got[..])) == 403, "a Host that is not this computer is refused");
@@ -193,16 +193,16 @@ tool_main :: () -> int #export_c #effects(all) {
   cr_stop(h);
 
   // ---- --static (a deployed page's server) has no such route, and the realm origin neither
-  ok = fs_write(cr_path(dir, "metaverse/splice/walk.coax", p[..]), "speed :: 4;\n");
+  ok = fs_write(cr_path(dir, "metaverse/splice-bots/walk.coax", p[..]), "speed :: 4;\n");
   port = cr_port(); if port < 0 { return 2; }
   an = ws_put(ad[..], 0, "127.0.0.1:"); an = ws_digits(ad[..], an, port); address = cast(string) ad[0..<an];
   ln = ws_put(lh[..], 0, "localhost:"); ln = ws_digits(lh[..], ln, port); local = cast(string) lh[0..<ln];
   h = cr_serve(serve, app, host_dir, address, "--static", "");
   if h < 0 || !cr_up(port, address, w) { tool_errln("code-route-check: the static server did not start"); return 2; }
-  save := rc_ask(RC_SAVE, "splice", "metaverse/splice/walk.coax", "written\n", w[0].ask[..]);
+  save := rc_ask(RC_SAVE, "splice-bots", "metaverse/splice-bots/walk.coax", "written\n", w[0].ask[..]);
   s1 := cr_status(cr_send(port, "POST", address, "same-origin", save, w[0].got[..]));
   s2 := cr_status(cr_send(port, "POST", address, "same-origin", list_ask, w[0].got[..]));
-  failed += cr_check(s1 == 405 && s2 == 405 && cr_file(dir, "metaverse/splice/walk.coax", w) == "speed :: 4;\n", "--static has no code route: a save and a list are refused and nothing is written");
+  failed += cr_check(s1 == 405 && s2 == 405 && cr_file(dir, "metaverse/splice-bots/walk.coax", w) == "speed :: 4;\n", "--static has no code route: a save and a list are refused and nothing is written");
   cr_stop(h);
   port = cr_port(); if port < 0 { return 2; }
   an = ws_put(ad[..], 0, "127.0.0.1:"); an = ws_digits(ad[..], an, port); address = cast(string) ad[0..<an];
@@ -210,7 +210,7 @@ tool_main :: () -> int #export_c #effects(all) {
   h = cr_serve(serve, app, host_dir, address, "--build", local);
   if h < 0 || !cr_up(port, address, w) { tool_errln("code-route-check: the server with a realm origin did not start"); return 2; }
   s1 = cr_status(cr_send(port, "POST", local, "same-origin", save, w[0].got[..]));
-  failed += cr_check(s1 == 404 && cr_file(dir, "metaverse/splice/walk.coax", w) == "speed :: 4;\n", "the realm origin has no code route");
+  failed += cr_check(s1 == 404 && cr_file(dir, "metaverse/splice-bots/walk.coax", w) == "speed :: 4;\n", "the realm origin has no code route");
   cr_stop(h);
 
   rm := [3] string.["/bin/rm", "-rf", dir];

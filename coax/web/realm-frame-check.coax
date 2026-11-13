@@ -7,13 +7,13 @@
 // What must hold:
 //   - the realm origin answers a realm's page and what it loads, with the headers that sandbox it,
 //     and none of the site's pages, the API or the live channel; the site's own answers are unchanged;
-//   - the framed realm starts, draws and answers "ready splice 1 1": cross-origin isolated, and with
+//   - the framed realm starts, draws and answers "ready splice-bots 1 1": cross-origin isolated, and with
 //     no origin of its own;
 //   - it answers a typed ask (the driver's `why caps`) with the asker's number, and refuses a text
 //     that is not a message;
 //   - the site's page cannot read the frame, stays cross-origin isolated itself, and realm-frame.js
 //     refuses to make a frame on the site's own origin.
-//   coax/web/serve.sh builds coax/web/build/serve; the page's module is apps/openagents-web/build/splice.wasm
+//   coax/web/serve.sh builds coax/web/build/serve; the page's module is apps/openagents-web/build/splice-bots.wasm
 //   coax/web/tool.sh realm-frame-check [SERVE_BINARY] [APP_DIR]
 #import "Basic";
 #load "resident.coax";
@@ -94,7 +94,7 @@ tool_main :: () -> int #export_c #effects(all) {
   page := rc_get(port, realm_host, "/worlds/splice", b);
   failed += rc_check(ws_starts(page, "HTTP/1.1 200 ") && rc_has(page, "\r\nContent-Security-Policy: sandbox allow-scripts allow-pointer-lock allow-orientation-lock\r\n") && !rc_has(page, "allow-same-origin"), "the realm origin's page is sandboxed by its own answer, with no origin");
   failed += rc_check(rc_has(page, "\r\nCross-Origin-Resource-Policy: cross-origin\r\n") && rc_has(page, "\r\nAccess-Control-Allow-Origin: *\r\n") && rc_has(page, "\r\nCross-Origin-Embedder-Policy: require-corp\r\n"), "it may be framed by the site's isolated page and loads its own files without credentials");
-  failed += rc_check(ws_starts(rc_get(port, realm_host, "/coaxial/host.js", b), "HTTP/1.1 200 ") && ws_starts(rc_get(port, realm_host, "/build/splice.wasm", b), "HTTP/1.1 200 "), "the realm origin serves what a page loads");
+  failed += rc_check(ws_starts(rc_get(port, realm_host, "/coaxial/host.js", b), "HTTP/1.1 200 ") && ws_starts(rc_get(port, realm_host, "/build/splice-bots.wasm", b), "HTTP/1.1 200 "), "the realm origin serves what a page loads");
   no := [6] string.["/", "/chat", "/login", "/api/playtest/realms/listed", "/coaxial/live", "/llms.txt"];
   for u: no { failed += rc_check(ws_starts(rc_get(port, realm_host, u, b), "HTTP/1.1 404 "), u); }
   mine := rc_get(port, site_host, "/worlds/splice", b);
@@ -123,7 +123,7 @@ tool_main :: () -> int #export_c #effects(all) {
     until = proc_now_ms() + 90000;
     while ready.count == 0 && proc_now_ms() < until { got := rc_ask(c[..], rf_hello(hello[..]), b, 1000); tries += 1; if got.count > 0 { ready = cast(string) rb[0..<ws_put(rb[..], 0, got)]; } }
     r := rf_read(ready);
-    failed += rc_check(r.kind == RF_READY && r.text == "splice", "the framed realm starts and answers hello with ready");
+    failed += rc_check(r.kind == RF_READY && r.text == "splice-bots", "the framed realm starts and answers hello with ready");
     if r.kind != RF_READY { print("        it answered \"%\" after % hellos; the frame's document: %\n", ready, tries, rc_eval(c[..], "(() => { const f = document.querySelector('iframe[data-realm-frame]'); return f ? f.src : 'no frame'; })()", b)); }
     failed += rc_check(r.kind == RF_READY && r.isolated, "the frame is cross-origin isolated");
     failed += rc_check(r.kind == RF_READY && r.opaque, "the frame has no origin: the sandbox holds");

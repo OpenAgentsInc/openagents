@@ -4,7 +4,7 @@
 // other tab inside a second, while that tab's run goes on as it was.
 //   coax/web/tool.sh world-tabs ORIGIN [--path /worlds/splice] [--world splice] [--stage 5] [--limit-ms 1000]
 // ORIGIN is the dev server's (http://127.0.0.1:PORT). The page must export coaxial_field_probe
-// with the world's facts (metaverse/splice/splice.coax splice_world_fact): 0 the revision it
+// with the world's facts (metaverse/splice-bots/splice-bots.coax splice_world_fact): 0 the revision it
 // stands at, 1 outside edits carried out, 2 placed things, 3 things arriving, and from 100 the
 // run's own facts. What it checks, a line each, then holds or fails:
 //   1. both tabs open the world's dev lane (?edit) and stand at its revision;

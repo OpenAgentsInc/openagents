@@ -22,7 +22,7 @@ API_COAX="npc-personas anime-director-policy seat-policy progress-policy item-po
   auth-device-policy passkey-policy pay/wallet-policy:wallet-policy service-policy service-wire realm-wire auth-push seat-wire jobs-wire email-wire packs-wire world-policy"
 API_COAX_WRAPPED="mesh-gemini auth-seal pay/lnaddr-policy:lnaddr-policy agent-wire agent-attest auth-recover-crypto
   auth-device-crypto passkey-verify pay/wallet-vault-store:wallet-vault ticket-sign
-  metaverse/splice/world-api:splice-world script-store"
+  metaverse/splice-bots/world-api:splice-world script-store"
 api_sources() {
   local a="$1" work="$2" coax="$3" root u src name
   root="$(cd "$a/../../.." && pwd)"

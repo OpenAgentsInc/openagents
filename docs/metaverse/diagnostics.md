@@ -56,7 +56,7 @@ never changed or used again. The one codec is
 ## Answering `why` in a realm
 
 A realm walks the chain for one id from its own state. Splice is the first
-(`metaverse/splice/why.coax`): `you`, `piece-N`, `foe-N`, `rubble` and
+(`metaverse/splice-bots/why.coax`): `you`, `piece-N`, `foe-N`, `rubble` and
 `boss-wall`.
 
 1. `why_begin(w, id)`.
