@@ -1,4 +1,4 @@
-#module "aethyr.anim.cut.lines";
+#module "metaverse.engine.anim.cut.lines";
 // Shared .cut/cut.v1 grammar, moved without arithmetic or format changes from
 // apps/openagents-cli/labs-rules.coax. Both Labs and Animation Lab use it.
 #load "../../coax/lib/sys/tool.coax";

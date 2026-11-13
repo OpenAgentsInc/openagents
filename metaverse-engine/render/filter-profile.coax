@@ -1,6 +1,6 @@
 // Opt-in, device-probed UNORM8 filter models. Analytic remains the default.
 // These identities do not claim universal Vulkan/WebGPU filtering precision.
-#module "aethyr.render.filter.profile";
+#module "metaverse.engine.render.filter.profile";
 #authority;
 RQFilterProfile :: enum u8 {analytic;metal_unorm8;nvidia_unorm8_integer;invalid;}
 RQStorageFormat :: enum u8 {unclassified;unorm8;half;srgb8;float32;depth32;}

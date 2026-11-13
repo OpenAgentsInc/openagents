@@ -16,7 +16,7 @@
 //
 // The world: metres, +y up; the road runs along -z from the camera of shot 1 near the origin.
 //   coax/bin/coax test --library metaverse/painted/village-road.coax
-#module "verse.painted.village_road";
+#module "metaverse.painted.village_road";
 #load "../../metaverse-engine/arch/village.coax";
 #load "../../metaverse-engine/arch/plaza.coax";
 #load "../../metaverse-engine/arch/flora.coax";

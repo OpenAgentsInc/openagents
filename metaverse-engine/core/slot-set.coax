@@ -8,7 +8,7 @@
 // and putting it refused. Storage of zeros is an empty set.
 //   coax/bin/coax test metaverse-engine/core/slot-set.coax
 //   coax/bin/coax mutate metaverse-engine/core/slot-set.coax
-#module "aethyr.slotset";
+#module "metaverse.engine.slotset";
 #authority;
 
 // book:begin slot-set

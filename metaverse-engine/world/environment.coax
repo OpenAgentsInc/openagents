@@ -38,7 +38,7 @@
 // failure's reason and place, and the active set keeps every value and its generation.
 //   coax/bin/coax test metaverse-engine/world/environment.coax
 //   coax/bin/coax mutate metaverse-engine/world/environment.coax --root-only
-#module "aethyr.world.environment";
+#module "metaverse.engine.world.environment";
 #authority;
 #load "../render/light.coax" as light;
 

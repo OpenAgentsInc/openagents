@@ -2,7 +2,7 @@
 // the existing host.js bus's authored threshold/knee/ratio/attack/release.
 // Web Audio's compressor implementation is platform-defined; its parameter
 // semantics, stereo linking and the native arithmetic are explicit here.
-#module "aethyr.audio.host.dynamics";
+#module "metaverse.engine.audio.host.dynamics";
 #load "host-convolution.coax";
 #authority;
 AudioDynamics :: struct {reduction:f64;delay:[576]f64;head:int;}

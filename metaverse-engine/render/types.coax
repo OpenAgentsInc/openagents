@@ -1,7 +1,7 @@
 // Shared renderer data only. Counts are items, addresses/capacities are
 // bytes, and vertex_stride counts f32 values in one HUD vertex.
 // These records have no C exports and no host resource handles.
-#module "aethyr.render.types";
+#module "metaverse.engine.render.types";
 
 FrameCounts :: struct {
   width: int; height: int;

@@ -16,7 +16,7 @@
 //   metaverse-engine/audio/build-sfx.coax.
 //
 // Nothing here draws or plays: the page asks and does both.
-#module "aethyr.buildwork";
+#module "metaverse.engine.buildwork";
 #load "build-site.coax" as bs;
 
 // What a pile looks like.

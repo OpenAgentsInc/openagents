@@ -5,7 +5,7 @@
 // pile with n left: the top of the pile goes first. A page bakes each item once and shows the
 // first bw_shown of them; the carried item is item 0 laid in the hands (bwm_carried).
 //   coax/bin/coax test metaverse-engine/world/build-work-mesh.coax --library
-#module "aethyr.buildworkmesh";
+#module "metaverse.engine.buildworkmesh";
 #load "build-site.coax" as bs;
 #load "build-site-mesh.coax" as bsm;
 #load "build-work.coax" as bw;

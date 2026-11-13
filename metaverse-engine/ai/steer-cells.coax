@@ -12,7 +12,7 @@
 // at a time; a creature keeps a NavAgent and a NavGuide.
 //   coax/bin/coax test metaverse-engine/ai/steer-cells.coax --library
 //   coax/bin/coax mutate metaverse-engine/ai/steer-cells.coax --library --root-only
-#module "aethyr.ai.steer_cells";
+#module "metaverse.engine.ai.steer_cells";
 #authority;
 #load "steer.coax";
 #load "../world/nav/cells.coax";

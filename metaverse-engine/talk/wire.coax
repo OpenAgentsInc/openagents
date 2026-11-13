@@ -8,7 +8,7 @@
 // myrealm.coax).
 //   coax/bin/coax test metaverse-engine/talk/wire.coax --library
 //   coax/web/tool.sh metaverse-engine/talk/wire-goldens.coax proto/verse/npc-ask-v1.json
-#module "aethyr.talk.wire";
+#module "metaverse.engine.talk.wire";
 #authority;
 #load "character.coax";   // and through it coax/lib/nostr/json.coax (json_utf8, json_unescape, json_is, json_raw, json_write_string)
 #load "../../coax/lib/json/json.coax";

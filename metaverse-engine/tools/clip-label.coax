@@ -1,5 +1,5 @@
 // Metadata for this chapter's staged fixed-step captures. Never labels one recorded.
-#module "aethyr.tools.cliplabel";
+#module "metaverse.engine.tools.cliplabel";
 #authority;
 #load "../../coax/lib/json/json.coax";
 ClipLabel :: struct {game:string;commit:string;stage:string;seed:int;width:int;height:int;fps:int;}

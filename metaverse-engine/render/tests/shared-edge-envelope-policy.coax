@@ -1,6 +1,6 @@
 // Declared geometry scope only. This does not assert a hardware error bound
 // or legal alternate vertex/depth result. Coordinates are in 1/512 pixels.
-#module "aethyr.render.tests.shared.edge.envelope";
+#module "metaverse.engine.render.tests.shared.edge.envelope";
 #load "tooling-policy.coax";
 #authority;
 #test "shared edge envelope has exact finite endpoint, axis and diagonal boundaries" {#assert se_point(0,0,1024,0,512,1,1) && !se_point(0,0,1024,0,512,2,1);#assert se_point(0,0,0,1024,1,512,1) && !se_point(0,0,0,1024,2,512,1);#assert se_point(0,0,1024,1024,512,514,1) && !se_point(0,0,1024,1024,512,515,1);#assert se_point(0,0,1024,1024,-1,-1,1) && !se_point(0,0,1024,1024,-2,-2,1);#assert se_point(0,0,1024,1024,1025,1025,1) && !se_point(0,0,1024,1024,1026,1026,1);}

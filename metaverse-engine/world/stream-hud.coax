@@ -1,7 +1,7 @@
 // Persistent, texture-free corridor HUD. Reuses the Metaverse Engine's existing Filament
 // text, frames and progress segmentation; it reads a pose, owns no clock or
 // cell reference, and writes one bounded display-only vertex span.
-#module "aethyr.world.streamhud";
+#module "metaverse.engine.world.streamhud";
 #authority;
 #load "../ui/draw.coax";
 SH_VERTICES :: 2048;

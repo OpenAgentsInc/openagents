@@ -13,7 +13,7 @@
 //   coax/bin/coax test metaverse-engine/move/flight.coax
 //   coax/bin/coax mutate metaverse-engine/move/flight.coax
 
-#module "aethyr.flight";
+#module "metaverse.engine.flight";
 #authority;
 
 FLIGHT_LIMIT :: 1000.0;

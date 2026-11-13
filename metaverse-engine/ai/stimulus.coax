@@ -10,7 +10,7 @@
 //   coax/bin/coax test metaverse-engine/ai/stimulus.coax --library
 //   coax/bin/coax mutate metaverse-engine/ai/stimulus.coax --library
 
-#module "aethyr.ai.stimulus";
+#module "metaverse.engine.ai.stimulus";
 #authority;
 #load "../physics/query.coax";
 #load "../tests/stimulus-oracle.coax" #test;   // the checks' brute-force line of sight

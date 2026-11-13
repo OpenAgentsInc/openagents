@@ -20,7 +20,7 @@
 // off is forge_switch, the server's switch.
 //   coax/bin/coax test metaverse-engine/editor/doc.coax --library
 
-#module "aethyr.forge.doc";
+#module "metaverse.engine.editor.doc";
 #load "edit.coax";
 #load "../../coax/lib/json/json.coax";
 

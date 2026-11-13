@@ -1,6 +1,6 @@
 // Character Create's Nature glade, composed against Quaternius Preview_1.jpg.
 // Coax owns the composition, terrain, palette and deterministic planting.
-#module "verse.characterglade";
+#module "metaverse.characterglade";
 
 #test "glade preserves a level character clearing and winds the path through the hills" {
   #assert cg_height(0,0)==0 && cg_height(1,0)==0;

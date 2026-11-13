@@ -1,5 +1,5 @@
 // Explicit integer-field rows. Codecs serialize only this admitted delta mask.
-#module "aethyr.net.row";
+#module "metaverse.engine.net.row";
 #authority;
 NET_ROW_FIELDS :: 23;
 NetRowDelta :: struct {ok:bool;mask:int;}

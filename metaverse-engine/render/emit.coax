@@ -1,7 +1,7 @@
 // Build admission for checked shader reflection, and the numerical comparison
 // shared by the CPU/WebGPU/Vulkan checks. Platform tools observe bytes/types;
 // this module decides whether they match the declared rendering contract.
-#module "aethyr.render.emit";
+#module "metaverse.engine.render.emit";
 #load "bindings.coax" as rb;
 #authority;
 

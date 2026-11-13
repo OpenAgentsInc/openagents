@@ -1,4 +1,4 @@
-#module "aethyr.state.codec";
+#module "metaverse.engine.state.codec";
 // FST1 is the fact payload, not a replacement for AESV or ACK1 envelopes.
 #load "lifecycle.coax";
 #load "../core/assets.coax" as assets;

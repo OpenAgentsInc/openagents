@@ -1,6 +1,6 @@
 // Realm selection over the caller's state. No host, room, or game is owned here.
 // A field is transmitted only through a realm's explicit recipient whitelist.
-#module "aethyr.net.realm";
+#module "metaverse.engine.net.realm";
 #authority;
 #load "profile.coax";
 

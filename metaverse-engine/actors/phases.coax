@@ -1,5 +1,5 @@
 // Actor task admission and offline scheduling, #12992.
-#module "aethyr.actors.phases";
+#module "metaverse.engine.actors.phases";
 #authority;
 ACTOR_TASKS :: 16;
 ACTOR_PHASES :: 6;

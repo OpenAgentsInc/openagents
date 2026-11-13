@@ -27,7 +27,7 @@
 //   coax/bin/coax test metaverse-engine/render/bake.coax
 //   coax/bin/coax mutate metaverse-engine/render/bake.coax --root-only
 
-#module "aethyr.render.bake";
+#module "metaverse.engine.render.bake";
 #authority;
 #load "../world/terrain-tile.coax";
 #load "terrain-shade.coax";

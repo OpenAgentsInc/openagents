@@ -1,6 +1,6 @@
 // One concrete socket/engine owns one instance. Effects supply monotonic SDK
 // timestamps; this module owns all matching, deadlines and bounded history.
-#module "aethyr.net.latency.client";
+#module "metaverse.engine.net.latency.client";
 #authority;
 #load "latency.coax";
 #load "latency-clock.coax";

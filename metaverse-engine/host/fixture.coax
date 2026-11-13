@@ -1,7 +1,7 @@
 // The host-contract probe is a realm, not a substitute host. Its scalar C
 // face goes through the actual browser/Vulkan/Metal adapter. It retains the
 // values and bytes that adapter delivered; the checker reads these records.
-#module "aethyr.host.fixture";
+#module "metaverse.engine.host.fixture";
 #load "transport.coax";
 #load "routes.coax";
 #load "local-socket-route.coax";

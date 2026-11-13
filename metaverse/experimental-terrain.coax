@@ -1,6 +1,6 @@
 // Experimental meadow's building sites. Ground and placed geometry share this
 // height function, leaving the original Character Create glade untouched.
-#module "verse.experimentalterrain";
+#module "metaverse.experimentalterrain";
 #load "character-glade.coax" as glade;
 #load "experimental-ground.coax" as ground;   // the GPU passes' copy of the sites and exp_height_gpu (#13132)
 #load "experimental-dungeon.coax" as dungeon;

@@ -18,7 +18,7 @@
 //
 //   coax/bin/coax test metaverse-engine/cam/filters.coax --library
 
-#module "aethyr.cam.filters";
+#module "metaverse.engine.cam.filters";
 #load "../physics/query-scene.coax";
 #load "../core/entity.coax" as ents;
 #load "attention.coax" as attn;

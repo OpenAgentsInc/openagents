@@ -1,6 +1,6 @@
 // Clock intervals for optional latency observations. These describe a declared
 // constant-offset/drift model, never a guarantee about a remote machine clock.
-#module "aethyr.net.latency.clock";
+#module "metaverse.engine.net.latency.clock";
 #authority;
 LC_MAX :: 9007199254740991;
 LC_FRESH_US :: 5000000;

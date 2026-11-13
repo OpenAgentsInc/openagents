@@ -23,7 +23,7 @@
 //   coax/bin/coax test metaverse-engine/host/pack-cells.coax --library
 //   coax/bin/coax mutate metaverse-engine/host/pack-cells.coax --root-only
 //   coax/web/tool.sh metaverse-engine/tools/pack-profile.coax proto/verse/asset-pack-v2.json   (the profile's cell lines)
-#module "aethyr.host.pack_cells";
+#module "metaverse.engine.host.pack_cells";
 #authority;
 
 PACK_CELL_RANGES :: 8;        // byte ranges a cell's line holds at most

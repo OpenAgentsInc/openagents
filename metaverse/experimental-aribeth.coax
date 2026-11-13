@@ -1,6 +1,6 @@
 // Optional private NWN baked frames. Catalog metadata owns the native clip
 // schedule; this module owns bounded playback, independent of skin palettes.
-#module "verse.experimentalaribeth";
+#module "metaverse.experimentalaribeth";
 
 #test "aribeth schedule boundaries and cycle wrap" {
  s:[1]Aribeth;arb_catalog(s[..],"C glade/aribeth0 10 3 248 20 0 0\nC glade/aribeth1 13 3 248 28 0 0\nA aribeth pause1 0 1 2000\nA aribeth bow 1 1 1000\n");

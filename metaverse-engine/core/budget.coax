@@ -10,7 +10,7 @@
 //   coax/bin/coax test metaverse-engine/core/budget.coax --library
 //   coax/bin/coax mutate metaverse-engine/core/budget.coax
 
-#module "aethyr.budget";
+#module "metaverse.engine.budget";
 
 // book:begin declare
 BUDGET_STEPS :: 0;      // fixed simulation steps one frame runs

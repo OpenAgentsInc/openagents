@@ -1,5 +1,5 @@
 // Conversation state is owned text and typed request identities. It has no game-state pointer.
-#module "aethyr.talk.ask";
+#module "metaverse.engine.talk.ask";
 #authority;
 #load "character.coax";
 

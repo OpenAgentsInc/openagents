@@ -13,7 +13,7 @@
 // this module only names them and writes the readout. It reads the page's admitted set and index
 // and resolves the camera again only while a view is on, so a page without ?light pays nothing.
 //   coax/bin/coax test metaverse-engine/render/environment-debug.coax
-#module "aethyr.render.environment_debug";
+#module "metaverse.engine.render.environment_debug";
 #load "environment-frame.coax" as envf;
 #load "filmic.coax" as film;
 

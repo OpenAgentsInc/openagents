@@ -5,7 +5,7 @@
 // table and its exp_height; its checks hold this table equal to exp_site at every site and
 // exp_height_gpu equal to exp_height round every site. Its exp_distance and exp_level are these.
 //   coax/bin/coax test metaverse/experimental-terrain.coax --library
-#module "verse.experimentalground";
+#module "metaverse.experimentalground";
 #load "character-glade.coax" as glade;
 
 EXP_GROUND_SITES :: 32;

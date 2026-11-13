@@ -16,7 +16,7 @@
 // Colours are parameters (roof, plaster, stone, cloth); the materials are metaverse-engine/arch/palette.coax's.
 // The library and every parameter: metaverse-engine/arch/README.md.
 //   coax/bin/coax test --library metaverse-engine/arch/village.coax
-#module "aethyr.arch.village";
+#module "metaverse.engine.arch.village";
 #load "solid.coax";
 
 

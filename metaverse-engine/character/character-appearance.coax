@@ -1,5 +1,5 @@
 // Shared, versioned Quaternius player appearance. No UI, clocks, geometry or renderer owners.
-#module "aethyr.characterappearance";
+#module "metaverse.engine.characterappearance";
 #load "charactercreator-parts.coax";
 CharacterAppearance :: struct {
  configured:bool;female:bool;worn:[40]bool;piece:int=18;outfit:int=2;hood:bool;hair:int;beard:bool;

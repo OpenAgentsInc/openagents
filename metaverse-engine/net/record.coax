@@ -1,5 +1,5 @@
 // Bounded whole-number records for realm codecs. The caller chooses the message and field policy.
-#module "aethyr.net.record";
+#module "metaverse.engine.net.record";
 #authority;
 NET_RECORD_FIELDS :: 32;NET_RECORD_BYTES :: 2048;NET_RECORD_MAX :: 2000000000;
 NetRecord :: struct {ok:bool;head:u8;n:int;v:[NET_RECORD_FIELDS]int;}

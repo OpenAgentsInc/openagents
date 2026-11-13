@@ -1,6 +1,6 @@
 // CPU encoding of an SDK-read, already-sized UNORM display. The same shared
 // HTTP image descriptor owns dimensions/quality; no renderer or gameplay here.
-#module "aethyr.host.frame.jpeg";
+#module "metaverse.engine.host.frame.jpeg";
 #load "http-image.coax";
 #load "../../coax/lib/image/jpeg_enc.coax";
 #load "../../coax/lib/text/base64.coax";

@@ -1,7 +1,7 @@
 // Native build-time transport for the existing Coax layer decoder and the
 // canonical independently rasterized Sans mips. This does not assert byte
 // identity with another platform's image resize/font rasterization effects.
-#module "aethyr.render.native.texture.profile";
+#module "metaverse.engine.render.native.texture.profile";
 #load "asset-profile.coax";
 #load "sans-profile.coax";
 #authority;

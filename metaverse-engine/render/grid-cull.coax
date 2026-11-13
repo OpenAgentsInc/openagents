@@ -8,7 +8,7 @@
 // metres from it. The picture is the same as drawing every cell.
 //   coax/bin/coax test metaverse-engine/render/grid-cull.coax
 
-#module "aethyr.render.gridcull";
+#module "metaverse.engine.render.gridcull";
 
 GRID_CULL_RISE :: 60.0;   // a view's rise unless it says: metres above or below the eye a piece may stand and still be kept
 

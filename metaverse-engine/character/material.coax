@@ -8,7 +8,7 @@
 // Shading: metaverse-engine/render/character-material.coax. Data maps (normal, ORM) live in the pack's
 // linear data layers (entry kind 6, catalog rows "D <index> <name> <licence>"), never sRGB-decoded.
 //   coax/bin/coax test metaverse-engine/character/material.coax
-#module "aethyr.character.material";
+#module "metaverse.engine.character.material";
 
 CM_KIND_SKIN :: 0;
 CM_KIND_CLOTH :: 1;

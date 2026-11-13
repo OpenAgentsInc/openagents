@@ -304,7 +304,7 @@ An `#export` list makes a module's API explicit. The engine HUD does this:
 
 ```jai
 // metaverse/hud.coax
-#module "verse.hud";
+#module "metaverse.hud";
 #export HudRect, HudPoint, metaverse_hud_slot;
 #export metaverse_hud_frame_point, metaverse_hud_frame_arm, metaverse_hud_tone, metaverse_hud_cut, metaverse_hud_outline, metaverse_hud_arm_down;
 #load "hud/types.coax";

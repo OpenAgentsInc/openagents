@@ -1,5 +1,5 @@
 // Command ordering and earned simulation time over caller-owned state (#12845).
-#module "aethyr.net.command";
+#module "metaverse.engine.net.command";
 #authority;
 #load "../session/lifecycle.coax";
 

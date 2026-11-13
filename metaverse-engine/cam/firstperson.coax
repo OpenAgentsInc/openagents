@@ -7,7 +7,7 @@
 // reticle's (metaverse-engine/cam/reticle.coax), so what aims off the camera's centre ray still aims there.
 // Experimental: boom.coax (charactercreator.coax cc_view) and scene_reserved, everglade/zone.coax zone_scene.
 //   coax/bin/coax test metaverse-engine/cam/firstperson.coax --library
-#module "aethyr.cam.firstperson";
+#module "metaverse.engine.cam.firstperson";
 
 FP_FAR :: 1.5;      // m of zoom where first person begins
 FP_NEAR :: 0.85;    // and where it is whole

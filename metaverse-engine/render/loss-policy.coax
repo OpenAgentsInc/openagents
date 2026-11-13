@@ -1,6 +1,6 @@
 // Wall-clock recovery admission, independent of the simulation clock.
 // The ordinary host's existing 10 s / three losses per minute contract.
-#module "aethyr.render.loss";
+#module "metaverse.engine.render.loss";
 #authority;
 GL_PENDING :: 1; GL_RECOVERED :: 2; GL_STALE :: 3; GL_STOP :: 4; GL_INVALID :: 5;
 GL_NONE :: 0; GL_RATE :: 1; GL_DEADLINE :: 2; GL_REPLACEMENT :: 3; GL_SERIAL :: 4;

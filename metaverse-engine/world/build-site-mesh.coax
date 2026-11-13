@@ -7,7 +7,7 @@
 // pack.coax) gives each material its texture and colour. The uv is metres along a long thing
 // (a pole, a withy, a reed course: u along it, v 0 to 1 round or across it), metres across a
 // surface (a wall face, a slab), or 0 to 1 over a leaf card.
-#module "aethyr.buildsitemesh";
+#module "metaverse.engine.buildsitemesh";
 #load "build-site.coax" as bs;
 #load "building.coax" as building;
 

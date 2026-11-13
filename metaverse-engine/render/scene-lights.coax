@@ -42,7 +42,7 @@
 // the key's direction, her feet and heading, the hair's share), so the Valley page's own uniform
 // block is already this block's first half.
 //   coax/bin/coax test metaverse-engine/render/scene-lights.coax
-#module "aethyr.render.scenelights";
+#module "metaverse.engine.render.scenelights";
 
 SCL_FLOATS :: 272;     // 68 vec4f rows (host.js sizes the uniform buffer from coaxial_character_v1's caller)
 SCL_SIZE :: 0;

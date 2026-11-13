@@ -1,6 +1,6 @@
 // Exact piecewise-planar rays through the Metaverse Engine's heightfield, with a declared cell budget.
 // This is a ray helper, not sphere overlap or swept-capsule collision.
-#module "aethyr.ground.query";
+#module "metaverse.engine.ground.query";
 #load "ground.coax";
 #load "../core/space.coax";
 #load "../tests/ground-ray-oracle.coax" #test;

@@ -23,7 +23,7 @@
 // the committed header is written again.
 //   coax/bin/coax test metaverse-engine/render/frame-plan.coax
 //   coax/bin/coax mutate metaverse-engine/render/frame-plan.coax --root-only
-#module "aethyr.render.frame_plan";
+#module "metaverse.engine.render.frame_plan";
 #authority;
 #load "passes.coax";
 #load "tests/frame-plan-checks.coax" #test;

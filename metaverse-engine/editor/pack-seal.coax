@@ -21,7 +21,7 @@
 //   coax/bin/coax test metaverse-engine/editor/pack-seal.coax --library
 //   coax/web/tool.sh metaverse-engine/tools/pack-seal.coax IN.pack OUT.pack
 
-#module "aethyr.forge.pack_seal";
+#module "metaverse.engine.editor.pack_seal";
 #load "pack.coax";
 
 PACK_SEAL_DIGITS :: 10;   // the working form's "bytes" line: ten digits, zero padded

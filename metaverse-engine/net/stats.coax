@@ -16,7 +16,7 @@
 //   DROP 3/S EVERY 1          rows that waited for want of bytes in that second (never queued), and
 //                             one tick in how many your rows go (more while your link lags)
 //   coax/bin/coax test metaverse-engine/net/stats.coax
-#module "aethyr.net.stats";
+#module "metaverse.engine.net.stats";
 
 NET_STATS_LINES :: 11; NET_STATS_LINE :: 40;
 NetStats :: struct {

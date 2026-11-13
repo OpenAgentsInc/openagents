@@ -27,7 +27,7 @@
 //   coax/bin/coax test metaverse-engine/editor/pack.coax --library
 //   coax/web/tool.sh metaverse-engine/tools/pack-check.coax PACK      (the committed packs, read and written again)
 
-#module "aethyr.forge.pack";
+#module "metaverse.engine.editor.pack";
 #authority;
 #load "../core/assets.coax";
 #load "../host/pack-table.coax";   // the layout and the table read every host uses (the engine's)

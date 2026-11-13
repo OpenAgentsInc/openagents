@@ -8,7 +8,7 @@
 // A turn of `yaw` takes a part's own +x to the world's (cos yaw, -sin yaw) and its +z to
 // (sin yaw, cos yaw): the same turn Everglade's figures use.
 //   coax/bin/coax test --library metaverse-engine/arch/place.coax
-#module "aethyr.arch.place";
+#module "metaverse.engine.arch.place";
 #load "mesh.coax";
 
 ARCH_RECORD_FLOATS :: 16;

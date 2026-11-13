@@ -1,7 +1,7 @@
 // Shared media text and rectangle policy. Platforms retain the input text,
 // decode/upload images and execute the admitted rectangle; Coax owns the
 // first112-line window, record selection, numeric decoding and aspect fit.
-#module "aethyr.render.media.commands";
+#module "metaverse.engine.render.media.commands";
 #import "Basic";
 #load "media-limits.coax";
 #authority;

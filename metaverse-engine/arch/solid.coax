@@ -11,7 +11,7 @@
 //   arch_roof_plane one slope of a roof: tiles on top, boards under, a fascia round its edge
 //   arch_wall_*     a face, a beam or a point on an upright wall, by how far along and how high
 //   coax/bin/coax test --library metaverse-engine/arch/solid.coax
-#module "aethyr.arch.solid";
+#module "metaverse.engine.arch.solid";
 #load "mesh.coax";
 #load "palette.coax";
 

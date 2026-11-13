@@ -14,7 +14,7 @@
 //
 //   coax/bin/coax test metaverse-engine/cam/attention.coax --library
 
-#module "aethyr.cam.attention";
+#module "metaverse.engine.cam.attention";
 #load "../core/space.coax";
 #load "../physics/query.coax";
 #load "../physics/query-scene.coax" as scene;

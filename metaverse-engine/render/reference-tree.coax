@@ -2,7 +2,7 @@
 // bytes and output words are live disjoint views; input stays immutable during
 // both passes. Validation precedes every output write. Work counts byte visits,
 // at most three per admitted byte, not interpreter or compiler work units.
-#module "aethyr.render.reference.tree";
+#module "metaverse.engine.render.reference.tree";
 #authority;
 RENDER_TREE_BYTES :: 2097152;
 RenderTreeStatus :: enum u8 {ok;malformed;overflow;unsupported;capacity;budget;}

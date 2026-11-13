@@ -1,7 +1,7 @@
 // ACES working primaries and the five-parameter film response used by the source reference.
 // UE5.8 default profile: slope .88, toe .55, shoulder .26, black clip 0, white clip .04.
 // Input/output are linear Rec709. Display encoding belongs to the caller.
-#module "aethyr.render.filmic";
+#module "metaverse.engine.render.filmic";
 // Self-contained (no shader-library load), so any realm can use it beside aethyr.render.noise.
 FilmRGB :: struct {r:f32;g:f32;b:f32;}
 #test "Source film profile preserves middle grey and black before display encoding" {c:=film_rec709(film_rgb(0.18,0.18,0.18));#assert abs(c.r-0.18)<0.00001 && abs(c.g-0.18)<0.00001 && abs(c.b-0.18)<0.00001;c=film_rec709(film_rgb(0,0,0));#assert c.r<0.000001 && c.g<0.000001 && c.b<0.000001;}

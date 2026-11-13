@@ -18,7 +18,7 @@
 // segment against its own world (arrow_segment, then arrow_hit / arrow_stick), and drawing the
 // pool's arrows (metaverse-engine/fx/puff.coax fxp_arrow_at).
 //   coax/bin/coax test metaverse-engine/action/bow.coax
-#module "aethyr.action.bow";
+#module "metaverse.engine.action.bow";
 
 BOW_G :: 9.81;              // m/s², down
 BOW_FULL :: 0.8;            // seconds to a full draw

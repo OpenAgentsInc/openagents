@@ -15,7 +15,7 @@
 //
 //   coax/bin/coax test metaverse-engine/action/react.coax --library
 
-#module "aethyr.action.react";
+#module "metaverse.engine.action.react";
 #load "../core/space.coax";
 
 REACT_STOPS :: 16;            // hit stops in force at once

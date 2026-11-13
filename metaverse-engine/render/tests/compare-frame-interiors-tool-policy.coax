@@ -1,6 +1,6 @@
 // This is artifact authentication of one independently qualified finite
 // geometry envelope. Caller-supplied matching hashes are not signatures.
-#module "aethyr.render.tool.interiors.profile";
+#module "metaverse.engine.render.tool.interiors.profile";
 #load "compare-frame-interiors-admission.coax";
 #authority;
 #load "compare-frame-interiors-tool-checks.coax";

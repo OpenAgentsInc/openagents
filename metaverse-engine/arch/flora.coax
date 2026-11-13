@@ -15,7 +15,7 @@
 // shading darkens toward the underside; its v is a number of its tuft's own (0 to 1), which
 // breaks the bands of light into leaf shapes, or -1 for a mass's dark heart.
 //   coax/bin/coax test --library metaverse-engine/arch/flora.coax
-#module "aethyr.arch.flora";
+#module "metaverse.engine.arch.flora";
 #load "solid.coax";
 
 ARCH_OAK :: 0;       // broad and round

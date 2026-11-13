@@ -8,7 +8,7 @@
 //
 //   coax/bin/coax test metaverse-engine/cam/parity.coax --library
 
-#module "aethyr.cam.parity";
+#module "metaverse.engine.cam.parity";
 #load "../core/loop.coax" as clock;
 #load "attention.coax" as attn;
 #load "modes.coax";

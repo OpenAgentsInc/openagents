@@ -1,6 +1,6 @@
 // Experimental village colliders, derived from the pinned Quaternius Godot
 // collision meshes and supplied to the same walker as Everglade's buildings.
-#module "verse.experimentalvillage";
+#module "metaverse.experimentalvillage";
 #load "experimental-terrain.coax" as terrain;
 #load "experimental-castle.coax" as castle;
 #load "experimental-dungeon.coax" as dungeon;

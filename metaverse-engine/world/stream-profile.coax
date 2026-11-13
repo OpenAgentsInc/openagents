@@ -1,6 +1,6 @@
 // Named initial walking profile. It describes interest and capacity, not
 // ready/spawn authority. Only the cell/owner completion gates admit content.
-#module "aethyr.world.streamprofile";
+#module "metaverse.engine.world.streamprofile";
 #authority;
 #load "cells.coax" as cells;
 

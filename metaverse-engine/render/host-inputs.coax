@@ -1,6 +1,6 @@
 // Physical buffer observations are shared by the browser, native and reference
 // adapters. The caller admits the source span before constructing words.
-#module "aethyr.render.host.inputs";
+#module "metaverse.engine.render.host.inputs";
 #load "host-bindings.coax";
 #load "geometry.coax";
 #load "resources.coax";

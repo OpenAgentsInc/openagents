@@ -19,7 +19,7 @@
 //   coax/bin/coax test metaverse-engine/core/entity.coax --library
 //   coax/bin/coax mutate metaverse-engine/core/entity.coax
 
-#module "aethyr.entity";
+#module "metaverse.engine.entity";
 #authority;
 #load "ids.coax";
 #load "../../coax/lib/handle.coax";

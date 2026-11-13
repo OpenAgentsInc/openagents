@@ -3,7 +3,7 @@
 //   coax/web/tool.sh metaverse/tools/assets/character_glade_pack.coax --check-meadow glade.pack metaverse/experimental-meadow-baked.coax
 // (metaverse/tools/assets/meadow_pack.coax). Don't edit it: bake the ground again and write it again.
 // Each row is x, z and the packed y, in millimetres. experimental-terrain.coax holds exp_height to them.
-#module "verse.experimentalmeadowbaked";
+#module "metaverse.experimentalmeadowbaked";
 EXP_MEADOW_BAKED_DROP_MM :: 10;   // the ground sits this far under exp_height
 EXP_MEADOW_BAKED_N :: 601;
 EXP_MEADOW_BAKED :: [1803] int.[

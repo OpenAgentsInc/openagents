@@ -1,6 +1,6 @@
 // Logical shader resources and each pipeline's physical reflection. A module may
 // reuse a WGSL address between different pipelines; an active pipeline may not.
-#module "aethyr.render.bindings";
+#module "metaverse.engine.render.bindings";
 #authority;
 
 RENDER_RESOURCES :: 48;

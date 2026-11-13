@@ -22,7 +22,7 @@
 // first, the oldest first, for their own allowance, so no row waits past max_age plus the rows
 // ahead of it over that allowance (the fairness check below).
 //   coax/bin/coax test metaverse-engine/net/budget.coax
-#module "aethyr.net.budget";
+#module "metaverse.engine.net.budget";
 #authority;
 
 NET_LINK_FLOOR :: 2000;       // bytes a second at least while congested

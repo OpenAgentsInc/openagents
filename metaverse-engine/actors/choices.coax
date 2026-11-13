@@ -1,4 +1,4 @@
-#module "aethyr.actors.choices";
+#module "metaverse.engine.actors.choices";
 // Typed, bounded local brains. No body movement or unrestricted world reads.
 #load "profile.coax";
 #load "../core/rand.coax" as random;

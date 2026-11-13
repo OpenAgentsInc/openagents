@@ -1,6 +1,6 @@
 // Complete raw-image comparison policy. Finite values, every RGBA channel,
 // unchanged 0.002 relative/floor rule and no exclusion mask.
-#module "aethyr.render.tool.compare.frames";
+#module "metaverse.engine.render.tool.compare.frames";
 #authority;
 #load "compare-frames-checks.coax";
 CFStatus :: enum u8 {ok;different;bad_extent;bad_format;bad_length;bad_sequence;}

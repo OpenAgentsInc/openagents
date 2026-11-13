@@ -2,7 +2,7 @@
 // Runtime realm names come from the pages' data-realm/world IDs; aliases
 // are their actual data-app renderer names, not guessed display names.
 // A fork selects its renderer's profile, rather than inventing a slug rule.
-#module "aethyr.collision.profiles";
+#module "metaverse.engine.collision.profiles";
 #load "collide.coax" as capsule;
 #authority;
 

@@ -1,5 +1,5 @@
 // Actual fixed-step behavior observations. All schedules and inputs are Coax.
-#module "aethyr.actors.behavior_trial";
+#module "metaverse.engine.actors.behavior_trial";
 #import "Basic";
 #load "../behavior.coax";
 #load "definitions.coax";   // this program runs the fixture as code

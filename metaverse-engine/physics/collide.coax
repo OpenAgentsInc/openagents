@@ -1,7 +1,7 @@
 // Kinematic walking-capsule resolution, chapter 8. The caller supplies valid,
 // immutable collider views. Malformed complete entries and partial tails keep
 // chapter 7's skip rule; capacity, profile, movement and publication are checked.
-#module "aethyr.collide";
+#module "metaverse.engine.collide";
 #authority;
 #load "query.coax";
 #load "../tests/collide-oracle.coax" #test;

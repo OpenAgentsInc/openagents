@@ -2,7 +2,7 @@
 // owns no clock or time accumulator. The legacy terrain/throw APIs remain
 // trusted variable-time adapters. This mode projects onto sampled ground;
 // it does not implement the walking capsule's jump/gravity dynamics.
-#module "aethyr.follower";
+#module "metaverse.engine.follower";
 #authority;
 #load "../core/loop.coax" as tick;
 #load "walk-frame.coax" as trace;

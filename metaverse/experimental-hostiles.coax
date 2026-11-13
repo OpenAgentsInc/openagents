@@ -1,5 +1,5 @@
 // Experimental village hostiles: Everglade watch-style pursuit and SRD melee.
-#module "verse.experimentalhostiles";
+#module "metaverse.experimentalhostiles";
 #load "experimental-village.coax" as village;
 #load "experimental-terrain.coax" as terrain;
 #load "experimental-dungeon.coax" as dungeon;

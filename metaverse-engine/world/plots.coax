@@ -19,7 +19,7 @@
 //   edge, from its north-west corner, clockwise seen from above.
 //   coax/bin/coax test metaverse-engine/world/plots.coax --library
 
-#module "aethyr.world.plots";
+#module "metaverse.engine.world.plots";
 
 PL_MAX :: 64;        // the most plots one grid holds (8 by 8)
 PL_NAME :: 24;       // the longest owner name kept, in bytes

@@ -1,4 +1,4 @@
-#module "aethyr.audio.host.level";
+#module "metaverse.engine.audio.host.level";
 #authority;
 audio_min :: (a:f64,b:f64)->f64 #effects(all) {if a<b {return a;}return b;}
 audio_max :: (a:f64,b:f64)->f64 #effects(all) {if a>b {return a;}return b;}

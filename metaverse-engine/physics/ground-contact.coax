@@ -1,6 +1,6 @@
 // Sphere overlap and sweep against the exact drawn heightfield and its constant-edge
 // continuation. Candidate cells are admitted as a bounded query before geometry is read.
-#module "aethyr.ground.contact";
+#module "metaverse.engine.ground.contact";
 #load "ground-query.coax";
 #load "../tests/ground-contact-oracle.coax" #test;
 #authority;

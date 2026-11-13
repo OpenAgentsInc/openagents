@@ -3,7 +3,7 @@
 // Invalid descriptors, coordinates or sampled corners return an empty (ok false) answer.
 // The descriptor retains metaverse-engine/world/terrain.coax's field order and defaults for its C boundary.
 
-#module "aethyr.ground";
+#module "metaverse.engine.ground";
 #load "../../coax/lib/quantity.coax" as units;
 #load "../tests/ground-oracle.coax" #test;
 #authority;

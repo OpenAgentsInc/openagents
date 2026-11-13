@@ -2,7 +2,7 @@
 // workbench, a door or a chest. A spot has a stable id the game keys its action on, the place to
 // stand, the way you face there and how near counts. The game's interact key asks interact_pick
 // which spot you stand at and opens that thing's action; the engine only answers which one.
-#module "aethyr.interact";
+#module "metaverse.engine.interact";
 
 InteractSpot :: struct {id:string;x:f32;z:f32;face:f32;reach:f32=0.8;}
 

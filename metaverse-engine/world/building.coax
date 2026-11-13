@@ -5,7 +5,7 @@
 // The one-room house of 2 m kit modules (the Medieval Village MegaKit's walls, as the Everglade
 // Experimental neighbourhood and the Everglade player home use them) is a 4 m square with walls
 // 0.4 m thick on the 2 m grid lines, a doorway in its left front module and a roof slab at 3.1 m.
-#module "aethyr.building";
+#module "metaverse.engine.building";
 
 // x, z the building's centre in the world; turn the quarters it is turned, its front (+z) facing
 // +z, +x, -z or -x for 0, 1, 2 or 3.

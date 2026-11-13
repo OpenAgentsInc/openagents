@@ -1,6 +1,6 @@
 // Accepted model decisions at the simulation boundary. This versioned
 // component trace keeps concrete local ticket identities in each envelope.
-#module "aethyr.decision_trace";
+#module "metaverse.engine.decision_trace";
 #load "replay.coax";
 #load "replay-wire.coax";
 #load "../../psionic/lib/game/decision.coax";

@@ -18,7 +18,7 @@
 //   coax/bin/coax test metaverse-engine/session/compat.coax --library
 //   coax/bin/coax mutate metaverse-engine/session/compat.coax --library --root-only
 
-#module "aethyr.session.compat";
+#module "metaverse.engine.session.compat";
 #authority;
 
 // book:begin compat-profile

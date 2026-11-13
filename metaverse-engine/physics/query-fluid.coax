@@ -1,6 +1,6 @@
 // Bounded gameplay fluid/trigger sampling; appearance and solidity are
 // independent metadata. No wave model or renderer material IDs enter here.
-#module "aethyr.query.fluid";
+#module "metaverse.engine.query.fluid";
 #authority;
 #load "query-scene.coax";
 #load "ground.coax" as terrain;

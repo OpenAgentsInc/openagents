@@ -1,7 +1,7 @@
 // Shared frame output, independent of Player state and C exports. A target
 // is the actual post-step controller pose, before drawing interpolation or
 // a realm's floor-to-world adapter. Followers consume these in order.
-#module "aethyr.walk.frame";
+#module "metaverse.engine.walk.frame";
 #load "../core/space.coax" as space;
 
 // Metres/second; distinct from a spatial point. This legacy scalar carrier

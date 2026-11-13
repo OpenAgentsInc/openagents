@@ -6,7 +6,7 @@
 // It only says where the strokes go: a realm draws each ReticleStroke with its own line primitive
 // (Experimental: charactercreator.coax lit, through everglade/zone-combat.coax xc_crosshair).
 //   coax/bin/coax test metaverse-engine/cam/reticle.coax --library
-#module "aethyr.cam.reticle";
+#module "metaverse.engine.cam.reticle";
 
 RETICLE_MAX :: 5;
 // A stroke from (ax, ay) to (bx, by), screen pixels, `width` wide, `alpha` visible, coloured r g b.

@@ -1,7 +1,7 @@
 // Canonical synthesized-bank PCM16 WAV decode and48kHz resampling. Optional
 // compressed media remains an SDK codec effect. A shared64-tap Blackman sinc
 // makes the canonical bank independent of platform decoder/resampler choices.
-#module "aethyr.audio.host.wav";
+#module "metaverse.engine.audio.host.wav";
 #authority;
 APW_PI :: 3.14159265358979323846;
 APW_WORDS :: 20480; // 320 rational phases,64 taps (22050/48000 =147/320)

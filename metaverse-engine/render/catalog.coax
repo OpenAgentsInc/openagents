@@ -1,7 +1,7 @@
 // The closed renderer catalog: all sixteen manifest realms, the direct Garden,
 // and the retained (retired public route) galaxy fixture. Binding addresses are
 // per shader module; native slots and active resource sets are per pipeline.
-#module "aethyr.render.catalog";
+#module "metaverse.engine.render.catalog";
 #load "bindings.coax";
 #load "passes.coax";
 #authority;

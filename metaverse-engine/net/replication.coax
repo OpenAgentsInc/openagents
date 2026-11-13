@@ -1,6 +1,6 @@
 // Replication lifecycle over one caller-owned entity/recipient pair (#12845).
 // Codecs and priority queues consume these decisions; they never infer receipt from a send.
-#module "aethyr.net.replication";
+#module "metaverse.engine.net.replication";
 #authority;
 #load "command.coax";
 

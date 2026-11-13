@@ -1,5 +1,5 @@
 // Engine-owned playable adoption. One existing State Lab clock pays every body.
-#module "aethyr.actors.lab";
+#module "metaverse.engine.actors.lab";
 #run_steps 50000000;
 #load "runtime.coax";
 #load "content.coax";

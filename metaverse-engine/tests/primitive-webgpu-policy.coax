@@ -1,6 +1,6 @@
 // Its checks, with the checks files it loads: coax/bin/coax test --library metaverse-engine/tests/primitive-webgpu-policy.coax
 // Diagnostic acceptance only; no observation changes a renderer profile.
-#module "aethyr.test.primitive.webgpu";
+#module "metaverse.engine.test.primitive.webgpu";
 #authority;
 #load "../../coax/lib/json/json.coax";
 #load "../../coax/lib/nostr/json-f64.coax";

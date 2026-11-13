@@ -10,7 +10,7 @@
 //   coax/bin/coax test metaverse-engine/action/attach-overlap.coax --library
 //   coax/bin/coax mutate metaverse-engine/action/attach-overlap.coax --library
 
-#module "aethyr.action.attachoverlap";
+#module "metaverse.engine.action.attachoverlap";
 #authority;
 #load "../core/space.coax";
 #load "../physics/stand.coax";   // stand_lo and stand_hi

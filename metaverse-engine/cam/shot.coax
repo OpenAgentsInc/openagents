@@ -11,7 +11,7 @@
 //   coax/bin/coax test metaverse-engine/cam/shot.coax --library
 //   coax/bin/coax mutate metaverse-engine/cam/shot.coax
 
-#module "aethyr.shot";
+#module "metaverse.engine.shot";
 #load "../core/space.coax";
 
 // book:begin shot

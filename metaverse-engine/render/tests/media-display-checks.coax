@@ -1,4 +1,4 @@
 // Check the production media shader through a standalone Coax suite.
-#module "aethyr.render.media.display.checks";
+#module "metaverse.engine.render.media.display.checks";
 #load "../media.coax";
 main :: () {}

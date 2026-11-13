@@ -18,7 +18,7 @@
 // A slot's next entity spawns only once its earlier one's despawn has gone (net_replica_ready):
 // both ride the one reliable channel, so the client hears the despawn first.
 //   coax/bin/coax test metaverse-engine/net/spawn.coax
-#module "aethyr.net.spawn";
+#module "metaverse.engine.net.spawn";
 #authority;
 #load "replication.coax";
 

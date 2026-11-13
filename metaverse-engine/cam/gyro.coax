@@ -20,7 +20,7 @@
 // - The settings are one record, "g1 m=MODE s=STEP i=0|1", which the host keeps for the player and
 //   gives back in the page's facts as gyro=. A record that doesn't read whole gives the defaults.
 //   coax/bin/coax test metaverse-engine/cam/gyro.coax --library
-#module "aethyr.cam.gyro";
+#module "metaverse.engine.cam.gyro";
 
 GYRO_OFF :: 0; GYRO_AIM :: 1; GYRO_ALWAYS :: 2;
 GYRO_SENS :: [7] f32.[0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 3.0];

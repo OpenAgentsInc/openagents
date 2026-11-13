@@ -1,5 +1,5 @@
 // Host-conformance oracle input, isolated from the playable world. Not a clock.
-#module "aethyr.actors.probe";
+#module "metaverse.engine.actors.probe";
 #load "perception.coax";
 #load "probe-data.coax";
 #load "../core/assets.coax" as assets;

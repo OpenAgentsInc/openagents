@@ -1,6 +1,6 @@
 // Portable native mixer carrier. Platform code owns immutable decoded 48kHz
 // PCM allocations and calls this interpreter under one audio-engine lock.
-#module "aethyr.audio.host.pcm";
+#module "metaverse.engine.audio.host.pcm";
 #load "host-voice.coax";
 #load "host-convolution.coax";
 #load "host-dynamics.coax";

@@ -10,7 +10,7 @@
 //   coax/bin/coax test metaverse-engine/render/light.coax
 //   coax/bin/coax mutate metaverse-engine/render/light.coax
 
-#module "aethyr.render.light";
+#module "metaverse.engine.render.light";
 #load "material.coax";
 
 // A hemisphere ambient channel: ground below, sky above, by the normal's y.

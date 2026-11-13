@@ -4,7 +4,7 @@
 // feet, so a box low enough to step onto is a floor and a heightfield's land is the ground) and
 // not too steep, and from a step's height up its body clear of every box, capsule and hull.
 //   coax/bin/coax test metaverse-engine/ai/steer-colliders.coax --library
-#module "aethyr.ai.steer_colliders";
+#module "metaverse.engine.ai.steer_colliders";
 #authority;
 #load "../physics/query.coax";
 #load "steer.coax";

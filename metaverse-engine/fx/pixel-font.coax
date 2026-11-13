@@ -3,7 +3,7 @@
 // column. A shader that lights one lamp a bit (metaverse-engine/fx/gpu-quads.coax) is handed a glyph as two
 // floats, each exactly a whole number: the top four rows (20 bits) and the bottom three (15).
 //   coax/bin/coax test metaverse-engine/fx/pixel-font.coax --library
-#module "aethyr.fx.pixelfont";
+#module "metaverse.engine.fx.pixelfont";
 
 PF_COLS :: 5; PF_ROWS :: 7;
 PF_FIRST :: 32; PF_GLYPHS :: 95;   // ASCII 32 to 126

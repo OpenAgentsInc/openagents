@@ -29,7 +29,7 @@
 //   coax/bin/coax test metaverse-engine/session/control.coax --library
 //   coax/bin/coax mutate metaverse-engine/session/control.coax --library --root-only
 
-#module "aethyr.session.control";
+#module "metaverse.engine.session.control";
 #load "../core/ids.coax";
 #authority;
 

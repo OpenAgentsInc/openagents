@@ -16,7 +16,7 @@
 //   the trail (sprint_trail_due): when it kicks up its next puff of dust;
 //   a body's sprint (Sprint, sprint_start, sprint_pace, sprint_frame): the state a realm keeps.
 //   coax/bin/coax test metaverse-engine/action/sprint.coax --library
-#module "aethyr.action.sprint";
+#module "metaverse.engine.action.sprint";
 
 SPRINT_SECONDS :: 1.8;   // seconds a sprint lasts
 SPRINT_RISE :: 0.12;     // seconds to its peak

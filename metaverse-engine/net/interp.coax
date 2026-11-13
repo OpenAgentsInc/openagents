@@ -17,7 +17,7 @@
 // kinds go on (`ahead`), and where things are drawn. A realm's own scalars ride in a state
 // (ax, az, age: Everglade's trees) and are never blended here.
 //   coax/bin/coax test --library metaverse-engine/net/interp.coax
-#module "aethyr.net.interp";
+#module "metaverse.engine.net.interp";
 
 NET_RING :: 8;            // a state's last few: 8 at 15 Hz hold 470 ms, past NET_HIGH
 NET_BASE :: 0; NET_LOW :: 100; NET_HIGH :: 300;   // ms: the jitter buffer's delay (NET_BASE over the states' lateness, spread and interval, NET_LOW at least)

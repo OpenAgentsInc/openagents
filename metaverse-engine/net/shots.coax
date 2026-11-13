@@ -10,7 +10,7 @@
 //   undone  the room refused your request or never answered: the arrow fades out where it is
 // The room's flight and the room's rules decide every hit; nothing here harms anyone.
 //   coax/bin/coax test metaverse-engine/net/shots.coax
-#module "aethyr.net.shots";
+#module "metaverse.engine.net.shots";
 #load "projectile.coax";
 #load "../action/bow.coax" as bow;
 

@@ -19,7 +19,7 @@
 // runs (a gallop, its back flexing), each foot's stride timed to its legs.
 //   coax/bin/coax test metaverse-engine/anim/figure.coax --library
 
-#module "verse.figure";   // a page may #load it as an alias (Dead Gears does)
+#module "metaverse.figure";   // a page may #load it as an alias (Dead Gears does)
 
 PI :: 3.14159265;
 MAX_JOINTS :: 36;

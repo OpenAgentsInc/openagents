@@ -1,6 +1,6 @@
 // The existing HTTP flag32 attaches the observed next rendered frame to an
 // object body. SDKs supply JPEG/base64 bytes; Coax owns JSON composition.
-#module "aethyr.host.http.image";
+#module "metaverse.engine.host.http.image";
 // The shared renderer's build-policy module is the existing logical owner of
 // the unmoduled JSON library; load that owner rather than creating a second.
 #load "../render/build-policy.coax";

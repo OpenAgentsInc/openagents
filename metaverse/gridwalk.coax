@@ -18,7 +18,7 @@
 //   coax/bin/coax test metaverse/gridwalk.coax --library
 //   coax/bin/coax mutate metaverse/gridwalk.coax --root-only
 
-#module "verse.gridwalk";
+#module "metaverse.gridwalk";
 #load "../metaverse-engine/move/walk.coax" as pc; // the engine walking controller; C exports stay in the facade
 #load "../metaverse-engine/physics/collision-profiles.coax" as walk_profiles;
 #load "../metaverse-engine/physics/collide.coax" as walk_capsule;

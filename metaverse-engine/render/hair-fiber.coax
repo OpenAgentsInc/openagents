@@ -1,7 +1,7 @@
 // Single-fiber R / TT / TRT transport. Equations checked against the installed
 // UE5.8 HairBsdf.ush legacy-absorption branch. This does not implement the groom
 // voxel/deep-shadow multiple-scattering volume or strand simulation.
-#module "aethyr.render.hairfiber";
+#module "metaverse.engine.render.hairfiber";
 #test "Fiber Fresnel retains the 1.55 IOR endpoints" {
  #assert abs(hair_fresnel(1)-0.046520569)<0.000001;
  #assert hair_fresnel(0)==1;

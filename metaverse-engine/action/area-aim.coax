@@ -20,7 +20,7 @@
 // ruleset still decides what the cast does to them.
 //   coax/bin/coax test metaverse-engine/action/area-aim.coax --library
 
-#module "aethyr.action.area_aim";
+#module "metaverse.engine.action.area_aim";
 
 AREA_CIRCLE :: 0; AREA_SQUARE :: 1; AREA_BOX :: 2; AREA_CONE :: 3; AREA_LINE :: 4;
 AREA_EDGE :: 48;           // outline points a realm draws (a multiple of 4: a square's corners land on them)

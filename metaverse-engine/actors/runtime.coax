@@ -1,5 +1,5 @@
 // Phase orchestration: all facts/decisions/requests enter checked shared gates.
-#module "aethyr.actors.runtime";
+#module "metaverse.engine.actors.runtime";
 #load "pool.coax";
 #load "../core/assets.coax" as assets;
 #load "model.coax";

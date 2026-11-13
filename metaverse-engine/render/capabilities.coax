@@ -1,6 +1,6 @@
 // Shader/device admission is Coax policy. Platform adapters only report which
 // features were actually enabled; support alone is not permission to publish.
-#module "aethyr.render.capabilities";
+#module "metaverse.engine.render.capabilities";
 #authority;
 RenderBackend :: enum u8 {invalid;webgpu;vulkan;reference;metal;}
 RenderCapabilityStatus :: enum u8 {ok;invalid;generic_derivatives;legacy_kill;helper_unavailable;int64_unavailable;}

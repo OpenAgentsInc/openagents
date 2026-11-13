@@ -1,6 +1,6 @@
 // Decode the existing mixer text into portable playback effects. CoreAudio
 // and Web Audio execute these parameters; the mixer still chooses all cues.
-#module "aethyr.audio.host.effects";
+#module "metaverse.engine.audio.host.effects";
 #load "../render/media-commands.coax" as audio_numbers;
 #load "../core/points.coax";
 #authority;

@@ -35,7 +35,7 @@
 //   coax/bin/coax test metaverse-engine/session/lifecycle.coax --library
 //   coax/bin/coax mutate metaverse-engine/session/lifecycle.coax --library --root-only
 
-#module "aethyr.session.lifecycle";
+#module "metaverse.engine.session.lifecycle";
 #authority;
 
 // book:begin lifecycle-profile

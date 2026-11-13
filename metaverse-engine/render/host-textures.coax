@@ -1,7 +1,7 @@
 // A descriptor is observed only after the platform/codec has admitted the
 // actual texture bytes and format. This module selects a canonical origin
 // and checks its binding shape; it does not decode or resample pixels.
-#module "aethyr.render.host.textures";
+#module "metaverse.engine.render.host.textures";
 #load "host-bindings.coax";
 #authority;
 RENDER_HOST_TEXTURES :: RENDER_MEDIA_ITEMS+2; // one layers image and one sans atlas

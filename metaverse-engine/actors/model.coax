@@ -1,5 +1,5 @@
 // Optional model intents use the existing replay/expiring catalogue gate.
-#module "aethyr.actors.model";
+#module "metaverse.engine.actors.model";
 #load "pool.coax";
 #load "../ai/decide.coax" as decisions;
 #load "../ai/stimulus.coax" as senses;

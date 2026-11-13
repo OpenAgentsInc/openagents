@@ -1,6 +1,6 @@
 // Optional observation only: proto/verse/everglade-latency-v1.json. This never
 // admits gameplay, owns a gameplay queue, or substitutes a simulation clock.
-#module "aethyr.net.latency";
+#module "metaverse.engine.net.latency";
 #authority;
 #load "text-frame.coax";
 

@@ -1,5 +1,5 @@
 // Authored behavior data only. Realm orchestration has no guard/villager cases.
-#module "aethyr.actors.content";
+#module "metaverse.engine.actors.content";
 #load "profile.coax";
 actor_lab_authors :: (alternate:int)->[3]ActorAuthor #effects(all) {
  a:=[3]ActorAuthor.[ActorAuthor.{id=1001},ActorAuthor.{id=1002,parent=1001,overrides=31},ActorAuthor.{id=1003,parent=1001,overrides=31}];

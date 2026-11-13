@@ -3,7 +3,7 @@
 // generation, and its table is frame.coax's RfResource table, so rf_live and
 // rf_pass refuse a handle once its object is released or its device is lost.
 // A refusal changes nothing, and the host has created no GPU object yet.
-#module "aethyr.render.registry";
+#module "metaverse.engine.render.registry";
 #load "frame.coax";
 #load "resources.coax" as rr_formats;
 #authority;

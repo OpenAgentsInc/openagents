@@ -14,7 +14,7 @@
 // A box square to the world is a box; a box turned any other way is a hull of six faces; a slim
 // upright cylinder is a capsule and a broad one a hull of twelve sides.
 //   coax/bin/coax test --library metaverse-engine/arch/solids.coax
-#module "aethyr.arch.solids";
+#module "metaverse.engine.arch.solids";
 #load "place.coax";
 #load "solid.coax";
 #load "flora.coax";

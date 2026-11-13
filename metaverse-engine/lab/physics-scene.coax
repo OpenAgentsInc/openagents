@@ -1,5 +1,5 @@
 // The Physics Lab's canonical inputs. Every engine receives this one generated body table.
-#module "aethyr.lab.physics_scene";
+#module "metaverse.engine.lab.physics_scene";
 #authority;
 #load "../core/rand.coax";
 

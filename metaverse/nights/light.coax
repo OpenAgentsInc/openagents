@@ -1,5 +1,5 @@
 // Nights authors its own spring noon; the shared profile and resolver stay unchanged.
-#module "verse.nights.light";
+#module "metaverse.nights.light";
 #load "../../metaverse-engine/world/environment.coax" as world;
 #load "../../metaverse-engine/render/environment-frame.coax" as frame;
 #test "Nights spring noon is admitted brighter softer and clearer without changing the shared glade" {

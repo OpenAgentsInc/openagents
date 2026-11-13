@@ -26,7 +26,7 @@
 //   coax/bin/coax test metaverse-engine/core/checkpoint.coax --library
 //   coax/bin/coax mutate metaverse-engine/core/checkpoint.coax --library
 
-#module "aethyr.checkpoint";
+#module "metaverse.engine.checkpoint";
 #authority;
 #load "replay.coax";
 

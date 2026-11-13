@@ -8,7 +8,7 @@
 // A capsule counts by its plan: the segment between its ends, its radius round it.
 //   coax/bin/coax test metaverse-engine/world/nav/cells-colliders.coax --library
 //   coax/bin/coax mutate metaverse-engine/world/nav/cells-colliders.coax --library --root-only
-#module "aethyr.nav.cells_colliders";
+#module "metaverse.engine.nav.cells_colliders";
 #authority;
 #load "cells.coax";
 #load "../../physics/query.coax";

@@ -13,7 +13,7 @@
 // zone_figure_blend); WorldBuilder's walk is the first (apps/openagents-web/worldbuilder-walk.coax).
 //   coax/bin/coax test metaverse-engine/render/ghost.coax
 
-#module "aethyr.render.ghost";
+#module "metaverse.engine.render.ghost";
 #load "noise.coax";   // and through it metaverse-engine/gpu/shader.coax
 
 GHOST_BLEND :: 2;     // the host's scene blend profile for a ghost's draws: source over (1 adds, 0 is opaque)

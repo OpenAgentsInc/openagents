@@ -1,7 +1,7 @@
 // Checked camera-body clearance over an owner-selected semantic world (#13026).
 // A camera ray and its cosmetic displacement use the same sphere sweep. The
 // admitted view decides membership and ignored identities, never render colour.
-#module "aethyr.cam.eye";
+#module "metaverse.engine.cam.eye";
 #authority;
 #load "../physics/query-scene.coax" as scene;
 #load "../physics/query-filter.coax" as filters;

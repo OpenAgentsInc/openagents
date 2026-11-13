@@ -1,6 +1,6 @@
 // Resource descriptions are decisions made in Coax. Hosts create the described
 // objects and report actual allocation, upload and initialization observations.
-#module "aethyr.render.resources";
+#module "metaverse.engine.render.resources";
 #authority;
 #load "passes.coax" as passes;
 #load "bindings.coax" as bindings;

@@ -1,5 +1,5 @@
 // Shared CPU/GPU projected-detail rules for the native character pass, not Valley's frozen renderer.
-#module "aethyr.character.detail";
+#module "metaverse.engine.character.detail";
 DETAIL_GROUPS :: 251;
 detail_fade :: (head:f32,start:f32,end:f32)->f32 {x:=(head-start)/(end-start);x=ifx x<0 then 0.0f32 else ifx x>1 then 1.0f32 else x;return x*x*(3-2*x);}
 detail_hair :: (head:f32)->f32 {r:=head/300;q:=r*r*(0.125f32+0.875f32*detail_fade(head,64,96));return ifx q<0.004 then 0.004f32 else ifx q>0.5 then 0.5f32 else q;}

@@ -18,7 +18,7 @@
 //   a visitor's own clock). Before any clock is set the page's day is the glade's fixed noon.
 //   coax/bin/coax test metaverse-engine/render/environment-frame.coax
 //   coax/bin/coax mutate metaverse-engine/render/environment-frame.coax --root-only
-#module "aethyr.render.environment_frame";
+#module "metaverse.engine.render.environment_frame";
 #authority;
 #load "environment.coax";
 #load "../world/environment-region.coax";

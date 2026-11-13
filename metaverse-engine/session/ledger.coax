@@ -35,7 +35,7 @@
 //   coax/bin/coax test metaverse-engine/session/ledger.coax --library
 //   coax/bin/coax mutate metaverse-engine/session/ledger.coax --library --root-only
 
-#module "aethyr.session.ledger";
+#module "metaverse.engine.session.ledger";
 #authority;
 #load "control.coax";
 #load "../core/ids.coax";

@@ -1,4 +1,4 @@
-#module "aethyr.tools.slaycamera";
+#module "metaverse.engine.tools.slaycamera";
 #load "../../metaverse-engine/core/points.coax";
 
 #test "source camera axes retain Unreal forward/right/up through the axis reflection" {

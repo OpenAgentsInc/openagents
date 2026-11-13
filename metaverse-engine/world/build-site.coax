@@ -11,7 +11,7 @@
 // down below your head. Nothing above head height is a collider. The meshes (the withies, the
 // thatch courses, the stones) are metaverse-engine/world/build-site-mesh.coax, which the scene packer runs.
 // The game owns the structures (Everglade: everglade/world/housewright.coax).
-#module "aethyr.buildsite";
+#module "metaverse.engine.buildsite";
 #load "building.coax" as building;
 
 // The forms.

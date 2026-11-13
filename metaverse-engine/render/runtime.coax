@@ -1,6 +1,6 @@
 // A complete checked frame. The platform constructs payload views only after
 // preflight and performs GPU effects only after the final receipt succeeds.
-#module "aethyr.render.runtime";
+#module "metaverse.engine.render.runtime";
 #load "geometry.coax";
 #authority;
 

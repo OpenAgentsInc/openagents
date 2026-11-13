@@ -30,7 +30,7 @@
 //   coax/bin/coax test metaverse-engine/world/owners.coax --library
 //   coax/bin/coax mutate metaverse-engine/world/owners.coax --library
 
-#module "aethyr.world.owners";
+#module "metaverse.engine.world.owners";
 #authority;
 
 // book:begin owners-profile

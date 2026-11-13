@@ -7,7 +7,7 @@
 // (rate 0.93 to 1.07) and level (0.85 to 1.0), so a repeated sound never plays identically. The
 // bed is a looping ~NAME line. The host drains the lines once a frame (fivelab-face.c
 // coaxial_sounds_len); what combat plays comes from zone-combat.coax (xc_cue).
-#module "verse.experimentalsound";
+#module "metaverse.experimentalsound";
 #load "../metaverse-engine/audio/experimental-sfx.coax";
 #load "../metaverse-engine/audio/everglade-bank.coax";
 

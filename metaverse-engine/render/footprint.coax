@@ -1,6 +1,6 @@
 // The deterministic color-texture anisotropy policy shared by emitted shaders
 // and the quad CPU interpreter. It has no shader-library or host dependency.
-#module "aethyr.render.footprint";
+#module "metaverse.engine.render.footprint";
 #authority;
 RenderFootprint :: struct {valid:bool;taps:int;du:f32;dv:f32;lod:f32;}
 #load "tests/footprint-checks.coax" #test;

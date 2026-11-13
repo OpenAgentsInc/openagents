@@ -1,6 +1,6 @@
 // One final linear HDR-to-UNORM display conversion. No tone/gamma transform
 // is added to this corridor profile; the display attachment clamps/rounds.
-#module "aethyr.world.streampresent";
+#module "metaverse.engine.world.streampresent";
 #load "../gpu/shader.coax";
 #test "display triangle covers every viewport corner and preserves sampled linear RGBA" {
   a := sp_vs(0, 0); b := sp_vs(1, 0); c := sp_vs(2, 0);

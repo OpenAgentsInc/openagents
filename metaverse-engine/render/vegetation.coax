@@ -1,5 +1,5 @@
 // Shared grass and canopy response: world-space gusts, wind, bending, masks and density.
-#module "aethyr.render.vegetation";
+#module "metaverse.engine.render.vegetation";
 #load "sky.coax";
 #test "vegetation preserves world-space advection and nonzero wind phase and gust" {
  #assert abs(metaverse_style_gust(5,7,1,1,2,3,0.25)-(2*metaverse_style_noise(0.5,0.25)-1))<0.000001;

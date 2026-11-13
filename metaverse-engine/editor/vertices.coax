@@ -1,6 +1,6 @@
 // VPK's published static vertex payload: 48 bytes, eight floats followed
 // by packed colour/layer and twelve spare bytes. Packed words are not f32.
-#module "aethyr.forge.vertices";
+#module "metaverse.engine.editor.vertices";
 #authority;
 #load "pack.coax" as packs;
 #load "../host/pack-table.coax" as tables;   // the layout's words (pack_u32, pack_put32)

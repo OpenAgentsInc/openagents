@@ -11,7 +11,7 @@
 // made-goldens.coax and through the routes by coax/web/api/tests/realm_record_checks.coax.
 //   coax/bin/coax test metaverse-engine/editor/made.coax --library
 
-#module "aethyr.forge.made";
+#module "metaverse.engine.editor.made";
 #load "doc.coax";
 
 FORGE_MADE_NAME :: 160;   // a realm's name, at most (the server keeps 40 characters)

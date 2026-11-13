@@ -1,7 +1,7 @@
 // Declared tuning for the fixed-step kinematic walking mode. Distances are
 // metres, speeds metres/second and rates per second. Collision shape and
 // travel admission remain CollideProfile's separate contract.
-#module "aethyr.locomotion";
+#module "metaverse.engine.locomotion";
 #authority;
 
 LOCOMOTION_LIMIT :: 1000.0;

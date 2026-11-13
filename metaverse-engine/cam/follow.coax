@@ -10,7 +10,7 @@
 //   coax/bin/coax test metaverse-engine/cam/follow.coax --library
 //   coax/bin/coax mutate metaverse-engine/cam/follow.coax
 
-#module "aethyr.follow";
+#module "metaverse.engine.follow";
 #load "../core/space.coax";
 #load "../physics/query.coax";
 #load "../core/math.coax";

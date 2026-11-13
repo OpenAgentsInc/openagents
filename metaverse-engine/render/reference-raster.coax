@@ -1,7 +1,7 @@
 // Single-sample reference rasterization in WebGPU framebuffer coordinates.
 // Exact edge ownership here uses top-left. Hardware edge/depth uncertainty is
 // reported separately by the comparison driver; it is never a color tolerance.
-#module "aethyr.render.reference.raster";
+#module "metaverse.engine.render.reference.raster";
 #load "reference-quad.coax";
 #load "reference-half.coax";
 #load "passes.coax";

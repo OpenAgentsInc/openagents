@@ -10,7 +10,7 @@
 //   coax/bin/coax test metaverse-engine/core/math.coax --library
 //   coax/bin/coax mutate metaverse-engine/core/math.coax
 
-#module "aethyr.math";
+#module "metaverse.engine.math";
 #load "../tests/math-oracle.coax" #test;   // the checks' closeness test
 #authority;
 

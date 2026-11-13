@@ -7,7 +7,7 @@
 // Its storage is its own fields, and every link is stored plus one, so a grid of zeros is empty
 // (the C host's memory starts so). Slots are the caller's (0 to NET_GRID_CAP - 1).
 //   coax/bin/coax test metaverse-engine/net/grid.coax
-#module "aethyr.net.grid";
+#module "metaverse.engine.net.grid";
 #authority;
 #load "../core/spatial.coax";
 

@@ -1,5 +1,5 @@
 // Bounded owner/codec journey. Physical host adoption is a separate receipt.
-#module "aethyr.examples.resourcestream";
+#module "metaverse.engine.examples.resourcestream";
 #import "Basic";
 #load "../world/resource-stream.coax";
 #load "../world/tests/resource-stream-fixture.coax";   // the example runs the fixture as code

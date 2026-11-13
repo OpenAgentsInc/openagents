@@ -1,6 +1,6 @@
 // A separately declared geometry boundary exclusion, never a change to the
 // strict v1 comparator. Excluded finite RGBA packets remain unqualified.
-#module "aethyr.render.tool.compare.interiors";
+#module "metaverse.engine.render.tool.compare.interiors";
 #load "compare-frames-policy.coax";
 #authority;
 #load "compare-interiors-checks.coax";

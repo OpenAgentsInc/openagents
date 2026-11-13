@@ -1,6 +1,6 @@
 // Optional owner-installed NWN terrain patches. The private pack recipe in ore
 // owns source area grids; Coax owns their world positions, titles and views.
-#module "verse.experimentalbiomes";
+#module "metaverse.experimentalbiomes";
 
 #test "native biome patches are small separated meadow sections" {
  area:=0.0f32;

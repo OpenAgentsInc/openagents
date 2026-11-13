@@ -1,6 +1,6 @@
 // The native 48kHz PCM voice interpreter. The shared mixer chooses cues;
 // decoded PCM is an immutable SDK-owned allocation for the voice's lifetime.
-#module "aethyr.audio.host.voice";
+#module "metaverse.engine.audio.host.voice";
 #load "host-effects.coax";
 #authority;
 AudioPcmVoice :: struct {

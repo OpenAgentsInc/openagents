@@ -1,4 +1,4 @@
-#module "aethyr.actors.checks";
+#module "metaverse.engine.actors.checks";
 // Its checks, with the checks files it loads: coax/bin/coax test --library metaverse-engine/actors/checks.coax
 #run_steps 250000000;
 #load "lab.coax";

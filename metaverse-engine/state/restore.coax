@@ -1,4 +1,4 @@
-#module "aethyr.state.restore";
+#module "metaverse.engine.state.restore";
 // Restore adapters compose the same fact readers and atomic owner publication.
 // Tickets own snapshot words; no asynchronous borrow of an input buffer survives.
 #load "variants.coax";

@@ -1,6 +1,6 @@
 // A common observation of a realm's selected contract and caller-owned running state.
 // Unknown counters remain -1; observations never admit commands or acknowledge persistence.
-#module "aethyr.net.diagnostics";
+#module "metaverse.engine.net.diagnostics";
 #authority;
 #load "session.coax";
 NetObservation :: struct {

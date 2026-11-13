@@ -1,6 +1,6 @@
 // Four-lane shader execution primitives. Scalar shader-library bodies do not
 // supply derivatives, discard publication or mip selection; this context does.
-#module "aethyr.render.reference.quad";
+#module "metaverse.engine.render.reference.quad";
 #load "filter-profile.coax";
 #authority;
 RQStatus :: enum u8 {ok; malformed; capacity; unsupported; budget; resource; divergent;}

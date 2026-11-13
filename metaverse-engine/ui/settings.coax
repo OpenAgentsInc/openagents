@@ -13,7 +13,7 @@
 //   coax/bin/coax test metaverse-engine/ui/settings.coax --library
 //   coax/bin/coax mutate metaverse-engine/ui/settings.coax --library --root-only
 
-#module "aethyr.ui.settings";
+#module "metaverse.engine.ui.settings";
 #authority;
 
 // book:begin settings-profile

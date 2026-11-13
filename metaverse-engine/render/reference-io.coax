@@ -1,6 +1,6 @@
 // The CPU renderer reads the checked tree's actual stage interface and flags.
 // It imports the admitted tree carrier, never a compiler implementation.
-#module "aethyr.render.reference.io";
+#module "metaverse.engine.render.reference.io";
 #authority;
 #load "reference-ir.coax";
 RQInterface :: struct {

@@ -1,5 +1,5 @@
 // Typed ABI declarations only; unchanged native-gpu-effects.c owns the SDK.
-#module "aethyr.tests.depth.effects";
+#module "metaverse.engine.tests.depth.effects";
 ngfx_open :: ()->int #foreign #effects(all); ngfx_info :: (field:int)->int #foreign #effects(all); ngfx_name :: (index:int)->int #foreign #effects(all);
 ngfx_blob :: (bytes:int)->int #foreign #effects(all); ngfx_blob_put :: (blob:int,offset:int,byte:int)->int #foreign #effects(all); ngfx_blob_word :: (blob:int,index:int)->int #foreign #effects(all);
 ngfx_buffer :: (bytes:int)->int #foreign #effects(all); ngfx_buffer_word :: (buffer:int,index:int,word:int)->int #foreign #effects(all);

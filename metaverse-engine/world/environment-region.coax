@@ -54,7 +54,7 @@
 // spatial results feed surfaces and fog. Both are the same arithmetic at different positions.
 //   coax/bin/coax test metaverse-engine/world/environment-region.coax
 //   coax/bin/coax mutate metaverse-engine/world/environment-region.coax --root-only
-#module "aethyr.world.environment_region";
+#module "metaverse.engine.world.environment_region";
 #authority;
 #load "environment.coax";
 

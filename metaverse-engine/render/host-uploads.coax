@@ -1,6 +1,6 @@
 // An effectful producer getter may consume its update before later frame
 // admission refuses. Keep the whole copied prefix pending until submission.
-#module "aethyr.render.host.uploads";
+#module "metaverse.engine.render.host.uploads";
 #load "types.coax";
 #authority;
 RenderHostUploadState :: struct {pending:u64;}

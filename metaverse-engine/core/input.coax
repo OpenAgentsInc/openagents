@@ -13,7 +13,7 @@
 //   coax/bin/coax test metaverse-engine/core/input.coax --library
 //   coax/bin/coax mutate metaverse-engine/core/input.coax
 
-#module "aethyr.input";
+#module "metaverse.engine.input";
 
 // book:begin rules
 INPUT_DEAD_ZONE :: 0.2;          // stick travel that counts as no input

@@ -45,7 +45,7 @@
 //   coax/bin/coax test metaverse-engine/world/terrain-tile.coax
 //   coax/bin/coax mutate metaverse-engine/world/terrain-tile.coax --root-only
 
-#module "aethyr.terrain_tile";
+#module "metaverse.engine.terrain_tile";
 #authority;
 #load "../physics/ground.coax";
 #load "../../coax/lib/quantity.coax" as tt_units;

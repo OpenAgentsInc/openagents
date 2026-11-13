@@ -1,7 +1,7 @@
 // Depth32 floating-point polygon bias for the reference device profile.
 // The rasterizer's position depth is biased before any fragment depth output;
 // an explicit #depth output replaces it. Targets clamp to the viewport range.
-#module "aethyr.render.reference.depth";
+#module "metaverse.engine.render.reference.depth";
 #load "reference-raster.coax";
 #authority;
 RRDepthBias :: struct {status:RQStatus;offset:f64;resolution:f64;slope:f64;}

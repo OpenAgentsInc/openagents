@@ -13,7 +13,7 @@
 // machine. It never decides its graphics anywhere else.
 //   coax/bin/coax test metaverse-engine/core/quality-page.coax
 
-#module "aethyr.qualitypage";
+#module "metaverse.engine.qualitypage";
 #load "quality.coax";
 
 QP_ACT_QUALITY :: 6;    // host: the tier to keep in verse.quality (and draw at)

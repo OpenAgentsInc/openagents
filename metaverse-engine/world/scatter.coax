@@ -15,7 +15,7 @@
 //   coax/bin/coax test metaverse-engine/world/scatter.coax --library
 //   coax/bin/coax mutate metaverse-engine/world/scatter.coax
 
-#module "aethyr.scatter";
+#module "metaverse.engine.scatter";
 #load "../core/rand.coax";
 
 // book:begin layer

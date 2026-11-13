@@ -23,7 +23,7 @@
 // Each tick: nav_think; when it is due and nav_wants_window, nav_window_place, fill, nav_plan
 // (or nav_direct when the zone knows the way is clear); nav_move; the zone's slide; nav_moved.
 //   coax/bin/coax test metaverse-engine/ai/steer.coax --library
-#module "aethyr.ai.steer";
+#module "metaverse.engine.ai.steer";
 #authority;
 #load "../world/nav/grid.coax";
 

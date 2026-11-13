@@ -12,7 +12,7 @@
 // writes where each cell's seeds start (metaverse/experimental-grass-baked.coax).
 //   coax/bin/coax test metaverse/experimental-grass-grid.coax
 
-#module "verse.experimentalgrassgrid";
+#module "metaverse.experimentalgrassgrid";
 
 EXG_GROUPS :: 3;       // glade/grass0, grass1, grass2
 EXG_CELL :: 8.0;       // metres a cell's side

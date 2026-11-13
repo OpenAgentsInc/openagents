@@ -26,7 +26,7 @@
 // of the picture's four sides. The picture is the same as drawing the whole mesh.
 //   coax/bin/coax test metaverse-engine/render/mesh-cull.coax
 
-#module "aethyr.render.meshcull";
+#module "metaverse.engine.render.meshcull";
 
 MESH_CULL_TRIS :: 1024;     // triangles a run
 MESH_CULL_RUNS :: 4096;     // the most runs a MeshCull holds: 4.2 million triangles

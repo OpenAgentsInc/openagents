@@ -1,6 +1,6 @@
 // CoreGraphics decodes/resizes into premultiplied RGBA8. The shared media
 // profile uploads straight-alpha bytes; this conversion owns that arithmetic.
-#module "aethyr.render.image.bytes";
+#module "metaverse.engine.render.image.bytes";
 #authority;
 #test "straight RGBA conversion preserves opaque colour and uses rounded alpha division" {
  p:=[16]u8.[11,31,128,128,64,32,1,128,1,0,1,1,0,0,0,0];

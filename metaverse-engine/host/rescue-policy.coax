@@ -1,6 +1,6 @@
 // Exact-build Wasm32 rescue admission. SDK hashing/storage are effects;
 // compatibility, bounded memory and crash-loop admission are checked here.
-#module "aethyr.host.rescue";
+#module "metaverse.engine.host.rescue";
 #authority;
 #load "../core/assets.coax" as assets;
 RP_OK :: 1; RP_INVALID :: 2; RP_LAYOUT :: 3; RP_SIZE :: 4; RP_TIER :: 5; RP_IDENTITY :: 6;

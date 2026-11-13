@@ -1,6 +1,6 @@
 // Portable accepted-event record v1. It is a completed simulation trace,
 // not a native memory dump, checkpoint, authorization token or signature.
-#module "aethyr.replay_wire";
+#module "metaverse.engine.replay_wire";
 #load "replay.coax";
 #load "../../coax/lib/crypto/sha256.coax";
 #authority;

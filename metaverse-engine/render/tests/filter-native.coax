@@ -1,5 +1,5 @@
 // Verification-only ABI for the device-observed UNORM8 filter profiles.
-#module "aethyr.render.tests.filter.native";
+#module "metaverse.engine.render.tests.filter.native";
 #load "../reference-texture.coax";
 #authority;
 

@@ -1,5 +1,5 @@
 // Bounded declared facts, profile 1. Names are retained identity, never hashes.
-#module "aethyr.state";
+#module "metaverse.engine.state";
 #load "../core/assets.coax" as assets;
 #authority;
 STATE_FIELDS :: 32;

@@ -1,5 +1,5 @@
 // A bounded physical integration subdivision, never extra logical clock ticks.
-#module "aethyr.walksubsteps";
+#module "metaverse.engine.walksubsteps";
 #authority;
 walk_travel_parts :: (speed:f32,dt:f32,limit:f32)->int #effects(all) {
   if !walk_travel_finite(speed) || speed<0 || !walk_travel_finite(dt) || dt<=0 || !walk_travel_finite(limit) || limit<=0 { return 0; }

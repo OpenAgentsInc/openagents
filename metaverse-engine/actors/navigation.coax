@@ -1,4 +1,4 @@
-#module "aethyr.actors.navigation";
+#module "metaverse.engine.actors.navigation";
 // Generation/revision-fenced navigation requests. Search remains nav/grid.coax.
 #load "profile.coax";
 #authority;

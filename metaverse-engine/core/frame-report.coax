@@ -11,7 +11,7 @@
 //   coax/bin/coax test metaverse-engine/core/frame-report.coax --library
 //   coax/bin/coax mutate metaverse-engine/core/frame-report.coax --library
 
-#module "aethyr.frame.report";
+#module "metaverse.engine.frame.report";
 
 // book:begin rule
 FRAME_P95_MAX :: 17500;    // microseconds: the 95th percentile frame at most this

@@ -2,7 +2,7 @@
 // conversion; the permutation wraps in u32 and only24exact bits become f32.
 // The nonfinite0 fallback is a scalar CPU diagnostic convention. It is not
 // GPU input admission or a cross-backend guarantee for NaN/infinity.
-#module "aethyr.render.noise";
+#module "metaverse.engine.render.noise";
 #load "../gpu/shader.coax";
 #authority;
 

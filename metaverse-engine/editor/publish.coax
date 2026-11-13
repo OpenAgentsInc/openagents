@@ -21,7 +21,7 @@
 // server (GET .../<slug>/published) to exactly what this rule writes.
 //   coax/bin/coax test metaverse-engine/editor/publish.coax --library
 
-#module "aethyr.forge.publish";
+#module "metaverse.engine.editor.publish";
 #authority;
 #load "../../coax/lib/crypto/sha256-kernel.coax";
 

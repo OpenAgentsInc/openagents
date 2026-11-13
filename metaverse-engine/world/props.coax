@@ -8,7 +8,7 @@
 //
 // The boxes are kept in world metres with their heights absolute.
 //   coax/bin/coax test metaverse-engine/world/props.coax --library
-#module "aethyr.world.props";
+#module "metaverse.engine.world.props";
 
 PROPS :: 32;
 Props :: struct { n: int; box: [PROPS * 6] f32; }

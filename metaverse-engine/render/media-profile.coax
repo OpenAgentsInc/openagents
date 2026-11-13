@@ -1,4 +1,4 @@
-#module "aethyr.render.media.profile";
+#module "metaverse.engine.render.media.profile";
 #load "bindings.coax" as bindings;
 #authority;
 RenderMediaEntry :: struct {

@@ -1,7 +1,7 @@
 // Split-sum GGX environment response, Lazarov's analytic approximation.
 // Source oracle: installed Unreal BRDF.ush::EnvBRDFApproxLazarov (UE5.8).
 // Scalar arithmetic is shared by native and generated GPU code.
-#module "aethyr.render.pbrenv";
+#module "metaverse.engine.render.pbrenv";
 PbrEnvironment :: struct {a:f32;b:f32;}
 #test "GGX environment response retains independent normal grazing and rough endpoint values" {
  t:=pbr_environment(0.5,0.5);#assert abs(t.a-0.703244329)<0.000001 && abs(t.b-0.021755671)<0.000001;

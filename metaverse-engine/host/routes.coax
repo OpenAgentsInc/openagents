@@ -1,6 +1,6 @@
 // aethyr-host-v1 route admission, before platform URI parsing/effects.
 // A successful SDK parse must still retain the page's actual HTTP origin.
-#module "aethyr.host.routes";
+#module "metaverse.engine.host.routes";
 #authority;
 
 #test "host HTTP paths are bounded root relative and cannot normalize into a foreign authority" {

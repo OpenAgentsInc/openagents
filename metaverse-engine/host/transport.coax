@@ -1,7 +1,7 @@
 // aethyr-host-v1 asynchronous operation ownership. Hosts execute sockets and
 // HTTP; this authority owns admission, generations, byte bounds and terminal
 // delivery. A callback carries the exact HostOwner returned at reservation.
-#module "aethyr.host.transport";
+#module "metaverse.engine.host.transport";
 #authority;
 
 HOST_TRANSPORT_VERSION :: 1;

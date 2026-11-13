@@ -1,7 +1,7 @@
 // Raw GPU texture bytes into the linear colors the quad reference filters.
 // Source/outputs are valid, nonoverlapping caller-owned views. A full first
 // pass validates the candidate before either output view is changed.
-#module "aethyr.render.texture.codec";
+#module "metaverse.engine.render.texture.codec";
 #load "reference-raster.coax";
 #authority;
 RENDER_TEXTURE_PIXELS :: 16777216;

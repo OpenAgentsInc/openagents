@@ -3,7 +3,7 @@
 // quadratic between the two crossings of that interval's end planes.
 // This enumerates those pieces; it does not use the production closest-pair
 // calculation or its F32 degeneracy thresholds.
-#module "aethyr.collide.oracle";
+#module "metaverse.engine.collide.oracle";
 
 CollideOraclePoint :: struct { x: f64; y: f64; z: f64; }
 collide_oracle_point :: (x: f64, y: f64, z: f64) -> CollideOraclePoint {

@@ -11,7 +11,7 @@
 //   sty_path_clear, sty_path_add   the dirt paths
 //   sty_project      a world point on the screen, as the shaders place it (for checks and picking)
 //   coax/bin/coax test --library metaverse-engine/render/stylized-frame.coax
-#module "aethyr.render.stylized_frame";
+#module "metaverse.engine.render.stylized_frame";
 #load "stylized-layout.coax";
 
 StyLook :: struct {

@@ -1,5 +1,5 @@
 // Native NWN UI atlas metadata and canvas quads. Original pixels stay private.
-#module "verse.nights.ui";
+#module "metaverse.nights.ui";
 Sprite ::struct {layer:int;x:int;y:int;w:int;h:int;advance:int;name:[32]u8;name_n:int;present:bool;}
 UI ::struct {sprites:[64]Sprite;glyphs:[256]Sprite;sprite_n:int;glyph_n:int;declared:[124]bool;bad:bool;ready:bool;}
 Rect ::struct {x:f32;y:f32;w:f32;h:f32;}

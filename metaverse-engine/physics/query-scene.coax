@@ -1,6 +1,6 @@
 // Admitted semantic query snapshots. Geometry remains in query.coax; this
 // boundary compacts eligible borrowed shapes in their original tie order.
-#module "aethyr.query.scene";
+#module "metaverse.engine.query.scene";
 #authority;
 #load "query-filter.coax";
 #load "../core/entity.coax" as entities;

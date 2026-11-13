@@ -14,7 +14,7 @@
 // nearest to it.
 //   coax/bin/coax test metaverse-engine/world/nav/grid.coax --library
 //   coax/bin/coax mutate metaverse-engine/world/nav/grid.coax --library --root-only
-#module "aethyr.nav.grid";
+#module "metaverse.engine.nav.grid";
 #authority;
 #load "../../tests/nav-oracle.coax" #test;
 

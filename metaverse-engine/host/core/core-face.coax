@@ -9,7 +9,7 @@
 //   the format a device's GPU takes            ../../render/texture-format.coax (tf_pick, tf_tag)
 // Nothing here reads a byte of its own: each export is one call into the module that owns the rule.
 //   coax/bin/coax test metaverse-engine/host/core/core-face.coax --library
-#module "aethyr.host.core_face";
+#module "metaverse.engine.host.core_face";
 #load "../pack-table-face.coax";
 #load "../page-stream.coax";   // the paged pack's reader (page-pack.coax) as the host context loads it
 #load "../../render/block-layer.coax";

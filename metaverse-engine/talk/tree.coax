@@ -2,7 +2,7 @@
 // answers with, each leading to another line or ending the talk. The game writes the tree; this only
 // walks it and says whether it is whole. Text is display data, never a simulation command.
 //   coax/bin/coax test --library metaverse-engine/talk/tree.coax
-#module "aethyr.talk.tree";
+#module "metaverse.engine.talk.tree";
 
 TALK_TREE_END :: -1;       // a choice that ends the talk
 TALK_TREE_CHOICES :: 6;    // choices offered at one line at most

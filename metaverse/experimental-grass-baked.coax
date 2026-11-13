@@ -2,7 +2,7 @@
 // apps/openagents-web/realms/everglade-experimental/assets/glade.pack.gz by
 //   coax/web/tool.sh metaverse/tools/assets/grass_cells.coax --sort IN.pack OUT.pack metaverse/experimental-grass-baked.coax
 // (metaverse/experimental-grass-grid.coax holds the grid). Don't edit it: sort the pack again and write it again.
-#module "verse.experimentalgrassbaked";
+#module "metaverse.experimentalgrassbaked";
 // each group's seeds (glade/grass0, 1, 2): a pack with other counts is not this one, and draws every seed
 EXG_BAKED_N :: [3] int.[6601, 2309, 41780];
 // where each cell's seeds start in its group's run (577 numbers a group: 576 cells and the end)

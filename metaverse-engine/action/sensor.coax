@@ -15,7 +15,7 @@
 //
 //   coax/bin/coax test metaverse-engine/action/sensor.coax --library
 
-#module "aethyr.action.sensor";
+#module "metaverse.engine.action.sensor";
 #load "action.coax";
 #load "../core/space.coax";
 #load "../physics/query.coax";

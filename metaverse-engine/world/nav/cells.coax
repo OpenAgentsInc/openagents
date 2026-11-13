@@ -20,7 +20,7 @@
 // where it stood. A creature that only ever moves by it never stands on a closed sample.
 //   coax/bin/coax test metaverse-engine/world/nav/cells.coax --library
 //   coax/bin/coax mutate metaverse-engine/world/nav/cells.coax --library --root-only
-#module "aethyr.nav.cells";
+#module "metaverse.engine.nav.cells";
 #authority;
 #load "grid.coax";
 #load "../cells.coax";

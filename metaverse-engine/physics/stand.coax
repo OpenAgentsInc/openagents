@@ -26,7 +26,7 @@
 // Only builtins are used here, so any file may load it.
 //   coax/bin/coax test --library metaverse-engine/physics/stand.coax
 
-#module "verse.stand";   // its own module: the walker and metaverse-engine/physics/query.coax both load it
+#module "metaverse.stand";   // its own module: the walker and metaverse-engine/physics/query.coax both load it
 
 
 STAND_FLOATS :: 10;

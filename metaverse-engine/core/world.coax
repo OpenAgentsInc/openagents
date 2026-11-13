@@ -21,7 +21,7 @@
 //   coax/bin/coax test metaverse-engine/core/world.coax
 //   coax/bin/coax mutate metaverse-engine/core/world.coax --root-only
 
-#module "aethyr.world";
+#module "metaverse.engine.world";
 #authority;
 #load "entity.coax";
 #load "spatial.coax";

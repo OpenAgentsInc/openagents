@@ -27,7 +27,7 @@
 //
 // A free mount stays exactly where it was left: nothing here moves it.
 //   coax/bin/coax test metaverse-engine/action/mount.coax --library
-#module "aethyr.action.mount";
+#module "metaverse.engine.action.mount";
 #load "flight.coax";
 
 MOUNT_FREE :: 0; MOUNT_MOUNTING :: 1; MOUNT_RIDDEN :: 2; MOUNT_DISMOUNTING :: 3;

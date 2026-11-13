@@ -15,7 +15,7 @@
 //   coax/bin/coax test metaverse-engine/host/pack-table.coax --library
 //   coax/bin/coax mutate metaverse-engine/host/pack-table.coax --library
 
-#module "aethyr.host.pack_table";
+#module "metaverse.engine.host.pack_table";
 #authority;
 
 // book:begin layout

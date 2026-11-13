@@ -1,6 +1,6 @@
 // Semantic selection over the existing query kernels, GitHub #12989.
 // Membership is a query property. It is never a collision-pair permission.
-#module "aethyr.query.filter";
+#module "metaverse.engine.query.filter";
 #authority;
 #load "query.coax";
 #load "../core/entity.coax" as entities;

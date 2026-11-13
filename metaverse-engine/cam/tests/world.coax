@@ -1,5 +1,5 @@
 // Shared owned semantic scene for camera boundary checks, not a realm's geometry.
-#module "aethyr.cam.tests.world";
+#module "metaverse.engine.cam.tests.world";
 #load "../../physics/query-scene.coax" as scene;
 #load "../../physics/query-filter.coax" as filters;
 #load "../../physics/query.coax" as queries;

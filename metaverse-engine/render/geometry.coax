@@ -1,7 +1,7 @@
 // Command/fetch domains derived from the renderer's declared encodings and
 // initialized typed payloads. The caller admits source spans before borrowing
 // these views; no GPU effects or output writes occur on refusal.
-#module "aethyr.render.geometry";
+#module "metaverse.engine.render.geometry";
 #load "catalog.coax";
 #load "frame.coax";
 #authority;

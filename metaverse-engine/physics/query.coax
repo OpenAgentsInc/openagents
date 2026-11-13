@@ -22,7 +22,7 @@
 //   coax/bin/coax test metaverse-engine/physics/query.coax --library
 //   coax/bin/coax mutate metaverse-engine/physics/query.coax
 
-#module "aethyr.query";
+#module "metaverse.engine.query";
 #authority;
 #load "../core/space.coax";
 #load "ground.coax" as terrain;

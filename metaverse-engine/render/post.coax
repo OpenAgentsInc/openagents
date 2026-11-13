@@ -1,5 +1,5 @@
 // Shared display response, bloom extraction/composition, chroma preservation and light shafts.
-#module "aethyr.render.post";
+#module "metaverse.engine.render.post";
 #load "material.coax";
 #test "postprocessing covers bloom knees and exact chroma and decay branch edges" {
  #assert abs(metaverse_style_bloom_share(0.75,1,0.5)-1.0f32/24)<0.000001;

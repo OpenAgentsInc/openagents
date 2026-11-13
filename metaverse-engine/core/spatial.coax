@@ -14,7 +14,7 @@
 // interest uses, on these procedures.
 //   coax/bin/coax test metaverse-engine/core/spatial.coax
 //   coax/bin/coax mutate metaverse-engine/core/spatial.coax
-#module "aethyr.spatial";
+#module "metaverse.engine.spatial";
 #authority;
 
 // book:begin grid

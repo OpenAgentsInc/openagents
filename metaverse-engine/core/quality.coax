@@ -24,7 +24,7 @@
 // (GitHub #13190: a phone held MED at 25-30 FPS).
 //   coax/bin/coax test metaverse-engine/core/quality.coax --library
 
-#module "aethyr.quality";
+#module "metaverse.engine.quality";
 
 // The tiers, in host.js verse.quality's order: 0 high, 1 medium, 2 low, 3 auto.
 QUALITY_HIGH :: 0; QUALITY_MEDIUM :: 1; QUALITY_LOW :: 2; QUALITY_AUTO :: 3;

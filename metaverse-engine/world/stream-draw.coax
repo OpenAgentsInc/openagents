@@ -1,6 +1,6 @@
 // Engine-owned streaming scene shader. Coax owns projection and shading;
 // platform hosts bind actual admitted GPU objects.
-#module "aethyr.world.streamdraw";
+#module "metaverse.engine.world.streamdraw";
 #authority;
 #load "../gpu/shader.coax";
 SwVertex :: struct {position: V3; normal: V3; uv: V2;}

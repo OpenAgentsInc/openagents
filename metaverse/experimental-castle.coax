@@ -1,5 +1,5 @@
 // A nine-tower castle with four linked courtyards and a central keep.
-#module "verse.experimentalcastle";
+#module "metaverse.experimentalcastle";
 #test "castle walls connect four towers and leave a broad entrance" {
  #assert CASTLE_SEGMENTS==133;
  for i:0..<CASTLE_SEGMENTS {p:=castle_segment(i);#assert p[2]==0 || p[2]==1;#assert !(p[2]==0 && p[1]== -20 && p[0]>31 && p[0]<37);}

@@ -24,7 +24,7 @@
 // never digested. The visible list is the spatial index's answer at the camera (retained_visible);
 // a device with the cluster and Hi-Z cull (render/geometry/cull.coax) takes it as indirect draws.
 //   coax/bin/coax test metaverse-engine/render/retained.coax
-#module "aethyr.render.retained";
+#module "metaverse.engine.render.retained";
 #load "../core/world.coax";
 #load "tests/retained-checks.coax" #test;
 

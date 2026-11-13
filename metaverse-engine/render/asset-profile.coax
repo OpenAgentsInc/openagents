@@ -1,6 +1,6 @@
 // The closed catalog's loading and delivery policy. A pack replaces its one
 // declaration with four ordinary delivery IDs; the container gets no ID.
-#module "aethyr.render.asset.profile";
+#module "metaverse.engine.render.asset.profile";
 #load "binding-sources.coax";
 #authority;
 RENDER_ASSET_ROWS :: 48;

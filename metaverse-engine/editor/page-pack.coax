@@ -20,7 +20,7 @@
 //   coax/bin/coax test metaverse-engine/editor/page-pack.coax --library
 //   coax/bin/coax mutate metaverse-engine/editor/page-pack.coax --root-only
 //   coax/web/tool.sh metaverse-engine/tools/page-pack.coax IN.pack OUT.vpk3     (write one, then read it back)
-#module "aethyr.forge.pagepack";
+#module "metaverse.engine.editor.pagepack";
 #authority;
 #load "pack.coax";
 #load "../../coax/lib/image/deflate.coax";

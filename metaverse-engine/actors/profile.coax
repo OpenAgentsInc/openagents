@@ -1,4 +1,4 @@
-#module "aethyr.actors.profile";
+#module "metaverse.engine.actors.profile";
 // Flat authored actor records, profile 1. Compilation is outside the paid loop.
 #load "../state/codec.coax";
 #load "../core/assets.coax" as assets;

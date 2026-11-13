@@ -8,7 +8,7 @@
 // The realm keeps its bodies' past (NET_REWIND_TICKS ticks) and asks net_rewind_tick which tick
 // a moment's bodies are read from.
 //   coax/bin/coax test metaverse-engine/net/rewind.coax
-#module "aethyr.net.rewind";
+#module "metaverse.engine.net.rewind";
 #authority;
 
 NET_REWIND_AGE_MS :: 250;    // an act's claimed age at most: a round trip of 500 ms

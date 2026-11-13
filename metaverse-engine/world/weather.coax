@@ -21,7 +21,7 @@
 //     whole clock and the whole condition. Any difference misses; a refusal is never kept.
 //   coax/bin/coax test metaverse-engine/world/weather.coax
 //   coax/bin/coax mutate metaverse-engine/world/weather.coax --root-only
-#module "aethyr.world.weather";
+#module "metaverse.engine.world.weather";
 #authority;
 #load "environment.coax" as env;
 #load "day.coax" as day;

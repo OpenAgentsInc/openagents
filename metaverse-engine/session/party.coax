@@ -23,7 +23,7 @@
 //   coax/bin/coax test metaverse-engine/session/party.coax --library
 //   coax/bin/coax mutate metaverse-engine/session/party.coax --library --root-only
 
-#module "aethyr.session.party";
+#module "metaverse.engine.session.party";
 #authority;
 
 // book:begin party-profile

@@ -1,7 +1,7 @@
 // Observed GPU texture payloads share one physical byte/mip description with
 // the native uploader. Coax decodes RGB to linear values before CPU filtering;
 // platform code never normalizes sRGB bytes or chooses a sampling policy.
-#module "aethyr.render.reference.texture";
+#module "metaverse.engine.render.reference.texture";
 #load "texture-codec.coax";
 #authority;
 RFTextureNeed :: struct {status:RenderTextureStatus;format:RenderTexelFormat;pixels:int;}

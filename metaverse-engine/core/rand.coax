@@ -11,7 +11,7 @@
 //   coax/bin/coax test metaverse-engine/core/rand.coax --library
 //   coax/bin/coax mutate metaverse-engine/core/rand.coax
 
-#module "aethyr.rand";
+#module "metaverse.engine.rand";
 
 // book:begin rand
 RAND_LOW :: 4294967295;   // the low 32 bits

@@ -23,7 +23,7 @@
 //   d TICK ID KIND X Y Z DX DY DZ BODY           room to pages: it ended during TICK: KIND 1 stuck
 //       in the ground or a wall at (X, Y, Z) pointing (DX, DY, DZ), 2 in body BODY (a realm's id), 3 gone
 //   coax/bin/coax test metaverse-engine/net/projectile.coax
-#module "aethyr.net.projectile";
+#module "metaverse.engine.net.projectile";
 #load "record.coax";
 #load "rewind.coax";
 

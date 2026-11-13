@@ -16,7 +16,7 @@
 // field is missing or of another kind.
 //   coax/bin/coax test metaverse-engine/editor/record.coax --library
 
-#module "aethyr.forge.record";
+#module "metaverse.engine.editor.record";
 #load "doc.coax";
 
 FORGE_NAME :: 240;       // a realm's name, at most (the server keeps 80 characters)

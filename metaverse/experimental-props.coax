@@ -1,5 +1,5 @@
 // Fantasy Props Standard placements relative to the experimental village sites.
-#module "verse.experimentalprops";
+#module "metaverse.experimentalprops";
 #load "experimental-terrain.coax" as terrain;
 #load "../everglade/world/home.coax" as home;
 #load "../metaverse-engine/world/building.coax" as building;

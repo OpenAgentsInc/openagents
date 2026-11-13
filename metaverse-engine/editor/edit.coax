@@ -21,7 +21,7 @@
 // An operation is refused unless what it changes is still as it says it was. Nothing here reads words.
 //   coax/bin/coax test metaverse-engine/editor/edit.coax --library
 
-#module "aethyr.forge.edit";
+#module "metaverse.engine.editor.edit";
 
 // book:begin doc
 FORGE_KEY :: 24;       // an entity's name: "trees:3"

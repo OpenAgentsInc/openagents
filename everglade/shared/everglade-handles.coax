@@ -1,5 +1,5 @@
 // Process-local actor ownership shared by the room and its world simulation.
-#module "verse.everglade.handles";
+#module "metaverse.everglade.handles";
 #authority;
 #load "../../coax/lib/handle.coax";
 EvergladeSeat :: struct {}

@@ -1,6 +1,6 @@
 // Read-only actor attributes and typed fear/interest notices. These grant no
 // action permissions. Consumers deduplicate (source,generation,tick,kind).
-#module "aethyr.actors.signals";
+#module "metaverse.engine.actors.signals";
 #load "pool.coax";
 #load "../core/entity.coax" as entities;
 #load "../move/walk.coax" as walking;

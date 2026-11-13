@@ -16,7 +16,7 @@
 // number in range where one is required is refused whole by env_gpu_unpack.
 //   coax/bin/coax test metaverse-engine/render/environment.coax
 //   coax/bin/coax mutate metaverse-engine/render/environment.coax --root-only
-#module "aethyr.render.environment";
+#module "metaverse.engine.render.environment";
 #authority;
 #load "../world/environment.coax";
 

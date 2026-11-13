@@ -2,7 +2,7 @@
 // The CPU frame consumes the same compiled catalog and frame program as the
 // GPU adapters. Checked tree bytes are authenticated by the package carrier;
 // no platform code selects shader parameters, draws, resources or pass order.
-#module "aethyr.render.reference.frame";
+#module "metaverse.engine.render.reference.frame";
 #load "reference-pipeline.coax";
 #load "geometry.coax";
 #load "binding-sources.coax";

@@ -11,7 +11,7 @@
 // day over its shot. Nothing here hands back to a follow camera: a stage owns its camera outright.
 //
 //   coax/bin/coax test metaverse-engine/cam/track.coax --library
-#module "aethyr.cam.track";
+#module "metaverse.engine.cam.track";
 #load "fly-number.coax";   // a flyover path's numbers (cam_track_fly)
 
 TRACK_KEYS :: 16;

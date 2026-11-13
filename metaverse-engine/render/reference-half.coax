@@ -1,6 +1,6 @@
 // Shared physical binary16 codec. Texture-filter results and framebuffer
 // storage use the same explicit nearest-even conversion, including subnormals.
-#module "aethyr.render.reference.half";
+#module "metaverse.engine.render.reference.half";
 #authority;
 RHDecoded :: struct {ok:bool=true;value:f32;}
 

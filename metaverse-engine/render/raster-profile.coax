@@ -1,7 +1,7 @@
 // Raster precision is a declared backend profile, not a universal GPU bit
 // width. Analytic mode is a mathematical conformance model. Fixed modes need
 // device/probe provenance in the enclosing qualification receipt.
-#module "aethyr.render.raster.profile";
+#module "metaverse.engine.render.raster.profile";
 #load "reference-quad.coax";
 #authority;
 RRRasterRounding :: enum u8 {analytic;nearest_even;nearest_positive;invalid;}

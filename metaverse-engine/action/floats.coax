@@ -8,7 +8,7 @@
 // strongly it shows, its size and colour by kind.
 //   coax/bin/coax test metaverse-engine/action/floats.coax --library
 
-#module "aethyr.action.floats";
+#module "metaverse.engine.action.floats";
 #load "react.coax" as react;
 #load "../core/space.coax";
 

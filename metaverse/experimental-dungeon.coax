@@ -13,7 +13,7 @@
 // barracks, G the barracks door to the hall, H the great hall, I the crypt passage, J the crypt
 // (a dead end), M the passage south, O the storeroom (a dead end), K the hall's south passage, Q the
 // treasure nook (a dead end), L the antechamber and N the boss's hall at the far end.
-#module "verse.experimentaldungeon";
+#module "metaverse.experimentaldungeon";
 #load "../metaverse-engine/physics/visibility.coax" as vis;   // lines of sight through the walls (#13073)
 #load "../metaverse-engine/physics/query.coax" as dq;
 #load "../metaverse-engine/core/space.coax" as dsp;

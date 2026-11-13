@@ -17,7 +17,7 @@
 //   coax/bin/coax test metaverse-engine/core/space.coax --library
 //   coax/bin/coax mutate metaverse-engine/core/space.coax
 
-#module "aethyr.space";
+#module "metaverse.engine.space";
 #load "../../coax/lib/quantity.coax" as units;
 
 // book:begin units

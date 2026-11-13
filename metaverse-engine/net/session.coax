@@ -1,5 +1,5 @@
 // Shared admission, initialized stepping and durability selection over caller-owned state.
-#module "aethyr.net.session";
+#module "metaverse.engine.net.session";
 #authority;
 #load "realm.coax";
 #load "../session/compat.coax";

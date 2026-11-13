@@ -1,5 +1,5 @@
 // Small real-codec/native-Wasm qualification. This is not the streamed host.
-#module "aethyr.examples.resourcecost";
+#module "metaverse.engine.examples.resourcecost";
 #import "Basic";
 #load "../world/resource-admission.coax";
 #load "../world/tests/resource-cost-fixture.coax";   // the example runs the fixture as code

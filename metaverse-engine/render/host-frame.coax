@@ -1,6 +1,6 @@
 // Browser arena observations become bounded views in Coax before C borrows
 // any payload. These direct/HUD adapters are the flat renderer entry path.
-#module "aethyr.render.host.frame";
+#module "metaverse.engine.render.host.frame";
 #load "runtime.coax";
 #authority;
 RenderHostBufferSizes :: struct {status:RenderFrameStatus=RenderFrameStatus.bad_counts;vertex_bytes:u64;uniform_bytes:u64;}

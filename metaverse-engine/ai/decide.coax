@@ -14,7 +14,7 @@
 //   coax/bin/coax test metaverse-engine/ai/decide.coax --library
 //   coax/bin/coax mutate metaverse-engine/ai/decide.coax --library
 
-#module "aethyr.ai.decide";
+#module "metaverse.engine.ai.decide";
 #authority;
 #load "stimulus.coax";
 #load "../core/replay.coax";

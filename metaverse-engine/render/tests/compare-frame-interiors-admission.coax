@@ -1,7 +1,7 @@
 // Admission of one explicitly declared boundary-exclusion certificate.
 // This establishes file/shape/source joins, never hardware legality or an
 // enclosing producer/frame/resource join. No image bytes enter this policy.
-#module "aethyr.render.tool.interiors.admission";
+#module "metaverse.engine.render.tool.interiors.admission";
 #load "tooling-policy.coax";
 #authority;
 #load "compare-frame-interiors-checks.coax";

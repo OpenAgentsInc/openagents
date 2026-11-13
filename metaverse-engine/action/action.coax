@@ -9,7 +9,7 @@
 //
 //   coax/bin/coax test metaverse-engine/action/action.coax --library
 
-#module "aethyr.action";
+#module "metaverse.engine.action";
 
 ACTION_EVENTS :: 16;          // timed events one definition may declare
 ACTION_TICKS_MAX :: 3840;     // one minute at 64 ticks a second: a longer action is not one

@@ -13,7 +13,7 @@
 //   coax/bin/coax test metaverse-engine/render/cascades.coax
 //   coax/bin/coax mutate metaverse-engine/render/cascades.coax --root-only
 
-#module "aethyr.render.cascades";
+#module "metaverse.engine.render.cascades";
 #load "light.coax";
 
 CASCADE_MAX :: 4;

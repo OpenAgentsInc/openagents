@@ -1,6 +1,6 @@
 // Shared descriptors for browser and native effects. Entry indices0..12 are
 // canonical passes;13 is the separate media entry, not RenderPassId.invalid.
-#module "aethyr.render.host.bindings";
+#module "metaverse.engine.render.host.bindings";
 #load "binding-sources.coax";
 #load "media-profile.coax";
 #load "media-limits.coax";

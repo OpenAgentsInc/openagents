@@ -28,7 +28,7 @@
 //   coax/bin/coax test metaverse-engine/session/travel.coax --library
 //   coax/bin/coax mutate metaverse-engine/session/travel.coax --library --root-only
 
-#module "aethyr.session.travel";
+#module "metaverse.engine.session.travel";
 #authority;
 #load "control.coax";
 

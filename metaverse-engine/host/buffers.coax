@@ -1,5 +1,5 @@
 // Actual allocation spans, before a host copies bytes into a realm.
-#module "aethyr.host.buffers";
+#module "metaverse.engine.host.buffers";
 #authority;
 #test "host copies require one complete measured destination including its allocation extent" {
   #assert htb_copy_span(1,4,4,5) && htb_copy_span(4096,64,4,4160) && htb_copy_span(4096,64,64,4160);

@@ -21,7 +21,7 @@
 // period is 1/64 s. Runtime tuning comes from World.locomotion; the legacy
 // constants below name the published defaults for existing callers/checks.
 
-#module "aethyr.walk";
+#module "metaverse.engine.walk";
 #load "../physics/stand.coax";
 #load "../core/loop.coax";
 #load "../core/input.coax";

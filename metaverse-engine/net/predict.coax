@@ -21,7 +21,7 @@
 // Nothing here decides an outcome: the room does.
 //   coax/bin/coax test metaverse-engine/net/predict.coax
 //   coax/bin/coax mutate metaverse-engine/net/predict.coax
-#module "aethyr.net.predict";
+#module "metaverse.engine.net.predict";
 #authority;
 
 // book:begin predict

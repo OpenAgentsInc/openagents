@@ -11,7 +11,7 @@
 // The host face (coax/web/host.js): coaxial_mouselook(state) -> ml_host; coaxial_look_delta(state,
 // dx, dy) -> ml_turn (CSS pixels); coaxial_pointer_lock(state, status) -> ml_lock.
 //   coax/bin/coax test metaverse-engine/cam/mouselook.coax --library
-#module "aethyr.cam.mouselook";
+#module "metaverse.engine.cam.mouselook";
 #load "reticle.coax" as reticle;
 
 ML_TURN :: 0.0024;     // radians the camera turns for a CSS pixel of the mouse (about 75 degrees for 550 px)

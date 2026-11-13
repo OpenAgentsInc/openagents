@@ -1,6 +1,6 @@
 // Translate observed Vulkan results and concrete in-flight ownership into
 // actions. Numeric values are the published VkResult values, not booleans.
-#module "aethyr.render.submission";
+#module "metaverse.engine.render.submission";
 #authority;
 NS_DONE :: 0; NS_WAIT :: 1; NS_REBUILD :: 2; NS_STOP :: 3; NS_INVALID :: 4;
 #test "completed lost pending and failed effects keep their distinct owner permissions" {

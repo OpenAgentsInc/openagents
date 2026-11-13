@@ -30,7 +30,7 @@
 // The camera's blend over the shoulder is metaverse-engine/cam/boom.coax (its `aim`), and the pose is
 // metaverse-engine/action/bow-pose.coax: both read bow_aim.
 //   coax/bin/coax test metaverse-engine/action/archery.coax --library
-#module "aethyr.action.archery";
+#module "metaverse.engine.action.archery";
 
 #load "bow.coax" as bow;
 #load "target.coax" as tg;

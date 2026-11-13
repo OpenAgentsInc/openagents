@@ -1,6 +1,6 @@
 // Explicit offline reference-work profiles. These are evaluator work budgets,
 // not GPU frame-time promises or a change to the default acceptance profile.
-#module "aethyr.render.reference.work";
+#module "metaverse.engine.render.reference.work";
 #authority;
 RRWorkProfile :: enum u8 {standard;large_world;invalid;complex_world;}
 RRWorkLimits :: struct {ok:bool;pass_steps:int;invocation_steps:int;}

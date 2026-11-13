@@ -1,6 +1,6 @@
 // The shader build reads compiler observations, then admits them against the
 // renderer catalog. Strings in a receipt borrow its unchanged report buffer.
-#module "aethyr.render.buildpolicy";
+#module "metaverse.engine.render.buildpolicy";
 #load "emit.coax";
 #load "capabilities.coax";
 #load "catalog.coax" as bc;

@@ -18,7 +18,7 @@
 //   coax/bin/coax test metaverse-engine/core/replay.coax --library
 //   coax/bin/coax mutate metaverse-engine/core/replay.coax
 
-#module "aethyr.replay";
+#module "metaverse.engine.replay";
 #load "input.coax";
 #load "../tests/replay-oracle.coax" #test;   // the checks' session backing and a small realm
 

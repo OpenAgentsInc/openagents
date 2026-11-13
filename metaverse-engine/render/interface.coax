@@ -1,6 +1,6 @@
 // The closed catalog has procedural/storage-fed world vertices and one dense
 // vec4 HUD input. Build and runtime admission use this same physical interface.
-#module "aethyr.render.interface";
+#module "metaverse.engine.render.interface";
 #load "build-policy.coax";
 #load "catalog.coax";
 #load "passes.coax";

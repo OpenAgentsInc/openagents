@@ -7,7 +7,7 @@
 //     coax/bin/coax c metaverse-engine/host/pack-table-face.coax --library --header aethyr-pack-table.h > aethyr-pack-table.c
 //   and the host includes metaverse-engine/host/pack-table.h, which wraps that header.
 //   coax/bin/coax test metaverse-engine/host/pack-table-face.coax --library
-#module "aethyr.host.pack_table_face";
+#module "metaverse.engine.host.pack_table_face";
 #load "pack-table.coax";
 #load "pack-cells.coax";
 

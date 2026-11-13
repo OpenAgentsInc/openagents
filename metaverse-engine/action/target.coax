@@ -15,7 +15,7 @@
 // each flying arrow's segment (metaverse-engine/action/bow.coax arrow_segment) beside its own ground, walls
 // and bodies. What holds a face up (a butt, a pole) is the realm's own collider.
 //   coax/bin/coax test metaverse-engine/action/target.coax --library
-#module "aethyr.action.target";
+#module "metaverse.engine.action.target";
 
 TargetFace :: struct { x: f32; y: f32; z: f32; nx: f32; ny: f32; nz: f32 = 1; radius: f32; }
 // A step's meeting with a face: `hit`, how far along the step (`u`, 0 to 1), how far from the

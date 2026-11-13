@@ -1,6 +1,6 @@
 // Compiled resource origins for the GPU effects adapters. Names and slots do
 // not acquire policy in JS/C; they consume this typed lookup and the pass op.
-#module "aethyr.render.binding.sources";
+#module "metaverse.engine.render.binding.sources";
 #load "catalog.coax";
 #load "resources.coax" as resource_views;
 #load "media-profile.coax" as media_profile;

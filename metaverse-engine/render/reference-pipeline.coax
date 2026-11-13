@@ -2,7 +2,7 @@
 // supplies recorded words/resources and observes the resulting framebuffer.
 // Prepared program/tree/metadata are one immutable pair. Caller-owned target,
 // staging pixels and interpreter memory must be valid, disjoint live storage.
-#module "aethyr.render.reference.pipeline";
+#module "metaverse.engine.render.reference.pipeline";
 #load "reference-io.coax";
 #load "reference-depth.coax";
 #load "active-lanes.coax";

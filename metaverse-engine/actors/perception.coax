@@ -1,4 +1,4 @@
-#module "aethyr.actors.perception";
+#module "metaverse.engine.actors.perception";
 // A snapshot of query outcomes enters here, not an unrestricted world handle.
 // The runtime adapter constructs these only from current filtered semantic rays.
 #load "choices.coax";

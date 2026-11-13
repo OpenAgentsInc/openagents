@@ -9,7 +9,7 @@
 // floats hold the pen's tint: a colour of the triangles' own, for materials that take one.
 // A pen that fills stops whole: it never writes part of a triangle, and says it is full.
 //   coax/bin/coax test --library metaverse-engine/arch/mesh.coax
-#module "aethyr.arch.mesh";
+#module "metaverse.engine.arch.mesh";
 
 ARCH_VERTEX_FLOATS :: 12;
 ARCH_TAU :: 6.2831853;

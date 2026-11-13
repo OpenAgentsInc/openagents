@@ -1,5 +1,5 @@
 // Shared shadow filter radius and Poisson samples; the pass itself belongs to the renderer.
-#module "aethyr.render.shadow_filter";
+#module "metaverse.engine.render.shadow_filter";
 #load "light.coax";
 // Tap positions and extent in texels; light.coax owns the tap count.
 metaverse_style_shadow_radius :: (on_phone:f32)->f32 #export_c #effects(all) {return 2.5f32;}

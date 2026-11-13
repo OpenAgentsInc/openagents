@@ -3,7 +3,7 @@
 // (metaverse-engine/arch/place.coax). Every part stands on y = 0 at the origin and takes the pen's material.
 // Sizes are in metres. The Golemancers' Workshop (everglade/workshop/temple.coax) is their first user.
 //   coax/bin/coax test --library metaverse-engine/arch/classical.coax
-#module "aethyr.arch.classical";
+#module "metaverse.engine.arch.classical";
 #load "mesh.coax";
 
 ARCH_FLUTES :: 20;            // a Doric column's grooves

@@ -17,7 +17,7 @@
 //
 //   coax/bin/coax test metaverse-engine/action/break.coax --library
 
-#module "aethyr.action.break";
+#module "metaverse.engine.action.break";
 #load "react.coax";
 #load "../core/space.coax";
 #load "../physics/query.coax";

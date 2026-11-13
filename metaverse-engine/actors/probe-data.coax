@@ -1,5 +1,5 @@
 // Declared conformance inputs, shared by the native and Wasm drivers.
-#module "aethyr.actors.probe.data";
+#module "metaverse.engine.actors.probe.data";
 #load "profile.coax";
 ActorProbeInput :: struct {flags:u32;culled:bool;}
 actor_probe_parameters :: ()->ActorParameters #effects(all) {

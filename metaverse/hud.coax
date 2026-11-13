@@ -3,7 +3,7 @@
 // The logical module verse.hud owns this file and the two it loads. Its
 // public API is the list below: the two packet types and the native HUD
 // functions. The HUD_* constants stay private (the functions return them).
-#module "verse.hud";
+#module "metaverse.hud";
 #export HudRect, HudPoint, metaverse_hud_slot;
 #export metaverse_hud_frame_point, metaverse_hud_frame_arm, metaverse_hud_tone, metaverse_hud_cut, metaverse_hud_outline, metaverse_hud_arm_down;
 #load "../metaverse-engine/ui/hud-types.coax";

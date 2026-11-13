@@ -1,5 +1,5 @@
 // One smootherstep blend for authored camera flights and object close-ups.
-#module "aethyr.shot.blend";
+#module "metaverse.engine.shot.blend";
 #authority;
 #load "../cam/shot.coax";
 

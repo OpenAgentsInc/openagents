@@ -1,6 +1,6 @@
 // Reserve an immutable payload after the observed Wasm arena. The platform
 // grows/copies only this admitted span; next is unchanged on every refusal.
-#module "aethyr.render.host.memory";
+#module "metaverse.engine.render.host.memory";
 #load "frame.coax";
 #authority;
 RENDER_HOST_MEMORY_BYTES :: 67108864;

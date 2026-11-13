@@ -1,6 +1,6 @@
 // Engine-owned, playable top-down adoption fixture for declared-state profile 1.
 // The one FrameClock pays both the shared walker and the fact/variant update.
-#module "aethyr.state.fixture";
+#module "metaverse.engine.state.fixture";
 #load "restore.coax";
 #load "fixture-policy.coax";
 #load "../move/walk.coax" as walking;

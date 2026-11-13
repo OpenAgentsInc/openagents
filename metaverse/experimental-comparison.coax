@@ -1,6 +1,6 @@
 // Optional private specimen gallery. Positions are shared with the retained
 // research pack recipe; labels appear only when its catalog marker is loaded.
-#module "verse.experimentalcomparison";
+#module "metaverse.experimentalcomparison";
 
 #test "ten comparison stations are distinct, paired and away from spawn" {
  for i:0..<CMP_N {p:=cmp_site(i);#assert p.z>=8 && abs(p.left_x-p.right_x)>2 && p.span>0;

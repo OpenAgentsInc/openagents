@@ -11,7 +11,7 @@
 //   coax/bin/coax test metaverse-engine/core/sticks.coax --library
 //   coax/bin/coax mutate metaverse-engine/core/sticks.coax
 
-#module "verse.sticks";
+#module "metaverse.sticks";
 
 STICKS_RADIUS :: 56.0;          // the move stick's radius, in points
 STICKS_RUN_PAST :: 0.8;        // pushed this far toward the ring (a full push), you run; a light push walks

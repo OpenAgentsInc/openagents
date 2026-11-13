@@ -1,7 +1,7 @@
 // Portable partitioned stereo convolution. The host supplies decoded PCM
 // and measured workspace; arithmetic and normalized impulse semantics are
 // shared Coax. SDKs only feed/receive whole planar blocks.
-#module "aethyr.audio.host.convolution";
+#module "metaverse.engine.audio.host.convolution";
 #load "../../psionic/lib/spectral.coax";
 #load "host-level.coax";
 #authority;

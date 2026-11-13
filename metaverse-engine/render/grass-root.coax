@@ -1,7 +1,7 @@
 // Conservative instance rejection for the existing grass shader's root-clip profile v1.
 // Callers supply an axis-aligned box containing every root in a cell. A retained
 // cell keeps every original instance ID; this neither thins nor moves foliage.
-#module "aethyr.render.grassroot";
+#module "metaverse.engine.render.grassroot";
 #load "material.coax" as gr_material;
 #authority;
 

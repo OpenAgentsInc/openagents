@@ -1,7 +1,7 @@
 // Checked shader tree-v2/v3 execution on four fragment helper lanes. The native
 // host supplies owned word/resource views and compiles this Coax; it decides no
 // operation, control flow, texture policy or fragment publication.
-#module "aethyr.render.reference.ir";
+#module "metaverse.engine.render.reference.ir";
 #authority;
 #load "reference-quad.coax";
 #load "active-lanes.coax";

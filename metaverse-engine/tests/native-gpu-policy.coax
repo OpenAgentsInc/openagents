@@ -1,5 +1,5 @@
 // Authored native GPU fixture/verdict policy; all actual Vulkan work is effects.
-#module "aethyr.test.native.gpu";
+#module "metaverse.engine.test.native.gpu";
 #authority;
 #load "native-gpu-checks.coax";
 NVRow :: struct {count:int;words:[16]u32;}

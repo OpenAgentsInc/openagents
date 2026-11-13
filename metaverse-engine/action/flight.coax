@@ -22,7 +22,7 @@
 // Units are metres, seconds and radians, +Y up, yaw 0 facing +Z; call it once a fixed step.
 //   coax/bin/coax test metaverse-engine/action/flight.coax --library
 
-#module "aethyr.action.flight";
+#module "metaverse.engine.action.flight";
 #authority;
 #load "../move/flight.coax";
 

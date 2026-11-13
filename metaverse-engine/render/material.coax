@@ -11,7 +11,7 @@
 //   coax/bin/coax test metaverse-engine/render/material.coax
 //   coax/bin/coax mutate metaverse-engine/render/material.coax
 
-#module "aethyr.render.material";
+#module "metaverse.engine.render.material";
 
 st_min :: (a:f32,b:f32)->f32 {if a<b{return a;}return b;}
 st_max :: (a:f32,b:f32)->f32 {if a>b{return a;}return b;}

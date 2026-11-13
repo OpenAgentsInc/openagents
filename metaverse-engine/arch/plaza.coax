@@ -15,7 +15,7 @@
 //
 // The parameters of each: metaverse-engine/arch/README.md.
 //   coax/bin/coax test --library metaverse-engine/arch/plaza.coax
-#module "aethyr.arch.plaza";
+#module "metaverse.engine.arch.plaza";
 #load "village.coax";
 #load "flora.coax";
 

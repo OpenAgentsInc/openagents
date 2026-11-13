@@ -1,5 +1,5 @@
 // Shared sky, halo, cloud field and portable noise functions. No environment clock is owned here.
-#module "aethyr.render.sky";
+#module "metaverse.engine.render.sky";
 #load "material.coax";
 #load "noise.coax";
 #test "cloud interpolation matches the four independently weighted corner values" {

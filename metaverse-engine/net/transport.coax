@@ -21,7 +21,7 @@
 // The room's side: net_route picks a frame's channel from its first word (a realm's own table), and
 // net_gate_fresh lets each repeated input through once.
 //   coax/bin/coax test metaverse-engine/net/transport.coax
-#module "aethyr.net.transport";
+#module "metaverse.engine.net.transport";
 #authority;
 
 NET_WS :: 0; NET_WT :: 1;                              // the transport a link runs on

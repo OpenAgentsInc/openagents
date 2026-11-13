@@ -37,7 +37,7 @@
 //   coax/bin/coax test metaverse-engine/world/cells.coax --library
 //   coax/bin/coax mutate metaverse-engine/world/cells.coax --library
 
-#module "aethyr.world.cells";
+#module "metaverse.engine.world.cells";
 #authority;
 #load "../core/replay.coax";
 

@@ -1,4 +1,4 @@
-#module "aethyr.actors.pool";
+#module "metaverse.engine.actors.pool";
 // Deferred instances compose existing entity generations and RCM1 ownership.
 #load "perception.coax";
 #load "navigation.coax";
