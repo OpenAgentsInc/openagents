@@ -42,10 +42,10 @@ not hold.
    second run on the same server finds the first run's pieces and fails.
    (With `--api PORT` the world is in that API's database instead. With
    `OA_SERVE_NO_API=1` it is in the files named `splice.*` in
-   `apps/openagents-web/build/.worlds/`: delete them.) Wait until the server
-   has built every page, about two minutes after it says `engine rebuilt` on
-   a busy machine: until then it can miss a source the Code pane saves
-   (#13464), and a page it is still building does not follow its world.
+   `apps/openagents-web/build/.worlds/`: delete them.) Run the pass once it
+   says `engine rebuilt`: a save from the Code pane starts its module's
+   rebuild at once, even while the first compiler check is still slow
+   (#13464).
 
 3. Run the pass:
 

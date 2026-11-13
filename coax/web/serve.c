@@ -1347,6 +1347,7 @@ static int code_list(const char *page, code_file *list, int cap) {
 // Runs argv in dir, its output (both streams) into out: its exit status, or -1 when it did not
 // end in ms. The compiler may leave its resident process holding the pipe, so the wait is for the
 // child, not for the pipe's end. With no out, nothing is waited for (reap_children takes it).
+static void check_changes(bool all);
 static int code_run(const char *dir, char *const argv[], char *out, size_t cap, size_t *got, int ms) {
   int fds[2] = {-1, -1};
   if (out && pipe(fds)) return -1;
@@ -1448,6 +1449,13 @@ static void code_local(client *c) {
   if (fd >= 0 && close(fd)) wrote = false;
   if (!wrote) { code_refuse(c, 500, "That file could not be written."); return; }
   logf_("code: %s saved from the editor (%lld bytes)", rel, (long long)ask.text.count);
+  // The watch sees the save now, before the compiler's check below holds this loop (#13464):
+  // the first check after a start meets a cold compiler and can take the whole 20 s, and the
+  // save was seen only after it (and any request behind it), half a minute late. A whole pass,
+  // and a second from the top when the first began mid-pass and started nothing: a running
+  // build sees the save when it ends, as before.
+  if (!build_pid) check_changes(true);
+  if (!build_pid) check_changes(true);
   int64_t rn = realm_code_root(CSTR(page), CSTR(rel), (coax_v_u8){(uint8_t *)root_rel, sizeof root_rel - 1});
   if (rn > 0) {
     root_rel[rn] = 0;
@@ -1489,7 +1497,7 @@ static char *units_script(void) {
 // second. So a pass is taken a few milliseconds at a time, between requests, and acts on what
 // changed when it has seen every file (#13413: an edit must reach a tab inside a second).
 #define SCAN_SLICE_MS 6.0
-static void check_changes(void) {
+static void check_changes(bool all) {
   static bool whole, page, some;
   static int scan_at;
   static double last_new;
@@ -1501,7 +1509,7 @@ static void check_changes(void) {
   double began = now_ms();
   int i = scan_at;
   for (; i < file_count; i++) {
-    if (i > scan_at && now_ms() - began >= SCAN_SLICE_MS) { scan_at = i; return; }   // asked each file: one answer can take milliseconds on a busy disk
+    if (!all && i > scan_at && now_ms() - began >= SCAN_SLICE_MS) { scan_at = i; return; }   // asked each file: one answer can take milliseconds on a busy disk
     struct timespec t = mtime_of(files[i].path);
     if (same_time(t, files[i].mtime)) continue;
     files[i].mtime = t;
@@ -1636,7 +1644,7 @@ int main(int argc, char **argv) {
     reap_children();
     if (!static_mode && now_ms() - last_scan >= 50) {
       last_scan = now_ms();
-      if (!build_pid) check_changes();
+      if (!build_pid) check_changes(false);
       else if (build_targeted) { poll_outputs(); if (units_all_told()) release_build(); }
       for (int i = 0; i < tail_count; i++) {   // a tail's report is not read; its pipe never fills
         char scratch[4096];

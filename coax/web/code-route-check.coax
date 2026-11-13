@@ -9,6 +9,8 @@
 //   a link, not a file the module was not built from;
 //   a listed file is read byte for byte, and a save writes exactly the bytes sent;
 //   a save answers with the compiler's check: saved, or its words, and the file is written either way;
+//   a save starts the module's rebuild before the compiler's check ends, even a check that takes
+//   seconds (#13464: the first check after a start held the save for half a minute);
 //   a path above or beside the realm, a link, and an unlisted file are refused, and none is touched;
 //   a request that is not this computer's own page (no same-origin word, another Host) is refused;
 //   a watching server answers only POST there; --static has no such route; nor has the realm origin.
@@ -104,7 +106,7 @@ tool_main :: () -> int #export_c #effects(all) {
   ws: [1] CrWork; w := ws[..];
   p: [1200] u8; p2: [1200] u8; out: [256] u8; err: [256] u8;
   // the fixture: a repository with a realm, another realm, and a compiler that refuses the word BROKEN
-  folders := [8] string.["coax", "coax/web", "coax/bin", "apps", "apps/web", "apps/web/build", "apps/web/build/.drive", "metaverse"];
+  folders := [9] string.["coax", "coax/web", "coax/bin", "apps", "apps/web", "apps/web/build", "apps/web/build/.drive", "apps/web/build/.live", "metaverse"];
   ok := true;
   for f: folders { ok = ok && fs_mkdir(cr_path(dir, f, p[..])); }
   ok = ok && fs_mkdir(cr_path(dir, "metaverse/splice", p[..])) && fs_mkdir(cr_path(dir, "metaverse/orbit", p[..]));
@@ -113,7 +115,9 @@ tool_main :: () -> int #export_c #effects(all) {
   ok = ok && fs_write(cr_path(dir, "metaverse/splice/secret.coax", p[..]), "not the module's\n");
   ok = ok && fs_write(cr_path(dir, "metaverse/splice/notes.md", p[..]), "notes\n");
   ok = ok && fs_write(cr_path(dir, "metaverse/orbit/orbit.coax", p[..]), "another realm's\n");
-  ok = ok && fs_write(cr_path(dir, "coax/bin/coax", p[..]), "#!/bin/sh\nif grep -rq BROKEN metaverse/splice; then echo \"metaverse/splice/walk.coax:1:1: error[E0000]: the word is broken\"; exit 1; fi\nexit 0\n");
+  // SLOW: a check that takes up to 5 s and passes only if the module's rebuild (its unit's command,
+  // below) has begun meanwhile, so a save must start the rebuild before the check holds the server
+  ok = ok && fs_write(cr_path(dir, "coax/bin/coax", p[..]), "#!/bin/sh\nif grep -rq BROKEN metaverse/splice; then echo \"metaverse/splice/walk.coax:1:1: error[E0000]: the word is broken\"; exit 1; fi\nif grep -rq SLOW metaverse/splice; then i=0; while [ $i -lt 50 ] && ! grep -q built apps/web/build/splice.wasm; do sleep 0.1; i=$((i+1)); done; grep -q built apps/web/build/splice.wasm || { echo \"metaverse/splice/walk.coax:1:1: error[E0000]: not rebuilt while checked\"; exit 1; }; fi\nexit 0\n");
   mode := [3] string.["/bin/chmod", "755", cr_path(dir, "coax/bin/coax", p[..])];
   ok = ok && proc_run(mode[..], 2000, out[..], err[..]).status == 0;
   link := [4] string.["/bin/ln", "-s", cr_path(dir, "metaverse/orbit/orbit.coax", p[..]), cr_path(dir, "metaverse/splice/link.coax", p2[..])];
@@ -123,6 +127,13 @@ tool_main :: () -> int #export_c #effects(all) {
   listed := [6] string.["metaverse/orbit/orbit.coax", "metaverse/splice/link.coax", "metaverse/splice/notes.md", "metaverse/splice/splice.coax", "metaverse/splice/walk.coax", "metaverse/splice/gone.coax"];
   for f: listed { n = ws_put(list[..], n, hash); n = ws_put(list[..], n, f); n = ws_put(list[..], n, "\n"); }
   ok = ok && fs_write(cr_path(dir, "apps/web/build/.drive/splice.sources", p[..]), cast(string) list[0..<n]);
+  // the module's unit, as wasm.sh writes it: a save of walk.coax rebuilds splice.wasm
+  wasm_b: [1200] u8; wasm := cr_path(dir, "apps/web/build/splice.wasm", wasm_b[..]);
+  deps: [8192] u8; d := ws_put(deps[..], 0, "coax-live-1\nkind wasm\nout "); d = ws_put(deps[..], d, wasm);
+  d = ws_put(deps[..], d, "\ncmd echo built > '"); d = ws_put(deps[..], d, wasm); d = ws_put(deps[..], d, "'\n");
+  srcs := [2] string.["metaverse/splice/splice.coax", "metaverse/splice/walk.coax"];
+  for f: srcs { d = ws_put(deps[..], d, "src "); d = ws_put(deps[..], d, cr_path(dir, f, p2[..])); d = ws_put(deps[..], d, "\n"); }
+  ok = ok && fs_write(wasm, "old\n") && fs_write(cr_path(dir, "apps/web/build/.live/splice.deps", p[..]), cast(string) deps[0..<d]);
   if !ok { tool_errln("code-route-check: the fixture could not be made"); return 2; }
   ab: [1200] u8; hb: [1200] u8;
   app := cr_path(dir, "apps/web", ab[..]); host_dir := cr_path(dir, "coax/web", hb[..]);
@@ -150,6 +161,10 @@ tool_main :: () -> int #export_c #effects(all) {
     "a save the compiler refuses is written and answers with the compiler's words");
   g = cr_ask(port, address, w, RC_SAVE, "splice", "metaverse/splice/walk.coax", "");
   failed += cr_check(g.status == 200 && g.a.what == RC_SAVED && cr_file(dir, "metaverse/splice/walk.coax", w) == "", "an empty file is a file");
+  proc_sleep(300);   // the rebuilds of the saves above end
+  ok = fs_write(wasm, "old\n");
+  g = cr_ask(port, address, w, RC_SAVE, "splice", "metaverse/splice/walk.coax", "speed :: SLOW;\n");
+  failed += cr_check(ok && g.status == 200 && g.a.what == RC_SAVED, "a save starts the module's rebuild before a slow compiler's check of it ends");
   // what is not the realm's own listed source
   g = cr_ask(port, address, w, RC_SAVE, "splice", "metaverse/splice/secret.coax", "written\n");
   failed += cr_check(g.status == 404 && g.a.ok && g.a.what == RC_REFUSED && cr_file(dir, "metaverse/splice/secret.coax", w) == "not the module's\n", "a file the module was not built from is refused and untouched");
