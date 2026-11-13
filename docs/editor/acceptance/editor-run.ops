@@ -15,7 +15,7 @@ clock until game.layer.st.n == 3 within 6000
 # the select tool: a tap in the world picks the crate under it and marks the point
 tap tool
 tap tool.1
-# points are the window's, inside the scene's frame: at 1280x800 the canvas runs from x 236 to 1024, below the strip
+# points are the window's, inside the scene's frame: at 1280x800 the canvas runs from x 308 to 964, below the strip, between the site's side and the editor's side
 tap 820 480
 clock until page.sel == 3 within 6000
 tap 475 525

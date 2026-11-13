@@ -59,7 +59,7 @@ The run exits 0 when every step holds: 98 operations, about a minute. It
 leaves a picture in `apps/openagents-web/build/`: `editor-run.png`.
 
 The scene stands in a frame: the canvas is the part of the window between the
-strip and the two side panes (and the agent's pane while it is open). Taps and
+strip, the site's side on the left and the editor's side on the right (and the agent's pane while it is open). Taps and
 drags in the runs are the window's CSS pixels, as a mouse gives them; the page
 hears them in the canvas's own pixels. `hit` asks the HUD at the point less the
 canvas's corner and says where that corner is. The game starts with Enter and

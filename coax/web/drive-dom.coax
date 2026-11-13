@@ -38,9 +38,9 @@ DD_TAPS_TAIL :: "; const kept = (e) => { for (let p = e.parentElement; p && p !=
 DD_TREE_HEAD :: "(() => { ";
 DD_TREE_TAIL :: "; const els = [...document.querySelectorAll(T)].filter((e) => { const r = e.getBoundingClientRect(), s = getComputedStyle(e); return r.width > 0 && r.height > 0 && s.visibility !== 'hidden' && s.display !== 'none'; }); return els.length ? els.slice(0, 400).map((e) => line(e) + '\\n').join('') + (els.length > 400 ? '(and ' + (els.length - 400) + ' more)\\n' : '') : '(no tap targets show on this page)\\n'; })()";
 
-// target: the middle of the element with this id, "x y", or why there is none.
+// target: the middle of the element with this id, scrolled into view as a person would, "x y", or why there is none.
 DD_TARGET_HEAD :: "(() => { const e = document.getElementById(";
-DD_TARGET_TAIL :: "); if (!e) return 'no element with that id on the page (tree lists them)'; const r = e.getBoundingClientRect(); if (!(r.width > 0 && r.height > 0)) return 'that element does not show'; return Math.round(r.left + r.width / 2) + ' ' + Math.round(r.top + r.height / 2); })()";
+DD_TARGET_TAIL :: "); if (!e) return 'no element with that id on the page (tree lists them)'; e.scrollIntoView({ block: 'nearest', inline: 'nearest' }); const r = e.getBoundingClientRect(); if (!(r.width > 0 && r.height > 0)) return 'that element does not show'; return Math.round(r.left + r.width / 2) + ' ' + Math.round(r.top + r.height / 2); })()";
 
 // Whether the page is one the browser draws (dom-host.js), with no engine driver of its own.
 DD_IS_DOM :: "(() => globalThis.coaxial?.drive ? 'engine' : document.querySelector('script[data-app][src*=\"dom-host\"]') ? 'dom' : 'plain')()";

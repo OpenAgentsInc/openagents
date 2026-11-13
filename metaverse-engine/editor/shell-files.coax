@@ -309,6 +309,7 @@ es_build_files :: (s: [] EdShell) {
   t := s[0].tree[..]; u := s[0].ui[..]; l := s[0].fl.l[..];
   buf: [UI_ID] u8; line: [FW_WORDS + 400] u8; src: [160] u8;
   pane := k_pane(t, u, "files.pane", DK_RIGHT, "Files");
+  es_fl_build_pin(s);   // a picture pinned beside the scene stays in sight in whichever pane is open
   if s[0].fl.note != ES_FL_SAID_NONE { a := k_notice(t, u, "files.said", ifx s[0].fl.note == ES_FL_SAID_DONE then "Done" else "Not done", es_fl_text(s[0].fl.words[..], s[0].fl.words_n)); tr_close(t); }
   // what the project holds against its limits, before anything is sent
   n := fw_put_int(line[..], 0, l[0].count); n = fw_put(line[..], n, " of "); n = fw_put_int(line[..], n, l[0].files); n = fw_put(line[..], n, " attachments, ");

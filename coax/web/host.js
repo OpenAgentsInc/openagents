@@ -3961,6 +3961,15 @@ function agentOpen() {
   agentAsked = true;
   import(`/coaxial/dom-host.js?app=${AGENT}&root=${AGENT_SLOT}`).catch((error) => { console.error(error); });
 }
+// The site's side down the editor's left (docs/app-shell.md): a second copy of the chat's module, drawing the
+// side alone (path /side), in the shell's slot for it. Every place in it is another page.
+const SIDE_SLOT = "places.slot";
+let sideAsked = false;
+function sideOpen() {
+  if (sideAsked || !document.getElementById(SIDE_SLOT)) return;
+  sideAsked = true;
+  import(`/coaxial/dom-host.js?app=${AGENT}&root=${SIDE_SLOT}&path=/side&as=side`).catch((error) => { console.error(error); });
+}
 // What the shell last told the conversation of the world (world.turn.v1), and the two ways bytes go between
 // them (E9, #13418): the shell's word of the world to the conversation, so each turn carries the selection and
 // "here"; and a hosted turn's plan (world.plan.v1) from the conversation to the shell, which makes it a batch
@@ -3993,8 +4002,10 @@ function agentActs() {
   }
 }
 function editorCarry(shell, x) {
-  agentOpen(); agentTell();
-  shell.after ||= () => { editorActs(); agentOpen(); editorRoom(); after(false); };
+  sideOpen(); agentOpen(); agentTell();
+  const side = globalThis.coaxialDoms?.side;
+  if (side) side.still = agentMode;   // on an agent's clock no frame comes by itself, here too
+  shell.after ||= () => { editorActs(); sideOpen(); agentOpen(); editorRoom(); after(false); };
   shell.still = agentMode;
   // ?edit=agent: the page was opened for the agent (a world's card on /chat), so the foot is open from the start
   if (!shell.told) { shell.told = true; if (new URLSearchParams(location.search).get("edit") === "agent") { shell.exports().dom_event(shell.state(), 7, 0, 0); shell.ask(); } }
@@ -4026,7 +4037,7 @@ function editorRoom() {
   if (!arena || !document.querySelector("[data-coaxial-dock]")) return;
   const w = innerWidth, h = innerHeight;
   let x0 = 0, y0 = 0, x1 = w, y1 = h;
-  for (const pane of document.querySelectorAll("[data-coaxial-dock] .pane")) {
+  for (const pane of document.querySelectorAll("[data-coaxial-dock] .pane, [data-coaxial-dock] .dock-s")) {
     const r = pane.getBoundingClientRect();
     if (r.width < 1 || r.height < 1) continue;
     if (r.width > w * 0.4) { if (r.top + r.height / 2 < h / 2) y0 = Math.max(y0, r.bottom); else y1 = Math.min(y1, r.top); }

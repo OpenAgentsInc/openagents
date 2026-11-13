@@ -191,6 +191,7 @@ es_build_assets :: (s: [] EdShell) {
   t := s[0].tree[..]; u := s[0].ui[..]; m := s[0].model[..]; l := s[0].as_list[..];
   buf: [UI_ID] u8; line: [EM_WORDS] u8; name: [EM_NAME] u8;
   pane := k_pane(t, u, "assets.pane", DK_RIGHT, "Assets");
+  es_fl_build_pin(s);   // a picture pinned beside the scene stays in sight in whichever pane is open
   es_build_said(s);
   if s[0].as_note != ES_AS_SAID_NONE { a := k_notice(t, u, "assets.said", ifx s[0].as_note == ES_AS_SAID_DONE then "Imported" else "Not imported", cast(string) s[0].as_words[0..<s[0].as_words_n]); tr_close(t); }
   // the budget and the limits, before anything is sent

@@ -365,6 +365,7 @@ es_build :: (s: [] EdShell) {
   buf: [UI_ID] u8; buf2: [UI_ID] u8; name: [EM_NAME] u8; line: [EM_WORDS] u8;
   tr_begin(t);
   dock := k_dock(t, "editor", true);
+  places := k_dock_side(t, "places");   // the site's side, which the page's host puts in the slot (coax/web/host.js)
   if !s[0].have {
     bar := k_pane(t, u, "bar", DK_TOP, "");
     wait := tr_leaf(t, "bar.wait", TG_SPAN, "meta", "Opening the world");
@@ -467,42 +468,17 @@ es_build :: (s: [] EdShell) {
   rev := tr_leaf(t, "bar.rev", TG_SPAN, "meta", cast(string) line[0..<n]);
   k_pane_end(t);
 
-  // the world's things
-  left := k_pane(t, u, "things", DK_LEFT, "Things");
-  es_fl_build_pin(s);   // a picture pinned beside the scene (shell-files.coax)
-  // a world that says how many things it holds and takes: the count, and how many of them are listed here
-  if m[0].all {
-    n = 0;
-    if m[0].ne < m[0].all_n { n = ct_put_int(line[..], n, m[0].ne); n = ct_put(line[..], n, " of "); }
-    n = ct_put_int(line[..], n, m[0].all_n); n = ct_put(line[..], n, ifx m[0].all_n == 1 then " thing" else " things");
-    if m[0].ne < m[0].all_n { n = ct_put(line[..], n, " listed, the newest"); }
-    n = ct_put(line[..], n, ". This world holds "); n = ct_put_int(line[..], n, m[0].all_cap); n = ct_put(line[..], n, " at most.");
-    cap := k_meta(t, "things.all", cast(string) line[0..<n]);
-  }
-  if m[0].ne == 0 { none := k_meta(t, "things.none", "Nothing is placed yet."); }
-  else {
-    list := tr_open(t, "things.list", TG_NAV, "list");
-    tr_attr(t, list, AT_LABEL, "Things in the world");
-    for k: 0..<m[0].ne {
-      n = ct_put(line[..], 0, "No. "); n = ct_put_int(line[..], n, m[0].e_id[k]);
-      kind := em_kind_name(m, m[0].e_kind[k], name[..]);
-      title := ifx kind.count > 0 then kind else "Thing";
-      // a realm that keeps templates lets a thing be gathered into a group, from its row
-      if m[0].ttable_n > 0 { r := k_row_with(t, u, tr_join(buf[..], "thing.", m[0].e_id[k]), title, cast(string) line[0..<n], k == sel, IC_PLUS, "Add to the group", es_in_group(s, m[0].e_id[k]) >= 0); }
-      else { r := k_row(t, u, tr_join(buf[..], "thing.", m[0].e_id[k]), title, cast(string) line[0..<n], k == sel); }
-    }
-    tr_close(t);
-  }
-  es_build_actors(s);
-  k_pane_end(t);
 
   // the realm's code takes the right side while it is open; else the selected thing, and what was refused
   if coding { es_build_code(s); }
   if asseting { es_build_assets(s); }
   if filing { es_build_files(s); }
   if scripting { es_build_scripts(s); }
+  // the editor's one side, on the right: what is selected, then the world's things and actors; the realm's code,
+  // the assets, the files or the scripts take its place while one of them is open
   if !coding && !asseting && !filing && !scripting {
   right := k_pane(t, u, "one", DK_RIGHT, "Selected");
+  es_fl_build_pin(s);   // a picture pinned beside the scene (shell-files.coax)
   es_build_said(s);
   if s[0].ngroup > 0 {
     grp := k_card(t, u, "group", "Group");
@@ -553,6 +529,33 @@ es_build :: (s: [] EdShell) {
       tr_close(t);
     }
   }
+  // the world's things, under what is selected
+  th := k_header(t, u, "things", "Things");
+  tr_close(t);   // the header holds only its title
+  // a world that says how many things it holds and takes: the count, and how many of them are listed here
+  if m[0].all {
+    n = 0;
+    if m[0].ne < m[0].all_n { n = ct_put_int(line[..], n, m[0].ne); n = ct_put(line[..], n, " of "); }
+    n = ct_put_int(line[..], n, m[0].all_n); n = ct_put(line[..], n, ifx m[0].all_n == 1 then " thing" else " things");
+    if m[0].ne < m[0].all_n { n = ct_put(line[..], n, " listed, the newest"); }
+    n = ct_put(line[..], n, ". This world holds "); n = ct_put_int(line[..], n, m[0].all_cap); n = ct_put(line[..], n, " at most.");
+    cap := k_meta(t, "things.all", cast(string) line[0..<n]);
+  }
+  if m[0].ne == 0 { none := k_meta(t, "things.none", "Nothing is placed yet."); }
+  else {
+    list := tr_open(t, "things.list", TG_NAV, "list");
+    tr_attr(t, list, AT_LABEL, "Things in the world");
+    for k: 0..<m[0].ne {
+      n = ct_put(line[..], 0, "No. "); n = ct_put_int(line[..], n, m[0].e_id[k]);
+      kind := em_kind_name(m, m[0].e_kind[k], name[..]);
+      title := ifx kind.count > 0 then kind else "Thing";
+      // a realm that keeps templates lets a thing be gathered into a group, from its row
+      if m[0].ttable_n > 0 { r := k_row_with(t, u, tr_join(buf[..], "thing.", m[0].e_id[k]), title, cast(string) line[0..<n], k == sel, IC_PLUS, "Add to the group", es_in_group(s, m[0].e_id[k]) >= 0); }
+      else { r := k_row(t, u, tr_join(buf[..], "thing.", m[0].e_id[k]), title, cast(string) line[0..<n], k == sel); }
+    }
+    tr_close(t);
+  }
+  es_build_actors(s);
   k_pane_end(t);
   }
   // the foot: the chat's own conversation, which the page's host puts in the slot (coax/web/host.js). Once

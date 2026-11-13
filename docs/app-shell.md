@@ -65,6 +65,19 @@ engine); anyone else gets the template's script, which the release build still
 finds and rewrites as before. A logged-out visitor pays that one small request
 (at most 3 seconds when the API is slow) before the engine starts.
 
+## The world editor
+
+The editor (`/worlds/ID?edit`) shows the same side down its left. The editor's
+shell (`metaverse-engine/editor/shell.coax`) gives it a column, `k_dock_side`,
+with a slot, and the page's host (`coax/web/host.js`) opens a second copy of
+the chat's module there with `path=/side`: the side alone, and every place in
+it another page. The editor's own panes are the strip across the top, one side
+on the right (what is selected, then the world's things and actors; the code,
+the assets or the files take its place while one is open) and the agent's pane
+at the foot, where the chat shows without a side. The scene's canvas is the
+room they leave. Putting the side away narrows its column to the button that
+brings it back.
+
 ## What each remaining page needs
 
 - **Projects (`/projects`) and Worlds (`/worlds`)** are drawn by the GPU on a

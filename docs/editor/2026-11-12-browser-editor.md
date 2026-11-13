@@ -486,7 +486,7 @@ you watch it in the editor.
   `world-plan` writes the plan's whole row, its route cut or grown to fit the
   new DO, so one edit always holds.
 - **The editor:** a time-of-day menu in the strip (story, dawn, day, dusk,
-  night), an Actors list in the left pane, and the selected actor's plan in the
+  night), an Actors list in the editor's side, and the selected actor's plan in the
   inspector (what it does and on noticing as menus, speed, notice and route as
   fields). Picking an actor looks at it from above and draws its route and
   notice ring; the HUD's phase chips follow the editor's time. Simulate runs
