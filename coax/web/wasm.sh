@@ -404,6 +404,10 @@ headroom_check() {   # every unit with a line, against its notes
 # checks first that every module it writes has a line (wasm-size budgets).
 budgets="$repo/$(dirname "$coax_file")/wasm-budgets.txt"
 module="$(basename "$out" .wasm)"
+# When this build began to read its sources (#13441), in development only: after a whole build, coax
+# serve builds the module again when a source was saved later than this, so an edit made while the
+# build ran is compiled, not lost.
+[[ "$mode" != dev || -n "${COAX_FAST_EDIT:-}" ]] || { mkdir -p "$(dirname "$out")/.live" && : > "$(dirname "$out")/.live/$module.started"; } || true
 budget_check() {   # [named]: $work/output.wasm against its budget; named: name the biggest parts when over
   [[ "$mode" != dev && -f "$budgets" ]] || return 0
   local status=0

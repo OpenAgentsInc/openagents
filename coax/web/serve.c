@@ -535,10 +535,13 @@ static void on_readable(client *c) {
 // Files: one row a path, in a table that grows (no cap), found by a hash of the
 // path. A row is watched for what put it there: SCAN (a page, shader or source
 // file found in the app's folders) or SRC (a unit's dependency list names it).
-enum { ROLE_SCAN = 1, ROLE_SRC = 2 };
+// NEAR: a source file in a folder a unit's list reads from, that no list names (#13441): a
+// new one there is seen at once, and builds again the units whose last build failed.
+enum { ROLE_SCAN = 1, ROLE_SRC = 2, ROLE_NEAR = 4 };
 typedef struct { char *path; struct timespec mtime; int roles; } watched;
 // A unit: one module or shader the build writes, from its .live/NAME.deps.
-typedef struct { bool wgsl; char *out, *cmd; int *src; int nsrc, src_cap; struct timespec out_mtime; bool dirty, told; } unit;
+// started: when its last build began to read its sources (.live/NAME.started; the output's time without one).
+typedef struct { bool wgsl; char *out, *cmd; int *src; int nsrc, src_cap; struct timespec out_mtime, started; bool dirty, told; } unit;
 // A file a tab loaded (a pack, a texture), by its URL; hash is its SHA-256 when known.
 typedef struct { char *url, *path; struct timespec mtime; char hash[65]; } loaded;
 static watched *files; static int file_count, file_cap;
@@ -546,6 +549,10 @@ static int *slots; static int slot_cap;   // indexes into files, -1 empty; a pow
 static unit *units; static int unit_count, unit_cap;
 static loaded *assets; static int asset_count, asset_cap;
 static char **notes; static int note_count, note_cap;   // .wgsl paths changed, told once each
+static char **near_dirs; static int near_count, near_cap;   // folders outside the app that a unit's list reads from
+static char **failed_outs; static int failed_count, failed_cap;   // the units whose last build failed, by output
+static struct timespec build_wall;   // the running build's start, on the files' clock
+static bool later(struct timespec a, struct timespec b) { return a.tv_sec > b.tv_sec || (a.tv_sec == b.tv_sec && a.tv_nsec > b.tv_nsec); }
 
 static void *grow(void *p, int *cap, int need, size_t size) {
   if (need <= *cap) return p;
@@ -599,7 +606,8 @@ static int watch_file(const char *path, int role) {
 static void watch_reset(void) {
   for (int i = 0; i < file_count; i++) free(files[i].path);
   for (int i = 0; i < unit_count; i++) { free(units[i].out); free(units[i].cmd); free(units[i].src); }
-  file_count = unit_count = 0;
+  for (int i = 0; i < near_count; i++) free(near_dirs[i]);
+  file_count = unit_count = near_count = 0;
   for (int k = 0; k < slot_cap; k++) slots[k] = -1;
 }
 
@@ -639,6 +647,37 @@ static char *real_out(const char *path) {
   if (!realpath(dir, real) || snprintf(joined, sizeof joined, "%s%s", real, slash) >= (int)sizeof joined) return copy(path);
   return copy(joined);
 }
+// The folder of a listed source outside the app (the app's own folders are scanned whole).
+static void near_dir(const char *path) {
+  size_t a = strlen(app_dir);
+  if (!strncmp(path, app_dir, a) && path[a] == '/') return;
+  const char *slash = strrchr(path, '/');
+  if (!slash || slash == path) return;
+  size_t n = (size_t)(slash - path);
+  for (int i = 0; i < near_count; i++) if (strlen(near_dirs[i]) == n && !strncmp(near_dirs[i], path, n)) return;
+  near_dirs = grow(near_dirs, &near_cap, near_count + 1, sizeof *near_dirs);
+  char *d = malloc(n + 1);
+  if (!d) { logf_("out of memory watching files"); exit(1); }
+  memcpy(d, path, n); d[n] = 0;
+  near_dirs[near_count++] = d;
+}
+// The source files of those folders that no row has yet, each added as NEAR.
+static void scan_near(void) {
+  for (int i = 0; i < near_count; i++) {
+    DIR *d = opendir(near_dirs[i]);
+    if (!d) continue;
+    struct dirent *e;
+    while ((e = readdir(d))) {
+      if (e->d_name[0] == '.' || !engine_kind(e->d_name)) continue;
+      char path[PATH_MAX + 1024];
+      if (snprintf(path, sizeof path, "%s/%s", near_dirs[i], e->d_name) >= (int)sizeof path || find_file(path) >= 0) continue;
+      struct stat st;
+      if (lstat(path, &st) || !S_ISREG(st.st_mode)) continue;
+      watch_file(path, ROLE_NEAR);
+    }
+    closedir(d);
+  }
+}
 // Every APP_DIR/build/.live/*.deps: the units and every file each one read.
 static void load_deps(void) {
   char dir[PATH_MAX + 64];
@@ -664,11 +703,18 @@ static void load_deps(void) {
       else if (!strncmp(line, "src /", 5)) {
         u.src = grow(u.src, &u.src_cap, u.nsrc + 1, sizeof *u.src);
         u.src[u.nsrc++] = watch_file(line + 4, ROLE_SRC);
+        near_dir(line + 4);
       }
     }
     fclose(f);
     if (!ok || !u.out || !u.cmd || !u.nsrc) { free(u.out); free(u.cmd); free(u.src); continue; }
     u.out_mtime = mtime_of(u.out);
+    {
+      char stamp[PATH_MAX + 1024];
+      int stem = (int)strlen(path) - 5;   // without ".deps"
+      u.started = snprintf(stamp, sizeof stamp, "%.*s.started", stem, path) < (int)sizeof stamp ? mtime_of(stamp) : (struct timespec){0, 0};
+      if (!u.started.tv_sec || later(u.started, u.out_mtime)) u.started = u.out_mtime;   // no stamp, or a build that began and did not end
+    }
     units = grow(units, &unit_cap, unit_count + 1, sizeof *units);
     units[unit_count++] = u;
   }
@@ -682,6 +728,31 @@ static void watch_all(void) {
   scan_dir(app_dir, true, true);
   scan_dir(host_dir, false, false);
   load_deps();
+  scan_near();
+}
+// A file that was not there at the last look (#13441): found between builds, about once a
+// second, and given time 0, so check_changes takes it as a change the same tick. Before this a
+// new page, shader or source waited for the next build's rescan.
+static void scan_new(void) {
+  int before = file_count;
+  scan_dir(app_dir, true, true);
+  scan_dir(host_dir, false, false);
+  scan_near();
+  for (int i = before; i < file_count; i++) files[i].mtime = (struct timespec){0, 0};
+}
+static bool unit_failed(const unit *u) {
+  for (int i = 0; i < failed_count; i++) if (!strcmp(failed_outs[i], u->out)) return true;
+  return false;
+}
+// After a build of `dirty` units (every unit for a whole build): which of them failed last.
+static void note_failed(bool success, bool whole) {
+  for (int k = 0; k < unit_count; k++) {
+    if (!whole && !units[k].dirty) continue;
+    int at = -1;
+    for (int i = 0; i < failed_count; i++) if (!strcmp(failed_outs[i], units[k].out)) at = i;
+    if (success && at >= 0) { free(failed_outs[at]); failed_outs[at] = failed_outs[--failed_count]; }
+    if (!success && at < 0) { failed_outs = grow(failed_outs, &failed_cap, failed_count + 1, sizeof *failed_outs); failed_outs[failed_count++] = copy(units[k].out); }
+  }
 }
 
 // A watched path as the URL a tab asks for (/build/x.wasm, /coaxial/host.js): false when none.
@@ -810,6 +881,10 @@ static void build_finished(bool success) {
     if (u->wgsl) note_wgsl(u->out);
     else tell_wasm(u);
   }
+  note_failed(success, !build_targeted);
+  // A page file saved while a whole build ran is shown: the tabs load the page again (#13441).
+  for (int i = 0; !build_targeted && i < file_count; i++)
+    if ((files[i].roles & ROLE_SCAN) && page_kind(files[i].path) && !same_time(mtime_of(files[i].path), files[i].mtime)) build_page = true;
   // An edit saved while the changed units built, or just after a tab was told, is the next
   // build's: a targeted build keeps every source's time from before the rescan, so only its
   // module outputs count as its own. Only a whole build writes sources (the realms' tables).
@@ -840,6 +915,7 @@ static void build_finished(bool success) {
   build_page = false;
   // What is watched again, at its times now: generated files the build wrote don't start
   // another build. An edit made in response to the completion message belongs to the next one.
+  bool whole = !build_targeted;
   watch_all();
   for (int i = 0; i < kept_count; i++) {
     int at = find_file(kept[i].path);
@@ -847,11 +923,22 @@ static void build_finished(bool success) {
     free(kept[i].path);
   }
   free(kept);
+  // A whole build wrote sources of its own (the realms' tables) before its modules began, so
+  // their times are the build's. A listed source saved after the build began and after a
+  // module that reads it began is an edit that module did not read (#13441): it gets time
+  // 0, and the next look builds the modules that read it. Before this the edit was counted
+  // as the build's own and lost until the next save.
+  for (int k = 0; whole && k < unit_count; k++)
+    for (int j = 0; j < units[k].nsrc; j++) {
+      watched *f = &files[units[k].src[j]];
+      if (later(f->mtime, build_wall) && later(f->mtime, units[k].started)) { logf_("saved during the build: %s", strrchr(f->path, '/') + 1); f->mtime = (struct timespec){0, 0}; }
+    }
 }
 
 static void build_start(const char *cmd, bool targeted) {
   int p[2];
   build_used = 0; build_started = monotonic_ms(); build_targeted = targeted;
+  clock_gettime(CLOCK_REALTIME, &build_wall);
   if (pipe(p)) goto failed;
   p[0] = private_fd(p[0]); p[1] = private_fd(p[1]);
   if (p[0] < 0 || p[1] < 0) goto close_failed;
@@ -949,12 +1036,15 @@ static char *units_script(void) {
 }
 static void check_changes(void) {
   bool whole = false, page = false, some = false;
+  static double last_new;
   check_assets();
+  if (now_ms() - last_new >= 1000) { last_new = now_ms(); scan_new(); }
   for (int i = 0; i < file_count; i++) {
     struct timespec t = mtime_of(files[i].path);
     if (same_time(t, files[i].mtime)) continue;
     files[i].mtime = t;
     const char *p = files[i].path;
+    if (files[i].roles == ROLE_NEAR && !failed_count) continue;   // a source nothing reads yet
     logf_("changed %s", strrchr(p, '/') + 1);
     bool read = false;   // a unit's list names it
     if (files[i].roles & ROLE_SRC)
@@ -962,6 +1052,13 @@ static void check_changes(void) {
         for (int j = 0; j < units[k].nsrc; j++)
           if (units[k].src[j] == i) { units[k].dirty = true; read = some = true; break; }
     if (read) continue;
+    if (engine_kind(p) && failed_count) {
+      // a source no list names, with a build that failed: what it was missing may be this
+      // file (a new one a changed module loads), so those units build again, not everything
+      for (int k = 0; k < unit_count; k++) if (unit_failed(&units[k])) { units[k].dirty = true; some = true; }
+      if (some) continue;
+    }
+    if (!(files[i].roles & ROLE_SCAN)) continue;   // NEAR alone: a source nothing reads yet
     if (engine_kind(p)) whole = true;
     else if (ends_with(p, ".wgsl")) note_wgsl(p);
     else page = true;

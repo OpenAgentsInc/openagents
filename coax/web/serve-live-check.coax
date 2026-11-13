@@ -12,7 +12,12 @@
 //   a touch that leaves its bytes as they were tells nothing;
 //   a page in a nested app folder is told as "page";
 //   a watched source no list names runs the whole build;
-//   a unit whose command fails is told as "error".
+//   a unit whose command fails is told as "error";
+// and (#13441):
+//   a page that was not there is told as "page" with no build between, and a new source nothing
+//   reads yet starts nothing;
+//   a listed source saved while a whole build runs is built after it, by its unit alone;
+//   a new source beside a listed one builds a failed unit again, and nothing else.
 #import "Basic";
 #load "../lib/sys/tool.coax";
 #load "../lib/sys/fs.coax";
@@ -196,8 +201,28 @@ sl_run :: (dir: string, port: int, l: [] SlLive) -> bool {
   if !fs_write(sl_join(app, "sub/rules.coax", p[..]), "r2") || !sl_expect(l, "wasm", "", 5000) || !sl_expect(l, "wgsl", "/gen.wgsl", 2000) || sl_lines(whole) != 2 { tool_errln("FAIL a source no list names did not run the whole build"); return false; }
   print("PASS a watched source no list names runs the whole build\n");
   proc_sleep(300);
+  // ---- #13441
+  wholes := sl_lines(whole); built := sl_lines(units);
+  if !fs_write(sl_join(app, "sub/new.html", p[..]), "new\n") || !sl_expect(l, "page", "", 3000) { return false; }
+  if !fs_write(sl_join(shared, "unread.coax", p[..]), "u1") { return false; }
+  quiet := sl_next(l, 1500);
+  if quiet.ok || sl_lines(whole) != wholes || sl_lines(units) != built { tool_errln("FAIL a new source nothing reads started a build or told a tab"); return false; }
+  print("PASS a page that was not there is told as page with no build between; a new source nothing reads yet starts nothing\n");
+  // a whole build that takes 1.2 s, and a listed source saved 400 ms into it
+  if !fs_write(sl_join(dir, "slow", p[..]), "slow") || !fs_write(sl_join(app, "sub/rules.coax", p[..]), "r3") { return false; }
+  proc_sleep(400);
+  if !fs_write(sl_join(shared, "mod.coax", p[..]), "v9") { return false; }
+  if !sl_expect(l, "wasm", "", 6000) || !sl_expect(l, "wgsl", "/gen.wgsl", 2000) || !sl_expect(l, "wasm", "/build/unit.wasm", 5000) { tool_errln("FAIL a source saved during the whole build was not built after it"); return false; }
+  uw: [16] u8; un := fs_read(sl_join(app, "build/unit.wasm", p[..]), uw[..]);
+  if un != 2 || cast(string) uw[0..<2] != "v9" || sl_lines(whole) != wholes + 1 || sl_lines(units) != built + 1 { print("FAIL the module is not the saved source's, or builds ran that should not: whole % (want %), unit % (want %)\n", sl_lines(whole), wholes + 1, sl_lines(units), built + 1); return false; }
+  print("PASS a listed source saved while a whole build runs is built after it, by its unit alone\n");
+  proc_sleep(900);
   if !fs_write(sl_join(shared, "mod.coax", p[..]), "fail") || !sl_expect(l, "error", "", 5000) { return false; }
   print("PASS a unit whose command fails is told as error\n");
+  proc_sleep(300);
+  // the failed unit may have been missing a file: a new source beside its sources builds it again
+  if !fs_write(sl_join(shared, "missing.coax", p[..]), "m1") || !sl_expect(l, "error", "", 4000) || sl_lines(whole) != wholes + 1 { tool_errln("FAIL a new source beside a failed unit's sources did not build that unit again, alone"); return false; }
+  print("PASS a new source beside a listed one builds a failed unit again, and nothing else\n");
   return true;
 }
 tool_main :: () -> int #export_c #effects(all) {
@@ -209,7 +234,7 @@ tool_main :: () -> int #export_c #effects(all) {
   address: [64] u8; n := ws_put(address[..], 0, "127.0.0.1:"); n = ws_digits(address[..], n, port);
   a: [1024] u8; app := sl_join(dir, "app", a[..]);
   cmd: [4096] u8;
-  parts := [9] string.["while [ ! -e '", dir, "/go' ]; do sleep 0.01; done; echo whole >> '", dir, "/whole.log'; cat '", dir, "/gpu/gen.coax' > '", app, "/gen.wgsl'"];
+  parts := [11] string.["while [ ! -e '", dir, "/go' ]; do sleep 0.01; done; echo whole >> '", dir, "/whole.log'; cat '", dir, "/gpu/gen.coax' > '", app, "/gen.wgsl'; [ ! -e '", dir, "/slow' ] || sleep 1.2"];
   c := sl_put(cmd[..], 0, parts[..]);
   h := proc_new();
   argv := [8] string.[ifx args_count(args[..]) > 0 then args_at(args[..], 0) else "coax/web/build/serve", app, "--listen", cast(string) address[0..<n], "--host-dir", app, "--build", cast(string) cmd[0..<c]];
@@ -221,6 +246,6 @@ tool_main :: () -> int #export_c #effects(all) {
   if l[0].h >= 0 { closed = cxsock_close(l[0].h); }
   released := proc_release(h); proc_sleep(100);
   removed := fs_remove(dir);
-  if ok { print("serve-live-check: 9 cases passed\n"); }
+  if ok { print("serve-live-check: 12 cases passed\n"); }
   return ifx ok then 0 else 1;
 }

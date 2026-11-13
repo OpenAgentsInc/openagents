@@ -251,12 +251,32 @@ no cap on the number of watched files.
 Packs and textures are swapped by content. An open tab sends `watch URL...`
 for the packs and textures it loaded; when one changes on disk, serve hashes
 it (SHA-256) and sends `{"kind":"asset","url","hash"}` only when the bytes
-changed. `host.js` fetches it again as `URL?live=HASH` and swaps it in. A
-swap the page refused counts in `coaxial.liveSwaps.failed`.
+changed. `host.js` fetches it again as `URL?live=HASH` and swaps it in.
+
+The old copy stays until the new one is accepted (#13441). A swap keeps the
+rows' fields and the pack's reader group, loads the new bytes, and only then
+lets the old copy go. When the page refuses the new pack or texture (the
+fetch fails, the pack is cut short, the realm's Coax won't admit its digest,
+an image won't decode), `host.js` puts every field back, hands the old copy
+to the page again, and shows the reason on the dev overlay: `NAME not
+swapped: REASON`, then `the copy from before stays`. The refusal counts in
+`coaxial.liveSwaps.failed`, and `coaxial.liveRefused` holds its URL, hash and
+reason. Saving a good file after that swaps as usual.
+
+A file that was not there is seen within about a second, with no build
+between: a new page reloads the tabs, a new `.wgsl` is told as `wgsl`, and a
+new source in the app runs the build. A new source in a shared folder that
+nothing reads yet starts nothing, unless a module's last build failed: then
+those modules build again, because the file may be what they were missing.
+
+A source saved while a whole build runs is not lost. `wasm.sh` stamps when
+each module began to read its sources (`.live/NAME.started`). After the
+whole build, a listed source saved later than that is built again, by its
+module alone. A page file saved during the build reloads the tabs.
 
 Dev builds split the generated C into 16 parts with an object cache per
 part, so a one-file edit recompiles one part. Checks:
-`coax/web/tool.sh serve-live-check` (9 cases against a fixture app, 301
+`coax/web/tool.sh serve-live-check` (12 cases against a fixture app, 301
 sources) and `coax/web/tool.sh live-reload-bench URL KIND FILE OLD NEW...`,
 which times a saved edit until the page has swapped it in and drawn a frame
 (headless Chrome).

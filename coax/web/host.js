@@ -1923,9 +1923,10 @@ async function loadPack(pack) {
     for (const e of of(PACK_SOUND)) if (!assets.some((a) => a.kind === "sound" && a.name === e.name)) assets.push({ i: assets.length, kind: "sound", name: e.name, bytes: e.bytes, done: true });
     if (!pack.broker && typeof WeakRef === "function" && engine === owner && wanted === generation && parts.every(a => !a.failed))
       pack.retainedSource = { owner: new WeakRef(owner), generation, bytes };
-  } catch (e) { pack.retainedSource = null;for (const a of parts) a.failed = true; if (dev) console.error(`${app} asset pack: ${e.message}`); if (!pack.quiet) say(`${app}: ${e.message}`, true); }
+  } catch (e) { pack.retainedSource = null;for (const a of parts) a.failed = true; if (dev) console.error(`${app} asset pack: ${e.message}`); if (pack.live) pack.live.reason = e.message; else if (!pack.quiet) say(`${app}: ${e.message}`, true); }
   pack.fetching = false;pack.done = true;loadMark("pack-done");
   if (!parts.every(currentAsset)) return;
+  if (pack.live?.reason) return;   // a refused live swap: liveAsset puts the old copy back (#13441)
   for (const a of parts) { a.done = true; deliver(a); }
   if (entries) meshBounds(entries.find((e) => e.kind === PACK_VERTICES)?.bytes, entries.find((e) => e.kind === PACK_INDICES)?.bytes);
   bindScene();loadMark("pack-delivered");
@@ -1993,8 +1994,9 @@ async function loadPackV1(pack){
   }catch(error){
     if(group.retired||wanted!==generation||engine?.exports!==exports)return;
     for(const row of parts)row.failed=true;
-    if(!pack.quiet)say(`${app}: ${error.message}`,true);
-    group.result?.close();await packHost?.retire(group);packGroups.delete(pack);
+    if(pack.live)pack.live.reason=error.message;else if(!pack.quiet)say(`${app}: ${error.message}`,true);
+    group.result?.close();await packHost?.retire(group);if(packGroups.get(pack)===group)packGroups.delete(pack);
+    if(pack.live){pack.live.sounds=group.sounds;return;}   // a refused live swap: liveAsset puts the old copy back (#13441)
   }finally{group.loading=false;}
   if(!current())return;
   pack.fetching=false;pack.done=true;
@@ -2109,6 +2111,7 @@ async function loadAsset(a) {
   } catch (e) {
     if (gated && (gpu !== owner || owner.retired || engine?.exports !== x)) return;
     a.failed = true;
+    if (a.live) { a.live.reason = e.message;a.fetching = false;return; }   // a refused live swap: liveAsset puts the old copy back (#13441)
     if (x.coaxial_asset_optional_v1?.(a.i)) {
       if (a.kind === "storage") a.buffer ||= device.createBuffer({size:16,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.INDEX|GPUBufferUsage.COPY_DST});a.size = 0;
     } else if (!a.quiet) say(`${app}: ${e.message}`, true);
@@ -4350,20 +4353,88 @@ function liveUrls() {
 }
 const liveHashes = new Map();   // URL -> the SHA-256 of its bytes here, as coax serve told it
 function liveUrl(url) { const h = liveHashes.get(url); return h ? `${url}${url.includes("?") ? "&" : "?"}live=${h}` : url; }
+// The old copy stays until the new one is accepted (#13441). A swap keeps each row's fields and, for
+// a pack the reader holds, its group (unretired: its bytes back the rows), loads the new bytes, and
+// only then lets the old go. A refusal (the fetch, the table, a digest the realm's Coax won't admit,
+// a decode, the GPU) puts every field back and hands the old copy to the page again, so the world
+// never stands without it, and throws the reason for the dev overlay.
+const LIVE_KEPT = ["bytes", "size", "buffer", "texture", "dataTexture", "pageBytes", "pageDigest", "done", "failed"];
+const liveKeep = (rows) => rows.map((a) => Object.fromEntries(LIVE_KEPT.map((f) => [f, a[f]])));
+function liveBack(rows, kept) {
+  rows.forEach((a, i) => { Object.assign(a, kept[i], { fetching: false }); a.live = null; });
+  const r = gpu?.renderer;
+  for (const a of rows) {
+    if (r && a.bytes && a.kind !== "data" && a.kind !== "layers") r.acceptAsset(a);
+    if (r && a.kind === "layers" && a.texture) r.layerTexture = a.texture;
+    if (a.done) deliver(a);
+  }
+  if (gpu) gpu.sceneGroup = null;
+  if (rows.some((a) => a.kind === "mesh")) bindMesh();
+  bindScene();
+}
+// The realm's pack gate, asked again for bytes it admitted before (the refused ones were its last word).
+async function liveReadmit(bytes) {
+  const x = engine?.exports;
+  if (!bytes || !x?.coaxial_pack_gate_version || x.coaxial_pack_gate_version() !== 1) return;
+  const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", bytes));
+  if (engine?.exports !== x) return;
+  const at = x.coaxial_pack_digest(arena.state), capacity = x.coaxial_pack_digest_capacity();
+  if (!Number.isInteger(at) || at <= 0 || capacity !== digest.length || at > memory.buffer.byteLength - capacity) return;
+  new Uint8Array(memory.buffer, at, capacity).set(digest);
+  x.coaxial_pack_admit(arena.state, bytes.length);
+}
+const LIVE_HELD = "\u0000held:";   // an old group's sounds step aside by name while the new pack's are read
 async function liveAsset(url, hash) {
   if (liveHashes.get(url) === hash || !engine || !gpu) return false;
   const packs = new Set(assets.filter((a) => a.pack?.url === url).map((a) => a.pack));
   const rows = assets.filter((a) => !a.pack && (a.url === url || a.urls?.includes(url)));
   if (!packs.size && !rows.length) return false;
+  const before = liveHashes.get(url), x = engine.exports, owner = gpu;
+  const mine = () => engine?.exports === x && gpu === owner;   // a new engine or device loads its own copy
+  const refuse = (reason) => {
+    if (before) liveHashes.set(url, before); else liveHashes.delete(url);
+    fetches.delete(url); packIncoming.delete(url);
+    return new Error(`${url.split("/").pop()} not swapped: ${reason}\nthe copy from before stays`);
+  };
   liveHashes.set(url, hash);
   for (const pack of packs) {
-    await retirePacks((group) => group.pack === pack);
-    pack.retainedSource = null; packIncoming.delete(pack.url); Object.assign(pack, { done: false, fetching: false });
-    for (const a of assets) if (a.pack === pack) Object.assign(a, { done: false, fetching: false, failed: false });
-    await loadPack(pack);
+    const parts = assets.filter((a) => a.pack === pack), kept = liveKeep(parts);
+    const old = packGroups.get(pack), source = pack.retainedSource;
+    if (old) { packGroups.delete(pack); for (const sound of old.sounds) sound.name = LIVE_HELD + sound.name; }
+    packIncoming.delete(pack.url);
+    Object.assign(pack, { done: false, fetching: false, retainedSource: null, live: { reason: "", sounds: null } });
+    for (const a of parts) Object.assign(a, { done: false, fetching: false, failed: false });
+    let reason = "";
+    try { await loadPack(pack); } catch (e) { reason = e.message || "did not load"; }
+    const live = pack.live; pack.live = null;
+    reason ||= live.reason || (pack.done ? "" : "the load stopped before it ended");
+    if (!mine()) return false;
+    if (!reason) {
+      // accepted: now the old copy goes
+      if (old) { old.retired = true; old.retiredResolve(); old.result?.close(); await packHost?.retire(old); for (const row of [...old.sounds]) { row.bytes = null; } }
+      continue;
+    }
+    const added = packGroups.get(pack);
+    if (added && added !== old) await retirePacks((group) => group === added);
+    for (const sound of [...(live.sounds || []), ...(added && added !== old ? added.sounds : [])]) { sound.bytes = null; sound.name = LIVE_HELD + sound.name; }
+    if (old) { for (const sound of old.sounds) sound.name = sound.name.slice(LIVE_HELD.length); packGroups.set(pack, old); }
+    Object.assign(pack, { done: true, fetching: false, retainedSource: source });
+    await liveReadmit(source?.bytes);
+    if (!mine()) return false;
+    liveBack(parts, kept);
+    throw refuse(reason);
   }
-  for (const a of rows) { fetches.delete(a.url); Object.assign(a, { done: false, fetching: false, failed: false, pageBytes: null }); await loadAsset(a); }
-  if ([...rows, ...assets.filter((a) => packs.has(a.pack))].some((a) => a.failed)) throw new Error(`${url.split("/").pop()} did not load`);
+  for (const a of rows) {
+    const kept = liveKeep([a]);
+    fetches.delete(a.url);
+    Object.assign(a, { done: false, fetching: false, failed: false, pageBytes: null, live: { reason: "" } });
+    let reason = "";
+    try { await loadAsset(a); } catch (e) { reason = e.message || "did not load"; }
+    reason ||= a.live?.reason || (a.failed ? "the page refused it" : a.done ? "" : "the load stopped before it ended");
+    a.live = null;
+    if (!mine()) return false;
+    if (reason) { liveBack([a], kept); throw refuse(reason); }
+  }
   return true;
 }
 // coaxial.liveSwaps counts what this tab swapped in, each after the frame that drew it
@@ -4383,7 +4454,7 @@ function live() {
     if (m.kind === "wgsl" && gpu && (mine(m.path, wgslUrl) || assets.some((a) => a.url === m.path))) { if (await loadShaders()) { say(`shaders swapped in ${Math.round(performance.now() - t0)} ms`); swapped("wgsl"); } return; }
     if (m.kind === "asset" && typeof m.url === "string" && /^[0-9a-f]{64}$/.test(m.hash)) {
       try { if (await liveAsset(m.url, m.hash)) { say(`${m.url.split("/").pop()} swapped in ${Math.round(performance.now() - t0)} ms`); swapped("asset"); } }
-      catch (e) { say(`${app}: ${e.message}`, true); liveSwaps.failed = (liveSwaps.failed || 0) + 1; globalThis.coaxial.liveSwaps = { ...liveSwaps }; }
+      catch (e) { say(e.message, true); liveSwaps.failed = (liveSwaps.failed || 0) + 1; globalThis.coaxial.liveSwaps = { ...liveSwaps }; globalThis.coaxial.liveRefused = { url: m.url, hash: m.hash, reason: e.message }; }
       return;
     }
     if (m.kind === "wasm" && mine(m.path, wasmUrl)) {
