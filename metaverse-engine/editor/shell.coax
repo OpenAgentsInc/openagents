@@ -24,6 +24,7 @@ ES_ACT :: 2048;        // bytes one action for the page takes
 ES_ACTS :: 4;          // actions that wait for the page
 ES_DRAFT :: 16;        // bytes typed into a number's field
 ES_CLICK :: 1; ES_INPUT :: 2; ES_SUBMIT :: 3; ES_MODEL :: 6;
+ES_AGENT :: 7;         // the page was opened for the agent (?edit=agent): the foot is open from the start
 ES_BATCH :: 520;       // an action: a world.edit.v1 batch for the page to send
 ES_SELECT :: 521;      // an action: the ID of the thing to select, 0 for none
 ES_VIEW :: 522;        // an action for the viewport's tools, as words (viewport.coax vp_act): "tool move", "grid 50", "fly on", "run pause", "step", "sim on"
@@ -48,6 +49,7 @@ EdShell :: struct {
   open: int;                             // the one select that is open (ES_OPEN_*)
   tool: int; grid: int = 2;              // the viewport's tool (ES_TOOL) and the grid a move snaps to (ES_GRID)
   fly: bool; paused: bool; sim: bool;    // the camera flies; the World is paused; the World runs with the player's hands off
+  agent: bool; agent_made: bool;         // the foot with the chat's conversation is open; it was opened once (it is then kept, put away)
   said: [EM_WORDS] u8; said_n: int;      // the shell's own word about what was typed, until the next action
   draft: [WE_COLS] [ES_DRAFT] u8; draft_n: [WE_COLS] int;
   shown_sel: int; shown_rev: int;        // the thing and the revision the fields were last filled for
@@ -141,6 +143,7 @@ es_build :: (s: [] EdShell) {
   run := k_button(t, u, "run", ifx s[0].paused then "Play" else "Pause", BS_PLAIN);
   step := k_button(t, u, "step", "Step", BS_PLAIN);
   sim := k_button(t, u, "sim", ifx s[0].sim then "Stop simulating" else "Simulate", BS_PLAIN);
+  agent := k_button(t, u, "agent", ifx s[0].agent then "Hide agent" else "Agent", BS_PLAIN);
   w := m[0].world;
   n := ct_put(line[..], 0, cast(string) w[0..<m[0].world_n]);
   n = ct_put(line[..], n, " · revision "); n = ct_put_int(line[..], n, m[0].rev);
@@ -202,6 +205,14 @@ es_build :: (s: [] EdShell) {
     }
   }
   k_pane_end(t);
+  // the foot: the chat's own conversation, which the page's host puts in the slot (coax/web/host.js). Once
+  // opened it is kept and only put away, so the conversation stays as it was
+  if s[0].agent_made {
+    foot := k_pane(t, u, "agent.pane", DK_BOTTOM, "Agent");
+    k_pane_shut(t, foot, !s[0].agent);
+    slot := k_slot(t, "agent.slot");
+    k_pane_end(t);
+  }
   tr_close(t);
 }
 
@@ -234,6 +245,7 @@ es_click :: (s: [] EdShell, id: string) {
     _ := es_act(s, ES_VIEW, cast(string) words[0..<n]);
     return;
   }
+  if id == "agent" { s[0].agent = !s[0].agent; s[0].agent_made = true; return; }
   if id == "fly" { s[0].fly = !s[0].fly; _ := es_act(s, ES_VIEW, ifx s[0].fly then "fly on" else "fly off"); return; }
   if id == "run" { s[0].paused = !s[0].paused; _ := es_act(s, ES_VIEW, ifx s[0].paused then "run pause" else "run play"); return; }
   if id == "step" { s[0].paused = true; _ := es_act(s, ES_VIEW, "step"); return; }
@@ -326,6 +338,7 @@ coaxial_editor_event :: (s: [] EdShell, kind: int, slot: int, length: int) #expo
   if s.count < 1 { return; }
   s[0].dirty = true;
   if kind == ES_MODEL { es_model(s, length); return; }
+  if kind == ES_AGENT { s[0].agent = true; s[0].agent_made = true; return; }
   id := dm_slot_id(s[0].dom[..], slot);
   if id.count == 0 { return; }
   if kind == ES_CLICK { es_click(s, id); }
@@ -541,7 +554,7 @@ ES_TEST_BARE :: [2] string.["btn-l", "sel-l"];   // a button's and a select's la
   for state: 0..<4 {
     if state == 1 { es_test_model(h[..], 0, 7, 3, ""); }
     if state == 2 { es_test_model(h[..], 2, 7, 3, "That spot is inside the Scanner gate, which stays clear."); coaxial_editor_event(s, ES_CLICK, dm_find(d, "when"), 0); }
-    if state == 3 { es_test_model(h[..], 2, 8, 0, ""); es_test_type(h[..], "col.0", "far"); }
+    if state == 3 { es_test_model(h[..], 2, 8, 0, ""); es_test_type(h[..], "col.0", "far"); coaxial_editor_event(s, ES_CLICK, dm_find(d, "agent"), 0); }
     es_test_frames(h[..], 2);
     for i: 0..<t[0].n {
       cls := tr_class(t, i);
@@ -655,4 +668,24 @@ es_test_here :: (h: [] EsTest) {
   #assert es_test_batch(h[..], 6) == WB_APPLY && s[0].open == ES_OPEN_NONE;
   e := h[0].edits[0];
   #assert e.op == WE_SPAWN && e.id == 0 && e.kind == 1002 && e.x == 420 && e.z == -75 && e.yaw == 0 && e.scale == 100;
+}
+
+#test "Agent opens a foot with a slot for the chat's conversation; Hide agent puts the foot away and keeps the slot" {
+  h: [1] EsTest; s := h[0].s[..]; t := s[0].tree[..];
+  es_test_model(h[..], 0, 7, 3, "");
+  es_test_frames(h[..], 1);
+  #assert tr_find(t, "agent.pane") < 0 && tr_text_of(t, tr_find(t, "agent.l")) == "Agent";
+  es_test_press(h[..], "agent");
+  #assert tr_class(t, tr_find(t, "agent.pane")) == "pane pane-bm" && !tr_has(t, tr_find(t, "agent.pane"), AT_HIDDEN) && tr_class(t, tr_find(t, "agent.slot")) == "slot" && tr_text_of(t, tr_find(t, "agent.l")) == "Hide agent";
+  slot := dm_find(s[0].dom[..], "agent.slot");
+  es_test_press(h[..], "agent");
+  #assert tr_has(t, tr_find(t, "agent.pane"), AT_HIDDEN) && dm_find(s[0].dom[..], "agent.slot") == slot && s[0].nacts == 0;
+  es_test_press(h[..], "agent");
+  #assert !tr_has(t, tr_find(t, "agent.pane"), AT_HIDDEN) && dm_find(s[0].dom[..], "agent.slot") == slot;
+  // a page opened for the agent has the foot open from the start
+  k: [1] EsTest; ks := k[0].s[..];
+  es_test_model(k[..], 0, 7, 3, "");
+  coaxial_editor_event(ks, ES_AGENT, 0, 0);
+  es_test_frames(k[..], 1);
+  #assert tr_find(ks[0].tree[..], "agent.slot") > 0 && !tr_has(ks[0].tree[..], tr_find(ks[0].tree[..], "agent.pane"), AT_HIDDEN);
 }

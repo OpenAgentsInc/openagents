@@ -7,19 +7,20 @@
 
 #load "frames.coax";
 
-DK_TOP :: 0; DK_LEFT :: 1; DK_RIGHT :: 2;
-DK_SIDES :: [3] string.["pane pane-t", "pane pane-l", "pane pane-r"];
+DK_TOP :: 0; DK_LEFT :: 1; DK_RIGHT :: 2; DK_BOTTOM :: 3;
+DK_SIDES :: [4] string.["pane pane-t", "pane pane-l", "pane pane-r", "pane pane-bm"];
 
 // Dock: opens the layer. `over`: it lies over the whole window, and what is under it shows and
 // takes the pointer wherever no pane is; else it stands in the page where it is put, as tall as
 // the skin says. Close it with tr_close.
 k_dock :: (t: [] Tree, id: string, over: bool) -> int { return tr_open(t, id, TG_DIV, ifx over then "dock dock-over" else "dock"); }
 // Pane: a panel on a side of the dock, with its title when it has one. The top pane is a strip:
-// its controls stand in a row. A side pane's content scrolls inside it. Close it with k_pane_end.
+// its controls stand in a row. A side pane's content scrolls inside it, and the bottom pane lies
+// across the foot. Close it with k_pane_end.
 k_pane :: (t: [] Tree, u: [] Ui, id: string, side: int, title: string) -> int {
   ida: [UI_ID] u8; idb: [UI_ID] u8;
   sides := DK_SIDES;
-  i := k_frame(t, u, id, TG_SECTION, sides[ifx side < 0 || side > 2 then 0 else side], MF_PANEL);
+  i := k_frame(t, u, id, TG_SECTION, sides[ifx side < 0 || side > 3 then 0 else side], MF_PANEL);
   if title.count > 0 {
     tr_attr(t, i, AT_LABEL, title);
     h := tr_leaf(t, tr_cat(ida[..], id, ".h"), TG_H2, "sec-h", title);
@@ -28,6 +29,11 @@ k_pane :: (t: [] Tree, u: [] Ui, id: string, side: int, title: string) -> int {
   return i;
 }
 k_pane_end :: (t: [] Tree) { tr_close(t); tr_close(t); }
+// Puts a pane away without unmaking it (what it holds stays as it is), or brings it back.
+k_pane_shut :: (t: [] Tree, pane: int, shut: bool) { if shut { tr_attr(t, pane, AT_HIDDEN, "true"); } }
+// Slot: an empty place in a pane that another surface fills (the chat's conversation in the editor's foot).
+// The dock never puts anything in it.
+k_slot :: (t: [] Tree, id: string) -> int { return tr_leaf(t, id, TG_DIV, "slot", ""); }
 // Prop: a one-line field with its name before it. Answers the field's node (its id is `id`).
 k_prop :: (t: [] Tree, u: [] Ui, id: string, name: string, placeholder: string) -> int {
   ida: [UI_ID] u8; idb: [UI_ID] u8;
@@ -63,9 +69,14 @@ DkTest :: struct { t: [1] Tree; u: [1] Ui; }
   f := k_prop(t, u, "x", "X cm", "0");
   g := k_fact(t, "kit", "Kit", "rover");
   k_pane_end(t);
+  e := k_pane(t, u, "foot", DK_BOTTOM, "Agent");
+  k_pane_shut(t, e, true);
+  sl := k_slot(t, "foot.slot");
+  k_pane_end(t);
   tr_close(t);
   ui_end(u);
   #assert t[0].lost == 0 && t[0].depth == 0;
+  #assert tr_class(t, e) == "pane pane-bm" && tr_attr_of(t, e, AT_HIDDEN) == "true" && tr_class(t, sl) == "slot" && !tr_has(t, b, AT_HIDDEN);
   #assert tr_class(t, d) == "dock dock-over" && tr_class(t, a) == "pane pane-t" && tr_class(t, b) == "pane pane-l" && tr_class(t, c) == "pane pane-r";
   #assert tr_find(t, "bar.h") < 0 && tr_text_of(t, tr_find(t, "things.h")) == "Things" && tr_find(t, "one.b") > 0;
   #assert f == tr_find(t, "x") && tr_text_of(t, tr_find(t, "x.n")) == "X cm" && tr_class(t, tr_find(t, "x.prop")) == "prop";

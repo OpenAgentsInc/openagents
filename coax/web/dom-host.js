@@ -101,8 +101,10 @@ function apply(at, length) {
       }
       if (svg) while (svg.children.length > runs) svg.lastChild.remove();
     } else if (op === 9) {                           // style
-      let style = document.getElementById("coaxial-style");
-      if (!style) { style = document.createElement("style"); style.id = "coaxial-style"; document.head.appendChild(style); }
+      // (a surface opened by address keeps its own sheet, so two on one page never write over each other's)
+      const sheet = named.has("app") ? `coaxial-style-${app}` : "coaxial-style";
+      let style = document.getElementById(sheet);
+      if (!style) { style = document.createElement("style"); style.id = sheet; document.head.appendChild(style); }
       style.textContent = str();
     } else if (op === 10) { const el = els[u16()]; el.value = str(); fit(el); }
     else if (op === 11) { els[u16()].focus(); }

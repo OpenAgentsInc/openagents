@@ -144,6 +144,13 @@ not a flat folder scan.
   agents and the same transcript appear on `/chat` and in the editor. The
   agent gets `world_*` tools plus the editor's selection and "here" (the last
   point tapped).
+  As built so far (E9, #13418): Agent in the shell's strip opens a foot whose
+  slot holds the chat page's own module (`chat-web`), opened by the page's
+  host, so it is the same conversation, components and agents as `/chat`.
+  `?edit=agent` opens the editor with the foot open. A local agent's edits
+  through the realm commands show in the open editor as any outside edit does.
+  Not built yet: the selection and "here" sent with each turn, the hosted
+  turn's world tools and selector, and the world card on `/chat`.
 - **Viewport tools:**
   - picking through `query_ray` against the World's spatial index;
   - move, rotate and scale gizmos that snap to a grid;

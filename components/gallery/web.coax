@@ -131,7 +131,7 @@ wg_build :: (s: [] WebPage) {
   tr_close(t);
   tr_close(t);
 
-  sec = wg_section(t, "docks", "Dock", "Panes round something that still shows: a strip of actions, a list, and the picked thing's fields and facts. The editor that ?edit opens over a world is built from it.");
+  sec = wg_section(t, "docks", "Dock", "Panes round something that still shows: a strip of actions, a list, the picked thing's fields and facts, and a foot. The editor that ?edit opens over a world is built from it.");
   dock := k_dock(t, "dock", false);
   strip := k_pane(t, u, "dock.bar", DK_TOP, "");
   d1 := k_button(t, u, "dock.undo", "Undo", BS_PLAIN);
@@ -151,6 +151,9 @@ wg_build :: (s: [] WebPage) {
   pz := k_prop(t, u, "dock.z", "Z cm", "0");
   fk := k_fact(t, "dock.kit", "Kit", "rover");
   tr_close(t);
+  k_pane_end(t);
+  dfoot := k_pane(t, u, "dock.foot", DK_BOTTOM, "Agent");
+  fm := k_meta(t, "dock.foot.note", "A foot across the bottom. In the editor its slot holds the chat's conversation.");
   k_pane_end(t);
   tr_close(t);
   tr_close(t);
@@ -270,7 +273,7 @@ WgTest :: struct { s: [1] WebPage; }
   #assert s[0].dom[0].out[0] == DC_STYLE && !coaxial_kit_busy(s);
   #assert tr_find(t, "press.primary") > 0 && tr_find(t, "composer") > 0 && tr_find(t, "tool.1") > 0 && tr_find(t, "code.1.pre") > 0;
   #assert tr_find(t, "notice.error") > 0 && tr_find(t, "row.2") > 0 && tr_find(t, "model.0") > 0 && tr_find(t, "msg.1.b0") > 0;
-  #assert tr_find(t, "dock.bar.b") > 0 && tr_find(t, "dock.x") > 0 && tr_text_of(t, tr_find(t, "dock.kit.v")) == "rover" && tr_class(t, tr_find(t, "dock")) == "dock";
+  #assert tr_find(t, "dock.bar.b") > 0 && tr_class(t, tr_find(t, "dock.foot")) == "pane pane-bm" && tr_find(t, "dock.x") > 0 && tr_text_of(t, tr_find(t, "dock.kit.v")) == "rover" && tr_class(t, tr_find(t, "dock")) == "dock";
   #assert coaxial_kit_frame(s, 0.016, true) == 0;
   coaxial_kit_event(s, WG_CLICK, dm_find(s[0].dom[..], "thing.1"), 0);
   n = coaxial_kit_frame(s, 0.016, true);

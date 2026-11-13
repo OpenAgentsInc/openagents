@@ -3814,9 +3814,21 @@ function editorStep() {
   editorIn = true;
   try { editorCarry(shell, x); } finally { editorIn = false; }
 }
+// The agent strip (E9, #13418): the shell's foot has a slot, and what fills it is the chat page's own
+// module (chat-web, the same conversation as /chat), opened by address the first time the slot is there.
+const AGENT = "chat-web", AGENT_SLOT = "agent.slot";
+let agentAsked = false;
+function agentOpen() {
+  if (agentAsked || !document.getElementById(AGENT_SLOT)) return;
+  agentAsked = true;
+  import(`/coaxial/dom-host.js?app=${AGENT}&root=${AGENT_SLOT}`).catch((error) => { console.error(error); });
+}
 function editorCarry(shell, x) {
-  shell.after ||= () => { editorActs(); after(false); };
+  agentOpen();
+  shell.after ||= () => { editorActs(); agentOpen(); after(false); };
   shell.still = agentMode;
+  // ?edit=agent: the page was opened for the agent (a world's card on /chat), so the foot is open from the start
+  if (!shell.told) { shell.told = true; if (new URLSearchParams(location.search).get("edit") === "agent") { shell.exports().dom_event(shell.state(), 7, 0, 0); shell.ask(); } }
   const rev = x.coaxial_edit_rev(arena.state);
   if (rev !== editorRev || editorFor !== engine) {
     editorRev = rev; editorFor = engine;
