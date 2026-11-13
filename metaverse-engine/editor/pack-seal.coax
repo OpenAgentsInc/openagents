@@ -7,7 +7,7 @@
 // admits it:
 //   the catalog's "budget" and "bytes" lines state the header's budget and the pack's size plainly
 //   the sources are numbered 0, 1, ... in the order their L lines stand; every M, C, T, S and D
-//     line and every entry's licence byte follows
+//     and R line and every entry's licence byte follows
 //   after a renumbered source's L line comes "was NEW OLD", a line the format leaves to the realm
 //   every entry starts where the one before ends on a 4-byte boundary, zeros between
 //   VPK2 when the pack has more than 48 entries, else VPK1
@@ -57,12 +57,12 @@ pack_seal_field :: (line: string, i: int, v: int, out: [] u8, at: int) -> int #e
   return ps_w;
 }
 // Which field of a catalog line names a source: L's own number, a mesh's or character's source,
-// a layer's, a sound's, a data layer's. -1 for a line the format leaves to the realm.
+// a layer's, a sound's, a rig's, a data layer's. -1 for a line the format leaves to the realm.
 pack_seal_source_field :: (what: string) -> int #effects(all) {
   if what == "L" { return 1; }
   if what == "M" || what == "C" { return 4; }
   if what == "T" || what == "D" { return 3; }
-  if what == "S" { return 2; }
+  if what == "S" || what == "R" { return 2; }
   return -1;
 }
 // The end of the line that starts at `at`.
@@ -217,7 +217,7 @@ pack_seal_test_ends :: (s: string, tail: string) -> bool #effects(all) {
   #assert cast(string) b[0..<n] == "T 0";
   #assert pack_seal_field("S door 9", 2, 10, b[..], 25) == -1;
   #assert pack_seal_source_field("L") == 1 && pack_seal_source_field("M") == 4 && pack_seal_source_field("C") == 4 && pack_seal_source_field("T") == 3;
-  #assert pack_seal_source_field("D") == 3 && pack_seal_source_field("S") == 2 && pack_seal_source_field("G") == -1 && pack_seal_source_field("") == -1;
+  #assert pack_seal_source_field("D") == 3 && pack_seal_source_field("S") == 2 && pack_seal_source_field("R") == 2 && pack_seal_source_field("G") == -1 && pack_seal_source_field("") == -1;
 }
 
 #test "a working pack seals to a pack the admission takes" {

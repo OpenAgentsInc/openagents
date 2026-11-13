@@ -1,0 +1,102 @@
+{
+  "identity": "aethyr-fact-state-fst1",
+  "check": "coax/web/tool.sh metaverse-engine/tools/format-profile.coax proto/aethyr/fact-state-fst1.json",
+  "codec": "metaverse-engine/state/codec.coax",
+  "carried_by": "the fact payload of a realm's state, carried inside AESV and ACK1 envelopes; written by state_save and read by state_load",
+  "magic": "FST1",
+  "magic_word": 1179866161,
+  "byte_order": "little endian",
+  "unit": "words (whole numbers; a host stores each as it stores an int)",
+  "header_words": 18,
+  "header": "magic 1179866161 (\"FST1\"), version 1, the schema's id and revision, the schema's SHA-256 as eight 32-bit words, the epoch it was saved under (the reader's fence), the tick, the day, the phase, the sequence, and the count of saved facts",
+  "body": "sixteen words a saved fact, its id first and then its value; then the SHA-256 of every word before, as eight 32-bit words",
+  "rules": [
+    "the schema's id, revision and digest are the reader's source schema's",
+    "the epoch is the reader's fence",
+    "the count is the schema's saved facts and the payload is exactly 26 words and sixteen a fact",
+    "the last eight words are the digest of the rest"
+  ],
+  "fixture": {
+    "source": "a schema of one saved fact (id 11, \"world.flag\", a flag that starts true), epoch 3, tick 17, day 19, phase 23, sequence 29 (format-profile.coax fp_fst1, written by state_save)",
+    "words": [
+      1179866161,
+      1,
+      7,
+      3,
+      2365140057,
+      3126052229,
+      2613048109,
+      2665568361,
+      3141071539,
+      4123164961,
+      3156794361,
+      2156556420,
+      3,
+      17,
+      19,
+      23,
+      29,
+      1,
+      11,
+      0,
+      1,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      3061730010,
+      1835375714,
+      3338800968,
+      1351308993,
+      3789501545,
+      3145714715,
+      682603841,
+      3707589620
+    ]
+  },
+  "refused": [
+    {
+      "what": "one word short",
+      "cut": 41
+    },
+    {
+      "what": "another magic",
+      "at": 0,
+      "value": 5
+    },
+    {
+      "what": "version 2",
+      "at": 1,
+      "value": 2
+    },
+    {
+      "what": "another schema's id",
+      "at": 2,
+      "value": 8
+    },
+    {
+      "what": "another epoch than the fence",
+      "at": 12,
+      "value": 4
+    },
+    {
+      "what": "two saved facts stated, one held",
+      "at": 17,
+      "value": 2
+    },
+    {
+      "what": "a digest that isn't the words'",
+      "at": 41,
+      "value": 1
+    }
+  ]
+}

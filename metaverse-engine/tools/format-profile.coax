@@ -1,0 +1,218 @@
+// The engine's four-character stored formats against their profiles (GitHub #13304, the registry
+// rows proto/registry.json lists with these codecs). A profile under proto/aethyr/ pins
+// one fixture's exact bytes (or words) and the damage its codec must refuse. This tool builds the
+// same fixture here, through the codec's own writer where it has one, and holds the profile to it:
+//   the fixture built here is the profile's, byte for byte (word for word)
+//   it starts with the profile's magic, and the codec's reader admits it
+//   each `refused` entry, a byte or word set to a value or the fixture cut short, is refused
+//
+//   coax/web/tool.sh metaverse-engine/tools/format-profile.coax PROFILE.json...
+//   coax/web/tool.sh metaverse-engine/tools/format-profile.coax write IDENTITY   (the fixture as hex or words, for a new profile)
+// Exit 1 when a profile doesn't hold.
+#import "Basic";
+#load "../anim/echo-pack.coax";
+#load "../anim/face-pack.coax";
+#load "../anim/dna-pack.coax";
+#load "../world/resource-manifest.coax";
+#load "../core/checkpoint.coax";
+#load "../state/codec.coax";
+#load "../host/transport-manifest.coax";
+#load "../editor/page-pack.coax";
+#load "../../coax/lib/json/json.coax";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/sys/args.coax";
+
+FP_MAX :: 8192;       // a fixture's bytes at most
+FP_FORMATS :: 8;
+FP_IDS :: [FP_FORMATS] string.["aethyr-echo-pack-ech1", "aethyr-face-pack-efc1", "aethyr-face-rig-frg1", "aethyr-resource-manifest-rcm1", "aethyr-paged-pack-vpk3", "aethyr-checkpoint-ack1", "aethyr-fact-state-fst1", "aethyr-transport-manifest-htp1"];
+FP_ECH1 :: 0; FP_EFC1 :: 1; FP_FRG1 :: 2; FP_RCM1 :: 3; FP_VPK3 :: 4; FP_ACK1 :: 5; FP_FST1 :: 6; FP_HTP1 :: 7;
+FP_FENCE :: 3;        // the epoch a fact payload is saved and loaded under
+// The checkpoint's pins and owner in its fixture.
+FP_PINS :: CheckpointPins.{engine = 61, content = 62, rules = 63, profile = 64};
+FP_OWNER :: 9;
+
+FpFixture :: struct { bytes: [FP_MAX] u8; n: int; words: [256] int; wn: int; }
+
+fp_put32 :: (b: [] u8, at: int, v: u32) { for k: 0..<4 { b[at + k] = cast,trunc(u8) (v >> cast(u32) (k * 8)); } }
+// ECH1: one joint at rest and 24 clips of two frames, the smallest rig the reader admits.
+fp_ech1 :: (b: [] u8) -> int {
+  joints := 1; n := 416 + joints * 80 + 24 * 2 * joints * 28;
+  for k: 0..<n { b[k] = 0; }
+  fp_put32(b, 0, 0x31484345); fp_put32(b, 4, 1); fp_put32(b, 8, cast(u32) joints); fp_put32(b, 12, 24); fp_put32(b, 16, 416); fp_put32(b, 20, cast(u32) n); fp_put32(b, 24, cast(u32) joints);
+  for k: 0..<joints { at := 416 + k * 80; fp_put32(b, at, cast(u32) k); for r: 0..<3 { fp_put32(b, at + 4 + (r * 4 + r) * 4, f32_bits(1)); } fp_put32(b, at + 76, f32_bits(1)); }
+  at := 416 + joints * 80;
+  for c: 0..<24 { fp_put32(b, 32 + c * 16, cast(u32) at); fp_put32(b, 36 + c * 16, 2); fp_put32(b, 40 + c * 16, f32_bits(1.0 / 30.0)); for k: 0..<2 * joints { fp_put32(b, at + k * 28 + 24, f32_bits(1)); } at += 2 * joints * 28; }
+  return n;
+}
+// EFC1: one morph target "blink" of one delta, one bone and one curve on the joint "face", one clip of two frames.
+fp_efc1 :: (b: [] u8) -> int {
+  for k: 0..<536 { b[k] = 0; }
+  header := [17] u32.[0x31434645, 1, 536, 1, 2, 1, 1, 1, 1, 1, 80, 160, 224, 292, 360, 440, 472];
+  for x, k: header { fp_put32(b, k * 4, x); }
+  for x, k: "blink" { b[80 + k] = x; b[292 + k] = x; }
+  for x, k: "face" { b[160 + k] = x; b[224 + k] = x; }
+  for x, k: "TF0100" { b[360 + k] = x; }
+  fp_put32(b, 148, 1); fp_put32(b, 424, 2); fp_put32(b, 428, f32_bits(24.0)); fp_put32(b, 432, 472); fp_put32(b, 436, 480); fp_put32(b, 440, 1);
+  fp_put32(b, 504, f32_bits(1.0)); fp_put32(b, 532, f32_bits(1.0));
+  return 536;
+}
+// One resource, four bytes of indices, with no dependencies: RCM1's manifest, and the one HTP1 companions.
+fp_manifest :: () -> ResourceManifest {
+  m := ResourceManifest.{valid = true, count = 1, identity = assets.asset_id("format-profile-manifest")};
+  m.entries[0].plan = ResourcePlan.{status = ResourceCostStatus.ok, spec = ResourceSpec.{format = ResourceFormat.indices},
+    cost = ResourceCost.{encoded = 4, gpu = 4, objects = size_of(ResourcePlan), alignment = 4, elements = 1}};
+  for lane: 0..<8 { m.entries[0].plan.content.words[lane] = cast(u32) (lane + 1); }
+  return m;
+}
+fp_rcm1 :: (b: [] u8) -> int {
+  if resource_manifest_write(fp_manifest(), b) != ResourceManifestStatus.ok { return -1; }
+  return RESOURCE_MANIFEST_HEADER + RESOURCE_MANIFEST_ROW;
+}
+// HTP1: that manifest's one resource as a raw container of its own four bytes, in the scene "format-profile-scene".
+fp_htp1 :: (b: [] u8) -> int {
+  m := fp_manifest();
+  p := HptManifest.{valid = true, count = 1, scene = assets.asset_id("format-profile-scene"), manifest = m.identity};
+  p.entries[0] = HptSource.{status = HptStatus.ok, raw = true, container = m.entries[0].plan.content, content = m.entries[0].plan.content, container_bytes = 4, bytes = 4};
+  if hpt_write(p, m, b[0..<HPT_HEADER + HPT_ROW]) != HptManifestStatus.ok { return -1; }
+  return HPT_HEADER + HPT_ROW;
+}
+// FST1: a schema of one saved fact, a flag that starts true, saved at tick 17 of day 19.
+fp_fst1_schema :: () -> StateSchema {
+  s := StateSchema.{id = 7, revision = 3, day_ticks = 64, n = 1};
+  s.fields[0] = StateField.{id = 11, name = "world.flag", kind = STATE_BOOL, retry = false, resets = 0, low = -9, high = 9, minimum = -3, maximum = 5, initial = state_bool(true)};
+  return s;
+}
+fp_fst1_store :: () -> StateStore {
+  refs: StateRefs;
+  s := state_construct(fp_fst1_schema(), refs, FP_FENCE); s.tick = 17; s.day = 19; s.phase = 23; s.sequence = 29; s.revision = 33;
+  return s;
+}
+fp_fst1 :: (out: [] int) -> int { refs: StateRefs; return state_save(fp_fst1_schema(), fp_fst1_store(), refs, out); }
+// VPK3: pack.coax's 512-byte test pack in 128-byte pages, its sound deferred.
+fp_vpk3 :: (b: [] u8) -> int {
+  ib: [600] u8; image := pack_test(600, ib[..]);
+  starts: [64] int; roots: [64] bool; entries: [64] int; w: [1] DeflateWork; scratch: [4096] u8;
+  pages := ppk_plan(image, 128, 1 << PACK_SOUND, starts[..], roots[..], entries[..]);
+  if pages < 2 { return -1; }
+  return ppk_write(image, starts[0..<pages], roots[0..<pages], entries[0..<pages], b, scratch[..], w[..]);
+}
+// ACK1: a session at tick 7 with two events, each channel's four counters set, three words of state.
+fp_ack1 :: (out: [] int) -> int {
+  events: [4] ReplayEvent; marks: [16] int; channels: [REPLAY_SOURCES] ReplayChannel; counters: [REPLAY_COUNTERS] int;
+  s := ReplaySession.{events = events[..], marks = marks[..], channels = channels[..], n = counters[..]};
+  replay_record(s, 52, 51);
+  for c: 0..<REPLAY_SOURCES { s.channels[c] = ReplayChannel.{epoch = 10 + c, last = 20 + c, asked = 30 + c, answered = 40 + c}; }
+  s.n[REPLAY_TICK] = 7; s.n[REPLAY_EVENTS] = 2;
+  state := [3] int.[5, 6, 7];
+  return checkpoint_write(out, FP_PINS, FP_OWNER, s, state[..]);
+}
+fp_build :: (k: int, f: [] FpFixture) -> bool {
+  f[0].n = 0; f[0].wn = 0;
+  if k == FP_ECH1 { f[0].n = fp_ech1(f[0].bytes[..]); }
+  if k == FP_EFC1 { f[0].n = fp_efc1(f[0].bytes[..]); }
+  if k == FP_FRG1 { f[0].n = frig_test_block(f[0].bytes[..]); }
+  if k == FP_RCM1 { f[0].n = fp_rcm1(f[0].bytes[..]); }
+  if k == FP_VPK3 { f[0].n = fp_vpk3(f[0].bytes[..]); }
+  if k == FP_ACK1 { f[0].wn = fp_ack1(f[0].words[..]); }
+  if k == FP_FST1 { f[0].wn = fp_fst1(f[0].words[..]); }
+  if k == FP_HTP1 { f[0].n = fp_htp1(f[0].bytes[..]); }
+  return f[0].n > 0 || f[0].wn > 0;
+}
+// Whether the codec's reader admits these bytes (or words).
+fp_admits :: (k: int, f: [] FpFixture) -> bool {
+  b := f[0].bytes[0..<f[0].n];
+  if k == FP_ECH1 { return echo_rig_valid(b); }
+  if k == FP_EFC1 { return face_valid(b); }
+  if k == FP_FRG1 { return anim_dna_valid(b); }
+  if k == FP_RCM1 {
+    // the manifest is named by its own bytes' digest: what is judged here is its structure
+    m: [1] ResourceManifest;
+    return resource_manifest_read(b, assets.asset_id(cast(string) b), m[..]) == ResourceManifestStatus.ok;
+  }
+  if k == FP_VPK3 { image: [600] u8; l: [1] PpkLoad; return ppk_read_all(b, image[..], l[..]) == 512; }
+  if k == FP_ACK1 { return checkpoint_read(f[0].words[0..<f[0].wn], f[0].wn, FP_PINS, FP_OWNER).status == CK_OK; }
+  if k == FP_HTP1 {
+    // named by its own bytes' digest, as RCM1 is: what is judged here is its structure
+    parsed: [1] HptManifest;
+    return hpt_read(b, assets.asset_id(cast(string) b), assets.asset_id("format-profile-scene"), fp_manifest(), parsed[..]) == HptManifestStatus.ok;
+  }
+  if k == FP_FST1 {
+    // loaded into a live store of the same epoch, one command later, with no migration
+    refs: StateRefs; schema := fp_fst1_schema(); live := fp_fst1_store(); live.day = 3; live.phase = 4; live.sequence = 31;
+    c := StateCommand.{epoch = live.epoch, revision = live.revision, tick = live.tick + 1, sequence = 32, event = STATE_LOAD};
+    return state_load(schema, schema, live, refs, FP_FENCE, c, f[0].words[0..<f[0].wn], StateMigration.{}).draft.status == STATE_OK;
+  }
+  return false;
+}
+fp_str :: (d: Jv, at: int, out: [] u8) -> string { n := jv_str(d, at, out); return ifx n >= 0 then cast(string) out[0..<n] else ""; }
+fp_digit :: (c: u8) -> int { return ifx c >= '0' && c <= '9' then cast(int) (c - '0') else ifx c >= 'a' && c <= 'f' then cast(int) (c - 'a') + 10 else -1; }
+fp_unhex :: (s: string, out: [] u8) -> int {
+  if (s.count & 1) != 0 || s.count / 2 > out.count { return -1; }
+  for i: 0..<s.count / 2 { hi := fp_digit(s[2 * i]); lo := fp_digit(s[2 * i + 1]); if hi < 0 || lo < 0 { return -1; } out[i] = cast,trunc(u8) ((hi << 4) | lo); }
+  return s.count / 2;
+}
+// One profile against its codec: "" when it holds, else what doesn't.
+fp_check :: (d: Jv, f: [] FpFixture) -> string {
+  t: [256] u8; h: [FP_MAX * 2 + 16] u8; raw: [FP_MAX] u8;
+  id := fp_str(d, jv_get(d, 0, "identity"), t[..]);
+  k := -1; for name, i: FP_IDS { if name == id { k = i; } }
+  if k < 0 { return "its identity is not a format this tool holds"; }
+  if !fp_build(k, f) { return "the codec's writer gave no fixture"; }
+  fx := jv_get(d, 0, "fixture"); magic := fp_str(d, jv_get(d, 0, "magic"), t[..]);
+  if magic.count != 4 { return "its magic is not four characters"; }
+  words := f[0].wn > 0;
+  if words {
+    ws := jv_get(d, fx, "words");
+    if jv_len(d, ws) != f[0].wn { return "its fixture is not the words the codec writes (their count)"; }
+    for i: 0..<f[0].wn { if jv_int(d, jv_at(d, ws, i), -1) != f[0].words[i] { return "its fixture is not the words the codec writes"; } }
+    // a word format's magic is one number, which the profile states beside the name the codec gives it
+    if f[0].words[0] != jv_int(d, jv_get(d, 0, "magic_word"), -1) { return "its fixture doesn't start with its magic"; }
+  } else {
+    n := fp_unhex(fp_str(d, jv_get(d, fx, "hex"), h[..]), raw[..]);
+    if n != f[0].n || jv_int(d, jv_get(d, fx, "bytes"), -1) != n || cast(string) raw[0..<n] != cast(string) f[0].bytes[0..<n] { return "its fixture is not the bytes the codec writes"; }
+    if cast(string) raw[0..<4] != magic { return "its fixture doesn't start with its magic"; }
+  }
+  if !fp_admits(k, f) { return "the codec's reader refuses its fixture"; }
+  refused := jv_get(d, 0, "refused");
+  if jv_len(d, refused) < 3 { return "it names fewer than three refusals"; }
+  for i: 0..<jv_len(d, refused) {
+    row := jv_at(d, refused, i);
+    if !fp_build(k, f) { return "the codec's writer gave no fixture"; }
+    cut := jv_int(d, jv_get(d, row, "cut"), -1); at := jv_int(d, jv_get(d, row, "at"), -1); value := jv_int(d, jv_get(d, row, "value"), -1);
+    total := ifx words then f[0].wn else f[0].n;
+    if cut >= 0 { if cut >= total { return "a refusal cuts past the fixture's end"; } if words { f[0].wn = cut; } else { f[0].n = cut; } }
+    else {
+      if at < 0 || at >= total || value < 0 { return "a refusal names no byte of the fixture"; }
+      if words { if f[0].words[at] == value { return "a refusal changes nothing"; } f[0].words[at] = value; }
+      else { if value > 255 || cast(int) f[0].bytes[at] == value { return "a refusal changes nothing"; } f[0].bytes[at] = cast,trunc(u8) value; }
+    }
+    if fp_admits(k, f) { return "the codec's reader admits a fixture the profile says it refuses"; }
+  }
+  return "";
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) < 1 { tool_errln("usage: format-profile PROFILE.json... | write IDENTITY"); return 2; }
+  f: [1] FpFixture;
+  if args_at(a[..], 0) == "write" && args_count(a[..]) == 2 {
+    k := -1; for name, i: FP_IDS { if name == args_at(a[..], 1) { k = i; } }
+    if k < 0 || !fp_build(k, f[..]) { tool_errln("format-profile: no such format, or its writer gave no fixture"); return 2; }
+    if f[0].wn > 0 { for i: 0..<f[0].wn { if i > 0 { print(", "); } print("%", f[0].words[i]); } print("\n"); return 0; }
+    digits := "0123456789abcdef"; hex: [FP_MAX * 2] u8;
+    for i: 0..<f[0].n { hex[2 * i] = digits[cast(int) f[0].bytes[i] >> 4]; hex[2 * i + 1] = digits[cast(int) f[0].bytes[i] & 15]; }
+    print("% %\n", f[0].n, cast(string) hex[0..<2 * f[0].n]); return 0;
+  }
+  bad := 0;
+  for i: 0..<args_count(a[..]) {
+    path := args_at(a[..], i);
+    text: [65536] u8; n := fs_read(path, text[..]);
+    nodes: [2048] JvNode; d: [1] Jv;
+    if n <= 0 || !jv_parse(d[..], cast(string) text[0..<n], nodes[..]) { print("FAIL %: cannot parse the profile\n", path); bad += 1; continue; }
+    why := fp_check(d[0], f[..]);
+    if why != "" { print("FAIL %: %\n", path, why); bad += 1; continue; }
+    print("%: profile holds\n", path);
+  }
+  return ifx bad == 0 then 0 else 1;
+}

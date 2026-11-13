@@ -27,7 +27,7 @@
 #define VK_USE_PLATFORM_ANDROID_KHR
 #include <vulkan/vulkan.h>
 #include "face.h"
-#include "../../../metaverse-engine/host/pack-table.h"
+#include "../../../metaverse-engine/host/core/host-core.h"   // the one C host core (#13304): the pack's entries by kind, over the one pack reader
 
 #define SAY(...) __android_log_print(ANDROID_LOG_INFO, "everglade", __VA_ARGS__)
 // Without one of the app's own parts there is nothing to show, so say which and stop.
@@ -350,22 +350,15 @@ static void model_make(void *p) {
 static void model_bake(void *p) { ((struct ModelOpen *)p)->baked = egm_bake(g.model, g.model_bake.map); }
 static void model_open(void) {
   // Everglade II's pack: a catalog, the vertices, the indices and the layers, found by the one pack
-  // reader (metaverse-engine/host/pack-table.coax pack_table, through metaverse-engine/host/pack-table.h).
+  // reader (metaverse-engine/host/pack-table.coax pack_table), sorted by kind by the host core
+  // (metaverse-engine/host/core/host-core.h).
   size_t n; const uint8_t *d = asset("everglade2.pack", &n);
   const char *bad = "Everglade: the app's everglade2.pack is damaged or doesn't hold the player's parts. Rebuild with apps/everglade-mobile/android/build.sh.";
-  static AethyrPack pack;
-  if (!aethyr_pack_open(&pack, d, n)) STOP("%s", bad);
-  const uint8_t *catalog = NULL, *vertices = NULL, *indices = NULL, *layers[64 + 16]; size_t cn = 0, vn = 0, in = 0, ln[64 + 16]; uint32_t layer_count = 0;
-  for (int k = 0; k < aethyr_pack_count(&pack); k++) {
-    size_t off = aethyr_pack_at(&pack, k), len = aethyr_pack_bytes(&pack, k);
-    switch (aethyr_pack_kind(&pack, k)) {
-      case AETHYR_PACK_CATALOG: catalog = d + off; cn = len; break;
-      case AETHYR_PACK_VERTICES: vertices = d + off; vn = len; break;
-      case AETHYR_PACK_INDICES: indices = d + off; in = len; break;
-      case AETHYR_PACK_LAYER: if (layer_count < 80) { layers[layer_count] = d + off; ln[layer_count++] = len; } break;
-      default: break;
-    }
-  }
+  static AethyrCorePack pack;
+  if (!aethyr_core_pack(&pack, d, n)) STOP("%s", bad);
+  const uint8_t *layers[64 + 16]; size_t cn = 0, vn = 0, in = 0, ln[64 + 16]; uint32_t layer_count = 0;
+  const uint8_t *catalog = aethyr_core_entry(&pack, pack.catalog, &cn), *vertices = aethyr_core_entry(&pack, pack.vertices, &vn), *indices = aethyr_core_entry(&pack, pack.indices, &in);
+  for (int k = 0; k < pack.colours && layer_count < 80; k++) { layers[layer_count] = aethyr_core_entry(&pack, pack.colour[k], &ln[layer_count]); layer_count++; }
   if (!catalog || !vertices || !indices || layer_count == 0) STOP("%s", bad);
   struct ModelOpen o = { catalog, (int32_t)cn, 0, 0 };
   deep(model_make, &o);

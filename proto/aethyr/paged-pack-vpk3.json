@@ -1,0 +1,48 @@
+{
+  "identity": "aethyr-paged-pack-vpk3",
+  "check": "coax/web/tool.sh metaverse-engine/tools/format-profile.coax proto/aethyr/paged-pack-vpk3.json",
+  "codec": "metaverse-engine/editor/page-pack.coax",
+  "carried_by": "a pack's image (asset-pack-v2) as pages a host fetches by HTTP Range, NAME.vpk3 beside NAME.pack; written by ppk_write, read by hosts through metaverse-engine/host/page-stream.coax and by the host core (metaverse-engine/host/core)",
+  "magic": "VPK3",
+  "byte_order": "little endian",
+  "header_bytes": 96,
+  "header": "magic (4), version 1 (u32), file bytes (u32), image bytes (u32), pages 1 to 1024 (u32), manifest offset 96 (u32), manifest bytes (u32, pages times 64), 0 (u32), the manifest's SHA-256 (32 bytes), the image's SHA-256 (32 bytes)",
+  "record_bytes": 64,
+  "record": "where the page is stored (u32), its stored bytes (u32), where it goes in the image (u32), its decoded bytes (u32, at most 1048576), codec (u8: 0 stored, 1 raw deflate), root (u8: 1 when the page is needed before the pack can be used), 0 (u16), the entry it belongs to (u32, 4294967295 for the header, table and catalog), 0 (u32), 0 (u32), the decoded page's SHA-256 (32 bytes)",
+  "rules": [
+    "the pages cover the image in order with no gaps",
+    "every page is admitted by its digest, and the assembled image by its own",
+    "the first page is a root"
+  ],
+  "fixture": {
+    "source": "pack.coax's 512-byte test pack in 128-byte pages, its sound deferred (format-profile.coax fp_vpk3)",
+    "bytes": 964,
+    "hex": "56504b3301000000c403000000020000080000006000000000020000000000001480b4644e7f9532af4c03f70c649c74cb804190f733746f2f2924a6241c292cbc9a8eefbcfa3bcd660d3e9816781af6b6e49b753288aae6fdd2508056fc0e8e600200004d000000000000008000000001010000ffffffff00000000000000002019dd359c4d12d6b2420905f85d8f3f3331b3271b093fcca65d2dfd7b991134ad02000043000000800000008000000001010000ffffffff0000000000000000a5283be951a856bd3e2088e5f060eef5fa97a74dc4e99fc6a5805ebdd1951be1f002000060000000000100008000000001010000ffffffff0000000000000000f98461d45de44d710a576e3a72e4276faca4052ad5a0a1053de9d7ae0eb65ef95003000054000000800100006000000001010000ffffffff00000000000000004b455240483ca75ebec06a4154e4078e544b9896fc7cf58eacd71554db04191ba403000008000000e001000008000000000100000100000000000000000000002b9df6ba7e47252bc53304958c9bd202670e61b2b39a70b8cf28b65361c513dfac0300000c000000e80100000c000000000100000200000000000000000000008b783700a247975b68792d1979bbb3bcf22123d58e7dc9a35a6c93341e2909c5b803000008000000f401000008000000000100000300000000000000000000004d30dd719a78ca9f1a4b14c492d759aac6570ea707096be7e0718ce872e87950c003000004000000fc010000040000000000000004000000000000000000000049338e2bcb5d493cc04f28b0fe650844f9f950635c4bbca36b8cbec2fbaa944b758a410a8020104547a1d61da12b748e36ada2ad884410082a1ed3337813fda220083e1898f779f7751e0b014ef4e076bc1b2b4385a5eaa1b9144efcfaedc100471fd1afcdbd32ee93cacefa0c758ab10900211004f7f1cdbe986f49d44010058decd8020c053df002415c9860d81103a80ff061cd05e3b4cd6ce75ea2512fd9bd2a36fdd71c92da4e08761363daff0975cb410e4030104051eb9e624ea053090b5b4b76e200c58406d5e8104d7a78d6127ffd5ff2c9e96101363688fe1c27622810451f983ce42a130d20d486635521a814a1b3e6a2c3eb35ceccce9752d2ad37b752ba1f937c7705ed7edad1ff89073d8a310a80300c453be714b980694a71717576d20b140c05a9b40407bdbdb183c37ffcff7993f772a7b315a1aad9c382b3a64b90315a06a6911999d8f88f8fa15fbdc36666498f68a4a365645871af553180732f76767676767600006969696969696969696969694a504547210000006d703300"
+  },
+  "refused": [
+    {
+      "what": "one byte short",
+      "cut": 963
+    },
+    {
+      "what": "magic WPK3",
+      "at": 0,
+      "value": 87
+    },
+    {
+      "what": "version 2",
+      "at": 4,
+      "value": 2
+    },
+    {
+      "what": "nine pages stated",
+      "at": 16,
+      "value": 9
+    },
+    {
+      "what": "a damaged last page",
+      "at": 963,
+      "value": 1
+    }
+  ]
+}

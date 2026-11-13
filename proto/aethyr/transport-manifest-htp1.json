@@ -1,0 +1,59 @@
+{
+  "identity": "aethyr-transport-manifest-htp1",
+  "check": "coax/web/tool.sh metaverse-engine/tools/format-profile.coax proto/aethyr/transport-manifest-htp1.json",
+  "codec": "metaverse-engine/host/transport-manifest.coax",
+  "carried_by": "the whole-container transport companion of a pack: for each resource of an RCM1 manifest, the source container it travels in and its span there; named by the SHA-256 of its own bytes",
+  "magic": "HTP1",
+  "byte_order": "little endian",
+  "header_bytes": 112,
+  "header": "magic (4), version 1 (u32), rows 1 to 64 (u32), row bytes 96 (u32), the scene's digest (32 bytes), the RCM1 manifest's digest (32 bytes), the transport model's digest (32 bytes: SHA-256 of the model's name)",
+  "row_bytes": 96,
+  "row": "raw (u32: 1 when the container is the resource itself), 0 (u32), the container's digest (32 bytes), the content's digest (32 bytes), the container's bytes (u64), the span's offset (u64), the span's bytes (u64)",
+  "rules": [
+    "the file is exactly the header and its rows, one a resource of the manifest",
+    "the reader is given the companion's digest, the scene's and the manifest, and refuses bytes that don't match them",
+    "a span is inside its container, and its bytes are the resource's encoded size",
+    "a raw container's span is the whole container, and its digest the content's"
+  ],
+  "fixture": {
+    "source": "the one resource of the RCM1 profile's manifest as a raw container of its own four bytes, in the scene \"format-profile-scene\" (format-profile.coax fp_htp1, written by hpt_write)",
+    "bytes": 208,
+    "hex": "485450310100000001000000600000008a5ce2dad76efa865882657dab91b1a300dfa23d6c1c53c9d7c250b67ee2402fb07625f36777ebbba614085f54307875fb3242747cf50693bf3526fa2274c61c160f3d710cb2fe1da8cb1df5002b98dd370772396c6346876da2f6d14c33d0fc010000000000000001000000020000000300000004000000050000000600000007000000080000000100000002000000030000000400000005000000060000000700000008000000040000000000000000000000000000000400000000000000"
+  },
+  "refused": [
+    {
+      "what": "one byte short",
+      "cut": 207
+    },
+    {
+      "what": "magic ITP1",
+      "at": 0,
+      "value": 73
+    },
+    {
+      "what": "version 2",
+      "at": 4,
+      "value": 2
+    },
+    {
+      "what": "two rows stated, one held",
+      "at": 8,
+      "value": 2
+    },
+    {
+      "what": "a raw flag of 2",
+      "at": 112,
+      "value": 2
+    },
+    {
+      "what": "a nonzero reserved word",
+      "at": 116,
+      "value": 1
+    },
+    {
+      "what": "a span one byte into its container",
+      "at": 192,
+      "value": 1
+    }
+  ]
+}

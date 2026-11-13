@@ -1,0 +1,57 @@
+// The host core's Coax face (GitHub #13304): everything the one C host core
+// (metaverse-engine/host/core/host-core.c) decides nothing about and asks the engine for, under C
+// names. A native host's build compiles this file once,
+//   coax/bin/coax c metaverse-engine/host/core/core-face.coax --library --header aethyr-core-face.h > aethyr-core-face.c
+// and host-core.c with it. It carries:
+//   the pack's table and its world cells       ../pack-table-face.coax (aethyr_pack_table, aethyr_pack_cell)
+//   a range-addressable pack read whole        ../page-stream.coax (page-pack.coax's ppk_manifest, ppk_read_all)
+//   a block-compressed layer's levels          ../../render/block-layer.coax (bl_read)
+//   the format a device's GPU takes            ../../render/texture-format.coax (tf_pick, tf_tag)
+// Nothing here reads a byte of its own: each export is one call into the module that owns the rule.
+//   coax/bin/coax test metaverse-engine/host/core/core-face.coax --library
+#module "aethyr.host.core_face";
+#load "../pack-table-face.coax";
+#load "../page-stream.coax";   // the paged pack's reader (page-pack.coax) as the host context loads it
+#load "../../render/block-layer.coax";
+
+// The whole size of the pack image a VPK3 file holds, from the file's bytes: 0 when the file is
+// not a VPK3 file (a host then reads it as the pack itself), -1 when it is one that can't be used.
+aethyr_core_paged :: (file: string) -> int #export_c #effects(all) {
+  if file.count < 4 || file[0..<4] != PPK_MAGIC { return 0; }
+  m: [1] PpkManifest;
+  if !ppk_manifest(file, m[..]) || m[0].file_bytes != file.count { return -1; }
+  return m[0].image_bytes;
+}
+// A VPK3 file's pack image into `image`, every page checked against its digest: the image's
+// bytes, or -1 (and the host keeps nothing).
+aethyr_core_unpage :: (file: [] u8, image: [] u8) -> int #export_c #effects(all) {
+  l: [1] PpkLoad;
+  return ppk_read_all(file, image, l[..]);
+}
+// A layer's bytes as a block layer: ok false when they are an image for the host's decoder.
+aethyr_core_block :: (layer: string) -> BlockLayer #export_c #effects(all) { return bl_read(layer, layer.count); }
+// The feature bits tf_pick reads, from what a device's GPU has.
+aethyr_core_features :: (bc: bool, astc: bool) -> int #export_c #effects(all) { return (ifx bc then TF_BC else 0) | (ifx astc then TF_ASTC else 0); }
+#test "a paged file states its image; anything else is a pack to read as it is" {
+  ib: [600] u8; image := ppk_test_image(ib[..]);
+  starts: [PPK_PAGES] int; roots: [PPK_PAGES] bool; entries: [PPK_PAGES] int; w: [1] DeflateWork;
+  pages := ppk_plan(image, 128, 0, starts[..], roots[..], entries[..]);
+  #assert pages > 1;
+  fb: [4096] u8; sb: [PPK_PAGE_MAX + 65536] u8;
+  fn := ppk_write(image, starts[0..<pages], roots[0..<pages], entries[0..<pages], fb[..], sb[..], w[..]);
+  #assert fn > 0;
+  file := cast(string) fb[0..<fn];
+  #assert aethyr_core_paged(file) == image.count && aethyr_core_paged(image) == 0 && aethyr_core_paged("") == 0;
+  #assert aethyr_core_paged(file[0..<fn - 1]) == -1 && aethyr_core_paged("VPK3") == -1;
+  ob: [600] u8;
+  #assert aethyr_core_unpage(fb[0..<fn], ob[..]) == image.count && cast(string) ob[0..<image.count] == image;
+  #assert aethyr_core_unpage(fb[0..<fn], ob[0..<image.count - 1]) == -1;
+  fb[fn - 1] = fb[fn - 1] ^ 1;
+  #assert aethyr_core_unpage(fb[0..<fn], ob[..]) == -1;
+}
+#test "a block layer is told from an image, and the feature bits are tf_pick's" {
+  b: [64] u8; n := bl_head(TF_BC7_SRGB, 4, 4, 1, b[..]);
+  #assert n == BL_HEADER + 16 && aethyr_core_block(cast(string) b[0..<n]).ok && aethyr_core_block(cast(string) b[0..<n]).format == TF_BC7_SRGB;
+  #assert !aethyr_core_block(cast(string) b[0..<n - 1]).ok && !aethyr_core_block("PNG, not a block layer").ok;
+  #assert aethyr_core_features(true, false) == TF_BC && aethyr_core_features(false, true) == TF_ASTC && aethyr_core_features(true, true) == (TF_BC | TF_ASTC) && aethyr_core_features(false, false) == 0;
+}

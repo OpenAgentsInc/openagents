@@ -31,6 +31,7 @@
 #                                         the native apps' realms (metaverse/native/app-realms.coax, #13389),
 #                                         packs paged by cell (metaverse-engine/host/check-pack-cells.coax, #13304),
 #                                         the apps' packs admitted (metaverse-engine/tools/pack-seal.coax --check, #13304),
+#                                         the C host core's conformance and the stored formats' profiles (#13304),
 #                                         the API's migration numbers, hashes and schema.sql, the pre-push replay, the committed
 #                                         shaders, realm pages and changelog page against
 #                                         their sources, and every realm's link-preview card
@@ -267,6 +268,8 @@ reports() {
   generated
   pack_reader_c
   packs_admitted
+  host_core
+  format_profiles
   frame_plan_h
   frame_plan_walk
   app_realms
@@ -300,6 +303,12 @@ pack_reader_c() {
 packs_admitted() {
   step packs-admitted bash -c 'set -e; t="$(mktemp -d)"; gzip -dc apps/openagents-web/realms/everglade-experimental/assets/glade.pack.gz > "$t/glade.pack"; r=0; coax/web/tool.sh metaverse-engine/tools/pack-seal.coax --check apps/openagents-web/realms/everglade2/assets/everglade2.pack "$t/glade.pack" || r=1; rm -f "$t/glade.pack"; rmdir "$t"; exit $r' || status=1
 }
+# The one C host core (metaverse-engine/host/core, #13304) does what the engine says: its conformance
+# driver, built here with face addresses as pointers and as 32-bit offsets, over fixtures Coax
+# writes; and the browser's pack module reports the same entries from the same pack.
+host_core() { step host-core coax/web/tool.sh metaverse-engine/host/core/conformance.coax check "$PWD" coax/web/build/host-core --web || status=1; }
+# The engine's four-character stored formats hold their profiles (proto/aethyr/, #13304).
+format_profiles() { step format-profiles coax/web/tool.sh metaverse-engine/tools/format-profile.coax proto/aethyr/echo-pack-ech1.json proto/aethyr/face-pack-efc1.json proto/aethyr/face-rig-frg1.json proto/aethyr/resource-manifest-rcm1.json proto/aethyr/fact-state-fst1.json proto/aethyr/checkpoint-ack1.json proto/aethyr/transport-manifest-htp1.json proto/aethyr/paged-pack-vpk3.json || status=1; }
 # The frame plan's numbers for C hosts (#13303): metaverse-engine/host/frame-plan.h is what metaverse-engine/render/frame-plan.coax
 # writes. Committed, because a host's build takes no Coax step for it; compared with its source here.
 frame_plan_h() {

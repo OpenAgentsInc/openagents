@@ -123,8 +123,13 @@ shared the machine, so the gap in the Link run is load, not this change.
 - **ASTC 6x6 builds.** WebGPU needs a compressed texture's first level to be whole blocks, and
   512 is not a multiple of 6, so a 6x6 build needs layers at 516 or 510. Everglade ships BC7
   and ASTC 4x4.
-- **Native hosts.** The iOS and desktop apps load `everglade2.pack`, and `Pages.swift` still
-  asks for RGBA8 (`tf_pick(0, 0, ...)`).
+- **Native hosts.** The Mac and iPhone apps load Everglade II's block build (#13304): the Mac
+  app ships `everglade2.bc7.vpk3` and the iPhone app `everglade2.astc4.vpk3` beside the pack, and
+  the page host uploads each level as it is (`blockLayers:first:` in
+  `metaverse-engine/host/apple/PageHost.m`, through the host core). On this Mac, Metal reports
+  24.2 MB for the 67 layers as BC7 against 95.2 MB as RGBA8. `AETHYR_BLOCKS=0` loads the pack
+  itself, to compare. Experimental's pack, the Workshop's model (`Engine.swift`) and the Android
+  app still decode RGBA8. The data layers (normal and ORM maps) are RGBA8 everywhere.
 - **The renderer's layer paths.** Realms drawn through `coax/web/render.js`
   (`makeLayersEffect`, canonical layers) do not take the phone tier yet; Everglade and
   Character Create use `host.js`'s path, which does.

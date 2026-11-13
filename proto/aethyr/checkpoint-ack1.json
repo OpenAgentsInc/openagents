@@ -1,0 +1,84 @@
+{
+  "identity": "aethyr-checkpoint-ack1",
+  "check": "coax/web/tool.sh metaverse-engine/tools/format-profile.coax proto/aethyr/checkpoint-ack1.json",
+  "codec": "metaverse-engine/core/checkpoint.coax",
+  "carried_by": "the engine's checkpoint envelope: a session's counters, its channels and a state payload (FST1), as whole numbers a host stores",
+  "magic": "ACK1",
+  "magic_word": 1095126833,
+  "magic_note": "the codec names the format ACK1; the stored word is 1095126833, whose four bytes spell AFO1, and it is the number that is the format",
+  "byte_order": "little endian",
+  "unit": "words (whole numbers; a host stores each as it stores an int)",
+  "header_words": 12,
+  "header": "magic 1095126833 (\"ACK1\"), schema 1, the engine, content, rules and profile pins, the owner, the tick, the session's seed, the constructed state's digest, the record's cursor, the state's word count",
+  "body": "one row of four words a source (epoch, last, asked, answered), three sources; then the state's words; then one word folding every word before it (FNV-1a, 32 bits a half word)",
+  "rules": [
+    "a checkpoint shorter than its counts is torn",
+    "the four pins are the reader's own",
+    "the owner is the reader's fence",
+    "the last word is the fold of the rest"
+  ],
+  "fixture": {
+    "source": "a session at tick 7 with two events, each channel's counters set, three words of state, pins 61 to 64, owner 9 (format-profile.coax fp_ack1, written by checkpoint_write)",
+    "words": [
+      1095126833,
+      1,
+      61,
+      62,
+      63,
+      64,
+      9,
+      7,
+      51,
+      52,
+      2,
+      3,
+      10,
+      20,
+      30,
+      40,
+      11,
+      21,
+      31,
+      41,
+      12,
+      22,
+      32,
+      42,
+      5,
+      6,
+      7,
+      4116042869
+    ]
+  },
+  "refused": [
+    {
+      "what": "one word short",
+      "cut": 27
+    },
+    {
+      "what": "another magic",
+      "at": 0,
+      "value": 5
+    },
+    {
+      "what": "schema 2",
+      "at": 1,
+      "value": 2
+    },
+    {
+      "what": "another engine pin",
+      "at": 2,
+      "value": 60
+    },
+    {
+      "what": "another owner than the fence",
+      "at": 6,
+      "value": 8
+    },
+    {
+      "what": "a fold that isn't the words'",
+      "at": 27,
+      "value": 1
+    }
+  ]
+}

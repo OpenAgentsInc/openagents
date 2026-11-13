@@ -42,7 +42,7 @@ done
 # and kept until its sources change; its objects are kept a platform. iOS loads code only from a
 # framework, so each realm's library is Frameworks/NAME.framework. The face's imports (the socket,
 # HTTP, the clock) are the page host's in the app, found when the library loads.
-key="$( (shasum -a 256 "$coax" | cut -d ' ' -f 1; git -C "$repo" rev-parse HEAD:apps/openagents-web HEAD:aethyr HEAD:verse HEAD:everglade HEAD:coax/lib; git -C "$repo" status --porcelain -- apps/openagents-web aethyr verse everglade coax/lib ':(exclude)metaverse-engine/host/apple'; git -C "$repo" diff HEAD -- apps/openagents-web aethyr verse everglade coax/lib ':(exclude)metaverse-engine/host/apple') | shasum -a 256 | cut -d ' ' -f 1)"
+key="$( (shasum -a 256 "$coax" | cut -d ' ' -f 1; git -C "$repo" rev-parse HEAD:apps/openagents-web HEAD:metaverse-engine HEAD:metaverse HEAD:everglade HEAD:coax/lib; git -C "$repo" status --porcelain -- apps/openagents-web metaverse-engine metaverse everglade coax/lib ':(exclude)metaverse-engine/host/apple'; git -C "$repo" diff HEAD -- apps/openagents-web metaverse-engine metaverse everglade coax/lib ':(exclude)metaverse-engine/host/apple') | shasum -a 256 | cut -d ' ' -f 1)"
 build_realm() {   # NAME: Frameworks/NAME.framework
   local name="$1" realm="$here/build/realm/$1" objects="$work/realm/$1" framework="$app/Frameworks/$1.framework"
   mkdir -p "$realm" "$objects" "$framework" "$app/$name"
@@ -105,13 +105,18 @@ emit_page archery-range charactercreator charactercreator fivelab-fx fxg
 # Grid and stations in the particle pass (bitcoin-lab-fx), Experimental's pack.
 build_realm bitcoin-lab-walk
 emit_page bitcoin-lab-walk charactercreator charactercreator bitcoin-lab-fx qfx
-# The one pack reader (metaverse-engine/host/pack-table.coax's pack_table, #13304) as C: PageHost.m and Engine.swift find a pack's entries through it.
-"$coax" c "$repo/metaverse-engine/host/pack-table-face.coax" --library --header "$work/c/aethyr-pack-table.h" > "$work/c/aethyr-pack-table.c"
-"${cc[@]}" -w -c "$work/c/aethyr-pack-table.c" -o "$work/c/aethyr-pack-table.o"
+# The host core's face (metaverse-engine/host/core/core-face.coax, #13304) as C: the one pack reader, a paged
+# block build read whole, a block layer's levels, the format this GPU takes and the frame plan's records.
+# PageHost.m is built on the core over it (metaverse-engine/host/core/host-core.h); Engine.swift finds a pack's
+# entries through the reader (pack-table.h, which includes the face under its old name).
+"$coax" c "$repo/metaverse-engine/host/core/core-face.coax" --library --header "$work/c/aethyr-core-face.h" > "$work/c/aethyr-core-face.c"
+# (Its SHA-256 helpers are also native-audio's: this unit keeps its own names for them.)
+"${cc[@]}" -w -DS_hash=aethyr_core_S_hash -DS_hex=aethyr_core_S_hex -c "$work/c/aethyr-core-face.c" -o "$work/c/aethyr-core-face.o"
+printf '#include "aethyr-core-face.h"\n' > "$work/c/aethyr-pack-table.h"
 xcrun -sdk "$sdk" clang -target "$target" -fobjc-arc -fmodules -O2 -Wno-shadow-ivar -I"$work/c" -c "$repo/metaverse-engine/host/apple/PageHost.m" -o "$work/c/page-host.o"
-# A phone's tier for the pack's layers is Coax's (metaverse-engine/render/texture-format.coax tf_side).
-"$coax" c "$repo/metaverse-engine/render/texture-format.coax" --library --header "$work/c/texture-format.h" > "$work/c/texture-format.c"
-"${cc[@]}" -c "$work/c/texture-format.c" -o "$work/c/texture-format.o"
+# A phone's tier for the pack's layers is Coax's (metaverse-engine/render/texture-format.coax tf_side), which
+# the core's face carries.
+printf '#include "aethyr-core-face.h"\n' > "$work/c/texture-format.h"
 # The realms' sound, as on the Mac: the Metaverse Engine's Apple audio host (metaverse-engine/host/apple/audio-host.h,
 # PageAudio.swift and the desktop app's MetalAudio.swift) over the shared Coax audio authorities,
 # native-audio.coax as C, and the site's sound files a page names with their PCM companions.
@@ -125,7 +130,7 @@ cp -R "$repo/apps/openagents-web/realms/everglade/hotbar" "$repo/apps/openagents
 cp -R "$repo/apps/openagents-web/realms/5e-mmo/hotbar" "$app/web/realms/5e-mmo/"
 printf '#include "%s"\n#import "%s"\n#include "%s"\n#include "%s"\n#include "%s"\n' "$desk/face.h" "$repo/metaverse-engine/host/apple/page-host.h" "$work/c/texture-format.h" "$repo/metaverse-engine/host/apple/audio-host.h" "$repo/metaverse-engine/host/pack-table.h" > "$work/c/bridge.h"
 xcrun -sdk "$sdk" swiftc -target "$target" -O -Xcc -I"$work/c" -import-objc-header "$work/c/bridge.h" "$here"/ios/Sources/*.swift "$desk/Sources/Engine.swift" "$desk/Sources/Faces.swift" "$desk/Sources/Realms.swift" "$repo/metaverse-engine/host/apple/PageAudio.swift" "$repo/apps/metaverse-engine-desktop/Sources/MetalAudio.swift" \
-  "$work/c/audio-host.o" "$work/c/native-audio.o" "$work/c/workshop.o" "$work/c/model.o" "$work/c/temple.o" "$work/c/face.o" "$work/c/model-face.o" "$work/c/place-face.o" "$work/c/page-host.o" "$work/c/aethyr-pack-table.o" "$work/c/texture-format.o" \
+  "$work/c/audio-host.o" "$work/c/native-audio.o" "$work/c/workshop.o" "$work/c/model.o" "$work/c/temple.o" "$work/c/face.o" "$work/c/model-face.o" "$work/c/place-face.o" "$work/c/page-host.o" "$work/c/aethyr-core-face.o" \
   -framework UIKit -framework Metal -framework MetalKit -framework QuartzCore -framework CoreText -framework ImageIO -framework CoreGraphics -framework CoreMotion -framework AVFoundation -lm -lz \
   -Xlinker -export_dynamic -Xlinker -rpath -Xlinker @executable_path/Frameworks -o "$app/Everglade"
 cp "$here/ios/Info.plist" "$app/Info.plist"
@@ -134,6 +139,12 @@ xcrun actool "$here/ios/Assets.xcassets" --compile "$app" --platform "$sdk" --mi
 /usr/libexec/PlistBuddy -c "Merge $work/icon.plist" "$app/Info.plist"
 cp -R "$repo/apps/openagents-web/realms/everglade2/assets/fonts" "$app/fonts"
 cp "$repo/apps/openagents-web/realms/everglade2/assets/everglade2.pack" "$app/everglade2.pack"
+# Everglade II's layers as GPU blocks (#13305): the pack's ASTC 4x4 block build beside it, which the
+# page host loads in place of the pack and uploads with no decode. The encode is kept by the pack's hash.
+blocks="$work/blocks/everglade2-$(shasum -a 256 "$repo/apps/openagents-web/realms/everglade2/assets/everglade2.pack" | cut -c1-16).astc4.vpk3"
+mkdir -p "$work/blocks"
+[[ -f "$blocks" ]] || "$repo/coax/web/tool.sh" "$repo/metaverse-engine/tools/block-pack.coax" "$repo/apps/openagents-web/realms/everglade2/assets/everglade2.pack" "$blocks" --format astc4 >/dev/null
+cp "$blocks" "$app/everglade2.astc4.vpk3"
 if [[ "$sdk" == iphoneos ]]; then
   # What the App Store asks every upload to say about how it was built.
   put() { /usr/libexec/PlistBuddy -c "Add :$1 string $2" "$app/Info.plist"; }

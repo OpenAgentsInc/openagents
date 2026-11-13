@@ -1,0 +1,42 @@
+{
+  "identity": "aethyr-face-rig-frg1",
+  "check": "coax/web/tool.sh metaverse-engine/tools/format-profile.coax proto/aethyr/face-rig-frg1.json",
+  "codec": "metaverse-engine/anim/dna-pack.coax",
+  "carried_by": "a compiled face rig block; admitted by anim_dna_valid before the face-rig evaluator (metaverse-engine/anim/facerig.coax) opens it",
+  "magic": "FRG1",
+  "byte_order": "little endian",
+  "header_bytes": 40,
+  "header": "magic (4), then 9 u32: controls (1 to 1024), raw controls (at most 1024), correctives (at most 1024), joint groups (at most 256), joints (1 to 1024), points (1 to 1000000), vertices (at most 1000000), targets (at most 2048), expressions (at most 32)",
+  "body": "the correctives, the joint groups, the joints, the points, the vertices, the targets and the expressions, in that order, each a counted record of u32 and f32 words; the block ends with the last",
+  "rules": [
+    "every count is within its limit",
+    "every record's span is inside the block",
+    "every float is finite"
+  ],
+  "fixture": {
+    "source": "the face-rig evaluator's made block: three controls, one corrective, one group, two joints, two points (metaverse-engine/anim/facerig.coax frig_test_block)",
+    "bytes": 396,
+    "hex": "46524731030000000200000001000000010000000200000002000000030000000100000002000000020000000000803f020000000000000001000000020000000200000000000000020000000c0000000a0000000000f04100000000000000000000803fffffffff0000000000000000000000000000000000000000000000000000000000000000000020410000000000000000000000000000000000000000000020410000a04000000000000000000000803f010000000000803f00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000a04100000000000000000000803f00000000000000000000803f0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000010000000100000001000000010000000100000000000000d00700006f70656e00000000000000000000000001000000000000000000803f626f746800000000000000000000000002000000000000000000803f010000000000803f"
+  },
+  "refused": [
+    {
+      "what": "one byte short",
+      "cut": 395
+    },
+    {
+      "what": "magic GRG1",
+      "at": 0,
+      "value": 71
+    },
+    {
+      "what": "no controls",
+      "at": 4,
+      "value": 0
+    },
+    {
+      "what": "no joints",
+      "at": 20,
+      "value": 0
+    }
+  ]
+}

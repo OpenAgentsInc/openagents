@@ -15,7 +15,18 @@
 #include <time.h>
 #include <zlib.h>
 #include "audio-host.h"
-#include "../pack-table.h"
+// The one C host core (metaverse-engine/host/core/host-core.h, GitHub #13304) over its Coax face,
+// which the app's build compiles (aethyr-core-face.c): the pack's entries, their delivery to the
+// face, a paged block build read whole, and a block layer's levels. This file keeps Metal, the
+// window's input and the network.
+#ifndef COAXIAL_NATIVE_ADDRESS
+#define COAXIAL_NATIVE_ADDRESS 1
+#endif
+#include <TargetConditionals.h>
+#include "aethyr-core-face.h"
+#define AETHYR_PACK_TABLE_PROVIDED
+#define AETHYR_CORE_FACE
+#include "../core/host-core.h"
 
 typedef uintptr_t A;
 // The face (metaverse-engine/host/README.md, and the page's optional v1 exports host.js reads). A name the
@@ -39,7 +50,8 @@ typedef uintptr_t A;
  F(int32_t,action,(A)) F(A,outbox,(A)) F(uint32_t,outbox_len,(A)) F(uint32_t,outbox_capacity,(A)) F(void,action_done,(A)) \
  F(A,drive_out,(A)) F(uint32_t,drive_out_len,(A)) F(A,media,(A)) F(uint32_t,media_len,(A)) F(uint32_t,media_capacity,(A)) F(uint32_t,sounds_len,(A)) F(uint32_t,player_appearance_v1,(void)) \
  F(A,sounds,(A)) F(uint32_t,sounds_capacity,(A)) F(A,sound_bank,(A)) F(uint32_t,sound_bank_len,(A)) F(uint32_t,sound_bank_capacity,(A)) \
- F(A,sound_bank_storage,(A)) F(uint32_t,sound_bank_storage_bytes,(A)) F(A,mesh_bounds_v1,(A))
+ F(A,sound_bank_storage,(A)) F(uint32_t,sound_bank_storage_bytes,(A)) F(A,mesh_bounds_v1,(A)) \
+ F(A,rig_v1,(A,uint32_t)) F(void,rig_ready_v1,(A,uint32_t)) F(uint32_t,frame_plan_v1,(A,uint32_t,uint32_t *,uint32_t))
 typedef struct {
 #define PH_FN(result,name,args) result (*name) args;
  PH_FACE(PH_FN)
@@ -379,6 +391,32 @@ typedef struct { MTLPixelFormat format; BOOL blend; MTLBlendFactor src, dst, src
  [b generateMipmapsForTexture:t]; [b endEncoding]; [c commit];
  return t;
 }
+// The pack's layers as one array of GPU blocks (GitHub #13305): a block build's layers
+// (metaverse-engine/render/block-layer.coax) go up as they are, every level of every layer, with no
+// decode, no resize and no mips made here. nil when this GPU has no such format.
+- (id<MTLTexture>)blockLayers:(const AethyrCorePack *)pack first:(const AethyrCoreLayer *)first {
+ MTLPixelFormat format = MTLPixelFormatInvalid;
+ if (!strcmp(first->tag, "astc4")) format = MTLPixelFormatASTC_4x4_sRGB;
+ else if (!strcmp(first->tag, "astc6")) format = MTLPixelFormatASTC_6x6_sRGB;
+#if TARGET_OS_OSX
+ else if (!strcmp(first->tag, "bc7")) format = MTLPixelFormatBC7_RGBAUnorm_sRGB;
+#endif
+ if (format == MTLPixelFormatInvalid) return nil;
+ MTLTextureDescriptor *d = [MTLTextureDescriptor new];
+ d.textureType = MTLTextureType2DArray; d.pixelFormat = format; d.width = (NSUInteger)first->shape.width; d.height = (NSUInteger)first->shape.height;
+ d.arrayLength = (NSUInteger)pack->colours; d.mipmapLevelCount = (NSUInteger)first->shape.levels; d.usage = MTLTextureUsageShaderRead;
+ id<MTLTexture> t = [device newTextureWithDescriptor:d]; if (!t) return nil;
+ for (int k = 0; k < pack->colours; k++) {
+  AethyrCoreLayer layer = aethyr_core_layer(pack, pack->colour[k]);
+  for (int level = 0; ; level++) {
+   size_t n; int w, h, across, down;
+   const uint8_t *b = aethyr_core_level(&layer, level, &n, &w, &h, &across, &down);
+   if (!b) break;
+   [t replaceRegion:MTLRegionMake2D(0, 0, w, h) mipmapLevel:level slice:k withBytes:b bytesPerRow:(NSUInteger)across * 16 bytesPerImage:0];
+  }
+ }
+ return t;
+}
 // The HUD's atlas (host.js sansAtlas with a title face): ASCII 32..126 then sixteen more marks, 16
 // columns of 96-texel cells, the pen at x 16 and the baseline at y 72 at 64 px, the reading face in
 // red and the title face in green; every mip drawn at its own size.
@@ -523,37 +561,57 @@ typedef struct { MTLPixelFormat format; BOOL blend; MTLBlendFactor src, dst, src
  if (!sans) return @"the HUD's fonts are missing";
  return nil;
 }
+// What the core calls of the face: its exports, with a message followed by the host's turn (after),
+// and a destination taken when the bytes fit the capacity the face states.
+static void *phSpan(void *user, AethyrAddr at, uint32_t capacity, uint32_t n) { return n <= capacity ? (void *)at : NULL; }
+static void phMessage(A state, int32_t kind, uint32_t n) { AEPageHost *h = phCurrent; if (!h) return; h->x.message(state, kind, n); [h after]; }
+static int phHasBuild(void *user, const char *tag) {
+ return [[NSFileManager defaultManager] fileExistsAtPath:[NSString stringWithFormat:@"%@.%s.vpk3", (__bridge NSString *)user, tag]] ? 1 : 0;
+}
 - (NSString *)loadPack {
- packBytes = [NSData dataWithContentsOfFile:config.pack options:NSDataReadingMappedIfSafe error:nil];
+ // The block build this GPU takes, when the app has one beside the pack (NAME.TAG.vpk3, written by
+ // metaverse-engine/tools/block-pack.coax): Coax picks the format (texture-format.coax tf_pick) from
+ // what the device has and which builds stand there. AETHYR_BLOCKS=0 loads the pack itself, to compare.
+ packBytes = nil;
+ const char *blocksOff = getenv("AETHYR_BLOCKS");
+ if ([config.pack hasSuffix:@".pack"] && !(blocksOff && !strcmp(blocksOff, "0"))) {
+  NSString *base = [config.pack stringByDeletingPathExtension]; char tag[8];
+  BOOL bc = NO, phone = NO;
+#if TARGET_OS_OSX
+  bc = device.supportsBCTextureCompression;
+#else
+  phone = YES;
+#endif
+  BOOL astc = [device supportsFamily:MTLGPUFamilyApple2];
+  aethyr_core_format(bc, astc, phone, phHasBuild, (__bridge void *)base, tag);
+  if (tag[0]) {
+   NSData *file = [NSData dataWithContentsOfFile:[NSString stringWithFormat:@"%@.%s.vpk3", base, tag] options:NSDataReadingMappedIfSafe error:nil];
+   int64_t want = file ? aethyr_core_image_bytes(file.bytes, file.length) : -1;
+   NSMutableData *image = want > 0 ? [NSMutableData dataWithLength:(NSUInteger)want] : nil;
+   if (image && aethyr_core_image(file.bytes, file.length, image.mutableBytes, (size_t)want)) packBytes = image;
+   phLog(@"pack: the %s block build %@", tag, packBytes ? @"is read whole, every page checked" : @"is refused; the pack itself is loaded");
+  }
+ }
+ if (!packBytes) packBytes = [NSData dataWithContentsOfFile:config.pack options:NSDataReadingMappedIfSafe error:nil];
  // A pack the site serves gzipped (NAME.pack.gz) is inflated whole first, as host.js does.
  if (packBytes.length > 18 && ((const uint8_t *)packBytes.bytes)[0] == 0x1f && ((const uint8_t *)packBytes.bytes)[1] == 0x8b) packBytes = phInflate(packBytes);
  const uint8_t *b = packBytes.bytes; size_t n = packBytes.length;
- // The one pack reader (metaverse-engine/host/pack-table.coax pack_table, through metaverse-engine/host/pack-table.h): every
- // extent is checked against the whole file before a byte of it is read here.
- static AethyrPack pack;
- if (!aethyr_pack_open(&pack, b, n)) return n ? @"the realm's pack is damaged" : @"the realm's pack is missing";
+ // The host core sorts the pack's entries through the one pack reader (metaverse-engine/host/pack-table.coax
+ // pack_table): every extent is checked against the whole file before a byte of it is read here.
+ static AethyrCorePack pack;
+ if (!aethyr_core_pack(&pack, b, n)) return n ? @"the realm's pack is damaged" : @"the realm's pack is missing";
+ if (pack.catalog < 0 || pack.vertices < 0 || pack.indices < 0) return @"the realm's pack lacks its catalog, vertices or indices";
+ packVertices = aethyr_core_entry(&pack, pack.vertices, &packVertexBytes);
+ packIndices = aethyr_core_entry(&pack, pack.indices, &packIndexBytes);
  NSMutableArray<NSData *> *colour = [NSMutableArray array], *maps = [NSMutableArray array];
- NSData *catalog = nil;
- for (int k = 0; k < aethyr_pack_count(&pack); k++) {
-  size_t at = aethyr_pack_at(&pack, k), len = aethyr_pack_bytes(&pack, k); int kind = aethyr_pack_kind(&pack, k);
-  NSData *part = [NSData dataWithBytesNoCopy:(void *)(b + at) length:len freeWhenDone:NO];
-  if (kind == AETHYR_PACK_CATALOG && !catalog) catalog = part;
-  else if (kind == AETHYR_PACK_VERTICES && !packVertices) { packVertices = b + at; packVertexBytes = len; }
-  else if (kind == AETHYR_PACK_INDICES && !packIndices) { packIndices = b + at; packIndexBytes = len; }
-  else if (kind == AETHYR_PACK_LAYER) [colour addObject:part];
-  else if (kind == AETHYR_PACK_DATA) [maps addObject:part];
- }
- if (!catalog || !packVertices || !packIndices) return @"the realm's pack lacks its catalog, vertices or indices";
- char progress[64]; int pn = snprintf(progress, sizeof progress, "%zu %zu", n, n);
- [self message:605 bytes:progress length:(size_t)pn];
- // asset 0 the catalog, copied in once its destination is measured; 1 and 2 the vertex and index bytes; 3 the layers
- A dest = x.asset ? x.asset(state, 0, (uint32_t)catalog.length) : 0;
- BOOL fits = dest && (!x.asset_capacity || catalog.length <= x.asset_capacity(state, 0));
- if (fits) memcpy((void *)dest, catalog.bytes, catalog.length);
- if (x.asset_ready) {
-  x.asset_ready(state, 0, fits ? (uint32_t)catalog.length : 0);
-  x.asset_ready(state, 1, (uint32_t)packVertexBytes); x.asset_ready(state, 2, (uint32_t)packIndexBytes);
- }
+ for (int k = 0; k < pack.colours; k++) { size_t len; const uint8_t *at = aethyr_core_entry(&pack, pack.colour[k], &len); [colour addObject:[NSData dataWithBytesNoCopy:(void *)at length:len freeWhenDone:NO]]; }
+ for (int k = 0; k < pack.datas; k++) { size_t len; const uint8_t *at = aethyr_core_entry(&pack, pack.data[k], &len); [maps addObject:[NSData dataWithBytesNoCopy:(void *)at length:len freeWhenDone:NO]]; }
+ // The core hands the face the pack's parts in the browser's order: the progress message, asset 0
+ // the catalog (copied in once its destination is measured), 1 and 2 the vertex and index bytes,
+ // the rig when the pack has one. Asset 3, the layers, follows once they are on the GPU.
+ AethyrCoreFace face = {x.asset, x.asset_capacity, x.asset_ready, x.inbox, x.inbox_cap, x.message ? phMessage : NULL, x.rig_v1, x.rig_ready_v1, x.frame_plan_v1, phSpan, NULL};
+ phCurrent = self;
+ aethyr_core_deliver(&pack, &face, state, AETHYR_CORE_GEOMETRY, 0, NULL);
  [self meshBounds];
  storageBuffer = [device newBufferWithBytes:packVertices length:packVertexBytes options:MTLResourceStorageModeShared];
  indexBuffer = [device newBufferWithBytes:packIndices length:packIndexBytes options:MTLResourceStorageModeShared];
@@ -562,8 +620,12 @@ typedef struct { MTLPixelFormat format; BOOL blend; MTLBlendFactor src, dst, src
  // The host's device may ask for smaller layers (a phone's tier, metaverse-engine/render/texture-format.coax).
  int dataSide = 512;
  if (config.layerSide) { int s = config.layerSide(side), ds = config.layerSide(dataSide); if (s > 0 && s < side) side = s; if (ds > 0 && ds < dataSide) dataSide = ds; }
- sheets = [self layers:colour side:side data:NO];
+ AethyrCoreLayer first;
+ sheets = aethyr_core_blocks(&pack, &first) ? [self blockLayers:&pack first:&first] : nil;
+ BOOL blocks = sheets != nil;
+ if (!sheets) sheets = [self layers:colour side:side data:NO];
  if (!sheets) return @"the realm's pack has a picture this Mac can't read";
+ phLog(@"layers: %d as %@ at %d, %d levels, %llu bytes on the GPU", (int)sheets.arrayLength, blocks ? [NSString stringWithUTF8String:first.tag] : @"rgba8", (int)sheets.width, (int)sheets.mipmapLevelCount, (unsigned long long)sheets.allocatedSize);
  BOOL wantsData = x.data_layers_v1 && x.data_layers_v1() == 1;
  if (wantsData) {
   dataLayers = maps.count ? [self layers:maps side:dataSide data:YES] : nil;
@@ -573,7 +635,7 @@ typedef struct { MTLPixelFormat format; BOOL blend; MTLBlendFactor src, dst, src
    [dataLayers replaceRegion:MTLRegionMake2D(0, 0, 1, 1) mipmapLevel:0 slice:0 withBytes:flat bytesPerRow:4 bytesPerImage:0];
   }
  }
- if (x.asset_ready) x.asset_ready(state, 3, (uint32_t)colour.count);
+ aethyr_core_deliver(&pack, &face, state, AETHYR_CORE_LAYERS, 0, NULL);
  // an asset or pack installed: the shadow tiles are drawn again
  if (x.shadow_event_v1) x.shadow_event_v1(state, 1, 0);
  [self after];

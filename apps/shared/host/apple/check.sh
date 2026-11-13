@@ -19,6 +19,10 @@ step() {   # NAME CMD...
   echo "ok $name"
 }
 step app-realms "$repo/coax/web/tool.sh" "$repo/metaverse/native/app-realms.coax" "$repo" "$scratch/app-realms"
+# The one C host core these apps' page host is built on (metaverse-engine/host/core, #13304), built for
+# the Mac, the iPhone simulator, the iPhone and Android from the one driver; the Mac's run (and a
+# booted simulator's) must print what the engine says.
+step host-core-conformance "$repo/metaverse-engine/host/core/platforms.sh" "$scratch/host-core"
 step everglade-mac "$repo/apps/everglade-desktop/build.sh"
 step everglade-iphone-simulator "$repo/apps/everglade-mobile/build.sh"
 step openagents-mac "$repo/apps/openagents-desktop/build.sh"

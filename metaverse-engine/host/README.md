@@ -393,6 +393,38 @@ the repository root:
 coax/bin/coax c metaverse-engine/host/pack-table-face.coax --library > metaverse/native/pack-table-gen.h
 ```
 
+### The host core
+
+`metaverse-engine/host/core/host-core.h` is the one C host core (#13304): what every native host
+does between a page's face and its platform, written once over the engine's Coax.
+
+| The core does | Through |
+| --- | --- |
+| Sorts a pack's entries by kind | `aethyr_core_pack` over the one reader (`pack-table.coax`) |
+| Hands the pack to the face in the browser's order | `aethyr_core_deliver`: the progress message, asset 0 the catalog, 1 and 2 the vertex and index sizes, the rig, then 3 the layers' count and the page's own assets |
+| Reads a paged block build whole | `aethyr_core_image` (`page-pack.coax`, every page checked) |
+| Tells a block layer from an image, and gives its levels | `aethyr_core_layer`, `aethyr_core_level` (`block-layer.coax`) |
+| Picks the block build a GPU takes | `aethyr_core_format` (`texture-format.coax` `tf_pick`) |
+| Asks the page for the frame plan and walks it, whole or not at all | `aethyr_core_plan` over the one C walk, `core/frame-plan-walk.h` (#13303) |
+
+A host compiles the core's face once (`core/core-face.coax`, as C) and includes the header. The
+Mac and iPhone page host (`apple/PageHost.m`) is built on it; the Android app's host uses it for
+the pack. The Linux realm host (`metaverse/native/realm-host.c`) still has its own copy of the
+pack sort and the delivery: moving it needs the face's C in the nine builds that compile it.
+
+A pack's rig entry (kind 7, #13306) is delivered through two optional exports, so the numbered
+assets don't move: `coaxial_rig_v1(state, bytes)` gives where the face wants the rig's bytes, and
+`coaxial_rig_ready_v1(state, bytes)` says they are in (0 when they didn't fit).
+
+The conformance suite is `core/conformance.coax`: Coax writes a pack, its paged file and a frame
+plan, and says what a host must report, line by line; `core/conformance.c` is the driver every
+platform builds over the same core.
+
+```sh
+coax/web/tool.sh metaverse-engine/host/core/conformance.coax check "$PWD" /tmp/host-core --web   # this machine, both address widths, and the browser's pack module
+metaverse-engine/host/core/platforms.sh /tmp/host-core-platforms   # the Mac, the iPhone simulator, the iPhone and Android
+```
+
 ### The frame plan
 
 A page's engine may export `uint32_t coaxial_frame_plan_v1(state, uint32_t features, uint32_t *out, uint32_t cap)`

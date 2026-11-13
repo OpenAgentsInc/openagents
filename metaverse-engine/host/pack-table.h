@@ -8,7 +8,11 @@
 #define AETHYR_PACK_TABLE_H
 #include <stddef.h>
 #include <stdint.h>
+// A host whose unit already holds the face's C (metaverse/native/realm-host.c includes the committed
+// pack-table-gen.h; a host on the host core includes aethyr-core-face.h) defines this first.
+#ifndef AETHYR_PACK_TABLE_PROVIDED
 #include "aethyr-pack-table.h"
+#endif
 
 // The kinds a host sorts entries by (metaverse-engine/host/pack-table.coax PACK_CATALOG to PACK_RIG).
 enum { AETHYR_PACK_CATALOG = 1, AETHYR_PACK_VERTICES = 2, AETHYR_PACK_INDICES = 3, AETHYR_PACK_LAYER = 4, AETHYR_PACK_SOUND = 5, AETHYR_PACK_DATA = 6, AETHYR_PACK_RIG = 7 };

@@ -1,0 +1,244 @@
+// The host core's conformance suite (GitHub #13304). Coax writes the fixtures and says what a
+// host must report; each platform's driver only reports.
+//   the fixtures   conformance.pack: a catalog with a world cell's line, vertices, indices, two
+//                  BC7 block layers with their mip chains, a data layer that is an image, a sound
+//                  and a rig (kind 7); conformance.vpk3: that pack paged; conformance.plan: a frame
+//                  plan's words from passes.coax
+//   expected.txt   what the core must do with them, line by line, from the engine's own modules
+//                  (pack-table, pack-cells, block-layer, page-pack, texture-format, frame-plan)
+//   the driver     metaverse-engine/host/core/conformance.c over host-core.h, built for a platform
+//
+//   coax/web/tool.sh metaverse-engine/host/core/conformance.coax write OUT_DIR
+//       the fixtures and expected.txt only: a platform's own build runs the driver and compares
+//       (apps/shared/host/apple/check.sh does, for the Mac and the iPhone simulator)
+//   coax/web/tool.sh metaverse-engine/host/core/conformance.coax check ROOT OUT_DIR [--web]
+//       writes them, builds the driver for this machine with cc, with face addresses as pointers
+//       and as 32-bit offsets, runs both and compares. With --web it also has the browser's pack
+//       module (coax/web/pack-host.js, in bun) read the same pack and paged file and report the
+//       entries and the cell: the lines both hosts share must be the same lines. The browser's
+//       paged load runs the full admission (pack_read), which takes the fixture, rig and all.
+#import "Basic";
+#load "../pack-cells.coax";
+#load "../page-stream.coax";
+#load "../../render/block-layer.coax";
+#load "../../render/frame-plan.coax";
+#load "../../../coax/lib/sys/tool.coax";
+#load "../../../coax/lib/sys/fs.coax";
+#load "../../../coax/lib/sys/args.coax";
+#load "../../../coax/lib/sys/proc.coax";
+
+HC_CATALOG :: 256;    // the catalog's bytes, padded with newlines so its cell line doesn't move the entries
+HC_ENTRIES :: 8;
+HC_EXTRA :: 77;       // the page's one own asset in the delivery
+HC_TIGHT :: 255;      // a catalog destination one byte too small
+
+HcText :: struct { bytes: [262144] u8; used: int; }
+hc_add :: (t: [] HcText, s: string) { for c: s { t[0].bytes[t[0].used] = c; t[0].used += 1; } }
+hc_num :: (t: [] HcText, v: int) { d: [20] u8; k := 0; n := v; while k == 0 || n > 0 { d[k] = cast,trunc(u8) ('0' + n % 10); n /= 10; k += 1; } for i: 0..<k { t[0].bytes[t[0].used] = d[k - 1 - i]; t[0].used += 1; } }
+// " NAME V" for each pair's number.
+hc_kv :: (t: [] HcText, name: string, v: int) { hc_add(t, name); hc_num(t, v); }
+hc_text :: (t: [] HcText) -> string { return cast(string) t[0].bytes[0..<t[0].used]; }
+hc_join :: (t: [] HcText, a: string, b: string) -> string { start := t[0].used; hc_add(t, a); hc_add(t, b); return cast(string) t[0].bytes[start..<t[0].used]; }
+hc_fail :: (why: string) -> int { tool_err("host-core conformance: "); tool_errln(why); return 1; }
+// FNV-1a over bytes, 32 bits: the drivers' hash of what they were handed.
+hc_fnv :: (s: string) -> int { h: u32 = 2166136261; for c: s { h = mul_wrap(h ^ cast(u32) c, cast(u32) 16777619); } return cast(int) h; }
+hc_flag :: (b: bool) -> int { return ifx b then 1 else 0; }
+
+// A BC7 block layer of 8 by 8 with its four levels, its blocks a pattern of `seed`.
+hc_layer :: (seed: int, out: [] u8) -> string {
+  n := bl_head(TF_BC7_SRGB, 8, 8, 4, out);
+  for i: BL_HEADER..<n { out[i] = cast,trunc(u8) ((i * 31 + seed * 7 + i / 5) & 255); }
+  return cast(string) out[0..<n];
+}
+// The colour format a device takes among the builds it has: tf_pick's answer as the drivers print it.
+hc_format :: (t: [] HcText, bc: bool, astc: bool, phone: bool, builds: string, carried: int) {
+  features := (ifx bc then TF_BC else 0) | (ifx astc then TF_ASTC else 0);
+  tag := tf_tag(tf_pick(features, carried, phone, TF_COLOUR));
+  hc_kv(t, "format bc ", hc_flag(bc)); hc_kv(t, " astc ", hc_flag(astc)); hc_kv(t, " phone ", hc_flag(phone));
+  hc_add(t, " has "); hc_add(t, ifx builds == "" then "-" else builds); hc_add(t, " -> "); hc_add(t, ifx tag == "" then "rgba8" else tag); hc_add(t, "\n");
+}
+// The lines a delivery prints under `label`: the progress message, the catalog (0 bytes when it
+// doesn't fit `capacity`), the vertex and index sizes and the rig.
+hc_delivery :: (t: [] HcText, label: string, image: string, r: [] PackTable, capacity: int) {
+  hc_add(t, label); hc_kv(t, " message 605 ", image.count); hc_kv(t, " ", image.count); hc_add(t, "\n");
+  cat := r[0].entries[0];
+  hc_add(t, label);
+  if cat.n <= capacity { hc_kv(t, " ready 0 ", cat.n); hc_kv(t, " hash ", hc_fnv(image[cat.at..<cat.at + cat.n])); } else { hc_add(t, " ready 0 0"); }
+  hc_add(t, "\n");
+  hc_add(t, label); hc_kv(t, " ready 1 ", r[0].entries[1].n); hc_add(t, "\n");
+  hc_add(t, label); hc_kv(t, " ready 2 ", r[0].entries[2].n); hc_add(t, "\n");
+  rig := r[0].entries[HC_ENTRIES - 1];
+  hc_add(t, label); hc_kv(t, " rig ", rig.n); hc_kv(t, " hash ", hc_fnv(image[rig.at..<rig.at + rig.n])); hc_add(t, "\n");
+}
+
+HcFixture :: struct { image: [4096] u8; size: int; file: [16384] u8; file_size: int; words: [(RENDER_OPS + 1) * FRAME_PLAN_WORDS] u32; ops: int; key: int; other: int; admitted: bool; }
+
+// The fixtures into f and what a host must report into want: false with why.
+hc_build :: (f: [] HcFixture, want: [] HcText) -> string {
+  la: [256] u8; lb: [256] u8; sound: [300] u8; rig: [40] u8; verts: [24] u8; catalog: [HC_CATALOG] u8;
+  for i: 0..<300 { sound[i] = cast,trunc(u8) ((i * 37 + i / 7) & 255); }
+  for i: 0..<24 { verts[i] = cast,trunc(u8) (200 + i); }
+  for c, k: "VRG1" { rig[k] = c; }
+  for i: 4..<40 { rig[i] = cast,trunc(u8) (i * 5); }
+  for i: 0..<HC_CATALOG { catalog[i] = '\n'; }
+  s: [HC_ENTRIES] PackSource;
+  s[0] = PackSource.{kind = PACK_CATALOG, licence = PACK_MANY, name = "catalog", data = cast(string) catalog[..]};
+  s[1] = PackSource.{kind = PACK_VERTICES, licence = PACK_MANY, name = "vertices", data = cast(string) verts[..]};
+  s[2] = PackSource.{kind = PACK_INDICES, licence = PACK_MANY, name = "indices", data = "iiiijjjjkkkk"};
+  s[3] = PackSource.{kind = PACK_LAYER, licence = 0, name = "layer0", data = hc_layer(1, la[..])};
+  s[4] = PackSource.{kind = PACK_LAYER, licence = 0, name = "layer1", data = hc_layer(2, lb[..])};
+  s[5] = PackSource.{kind = PACK_DATA, licence = 0, name = "data0", data = "PNGDATA"};
+  s[6] = PackSource.{kind = PACK_SOUND, licence = 0, name = "door", data = cast(string) sound[..]};
+  s[7] = PackSource.{kind = PACK_RIG, licence = 0, name = "rig", data = cast(string) rig[..]};
+  total := pack_size(s[..]);
+  // The catalog names the pack's size and one cell, whose content is the vertex bytes: their place
+  // is known once the table is laid out, and the catalog's length is fixed, so nothing moves.
+  first := pack_write(s[..], 4096, f[0].image[..]);
+  t: [1] PackTable;
+  if first != total || !pack_table(cast(string) f[0].image[0..<first], first, t[..]) { return "the fixture pack doesn't lay out"; }
+  head: [1] HcText; hc_add(head[..], "pack conformance\nbudget 4096\n"); hc_kv(head[..], "bytes ", total); hc_add(head[..], "\nL 0 Kit|CC0|u\nT 0 layer0 0\nT 1 layer1 0\nD 0 data0 0\nS door 0\nR rig 0\n");
+  c := 0; for ch: hc_text(head[..]) { catalog[c] = ch; c += 1; }
+  at := [1] int.[t[0].entries[1].at]; n := [1] int.[t[0].entries[1].n]; line: [PACK_CELL_LINE] u8;
+  w := pack_cell_line(1, -2, 4660, at[..], n[..], total, line[..]);
+  if w < 0 || c + w > HC_CATALOG { return "the fixture's cell line was refused"; }
+  for i: 0..<w { catalog[c] = line[i]; c += 1; }
+  f[0].size = pack_write(s[..], 4096, f[0].image[..]);
+  image := cast(string) f[0].image[0..<f[0].size];
+  if f[0].size != total || !pack_table(image, total, t[..]) || t[0].count != HC_ENTRIES { return "the fixture pack doesn't read"; }
+  f[0].key = pack_cell_key(1, -2); f[0].other = pack_cell_key(3, 3);
+  // Whether the full admission takes this pack. The browser's paged loader admits exactly what
+  // pack_read admits, so its half of the suite follows this.
+  whole: [1] PackRead; f[0].admitted = pack_read(image, whole[..]);
+
+  // the pack: its entries by kind (the first of the catalog, vertices, indices and rig; the layers, data layers and sounds counted)
+  first_of: [8] int; counts: [8] int; for k: 0..<8 { first_of[k] = -1; }
+  for k: 0..<t[0].count { kind := t[0].entries[k].kind; if kind < 8 { if first_of[kind] < 0 { first_of[kind] = k; } counts[kind] += 1; } }
+  hc_kv(want, "pack entries ", t[0].count); hc_kv(want, " catalog ", first_of[PACK_CATALOG]); hc_kv(want, " vertices ", first_of[PACK_VERTICES]); hc_kv(want, " indices ", first_of[PACK_INDICES]);
+  hc_kv(want, " rig ", first_of[PACK_RIG]); hc_kv(want, " colours ", counts[PACK_LAYER]); hc_kv(want, " datas ", counts[PACK_DATA]); hc_kv(want, " sounds ", counts[PACK_SOUND]); hc_add(want, "\n");
+  for k: 0..<t[0].count { e := t[0].entries[k]; hc_kv(want, "entry ", k); hc_kv(want, " kind ", e.kind); hc_kv(want, " bytes ", e.n); hc_kv(want, " hash ", hc_fnv(image[e.at..<e.at + e.n])); hc_add(want, "\n"); }
+  short: [1] PackTable;
+  hc_kv(want, "pack damaged ", hc_flag(pack_table(image[0..<total - 1], total - 1, short[..]))); hc_add(want, "\n");
+  // delivery, in the browser's order
+  hc_delivery(want, "deliver", image, t[..], 4096);
+  hc_kv(want, "deliver ready 3 ", counts[PACK_LAYER]); hc_add(want, "\n"); hc_kv(want, "deliver ready 4 ", HC_EXTRA); hc_add(want, "\ndeliver whole 1\n");
+  hc_delivery(want, "tight", image, t[..], HC_TIGHT);
+  hc_add(want, "tight whole 0\n"); hc_kv(want, "nopack ready 0 ", HC_EXTRA); hc_add(want, "\n");
+  // the layers
+  for k: 0..<2 {
+    e := t[0].entries[3 + k]; bytes := image[e.at..<e.at + e.n]; b := bl_read(bytes, bytes.count);
+    if !b.ok { return "a fixture layer is not a block layer"; }
+    hc_kv(want, "layer ", k); hc_add(want, " block 1 "); hc_add(want, tf_tag(b.format)); hc_kv(want, " ", b.width); hc_kv(want, " ", b.height); hc_kv(want, " ", b.levels); hc_add(want, "\n");
+    for l: 0..<b.levels {
+      la_at := bl_level_at(b, l); ln := bl_level_bytes(b, l);
+      hc_kv(want, "level ", l); hc_kv(want, " ", bl_side(b.width, l)); hc_kv(want, " ", bl_side(b.height, l)); hc_kv(want, " ", bl_blocks(b, b.width, l)); hc_kv(want, " ", bl_blocks(b, b.height, l));
+      hc_kv(want, " ", ln); hc_kv(want, " hash ", hc_fnv(bytes[la_at..<la_at + ln])); hc_add(want, "\n");
+    }
+  }
+  d := t[0].entries[5];
+  hc_add(want, "layers uniform 1\n"); hc_kv(want, "data 0 block ", hc_flag(bl_read(image[d.at..<d.at + d.n], d.n).ok)); hc_kv(want, " bytes ", d.n); hc_add(want, "\n");
+  // the cell
+  cat := t[0].entries[0]; cell := pack_cell_find(image[cat.at..<cat.at + cat.n], f[0].key, total);
+  if !cell.ok || cell.ranges != 1 || pack_cell_find(image[cat.at..<cat.at + cat.n], f[0].other, total).ok { return "the fixture's cell doesn't read back"; }
+  hc_kv(want, "cell ", f[0].key); hc_kv(want, " digest ", cell.digest); hc_kv(want, " ranges ", cell.at[0]); hc_kv(want, ",", cell.n[0]); hc_add(want, "\n");
+  hc_kv(want, "cell ", f[0].other); hc_add(want, " none\n");
+  // the paged file
+  starts: [64] int; roots: [64] bool; entries: [64] int; dw: [1] DeflateWork; scratch: [4096] u8;
+  pages := ppk_plan(image, 256, 1 << PACK_SOUND, starts[..], roots[..], entries[..]);
+  f[0].file_size = ifx pages > 0 then ppk_write(image, starts[0..<pages], roots[0..<pages], entries[0..<pages], f[0].file[..], scratch[..], dw[..]) else -1;
+  back: [4096] u8; l: [1] PpkLoad;
+  if f[0].file_size <= 0 || ppk_read_all(f[0].file[0..<f[0].file_size], back[..], l[..]) != total || cast(string) back[0..<total] != image { return "the fixture doesn't page"; }
+  hc_kv(want, "paged image ", total); hc_kv(want, " hash ", hc_fnv(image)); hc_add(want, "\npaged damaged 0\npaged plain 0\n");
+  // the block build a device takes
+  hc_format(want, true, false, false, "bc7,astc4", TF_BC | TF_ASTC);
+  hc_format(want, true, true, true, "bc7,astc4", TF_BC | TF_ASTC);
+  hc_format(want, false, true, false, "bc7", TF_BC);
+  hc_format(want, true, true, false, "", 0);
+  hc_format(want, true, true, false, "astc4", TF_ASTC);
+  hc_format(want, false, true, true, "astc4,astc6", TF_ASTC | TF_ASTC6);
+  // the frame plan: a lit scene with shadows and the HUD, as passes.coax orders it
+  counts_now := FrameCounts.{width = 320, height = 180, vertex_stride = 16, hud_vertices = 6, draw_count = 3, caster_vertices = 12, caster_instances = 2};
+  q: [1] RenderPlan; q[0] = render_plan(RenderFeatures.{scene = true, shadow = true, casters = true}, counts_now, RenderReadiness.ready, true);
+  size := frame_plan_write(q[..], f[0].words[..]);
+  f[0].ops = frame_plan_count(f[0].words[0..<size]);
+  if size == 0 || f[0].ops < 2 { return "passes.coax gave the fixture no plan"; }
+  // what the one C walk (frame-plan-walk.h) calls for each operation: this plan has passes, draws and copies only
+  for i: 0..<f[0].ops {
+    o := frame_plan_op(f[0].words[0..<size], i);
+    if o.kind == RenderOpKind.begin { hc_kv(want, "plan begin ", cast(int) o.pass); hc_kv(want, " ", cast(int) o.colour0); hc_kv(want, " ", cast(int) o.colour1); hc_kv(want, " ", cast(int) o.depth); hc_add(want, "\n"); }
+    else if o.kind == RenderOpKind.end { hc_add(want, "plan end\n"); }
+    else if o.kind == RenderOpKind.draw { hc_kv(want, "plan draw ", cast(int) o.pass); hc_kv(want, " ", cast(int) o.draw_source); hc_kv(want, " ", o.first); hc_kv(want, " ", o.count); hc_kv(want, " ", o.instances); hc_add(want, " item 0\n"); }
+    else if o.kind == RenderOpKind.copy { hc_kv(want, "plan copy ", cast(int) o.source); hc_kv(want, " ", cast(int) o.target); hc_add(want, "\n"); }
+    else { return "the fixture's plan has an operation this suite doesn't state"; }
+  }
+  hc_kv(want, "plan walked ", f[0].ops); hc_add(want, "\nplan version -1\nplan short -1\nplan absent -1\n");
+  return "";
+}
+
+// The lines of `text` the browser module prints too, in order: every entry, and the cells when asked.
+hc_shared :: (text: string, cells: bool, out: [] HcText) {
+  at := 0;
+  while at < text.count {
+    e := at; while e < text.count && text[e] != '\n' { e += 1; }
+    line := text[at..<e]; at = e + 1;
+    if (line.count > 6 && line[0..<6] == "entry ") || (cells && line.count > 5 && line[0..<5] == "cell ") { hc_add(out, line); hc_add(out, "\n"); }
+  }
+}
+// Build the driver with cc (flag "" or -DCOAXIAL_NATIVE_ADDRESS), run it on dir and compare.
+hc_native :: (root: string, dir: string, flag: string, name: string, wanted: string) -> int {
+  t: [1] HcText; out: [1] HcText; err: [65536] u8;
+  script := "set -e; cc=${CC:-cc}; \"$1/coax/bin/coax\" c \"$1/metaverse-engine/host/core/core-face.coax\" --library --header \"$2/aethyr-core-face.h\" > \"$2/aethyr-core-face.c\"; $cc -std=gnu11 -O1 -w $3 -I\"$2\" -I\"$1\" \"$1/metaverse-engine/host/core/conformance.c\" \"$2/aethyr-core-face.c\" -lm -o \"$2/$4\"";
+  build := [7] string.["bash", "-c", script, "conformance", root, dir, flag];
+  argv: [8] string; for a, k: build { argv[k] = a; } argv[7] = name;
+  r := proc_run(argv[..], 600000, out[0].bytes[..], err[..]);
+  if r.started != 0 || r.status != 0 { tool_errln(cast(string) err[0..<r.err_n]); return hc_fail("the driver did not build"); }
+  run := [2] string.[hc_join(t[..], hc_join(t[..], dir, "/"), name), dir];
+  r = proc_run(run[..], 60000, out[0].bytes[..], err[..]);
+  got := cast(string) out[0].bytes[0..<r.out_n];
+  if r.started != 0 || r.status != 0 { tool_errln(cast(string) err[0..<r.err_n]); return hc_fail("the driver did not run"); }
+  // proc_run joins the lines it read with newlines; the expected text ends its last line
+  if got.count + 1 != wanted.count || got != wanted[0..<got.count] {
+    tool_err("host-core conformance: the driver ("); tool_err(name); tool_errln(") printed"); tool_errln(got); tool_errln("and the engine says it should print"); tool_errln(wanted); return 1;
+  }
+  return 0;
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  args: [1] Args;
+  if !args_load(args[..]) || args_count(args[..]) < 2 { tool_errln("usage: conformance write OUT_DIR | check ROOT OUT_DIR [--web]"); return 2; }
+  mode := args_at(args[..], 0); check := mode == "check";
+  if (mode != "write" && !check) || args_count(args[..]) < (ifx check then 3 else 2) { tool_errln("usage: conformance write OUT_DIR | check ROOT OUT_DIR [--web]"); return 2; }
+  root := ifx check then args_at(args[..], 1) else ""; dir := args_at(args[..], ifx check then 2 else 1);
+  t: [1] HcText; out: [65536] u8; err: [65536] u8;
+  mk := [3] string.["mkdir", "-p", dir]; r := proc_run(mk[..], 10000, out[..], err[..]); if r.status != 0 { return hc_fail("cannot make the output folder"); }
+  f: [1] HcFixture; want: [1] HcText;
+  why := hc_build(f[..], want[..]);
+  if why != "" { return hc_fail(why); }
+  wanted := hc_text(want[..]);
+  wb: [(RENDER_OPS + 1) * FRAME_PLAN_WORDS * 4] u8; wn := (f[0].ops + 1) * FRAME_PLAN_WORDS;
+  for i: 0..<wn { for k: 0..<4 { wb[i * 4 + k] = cast,trunc(u8) (f[0].words[i] >> cast(u32) (8 * k)); } }
+  if !fs_write(hc_join(t[..], dir, "/conformance.pack"), cast(string) f[0].image[0..<f[0].size]) || !fs_write(hc_join(t[..], dir, "/conformance.vpk3"), cast(string) f[0].file[0..<f[0].file_size])
+      || !fs_write(hc_join(t[..], dir, "/conformance.plan"), cast(string) wb[0..<wn * 4]) || !fs_write(hc_join(t[..], dir, "/expected.txt"), wanted) { return hc_fail("cannot write the fixtures"); }
+  if !check { print("host-core conformance: the fixtures and expected.txt are in %\n", dir); return 0; }
+  if hc_native(root, dir, "-DCOAXIAL_NATIVE_ADDRESS", "conformance-native", wanted) != 0 { return 1; }
+  if hc_native(root, dir, "-DAETHYR_CORE_OFFSETS", "conformance-offsets", wanted) != 0 { return 1; }
+  web := "";
+  if args_has(args[..], "--web") {
+    wasm := hc_join(t[..], dir, "/host-packs.wasm");
+    build := [5] string.["bash", hc_join(t[..], root, "/coax/web/tool.sh"), hc_join(t[..], root, "/coax/web/build-packs.coax"), root, wasm];
+    r = proc_run(build[..], 300000, out[..], err[..]);
+    if r.started != 0 || r.status != 0 { tool_errln(cast(string) err[0..<r.err_n]); return hc_fail("the pack reactor did not build"); }
+    key: [1] HcText; hc_num(key[..], f[0].key); other: [1] HcText; hc_num(other[..], f[0].other);
+    run := [7] string.["bun", hc_join(t[..], root, "/coax/web/tests/pack-conformance.mjs"), hc_join(t[..], dir, "/conformance.pack"), hc_join(t[..], dir, "/conformance.vpk3"), wasm, hc_text(key[..]), hc_text(other[..])];
+    r = proc_run(run[..], 120000, out[..], err[..]);
+    got := cast(string) out[0..<r.out_n];
+    if r.started != 0 || r.status != 0 { tool_errln(cast(string) err[0..<r.err_n]); tool_errln(got); return hc_fail("the browser module's run failed (is bun installed?)"); }
+    // the browser reads the pack as it is and through its paged file: the shared lines, twice
+    shared: [1] HcText; hc_shared(wanted, false, shared[..]);
+    if f[0].admitted { hc_shared(wanted, true, shared[..]); } else { hc_add(shared[..], "paged refused\n"); }
+    both := hc_text(shared[..]);
+    if got.count + 1 != both.count || got != both[0..<got.count] { tool_errln("host-core conformance: the browser's pack module printed"); tool_errln(got); tool_errln("and the engine says it should print"); tool_errln(both); return 1; }
+    web = ifx f[0].admitted then ", and the browser's pack module reports the same entries and cell" else ", and the browser's pack module reports the same entries (its paged load refuses the fixture, as pack_read does)";
+  }
+  print("host-core conformance: the C core does what the engine says with face addresses as pointers and as offsets (% operations walked)%\n", f[0].ops, web);
+  return 0;
+}
