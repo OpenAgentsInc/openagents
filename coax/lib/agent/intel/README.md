@@ -42,6 +42,7 @@ if ix_open(s[..], "/path/to/repo", "") {     // "": ROOT/coax/bin/coax, else $CO
 | What a code means | `ix_explain(s, code, out: [] u8) -> IxText` | `coax explain CODE` |
 | What a name is | `ix_vocab(s, name, out: [] u8) -> IxText` | `coax vocab NAME` |
 | A procedure's effects | `ix_effects_of(s, file, proc, out: [] IxEffect) -> IxAnswer` | `coax deps FILE --effects --proc NAME` |
+| The checks that reach a procedure (proposal 2) | `ix_checks_of(s, name, file, out: [] IxCheck) -> IxAnswer` | `coax query ENTRY uses NAME`, walked upward through each calling procedure: at most `Ix.depth` calls (4), 64 procedures and `Ix.entries` compiler runs. `unfinished` counts the paths it did not follow to their end |
 | What a file depends on | `ix_depends_on(s, file, out: [] IxDecl) -> IxAnswer` | `coax deps FILE --declarations` |
 | The files of its program | `ix_loads(s, file, out: [] string) -> IxAnswer` | `coax deps FILE` |
 | The files that load it | `ix_loaders(s, file, out: [] string) -> IxAnswer` | a text search, each confirmed by `coax deps` |

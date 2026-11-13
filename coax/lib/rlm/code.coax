@@ -74,7 +74,7 @@ RcEnv :: struct {
   // --intel: the compiler session (opened at the first question: ix_state 1 open, 2 no compiler) and its counts
   intel: bool; coax: string; ix_state: int;
   ix: [1] Ix;
-  decls: [RC_DECLS] IxDecl; uses: [RC_USES] IxUse; diags: [RC_DIAGS] IxDiag; fx: [RC_FX] IxEffect; via: [FS_PATH_MAX] u8;
+  decls: [RC_DECLS] IxDecl; uses: [RC_USES] IxUse; diags: [RC_DIAGS] IxDiag; fx: [RC_FX] IxEffect; chk: [RC_CHECKS] IxCheck; via: [FS_PATH_MAX] u8;
   xops: [RC_XMOST] int; asked: int; unanswered: int; stale_edits: int;
   // --memory: the run store and its counts; read_turn: the turn each read row was first read at, plus one
   memory: bool;
@@ -85,7 +85,7 @@ RcEnv :: struct {
   task: [1] WmTask;              // the task's backtick spans (workmem/task.coax)
   view: [RC_VIEW] u8; notel: [160] u8; unproven: [RC_VIEW] u8; nunproven: int;
 }
-RC_DECLS :: 80; RC_USES :: 40; RC_DIAGS :: 20; RC_FX :: 24;   // records one compiler answer shows at most
+RC_DECLS :: 80; RC_USES :: 40; RC_DIAGS :: 20; RC_FX :: 24; RC_CHECKS :: 40;   // records one compiler answer shows at most
 
 // One effect's result: the text for the memo; fail ends the block with it as its error.
 RcResult :: struct { text: string; fail: bool; }
@@ -459,14 +459,14 @@ rc_drive :: (env: [] RcEnv, r: [] Rs, st: [] RlmState, task: string, live: bool)
 //             store already has says so; FINAL is refused while a check the task names has not
 //             passed on the files as they are
 
-RC_ENV_INTEL :: [8] string.["defines name:s", "uses name:s file:s=", "show name:s file:s=", "exports path:s", "check path:s", "explain code:s", "effects path:s proc:s=", "replace name:s seen_hash:s text:s file:s="];
+RC_ENV_INTEL :: [9] string.["defines name:s", "uses name:s file:s=", "show name:s file:s=", "exports path:s", "check path:s", "explain code:s", "effects path:s proc:s=", "replace name:s seen_hash:s text:s file:s=", "checks name:s file:s="];
 RC_ENV_MEMORY :: [5] string.["note text:s path:s= a:i=0 b:i=0", "known", "changed", "open_items", "recall path:s a:i=0 b:i=0"];
-RC_XOPS :: [13] string.["defines", "uses", "show", "exports", "check", "explain", "effects", "replace", "note", "known", "changed", "open_items", "recall"];
+RC_XOPS :: [14] string.["defines", "uses", "show", "exports", "check", "explain", "effects", "replace", "checks", "note", "known", "changed", "open_items", "recall"];
 RC_XMOST :: 16;                  // room for the flags' functions
-RC_XINTEL :: 8;                  // the first of RC_XOPS are --intel's, the rest --memory's
+RC_XINTEL :: 9;                  // the first of RC_XOPS are --intel's, the rest --memory's
 RC_XREPLACE :: 7;
 
-RC_INTEL_NOTE :: "\n\nThe Coax compiler answers questions about .coax files. Its answers are certain where a search is a guess, so ask it first:\n- defines(name): where name is declared: kind, file and lines\n- uses(name, file=\"\"): every place name is used, with the procedure or check it is written in; file says which declaration you mean when several files declare the name\n- show(name, file=\"\"): one declaration's lines numbered; its first line gives the file, the lines and their hash\n- exports(path): what a file declares\n- check(path): the file's diagnostics as a list of dicts with code, line, message and fix; an empty list is a clean file\n- explain(code): what a diagnostic code such as E0315 means\n- effects(path, proc=\"\"): what a procedure may do (foreign calls, traps, I/O), with a call path to each\n- replace(name, seen_hash, text, file=\"\"): replaces the whole declaration with text. seen_hash is the hash show(name) gave. If the declaration changed since you read it, nothing is written and you get its text and hash as they are now; else you get the new lines numbered, their hash and the file's diagnostics\nPrefer show(name) to lines for a declaration you can name, uses(name) to search for a symbol, and replace to edit when you rewrite a whole declaration. Call check(path) after every edit of a .coax file. When the compiler can't answer, the function returns text that starts \"no answer:\" and says why (check returns one dict with code \"no answer\"); use search and lines for that question. Each answer is bounded and says how many records it left out.";
+RC_INTEL_NOTE :: "\n\nThe Coax compiler answers questions about .coax files. Its answers are certain where a search is a guess, so ask it first:\n- defines(name): where name is declared: kind, file and lines\n- uses(name, file=\"\"): every place name is used, with the procedure or check it is written in; file says which declaration you mean when several files declare the name\n- show(name, file=\"\"): one declaration's lines numbered; its first line gives the file, the lines and their hash\n- exports(path): what a file declares\n- check(path): the file's diagnostics as a list of dicts with code, line, message and fix; an empty list is a clean file\n- explain(code): what a diagnostic code such as E0315 means\n- effects(path, proc=\"\"): what a procedure may do (foreign calls, traps, I/O), with a call path to each\n- checks(name, file=\"\"): the checks (#test, #forall) that reach a procedure: those that name it, and those that name a procedure that calls it, up to four calls away. Each line has the check's kind and name, the file and line where it names the procedure, and how many calls away that is. Run one with sh('coax test FILE --only NAME'). A last line says how many paths were not followed to their end; then more checks may reach it\n- replace(name, seen_hash, text, file=\"\"): replaces the whole declaration with text. seen_hash is the hash show(name) gave. If the declaration changed since you read it, nothing is written and you get its text and hash as they are now; else you get the new lines numbered, their hash and the file's diagnostics\nPrefer show(name) to lines for a declaration you can name, uses(name) to search for a symbol, and replace to edit when you rewrite a whole declaration. Call check(path) after every edit of a .coax file. When the compiler can't answer, the function returns text that starts \"no answer:\" and says why (check returns one dict with code \"no answer\"); use search and lines for that question. Each answer is bounded and says how many records it left out.";
 RC_MEMORY_NOTE :: "\n\nYou have a working memory. What you read, change and run is recorded in it as you go, with no action from you, and it outlives this conversation:\n- note(text, path=\"\", a=0, b=0): records a finding, with the lines of the file it is about; it stays current until that file changes\n- known(): what is still current: your findings, then the lines you have read\n- changed(): every edit so far and the lines it wrote\n- open_items(): what still stops FINAL\n- recall(path, a=0, b=0): lines a to b of a file, numbered, from the memory: the file is not read (the whole file when a and b are 0). When the memory does not have those lines as the file is now, it says so in a line that starts \"recall:\", and you read them with lines\nWhen lines or show returns lines you already have at the file's current version, its first line says so: you are reading the same thing again. Call known() before you read again, use recall for lines it lists, and note what you learn when you learn it. A check the task names (a command it quotes in backticks) has passed only when its latest run exited 0 after your last edit. FINAL before that is refused and lists what is open. FINAL is also refused when a file has fewer checks (#test, #forall) or fewer #assert than when the run started, has lost its #authority line, or is a compatibility baseline that changed: put it back, or say why in FINAL so that a person can decide.";
 
 RC_ANS :: 24000;                 // bytes of one compiler answer at most
@@ -640,6 +640,15 @@ rc_memory_fn :: (env: [] RcEnv, r: [] Rs, st: [] RlmState, q: RcReq) -> RcResult
   return rc_ok(rs_take(r, at));
 }
 
+// checks(name, file): the checks that reach a procedure (ix_checks_of), and what the walk left.
+rc_intel_checks :: (env: [] RcEnv, r: [] Rs, st: [] RlmState, name: string, file: string) -> RcResult {
+  s := env[0].ix[..]; out := env[0].show[0..<RC_ANS];
+  a := ix_checks_of(s, name, file, env[0].chk[0..<RC_CHECKS]);
+  if !a.ok { return rc_no_answer(env, r, st, "checks", name, a.why); }
+  n := ifx a.n == 0 then ix_none(out, a, "no check reaches it") else ix_checks_text(env[0].chk[0..<a.n], out, 0);
+  n = ix_unfinished_text(out, ix_left_out(out, n, a, "checks"), a);
+  return rc_ok(rs_copy(r, cast(string) out[0..<n]));
+}
 // recall(path, a, b): lines a..b of the file as the memory has them, numbered as lines numbers
 // them, under a line that says where they come from. No file is read. When the memory does not
 // have every one of them at the file's current content: a line that starts "recall:" and says
@@ -715,6 +724,7 @@ rc_intel_fn :: (env: [] RcEnv, r: [] Rs, st: [] RlmState, q: RcReq) -> RcResult 
     n := ifx a.n == 0 then ix_none(out, a, "no effects are recorded for it") else ix_left_out(out, ix_effects_text(env[0].fx[0..<a.n], out, 0), a, "effects");
     return rc_ok(rs_copy(r, cast(string) out[0..<n]));
   }
+  if op == "checks" { return rc_intel_checks(env, r, st, arg, q.f[2]); }
   if op == "check" { return rc_intel_check(env, r, st, arg); }
   if op == "show" { return rc_intel_show(env, r, st, arg, q.f[2]); }
   return rc_intel_replace(env, r, st, q);
@@ -1347,7 +1357,7 @@ rc_selftest :: (profile: string) -> int {
 RC_T_SHAPES :: "// shapes\nShape :: struct { w: int; h: int; }\nUNIT :: 1;\narea :: (s: Shape) -> int { return s.w * s.h; }\n#test \"area of a unit square\" { #assert area(Shape.{w = UNIT, h = UNIT}) == 1; }\n";
 RC_T_CLOCK :: "cx_now :: () -> int #foreign #effects(foreign, clock);\nstamp :: () -> int { return cx_now() + 1; }\n";
 RC_T_PART :: "// a part: it names Shape and area but loads nothing, so it checks only inside main.coax\nedge :: (s: Shape) -> int {\n  return 2 * (s.w + s.h) + area(s) * 0;\n}\nflat :: (s: Shape) -> bool {\n  return s.h == 0;\n}\n";
-RC_T_MAIN :: "#load \"shapes.coax\";\n#load \"clock.coax\";\n#load \"part.coax\";\ntotal :: (a: Shape, b: Shape) -> int { return area(a) + area(b); }\ntimed :: (a: Shape) -> int { return area(a) + stamp(); }\nrun :: () -> int { return total(Shape.{w = 1, h = 2}, Shape.{w = 3, h = 4}) + edge(Shape.{w = 1, h = 1}); }\n";
+RC_T_MAIN :: "#load \"shapes.coax\";\n#load \"clock.coax\";\n#load \"part.coax\";\ntotal :: (a: Shape, b: Shape) -> int { return area(a) + area(b); }\ntimed :: (a: Shape) -> int { return area(a) + stamp(); }\nrun :: () -> int { return total(Shape.{w = 1, h = 2}, Shape.{w = 3, h = 4}) + edge(Shape.{w = 1, h = 1}); }\n#test \"total of two\" { #assert total(Shape.{w = 1, h = 2}, Shape.{w = 3, h = 4}) == 14; }\n#forall \"run adds the edge\" n: 0..<2 { #assert run() == 18 + n * 0; }\n";
 RC_T_BAD :: "#load \"shapes.coax\";\nwrong :: (s: Shape) -> int { x: string = area(s); return x; }\n";
 RC_T_RULE :: "#authority;\ncap :: (n: int) -> int { return ifx n > 9 then 9 else n; }\n#test \"cap\" { #assert cap(12) == 9 && cap(3) == 3; }\n";
 RC_T_TAGGED :: "safe :: (a: int, b: int) -> int { return add_checked(a, b) or_else 0; }\n";
@@ -1422,6 +1432,8 @@ rc_selftest_more :: (profile: string, coax: string) -> int {
   rc_expect_true(c[..], "explain: what a code means", rc_has(e, "E0325") && rc_has(e, "initializer"), e);
   e = cast(string) ob[0..<rc_block(m, "print(effects('main.coax', 'timed'))", ob[..])];
   rc_expect_true(c[..], "effects: a procedure's effect and the path that reaches it", rc_has(e, "timed: foreign_call at clock.coax:1:1 by timed -> stamp (clock.coax:2) -> cx_now (clock.coax:1)\n"), e);
+  e = cast(string) ob[0..<rc_block(m, "print(checks('area'))\nprint(checks('timed'))", ob[..])];
+  rc_expect_true(c[..], "checks: the checks that reach a procedure, by name, file and line, with how many calls away; what was not followed is counted; a procedure no check reaches", rc_has(e, "#test \"area of a unit square\"  shapes.coax:5  names area  file ") && rc_has(e, "\n#test \"total of two\"  main.coax:7  names total, 1 call from it  file ") && rc_has(e, "\n#forall \"run adds the edge\"  main.coax:8  names run, 2 calls from it  file ") && rc_has(e, "\n[1 path not followed to its end: more checks may reach it") && rc_has(e, "\nnone: no check reaches it\n"), e);
   rc_expect(c[..], "a question about a file outside the workspace is refused as a read is", cast(string) ob[0..<rc_block(m, "print(check('../x.coax'))", ob[..])], "Error: line 1: check(): the path leaves the workspace: ../x.coax");
   // the compiler can't answer: a program with a tagged value (G1); the block goes on
   e = cast(string) ob[0..<rc_block(m, "a = defines('safe')\nb = exports('tagged.coax')\nprint(a)\nprint(b)\nprint('went on')", ob[..])];
@@ -1437,7 +1449,7 @@ rc_selftest_more :: (profile: string, coax: string) -> int {
   e = cast(string) ob[0..<rc_block(m, "print(show('stamp'))\nx = edit('clock.coax', 'return \"now\"', 'return cx_now() + 1')\nprint(check('clock.coax'))\nprint(replace('nosuch', '000000000000', 'x'))", ob[..])];
   rc_expect_true(c[..], "while the file does not check, show has no answer and says so; edit mends it; a name nothing declares fails with words", rc_has(e, "no answer: the compiler could not answer show(stamp): E0") && rc_has(e, "Use search and lines for this.\n[]\nreplace failed: no declaration has this name") && rc_file(m, cwd, "clock.coax") == RC_T_CLOCK, e);
   line = rc_report(m, ln[..], lbuf[..], 1000);
-  rc_expect_true(c[..], "the report line: questions asked, not answered, stale edits, and each function's calls", rc_has(line, "\"intel\":{\"asked\":22,\"unanswered\":3,\"stale_edits\":1,\"defines\":3,\"uses\":1,\"show\":4,\"exports\":3,\"check\":5,\"explain\":1,\"effects\":1,\"replace\":4}") && !rc_has(line, "\"memory\""), line);
+  rc_expect_true(c[..], "the report line: questions asked, not answered, stale edits, and each function's calls", rc_has(line, "\"intel\":{\"asked\":24,\"unanswered\":3,\"stale_edits\":1,\"defines\":3,\"uses\":1,\"show\":4,\"exports\":3,\"check\":5,\"explain\":1,\"effects\":1,\"replace\":4,\"checks\":2}") && !rc_has(line, "\"memory\""), line);
   // a compiler that crashes, one that hangs, and none
   why = rc_scripted_more(m, RlmLimits.{max_depth = 2, max_turns = 40, max_ms = 1500}, cwd, profile, none[0..<0], true, fake, "");
   e = cast(string) ob[0..<rc_block(m, "print(defines('area'))\nd = check('main.coax')\nprint(len(d), d[0]['code'], d[0]['message'])\nprint(lines('shapes.coax', 3, 3))", ob[..])];
@@ -1501,9 +1513,9 @@ rc_selftest_more :: (profile: string, coax: string) -> int {
   st = m[0].st[..]; env = m[0].env[..];
   tr = cast(string) st[0].trace[0..<st[0].ntr];
   rc_expect_true(c[..], "recall on a memory opened again: the lines an earlier run read, numbered, under a line that says no file was read", why == "" && rc_said(st, "REPL output:\n[from memory, the file was not read: main.coax 2-3]\n     2\t#load \"clock.coax\";\n     3\t#load \"part.coax\";\n\n"), tr);
-  rc_expect_true(c[..], "recall of lines the memory has only in part, of a file that changed since, of a file never read, and past the end: each says so and what to do", rc_said(st, "\nrecall: the memory does not have lines 4-6 of main.coax as the file is now (it changed after they were read, or they were not all read). Read them with lines('main.coax', 4, 6); known() lists the lines the memory has.\nrecall: the memory does not have lines 1-6 of main.coax as the file is now") && rc_said(st, "\nrecall: the memory does not have lines 1-1 of shapes.coax as the file is now") && rc_said(st, "\nrecall: the memory has nothing of clock.coax: read it with lines(path, a, b)\nrecall: main.coax has 6 lines as the memory knows it: there are no lines 9 on\n"), tr);
+  rc_expect_true(c[..], "recall of lines the memory has only in part, of a file that changed since, of a file never read, and past the end: each says so and what to do", rc_said(st, "\nrecall: the memory does not have lines 4-8 of main.coax as the file is now (it changed after they were read, or they were not all read). Read them with lines('main.coax', 4, 8); known() lists the lines the memory has.\nrecall: the memory does not have lines 1-8 of main.coax as the file is now") && rc_said(st, "\nrecall: the memory does not have lines 1-1 of shapes.coax as the file is now") && rc_said(st, "\nrecall: the memory has nothing of clock.coax: read it with lines(path, a, b)\nrecall: main.coax has 8 lines as the memory knows it: there are no lines 9 on\n"), tr);
   line = rc_report(m, ln[..], lbuf[..], 1000);
-  rc_expect_true(c[..], "recall is counted in the report, and the run made no read: no read or lines effect, no read row", st[0].answer == "recalled" && env[0].ops[1] == 0 && env[0].ops[2] == 0 && env[0].mem_reads == 0 && env[0].xops[12] == 6 && !rc_has(tr, "--- effect lines(") && !rc_has(tr, "--- effect read(") && rc_has(tr, "--- effect recall(main.coax, 2, 3) -> ") && rc_has(line, "\"open_items\":0,\"recall\":6,\"unproven\":[]}"), line);
+  rc_expect_true(c[..], "recall is counted in the report, and the run made no read: no read or lines effect, no read row", st[0].answer == "recalled" && env[0].ops[1] == 0 && env[0].ops[2] == 0 && env[0].mem_reads == 0 && env[0].xops[13] == 6 && !rc_has(tr, "--- effect lines(") && !rc_has(tr, "--- effect read(") && rc_has(tr, "--- effect recall(main.coax, 2, 3) -> ") && rc_has(line, "\"open_items\":0,\"recall\":6,\"unproven\":[]}"), line);
   // the run may not weaken what checks it: a command deletes a #test in a file the run never read (its baseline is git's)
   roots3 := [3] string.["```repl\nr = sh(\"sed -i '/#test/d' shapes.coax\")\nprint(r['exit'])\nFINAL('one')\n```", "FINAL(two)", "FINAL(three)"];
   why = rc_scripted_more(m, RC_LIMITS, cwd, profile, roots3[..], false, "", mem3);

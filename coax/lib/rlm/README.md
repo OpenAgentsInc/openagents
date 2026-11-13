@@ -148,6 +148,7 @@ the tool runs in.
 | `check(path)` | the diagnostics as a list of dicts `code`, `line`, `message`, `fix` (20); `[]` is a clean file. A file that fails alone and has a loader is checked through the loader, and a first dict with code `note` says so |
 | `explain(code)` | what a diagnostic code means |
 | `effects(path, proc="")` | a procedure's may-effects with a call path to each (24) |
+| `checks(name, file="")` | the checks (`#test`, `#forall`) that reach a procedure: those that name it and those that name a caller, up to four calls away, with a count of the paths not followed (40) |
 | `replace(name, seen_hash, text, file="")` | replaces the declaration through `ix_replace`. A hash that is not the text's: nothing is written, and it returns the text and hash as they are (`replace refused: ...`). Applied: the new lines numbered, their hash and the file's check |
 
 An answer that left records out says how many. When the compiler can't answer (a program with a

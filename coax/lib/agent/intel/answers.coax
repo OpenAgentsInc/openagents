@@ -46,6 +46,17 @@ IxEffect :: struct {
   file: string; line: int; column: int;   // where the effect is
   path: string;                  // "timed -> stamp (clock.coax:2) -> cx_now (clock.coax:1)"
 }
+// A check that reaches a procedure (`checks`): a #test or #forall that names it, or names a
+// procedure that reaches it. The compiler gives a check no place of its own, so file and line are
+// where the check names `via`.
+IxCheck :: struct {
+  kind: string;                  // "#test" or "#forall"
+  name: string;                  // the check's name, as `coax test --only` takes it
+  file: string; line: int;       // the line in the check that names via
+  via: string;                   // the procedure the check names: the one asked about, or one that reaches it
+  depth: int;                    // calls from via to the procedure asked about (0: the check names it)
+  hash: string;                  // of the file the check is in
+}
 // How a question went. Every answer carries one.
 IxAnswer :: struct {
   ok: bool;                      // the compiler answered
@@ -57,6 +68,7 @@ IxAnswer :: struct {
   status: int;                   // the compiler's exit status (check: 0 is a clean file)
   entries: int;                  // compiler runs it took
   unchecked: int;                // files that name it which no run covered (the entries limit)
+  unfinished: int;               // checks: paths the walk did not follow to their end (its depth, its entries, a use it can't walk)
   ms: int;                       // how long it took
 }
 
@@ -182,6 +194,20 @@ ix_span :: (text: string, from: int, to: int) -> IxSpan {
     line += 1; i = e;
   }
   return IxSpan.{};
+}
+
+// What a use is written in (IxUse.from: "proc total", "#test \"area of a unit square\""): its
+// kind and name, and whether it is a check.
+IxFrom :: struct { check: bool; kind: string; name: string; }
+ix_from :: (from: string) -> IxFrom {
+  sp := 0;
+  while sp < from.count && from[sp] != ' ' { sp += 1; }
+  r := IxFrom.{kind = cast(string) from[0..<sp]};
+  r.check = r.kind == "#test" || r.kind == "#forall";
+  if sp >= from.count { return r; }
+  r.name = cast(string) from[sp + 1..<from.count];
+  if r.check && r.name.count >= 2 && r.name[0] == '"' && r.name[r.name.count - 1] == '"' { r.name = cast(string) r.name[1..<r.name.count - 1]; }
+  return r;
 }
 
 ix_int :: (d: Jv, at: int, key: string) -> int { return jv_int(d, jv_get(d, at, key), 0); }
@@ -498,6 +524,25 @@ ix_diags_text :: (diags: [] IxDiag, out: [] u8, at: int) -> int {
   }
   return n;
 }
+// "#test "area of a unit square"  shapes.coax:5  names area  file 9f297d0e69d1dc0f", and for a
+// check that reaches it through another procedure "...  names total, 1 call from it".
+ix_checks_text :: (checks: [] IxCheck, out: [] u8, at: int) -> int {
+  n := at;
+  for x: checks {
+    n = rp_put(out, n, x.kind); n = rp_put(out, n, " \""); n = rp_put(out, n, x.name); n = rp_put(out, n, "\"  "); n = rp_put(out, n, x.file); n = rp_put(out, n, ":"); n = rp_put_int(out, n, x.line);
+    n = rp_put(out, n, "  names "); n = rp_put(out, n, x.via);
+    if x.depth > 0 { n = rp_put(out, n, ", "); n = rp_put_int(out, n, x.depth); n = rp_put(out, n, ifx x.depth == 1 then " call from it" else " calls from it"); }
+    if x.hash.count > 0 { n = rp_put(out, n, "  file "); n = rp_put(out, n, ix_short(x.hash)); }
+    n = rp_put(out, n, "\n");
+  }
+  return n;
+}
+// What a checks answer could not see, a line (nothing when it followed every path).
+ix_unfinished_text :: (out: [] u8, at: int, a: IxAnswer) -> int {
+  if a.unfinished == 0 { return at; }
+  n := rp_put(out, at, "["); n = rp_put_int(out, n, a.unfinished);
+  return rp_put(out, n, ifx a.unfinished == 1 then " path not followed to its end: more checks may reach it (the walk's depth or compiler runs ran out, or a use is in something that is not a procedure)]\n" else " paths not followed to their end: more checks may reach it (the walk's depth or compiler runs ran out, or a use is in something that is not a procedure)]\n");
+}
 // "timed: foreign_call at clock.coax:1:1 by timed -> stamp (clock.coax:2) -> cx_now (clock.coax:1)"
 ix_effects_text :: (effects: [] IxEffect, out: [] u8, at: int) -> int {
   n := at;
@@ -586,6 +631,38 @@ ix_text_end :: (out: [] u8, n: int) -> string {
   #assert cast(string) out[0..<n] == "main.coax:3:47  in proc total\n";
   n = ix_uses_text(uses[0..<1], true, out[..], 0);
   #assert cast(string) out[0..<n] == "main.coax:3:47  in proc total  to shapes.coax:4\n";
+}
+#test "what a use is written in: a procedure, a check and its name, something else" {
+  f := ix_from("proc total");
+  #assert !f.check && f.kind == "proc" && f.name == "total";
+  f = ix_from("#test \"area of a unit square\"");
+  #assert f.check && f.kind == "#test" && f.name == "area of a unit square";
+  f = ix_from("#forall \"a \"quoted\" word\"");
+  #assert f.check && f.kind == "#forall" && f.name == "a \"quoted\" word";
+  f = ix_from("const LIMIT");
+  #assert !f.check && f.kind == "const" && f.name == "LIMIT";
+  f = ix_from("#test");
+  #assert f.check && f.name == "";
+  f = ix_from("#test \"");
+  #assert f.check && f.name == "\"";
+  f = ix_from("");
+  #assert !f.check && f.kind == "" && f.name == "";
+  f = ix_from("#tests \"x\"");
+  #assert !f.check && f.name == "\"x\"";
+}
+#test "checks as text: the check, where it names the procedure, and how far that is from the one asked about" {
+  out: [600] u8;
+  c := [3] IxCheck.[IxCheck.{kind = "#test", name = "area of a unit square", file = "shapes.coax", line = 5, via = "area", hash = "9f297d0e69d1dc0f00dbdb9eb27e24bf159797fc408ac6a9a0b16e8a1a65b47e"},
+                    IxCheck.{kind = "#forall", name = "totals add", file = "main.coax", line = 7, via = "total", depth = 1},
+                    IxCheck.{kind = "#test", name = "run", file = "main.coax", line = 8, via = "run", depth = 2}];
+  n := ix_checks_text(c[..], out[..], 0);
+  #assert cast(string) out[0..<n] == "#test \"area of a unit square\"  shapes.coax:5  names area  file 9f297d0e69d1dc0f\n#forall \"totals add\"  main.coax:7  names total, 1 call from it\n#test \"run\"  main.coax:8  names run, 2 calls from it\n";
+  n = ix_unfinished_text(out[..], 0, IxAnswer.{ok = true});
+  #assert n == 0;
+  n = ix_unfinished_text(out[..], 0, IxAnswer.{ok = true, unfinished = 1});
+  #assert cast(string) out[0..<n] == "[1 path not followed to its end: more checks may reach it (the walk's depth or compiler runs ran out, or a use is in something that is not a procedure)]\n";
+  n = ix_unfinished_text(out[..], 0, IxAnswer.{ok = true, unfinished = 3});
+  #assert cast(string) out[0..<21] == "[3 paths not followed";
 }
 #test "coax.diagnostic.v1: a record with its span, notes and fixes" {
   nodes: [128] JvNode; b: [1024] u8; p: [1] IxPool; p[0].b = b[..];

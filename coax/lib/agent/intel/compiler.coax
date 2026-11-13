@@ -51,6 +51,10 @@ IX_LOADERS :: 32;                // files tried as the unit that loads a file
 IX_HASHES :: 256;                // file hashes remembered within one question
 IX_ARGS :: 24;
 IX_ENTRIES :: 12;                // compiler entries one question asks, unless the caller says
+IX_DEPTH :: 4;                   // calls a checks question walks upward, unless the caller says
+IX_WALK :: 64;                   // procedures one checks question walks through
+IX_WALK_USES :: 512;             // uses of one procedure it looks at
+IX_WALK_BYTES :: 65536;          // bytes of a checks answer's strings
 IX_MS :: 120000;                 // one compiler run's time at most, unless the caller says
 
 IX_WORD :: 0; IX_DEF :: 1; IX_LOAD :: 2;
@@ -63,6 +67,7 @@ Ix :: struct {
   run_steps: int;                // --run-steps for every compiler run (0: the compiler's own)
   timeout_ms: int;
   entries: int;
+  depth: int;                    // checks: calls walked upward from the procedure asked about
   env: [4] string; nenv: int;    // "NAME=value" set for every child (COAX_QUERY_CACHE=..., COAX_SERVE=0)
   git: bool;                     // the root is in a git work tree: search with git grep
   // work
@@ -78,6 +83,9 @@ Ix :: struct {
   load: [IX_LOADERS] string;
   hfile: [IX_HASHES] string; hhash: [IX_HASHES] string; nh: int;
   t0: int; runs: int;
+  tried: int;                    // entries asked so far in this question (against entries)
+  wname: [IX_WALK] string; wfile: [IX_WALK] string; wdepth: [IX_WALK] int;
+  wuses: [IX_WALK_USES] IxUse; walkb: [IX_WALK_BYTES] u8; wp: [1] IxPool;
 }
 
 IxRun :: struct { started: bool; status: int = -1; timed_out: bool; n: int; cut: bool; ne: int; }
@@ -132,7 +140,7 @@ ix_open :: (s: [] Ix, root: string, coax: string) -> bool {
   r := fs_realpath(root, s[0].rootb[..]);
   if r.count == 0 || fs_kind(r) != FS_DIR { return false; }
   s[0].root = r;
-  s[0].profile = "danger-full-access"; s[0].timeout_ms = IX_MS; s[0].entries = IX_ENTRIES; s[0].run_steps = 0;
+  s[0].profile = "danger-full-access"; s[0].timeout_ms = IX_MS; s[0].entries = IX_ENTRIES; s[0].run_steps = 0; s[0].depth = IX_DEPTH;
   c := ix_copy(s[0].coaxb[..], coax);
   if c.count == 0 {
     c = fs_join(r, "coax/bin/coax", s[0].coaxb[..]);
@@ -159,7 +167,7 @@ ix_env :: (s: [] Ix, entry: string) -> bool {
 
 ix_begin :: (s: [] Ix) {
   s[0].p[0].b = s[0].poolb[..]; s[0].p[0].n = 0; s[0].p[0].full = false;
-  s[0].nh = 0; s[0].runs = 0; s[0].t0 = proc_now_ms();
+  s[0].nh = 0; s[0].runs = 0; s[0].tried = 0; s[0].t0 = proc_now_ms();
 }
 ix_end :: (s: [] Ix, a: IxAnswer) -> IxAnswer {
   r := a;
@@ -364,24 +372,31 @@ ix_defines :: (s: [] Ix, name: string, out: [] IxDecl) -> IxAnswer {
 // which no compiler run covered: raise Ix.entries, or they do not check even through a loader.
 ix_uses_of :: (s: [] Ix, name: string, only: string, defs: [] IxDecl, out: [] IxUse) -> IxAnswer {
   ix_begin(s);
+  return ix_end(s, ix_uses_do(s, name, only, defs, out));
+}
+// The question itself, for a caller that asks several in one (checks): the session's strings
+// and its count of entries asked (Ix.tried, against Ix.entries) go on from where they are.
+ix_uses_do :: (s: [] Ix, name: string, only: string, defs: [] IxDecl, out: [] IxUse) -> IxAnswer {
   a: IxAnswer;
-  if !ix_ident(name) { return ix_fail(s, "not a name: letters, digits and '_'"); }
+  if !ix_ident(name) { a.why = "not a name: letters, digits and '_'"; return a; }
   want := ifx only.count > 0 then ix_file(s, only) else "";
-  if only.count > 0 && want.count == 0 { return ix_fail(s, "the file is outside the root"); }
+  if only.count > 0 && want.count == 0 { a.why = "the file is outside the root"; return a; }
   found := ix_grep(s, IX_WORD, name, s[0].cand[..]);
   s[0].ncand = ifx found > IX_CAND then IX_CAND else found;
   for i: 0..<s[0].ncand { s[0].covered[i] = false; }
-  hd: IxAdded; hu: IxAdded; tried := 0; answered := false; why := "";
+  // the file that declares it is asked first: its own uses and checks are the nearest
+  if s[0].ncand > 1 && want.count > 0 { for i: 1..<s[0].ncand { if s[0].cand[i] == want { s[0].cand[i] = s[0].cand[0]; s[0].cand[0] = want; break; } } }
+  hd: IxAdded; hu: IxAdded; answered := false; why := "";
   for i: 0..<s[0].ncand {
-    if s[0].covered[i] || tried >= s[0].entries { continue; }
-    entry := s[0].cand[i]; tried += 1;
+    if s[0].covered[i] || s[0].tried >= s[0].entries { continue; }
+    entry := s[0].cand[i]; s[0].tried += 1;
     q := ix_query(s, entry, "uses", name);
     if !q.ok {
       if why.count == 0 { why = q.why; }
       near := ix_loaders_near(s, entry);
       for j: 0..<near {
-        if q.ok || tried >= s[0].entries { break; }
-        tried += 1;
+        if q.ok || s[0].tried >= s[0].entries { break; }
+        s[0].tried += 1;
         q = ix_query(s, s[0].load[j], "uses", name);
         if q.ok { entry = s[0].load[j]; }
       }
@@ -419,8 +434,74 @@ ix_uses_of :: (s: [] Ix, name: string, only: string, defs: [] IxDecl, out: [] Ix
   if !a.ok { a.why = why; }
   else if s[0].ncand == 0 { a.why = "no .coax file under the root names it"; }
   else if hd.total == 0 { a.why = ifx want.count > 0 then "no declaration has this name in that file" else "no declaration has this name"; }
+  if hd.n < hd.total { a.cut = true; }
+  return a;
+}
+
+// Which checks reach this procedure (GitHub #13445 proposal 2): each #test and #forall that names
+// NAME, and each that names a procedure that reaches it. The compiler's `uses` is direct only, so
+// this walks upward: the uses of NAME, then of each procedure a use is written in, breadth first.
+// file says which declaration is meant when several programs declare NAME ("" for all).
+//
+// Bounded: Ix.depth calls upward (4), IX_WALK procedures, and Ix.entries compiler entries for the
+// whole walk. a.unfinished counts the paths it did not follow to their end: a procedure past the
+// depth or past the entries, one whose uses the compiler could not give or gave in part, and a use
+// written in something that is not a procedure (a constant's value). With unfinished 0 the checks
+// listed are all the checks that reach it through calls the compiler resolves.
+//
+// A check has no place of its own in the compiler's answers: file and line are where it names
+// via. The answer's strings last until the next checks question.
+ix_checks_of :: (s: [] Ix, name: string, file: string, out: [] IxCheck) -> IxAnswer {
+  ix_begin(s);
+  a: IxAnswer;
+  if !ix_ident(name) { return ix_fail(s, "not a name: letters, digits and '_'"); }
+  w := s[0].wp[..];
+  w[0].b = s[0].walkb[..]; w[0].n = 0; w[0].full = false;
+  s[0].wname[0] = ix_keep(w, name); s[0].wfile[0] = ""; s[0].wdepth[0] = 0;
+  if file.count > 0 {
+    rel := ix_file(s, file);
+    if rel.count == 0 { return ix_fail(s, "the file is outside the root"); }
+    s[0].wfile[0] = ix_keep(w, rel);
+  }
+  nw := 1; at := 0; defs: [4] IxDecl;
+  while at < nw {
+    node := at; at += 1;
+    if s[0].wdepth[node] >= s[0].depth || s[0].tried >= s[0].entries { a.unfinished += 1; continue; }
+    // the session's strings are given back after each procedure: what is kept is copied to w
+    mark := s[0].p[0].n;
+    u := ix_uses_do(s, s[0].wname[node], s[0].wfile[node], defs[..], s[0].wuses[..]);
+    if node == 0 {
+      if !u.ok { return ix_fail(s, u.why); }
+      a.ok = true; a.why = ix_keep(w, u.why);
+    }
+    if !u.ok || u.unchecked > 0 || u.n < u.total { a.unfinished += 1; }
+    a.unchecked += u.unchecked;
+    for k: 0..<u.n {
+      x := s[0].wuses[k];
+      f := ix_from(x.from);
+      if f.check {
+        dup := false;
+        for i: 0..<a.n { if out[i].name == f.name && out[i].file == x.file && out[i].kind == f.kind { dup = true; } }
+        if dup { continue; }
+        a.total += 1;
+        if a.n < out.count {
+          out[a.n] = IxCheck.{kind = ix_keep(w, f.kind), name = ix_keep(w, f.name), file = ix_keep(w, x.file), line = x.line, via = s[0].wname[node], depth = s[0].wdepth[node], hash = ix_keep(w, ix_file_hash(s, x.file))};
+          a.n += 1;
+        }
+        continue;
+      }
+      if f.kind != "proc" { a.unfinished += 1; continue; }
+      known := false;
+      for i: 0..<nw { if s[0].wname[i] == f.name && (s[0].wfile[i] == x.file || (i == 0 && s[0].wfile[0].count == 0)) { known = true; } }
+      if known { continue; }
+      if nw >= IX_WALK { a.unfinished += 1; continue; }
+      s[0].wname[nw] = ix_keep(w, f.name); s[0].wfile[nw] = ix_keep(w, x.file); s[0].wdepth[nw] = s[0].wdepth[node] + 1;
+      nw += 1;
+    }
+    s[0].p[0].n = mark; s[0].nh = 0;
+  }
   r := ix_end(s, a);
-  if hd.n < hd.total { r.cut = true; }
+  if w[0].full { r.cut = true; }
   return r;
 }
 
