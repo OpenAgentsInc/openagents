@@ -14,6 +14,7 @@
 #load "layer.coax";
 #load "walk.coax";
 #load "layer-fixture.coax";
+#load "layer-draw.coax";
 #load "layer-checks.coax" #test;   // the colliders' and the layer's checks
 #load "walk-checks.coax" #test;    // the walk replay's, the fixture layer's and the kept-clear zones' checks
 #load "splice-cast.coax";

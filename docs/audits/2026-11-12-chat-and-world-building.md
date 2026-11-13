@@ -237,6 +237,35 @@ is one optional source of edits, not the only one.
 
 ### Slice 0: Splice's edit layer
 
+**Status: done, 2026-11-12 (#13404).** The commits, in order:
+
+| Commit | What landed |
+|---|---|
+| `a4c1c7ddbe`, `46f7f36d21` | Splice's own folder and context. It is `verse/splice/`: the repository root is for projects with a book |
+| `f0a0759359` | The content tables, and the game reading every landmark from them |
+| `53505717f7` | The colliders as World entities, the edit layer as typed edits, and the check |
+| `3efca3f506` | The walk replay, the fixture layer and the mutant check |
+| `@@DRAW@@` | The retained draw (a mesh for each kind, an instance for each placed piece), the dev server's fixture load, and the docs |
+
+What was built differently from the text below, and why:
+
+- **Five tables, not three.** `pieces`, `landmarks` and `kept_clear` are as planned. `looks`
+  holds a piece's three colours, because a content table has eight columns at most. `areas`
+  says where a piece may stand at all, which is how "past the map's edge" is refused.
+- **30 walls, not 44.** `WALLS` is the list's size. The layout has 30 boxes; all of them, the
+  rubble, the boss wall, the banned bot and the rover at the rail stop are World entities.
+- **The walk replay uses the engine's steering service** (`aethyr/ai/steer.coax`) with the
+  game's own step and collision. The protocol bots speak a room's wire, and Splice has no room.
+  The agent driver's `walk-to` goes straight at its target, so it would refuse a crate a player
+  walks round. `coax drive` isn't wired to Splice's page yet.
+- **The fixture layer is typed edits in Coax** (`verse/splice/layer-fixture.coax`), loaded with
+  `?layer=fixture` on the dev server only. A layer file needs the wire shape of slice 2.
+- **The host could already draw instances.** `coax/web/host.js` passes a draw's instance count
+  and first instance through, and binds every store a page declares. The new work was Splice's
+  two stores and its vertex stages (`verse/splice/gpu/splice.coax`); the host didn't change.
+- **Not done here:** the Unreal host draws no placed pieces (its face passes the stores but
+  draws two). The developer notes are `verse/splice/README.md`, "Edit layer".
+
 New work in Splice and the engine. The rule is "never hand-roll", and the AAA
 program (#13257) has already built most of what this needs. The section
 "Checked against the AAA program" below says which issue each part follows.
@@ -488,9 +517,10 @@ Coder and Claude Code in `/chat`, before anything is deployed. Slice 5 puts
 Splice beside the conversation. WorldBuilder's worlds get ids in slice 7; they
 reuse everything Splice needed except the edit layer.
 
-**Before the first API deploy,** slice 0 can be tried alone: a fixture layer
-loaded with `?layer=FILE` on the dev server, written by an agent's
-`world apply --local`, shows the pieces in Splice with nothing on the server.
+**Before the first API deploy,** slice 0 can be tried alone: the fixture layer,
+loaded with `?layer=fixture` on the dev server, shows the pieces in Splice with
+nothing on the server. A layer file written by an agent's `world apply --local`
+needs slice 2's wire shape.
 
 ## Risks and open questions
 

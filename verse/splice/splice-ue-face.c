@@ -10,6 +10,12 @@
 #define LIVE_WORDS (150000u * 6u)
 static uint32_t world[WORLD_WORDS];
 static uint32_t live[LIVE_WORDS];
+// The edit layer's stores (layer-draw.coax). The bridge draws stores 0 and 1 only: an Unreal host
+// loads no edit layer yet, so no placed piece is drawn there.
+#define PIECE_WORDS (40000u * 6u)
+#define PLACE_WORDS (64u * 8u)
+static uint32_t pieces[PIECE_WORDS];
+static uint32_t places[PLACE_WORDS];
 static float style[128];            /* STYLE_FLOATS */
 static uint32_t frames;
 
@@ -28,7 +34,8 @@ uint32_t aethyr_frame(void *state, float *vertices, float *uniforms, float width
   for (int i = 0; i < 128; i++) style[i] = 0;
   animelab_style_block(splice_variant(at(state)), animelab_phone(width, dpr), splice_clock(at(state)), (coax_v_f32){style, 128});
   int64_t n = splice_frame(at(state), out, u, width, height, dpr, dt, still != 0,
-                           (coax_v_u32){world, WORLD_WORDS}, (coax_v_u32){live, LIVE_WORDS}, (coax_v_f32){style, 128});
+                           (coax_v_u32){world, WORLD_WORDS}, (coax_v_u32){live, LIVE_WORDS},
+                           (coax_v_u32){pieces, PIECE_WORDS}, (coax_v_u32){places, PLACE_WORDS}, (coax_v_f32){style, 128});
   frames += 1;
   return n < 0 ? 0u : (uint32_t)n;
 }
@@ -40,7 +47,7 @@ uint32_t aethyr_store_bytes(void *state, int k) {
   return n <= 0 ? 0u : (uint32_t)(n * 6 * 4);
 }
 uint32_t aethyr_store_version(void *state, int k) { return k == 0 ? (uint32_t)splice_world_version(at(state)) : frames; }
-uint32_t aethyr_draw_count(void *state) { return (uint32_t)splice_draw_count(at(state)); }
+uint32_t aethyr_draw_count(void *state) { int64_t n = splice_draw_count(at(state)); return n > 2 ? 2u : (uint32_t)n; }   // stores 0 and 1: see above
 
 int aethyr_key(void *state, int key, int down) { return splice_key(at(state), key, down != 0) ? 1 : 0; }
 int aethyr_pointer(void *state, float x, float y, int phase) { return splice_pointer(at(state), x, y, phase) ? 1 : 0; }

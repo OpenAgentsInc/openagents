@@ -180,3 +180,64 @@ lc_old_collide :: (g: [] SpGame, x: f32, z: f32) -> Point {
     #assert abs(m.hx - p.hx) <= 0.015 && abs(m.hz - p.hz) <= 0.015 && abs(m.top - p.top) <= 0.015;
   }
 }
+
+// ---- the layer's draw (layer-draw.coax)
+LcDraw :: struct { d: [1] SpLayerDraw; pieces: [SD_PIECE_WORDS] u32; places: [SD_PLACE_WORDS] u32; direct: [PIECE_VERTS * VERTEX_WORDS] u32; draws: [4 * (2 + SC_PIECE_MAX)] u32; }
+#test "each kind's mesh is written once, and an edit writes rows only: a kind's instances are one draw" {
+  g := [1] SpGame.[SpGame.{}]; b: [1] LcDraw;
+  lc_mine(g[..]);
+  d := b[0].d[..];
+  sd_meshes(d, g[..], b[0].pieces[..]); sd_places(d, g[..], b[0].places[..]);
+  #assert d[0].mesh_gen == 1 && !d[0].over && d[0].place_gen == 1 && d[0].place_n == 0 && sd_draws(d, g[..], b[0].draws[..], 2) == 2;
+  at := 0;
+  for r: 0..<g[0].c[0].piece_n { #assert d[0].first[r] == at && d[0].count[r] >= 3 && d[0].count[r] % 3 == 0; at += d[0].count[r]; }
+  #assert at == d[0].mesh_n && d[0].mesh_n * VERTEX_WORDS <= SD_PIECE_WORDS;
+  // two palms and a rover: the rover's kind comes first in the pieces table, so its row does
+  #assert sl_place(g[..], 113, 2000, 1000, 0).ok && sl_place(g[..], 101, 2600, 1400, 90).ok && sl_place(g[..], 113, 2000, 1400, 0).ok;
+  sd_meshes(d, g[..], b[0].pieces[..]); sd_places(d, g[..], b[0].places[..]);
+  #assert d[0].mesh_gen == 1 && d[0].place_gen == 2 && d[0].place_n == 3;
+  rover := sc_piece(g[0].c[..], 101); palm := sc_piece(g[0].c[..], 113);
+  #assert d[0].row0[rover] == 0 && d[0].rows[rover] == 1 && d[0].row0[palm] == 1 && d[0].rows[palm] == 2;
+  n := sd_draws(d, g[..], b[0].draws[..], 2);
+  #assert n == 4;
+  #assert b[0].draws[8] == cast(u32) d[0].first[rover] && b[0].draws[9] == cast(u32) d[0].count[rover] && b[0].draws[10] == (0x80000000 | 2) && b[0].draws[11] == 1;
+  #assert b[0].draws[12] == cast(u32) d[0].first[palm] && b[0].draws[13] == cast(u32) d[0].count[palm] && b[0].draws[14] == (0x80000000 | 3) && b[0].draws[15] == 2;
+  #assert f32_from_bits(b[0].places[0]) == 26 && f32_from_bits(b[0].places[2]) == 14 && abs(f32_from_bits(b[0].places[4])) < 0.0001 && abs(f32_from_bits(b[0].places[5]) - 1) < 0.0001;
+  #assert f32_from_bits(b[0].places[8]) == 20 && f32_from_bits(b[0].places[10]) == 10 && f32_from_bits(b[0].places[18]) == 14;
+  // nothing changed: nothing is written; a move writes the rows; the graybox writes the meshes
+  sd_meshes(d, g[..], b[0].pieces[..]); sd_places(d, g[..], b[0].places[..]); #assert d[0].mesh_gen == 1 && d[0].place_gen == 2;
+  #assert sl_move(g[..], 0, 2050, 1000).ok;
+  sd_meshes(d, g[..], b[0].pieces[..]); sd_places(d, g[..], b[0].places[..]);
+  #assert d[0].mesh_gen == 1 && d[0].place_gen == 3 && f32_from_bits(b[0].places[8]) == 20.5;
+  g[0].gray = true; sd_meshes(d, g[..], b[0].pieces[..]); #assert d[0].mesh_gen == 2;
+  // a layer with more pieces than the place store has rows draws what fits, and no more
+  small: [SD_ROW * 2] u32; d[0].place_rev = -1; sd_places(d, g[..], small[..]); #assert d[0].place_n == 2 && d[0].rows[palm] == 1;
+}
+// An instance is the mesh at the origin put through its row. For a kit piece built wholly on its
+// frame (a crate, a dome house) every vertex lands where the kit writes it when it draws the piece
+// standing there. A machine's balls and round masts are written unturned by the kits, so an
+// instance turns their facets with the piece: the same shape, the same middle.
+#test "a placed piece's instance is the piece drawn where it stands" {
+  g := [1] SpGame.[SpGame.{}]; b: [1] LcDraw;
+  lc_mine(g[..]);
+  d := b[0].d[..]; c := g[0].c[..];
+  #assert sl_place(g[..], 116, 2600, 1400, 70).ok && sl_place(g[..], 114, 3200, 600, 180).ok && sl_place(g[..], 101, 2000, 1000, -135).ok && sl_place(g[..], 103, 2000, 1600, 45).ok;
+  sd_meshes(d, g[..], b[0].pieces[..]); sd_places(d, g[..], b[0].places[..]);
+  for i: 0..<4 {
+    item := g[0].layer[0].items[i]; r := sc_piece(c, item.mesh); p := c[0].pieces[r];
+    row := d[0].row0[r];
+    pen := [1] Pen.[Pen.{}];
+    sp_piece_write(b[0].direct[..], pen[..], p.kit, p.scale, frame_at(v3(item.x, item.y, item.z), item.yaw), PIECE_OBJ, sp_tint(p.a), sp_tint(p.b), sp_tint(p.c), INK());
+    #assert pen[0].n == d[0].count[r] && !pen[0].over;
+    mx: f32 = 0; my: f32 = 0; mz: f32 = 0; far: f32 = 0;
+    for v: 0..<pen[0].n {
+      m := (d[0].first[r] + v) * VERTEX_WORDS; o := v * VERTEX_WORDS;
+      at := sd_apply(v3(f32_from_bits(b[0].pieces[m]), f32_from_bits(b[0].pieces[m + 1]), f32_from_bits(b[0].pieces[m + 2])), b[0].places[row * SD_ROW..<row * SD_ROW + SD_ROW]);
+      dx := at.x - f32_from_bits(b[0].direct[o]); dy := at.y - f32_from_bits(b[0].direct[o + 1]); dz := at.z - f32_from_bits(b[0].direct[o + 2]);
+      mx += dx; my += dy; mz += dz; far = hi(far, sqrt(dx * dx + dy * dy + dz * dz));
+    }
+    n := cast(f32) pen[0].n;
+    #assert abs(mx / n) < 0.002 && abs(my / n) < 0.002 && abs(mz / n) < 0.002;
+    if i < 2 { #assert far < 0.0001; } else { #assert far < 0.9; }
+  }
+}

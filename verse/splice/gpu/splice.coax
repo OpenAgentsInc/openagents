@@ -1,9 +1,10 @@
 // Splice's shaders (splice.coax, docs/verse/art-styles.md, Anime): the same anime scene, ink and
 // post pass as Anime Lab, so this file loads Anime Lab's. build.sh writes apps/openagents-web/splice.wgsl
-// from it with coax/web/wgsl-module.coax (splice.module, and animelab.bindings, which the two share).
+// from it with coax/web/wgsl-module.coax (splice.module and splice.bindings: Anime Lab's bindings and the
+// edit layer's two stores).
 // No WGSL is written by hand.
 //
-// One pass is Splice's own: the overlay (fx_fs). Anime Lab's overlay is light on dark (its blend
+// Two things are Splice's own: the placed pieces' instances (shadow_vs, scene_vs, below) and the overlay (fx_fs). Anime Lab's overlay is light on dark (its blend
 // keeps the brighter colour). Splice's interface is ink on cream paper, so its overlay writes
 // straight alpha and the page asks the host for source-over blending (coaxial_fx_alpha_v1):
 // a stroke is a solid shape with no glow, and text takes its ink's colour in one of two faces.
@@ -18,6 +19,52 @@ sp_gray :: (c:V3,warm:f32,cyan:f32)->V3 {
   g:f32=graybox_gray(c.x,c.y,c.z);
   return v3(mix(g,c.x,k),mix(g,c.y,k),mix(g,c.z,k));
 }
+// ---- the edit layer's placed pieces (verse/splice/layer-draw.coax): a retained scene. Each kind
+// of piece's mesh is written once into `pieces`, standing at the origin; a placed piece is a row
+// of `places` (x, y, z, 0, cos turn, sin turn, 0, 0). Instance 0 draws the world's store and
+// instance 1 the live store, as Anime Lab's stages do; instance 2 + r draws the piece store
+// through row r. An edit changes rows only.
+sp_row :: (instance:u32)->u32 {return mul_wrap(sub_wrap(instance,cast(u32)2),cast(u32)8);}
+// A point or a direction of the mesh, turned about y by the row's turn.
+sp_turn :: (p:V3,r:u32,places:[]u32)->V3 {
+  c:f32=al_word(add_wrap(r,cast(u32)4),places);
+  s:f32=al_word(add_wrap(r,cast(u32)5),places);
+  return v3((p.x*c)+(p.z*s),p.y,(p.z*c)-(p.x*s));
+}
+sp_place :: (id:u32,instance:u32,pieces:[]u32,places:[]u32)->V3 {
+  b:u32=mul_wrap(id,cast(u32)6);
+  r:u32=sp_row(instance);
+  t:V3=sp_turn(v3(al_word(b,pieces),al_word(add_wrap(b,cast(u32)1),pieces),al_word(add_wrap(b,cast(u32)2),pieces)),r,places);
+  return v3(t.x+al_word(r,places),t.y+al_word(add_wrap(r,cast(u32)1),places),t.z+al_word(add_wrap(r,cast(u32)2),places));
+}
+shadow_vs :: (id:u32,instance:u32,u:[]f32,world:[]u32,live:[]u32,pieces:[]u32,places:[]u32)->AnimelabShade {
+  if (instance<cast(u32)2) {return animelab_shadow_vs(id,instance,u,world,live);}
+  o:AnimelabShade;
+  mat:u32=pieces[cast(int)add_wrap(mul_wrap(id,cast(u32)6),cast(u32)4)]>>24;
+  o.pos=al_rows(u,AL_SHADOW,sp_place(id,instance,pieces,places));
+  // glow, flat marks, ink strokes and smoke cast no shadow
+  if ((mat==3)||(mat==4)||(mat==7)||(mat==8)||(mat==9)) {
+    o.pos=v4(0.0f32,0.0f32,-2.0f32,1.0f32);
+  }
+  return o;
+}
+scene_vs :: (id:u32,instance:u32,u:[]f32,world:[]u32,live:[]u32,pieces:[]u32,places:[]u32)->AnimelabS {
+  if (instance<cast(u32)2) {return animelab_scene_vs(id,instance,u,world,live);}
+  o:AnimelabS;
+  b:u32=mul_wrap(id,cast(u32)6);
+  n4:V4=wg_unpack4x8unorm(pieces[cast(int)add_wrap(b,cast(u32)3)]);
+  c4:V4=wg_unpack4x8unorm(pieces[cast(int)add_wrap(b,cast(u32)4)]);
+  w:V3=sp_place(id,instance,pieces,places);
+  o.world=w;
+  o.pos=al_rows(u,4,w);
+  o.normal=sp_turn(v3((n4.x*2.0f32)-1.0f32,(n4.y*2.0f32)-1.0f32,(n4.z*2.0f32)-1.0f32),sp_row(instance),places);
+  o.colour=v3(al_decode1(c4.x),al_decode1(c4.y),al_decode1(c4.z));
+  o.mat=floor((c4.w*255.0f32)+0.5f32);
+  o.obj=floor((n4.w*255.0f32)+0.5f32);
+  o.param=f32_from_bits(pieces[cast(int)add_wrap(b,cast(u32)5)]);
+  return o;
+}
+
 post_fs :: (pos:V4,u:[]f32,post_light:Tex2D,post_quarter:Tex2D,post_eighth:Tex2D,post_aux:Tex2D,post_depth:TexDepth,post_lin:Sampler)->V4 {
   c:V4=animelab_post_fs(pos,u,post_light,post_quarter,post_eighth,post_aux,post_depth,post_lin);
   if (sp_gray_on(u)) {

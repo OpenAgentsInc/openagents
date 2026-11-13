@@ -74,11 +74,15 @@ presets: dawn, day, dusk and night.
 
 ## Source
 
+The code is in `verse/splice/`, and `verse/splice/README.md` describes it file by file:
+
 - `verse/splice/splice-game.coax`: the game: tuning, world, rules, interface, and tests
   that play the whole run.
 - `verse/splice/splice.coax`: the page's frame, and the still scenes below.
 - `verse/splice/gpu/splice.coax`: Anime Lab's shaders plus Splice's own overlay pass
-  (ink on paper needs source-over blending).
+  (ink on paper needs source-over blending) and the placed pieces' instances.
+- `verse/splice/content/splice.content`: the content tables: the pieces that can be placed, the
+  landmarks, and the zones the run keeps clear.
 - `aethyr/kit/machines.coax`, `aethyr/kit/land.coax`, `aethyr/render/cel-mesh.coax`: the engine's
   cel kits and mesh writers.
 
@@ -86,6 +90,14 @@ A page script can stand the game at one beat with `coaxial.send(610, "N")`, N fr
 19, for stills and checks.
 
 The fonts are in `realms/splice/assets/fonts/` with their Open Font Licences.
+
+## Edit layer
+
+Things can be placed in Splice as data, without changing its code. A placed piece is a row of a
+content table, a collider, and a typed edit that can be undone. An edit is refused when it would
+stand in a zone the run needs, and a walk of the whole run is the second check. Nothing is placed
+on this page yet: a saved world and the tools that edit it are the next steps. The developer
+notes are in `verse/splice/README.md`, "Edit layer".
 
 ## Still scenes
 

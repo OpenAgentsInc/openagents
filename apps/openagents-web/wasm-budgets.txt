@@ -297,5 +297,6 @@ portallab 80000
 painted 200000
 # Splice with its content tables (aethyr/content/tables.coax), its colliders as a World (aethyr/core/world.coax, spatial.coax, the
 # walking rules of aethyr/physics/collide.coax) and its edit layer on the engine's edit log (aethyr/forge/edit.coax, #13404):
-# 239,218 bytes measured on a Linux build host; about 5% room.
-splice 252000
+# 239,218 bytes measured on a Linux build host; with the walk replay on the steering service (aethyr/ai/steer.coax), the fixture
+# layer and the retained draw of placed pieces: 254,250 bytes; about 5% room.
+splice 268000

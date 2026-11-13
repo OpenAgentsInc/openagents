@@ -29,9 +29,9 @@ PIECE_VERTS :: 24000;    // vertices one kind's mesh may take
 sp_tint :: (rgb: int) -> KitTint { return kit_tint(cast(f32) ((rgb >> 16) & 255) / 255, cast(f32) ((rgb >> 8) & 255) / 255, cast(f32) (rgb & 255) / 255); }
 
 // One kind's mesh: kit piece `kit` at size s, in the look's three colours and the game's ink,
-// standing at the origin and facing +z. Machines stand still (no stride, no spin).
-sp_piece_write :: (buf: [] u32, p: [] Pen, kit: int, s: f32, a: KitTint, b: KitTint, c: KitTint, ink: KitTint) {
-  f := frame_at(v3(0, 0, 0), 0); o := PIECE_OBJ;
+// standing on frame f, its objects numbered from o. Machines stand still (no stride, no spin).
+// The layer writes each kind once at the origin, facing +z (PIECE_ORIGIN).
+sp_piece_write :: (buf: [] u32, p: [] Pen, kit: int, s: f32, f: Frame, o: int, a: KitTint, b: KitTint, c: KitTint, ink: KitTint) {
   if kit == PK_ROVER { kit_rover(buf, p, f, s, o, a, b, ink); }
   else if kit == PK_CRAB { kit_crab(buf, p, f, s, o, a, b, ink); }
   else if kit == PK_WALKER { kit_walker(buf, p, f, s, o, a, b, ink); }
@@ -66,7 +66,7 @@ SpMeshScratch :: struct { v: [PIECE_VERTS * VERTEX_WORDS] u32; }
 sp_piece_measure :: (w: [] SpMeshScratch, kit: int, s: f32) -> SpFoot {
   pen := [1] Pen.[Pen.{}];
   t := kit_tint(0.5, 0.5, 0.5);
-  sp_piece_write(w[0].v[..], pen[..], kit, s, t, t, t, t);
+  sp_piece_write(w[0].v[..], pen[..], kit, s, frame_at(v3(0, 0, 0), 0), PIECE_OBJ, t, t, t, t);
   m := sp_mesh_foot(w[0].v[..], pen[0].n);
   m.over = pen[0].over;
   return m;

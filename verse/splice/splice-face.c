@@ -15,6 +15,10 @@ static coax_v_t_Splice at(uint32_t state) { return (coax_v_t_Splice){splice_stat
 #define LIVE_WORDS (150000u * 6u)
 static uint32_t world[WORLD_WORDS];
 static uint32_t live[LIVE_WORDS];
+#define PIECE_WORDS (40000u * 6u)    /* layer-draw.coax SD_PIECE_WORDS: every kind of placed piece's mesh, written once */
+#define PLACE_WORDS (64u * 8u)        /* layer-draw.coax SD_PLACE_WORDS: a row a placed piece */
+static uint32_t pieces[PIECE_WORDS];
+static uint32_t places[PLACE_WORDS];
 static float style[128];            /* STYLE_FLOATS */
 static uint32_t frames;
 static bool golden;
@@ -38,24 +42,35 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   /* each scene picks its own look: its anime variant (verse/style-preset.coax) and clock */
   animelab_style_block(splice_variant(at(state)), animelab_phone(width, dpr), splice_clock(at(state)), (coax_v_f32){style, 128});
   int64_t n = splice_frame(at(state), out, u, width, height, dpr, dt, (still != 0) || golden,
-                           (coax_v_u32){world, WORLD_WORDS}, (coax_v_u32){live, LIVE_WORDS}, (coax_v_f32){style, 128});
+                           (coax_v_u32){world, WORLD_WORDS}, (coax_v_u32){live, LIVE_WORDS},
+                           (coax_v_u32){pieces, PIECE_WORDS}, (coax_v_u32){places, PLACE_WORDS}, (coax_v_f32){style, 128});
   frames += 1;
   return n < 0 ? 0u : (uint32_t)n;
 }
 
-// The scene: two draws of vertices in order (no index), store 0 the Mars world, store 1 nothing.
+// The scene: draws of vertices in order (no index). Store 0 is the Mars world, written once; store 1
+// what moves, written every frame; store 2 the meshes of the kinds of placed piece, written once;
+// store 3 a row for each placed piece, written when the edit layer changes. A kind's placed
+// pieces are one draw of its mesh, an instance each (gpu/splice.coax scene_vs).
 EXPORT("coaxial_draws") uint32_t coaxial_draws(uint32_t state) { return (uint32_t)(uintptr_t)splice_state(state)->draws.e; }
 EXPORT("coaxial_draw_count") uint32_t coaxial_draw_count(uint32_t state) { return (uint32_t)splice_draw_count(at(state)); }
-EXPORT("coaxial_stores") uint32_t coaxial_stores(void) { return 2; }
-EXPORT("coaxial_store_cap") uint32_t coaxial_store_cap(int32_t k) { return k == 0 ? (uint32_t)sizeof world : (uint32_t)sizeof live; }
-EXPORT("coaxial_store") uint32_t coaxial_store(uint32_t state, int32_t k) { (void)state; return k == 0 ? (uint32_t)(uintptr_t)world : (uint32_t)(uintptr_t)live; }
+EXPORT("coaxial_stores") uint32_t coaxial_stores(void) { return 4; }
+EXPORT("coaxial_store_cap") uint32_t coaxial_store_cap(int32_t k) {
+  return k == 0 ? (uint32_t)sizeof world : k == 1 ? (uint32_t)sizeof live : k == 2 ? (uint32_t)sizeof pieces : (uint32_t)sizeof places;
+}
+EXPORT("coaxial_store") uint32_t coaxial_store(uint32_t state, int32_t k) {
+  (void)state;
+  return (uint32_t)(uintptr_t)(k == 0 ? world : k == 1 ? live : k == 2 ? pieces : places);
+}
 EXPORT("coaxial_store_bytes") uint32_t coaxial_store_bytes(uint32_t state, int32_t k) {
-  int64_t n = k == 0 ? splice_world_n(at(state)) : splice_live_n(at(state));
+  if (k == 3) { int64_t rows = splice_place_n(at(state)); return rows <= 0 ? 0u : (uint32_t)(rows * 8 * 4); }
+  int64_t n = k == 0 ? splice_world_n(at(state)) : k == 1 ? splice_live_n(at(state)) : splice_piece_n(at(state));
   return n <= 0 ? 0u : (uint32_t)(n * 6 * 4);
 }
-// The world is written once and copied to the GPU once.
+// The world and the kinds' meshes are written once and copied to the GPU once; the placed pieces'
+// rows are copied when an edit changes them.
 EXPORT("coaxial_store_version") uint32_t coaxial_store_version(uint32_t state, int32_t k) {
-  return k == 0 ? (uint32_t)splice_world_version(at(state)) : frames;
+  return k == 0 ? (uint32_t)splice_world_version(at(state)) : k == 1 ? frames : k == 2 ? (uint32_t)splice_piece_version(at(state)) : (uint32_t)splice_place_version(at(state));
 }
 
 // Keys and the pointer go to the game (WASD, E, F, the edit bay's keys and buttons).
