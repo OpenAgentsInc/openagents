@@ -58,7 +58,7 @@
 #load "../../metaverse-engine/ui/font.coax";
 #load "../../metaverse-engine/character/character-appearance.coax" as cc;
 #load "../../metaverse-engine/action/area-aim.coax" as aa;   // a placed area's ground targeting (Entangle), shared with Everglade II
-#load "everglade-link.coax";
+#load "old/v1/everglade-link.coax";
 #load "../../coax/web/analytics.coax";
 #load "../../metaverse-engine/cam/camera.coax";
 #load "../../everglade/legacy/v1/plan.coax";
@@ -71,42 +71,42 @@
 #load "../../everglade/legacy/v1/rumours.coax";
 #load "../../everglade/legacy/v1/watch.coax";
 #load "../../metaverse-engine/world/water-weather.coax";
-#load "everglade-voice.coax";
-#load "everglade-place.coax";
-#load "everglade-spells.coax";
-#load "everglade-watch.coax";
-#load "everglade-editor-npcs.coax";
-#load "everglade-guard-ai.coax";
-#load "everglade-guide.coax";
-#load "everglade-items.coax";
-#load "everglade-dress.coax";
-#load "everglade-interiors.coax";
-#load "everglade-doors.coax";
-#load "everglade-lod.coax";
-#load "everglade-sky.coax";
-#load "everglade-room.coax";
-#load "everglade-net.coax";
-#load "everglade-status.coax";   // what holds or marks each body: one state every status is drawn from (#12776)
-#load "everglade-move.coax";   // the movement step the page and the room server share (with everglade-step.coax)
-#load "everglade-fork.coax";   // FORK, and a fork's rules (docs/metaverse/realm-fork.md)
-#load "everglade-editor.coax";   // EDIT opens the realm editor's panels (docs/metaverse/aethyrforge.md)
-#load "everglade-stand.coax";   // what you stand on: roofs, rubble, the dome (metaverse-engine/physics/stand.coax)
-#load "everglade-track.coax";   // what players do, for analytics.coax
-#load "everglade-quality.coax";   // the graphics quality: tier, governor, knobs (metaverse-engine/core/quality.coax)
-#load "everglade-warlock.coax";   // the Warlock's bar, spells and Zombies (CHARACTER: WARLOCK)
-#load "everglade-classes.coax";   // Character Create's twelve SRD classes, each with its slot 1 (#13024)
-#load "everglade-raid-preview.coax";   // the Cultist Raid offline, a preview (?raid=preview, &cine=1 its flight)
-#load "everglade-character.coax";   // a detailed character through the host's character pass (?stage=echo)
+#load "old/v1/everglade-voice.coax";
+#load "old/v1/everglade-place.coax";
+#load "old/v1/everglade-spells.coax";
+#load "old/v1/everglade-watch.coax";
+#load "old/v1/everglade-editor-npcs.coax";
+#load "old/v1/everglade-guard-ai.coax";
+#load "old/v1/everglade-guide.coax";
+#load "old/v1/everglade-items.coax";
+#load "old/v1/everglade-dress.coax";
+#load "old/v1/everglade-interiors.coax";
+#load "old/v1/everglade-doors.coax";
+#load "old/v1/everglade-lod.coax";
+#load "old/v1/everglade-sky.coax";
+#load "old/v1/everglade-room.coax";
+#load "old/v1/everglade-net.coax";
+#load "old/v1/everglade-status.coax";   // what holds or marks each body: one state every status is drawn from (#12776)
+#load "old/v1/everglade-move.coax";   // the movement step the page and the room server share (with everglade-step.coax)
+#load "old/v1/everglade-fork.coax";   // FORK, and a fork's rules (docs/metaverse/realm-fork.md)
+#load "old/v1/everglade-editor.coax";   // EDIT opens the realm editor's panels (docs/metaverse/aethyrforge.md)
+#load "old/v1/everglade-stand.coax";   // what you stand on: roofs, rubble, the dome (metaverse-engine/physics/stand.coax)
+#load "old/v1/everglade-track.coax";   // what players do, for analytics.coax
+#load "old/v1/everglade-quality.coax";   // the graphics quality: tier, governor, knobs (metaverse-engine/core/quality.coax)
+#load "old/v1/everglade-warlock.coax";   // the Warlock's bar, spells and Zombies (CHARACTER: WARLOCK)
+#load "old/v1/everglade-classes.coax";   // Character Create's twelve SRD classes, each with its slot 1 (#13024)
+#load "old/v1/everglade-raid-preview.coax";   // the Cultist Raid offline, a preview (?raid=preview, &cine=1 its flight)
+#load "old/v1/everglade-character.coax";   // a detailed character through the host's character pass (?stage=echo)
 #load "../../metaverse-engine/render/cascades.coax";   // the key light's shadow cascades (#13016)
 #load "../../metaverse-engine/render/grass-root.coax" as gr_root;
-#load "everglade-sound.coax";   // the spells', the fight's, the raid's and the town's sound (#12751)
-#load "everglade-access.coax";   // SETTINGS: keys and a pad through one record, text size, captions, the accessible layer (#12857)
+#load "old/v1/everglade-sound.coax";   // the spells', the fight's, the raid's and the town's sound (#12751)
+#load "old/v1/everglade-access.coax";   // SETTINGS: keys and a pad through one record, text size, captions, the accessible layer (#12857)
 #load "../../metaverse/style-preset.coax";
 #load "../../metaverse-engine/core/budget.coax";
 #load "../../metaverse-engine/cam/flyover.coax";   // #fly=PATH: the flyover benchmark's camera (coax/web/flyover.coax, #13017)
-#load "everglade-glade.coax";   // the glade south of the South Gate, Character Create's, in this world (#13018)
+#load "old/v1/everglade-glade.coax";   // the glade south of the South Gate, Character Create's, in this world (#13018)
 #load "../../everglade/scene/charactercreator-font.coax";   // AR Kai C's advances, for Character Create's labels
-#load "everglade-create.coax";   // Character Create: this world in the studio at the glade's clearing (#13018)
+#load "old/v1/everglade-create.coax";   // Character Create: this world in the studio at the glade's clearing (#13018)
 
 VERTEX_FLOATS :: 16;   // a HUD stroke's vertex, as the Garden's
 MAX_VERTICES :: 30000;

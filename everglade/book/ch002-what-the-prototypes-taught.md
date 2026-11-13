@@ -33,7 +33,7 @@ What v1 settled, and Everglade II keeps:
   builds this step.
 - **Casting under latency.** v1's room checks range and line of sight when a
   cast starts and when it releases, with some slack for the time in between
-  ([`apps/openagents-web/everglade-cast-rules.coax`](../../apps/openagents-web/everglade-cast-rules.coax)).
+  ([`apps/openagents-web/old/v1/everglade-cast-rules.coax`](../../apps/openagents-web/old/v1/everglade-cast-rules.coax)).
   [Chapter 16](ch016-spells-and-slots.md) shows those rules.
 
 What Everglade II leaves behind: v1's town, map and speeds. v1 runs at

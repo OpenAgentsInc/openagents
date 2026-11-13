@@ -12,8 +12,8 @@ can take back.
 
 The code:
 
-- `apps/openagents-web/everglade-cast-rules.coax`: the numbers and the small rules both sides use.
-- `apps/openagents-web/everglade-cast-sight.coax`: line of sight, and how your page shows a refusal.
+- `apps/openagents-web/old/v1/everglade-cast-rules.coax`: the numbers and the small rules both sides use.
+- `apps/openagents-web/old/v1/everglade-cast-sight.coax`: line of sight, and how your page shows a refusal.
 - `coax/web/room/room-casts.coax`: how the room resolves a cast, phase by phase.
 - `coax/web/room/cast-check.coax` and `room-proof.coax cast`: the run against a room under a bad network.
 
@@ -186,7 +186,7 @@ WHY is one of `CR_WORDS`: `range`, `sight`, `gone`, `held`, `dead`, `busy`, `coo
 
 Unit tests, one or more for each rule:
 
-- `coax test --library apps/openagents-web/everglade-cast-rules.coax`: reach and slack, command
+- `coax test --library apps/openagents-web/old/v1/everglade-cast-rules.coax`: reach and slack, command
   age, the strike order, words and icons, the halting conditions.
 - `coax test apps/openagents-web/everglade5e.coax --only "cast sight"`: a house blocks the line,
   the wall you aim at and low pieces don't; a refusal cancels the bar and the sweep without text.

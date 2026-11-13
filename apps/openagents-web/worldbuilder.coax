@@ -31,7 +31,7 @@
 #load "../../components/skin/metaverse.coax";
 #load "../../components/backend/gpu.coax";
 #load "textkeys.coax";
-#load "worldbuilder-plan.coax";
+#load "worldbuilder/worldbuilder-plan.coax";
 #load "../../metaverse-engine/physics/ground-query.coax";
 #load "../../metaverse-engine/core/angle.coax";   // the one atan2 (#13460)
 

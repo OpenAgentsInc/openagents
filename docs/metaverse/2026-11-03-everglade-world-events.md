@@ -30,7 +30,7 @@ Related reading:
 - [The Everglade multiplayer spec](2026-11-03-everglade-multiplayer-spec.md): the room server
   (section 3), persistence (section 7) and admin edits (section 6.8).
 - The playable level 17 Warlock (#12734), whose spells the raid's leader casts.
-- The 5E Lab Siege (`apps/openagents-web/fivelab-siege.coax`,
+- The 5E Lab Siege (`apps/openagents-web/old/experimental/fivelab-siege.coax`,
   `rules/srd/npcs.coax`): the cult's stat blocks and its mix, which the raid reuses.
 
 ## Contents
@@ -216,7 +216,7 @@ Raiders run the room server's own cheap routine (section 9.3), not the Lab's ful
 rolls are the SRD engine's (`rs_roll_attack`, `rs_damage`, saving throws), and every roll goes to
 the room's log, as a player's does.
 
-The tactics are one shared file, `apps/openagents-web/everglade-raid-tactics.coax`. The room's raid
+The tactics are one shared file, `apps/openagents-web/old/v1/everglade-raid-tactics.coax`. The room's raid
 and the page's offline preview (`?raid=preview`) both follow it:
 
 - **Squads.** The raiders come in squads of 8, a squad to a gate. Each member has its own place in

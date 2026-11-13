@@ -173,7 +173,7 @@ LC_ROOM :: "coax/web/room/room.coax";
 LC_ROOM_FILES :: 2048;    // files in the room's closure tracked
 // Whether path is an Everglade v1 file the room must not load.
 lc_v1 :: (path: string) -> bool {
-  return lc_starts(path, "apps/openagents-web/everglade-") || lc_starts(path, "apps/openagents-web/everglade5e");
+  return lc_starts(path, "apps/openagents-web/old/v1/") || lc_starts(path, "apps/openagents-web/everglade-") || lc_starts(path, "apps/openagents-web/everglade5e");
 }
 // The v1 files in root's load closure, as `loads` (git grep's "FILE:LINE:#load ..." rows) has it:
 // each named once. How many.
@@ -1175,7 +1175,7 @@ LC_T_ALLOW :: "# seed\nengine-up metaverse-engine/net/latency.coax -> everglade/
 #test "the room's closure: an Everglade v1 file it reaches through another fails; everglade/shared/ and v1's own loads do not (#13346)" {
   loads := "coax/web/room/room.coax:3:#load \"room-a.coax\";\ncoax/web/room/room-a.coax:1:#load \"../../../everglade/shared/everglade-wire.coax\";\neverglade/shared/everglade-wire.coax:2:#load \"everglade-forest-profile.coax\";\napps/openagents-web/everglade.coax:9:#load \"everglade5e-rules.coax\";\n";
   #assert lc_room_v1(loads, LC_ROOM, LC_T_QUIET) == 0;
-  more := "coax/web/room/room-a.coax:2:#load \"../../../apps/openagents-web/everglade-cast-rules.coax\";\napps/openagents-web/everglade-cast-rules.coax:1:#load \"everglade5e-rules.coax\";\ncoax/web/room/room.coax:4:#load \"room-a.coax\";\n";
+  more := "coax/web/room/room-a.coax:2:#load \"../../../apps/openagents-web/old/v1/everglade-cast-rules.coax\";\napps/openagents-web/old/v1/everglade-cast-rules.coax:1:#load \"everglade5e-rules.coax\";\ncoax/web/room/room.coax:4:#load \"room-a.coax\";\n";
   joined: [4096] u8; n := 0;
   for c: loads { joined[n] = c; n += 1; }
   for c: more { joined[n] = c; n += 1; }

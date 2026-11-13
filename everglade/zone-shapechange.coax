@@ -8,7 +8,7 @@
 //   Space or the jump button: take off, then each press or hold beats the wings up
 //   Shift in the air: dive
 //   Fire Breath: hold its key (or finger) to aim, let go to breathe
-//   coax/bin/coax test --library apps/openagents-web/fivelab.coax --only "druid"
+//   coax/bin/coax test --library apps/openagents-web/old/experimental/fivelab.coax --only "druid"
 #load "shapeshift.coax";
 
 XD_LEVEL :: 17;

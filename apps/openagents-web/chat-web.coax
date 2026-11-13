@@ -51,11 +51,11 @@
 
 #load "../../components/kit/frames.coax";
 #load "../../components/kit/listing.coax";      // k_held, k_loading: another page held beside the side, and its loading screen
-#load "chat-tools.coax";                     // tool calls: what each is called, how it stands, a run drawn (#13481)
-#load "chat-hosted.coax";                    // our own tools for a Gemini message: the command table's reads, run as the person
+#load "chat/chat-tools.coax";                     // tool calls: what each is called, how it stands, a run drawn (#13481)
+#load "chat/chat-hosted.coax";                    // our own tools for a Gemini message: the command table's reads, run as the person
 #load "site-side.coax";                      // the side's rules: places, who is logged in, search, sections
 #load "settings-web.coax";                   // Settings in the shell: its sections, its search, Account, Limits, About
-#load "chat-settings.coax";                  // and the sections that are this module's state: Agents and models, Appearance
+#load "chat/chat-settings.coax";                  // and the sections that are this module's state: Agents and models, Appearance
 #load "../../components/backend/dom.coax";
 #load "../../coax/lib/gateway/types.coax";   // the request and the stream's events
 #load "../../coax/lib/gateway/chat.coax";    // Chat Completions: the request's body, a chunk

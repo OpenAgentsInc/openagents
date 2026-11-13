@@ -27,4 +27,4 @@ COUNT responses and their limits need a Coax implementation before that relay ad
 - [nostr/relay/message_server.coax](https://github.com/OpenAgentsInc/openagents/blob/main/nostr/relay/message_server.coax)
 - [nostr/relay/relay_server.coax](https://github.com/OpenAgentsInc/openagents/blob/main/nostr/relay/relay_server.coax)
 
-The page examples are in [nip-guide-observe.coax](https://github.com/OpenAgentsInc/openagents/blob/main/apps/openagents-web/nip-guide-observe.coax). Relay-only examples inspect NIP-11 metadata, not relay behavior. The catalog distinguishes native library, partial support and relay declarations.
+The page examples are in [nip-guide-observe.coax](https://github.com/OpenAgentsInc/openagents/blob/main/apps/openagents-web/nip/nip-guide-observe.coax). Relay-only examples inspect NIP-11 metadata, not relay behavior. The catalog distinguishes native library, partial support and relay declarations.

@@ -278,7 +278,7 @@ Check them:
 ```sh
 coax/bin/coax test metaverse-engine/action/archery.coax --library
 coax/bin/coax test everglade/longbow.coax --library
-COAX_NATIVE_CHECKS=1 coax/bin/coax test apps/openagents-web/fivelab.coax --only "experimental combat"
+COAX_NATIVE_CHECKS=1 coax/bin/coax test apps/openagents-web/old/experimental/fivelab.coax --only "experimental combat"
 COAX_NATIVE_CHECKS=1 coax/bin/coax test apps/openagents-web/archery-range.coax --only "archery range"
 coax/remote/remote.sh run -- coax/bin/coax test --library everglade/client/client.coax --only "e2 mouse"
 ```

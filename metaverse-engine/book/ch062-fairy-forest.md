@@ -68,7 +68,7 @@ bloom_at :: (f: *Forest, p: Vec3W) {
 - [fairy.coax](../../apps/openagents-web/fairy.coax) and `fairy.wgsl`:
   the page, drawn from the engine's five shapes (a ground of cells in store
   0, objects in store 1, the stream's nodes in store 2); the face does the
-  flight. Quests from the panes: `apps/openagents-web/fairyquest.coax`.
+  flight. Quests from the panes: `apps/openagents-web/fairy/fairyquest.coax`.
 - Edit rows: sparkles, grass, ridges; visitor tool: fly.
 
 Flight lives in the face, outside the controller, so its physics is not in

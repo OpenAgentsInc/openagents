@@ -3,7 +3,7 @@
 > **Status: unimplemented — design draft.** In the OpenAgents Metaverse Engine's space games today
 > every ship and AI reads authoritative positions directly (Belt 2200's
 > tactical layer, `tac_nearest_enemy` and `tac_lead` in
-> [`apps/openagents-web/belt-tactical.coax`](../../apps/openagents-web/belt-tactical.coax)).
+> [`apps/openagents-web/belt/belt-tactical.coax`](../../apps/openagents-web/belt/belt-tactical.coax)).
 > This chapter plans truth, signals, measurements and tracks as separate
 > data. Nothing here runs yet.
 
@@ -55,7 +55,7 @@ world to an agent; it has no accessor for truth.
 
 Belt 2200's tactical combat (`Tac`, `TacUnit`, `tac_step`,
 `tac_nearest_enemy`, `tac_lead` in
-[`apps/openagents-web/belt-tactical.coax`](../../apps/openagents-web/belt-tactical.coax))
+[`apps/openagents-web/belt/belt-tactical.coax`](../../apps/openagents-web/belt/belt-tactical.coax))
 targets and leads from current positions. [`metaverse-engine/physics/orbit.coax`](../physics/orbit.coax)
 gives geometric states only. Psionic's game-decision path
 ([`docs/metaverse/pylon-guard-decisions.md`](../../docs/metaverse/pylon-guard-decisions.md))

@@ -85,7 +85,7 @@ void probe_input(int mode, float result[3]) {{
     if case == "villa":
         figure_c, figure_h = directory / "Villafig.c", directory / "Villafig.h"
         with figure_c.open("wb") as output:
-            run([compiler, "c", str(ROOT / "apps/openagents-web/villafig.coax"), "--library", "--header", str(figure_h), *codegen], stdout=output)
+            run([compiler, "c", str(ROOT / "apps/openagents-web/villa/villafig.coax"), "--library", "--header", str(figure_h), *codegen], stdout=output)
         libraries.append(str(figure_c))
         # The production face deliberately keeps Figs opaque: its Place
         # and the realm's saved Place have different public C layouts.

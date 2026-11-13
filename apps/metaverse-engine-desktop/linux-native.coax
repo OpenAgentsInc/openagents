@@ -6,7 +6,7 @@
 // one Coder keeps (~/.openagents/coder/sessions, $CODER_HOME first).
 #load "linux-view.coax";
 #load "chat-run.coax";
-#load "../openagents-web/bitcoin-lab.coax";
+#load "../openagents-web/old/labs/bitcoin-lab.coax";
 #load "../../coax/lib/sys/proc.coax";
 #load "../../coax/lib/sys/fs.coax";
 #load "../../coax/lib/sys/args.coax";

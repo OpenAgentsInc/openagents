@@ -1,0 +1,64 @@
+// Everglade's cast rules under latency (GitHub #12790, epic #12718; spec
+// docs/metaverse/2026-11-04-everglade-cast-rules.md). The numbers and the small pure rules both sides use:
+// v1's room server resolved casts with them, and the page predicts with
+// them (everglade-net.coax, everglade-spells.coax). Reach, sight and the refusal words are Everglade's
+// shared cast limits (everglade/shared/cast-limits.coax, which the room loads alone); the rest here,
+// the cast bars, the wait and Repair, are v1's page's.
+//   coax/bin/coax test --library apps/openagents-web/old/v1/everglade-cast-rules.coax
+#load "../../../../everglade/shared/cast-limits.coax";
+
+// book:begin cast-rules
+// ---- time
+CR_WAIT :: 15;            // ticks (0.5 s, the room's EG_BANK) a cast waits for the inputs sent before it
+CR_SHOW :: 0.9;           // s a refused cast's bar shows its reason icon
+// Everglade's own four's cast bars (everglade/legacy/v1/srd5.coax srd_spell bar: Meteor Swarm, Thunderbolt,
+// Mega Thunderbolt, Water Orb). Every other cast has none: it is released as it starts.
+CR_BAR :: [4] f32.[2.5, 1.2, 0.5, 0.6];
+// Repair (R; everglade-repair.coax): a broken structure within reach stands again whole after its bar,
+// unless you move or are hurt first; then it waits a while. Its slots: the druid's and the Warlock's R.
+CR_REPAIR_SLOTS :: [2] int.[47, 70];
+CR_REPAIR_BAR :: 1.5;      // s
+CR_REPAIR_EVERY :: 8.0;    // s from one repair to the next
+CR_REPAIR_REACH :: 18.3;   // m (60 feet) from you to what you repair
+CR_REPAIR_MOVE :: 0.6;     // m you may shift on its bar
+// What a Repair names: a group of the town's pieces (a building, a house, a 16 m cell of the palisade or
+// the streets: everglade-spells.coax sp_group), or an admin's placed thing i as CR_REPAIR_PLACED0 + i.
+CR_REPAIR_PLACED0 :: 100000;
+CR_PLACED_MAX :: 64;       // an admin's placed things at most (everglade/world/edits.coax EG_EDIT_MAX)
+// book:end cast-rules
+
+// Ticks of cast bar for bar slot `slot` at `hz`: Everglade's four's (slots 0 to 3), else 0.
+cr_repair :: (slot: int) -> bool { return slot == CR_REPAIR_SLOTS[0] || slot == CR_REPAIR_SLOTS[1]; }
+cr_bar_ticks :: (slot: int, hz: int) -> int {
+  if cr_repair(slot) { return cast(int) floor(f32(CR_REPAIR_BAR) * f32(hz) + 0.5); }
+  if slot < 0 || slot >= CR_BAR.count { return 0; }
+  return cast(int) floor(CR_BAR[slot] * f32(hz) + 0.5);
+}
+// Whether a cast heard at tick `heard` (the server's), sent after input `seq` - 1, may start now: the
+// inputs before it are stepped (the first still queued is past it, or none is), or it waited CR_WAIT
+// ticks for them.
+cr_ready :: (seq: int, first_queued: int, queued: int, heard: int, now: int) -> bool {
+  return queued == 0 || first_queued > seq || now - heard >= CR_WAIT;
+}
+// The order two strikes of one tick go in: heals before harm, then the earlier start, then the one the
+// server heard first. Whether a goes before b.
+cr_before :: (a_helps: bool, a_start: int, a_order: int, b_helps: bool, b_start: int, b_order: int) -> bool {
+  if a_helps != b_helps { return a_helps; }
+  if a_start != b_start { return a_start < b_start; }
+  return a_order < b_order;
+}
+
+#test "cast rules: a cast waits for the inputs before it, half a second at most" {
+  #assert cr_ready(10, 0, 0, 100, 100);          // nothing queued
+  #assert !cr_ready(10, 8, 3, 100, 101);         // input 8 still to step
+  #assert cr_ready(10, 11, 2, 100, 101);         // only later inputs queued
+  #assert cr_ready(10, 8, 3, 100, 100 + CR_WAIT);
+}
+#test "cast rules: heals go before harm, then the earlier start, then the first heard" {
+  #assert cr_before(true, 9, 9, false, 1, 1) && !cr_before(false, 1, 1, true, 9, 9);
+  #assert cr_before(false, 3, 9, false, 4, 1) && cr_before(false, 4, 1, false, 4, 2) && !cr_before(false, 4, 2, false, 4, 1);
+}
+#test "cast rules: the bars are the four's and Repair's" {
+  #assert cr_bar_ticks(0, 30) == 75 && cr_bar_ticks(2, 30) == 15 && cr_bar_ticks(4, 30) == 0 && cr_bar_ticks(-1, 30) == 0;
+  #assert cr_repair(47) && cr_repair(70) && !cr_repair(48) && cr_bar_ticks(47, 30) == 45;
+}

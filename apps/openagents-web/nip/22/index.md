@@ -27,4 +27,4 @@ The typed reader reads structure. Callers still verify the original signature an
 - [coax/lib/nostr/nip22.coax](https://github.com/OpenAgentsInc/openagents/blob/main/coax/lib/nostr/nip22.coax)
 - [coax/lib/nostr/nip34-event.coax](https://github.com/OpenAgentsInc/openagents/blob/main/coax/lib/nostr/nip34-event.coax)
 
-The page examples are in [nip-guide-observe.coax](https://github.com/OpenAgentsInc/openagents/blob/main/apps/openagents-web/nip-guide-observe.coax). Relay-only examples inspect NIP-11 metadata, not relay behavior. The catalog distinguishes native library, partial support and relay declarations.
+The page examples are in [nip-guide-observe.coax](https://github.com/OpenAgentsInc/openagents/blob/main/apps/openagents-web/nip/nip-guide-observe.coax). Relay-only examples inspect NIP-11 metadata, not relay behavior. The catalog distinguishes native library, partial support and relay declarations.

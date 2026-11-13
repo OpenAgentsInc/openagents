@@ -8,10 +8,6 @@
 //        {"forget":true}                  forget the conversation
 //        {"task":...,"gated":true}        each command waits for an answer: {"answer":true,"ticket":N} or {"answer":false,"ticket":N,"why":"..."}
 //        {"task":...,"model":"gemini-4-argon","effort":"low"}   the owner's model and thinking level (Hydrogen and low by default)
-//        {"task":...,"intel":true}        the Coax compiler answers the action's questions, and an edit may name the hash it read
-//        {"task":...,"memory":true}       the working memory and its finish rule; the folder is "memory_dir", else the
-//                                          session's (~/.openagents/coder/sessions/ID.workmem, ID the "session" or this worker's)
-//        {"task":...,"coax":"PATH"}       the compiler intel asks ("" or none: the library's own search)
 //        {"embed":"TEXT","query":true}    a Vertex embedding of TEXT (a query's when query is set, else a document's)
 //   out  {"kind":"ready"}
 //        {"kind":"reply","text":"..."}    more of the reply as it streams
@@ -20,7 +16,6 @@
 //        {"kind":"view","path":"a.txt","found":true}
 //        {"kind":"ask","command":"rm -rf build","ticket":N}   a gated run's command, waiting for its answer
 //        {"kind":"ended","ending":"finished","text":"..."}
-//        {"kind":"aware","intel":{...},"memory":{...}}   after "ended", for a run with intel or memory (aware.coax mc_aw_report)
 //        {"kind":"embedding","values":[...]} or {"kind":"embedding","error":"..."}
 //
 // Each run's facts carry the earlier turns as "conversation". A command's long output is saved whole
@@ -43,6 +38,7 @@ cxproc_wall_us :: ()->int #foreign #effects(all);
 
 cxterm_byte :: (timeout_ms: int) -> int #foreign #effects(all);
 cxterm_write :: (s: [] u8) -> int #foreign #effects(all);
+cxproc_sleep_ms :: (ms: int) -> int #foreign #effects(all);
 
 MW_LINE :: 1048576;
 
@@ -144,16 +140,8 @@ mw_embed :: (k: [] MkKeys, text: string, query: bool, o: [] u8) {
   mw_send(o, n);
 }
 
-// After a run's end: its compiler and memory counts, when it had a mode on.
-mw_aware :: (run: [] McRun, o: [] u8) {
-  if run[0].aw.count == 0 { return; }
-  line := mc_aw_report(run[0].aw, run[0].l[..], o);
-  if line.count > 0 { mw_send(o, line.count); }
-}
-
 tool_main :: () -> int #export_c #effects(all) {
   run: [1] McRun; sb: [1] McStateBuffers; lb: [1] McLoopBuffers;
-  aw: [1] McAware; mdirb: [4096] u8; coaxb: [4096] u8; homeb: [4096] u8;   // the compiler's answers and the working memory (#13444, #13445)
   plan: [1] GwPlan; pb: [1] GwPlanBuffers; bench: [1] GwBench;
   k: [1] MkKeys; h: [1] MkTurns;
   facts: [32768] u8;
@@ -185,7 +173,6 @@ tool_main :: () -> int #export_c #effects(all) {
           if ev[i].ending == MC_END_FINISHED || ev[i].ending == MC_END_ASKED { mk_remember(h[..], ev[i].text); }
         }
         mw_event(ev[i], out[..]);
-        if ev[i].kind == MR_ENDED { mw_aware(run[..], out[..]); }
       }
     }
     b := cxterm_byte(ifx running then 10 else 200);
@@ -205,7 +192,7 @@ tool_main :: () -> int #export_c #effects(all) {
       if running {
         ev: [32] McRunEvent;
         n := mc_run_stop(run[..], ev[..]);
-        for i: 0..<n { mw_event(ev[i], out[..]); if ev[i].kind == MR_ENDED { mw_aware(run[..], out[..]); } }
+        for i: 0..<n { mw_event(ev[i], out[..]); }
         running = false;
       }
       continue;
@@ -229,7 +216,6 @@ tool_main :: () -> int #export_c #effects(all) {
             if ev[i].ending == MC_END_FINISHED || ev[i].ending == MC_END_ASKED { mk_remember(h[..], ev[i].text); }
           }
           mw_event(ev[i], out[..]);
-          if ev[i].kind == MR_ENDED { mw_aware(run[..], out[..]); }
         }
       }
       continue;
@@ -265,27 +251,12 @@ tool_main :: () -> int #export_c #effects(all) {
       run[0].ceiling=ceiling.value;
     }
     if profile!="danger-full-access" && profile!="read-only" && profile!="workspace-write" {mw_ended(out[..],"failed","unknown sandbox profile");continue;}
-    // the compiler's answers and the working memory, each off unless the message turns it on
-    intel := cl_bool(msg, "intel"); memory := cl_bool(msg, "memory");
-    run[0].aw = aw[0..<0];
-    if (intel.ok && intel.value) || (memory.ok && memory.value) {
-      mdir := cl_str(ar[..], msg, "memory_dir");
-      if memory.ok && memory.value && mdir.count == 0 {
-        session := cl_str(ar[..], msg, "session");
-        if session.count == 0 || ps_find(session, "/") >= 0 || session == "." || session == ".." { session = fs_base(cast(string) jp[0..<jn - 4]); }
-        mdir = wmf_dir(home, session, homeb[..]);
-      }
-      nm := mk_keep(mdirb[..], mdir); nx := mk_keep(coaxb[..], cl_str(ar[..], msg, "coax"));
-      why := mc_aw_start(aw[..], run[0].l[..], lb[..], intel.ok && intel.value, memory.ok && memory.value, cast(string) coaxb[0..<nx], cast(string) mdirb[0..<nm], cd, run[0].profile);
-      if why.count > 0 { mw_ended(out[..], "failed", why); continue; }
-      run[0].aw = aw[..];
-    }
     context:[32768]u8;nc:=json_raw(context[..],0,"{\"profile\":\"coder-owned-v1\",\"cwd\":");nc=json_write_string(context[..],nc,cd);
     nc=json_raw(context[..],nc,",\"session\":");nc=json_write_string(context[..],nc,cl_str(ar[..],msg,"session"));
     nc=json_raw(context[..],nc,",\"policy\":");policy:=cl_raw(msg,"policy");nc=json_raw(context[..],nc,ifx policy.count>0 then policy else "null");
     nc=json_raw(context[..],nc,",\"sandbox\":");nc=json_write_string(context[..],nc,run[0].profile);
-    nc=json_raw(context[..],nc,",\"system\":");nc=json_write_string(context[..],nc,run[0].l[0].system);
-    nc=json_raw(context[..],nc,",\"schema\":");nc=json_write_string(context[..],nc,run[0].l[0].schema);
+    nc=json_raw(context[..],nc,",\"system\":");nc=json_write_string(context[..],nc,MC_SYSTEM);
+    nc=json_raw(context[..],nc,",\"schema\":");nc=json_write_string(context[..],nc,MC_SCHEMA);
     nc=json_raw(context[..],nc,ifx run[0].gated then ",\"gated\":true}" else ",\"gated\":false}");
     if nc<0 || !jf_context(journal[..],cast(string)context[0..<nc]) {mw_ended(out[..],"failed","durable context failed; no request or tool started");continue;}
     plan[0].journal=journal[..];

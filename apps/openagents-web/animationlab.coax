@@ -1,2 +1,0 @@
-// Browser facade. Shared playback is in metaverse-engine/anim; stations in metaverse/animlab.
-#load "../../metaverse/animlab/stations.coax";

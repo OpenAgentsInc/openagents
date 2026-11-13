@@ -21,7 +21,7 @@ ESC_FILES :: [18] string.[
   "apps/openagents-web/site-side.coax",       // the site's side: its rules only; its look is the kit's (#13471)
   "apps/openagents-web/crew-pane.coax",       // Crew's pane has no look of its own either (#13462)
   "apps/openagents-web/crew-pane-face.c",
-  "apps/openagents-web/worldbuilder-world.coax",
+  "apps/openagents-web/worldbuilder/worldbuilder-world.coax",
   "metaverse-engine/editor/shell.coax",
   "metaverse-engine/editor/shell-assets.coax",
   "metaverse-engine/editor/shell-actors.coax",   // the actors: the time of day, the Actors list and a plan (#13466)

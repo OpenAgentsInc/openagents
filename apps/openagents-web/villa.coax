@@ -38,12 +38,12 @@
 #load "../../metaverse-engine/core/loop.coax" as realm_loop;
 #load "../../metaverse/planetary-villa/arrival.coax";
 #load "../../metaverse-engine/render/particles.coax";
-#load "villapet.coax";
-#load "villaplay.coax";
-#load "villaroom.coax";
-#load "villatips.coax";
-#load "villaguide.coax";   // the example stone, and the way to yours
-#load "villahekate.coax";
+#load "villa/villapet.coax";
+#load "villa/villaplay.coax";
+#load "villa/villaroom.coax";
+#load "villa/villatips.coax";
+#load "villa/villaguide.coax";   // the example stone, and the way to yours
+#load "villa/villahekate.coax";
 #load "place-orbit.coax";
 #load "../../metaverse/edit/edit.coax";   // EDIT for its owner and admins (docs/metaverse/realm-edit.md)
 #load "../../metaverse-engine/core/budget.coax";

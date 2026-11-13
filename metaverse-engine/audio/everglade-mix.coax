@@ -1,8 +1,8 @@
 // How Everglade's sounds mix (#12832): each sound's voice limit, whether it ducks the town's bed and
 // its level, and a cue (a sound at a world point, or at the listener) made into the host's lines
 // through the mixer (mix.coax): placed (the page from its camera with space.coax's au_place, the lab
-// on a flat field with egm_flat, the same law), varied, limited, sent some of it to the room. The page (apps/openagents-web/everglade-sound.coax) and Audio Lab's raid mix
-// (apps/openagents-web/audiolab.coax) both play through here, so the lab sounds as the game does.
+// on a flat field with egm_flat, the same law), varied, limited, sent some of it to the room. The page (apps/openagents-web/old/v1/everglade-sound.coax) and Audio Lab's raid mix
+// (apps/openagents-web/old/labs/audiolab.coax) both play through here, so the lab sounds as the game does.
 //   coax/bin/coax test metaverse-engine/audio/everglade-mix.coax --library
 // It loads no points.coax, so Audio Lab can load it beside projects.coax.
 #load "sfx.coax";

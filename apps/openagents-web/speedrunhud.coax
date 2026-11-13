@@ -31,9 +31,9 @@
 //   coax/bin/coax test apps/openagents-web/speedrunhud.coax
 
 #load "../../metaverse-engine/ui/draw.coax";   // the HUD library: hd_* instruments, lit, font.coax and metaverse-engine/ui/hud-frame.coax
-#load "speedrunhud-console.coax";   // the console round each stage, and the overlays for footage
-#load "speedrunhud-storm.coax";     // the payment storm (Lightning and Wavelength, simulated)
-#load "speedrunhud-ep200.coax";     // Episode 200: Reed's law and coalitions, the fleet
+#load "speedrunhud/speedrunhud-console.coax";   // the console round each stage, and the overlays for footage
+#load "speedrunhud/speedrunhud-storm.coax";     // the payment storm (Lightning and Wavelength, simulated)
+#load "speedrunhud/speedrunhud-ep200.coax";     // Episode 200: Reed's law and coalitions, the fleet
 
 MAX_VERTICES :: 160000;
 PANELS :: 16;            // glass panels a frame can fill (gpu/speedrunhud.coax reads as many)

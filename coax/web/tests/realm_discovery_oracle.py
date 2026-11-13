@@ -66,7 +66,7 @@ parser = MapParser(); parser.feed((APP / "realms/bitcoin-lab/map.fallback").read
 assert len(parser.rows) == len(chapters) == 125
 for row, link, chapter in zip(parser.rows, parser.links, chapters):
     assert row[0] == f'{chapter["number"]}. {chapter["title"]}'
-    # chapters 1, 4 and 5 are taught at the walk's stations (apps/openagents-web/bitcoin-lab-walk.coax)
+    # chapters 1, 4 and 5 are taught at the walk's stations (apps/openagents-web/old/labs/bitcoin-lab-walk.coax)
     assert row[2] == chapter["status"] and row[3] == ("at the stations" if chapter["number"] in (1, 4, 5) else "not available")
     if chapter["file"]:
         assert link.endswith("/bitcoin/book/" + chapter["file"])

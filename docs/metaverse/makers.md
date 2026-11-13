@@ -179,5 +179,5 @@ buyer's wallet straight to its maker's Lightning Address (owner decision D6,
 | --- | --- |
 | Rules and storage | `pay/makerpay-policy.coax` (paying), `coax/web/api/migrations/0077_fairy_upgrades.sql` (`makers.listings`, `makers.wearing`), `0154_maker_direct_pay.sql` |
 | Routes | `coax/web/api/makers.c` (`upgrades_route`) |
-| Checks | `coax/web/api/test_upgrades.py` (the fake Lightning Address services), the UPGRADE `#test`s in `apps/openagents-web/fairyupgrade.coax` |
-| Page | `apps/openagents-web/fairyupgrade.coax` (the button and pane), `fairy.coax` (`fairy_figure` draws a worn look), `fairy-face.c` (requests, the QR) |
+| Checks | `coax/web/api/test_upgrades.py` (the fake Lightning Address services), the UPGRADE `#test`s in `apps/openagents-web/fairy/fairyupgrade.coax` |
+| Page | `apps/openagents-web/fairy/fairyupgrade.coax` (the button and pane), `fairy.coax` (`fairy_figure` draws a worn look), `fairy-face.c` (requests, the QR) |

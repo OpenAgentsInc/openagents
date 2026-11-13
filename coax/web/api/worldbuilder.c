@@ -91,7 +91,7 @@ static const char WB_SYSTEM[] =
   "For a house, home or building use a whole building (house/...); the village/ pieces are parts of buildings.\n"
   "Catalogue (name|width,height,depth in metres|tags):\n";
 // The whole buildings: the village kit's pieces put together by the page
-// (apps/openagents-web/worldbuilder-plan.coax WB_PREFABS, the same names and sizes).
+// (apps/openagents-web/worldbuilder/worldbuilder-plan.coax WB_PREFABS, the same names and sizes).
 static const char WB_BUILDINGS[] =
   "house/cottage|5.51,7.25,5.56|house home cottage building plaster\n"
   "house/timber-house|5.53,7.09,5.56|house home building timber wood\n"

@@ -98,7 +98,7 @@ and capped by a budget.
 - [apps/openagents-web/gpu/particles.coax](../../apps/openagents-web/gpu/particles.coax):
   the instanced draw, the source of `particles.wgsl`.
 - [everglade/client/gpu/gpu-fx.coax](../../everglade/client/gpu/gpu-fx.coax) and
-  [apps/openagents-web/everglade-spells.coax](../../apps/openagents-web/everglade-spells.coax):
+  [apps/openagents-web/old/v1/everglade-spells.coax](../../apps/openagents-web/old/v1/everglade-spells.coax):
   spell fire and smoke in two passes.
 
 ## What it builds

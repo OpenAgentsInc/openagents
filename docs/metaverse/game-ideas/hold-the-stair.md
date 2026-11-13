@@ -90,14 +90,14 @@ other defenders, a life cleric heals the tower).
 |---|---|---|
 | SRD 5e dice, saves and damage types | The rules engine's dice | `rules/srd/rolls.coax` |
 | Creatures, armor class, hit points, attacks | Stat blocks and attack rolls | `rules/srd/rolls.coax` (`RsStatLine`, `rs_line_attack`) |
-| Spells with real effects | 48 spell slots: Fire Storm, Wall of Fire, Moonbeam, Magic Missile and the rest | `apps/openagents-web/everglade-spells.coax` |
+| Spells with real effects | 48 spell slots: Fire Storm, Wall of Fire, Moonbeam, Magic Missile and the rest | `apps/openagents-web/old/v1/everglade-spells.coax` |
 | Homing projectiles | WANTED 5's Magic Missile at a levitating player | Everglade |
 | Walls that break into rubble | Wall of Stone with AC and hit points; rubble damage | `metaverse/demolish.coax`, Everglade |
 | Red damage numbers | Rising red numbers over whoever takes damage | Everglade |
 | Waves of enemies on a rules engine | Dead Gears' waves, entities and event log | `metaverse/deadgears/rules.coax`, `metaverse/deadgears/ecs.coax` |
 | Walking a path | Characters following garden paths | `metaverse-engine/move/path-follower.coax` |
 | Placing things on a grid | Minecraft-style placing from the playtest redesign | `metaverse/edit/`, `metaverse-engine/cam/arrange.coax` |
-| Tap, long-press, drag to swap | Everglade's hotbar | `apps/openagents-web/everglade-hotbar.coax` |
+| Tap, long-press, drag to swap | Everglade's hotbar | `apps/openagents-web/old/v1/everglade-hotbar.coax` |
 
 ## What the engine needs
 

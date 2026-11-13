@@ -197,7 +197,7 @@ function demand(scene, view, flags) {
   return { want, edge };
 }
 
-// build/cullstream.wasm (apps/openagents-web/cullstream.coax): its memory is imported, as host.js
+// build/cullstream.wasm (apps/openagents-web/old/labs/cullstream.coax): its memory is imported, as host.js
 // gives an engine's, and its states sit above its own data and stack, one a stream.
 async function streams(count) {
   const r = await fetch("/build/cullstream.wasm"); if (!r.ok) throw new Error("cullstream.wasm " + r.status);

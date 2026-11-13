@@ -71,7 +71,7 @@ In production today:
 - **Presence.** Realms on the web post their position over HTTP to
   [coax/web/api/room.c](../../coax/web/api/room.c), which answers with the
   others from SQL. Fairy Forest
-  ([fairyroom.coax](../../apps/openagents-web/fairyroom.coax)) posts every
+  ([fairyroom.coax](../../apps/openagents-web/fairy/fairyroom.coax)) posts every
   0.25 seconds and draws the ten nearest others.
   [coax/web/presence-pair.coax](../../coax/web/presence-pair.coax) runs
   two headless Chromes and fails when either sees the other move later

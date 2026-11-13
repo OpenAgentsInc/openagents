@@ -2,7 +2,7 @@
 //
 //   coax/web/tool.sh metaverse/tools/fivemmo_hotbar.coax
 //
-// 5E MMO (apps/openagents-web/fivemmo.coax) gives each class the hotbar 5E Lab's has
+// 5E MMO (apps/openagents-web/old/v1/fivemmo.coax) gives each class the hotbar 5E Lab's has
 // (fivemmo-battle.coax abilities): every SRD 5e spell and class feature the engine plays. Its
 // slots look like Everglade's (everglade_hotbar.coax; the drawing is hotbar.coax's): a
 // game-icons.net SVG rasterized white, tinted and laid over a dark slot, its key on a dark tab in
@@ -13,7 +13,7 @@
 //   apps/openagents-web/realms/5e-mmo/hotbar/NAME-SIZE.jpg     an ability's icon, SIZE px a side
 //   apps/openagents-web/realms/5e-mmo/hotbar/key-K-SIZE.jpg    the tab of key K (1 to 9)
 //   apps/openagents-web/realms/5e-mmo/hotbar/NAME-card-Sx.jpg  its card at S device px a CSS px
-//   apps/openagents-web/fivemmo-hotbar.coax                    their names and sizes, for the page
+//   apps/openagents-web/old/v1/fivemmo-hotbar.coax                    their names and sizes, for the page
 //
 // A spell's card is its SRD 5.2.1 text (rules/srd/spells.coax), cut to its first
 // sentences; a feature's is the SRD 5.2.1 feature's own sentence. The icons' credits are in
@@ -31,7 +31,7 @@
 #load "hotbar.coax";
 
 FM_OUT :: "apps/openagents-web/realms/5e-mmo/hotbar";
-FM_TABLE :: "apps/openagents-web/fivemmo-hotbar.coax";
+FM_TABLE :: "apps/openagents-web/old/v1/fivemmo-hotbar.coax";
 FM_SRD :: "rules/srd/spells.coax";
 // A spent ability comes back this long after (fivemmo-battle.coax ACTION_RECHARGE).
 FM_BACK :: "Back 9 s after it is spent";

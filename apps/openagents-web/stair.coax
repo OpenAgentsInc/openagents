@@ -15,8 +15,8 @@
 #load "../../metaverse-engine/ui/font.coax";
 #load "../../coax/web/analytics.coax";
 #load "../../rules/srd/rolls.coax";   // the rules' dice, damage types and a stat block's one attack (#13269)
-#load "stair-tables.coax";
-#load "stair-coop.coax";
+#load "stair/stair-tables.coax";
+#load "stair/stair-coop.coax";
 #load "lockroom.coax";
 #load "../../metaverse-engine/core/budget.coax";
 #load "../../metaverse-engine/core/loop.coax";   // the fixed steps: the Metaverse Engine's one clock

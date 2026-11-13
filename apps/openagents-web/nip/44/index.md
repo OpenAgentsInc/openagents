@@ -31,4 +31,4 @@ These public test vectors are not permission to enter real keys. Production secr
 
 - [docs/verification/2026-10-30-nip44-conversation-key.md](https://github.com/OpenAgentsInc/openagents/blob/main/docs/verification/2026-10-30-nip44-conversation-key.md)
 
-The page examples are in [nip-guide-observe.coax](https://github.com/OpenAgentsInc/openagents/blob/main/apps/openagents-web/nip-guide-observe.coax). Relay-only examples inspect NIP-11 metadata, not relay behavior. The catalog distinguishes native library, partial support and relay declarations.
+The page examples are in [nip-guide-observe.coax](https://github.com/OpenAgentsInc/openagents/blob/main/apps/openagents-web/nip/nip-guide-observe.coax). Relay-only examples inspect NIP-11 metadata, not relay behavior. The catalog distinguishes native library, partial support and relay declarations.

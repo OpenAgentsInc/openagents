@@ -4,9 +4,9 @@
 #load "../lib/sys/tool.coax";
 #load "../lib/sys/fs.coax";
 #load "../lib/json/json.coax";
-#load "../../apps/openagents-web/bitcoin-lab-data.coax";
+#load "../../apps/openagents-web/old/labs/bitcoin-lab-data.coax";
 MapText :: struct {bytes:[2097152]u8;n:int;bad:bool;}
-// Whether a chapter is taught at one of the walk's stations (apps/openagents-web/bitcoin-lab-walk.coax).
+// Whether a chapter is taught at one of the walk's stations (apps/openagents-web/old/labs/bitcoin-lab-walk.coax).
 map_visual :: (n:int)->string {return ifx n==1||n==4||n==5 then "at the stations" else "not available";}
 MAP_STATIONS :: [7]string.["Chain","Transactions/UTXOs","Proof/Script","Node","Mempool/Mining","Wallets","Lightning"];
 map_add :: (b:[]MapText,s:string) {
@@ -104,7 +104,7 @@ tool_main :: ()->int #export_c #effects(all) {
     map_add(b[..],"\",station=");map_number(b[..],map_station(i+1));map_add(b[..],"},\n");
   }
   map_add(b[..],"];\n");
-  ok:=map_save(b[..],"apps/openagents-web/bitcoin-lab-chapters.coax",check);
+  ok:=map_save(b[..],"apps/openagents-web/old/labs/bitcoin-lab-chapters.coax",check);
   // Keep the hand-authored introduction; only the marked table is generated.
   intro:[131072]u8;k:=fs_read("apps/openagents-web/realms/bitcoin-lab/index.md",intro[..]);if k<0 {return 2;}
   text:=cast(string)intro[0..<k];marker:="<!-- generated chapter map -->\n";end:=0;

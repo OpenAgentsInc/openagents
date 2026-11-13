@@ -265,7 +265,7 @@ How it works:
   `PSIONIC_SYSTEMONE_URL` and `PSIONIC_SYSTEMONE_HOST=local` (Elephant on
   this Mac: no tunnel, no swap) come from the environment or
   `~/work/.secrets/psionic-responses.env`.
-- The HUD chat, its LAB and the Mammoth router (`apps/openagents-web/chat-hud.coax`,
+- The HUD chat, its LAB and the Mammoth router (`apps/openagents-web/chat/chat-hud.coax`,
   `router.coax`) stay in the tree, unshown; the app no longer builds them, and the
   Mac's `--route` check went with `Router.swift` (2026-11-11).
   `apps/openagents-web/chat.coax` is now openagents.com/chat drawn with the

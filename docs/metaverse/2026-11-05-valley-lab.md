@@ -440,7 +440,7 @@ No WGSL is written by hand.
   was made from.
 - Requests are one `u32` a page. Each LOD-passing cluster does `atomicMax` with
   its projected error. A frustum-culled or occluded one writes `KEEP = 1`.
-  `apps/openagents-web/cullstream.coax` passes them to `residency.coax` every
+  `apps/openagents-web/old/labs/cullstream.coax` passes them to `residency.coax` every
   frame, and the installed flags go back to the GPU.
 - Phase 1 tests each chosen cluster's box against last frame's depth pyramid
   and draws the visible ones with `drawIndirect`. The pyramid is then rebuilt
@@ -456,7 +456,7 @@ clusters, and the image doesn't change by a pixel. The receipt is
 
 Since #13051, pages stream into a fixed pool of GPU slots. Each scene's
 geometry is a VPK3 file with one page per DAG page. The page fetches each
-page by HTTP Range, and `apps/openagents-web/cullstream.coax` inflates it and
+page by HTTP Range, and `apps/openagents-web/old/labs/cullstream.coax` inflates it and
 admits it by its SHA-256. On install, Coax rewrites the page's triangle indices
 and its clusters' first triangles for the slot, and the host copies the bytes
 in. The shaders don't change.
@@ -641,7 +641,7 @@ working deep links; do not wait for milestone 6 to make the lab useful.
 Planned locations, to refine against existing APIs before adding files:
 
 - `metaverse/valley/`: original scene data, route, session, stations and encounter.
-- `apps/openagents-web/valleylab.coax` and `gpu/valleylab.coax`: thin realm
+- `apps/openagents-web/old/labs/valleylab.coax` and `gpu/valleylab.coax`: thin realm
   composition and Coax shader entry points using shared renderer contracts.
 - `metaverse-engine/render/geometry/`: reusable cluster, hierarchy, error, cut,
   visibility and page contracts; `metaverse-engine/world/`: chapter 38's shared cells,

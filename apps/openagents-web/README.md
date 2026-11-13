@@ -18,6 +18,37 @@ input and WebGPU. The [homepage notes](new-land/README.md) name the focused chec
 `font.coax` is Filament ([coax/font.md](../../coax/font.md)); HTML/Markdown twins
 carry accessible text. Visible UI is drawn in Coax.
 
+## Where a page's files live
+
+A page is one line of `build.sh`: its entry (`NAME.coax`), its face
+(`NAME-face.c`) and the units linked beside them.
+
+- **A live page's entry and face sit flat in this folder.** `coax/web/wasm.sh`,
+  the native builds (`metaverse/native/build.sh`) and the pass tools find them
+  by name.
+- **A live page's other files sit in a folder named for it**: `belt/`, `chat/`,
+  `crew/`, `fairy/`, `myrealm/`, `nip/`, `oneshot/`, `orbitleague/`, `realm/`,
+  `speedrunhud/`, `stair/`, `villa/`, `worldbuilder/`. Put a new part there.
+- **The old set is under `old/`** (#13269): `old/v1/` is v1 Everglade and the
+  5E pages on it, `old/experimental/` is Experimental and the 5E Lab,
+  `old/labs/` is the lab pages and the engine fixtures. The default build
+  makes none of them; `COAXIAL_PAGES=all` (a release) makes them all, and
+  `coax/remote/check.sh module NAME` makes one. Three entries stay flat
+  because a renderer carrier or a native build finds them by name:
+  `everglade.coax`, `everglade5e.coax` and `waterlab.coax`, each with its face.
+  [old/README.md](old/README.md) lists what only v1 loads.
+- **Flat for now**: the homepage's and the project pages' files (`newland*`,
+  `project*`), the Nostr Lab's (`nostr-lab*`), Anime Lab's (`animelab*`, which
+  Splice Bots loads), and what many pages share (`ui.coax`, `kit.coax`, `face.c`,
+  the `*-face.h` headers).
+- **What a browser fetches does not move.** Shaders (`.wgsl`), pages and data
+  keep their URLs.
+
+The move was scripted. To carry files that landed flat afterwards, name them
+in the script's tables and run it again; it moves only what still sits flat
+and rewrites every `#load`, `#include` and path that names a moved file. The
+script is attached to #13268.
+
 `/metaverse` is the OpenAgents Metaverse playtest's way in (`verse.coax`, `verse-face.c`,
 `verse.wgsl`, `data-page` 0): the landing, where PLAYTEST NOW opens the
 Haunted House. Its panels are the Haunted House's wood-and-bronze plates, not

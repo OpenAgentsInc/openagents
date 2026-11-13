@@ -6,7 +6,7 @@ watch comes in waves).
 
 ## In the realm
 
-FORK stands by Everglade's title plate (drawn in Coax, `apps/openagents-web/everglade-fork.coax`).
+FORK stands by Everglade's title plate (drawn in Coax, `apps/openagents-web/old/v1/everglade-fork.coax`).
 It opens a pane: a row for each rule set Everglade's code implements, ON or OFF by a tap, then
 FORK IT and CLOSE. FORK IT makes the fork and the page goes there. On a fork the button reads
 FORK OF EVERGLADE; its pane names the fork, says what it was forked from and who made that
@@ -67,5 +67,5 @@ records `forked_from {slug, rev}` (`migrations/0093_realm_documents.sql`; see re
 
 `coax/web/api/migrations/0075_realm_forks.sql`, `realms.c` (fork, publish), `npc.c` (a fork's
 voice edits), `test_realm_fork.py`; `coax/web/host.js` (the `fork` and `rules` facts);
-`apps/openagents-web/everglade-fork.coax` (its `#test`s), `everglade.coax`, `everglade-edit.coax`,
+`apps/openagents-web/old/v1/everglade-fork.coax` (its `#test`s), `everglade.coax`, `everglade-edit.coax`,
 `everglade-face.c`.

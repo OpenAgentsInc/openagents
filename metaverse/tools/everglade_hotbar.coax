@@ -13,7 +13,7 @@
 //   apps/openagents-web/realms/everglade/hotbar/NAME-bare-SIZE.jpg the icon without its key, for a slot moved
 //   apps/openagents-web/realms/everglade/hotbar/key-R-C-SIZE.jpg   the key tab of row R, column C, drawn over a moved slot
 //   apps/openagents-web/realms/everglade/hotbar/NAME-card-Sx.jpg   a slot's card at S device px a CSS px
-//   apps/openagents-web/everglade-hotbar.coax                       their names and sizes, for the page
+//   apps/openagents-web/old/v1/everglade-hotbar.coax                       their names and sizes, for the page
 //
 // The druid's bar, the Warlock's (wl-*) and Character Create's classes' slot 1 (cl-*, #13024).
 //
@@ -30,7 +30,7 @@
 #load "hotbar.coax";
 
 EG_OUT :: "apps/openagents-web/realms/everglade/hotbar";
-EG_TABLE :: "apps/openagents-web/everglade-hotbar.coax";
+EG_TABLE :: "apps/openagents-web/old/v1/everglade-hotbar.coax";
 // The keys' labels by place (row * 12 + column): the row's modifier and the column's key. A slot
 // moved on the bar (everglade-arrange.coax) takes the key of the place it is moved to.
 EG_ROW_MARK :: [4] string.["", "S", "C", "A"];

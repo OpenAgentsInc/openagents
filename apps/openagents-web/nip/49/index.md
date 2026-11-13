@@ -31,4 +31,4 @@ The complete ncryptsec backup format, normalization, secret erasure and producti
 
 - [docs/verification/2026-10-29-scrypt-nip49.md](https://github.com/OpenAgentsInc/openagents/blob/main/docs/verification/2026-10-29-scrypt-nip49.md)
 
-The page examples are in [nip-guide-observe.coax](https://github.com/OpenAgentsInc/openagents/blob/main/apps/openagents-web/nip-guide-observe.coax). Relay-only examples inspect NIP-11 metadata, not relay behavior. The catalog distinguishes native library, partial support and relay declarations.
+The page examples are in [nip-guide-observe.coax](https://github.com/OpenAgentsInc/openagents/blob/main/apps/openagents-web/nip/nip-guide-observe.coax). Relay-only examples inspect NIP-11 metadata, not relay behavior. The catalog distinguishes native library, partial support and relay declarations.

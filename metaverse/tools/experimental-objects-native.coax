@@ -1,5 +1,5 @@
 // Native witness of Experimental's world adapter; not an independent rules oracle.
-#load "../../apps/openagents-web/fivelab.coax";
+#load "../../apps/openagents-web/old/experimental/fivelab.coax";
 #load "../../coax/lib/sys/tool.coax";
 tool_main :: ()->int #export_c #effects(all) {
   s:[1]Lab;xc_test_lab(s[..],FB_CL_WIZARD,3.14159265);

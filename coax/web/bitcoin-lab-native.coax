@@ -1,6 +1,6 @@
 // Compiled native smoke of the real realm frame, independent of test evaluation.
 #import "Basic";
-#load "../../apps/openagents-web/bitcoin-lab.coax";
+#load "../../apps/openagents-web/old/labs/bitcoin-lab.coax";
 tool_main :: ()->int #export_c #effects(all) {
   s:[1]BitcoinLab;vertices:[LAB_VERTICES*12]f32;uniforms:[LAB_UNIFORMS]f32;
   n:=lab_frame(s[..],vertices[..],uniforms[..],1440,900,1,0,false);

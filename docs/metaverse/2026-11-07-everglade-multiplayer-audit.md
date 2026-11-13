@@ -35,7 +35,7 @@ The room is server-authoritative. It steps every seat at 30 Hz from that seat's 
 (`coax/web/room/room-everglade.coax`, `room-tick.c`, `room-world.c`). For Everglade, `room-world.c`
 runs a headless copy of the page's world, so the room's step is the page's step.
 
-The page predicts. The v1 client (`apps/openagents-web/everglade-net.coax`, `everglade5e-face.c`):
+The page predicts. The v1 client (`apps/openagents-web/old/v1/everglade-net.coax`, `everglade5e-face.c`):
 
 1. steps you at the room's rate (1/30 s), sending each step's input as the wire carries it;
 2. when a `D` row for your seat acknowledges a newer input, sets you where the room has you and

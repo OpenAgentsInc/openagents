@@ -8,7 +8,7 @@ Lockstep sends orders instead of authoritative state. Each peer waits for
 commits, applies orders in the same sequence and compares state hashes.
 [`lockroom.coax`](../../apps/openagents-web/lockroom.coax) supplies commits,
 orders, hash checks and snapshot repair; Belt 2200 uses it through
-[`belt-lockstep.coax`](../../apps/openagents-web/belt-lockstep.coax).
+[`belt-lockstep.coax`](../../apps/openagents-web/belt/belt-lockstep.coax).
 The guarantee needs the same seed, inputs and execution profile. It is not a
 cross-build or cross-architecture determinism guarantee.
 

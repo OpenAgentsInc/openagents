@@ -63,7 +63,7 @@ mic ─► voice host ─► words ─► director (decision model) ─► direc
 ### 1. Speech to text: the voice host on Psionic
 
 - The page's voice path is the one Everglade's voice edits use
-  (`apps/openagents-web/everglade-voice.coax`, `coax/web/voice.js`): hold to
+  (`apps/openagents-web/old/v1/everglade-voice.coax`, `coax/web/voice.js`): hold to
   talk (action 7 "on"), let go to end the turn ("end"), the voice host
   sends the final words back as message 50 `heard|WORDS`.
 - The voice host runs speech to text on Psionic's Whisper

@@ -35,7 +35,7 @@ once, in the engine, before any of the three:
    detection and impulse response.
 3. **Many units, cheaply.** The Dead Gears entity system
    (`metaverse/deadgears/ecs.coax`) and Everglade's level of detail
-   (`apps/openagents-web/everglade-lod.coax`) are the start. Belt 2200 and
+   (`apps/openagents-web/old/v1/everglade-lod.coax`) are the start. Belt 2200 and
    Hold the Stair both want hundreds to low thousands of moving things on a
    phone at 60 FPS: instanced drawing, simulation off the main thread, and
    spatial queries.

@@ -455,8 +455,8 @@ The vegetation module's 92 root mutants and the sky module's 54 are killed.
   ground, bounds, streets and clearings.
 - [apps/openagents-web/everglade.coax](../../apps/openagents-web/everglade.coax):
   Everglade's forest scatter (`TREE_SPACING`, 4.2 m).
-- [apps/openagents-web/myrealm-shapes.coax](../../apps/openagents-web/myrealm-shapes.coax)
-  and [myrealm-site.coax](../../apps/openagents-web/myrealm-site.coax):
+- [apps/openagents-web/myrealm/myrealm-shapes.coax](../../apps/openagents-web/myrealm/myrealm-shapes.coax)
+  and [myrealm-site.coax](../../apps/openagents-web/myrealm/myrealm-site.coax):
   made-realm composition, and a site laid out round a middle.
 - [docs/metaverse/realm-builder.md](../../docs/metaverse/realm-builder.md),
   "Composition": the placement rules for made realms.

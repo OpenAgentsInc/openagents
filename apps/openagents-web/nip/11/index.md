@@ -31,4 +31,4 @@ A supported_nips list is a declaration, not a conformance proof. Production and 
 
 - [docs/verification/2026-10-29-coax-relay-r1.md](https://github.com/OpenAgentsInc/openagents/blob/main/docs/verification/2026-10-29-coax-relay-r1.md)
 
-The page examples are in [nip-guide-observe.coax](https://github.com/OpenAgentsInc/openagents/blob/main/apps/openagents-web/nip-guide-observe.coax). Relay-only examples inspect NIP-11 metadata, not relay behavior. The catalog distinguishes native library, partial support and relay declarations.
+The page examples are in [nip-guide-observe.coax](https://github.com/OpenAgentsInc/openagents/blob/main/apps/openagents-web/nip/nip-guide-observe.coax). Relay-only examples inspect NIP-11 metadata, not relay behavior. The catalog distinguishes native library, partial support and relay declarations.

@@ -68,8 +68,8 @@ k="$HOME/.openagents/verse/private-build/kokiri"
 coax/web/tool.sh metaverse/tools/kokiri-bundle.coax "$out" "$k/scene-v4" \
   "$k/scene-model" "$k/atlas-final" "$tex" "$k/terrain-decoded/world-collision.kcg" \
   "$HOME/.openagents/verse/private-build/web/ocarina-lab.pack" "$k/atlas-final"
-coax/web/wasm.sh apps/openagents-web/ocarinalab.coax \
-  apps/openagents-web/ocarinalab-face.c apps/openagents-web/build/ocarinalab.wasm
+coax/web/wasm.sh apps/openagents-web/old/labs/ocarinalab.coax \
+  apps/openagents-web/old/labs/ocarinalab-face.c apps/openagents-web/build/ocarinalab.wasm
 coax/web/tool.sh coax/web/wgsl-module.coax apps/openagents-web/gpu/ocarinalab.coax \
   apps/openagents-web/ocarinalab.wgsl apps/openagents-web/gpu/ocarinalab.module
 ```

@@ -1,0 +1,230 @@
+// /chat's frames, pinned: the demo conversation (closed, opened, the table
+// reply, the new-chat composer with its menu) painted with a fixed atlas and
+// the vertex buffer hashed. The component system's phases (components/spec.md,
+// GitHub #13153) move code between layers without changing what is drawn:
+// the same input must give the same floats, so these hashes stay as they are
+// until a change means to move a pixel, and then they change in that commit.
+//   coax/bin/coax test apps/openagents-web/chat/chat-frames.coax --only frames
+
+#load "../chat.coax";
+
+// A fixed atlas with uneven advances and some kerning, so wrapping, kerning
+// and subpixel placement all show in the floats.
+cf_atlas :: (a: [] Atlas) {
+  gp_set_atlas(a, 4096, 4096, 2);
+  sizes := FONT_SIZES;
+  for k: 0..<GP_FONTS {
+    sz := sizes[k];
+    a[0].fonts[k].size = sz; a[0].fonts[k].ascent = floor(sz * 0.93 + 0.5); a[0].fonts[k].descent = floor(sz * 0.22 + 0.5);
+    a[0].fonts[k].cell = 64; a[0].fonts[k].pen_x = 8; a[0].fonts[k].pen_y = 44; a[0].fonts[k].y0 = cast(f32) k * 256; a[0].fonts[k].cols = 64;
+    mono := k == FONT_MONO_14 || k == FONT_CODE || k == FONT_MONO_12 || k == FONT_MONO_11;
+    for g: 0..<GP_GLYPHS {
+      a[0].fonts[k].advance[g] = ifx mono then sz * 0.6 else sz * (0.36 + cast(f32) ((g * 7 + k) % 9) * 0.04);
+    }
+    if !mono {
+      a[0].fonts[k].kern[glyph_of('T') * GP_GLYPHS + glyph_of('o')] = -sz * 0.07;
+      a[0].fonts[k].kern[glyph_of('r') * GP_GLYPHS + glyph_of('.')] = -sz * 0.05;
+      a[0].fonts[k].kern[glyph_of('e') * GP_GLYPHS + glyph_of('d')] = sz * 0.01;
+    }
+  }
+  for k: 0..<GP_ICONS { gp_set_icon(a, k, cast(f32) (k % 8) * 40, 3200 + cast(f32) (k / 8) * 40, 32, 32); }
+  gp_set_dynamic(a, 48, 10, 34, 3500, 80, 20, 1024, 256);
+}
+
+// A hash of the vertices' floats in 1/4096ths (positions land on quarter
+// device pixels, colors on bytes), with the vertex count in its low digits.
+cf_hash :: (out: [] f32, n: int) -> int {
+  h := 7;
+  for k: 0..<n * GP_VERTEX_FLOATS { h = (h * 1000003 + cast(int) floor(out[k] * 4096 + 0.5) + k) & 0xFFFFFFFFFF; }
+  return h * 100000 + n;
+}
+
+CF_VERTICES :: 30000;
+CfOut :: struct { v: [840000] f32; }   // CF_VERTICES * GP_VERTEX_FLOATS
+
+cf_start :: (h: [] WcHost) {
+  fresh: WcState; h[0].s[0] = fresh;   // every scene starts from nothing
+  coaxial_chat_bind(h);
+  s := h[0].s[..];
+  wc_init(s); s[0].golden = true;
+  cf_atlas(s[0].atlas[..]);
+}
+cf_frame :: (h: [] WcHost, o: [] CfOut, w: f32, ht: f32, d: f32) -> int {
+  u: [4] f32;
+  n := wc_frame(h[0].s[..], o[0].v[..], u[..], w, ht, d, 0.016);
+  return cf_hash(o[0].v[..], n);
+}
+
+// The scenes. Each returns its frame's hash.
+// 0: the demo conversation as it opens. 1: its groups and three chips open,
+// scrolled. 2: the same on a phone at density 1.
+cf_demo :: (h: [] WcHost, o: [] CfOut, scene: int) -> int {
+  cf_start(h);
+  s := h[0].s[..];
+  wc_demo(s);
+  if scene == 0 { return cf_frame(h, o, 2560, 1600, 2); }
+  t := s[0].transcript[..];
+  t_set_open(t, 0, -1, true); t_set_open(t, 0, 0, true); t_set_open(t, 0, 3, true); t_set_open(t, 0, 4, true);
+  t_set_open(t, 1, -1, true);
+  x := cf_frame(h, o, 2560, 1600, 2);
+  t_scroll_to(t, 120);
+  if scene == 1 { return cf_frame(h, o, 2560, 1600, 2); }
+  return cf_frame(h, o, 390, 800, 1);
+}
+CF_REPLY :: "> # Quoted\n>\n> a quoted **paragraph** with `code`\n> - point\n\n1. one\n2. two\n   - nested item that is long enough to wrap onto a second line in a narrow column, so it does\n\nA naive cafe — and more.";
+// 0: the table reply, a quote, lists, two notices and the working trailer. 1: with a selection across rows.
+cf_table :: (h: [] WcHost, o: [] CfOut, scene: int) -> int {
+  cf_start(h);
+  s := h[0].s[..];
+  wc_demo(s);
+  t := s[0].transcript[..];
+  t_reset(t);
+  t_table_demo(t);
+  t_text(t, CF_REPLY);
+  k := t_notice(t, N_ERROR, "The run failed: the model returned an error after a long wait.");
+  k = t_notice(t, N_ASK, "Run `cargo test`?");
+  t[0].working = true; t[0].work_secs = 75;
+  x := cf_frame(h, o, 1280, 900, 1);
+  if scene == 0 { return x; }
+  t[0].has_sel = true; t[0].anchor = SelPos.{line = t[0].nsel - 14, off = 3}; t[0].focus = SelPos.{line = t[0].nsel - 4, off = 5};
+  return cf_frame(h, o, 1280, 900, 1);
+}
+// 0: the new-chat composer, empty. 1: with two lines typed. 2: its model menu open.
+cf_new :: (h: [] WcHost, o: [] CfOut, scene: int) -> int {
+  cf_start(h);
+  s := h[0].s[..];
+  s[0].status = 200;
+  x := cf_frame(h, o, 1440, 900, 2);
+  if scene == 0 { return x; }
+  wc_typed(s, "Explain how the transcript lays out a table, then\nwrite the check for it.");
+  x = cf_frame(h, o, 1440, 900, 2);
+  if scene == 1 { return x; }
+  wc_chip(s, CH_MODEL);
+  return cf_frame(h, o, 1440, 900, 2);
+}
+
+#test "frames: the demo conversation as it opens" #steps 200000000 {
+  h: [1] WcHost; o: [1] CfOut;
+  #assert cf_demo(h[..], o[..], 0) == 106710439169503552;
+}
+#test "frames: the demo with its groups and three chips open, scrolled" #steps 200000000 {
+  h: [1] WcHost; o: [1] CfOut;
+  #assert cf_demo(h[..], o[..], 1) == 88335731829705892;
+}
+#test "frames: the opened demo on a phone at density 1" #steps 200000000 {
+  h: [1] WcHost; o: [1] CfOut;
+  #assert cf_demo(h[..], o[..], 2) == 74379182179705808;
+}
+#test "frames: the table reply, a quote, lists, two notices and the working trailer" #steps 200000000 {
+  h: [1] WcHost; o: [1] CfOut;
+  #assert cf_table(h[..], o[..], 0) == 6096006678903090;
+}
+#test "frames: a selection across those rows" #steps 200000000 {
+  h: [1] WcHost; o: [1] CfOut;
+  #assert cf_table(h[..], o[..], 1) == 87509957226503156;
+}
+#test "frames: the new-chat composer, empty" #steps 200000000 {
+  h: [1] WcHost; o: [1] CfOut;
+  #assert cf_new(h[..], o[..], 0) == 29067752412901170;
+}
+#test "frames: the new-chat composer with two lines typed" #steps 200000000 {
+  h: [1] WcHost; o: [1] CfOut;
+  #assert cf_new(h[..], o[..], 1) == 30046082436101404;
+}
+#test "frames: the new-chat composer with its model menu open" #steps 200000000 {
+  h: [1] WcHost; o: [1] CfOut;
+  #assert cf_new(h[..], o[..], 2) == 69069390256101722;
+}
+
+// Theme (GitHub #13230). Every colour a frame's vertices paint, fills and
+// edges, the visible ones, added to set (m so far); the new count.
+cf_colours :: (out: [] f32, n: int, set: [] Rgba, m: int) -> int {
+  k := m;
+  for v: 0..<n {
+    for at: [2] int.[12, 16] {
+      o := v * GP_VERTEX_FLOATS + at;
+      c := Rgba.{r = out[o], g = out[o + 1], b = out[o + 2], a = out[o + 3]};
+      if c.a <= 0 || k >= set.count { continue; }
+      seen := false;
+      for j: 0..<k { if set[j].r == c.r && set[j].g == c.g && set[j].b == c.b && set[j].a == c.a { seen = true; } }
+      if !seen { set[k] = c; k += 1; }
+    }
+  }
+  return k;
+}
+// The page in one skin, kept as this browser would give it back: the new
+// chat with the sidebar, KEY open over it, Theme's menu open; then the demo
+// conversation with its groups open. Their colours into set; the count.
+cf_dressed :: (h: [] WcHost, o: [] CfOut, id: int, set: [] Rgba) -> int {
+  cf_start(h);
+  s := h[0].s[..];
+  s[0].golden = false; s[0].kept = id; s[0].kept_set = true; s[0].status = 200;
+  u: [4] f32;
+  m := cf_colours(o[0].v[..], wc_frame(s, o[0].v[..], u[..], 1440, 900, 2, 0.016), set, 0);
+  wc_act(s, WH_KEY); wc_act(s, WH_THEME);
+  m = cf_colours(o[0].v[..], wc_frame(s, o[0].v[..], u[..], 1440, 900, 2, 0.016), set, m);
+  wc_demo(s);
+  t := s[0].transcript[..];
+  t_set_open(t, 0, -1, true); t_set_open(t, 0, 0, true); t_set_open(t, 1, -1, true);
+  return cf_colours(o[0].v[..], wc_frame(s, o[0].v[..], u[..], 1440, 900, 2, 0.016), set, m);
+}
+
+#test "Theme: in each other skin the whole page, chrome and all, paints none of Zeron's colours" #steps 2000000000 {
+  h: [1] WcHost; o: [1] CfOut;
+  z: [2048] Rgba; e: [2048] Rgba;
+  nz := cf_dressed(h[..], o[..], UISKIN_ZERON, z[..]);
+  #assert nz > 12;
+  for id: 1..<UISKINS {
+    ne := cf_dressed(h[..], o[..], id, e[..]);
+    #assert ne > 8 && wc_skin(h[0].s[..]).id == id;
+    shared := 0;
+    for j: 0..<ne { for i: 0..<nz { if z[i].r == e[j].r && z[i].g == e[j].g && z[i].b == e[j].b && z[i].a == e[j].a { shared += 1; } } }
+    #assert shared == 0;
+  }
+}
+
+#test "Theme: its menu lists every skin; a pick dresses the page and this browser keeps it; golden mode stays Zeron" #steps 600000000 {
+  h: [1] WcHost; o: [1] CfOut;
+  cf_start(h[..]);
+  s := h[0].s[..]; p := s[0].picker[..];
+  s[0].golden = false; s[0].status = 200;
+  x := cf_frame(h[..], o[..], 390, 844, 2);                      // a phone: Theme beside Key in the titlebar
+  k := wc_hit_index(s, WH_THEME);
+  #assert k >= 0 && wc_skin(s).id == UISKIN_ZERON;
+  b := s[0].hits[k];
+  kk := wc_hit_index(s, WH_KEY);
+  #assert kk >= 0 && b.y < 40 && b.x + b.w <= s[0].hits[kk].x;
+  // press and release Theme: the access menu's card with the four skins, Zeron checked
+  #assert coaxial_chat_pointer(s, (b.x + 4) * 2, (b.y + 4) * 2, 0, 1);
+  _ = coaxial_chat_pointer(s, (b.x + 4) * 2, (b.y + 4) * 2, 2, 1);
+  #assert s[0].theming && p[0].kind == PK_ACCESS_MENU && s[0].skins[0].access == UISKINS && wc_menu_sel(s).access == UISKIN_ZERON;
+  x = cf_frame(h[..], o[..], 390, 844, 2);
+  #assert p[0].rows == UISKINS && p[0].x >= 0 && p[0].x + p[0].w <= 390;
+  // the Metaverse's row: the menu closes, the page wears the Metaverse, the host keeps its name
+  #assert coaxial_chat_pointer(s, (p[0].x + 20) * 2, (p[0].row_y[2] + 5) * 2, 0, 1);
+  #assert !pk_is_open(p) && !s[0].theming && s[0].skin_id == UISKIN_VERSE;
+  #assert s[0].action == WC_KEEP && cast(string) s[0].outbox[0..<s[0].out_n] == "verse";
+  x = cf_frame(h[..], o[..], 390, 844, 2);
+  #assert wc_skin(s).id == UISKIN_VERSE && composer_skin(s[0].composer[..]).id == UISKIN_VERSE && pk_skin(p).id == UISKIN_VERSE;
+  // the keyboard: Theme's menu, Down to the terminal, Enter
+  wc_act(s, WH_THEME);
+  #assert coaxial_chat_key(s, KEY_DOWN, 0) && coaxial_chat_key(s, KEY_ENTER, 0) && s[0].skin_id == UISKIN_TERMINAL;
+  x = cf_frame(h[..], o[..], 390, 844, 2);
+  #assert wc_skin(s).id == UISKIN_TERMINAL && wc_skin(s).body.face == FONT_MONO_14;
+  // the next visit: the kept name comes back as message 4 and is worn from the first frame
+  cf_start(h[..]); s[0].golden = false; s[0].status = 200;
+  kn := 0;
+  for c: "everglade" { s[0].inbox[kn] = c; kn += 1; }
+  coaxial_chat_message(s, WC_KEPT, kn);
+  x = cf_frame(h[..], o[..], 1440, 900, 2);
+  #assert wc_skin(s).id == UISKIN_EVERGLADE && s[0].skin_id == UISKIN_EVERGLADE;
+  wc_act(s, WH_THEME);
+  #assert s[0].picker[0].active == UISKIN_EVERGLADE;   // the keyboard's highlight starts on the skin worn
+  // golden mode is always Zeron, whatever was kept, and keeps nothing
+  cf_start(h[..]); s[0].status = 200;
+  s[0].kept = UISKIN_VERSE; s[0].kept_set = true;
+  x = cf_frame(h[..], o[..], 1440, 900, 2);
+  #assert wc_skin(s).id == UISKIN_ZERON;
+  wc_choose_skin(s, UISKIN_EVERGLADE);
+  #assert s[0].action != WC_KEEP;
+}

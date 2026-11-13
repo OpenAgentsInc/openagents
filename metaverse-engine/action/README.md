@@ -90,5 +90,5 @@ coax/bin/coax test metaverse-engine/action/sensor.coax --library
 coax/bin/coax test metaverse-engine/action/react.coax --library
 coax/bin/coax test metaverse-engine/action/break.coax --library
 coax/bin/coax test metaverse-engine/state/fixture.coax --library
-coax/bin/coax test --library apps/openagents-web/fivelab.coax --only "experimental combat"
+coax/bin/coax test --library apps/openagents-web/old/experimental/fivelab.coax --only "experimental combat"
 ```

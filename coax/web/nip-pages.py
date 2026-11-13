@@ -106,7 +106,7 @@ The page draws its observations in Coax on WebGPU. Its examples are fixed public
 {sources}
 '''
         if evidence:text+='\n## Verification records\n\n'+evidence+'\n'
-        implementation='apps/openagents-web/nip01-verify.coax' if number==1 else 'apps/openagents-web/nip-guide-observe.coax'
+        implementation='apps/openagents-web/nip/nip01-verify.coax' if number==1 else 'apps/openagents-web/nip/nip-guide-observe.coax'
         text+='\nThe page examples are in ['+implementation.split('/')[-1]+']('+link(implementation)+'). Relay-only examples inspect NIP-11 metadata, not relay behavior. The catalog distinguishes native library, partial support and relay declarations.\n'
         files[directory/'index.md']=text
         content=f'<h1>NIP-{number:02}: {html.escape(r["title"])}</h1>\n<p>{html.escape(r["summary"])}</p>\n<h2>Implementation</h2>\n<p>{html.escape(r["coverage"])}</p>\n<h2>Example</h2>\n<p>{html.escape(r["demo_scope"])}</p>\n<h2>What remains</h2>\n<p>{html.escape(r["gap"])}</p>\n<p><a href="/nip">All implemented NIPs</a> · <a href="{path}/index.md">Full write-up and source links</a></p>'

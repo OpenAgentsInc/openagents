@@ -286,7 +286,7 @@ the step you are on show under the title with how far it is, and a QUEST
 mark with the distance stands over where it sends you. Several can be under
 way at once; the HUD follows the one you last moved on.
 
-**The first goal** (`apps/openagents-web/everglade-guide.coax` `eg_first_*`): until
+**The first goal** (`apps/openagents-web/old/v1/everglade-guide.coax` `eg_first_*`): until
 a quest is taken, the same place under the title shows the first thing to do:
 TALK TO BRAM AT THE SOUTH GATE (a BRAM mark with the distance over him), then
 CALL DOWN A METEOR SWARM, then READ THE QUEST BOARD ON THE COMMONS (marked over
@@ -627,7 +627,7 @@ stone and iron half from fire, poison and psychic do nothing). A realm
 without a ruleset gets none of this: no bar, nothing breaks. `realms.ts`
 refuses a ruleset it doesn't know.
 
-**The bar** (`apps/openagents-web/everglade-spells.coax`) is the previous
+**The bar** (`apps/openagents-web/old/v1/everglade-spells.coax`) is the previous
 Rust engine's Everglade destruction bar (hotbar.rs DEV_ORDER; meteor.rs's
 numbers), along the bottom over the hint, five slots at most:
 
@@ -843,7 +843,7 @@ turns.
 
 An admin gets EDIT beside MAP at the top right (B on a keyboard); nobody
 else does. Edit mode is the Haunted House's (`realm.coax` draw_edit), in
-`apps/openagents-web/everglade-edit.coax`: EDITING over the middle with what
+`apps/openagents-web/old/v1/everglade-edit.coax`: EDITING over the middle with what
 just happened, and along the bottom the hotbar CRATE, BARREL, BENCH, FENCE,
 STALL (1 to 5 place one in front of you), UNDO (Z), REDO (Y), ORIGINAL and
 DONE (B or Esc). Click or tap a placed thing to pick it; its row moves it
@@ -893,7 +893,7 @@ WAITING"). The planner is `gemini-2.5-flash` with its thinking off
 `verse.voice_edits.ms_taken` keeps the time both took. One at a time
 means one with the model, so the next sentence goes the moment the last
 is answered. The page does the edit
-(`everglade/world/edits.coax`, `apps/openagents-web/everglade-voice.coax`):
+(`everglade/world/edits.coax`, `apps/openagents-web/old/v1/everglade-voice.coax`):
 a row starts clear of you (your radius, a margin and half the thing) and
 goes further out where it doesn't fit, saying how many didn't; it refuses
 a place in a building, the woods or another thing; and publishes the edits as
@@ -939,7 +939,7 @@ sack, apple crate, carrots, pot, bucket, lantern, cart, vase, table, chair,
 stool, anvil, cauldron, training dummy, weapon rack, banner, coins, sign,
 bush, flowers, rock, rock pile, hay pile, stone wall, crops, house, shed
 and tower, each with its size for the model. Most are the kits' pieces
-(`apps/openagents-web/everglade-items.coax`); the pack gained 12 of them
+(`apps/openagents-web/old/v1/everglade-items.coax`); the pack gained 12 of them
 (the textures they use were already in it; the budget rose by their
 596,364 bytes to 8,700,000): the heavier props (the chest, the iron fence, the wall lantern, the
 apple barrel) were left out to keep that rise small. Where the kits have

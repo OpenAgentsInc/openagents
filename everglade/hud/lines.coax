@@ -4,7 +4,7 @@
 // and its most, a roster row, the log, the frame rate's corner, a thumb's stick, and where the top
 // buttons, the picker and the hotbar go. Plain data in, vertices out. A zone loads this beside
 // font.coax and charactercreator.coax as cc (lines are cc.lit's).
-//   coax/bin/coax test apps/openagents-web/fivelab.coax --only "ln "
+//   coax/bin/coax test apps/openagents-web/old/experimental/fivelab.coax --only "ln "
 
 Rect :: struct { x0: f32; y0: f32; x1: f32; y1: f32; }
 Col :: struct { r: f32; g: f32; b: f32; }

@@ -50,9 +50,9 @@ them, and every engine improvement reaches all of them at once.
 ## What exists today
 
 - [myrealm.coax](../../apps/openagents-web/myrealm.coax),
-  [myrealm-shapes.coax](../../apps/openagents-web/myrealm-shapes.coax)
+  [myrealm-shapes.coax](../../apps/openagents-web/myrealm/myrealm-shapes.coax)
   (`SLOT_A`, `NEAR_A`, `owl_home`, `roofs_out`, `wood`) and
-  [myrealm-things.coax](../../apps/openagents-web/myrealm-things.coax), drawn
+  [myrealm-things.coax](../../apps/openagents-web/myrealm/myrealm-things.coax), drawn
   by `myrealm.wgsl` with [metaverse/style-preset.coax](../../metaverse/style-preset.coax).
 - The catalogue, cameras and palettes in
   [realm-builder.md](../../docs/metaverse/realm-builder.md); figures from

@@ -87,7 +87,7 @@ Gilbert-Elliott bursts where asked) and delivers it two ways:
 It measures, every millisecond, the age of the newest state the page holds,
 and counts a freeze whenever that age passes the one-way delay plus 300 ms
 (the deepest jitter buffer the page uses, `NET_HIGH` in
-`apps/openagents-web/everglade-net.coax`). Its checks prove that with no loss
+`apps/openagents-web/old/v1/everglade-net.coax`). Its checks prove that with no loss
 the two transports deliver identically, and that on any trace the datagram
 page's newest state is never older than the TCP page's.
 

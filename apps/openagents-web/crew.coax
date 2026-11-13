@@ -20,7 +20,7 @@
 //   coax/bin/coax test apps/openagents-web/crew.coax
 #load "animelab.coax";
 #load "../../metaverse-engine/kit/crew-doc.coax";
-#load "crew-show.coax";
+#load "crew/crew-show.coax";
 
 CR_WORLD_VERTICES :: 230000;   // store 0: the paper's floor, the scale and up to six characters
 #assert CR_LOAD_DOC != HOST_FACTS && CR_SHOW != HOST_FACTS && CR_KEEP != HOST_FACTS;

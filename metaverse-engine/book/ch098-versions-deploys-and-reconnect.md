@@ -64,7 +64,7 @@ different lifetimes (research doc, section 4).
 
 What works today: the page watches its socket and rejoins after silence.
 
-<!-- source: apps/openagents-web/everglade-net.coax quiet-socket -->
+<!-- source: apps/openagents-web/old/v1/everglade-net.coax quiet-socket -->
 ```jai
 // The quiet socket's watch, each frame (NET_SILENT_MS): an open socket that heard nothing for that
 // long, or one still opening after NET_OPEN_MS, is closed, said, and tried again as a closed one is.

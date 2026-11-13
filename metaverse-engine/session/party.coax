@@ -18,7 +18,7 @@
 // - Inside a room: a member out of range gets the health-only channel, under the roster's visibility.
 // Hosts: the API keeps the durable book in SQL (coax/web/api/migrations/0129_parties.sql, 0134), the
 // room server's interest asks party_sees (coax/web/room/room-interest.coax), and the page shows the
-// roster (apps/openagents-web/everglade-party.coax). PartyBook below is the bounded model the checks
+// roster (apps/openagents-web/old/v1/everglade-party.coax). PartyBook below is the bounded model the checks
 // run the rules over.
 //   coax/bin/coax test metaverse-engine/session/party.coax --library
 //   coax/bin/coax mutate metaverse-engine/session/party.coax --library --root-only

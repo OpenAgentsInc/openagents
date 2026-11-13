@@ -6,7 +6,7 @@ others. These are the relay's own frames. Profile:
 [`room-relay-v2.json`](../../proto/verse/room-relay-v2.json). Codec:
 `metaverse-engine/net/relay-wire.coax`. The room writes the frames with it, and every
 page that sits in a relay room reads them with it: Everglade II
-(`everglade/client/net.coax`), Everglade (`apps/openagents-web/everglade-net.coax`),
+(`everglade/client/net.coax`), Everglade (`apps/openagents-web/old/v1/everglade-net.coax`),
 the lockstep games (`apps/openagents-web/lockroom.coax`: Belt 2200 and Hold
 the Stair) and One Shot (`apps/openagents-web/oneshot.coax`).
 

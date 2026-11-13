@@ -174,7 +174,7 @@ the Claude account, which is sealed on the account.
 - **Rules and the sections that need nothing of the chat:**
   `apps/openagents-web/settings-web.coax` (addresses, the account's, limits' and
   release's lines; Account, Limits, About).
-- **The shell's own sections:** `apps/openagents-web/chat-settings.coax`
+- **The shell's own sections:** `apps/openagents-web/chat/chat-settings.coax`
   (Agents and models, Appearance, the presses), loaded by `chat-web.coax`.
 
 Moving an older settings page into the shell means drawing it as a section of

@@ -39,4 +39,4 @@ Live project pages still trust the configured relay. Production signing keys wai
 
 - [docs/verification/2026-10-30-nostr-messages.md](https://github.com/OpenAgentsInc/openagents/blob/main/docs/verification/2026-10-30-nostr-messages.md)
 
-The page examples are in [nip01-verify.coax](https://github.com/OpenAgentsInc/openagents/blob/main/apps/openagents-web/nip01-verify.coax). Relay-only examples inspect NIP-11 metadata, not relay behavior. The catalog distinguishes native library, partial support and relay declarations.
+The page examples are in [nip01-verify.coax](https://github.com/OpenAgentsInc/openagents/blob/main/apps/openagents-web/nip/nip01-verify.coax). Relay-only examples inspect NIP-11 metadata, not relay behavior. The catalog distinguishes native library, partial support and relay declarations.

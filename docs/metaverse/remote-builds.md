@@ -9,10 +9,10 @@ Mac's two build slots (`~/.openagents/build-slots/heavy.sh`) run a job only
 when the caller asks with `--local` (#13472).
 
 ```sh
-coax/remote/remote.sh run -- coax/web/wasm.sh apps/openagents-web/fivelab.coax \
-  apps/openagents-web/fivelab-face.c apps/openagents-web/build/fivelab.wasm \
+coax/remote/remote.sh run -- coax/web/wasm.sh apps/openagents-web/old/experimental/fivelab.coax \
+  apps/openagents-web/old/experimental/fivelab-face.c apps/openagents-web/build/fivelab.wasm \
   apps/openagents-web/everglade-step.coax metaverse-engine/core/sticks.coax
-coax/remote/remote.sh run -- coax/bin/coax test apps/openagents-web/fivelab.coax
+coax/remote/remote.sh run -- coax/bin/coax test apps/openagents-web/old/experimental/fivelab.coax
 coax/remote/remote.sh status        # hosts, free slots, spend, and whether the pool is on
 coax/remote/remote.sh run --local -- CMD   # on this computer's slots, on purpose
 ```
@@ -226,6 +226,15 @@ with `old`, and they build only under `COAXIAL_PAGES=all`. The actor fixture
 (`actor-lab`) is still in the default build until #13427 decides whether the
 actor runtime stays.
 
+Their sources are under `apps/openagents-web/old/`: `old/v1/`,
+`old/experimental/` and `old/labs/`
+([apps/openagents-web/old/README.md](../../apps/openagents-web/old/README.md),
+which also lists the files only v1 loads). Three entries stay flat with their
+faces because a renderer carrier or a native build finds them by name:
+`everglade.coax`, `everglade5e.coax` and `waterlab.coax`. The Nostr Lab's and
+Anime Lab's files stay flat too: the Nostr Lab has its own owner, and Splice
+Bots loads Anime Lab's.
+
 - A release sets `COAXIAL_PAGES=all` (`coax/web/deploy.sh`,
   `coax/remote/pages.sh`), so what ships is every page, as before.
 - A branch's check and a change's fast run skip the old set
@@ -268,8 +277,8 @@ To drive pages headless, fetch main's pages and rebuild only what you changed:
 
 ```sh
 coax/remote/pages.sh origin/main
-coax/remote/remote.sh run -- coax/web/wasm.sh apps/openagents-web/fivelab.coax \
-  apps/openagents-web/fivelab-face.c apps/openagents-web/build/fivelab.wasm \
+coax/remote/remote.sh run -- coax/web/wasm.sh apps/openagents-web/old/experimental/fivelab.coax \
+  apps/openagents-web/old/experimental/fivelab-face.c apps/openagents-web/build/fivelab.wasm \
   apps/openagents-web/everglade-step.coax metaverse-engine/core/sticks.coax
 ```
 
@@ -551,7 +560,7 @@ $0.275 an hour.
 | fivelab wasm.sh after a one-line edit to fivelab.coax | 265 to 583 s (no check reused) | 223 s: 1,033 checks reused, 17 run | $0.017 |
 | fivelab wasm.sh, same sources, another slot's checkout | 1 to 12 s (wasm.sh's cache) | 29 s (10 s of it the link and wasm-opt) | $0.002 |
 | fivelab wasm.sh, the same job again | 1 to 12 s | 11 s (the result replayed) | $0.001 |
-| `coax test apps/openagents-web/fivelab.coax` (1,313 checks) | not measured (it would load the Mac) | 995 s | $0.076 |
+| `coax test apps/openagents-web/old/experimental/fivelab.coax` (1,313 checks) | not measured (it would load the Mac) | 995 s | $0.076 |
 | `tests/run.sh --only check_reuse` | not measured | 187 s | $0.014 |
 | Installing a published compiler in a slot | | 12 s | |
 | Bootstrapping an unpublished compiler (`COAX_MUTATION=0`) | | 15 to 21 minutes | $0.07 to $0.10 |
@@ -584,11 +593,11 @@ found nothing: fivelab's reports said `"check_reuse": {"reused": 0, "run":
 
 1. **Keys named absolute paths.** The whole-pass key, the per-check record's
    file name and every declaration's identity used each unit's canonical
-   path, `/Users/.../oa-TOPIC/apps/openagents-web/fivelab.coax`. Each agent
+   path, `/Users/.../oa-TOPIC/apps/openagents-web/old/experimental/fivelab.coax`. Each agent
    works in its own worktree and release.sh builds in a temporary one, so a
    record from one checkout was never found by another. Now a unit is named
    by its path inside its Git checkout (below the directory holding `.git`):
-   `apps/openagents-web/fivelab.coax`. `coax/tests/check-reuse.coax` checks
+   `apps/openagents-web/old/experimental/fivelab.coax`. `coax/tests/check-reuse.coax` checks
    that a second checkout of the same sources reuses the first's pass, and
    that after the same edit in both, one runs only the edited check and the
    other reuses its pass.
@@ -767,7 +776,7 @@ header:
 
 ```sh
 coax/remote/remote.sh run -- bash -c 'cd coax && web/tool.sh tests/serve.coax "$PWD/bin/coax" "$PWD/.." \
-  apps/openagents-web/fivelab.coax:metaverse/experimental-dungeon.coax \
+  apps/openagents-web/old/experimental/fivelab.coax:metaverse/experimental-dungeon.coax \
   everglade/client/client.coax:everglade/shared/move.coax \
   everglade/scene/charactercreator.coax:metaverse/character-glade.coax'
 ```

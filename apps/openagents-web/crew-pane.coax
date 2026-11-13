@@ -16,7 +16,7 @@
 #load "../../components/kit/dock.coax";
 #load "../../components/backend/dom.coax";
 #load "../../metaverse-engine/kit/crew-doc.coax";
-#load "crew-show.coax";
+#load "crew/crew-show.coax";
 
 CP_INBOX :: 2048;
 CP_CSS :: 28672;

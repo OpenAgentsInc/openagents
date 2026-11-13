@@ -4,7 +4,7 @@
 > ball with swept tests (`sweep_sphere_plane`, `sweep_sphere_sphere` in
 > [`metaverse-engine/physics/sim/contact.coax`](../physics/sim/contact.coax)) and runs Belt 2200 in
 > lockstep (`lock_tick`, `belt_hash` in
-> [`apps/openagents-web/belt-lockstep.coax`](../../apps/openagents-web/belt-lockstep.coax)).
+> [`apps/openagents-web/belt/belt-lockstep.coax`](../../apps/openagents-web/belt/belt-lockstep.coax)).
 > This chapter plans time acceleration as event scheduling. Nothing here
 > runs yet.
 

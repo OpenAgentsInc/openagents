@@ -1,0 +1,48 @@
+// Bind the additive Orbit profile's independent JSON oracle to the shipped Coax codec.
+#import "Basic";
+#load "orbit-snapshot.coax";
+#load "../../../coax/lib/json/json.coax";
+#load "../../../coax/lib/sys/tool.coax";
+#load "../../../coax/lib/sys/fs.coax";
+OW_FIELDS :: [16]string.["x","y","z","qx","qy","qz","qw","vx","vy","vz","wx","wy","wz","paint","fuel","life"];
+ow_number :: (d:Jv,root:int,key:string,expected:int)->bool {return jv_int(d,jv_get(d,root,key),-1)==expected;}
+ow_mask :: (d:Jv,at:int)->int {
+  mask:=0;for i:0..<jv_len(d,at) {v:=jv_int(d,jv_at(d,at,i),-1);if v<0 || v>=ORB_FIELDS || (mask&(1<<v))!=0 {return -1;}mask=mask|(1<<v);}return mask;
+}
+#test "Orbit profile masks reject duplicate and out-of-domain fields" {
+  nodes:[32]JvNode;j:[1]Jv;#assert jv_parse(j[..],"[[0,15],[0,0],[-1],[16]]",nodes[..]);
+  #assert ow_mask(j[0],jv_at(j[0],0,0))==32769;
+  for i:1..<4 {#assert ow_mask(j[0],jv_at(j[0],0,i))==-1;}
+}
+ow_string :: (d:Jv,at:int,out:[]u8)->string {n:=jv_str(d,at,out);return ifx n>=0 then cast(string)out[0..<n] else "";}
+ow_check :: (d:Jv)->bool {
+  p:=orb_realm();
+  if !ow_number(d,0,"version",ORB_VERSION) || !ow_number(d,0,"hz",p.beat.hz) || !ow_number(d,0,"substeps",p.beat.substeps) {return false;}
+  pins:=jv_get(d,0,"pins");for name:[3]string.["engine","rules","content"] {if !ow_number(d,pins,name,1) {return false;}}
+  limits:=jv_get(d,0,"limits");if !ow_number(d,limits,"players",4) || !ow_number(d,limits,"client_frame",ORB_CLIENT_BYTES) || !ow_number(d,limits,"server_frame",NET_RECORD_BYTES) {return false;}
+  server:=jv_get(d,0,"server");fields:=jv_get(d,server,"fields");if jv_len(d,fields)!=ORB_FIELDS {return false;}
+  text:[2048]u8;
+  for i:0..<ORB_FIELDS {if ow_string(d,jv_at(d,fields,i),text[..])!=OW_FIELDS[i] {return false;}}
+  if ow_mask(d,jv_get(d,server,"public_fields"))!=p.public_fields || ow_mask(d,jv_get(d,server,"owner_fields"))!=p.owner_fields || ow_mask(d,jv_get(d,server,"party_fields"))!=p.party_fields {return false;}
+  fixtures:=jv_get(d,0,"fixtures");
+  if orb_admit(ow_string(d,jv_get(d,fixtures,"hello"),text[..]),true)!=CP_OK {return false;}
+  input:=ow_string(d,jv_get(d,fixtures,"input"),text[..]);i:=orb_input(input);
+  if !i.ok || i.seq!=17 || i.throttle!=-501 || i.steer!=702 || i.flags!=5 || i.paint!=29 || i.clock!=12345 || i.heard!=9 {return false;}
+  wrote:[256]u8;n:=orb_input_write(i,wrote[..]);if cast(string)wrote[0..<n]!=input {return false;}
+  s:=orb_snapshot_read(ow_string(d,jv_get(d,fixtures,"snapshot"),text[..]));
+  if !s.ok || s.h[0]!=9 || s.h[1]!=1 || s.h[2]!=7 || s.h[3]!=17 || s.h[11]!=2 || s.v[32]!=1234 || s.v[46]!=42500 || s.v[16]!=-1000 || s.v[30]!=0 {return false;}
+  for key:[2]string.["malformed_inputs","malformed_snapshots"] {
+    list:=jv_get(d,fixtures,key);if jv_len(d,list)<2 {return false;}
+    for k:0..<jv_len(d,list) {t:=ow_string(d,jv_at(d,list,k),text[..]);
+      if key=="malformed_inputs" {if orb_input(t).ok {return false;}}
+      else if orb_snapshot_read(t).ok {return false;}
+    }
+  }
+  return true;
+}
+tool_main :: ()->int #export_c #effects(all) {
+  a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=1 {tool_errln("orbit-wire-profile PROFILE.json");return 2;}
+  text:[16384]u8;n:=fs_read(args_at(a[..],0),text[..]);if n<=0 {return 2;}
+  nodes:[2048]JvNode;j:[1]Jv;if !jv_parse(j[..],cast(string)text[0..<n],nodes[..]) {return 2;}
+  ok:=ow_check(j[0]);print("Orbit v2 profile %\n",ifx ok then "holds" else "fails");return ifx ok then 0 else 1;
+}

@@ -25,7 +25,7 @@
 
 #load "../../metaverse-engine/ui/font.coax";
 #load "ui.coax";
-#load "orbitleague-game.coax";   // the game without its page: the match, the arenas, the bot, the physics, the room's wire
+#load "orbitleague/orbitleague-game.coax";   // the game without its page: the match, the arenas, the bot, the physics, the room's wire
 #load "../../metaverse-engine/core/budget.coax";
 
 VERTEX_FLOATS :: 16;   // x, y, along, across, length, core, light, glow, red, green, blue, mode, 0, 0, 0, 0

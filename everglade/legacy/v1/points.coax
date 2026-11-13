@@ -26,7 +26,7 @@ EG_POINT_NAME :: [EG_POINTS] string.[
   "south-road",
   // the commons' north side, where the raid check's defenders muster before the siege
   "raid-muster",
-  // where to stand at the inn's door (apps/openagents-web/everglade-doors.coax door_spot 0), facing it
+  // where to stand at the inn's door (apps/openagents-web/old/v1/everglade-doors.coax door_spot 0), facing it
   "inn-door",
   // the middle of the wooden bridge's deck over the river (plan.coax EG_BRIDGE), running east-west
   "bridge",

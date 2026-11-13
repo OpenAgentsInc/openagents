@@ -32,7 +32,7 @@ frame of 8.5 ms.
 
 | Axis | Solstice | The Metaverse Engine today |
 | --- | --- | --- |
-| Geometry LOD | A general DAG: 128-triangle clusters, group, simplify with the boundary locked, regroup every level | Valley Lab only (`metaverse-engine/render/geometry/`): leaf clusters, ownership hierarchy and simplifiers for narrow shape classes (`parent`, `fan`, `star`, `grid-parent`). Shipped realms use a distance cutoff (`apps/openagents-web/everglade-lod.coax`) |
+| Geometry LOD | A general DAG: 128-triangle clusters, group, simplify with the boundary locked, regroup every level | Valley Lab only (`metaverse-engine/render/geometry/`): leaf clusters, ownership hierarchy and simplifiers for narrow shape classes (`parent`, `fan`, `star`, `grid-parent`). Shipped realms use a distance cutoff (`apps/openagents-web/old/v1/everglade-lod.coax`) |
 | Cut selection | GPU compute traversal, under 1 px of projected error | CPU cuts (`cut.coax`), Valley Lab only |
 | Culling | Frustum, plus two-phase occlusion against a depth pyramid; a compute rasterizer for small clusters | No general frustum culling, no Hi-Z, no indirect draws (Valley Lab steps 4 and 6 are open) |
 | Streaming | One file, HTTP Range, 128 KiB pages, parents installed first, LRU over a fixed pool | Whole packs, fetched entire (`coax/web/host.js`). `pages.coax` has 2 slots for one Valley Lab rock. `metaverse-engine/world/cells.coax` exists but no realm uses it |

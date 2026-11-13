@@ -18,7 +18,7 @@
 // (an action, a Bonus Action, one slot spent) that opens on its beat and that it can spend at any
 // moment of it, while the engine's other creatures take their turns on the same clock. A spell
 // whose area lasts runs its record again on whoever is in it each round (fb_zones_round).
-//   coax/bin/coax test --library apps/openagents-web/fivebar-test.coax
+//   coax/bin/coax test --library apps/openagents-web/old/v1/fivebar-test.coax
 //
 // This work includes material from the System Reference Document 5.2.1 ("SRD 5.2.1") by Wizards
 // of the Coast LLC, available at https://www.dndbeyond.com/srd. The SRD 5.2.1 is licensed under the

@@ -1,0 +1,1705 @@
+// MetaHuman Lab retains its established twelve-clip selector.
+META_CLIPS :: 12;
+// MetaHuman Lab, openagents.com/worlds/metahuman-lab (unlisted): the bench where the Metaverse Engine's human
+// runtime is built (docs/metaverse/metahuman-support.md, phases 0 and 1). One figure stands on a lit
+// studio floor with a skeleton driving it.
+//
+// The figure is public and holds no MetaHuman asset. Its skeleton and clips are the CC0 Quaternius
+// people rig (everglade/scene/people-rig.coax: the Modular Character Outfits' male and female
+// skeletons and the Universal Animation Library's twelve clips), played by metaverse-engine/anim/skin.coax. Its
+// body is drawn here: a capsule per bone, posed from the same joints, on the Unreal mannequin's
+// joint names (metaverse-engine/anim/mannequin.coax). A private MetaHuman pack binds to those joints by name
+// later (mannequin_fold), as one more body source. This world draws without one.
+//
+// gpu/metahumanlab.coax's bg_fs traces the floor and the capsules per pixel and lights them; fx
+// strokes (font.coax) draw the HUD and the skeleton overlay. The camera is the Metaverse Engine's orbit
+// (metaverse-engine/cam/shot.coax, book chapter 10) round a pivot: drag orbits, the wheel or a pinch zooms,
+// Shift-drag or two fingers pan, and held W A S D (Q down, E up) fly the pivot smoothly.
+//   coax/bin/coax test apps/openagents-web/old/labs/metahumanlab.coax
+
+#load "../../../../metaverse-engine/ui/font.coax";
+#load "../../../../metaverse-engine/core/loop.coax";
+#load "../../../../everglade/scene/people-rig.coax";   // the CC0 skeletons and clips (it loads metaverse-engine/anim/skin.coax)
+#load "../../../../metaverse-engine/anim/mannequin.coax";
+#load "../../../../metaverse-engine/cam/shot.coax" as ash;   // the camera's orbit is the Metaverse Engine's (book chapter 10)
+#load "../../../../metaverse-engine/core/space.coax" as asp;
+#load "../../../../metaverse-engine/anim/facerig.coax";   // the face rig: OpenRigLogic's evaluation, ported (MIT)
+#load "../../../../metaverse-engine/audio/speak.coax";     // speaking: viseme tracks and their performance (?stage=speak)
+
+VERTEX_FLOATS :: 16;
+MAX_VERTICES :: 40000;
+UNIFORM_FLOATS :: 392;
+// The uniform block (gpu/metahumanlab.coax reads it at these float offsets).
+U_FLAGS :: 4; U_EYE :: 16; U_FWD :: 20; U_RIGHT :: 24; U_UP :: 28; U_SUN :: 32;
+U_BOUND :: 36; U_HEAD :: 40; U_HEAD_F :: 44; U_HEAD_U :: 48; U_CAPS :: 52;
+CAPS :: 26;   // capsules, two vec4s each: (a, radius), (b, material)
+// The mesh's rows (a human pack): the figure's turn and place, the key's shadow box, 24
+// materials, the light rig (fill, rim, the key's strength and the exposure), the probe view and
+// the face rig.
+U_FIG :: 260; U_LIGHT :: 264; U_MAT :: 280; U_RIG :: 376; U_PROBE :: 386;
+// The face rig's rows: its vertices' range (first, count) and whether it moves them.
+U_FACE :: 388;
+MATS :: 24;
+DRAWS_MAX :: 144;   // the full mesh's pieces and each lower level's (pack_human.coax's D lines)
+// Levels of detail: the full mesh (with the face rig) while the figure stands taller on the screen
+// than LOD_TALL_0 px, the first lower level down to LOD_TALL_1, then the second; LOD_EASE is
+// the hysteresis, a share either way, so a figure at a boundary doesn't flicker.
+LODS :: 3;
+LOD_TALL_0 :: 340.0; LOD_TALL_1 :: 130.0;
+LOD_EASE :: 0.12;
+// The pack's assets in the page's list (realms.json "private:human"): its catalog, vertices,
+// indices and layers.
+PACK_CATALOG :: 0; PACK_PARTS :: 4;
+// The face rig's work (metahumanlab-face.c holds it): controls, joint attributes, the joints' world,
+// neutral inverse and skinning matrices, per point its blend shape move and its result, and the
+// points unpacked (frig_unpack); its
+// rows for the vertex shader follow the palette in the pose store.
+FACE_CONTROLS :: 1024; FACE_JOINTS :: 1024; FACE_POINTS :: 40000; FACE_VERTICES :: 65536;
+FACE_W_C :: 0; FACE_W_ATTR :: 1024; FACE_W_WORLD :: 1024 + 9 * 1024; FACE_W_INV :: FACE_W_WORLD + 12 * 1024;
+FACE_W_SKIN :: FACE_W_INV + 12 * 1024; FACE_W_MORPH :: FACE_W_SKIN + 12 * 1024; FACE_W_PTS :: FACE_W_MORPH + 3 * 40000;
+FACE_W_UNPACKED :: FACE_W_PTS + 6 * 40000;
+FACE_WORK :: FACE_W_UNPACKED + (FRIG_POINT_FLOATS + 1) * 40000;
+// Blinks: every 2.8 to 5.2 seconds, closing in 0.07, held 0.03, opening in 0.12.
+BLINK_CLOSE :: 0.07; BLINK_HOLD :: 0.03; BLINK_OPEN :: 0.12;
+EXPR_EASE :: 0.25;   // seconds an expression takes to come in
+MAT_SUIT :: 1; MAT_SKIN :: 2; MAT_SHOE :: 3; MAT_HEAD :: 4;
+
+STEP :: 0.0166666667;
+LAB_STEP_NS :: 16666667;
+LAB_FRAME_NS :: 100000000;
+OUTBOX_CAP :: 64;
+ACT_NAVIGATE :: 1;
+KEY_SHIFT :: -13; KEY_ESCAPE :: -1; KEY_ENTER :: -2; KEY_LEFT :: -4; KEY_RIGHT :: -5; KEY_UP :: -6; KEY_DOWN :: -7;
+
+// The camera: an orbit round a pivot at the figure's hips, and how near and far it zooms.
+CAM_DIST :: 3.4; CAM_PITCH :: 0.16; CAM_Y :: 0.95; ZOOM_NEAR :: 0.8; ZOOM_FAR :: 30.0;
+PITCH_LOW :: 0.0; PITCH_HIGH :: 1.45;
+FLY_RATE :: 9.0;     // how fast the flying pivot eases to its speed (1/s)
+FLY_HOLD :: 6;       // held keys: W A S D Q E
+// A gait walks the figure round a circle this wide (m), so its feet keep pace with the floor.
+WALK_TURN :: 2.4;
+
+Rect :: struct { x0: f32; y0: f32; x1: f32; y1: f32; }
+Col :: struct { r: f32; g: f32; b: f32; }
+WHITE :: Col.{r = 0.9, g = 0.92, b = 0.96};
+DIM :: Col.{r = 0.52, g = 0.55, b = 0.6};
+FAINT :: Col.{r = 0.32, g = 0.34, b = 0.38};
+GOLD :: Col.{r = 1.0, g = 0.8, b = 0.35};
+LEFT_COL :: Col.{r = 0.35, g = 0.9, b = 1.0};    // the skeleton's left side
+RIGHT_COL :: Col.{r = 1.0, g = 0.55, b = 0.25};  // and its right
+
+Lab :: struct {
+  started: bool;
+  rig: [1] People;
+  skin: [1] Skin;
+  clip: int = PEOPLE_IDLE;
+  female: bool;
+  bones: bool;                       // the skeleton overlay
+  probe: int;                        // V (unlisted, for scripts): 0 lit, 1 albedo, 2 uv, 3 capsules, 4 material, 5 material and layer
+  paused: bool;
+  // the figure on the floor: its feet's place and the way it faces (yaw 0 faces +Z)
+  fx: f32; fz: f32; fyaw: f32;
+  joint: [MANNEQUIN_JOINTS] Point;   // each joint where it stands now, metres
+  jq: [MANNEQUIN_JOINTS] Quat;       // and its turn
+  clock: f32;
+  pace: FrameClock;
+  golden: bool; golden_ran: bool;
+  width: f32; height: f32; dpr: f32; portrait: bool; strip: f32; status_row: bool;
+  back: Rect; bones_b: Rect; clip_b: Rect; body_b: Rect;
+  pressing: int;
+  // the camera: the Metaverse Engine's orbit round a pivot, and what it makes this frame
+  yaw: f32 = 0; pitch: f32 = CAM_PITCH; dist: f32 = CAM_DIST;
+  px: f32 = 0; py: f32 = CAM_Y; pz: f32 = 0;
+  vx: f32; vy: f32; vz: f32;         // the flying pivot's speed, m/s
+  held: [FLY_HOLD] bool;             // W A S D Q E held down
+  dragging: bool; drag_x: f32; drag_y: f32;
+  panning: bool; shift: bool;        // Shift held: a drag pans
+  fingers: int; fing_id: [2] int; fing_x: [2] f32; fing_y: [2] f32;   // touches down, for a pinch
+  eye: Point; fwd: Point; right: Point; up: Point; focal: f32; cx: f32; cy: f32;
+  // a human pack (metaverse/tools/humans/pack_human.coax), when one has loaded: its joints' bind
+  // positions, its materials, its pieces as draws (u32 first, count, 0, 1) and the pose's
+  // palette for the vertex shader (three rows of four per joint)
+  mesh: bool; pack_in: int; pack_failed: bool; pack_body: int = -1;
+  bind: [MANNEQUIN_JOINTS] Point; binds: int;
+  bturn: [MANNEQUIN_JOINTS] Quat;    // each joint's turn from the pack's bind pose to the rig's rest
+  post: [META_CLIPS * PEOPLE_JOINTS] Quat;   // per clip and joint its posture's correction (posture_build)
+  post_for: int = -1;                // the rig (0 male, 1 female) post was built for
+  lift: [META_CLIPS] f32;          // per clip the pelvis's rise that keeps the feet on the floor with the legs set straight
+  mats: [MATS * 4] f32;
+  draws: [DRAWS_MAX * 4] u32; draw_n: int;
+  water_n: int;   // how many of the last draws are blended over the scene (the eyes' layers)
+  // the levels of detail: each one's draws (a range of draws), the one drawn, and the unlisted
+  // L key's choice (-1 by the figure's height on the screen, else that level)
+  lod_first: [LODS] int; lod_n: [LODS] int; lod: int; lod_pick: int = -1;
+  palette: [MANNEQUIN_JOINTS * 12] f32; pal_version: int;
+  // the face rig (a pack's F line and the block after its catalog): its state (0 none, 1 to open,
+  // 2 running, -1 refused), where the block sits in the catalog, its vertices' range, the
+  // expression (X cycles them) easing in over the one before, the blink and talk clocks, the
+  // controls the rows were last made for, and the rows' version
+  face: [1] FaceRig; face_state: int; face_off: int; face_len: int; face_first: int; face_count: int;
+  // what the pack wears (its outfit line: "student", "bare" or a fantasy outfit) and its name
+  // without it; with a pack in, the body button steps through the outfits (a page load each)
+  outfit: [16] u8; outfit_n: int; outfit_base: [16] u8; outfit_base_n: int;
+  expr: int; expr_prev: int = -1; expr_w: f32 = 1; expr_ask: int; expr_name: [16] u8; expr_name_n: int;
+  face_t: f32; blink_at: f32 = 2.0; blink_seed: u32 = 12345;
+  face_key: [6] f32; face_version: int;
+  // the speaking stage (?stage=speak&track=...): head and shoulders against a dark warm backdrop,
+  // the track's mouth, mood and blinks on the face; its clock runs once the pack is in or refused
+  speak: bool; speak_t: f32; track: [1] SpkTrack;
+  // its camera (&cam=DIST,DROP, the cast file's per-character "camera"): metres back from the
+  // head joint, and how far below it the camera looks
+  speak_dist: f32 = SPEAK_DIST; speak_drop: f32 = SPEAK_DROP;
+  outbox: [OUTBOX_CAP] u8; out_n: int; action: int;
+}
+
+// ---- small things
+
+GAP :: 0.5; SPACE :: 1.2;
+text_width :: (text: string, cap: f32) -> f32 { return measure(text, GAP, SPACE, false) * cap; }
+in_rect :: (b: Rect, x: f32, y: f32) -> bool { return b.x1 > b.x0 && x >= b.x0 && x <= b.x1 && y >= b.y0 && y <= b.y1; }
+put :: (buf: [] u8, at: int, text: string) -> int {
+  n := at;
+  for i: 0..<text.count { if n < buf.count { buf[n] = text[i]; n += 1; } }
+  return n;
+}
+put_int :: (buf: [] u8, at: int, v: int) -> int {
+  if v < 0 { return put_int(buf, put(buf, at, "-"), -v); }
+  n := at;
+  if v >= 10 { n = put_int(buf, n, v / 10); }
+  return put_digit(buf, n, v % 10);
+}
+put_digit :: (buf: [] u8, at: int, d: int) -> int {
+  if at < buf.count { buf[at] = cast(u8) ('0' + d); return at + 1; }
+  return at;
+}
+// The way yaw faces on the floor, and the figure's own space turned by it.
+heading :: (yaw: f32) -> Point { return v3(sin(yaw), 0, cos(yaw)); }
+turn_y :: (p: Point, yaw: f32) -> Point {
+  c := cos(yaw); sn := sin(yaw);
+  return v3(p.x * c + p.z * sn, p.y, -p.x * sn + p.z * c);
+}
+rig :: (s: [] Lab) -> SkinRig { return people_rig(s[0].rig[..], s[0].female); }
+// Whether a human pack's mesh draws the figure (else the capsules do).
+mesh_on :: (s: [] Lab) -> bool { return s[0].mesh && s[0].lod_n[0] > 0; }
+// The level of detail for a figure this tall on the screen (px), from the one drawn now.
+lod_for :: (now: int, tall: f32, levels: int) -> int {
+  want := 0;
+  for k: 0..<LODS - 1 {
+    edge := (ifx k == 0 then f32(LOD_TALL_0) else f32(LOD_TALL_1)) * (ifx now > k then 1 + f32(LOD_EASE) else 1 - f32(LOD_EASE));
+    if tall < edge { want = k + 1; }
+  }
+  while want > 0 && levels <= want { want -= 1; }
+  return want;
+}
+clip_name :: (c: int) -> string { return PEOPLE_CLIP_NAME[c]; }
+// A gait: a clip that travels (walk, run), at its own pace in m/s; 0 for the rest.
+gait_speed :: (c: int) -> f32 {
+  if PEOPLE_DISTANCE[c] <= 0 || PEOPLE_DURATION[c] <= 0 { return 0; }
+  return PEOPLE_DISTANCE[c] / PEOPLE_DURATION[c];
+}
+
+lab_start :: (s: [] Lab) {
+  if s[0].started { return; }
+  s[0].started = true;
+  people_load(s[0].rig[..]);
+  skin_advance(rig(s), s[0].skin[..], s[0].clip, 0, 0);
+  posture(s);
+  pose(s);
+  for m: 0..<MATS { s[0].mats[m * 4] = 1; s[0].mats[m * 4 + 1] = 1; s[0].mats[m * 4 + 2] = 1; s[0].mats[m * 4 + 3] = 1; }
+  for j: 0..<MANNEQUIN_JOINTS { s[0].bturn[j] = Quat.{x = 0, y = 0, z = 0, w = 1}; }
+}
+
+// ---- the figure
+
+// Each joint where the pose now puts it on the floor: its parents' turns and its own, then the
+// figure's place.
+pose :: (s: [] Lab) {
+  r := rig(s);
+  gt: [MANNEQUIN_JOINTS] Point;
+  for j: 0..<MANNEQUIN_JOINTS {
+    l := s[0].skin[0].now[j];
+    p := r.parent[j];
+    if p < 0 || p >= j { s[0].jq[j] = l.q; gt[j] = l.t; }
+    else { s[0].jq[j] = quat_unit(quat_mul(s[0].jq[p], l.q)); gt[j] = add(gt[p], quat_rotate(s[0].jq[p], l.t)); }
+  }
+  for j: 0..<MANNEQUIN_JOINTS { s[0].joint[j] = add(turn_y(gt[j], s[0].fyaw), v3(s[0].fx, 0, s[0].fz)); }
+}
+// The head's forward and up (its joint's +Z and +Y, turned with the figure).
+head_axis :: (s: [] Lab, local: Point) -> Point { return turn_y(quat_rotate(s[0].jq[MQ_HEAD], local), s[0].fyaw); }
+
+// Posture. The people clips stand stooped (spine, neck and head forward, shoulders rolled, an
+// idle's weight thrown back on one leg) and close the hands in fists. The lab takes each clip's
+// mean turn of the trunk's joints out (pelvis to head, half the clavicles'), so on average they
+// sit as the rig's upright rest and the clip's motion plays round that; standing clips do the
+// same with the legs (feet level, weight on both); every clip opens the fingers to
+// POSTURE_HAND of their curl (POSTURE_GRIP in a clip whose hand holds something). Clips that end on the ground (die, knock, cower) keep their trunk.
+// metaverse/tools/humans/ph_clips.coax applies the same for its checks.
+POSTURE_SAMPLES :: 24;
+POSTURE_HAND :: 0.22;   // an empty hand: a relaxed curl, not a fist
+POSTURE_GRIP :: 0.7;    // a hand that holds (the lantern, the sword): most of the clip's grip
+posture_hand :: (c: int) -> f32 { return ifx c == PEOPLE_LANTERN || c == PEOPLE_SLASH then POSTURE_GRIP else POSTURE_HAND; }
+POSTURE_CLAVICLE :: 0.5;
+posture_kind :: (c: int, j: int) -> int {      // 0 none, 1 trunk, 2 clavicle, 3 leg, 4 finger
+  if (j >= 11 && j <= 30) || (j >= 35 && j <= 54) { return 4; }
+  if c == PEOPLE_DIE || c == PEOPLE_KNOCK || c == PEOPLE_COWER { return 0; }
+  if j >= 1 && j <= 6 { return 1; }
+  if j == 7 || j == 31 { return 2; }
+  standing := c == PEOPLE_IDLE || c == PEOPLE_TALK || c == PEOPLE_NOD || c == PEOPLE_FOLD || c == PEOPLE_LANTERN;
+  if standing && j >= 55 && j <= 64 { return 3; }
+  return 0;
+}
+// And the trunk's rest itself stood straighter: the rig's rest carries the stoop's last few
+// degrees (a forward head on a forward neck, a sunk chest). Each lean turns a joint's rest about
+// the figure's left-right axis (degrees; less than 0 takes its top back): the chest a little up,
+// the neck back over the shoulders, and the head forward again by about as much, so the face
+// stays level (a little lifted).
+posture_lean :: (j: int) -> f32 {
+  if j == MQ_SPINE_03 { return -2; }
+  if j == MQ_NECK { return -14; }
+  if j == MQ_HEAD { return 13; }
+  return 0;
+}
+posture_rest :: (r: SkinRig, j: int) -> Quat {
+  q := skin_rest(r, j).q;
+  deg := posture_lean(j);
+  if deg == 0 { return q; }
+  // the parent's turn at rest, from the root down
+  chain: [PEOPLE_JOINTS] int; n := 0;
+  p := r.parent[j];
+  while p >= 0 && n < PEOPLE_JOINTS { chain[n] = p; n += 1; p = r.parent[p]; }
+  g := Quat.{};
+  for i: 0..<n { g = quat_unit(quat_mul(g, skin_rest(r, chain[n - 1 - i]).q)); }
+  h := deg * 0.5 * 3.14159265 / 180.0;
+  lean := Quat.{x = sin(h), y = 0, z = 0, w = cos(h)};
+  // the lean in the parent's frame: g^-1 lean g
+  gi := Quat.{x = -g.x, y = -g.y, z = -g.z, w = g.w};
+  return quat_unit(quat_mul(quat_mul(quat_mul(gi, lean), g), q));
+}
+posture_build :: (s: [] Lab) {
+  r := rig(s);
+  for c: 0..<META_CLIPS {
+    for j: 0..<PEOPLE_JOINTS {
+      k := posture_kind(c, j);
+      s[0].post[c * PEOPLE_JOINTS + j] = Quat.{};
+      if k == 0 || k == 4 { continue; }
+      rest := posture_rest(r, j);
+      acc := Quat.{x = 0, y = 0, z = 0, w = 0};
+      for i: 0..<POSTURE_SAMPLES {
+        q := skin_sample(r, c, j, r.duration[c] * f32(i) / f32(POSTURE_SAMPLES)).q;
+        if quat_dot(q, rest) < 0 { q = quat_scaled(q, -1); }
+        acc = quat_plus(acc, q);
+      }
+      m := quat_unit(acc);
+      s[0].post[c * PEOPLE_JOINTS + j] = quat_unit(quat_mul(rest, Quat.{x = -m.x, y = -m.y, z = -m.z, w = m.w}));
+    }
+    // the lowest foot joint, on average, as the clip stands and as the posture stands it
+    s[0].lift[c] = 0;
+    raw := 0.0f32; fixed := 0.0f32;
+    for i: 0..<POSTURE_SAMPLES {
+      l: [PEOPLE_JOINTS] SkinLocal;
+      for j: 0..<PEOPLE_JOINTS { l[j] = skin_sample(r, c, j, r.duration[c] * f32(i) / f32(POSTURE_SAMPLES)); }
+      raw += posture_floor(r, l[..]);
+      for j: 0..<PEOPLE_JOINTS {
+        k := posture_kind(c, j);
+        if k == 1 || k == 3 { l[j].q = quat_unit(quat_mul(s[0].post[c * PEOPLE_JOINTS + j], l[j].q)); }
+      }
+      fixed += posture_floor(r, l[..]);
+    }
+    s[0].lift[c] = (raw - fixed) / f32(POSTURE_SAMPLES);
+  }
+  s[0].post_for = ifx s[0].female then 1 else 0;
+}
+// The lowest of the feet's joints (foot and ball, both sides), in the figure's space, for locals l.
+posture_floor :: (r: SkinRig, l: [] SkinLocal) -> f32 {
+  gq: [PEOPLE_JOINTS] Quat; gt: [PEOPLE_JOINTS] Point;
+  for j: 0..<PEOPLE_JOINTS {
+    p := r.parent[j];
+    if p < 0 || p >= j { gq[j] = l[j].q; gt[j] = l[j].t; }
+    else { gq[j] = quat_unit(quat_mul(gq[p], l[j].q)); gt[j] = add(gt[p], quat_rotate(gq[p], l[j].t)); }
+  }
+  return lo(lo(gt[57].y, gt[58].y), lo(gt[62].y, gt[63].y));
+}
+posture :: (s: [] Lab) {
+  if s[0].post_for != (ifx s[0].female then 1 else 0) { posture_build(s); }
+  r := rig(s);
+  c := s[0].skin[0].clip;
+  if c < 0 || c >= META_CLIPS { return; }
+  for j: 0..<PEOPLE_JOINTS {
+    k := posture_kind(c, j);
+    if k == 0 { continue; }
+    q := s[0].skin[0].now[j].q;
+    if k == 4 { s[0].skin[0].now[j].q = slerp(skin_rest(r, j).q, q, posture_hand(c)); continue; }
+    fixed := quat_unit(quat_mul(s[0].post[c * PEOPLE_JOINTS + j], q));
+    s[0].skin[0].now[j].q = ifx k == 2 then slerp(q, fixed, POSTURE_CLAVICLE) else fixed;
+  }
+  // the pelvis up by the clip's lift, in its parent's frame
+  p := r.parent[1];
+  up := v3(0, s[0].lift[c], 0);
+  if p >= 0 { pq := s[0].skin[0].now[p].q; up = quat_rotate(Quat.{x = -pq.x, y = -pq.y, z = -pq.z, w = pq.w}, up); }
+  s[0].skin[0].now[1].t = add(s[0].skin[0].now[1].t, up);
+}
+
+// One fixed step: the clip plays and a gait carries the figure round its circle.
+animate :: (s: [] Lab, dt: f32) {
+  speed := gait_speed(s[0].clip);
+  if speed > 0 {
+    s[0].fyaw += speed / f32(WALK_TURN) * dt;
+    f := heading(s[0].fyaw);
+    s[0].fx += f.x * speed * dt; s[0].fz += f.z * speed * dt;
+  }
+  skin_advance(rig(s), s[0].skin[..], s[0].clip, speed, dt);
+  posture(s);
+  pose(s);
+  if mesh_on(s) { lab_palette(s); }
+}
+// The flying pivot: held keys ask for a speed along the camera's level forward and right (and
+// up), and the pivot eases to it, so it starts and stops without a jolt.
+fly :: (s: [] Lab, dt: f32) {
+  turn := s[0].yaw + 3.14159265;
+  f := heading(turn); r := v3(-cos(turn), 0, sin(turn));
+  ahead := (ifx s[0].held[0] then 1.0f32 else 0) - (ifx s[0].held[2] then 1.0f32 else 0);
+  aside := (ifx s[0].held[3] then 1.0f32 else 0) - (ifx s[0].held[1] then 1.0f32 else 0);
+  rise := (ifx s[0].held[5] then 1.0f32 else 0) - (ifx s[0].held[4] then 1.0f32 else 0);
+  pace := hi(1.5, s[0].dist * 0.9);
+  want := times(add(add(times(f, ahead), times(r, aside)), v3(0, rise, 0)), pace);
+  k := settle(f32(FLY_RATE), dt);
+  s[0].vx += (want.x - s[0].vx) * k; s[0].vy += (want.y - s[0].vy) * k; s[0].vz += (want.z - s[0].vz) * k;
+  s[0].px = clamp(s[0].px + s[0].vx * dt, -40, 40);
+  s[0].py = clamp(s[0].py + s[0].vy * dt, 0.1, 12);
+  s[0].pz = clamp(s[0].pz + s[0].vz * dt, -40, 40);
+}
+lab_step :: (s: [] Lab, dt: f32) {
+  fly(s, dt);
+  if !s[0].paused { animate(s, dt); face_step(s, dt); }
+}
+// The face's clocks: the expression easing in, and the next blink (a little random, as people's).
+face_step :: (s: [] Lab, dt: f32) {
+  s[0].face_t += dt;
+  s[0].expr_w = lo(1, s[0].expr_w + dt / f32(EXPR_EASE));
+  if s[0].face_t > s[0].blink_at + f32(BLINK_CLOSE + BLINK_HOLD + BLINK_OPEN) {
+    s[0].blink_seed = add_wrap(mul_wrap(s[0].blink_seed, 1664525), 1013904223);
+    s[0].blink_at = s[0].face_t + 2.8 + 2.4 * f32(s[0].blink_seed >> 8) / 16777216.0;
+  }
+}
+// How closed the eyes are now (0 open, 1 shut).
+blink_now :: (s: [] Lab) -> f32 {
+  t := s[0].face_t - s[0].blink_at;
+  if t < 0 { return 0; }
+  if t < f32(BLINK_CLOSE) { return smooth01(t / f32(BLINK_CLOSE)); }
+  t -= f32(BLINK_CLOSE);
+  if t < f32(BLINK_HOLD) { return 1; }
+  t -= f32(BLINK_HOLD);
+  if t < f32(BLINK_OPEN) { return 1 - smooth01(t / f32(BLINK_OPEN)); }
+  return 0;
+}
+smooth01 :: (x: f32) -> f32 { c := clamp(x, 0, 1); return c * c * (3 - 2 * c); }
+lab_run :: (s: [] Lab, dt: f32) {
+  c := s[0].pace;
+  c.step_ns = LAB_STEP_NS; c.max_frame_ns = LAB_FRAME_NS;
+  c = loop_accept(c, cast(f64) dt);
+  s[0].clock += cast(f32) loop_counted(c);
+  for k: 0..<loop_due(c) { lab_step(s, f32(STEP)); }
+  s[0].pace = loop_ran(c);
+}
+
+// The body: a capsule per bone between posed joints, so it bends where the skeleton does.
+Cap :: struct { a: Point; b: Point; r: f32; m: int; }
+bone_cap :: (a: Point, b: Point, r: f32, m: int) -> Cap { return Cap.{a = a, b = b, r = r, m = m}; }
+put_cap :: (out: [] Cap, n: int, c: Cap) -> int { if n < out.count { out[n] = c; } return n + 1; }
+body :: (s: [] Lab, out: [] Cap) -> int {
+  j := s[0].joint[..];
+  n := 0;
+  hf := head_axis(s, v3(0, 0, 1)); hu := head_axis(s, v3(0, 1, 0));
+  ground := v3(0, 0.03, 0);
+  n = put_cap(out, n, bone_cap(j[MQ_THIGH_L], j[MQ_THIGH_R], 0.1, MAT_SUIT));                  // hips
+  n = put_cap(out, n, bone_cap(j[MQ_PELVIS], j[MQ_SPINE_02], 0.115, MAT_SUIT));                // waist
+  n = put_cap(out, n, bone_cap(j[MQ_SPINE_02], j[MQ_SPINE_03], 0.125, MAT_SUIT));              // ribs
+  n = put_cap(out, n, bone_cap(j[MQ_SPINE_03], mix(j[MQ_SPINE_03], j[MQ_NECK], 0.55), 0.135, MAT_SUIT));   // chest
+  n = put_cap(out, n, bone_cap(j[MQ_UPPERARM_L], j[MQ_UPPERARM_R], 0.07, MAT_SUIT));           // shoulders
+  n = put_cap(out, n, bone_cap(j[MQ_NECK], j[MQ_HEAD], 0.05, MAT_SKIN));                       // neck
+  hc := add(add(j[MQ_HEAD], times(hu, 0.095)), times(hf, 0.01));
+  n = put_cap(out, n, bone_cap(add(hc, times(hu, -0.02)), add(hc, times(hu, 0.02)), 0.098, MAT_HEAD));   // cranium
+  n = put_cap(out, n, bone_cap(add(add(j[MQ_HEAD], times(hu, 0.03)), times(hf, 0.05)), add(add(j[MQ_HEAD], times(hu, 0.06)), times(hf, 0.06)), 0.058, MAT_SKIN));   // jaw
+  nose := add(add(hc, times(hf, 0.098)), times(hu, -0.005));
+  n = put_cap(out, n, bone_cap(nose, add(nose, times(hu, -0.02)), 0.016, MAT_SKIN));
+  for side: 0..<2 {
+    o := side * 24;   // the right arm's joints are 24 on from the left's
+    n = put_cap(out, n, bone_cap(j[MQ_UPPERARM_L + o], j[MQ_LOWERARM_L + o], 0.055, MAT_SUIT));
+    n = put_cap(out, n, bone_cap(j[MQ_LOWERARM_L + o], j[MQ_HAND_L + o], 0.042, MAT_SUIT));
+    n = put_cap(out, n, bone_cap(j[MQ_HAND_L + o], j[MQ_MIDDLE_02_L + o], 0.034, MAT_SKIN));
+    n = put_cap(out, n, bone_cap(j[MQ_THUMB_01_L + o], j[MQ_THUMB_03_L + o], 0.014, MAT_SKIN));
+  }
+  for side: 0..<2 {
+    o := side * 5;    // the right leg's are 5 on
+    n = put_cap(out, n, bone_cap(j[MQ_THIGH_L + o], j[MQ_CALF_L + o], 0.08, MAT_SUIT));
+    n = put_cap(out, n, bone_cap(j[MQ_CALF_L + o], j[MQ_FOOT_L + o], 0.058, MAT_SUIT));
+    n = put_cap(out, n, bone_cap(j[MQ_FOOT_L + o], add(j[MQ_BALL_L + o], ground), 0.045, MAT_SHOE));
+    n = put_cap(out, n, bone_cap(add(j[MQ_BALL_L + o], ground), add(j[MQ_TOE_L + o], v3(0, 0.025, 0)), 0.032, MAT_SHOE));
+  }
+  return n;
+}
+
+// ---- drawing
+
+lit :: (out: [] f32, at: int, ax: f32, ay: f32, bx: f32, by: f32, core: f32, light: f32, glow: f32,
+        red: f32, green: f32, blue: f32, mode: f32) -> bool {
+  if at < 0 || (at + 6) * VERTEX_FLOATS > out.count { return false; }
+  dx := bx - ax; dy := by - ay;
+  size := sqrt(dx * dx + dy * dy);
+  if size <= 0 { size = 0.01; dx = 0.01; dy = 0; }
+  ux := dx / size; uy := dy / size;
+  nx := -uy; ny := ux;
+  r := glow + core;
+  a := [6] f32.[-r, size + r, size + r, -r, size + r, -r];
+  c := [6] f32.[-r, -r, r, -r, r, r];
+  for v: 0..<6 {
+    o := (at + v) * VERTEX_FLOATS;
+    out[o] = ax + ux * a[v] + nx * c[v];
+    out[o + 1] = ay + uy * a[v] + ny * c[v];
+    out[o + 2] = a[v]; out[o + 3] = c[v];
+    out[o + 4] = size; out[o + 5] = core; out[o + 6] = light; out[o + 7] = glow;
+    out[o + 8] = red; out[o + 9] = green; out[o + 10] = blue; out[o + 11] = mode;
+    for e: 12..<16 { out[o + e] = 0; }
+  }
+  return true;
+}
+seg :: (out: [] f32, n: int, ax: f32, ay: f32, bx: f32, by: f32, w: f32, light: f32, c: Col) -> int {
+  if lit(out, n, ax, ay, bx, by, w * 0.55, light, w * 1.8, c.r, c.g, c.b, 0) { return n + 6; }
+  return n;
+}
+box_lines :: (out: [] f32, at: int, r: Rect, w: f32, light: f32, c: Col) -> int {
+  n := at;
+  n = seg(out, n, r.x0, r.y0, r.x1, r.y0, w, light, c);
+  n = seg(out, n, r.x1, r.y0, r.x1, r.y1, w, light, c);
+  n = seg(out, n, r.x1, r.y1, r.x0, r.y1, w, light, c);
+  n = seg(out, n, r.x0, r.y1, r.x0, r.y0, w, light, c);
+  return n;
+}
+ink :: (k: f32, light: f32, c: Col) -> Ink {
+  i: Ink;
+  i.core = 0.6 * k; i.light = light; i.glow = 1.2 * k; i.red = c.r; i.green = c.g; i.blue = c.b; i.mode = 0; i.scale = k;
+  return i;
+}
+say_at :: (out: [] f32, n: int, t: string, x: f32, base: f32, cap_h: f32, k: Ink) -> int {
+  return draw_text(out, n, t, x, base, cap_h, GAP, SPACE, k, false, false);
+}
+say_mid :: (out: [] f32, n: int, t: string, x: f32, base: f32, cap_h: f32, k: Ink) -> int {
+  return say_at(out, n, t, x - text_width(t, cap_h) / 2, base, cap_h, k);
+}
+
+// A point on the screen: x, y (device px) and its depth (0 or less: behind the eye).
+proj :: (s: [] Lab, p: Point) -> Point {
+  d := sub(p, s[0].eye);
+  depth := dot(d, s[0].fwd);
+  if depth <= 0.05 { return v3(0, 0, 0); }
+  return v3(s[0].cx + dot(d, s[0].right) / depth * s[0].focal, s[0].cy - dot(d, s[0].up) / depth * s[0].focal, depth);
+}
+seg3 :: (s: [] Lab, out: [] f32, n: int, a: Point, b: Point, w: f32, light: f32, c: Col) -> int {
+  pa := proj(s, a); pb := proj(s, b);
+  if pa.z <= 0 || pb.z <= 0 { return n; }
+  return seg(out, n, pa.x, pa.y, pb.x, pb.y, w, light, c);
+}
+
+layout :: (s: [] Lab, w: f32, h: f32, k: f32) {
+  s[0].portrait = h > w * 1.1;
+  pad := 16 * k;
+  s[0].strip = (ifx s[0].portrait then 116 else 64) * k;
+  gap := 8 * k;
+  bw := lo(96 * k, (w - pad * 2 - gap * 3) / 4);
+  y0 := ifx s[0].portrait then 80 * k else 18 * k;
+  x1 := w - pad;
+  s[0].back = Rect.{x0 = x1 - bw, y0 = y0, x1 = x1, y1 = y0 + 28 * k};
+  s[0].body_b = Rect.{x0 = s[0].back.x0 - gap - bw, y0 = y0, x1 = s[0].back.x0 - gap, y1 = y0 + 28 * k};
+  s[0].clip_b = Rect.{x0 = s[0].body_b.x0 - gap - bw, y0 = y0, x1 = s[0].body_b.x0 - gap, y1 = y0 + 28 * k};
+  s[0].bones_b = Rect.{x0 = s[0].clip_b.x0 - gap - bw, y0 = y0, x1 = s[0].clip_b.x0 - gap, y1 = y0 + 28 * k};
+  // the status line goes beside the title when it fits before the buttons, else on a row of its
+  // own under them (the strip grows to hold it), so the two never overlap
+  if !s[0].portrait {
+    l: [192] u8;
+    m := status_text(s, l[..]);
+    x := pad + text_width("METAHUMAN LAB", 18 * k) + 28 * k;
+    s[0].status_row = x + text_width(cast(string) l[0..<m], 10 * k) > s[0].bones_b.x0 - 12 * k;
+    if s[0].status_row { s[0].strip = 84 * k; }
+  }
+  // the view below the HUD's strip
+  ry0 := s[0].strip; ry1 := h;
+  s[0].cx = w / 2; s[0].cy = (ry0 + ry1) / 2;
+  // The Metaverse Engine's orbit (yaw 0 faces +Z there; here yaw 0 looks toward -Z, at the figure's face, so it
+  // turns half round). The orbit centres its view right of the pivot by its shoulder; the pivot
+  // given to it moves left by as much, so the view centres on the pivot.
+  turn := s[0].yaw + 3.14159265;
+  right := ash.shot_orbit_right(turn);
+  shoulder := f32(ash.SHOT_ORBIT_SHOULDER);
+  pivot := asp.world_point(s[0].px - right.x * shoulder, s[0].py, s[0].pz - right.z * shoulder);
+  ray := ash.shot_orbit_ray(pivot, turn, s[0].pitch, s[0].dist, 0);
+  shot := ash.shot_orbit(ray, ray.far, turn, s[0].pitch);
+  s[0].eye = v3(shot.eye.x, shot.eye.y, shot.eye.z);
+  s[0].fwd = unit_or(v3(shot.at.x - shot.eye.x, shot.at.y - shot.eye.y, shot.at.z - shot.eye.z), v3(0, 0, -1));
+  s[0].right = unit_or(v3(-s[0].fwd.z, 0, s[0].fwd.x), v3(1, 0, 0));
+  s[0].up = cross(s[0].right, s[0].fwd);
+  s[0].focal = lo((ry1 - ry0) * 1.05, w * 1.6);
+}
+
+// The skeleton: each bone from its parent, left cyan and right orange, a dot on every joint, and
+// the main joints' mannequin names.
+draw_bones :: (s: [] Lab, out: [] f32, at: int, k: f32) -> int {
+  n := at;
+  for j: 1..<MANNEQUIN_JOINTS {
+    p := PEOPLE_PARENT[j];
+    side := mq_side(MANNEQUIN_NAME[j]);
+    c := ifx side == 1 then LEFT_COL else ifx side == 2 then RIGHT_COL else WHITE;
+    // the root sits on the floor under the figure: its bone up to the pelvis is faint
+    n = seg3(s, out, n, s[0].joint[p], s[0].joint[j], 1.1 * k, ifx p == MQ_ROOT then 0.25 else 0.85, c);
+  }
+  for j: 0..<MANNEQUIN_JOINTS {
+    q := proj(s, s[0].joint[j]);
+    if q.z > 0 { n = seg(out, n, q.x, q.y, q.x + 0.5, q.y, 2.6 * k, 1.0, WHITE); }
+  }
+  named := [13] int.[MQ_PELVIS, MQ_SPINE_01, MQ_SPINE_03, MQ_NECK, MQ_HEAD, MQ_UPPERARM_L, MQ_UPPERARM_R,
+                      MQ_HAND_L, MQ_HAND_R, MQ_THIGH_L, MQ_THIGH_R, MQ_FOOT_L, MQ_FOOT_R];
+  for j: named {
+    q := proj(s, s[0].joint[j]);
+    if q.z <= 0 { continue; }
+    n = say_at(out, n, MANNEQUIN_NAME[j], q.x + 6 * k, q.y - 4 * k, 6.5 * k, ink(k, 0.75, DIM));
+  }
+  return n;
+}
+
+button :: (out: [] f32, at: int, b: Rect, t: string, on: bool, pressed: bool, k: f32) -> int {
+  n := box_lines(out, at, b, 0.8 * k, ifx pressed || on then 0.9 else 0.45, ifx on then GOLD else DIM);
+  return say_mid(out, n, t, (b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2 + 4.5 * k, 9 * k, ink(k, 0.8, ifx on then GOLD else WHITE));
+}
+
+// The status line: the body, the clip, the joints, and the face, level of detail and pause when
+// they apply. Its length is in l.
+status_text :: (s: [] Lab, l: [] u8) -> int {
+  m := put(l, 0, ifx s[0].female then "FEMALE BODY" else "MALE BODY");
+  m = put(l, m, "   CLIP "); m = put(l, m, clip_name(s[0].clip));
+  m = put(l, m, " "); m = put_int(l, m, s[0].clip + 1); m = put(l, m, "/"); m = put_int(l, m, META_CLIPS);
+  m = put(l, m, "   65 JOINTS");
+  if s[0].face_state == 2 { m = put(l, m, "   FACE "); m = put(l, m, cast(string) s[0].expr_name[0..<s[0].expr_name_n]); }
+  if s[0].lod_pick >= 0 || s[0].lod > 0 { m = put(l, m, "   LOD "); m = put_int(l, m, s[0].lod); }
+  if s[0].paused { m = put(l, m, "   PAUSED"); }
+  return m;
+}
+
+draw_top :: (s: [] Lab, out: [] f32, at: int, k: f32) -> int {
+  n := at; pad := 16 * k;
+  title_cap := ifx s[0].portrait then 16 * k else 18 * k;
+  n = say_at(out, n, "METAHUMAN LAB", pad, (ifx s[0].portrait then 34 else 38) * k, title_cap, ink(k, 0.95, WHITE));
+  l: [192] u8;
+  m := status_text(s, l[..]);
+  sx0 := ifx s[0].portrait || s[0].status_row then pad else pad + text_width("METAHUMAN LAB", title_cap) + 28 * k;
+  sy0 := ifx s[0].portrait then 54 * k else ifx s[0].status_row then 66 * k else 34 * k;
+  n = say_at(out, n, cast(string) l[0..<m], sx0, sy0, ifx s[0].portrait then 8.5 * k else 10 * k, ink(k, 0.7, DIM));
+  keys := ifx s[0].portrait then "DRAG ORBIT   PINCH ZOOM   TWO FINGERS PAN"
+          else "DRAG ORBIT   SHIFT+DRAG PAN   WHEEL ZOOM   WASD FLY   Q E DOWN UP   K SKELETON   N P CLIP   X FACE   G BODY OR OUTFIT   SPACE PAUSE   C RESET";
+  n = say_at(out, n, keys, pad, s[0].height - pad, ifx s[0].portrait then 7 * k else 8 * k, ink(k, 0.55, DIM));   // along the bottom
+  n = button(out, n, s[0].bones_b, "SKELETON", s[0].bones, s[0].pressing == 2, k);
+  n = button(out, n, s[0].clip_b, clip_name(s[0].clip), false, s[0].pressing == 3, k);
+  if mesh_on(s) && s[0].outfit_n > 0 {
+    o: [16] u8;
+    for i: 0..<s[0].outfit_n { b := s[0].outfit[i]; o[i] = ifx b >= 'a' && b <= 'z' then b - 32 else b; }
+    n = button(out, n, s[0].body_b, cast(string) o[0..<s[0].outfit_n], false, s[0].pressing == 4, k);
+  } else {
+    n = button(out, n, s[0].body_b, ifx s[0].female then "FEMALE" else "MALE", false, s[0].pressing == 4, k);
+  }
+  n = button(out, n, s[0].back, "WORLDS", false, s[0].pressing == 1, k);
+  return n;
+}
+
+lab_frame :: (s: [] Lab, out: [] f32, u: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> int #export_c #effects(all) {
+  lab_start(s);
+  if u.count < UNIFORM_FLOATS || width < 1 || height < 1 { return 0; }
+  s[0].width = width; s[0].height = height; s[0].dpr = dpr;
+  k := hi(dpr, 0.5);
+  if s[0].golden && !s[0].golden_ran {
+    // the golden: the same idle, 1.5 seconds in, every time
+    s[0].golden_ran = true;
+    for i: 0..<90 { lab_step(s, f32(STEP)); }
+  }
+  step_dt := ifx s[0].golden || still then 0.0f32 else dt;
+  // the speaking stage's clock: whole frames once ready (a clip's loading steps are a microsecond)
+  if s[0].speak && speak_ready(s) > 0 && step_dt > 0.001 { s[0].speak_t += step_dt; }
+  lab_run(s, step_dt);
+  if s[0].speak { speak_camera(s); }
+  layout(s, width, height, k);
+  if s[0].speak { s[0].strip = 0; s[0].cy = height / 2; }
+  n := 0;
+  if s[0].bones { n = draw_bones(s, out, n, k); }
+  if !s[0].speak { n = draw_top(s, out, n, k); }
+  for i: 0..<u.count { u[i] = 0; }
+  u[0] = width; u[1] = height; u[2] = s[0].clock; u[3] = 1;
+  u[U_FLAGS] = ifx s[0].bones then 1 else 0; u[U_FLAGS + 2] = s[0].strip; u[U_FLAGS + 3] = ifx s[0].speak then 0.0f32 else 30 * k;
+  u[U_EYE] = s[0].eye.x; u[U_EYE + 1] = s[0].eye.y; u[U_EYE + 2] = s[0].eye.z; u[U_EYE + 3] = s[0].focal;
+  u[U_FWD] = s[0].fwd.x; u[U_FWD + 1] = s[0].fwd.y; u[U_FWD + 2] = s[0].fwd.z; u[U_FWD + 3] = s[0].cx;
+  u[U_RIGHT] = s[0].right.x; u[U_RIGHT + 1] = s[0].right.y; u[U_RIGHT + 2] = s[0].right.z; u[U_RIGHT + 3] = s[0].cy;
+  u[U_UP] = s[0].up.x; u[U_UP + 1] = s[0].up.y; u[U_UP + 2] = s[0].up.z;
+  u[U_UP + 3] = ifx s[0].speak then 1 else 0;   // the speaking stage's backdrop
+  u[U_SUN] = 0.5; u[U_SUN + 1] = 0.72; u[U_SUN + 2] = 0.48;
+  caps: [CAPS] Cap;
+  count := body(s, caps[..]);
+  // the bounds: round the hips, past the farthest joint
+  mid := s[0].joint[MQ_PELVIS]; reach: f32 = 0;
+  for j: 0..<MANNEQUIN_JOINTS { reach = hi(reach, length(sub(s[0].joint[j], mid))); }
+  u[U_BOUND] = mid.x; u[U_BOUND + 1] = mid.y; u[U_BOUND + 2] = mid.z; u[U_BOUND + 3] = reach + 0.25;
+  hf := head_axis(s, v3(0, 0, 1)); hu := head_axis(s, v3(0, 1, 0));
+  hc := mix(caps[6].a, caps[6].b, 0.5);   // the cranium's middle, for the face and hair
+  u[U_HEAD] = hc.x; u[U_HEAD + 1] = hc.y; u[U_HEAD + 2] = hc.z; u[U_HEAD + 3] = caps[6].r;
+  u[U_HEAD_F] = hf.x; u[U_HEAD_F + 1] = hf.y; u[U_HEAD_F + 2] = hf.z;
+  u[U_HEAD_U] = hu.x; u[U_HEAD_U + 1] = hu.y; u[U_HEAD_U + 2] = hu.z;
+  for i: 0..<CAPS {
+    o := U_CAPS + i * 8;
+    if i >= count { u[o + 3] = 0; u[o + 7] = 0; continue; }
+    c := caps[i];
+    u[o] = c.a.x; u[o + 1] = c.a.y; u[o + 2] = c.a.z; u[o + 3] = c.r;
+    u[o + 4] = c.b.x; u[o + 5] = c.b.y; u[o + 6] = c.b.z; u[o + 7] = f32(c.m);
+  }
+  // the key's box reaches the figure's whole shadow on the floor, out past its feet
+  mesh_uniforms(s, u, mid, reach + 1.0);
+  return n;
+}
+
+// ---- input
+
+leave_to :: (s: [] Lab, url: string) {
+  if s[0].action != 0 { return; }
+  s[0].out_n = put(s[0].outbox[..], 0, url);
+  s[0].action = ACT_NAVIGATE;
+}
+// The next clip, or the one before (by -1), round the twelve.
+cycle_clip :: (s: [] Lab, by: int) { s[0].clip = (s[0].clip + by + META_CLIPS) % META_CLIPS; }
+switch_body :: (s: [] Lab) {
+  if mesh_on(s) { next_outfit(s); return; }   // a mesh is one body: the button steps its outfits
+  s[0].female = !s[0].female; pose(s);
+}
+// The outfits a pack comes in (pack_human.coax --outfit, metaverse/tools/humans/ph_outfits.coax), after its
+// own clothes: each is its own pack, base-OUTFIT.
+OUTFITS_N :: 3;
+outfit_name :: (i: int) -> string {
+  if i == 0 { return "fantasy"; }
+  if i == 1 { return "hooded"; }
+  return "robe";
+}
+// The page with the pack's next outfit: ?pack=BASE&outfit=NAME, or ?pack=BASE for its own clothes
+// after the last.
+next_outfit :: (s: [] Lab) {
+  if s[0].outfit_n == 0 || s[0].outfit_base_n == 0 { return; }
+  now := cast(string) s[0].outfit[0..<s[0].outfit_n];
+  at := -1;
+  for i: 0..<OUTFITS_N { if outfit_name(i) == now { at = i; } }
+  u: [96] u8;
+  m := put(u[..], 0, "/worlds/metahuman-lab/?pack=");
+  m = put(u[..], m, cast(string) s[0].outfit_base[0..<s[0].outfit_base_n]);
+  if at + 1 < OUTFITS_N { m = put(u[..], m, "&outfit="); m = put(u[..], m, outfit_name(at + 1)); }
+  leave_to(s, cast(string) u[0..<m]);
+}
+cam_reset :: (s: [] Lab) {
+  s[0].yaw = 0; s[0].pitch = CAM_PITCH; s[0].dist = CAM_DIST;
+  s[0].px = 0; s[0].py = CAM_Y; s[0].pz = 0; s[0].vx = 0; s[0].vy = 0; s[0].vz = 0;
+}
+// F (unlisted, for scripts): the same frame every time, the clip paused at its start with the
+// camera close on the face, so two page loads' probe views line up pixel for pixel.
+face_view :: (s: [] Lab) {
+  s[0].paused = true;
+  s[0].skin[0].time = 0; s[0].skin[0].changed = s[0].skin[0].clock - 100;
+  s[0].face_t = 0; s[0].blink_at = 2.0; s[0].expr_w = 1;
+  animate(s, 0);
+  h := s[0].joint[MQ_HEAD];
+  s[0].yaw = 0; s[0].pitch = 0.05; s[0].dist = ZOOM_NEAR;
+  s[0].px = h.x; s[0].py = h.y + 0.08; s[0].pz = h.z; s[0].vx = 0; s[0].vy = 0; s[0].vz = 0;
+}
+// Which held key a letter is (W A S D Q E), or -1.
+held_of :: (key: int) -> int {
+  if key == 'w' || key == 'W' { return 0; }
+  if key == 'a' || key == 'A' { return 1; }
+  if key == 's' || key == 'S' { return 2; }
+  if key == 'd' || key == 'D' { return 3; }
+  if key == 'q' || key == 'Q' { return 4; }
+  if key == 'e' || key == 'E' { return 5; }
+  return -1;
+}
+lab_key :: (s: [] Lab, key: int, mods: int) -> bool #export_c #effects(all) {
+  lab_start(s);
+  if key == KEY_ESCAPE { leave_to(s, "/worlds"); return true; }
+  if key == ' ' || key == KEY_ENTER { s[0].paused = !s[0].paused; return true; }
+  if key == 'k' || key == 'K' { s[0].bones = !s[0].bones; return true; }
+  if key == 'v' || key == 'V' { s[0].probe = (s[0].probe + 1) % 6; return true; }
+  if key == 'l' || key == 'L' { s[0].lod_pick = ifx s[0].lod_pick + 1 >= LODS then -1 else s[0].lod_pick + 1; return true; }
+  if key == 'f' || key == 'F' { face_view(s); return true; }
+  if key == 'x' || key == 'X' { s[0].expr_ask += 1; return true; }
+  if key == 'n' || key == 'N' { cycle_clip(s, 1); return true; }
+  if key == 'p' || key == 'P' { cycle_clip(s, -1); return true; }
+  if key == 'g' || key == 'G' { switch_body(s); return true; }
+  if key == 'c' || key == 'C' { cam_reset(s); return true; }
+  h := held_of(key);
+  if h >= 0 { s[0].held[h] = true; return true; }
+  if key == KEY_LEFT { s[0].yaw -= 0.12; return true; }
+  if key == KEY_RIGHT { s[0].yaw += 0.12; return true; }
+  if key == KEY_UP { s[0].pitch = lo(f32(PITCH_HIGH), s[0].pitch + 0.06); return true; }
+  if key == KEY_DOWN { s[0].pitch = hi(f32(PITCH_LOW), s[0].pitch - 0.06); return true; }
+  if key == '=' || key == '+' { cam_zoom(s, 0.9); return true; }
+  if key == '-' || key == '_' { cam_zoom(s, 1 / 0.9); return true; }
+  if key == KEY_SHIFT { s[0].shift = true; return false; }
+  return false;
+}
+lab_key_up :: (s: [] Lab, key: int, mods: int) -> bool #export_c #effects(all) {
+  if key == KEY_SHIFT { s[0].shift = false; }
+  h := held_of(key);
+  if h >= 0 { s[0].held[h] = false; return true; }
+  return false;
+}
+lab_blur :: (s: [] Lab) #export_c #effects(all) {
+  s[0].pressing = 0; s[0].dragging = false; s[0].shift = false; s[0].fingers = 0;
+  for i: 0..<FLY_HOLD { s[0].held[i] = false; }
+}
+// The camera's zoom: its distance times `by`, held between near and far.
+cam_zoom :: (s: [] Lab, by: f32) { s[0].dist = lo(f32(ZOOM_FAR), hi(f32(ZOOM_NEAR), s[0].dist * by)); }
+// A pan: the scene follows the pointer, dx right and dy down (device px), so the pivot moves the
+// other way in the view's plane.
+cam_pan :: (s: [] Lab, dx: f32, dy: f32) {
+  m := s[0].dist / hi(s[0].focal, 1);   // metres per px at the pivot
+  s[0].px = clamp(s[0].px - s[0].right.x * dx * m + s[0].up.x * dy * m, -40, 40);
+  s[0].py = clamp(s[0].py - s[0].right.y * dx * m + s[0].up.y * dy * m, 0.1, 12);
+  s[0].pz = clamp(s[0].pz - s[0].right.z * dx * m + s[0].up.z * dy * m, -40, 40);
+}
+// The wheel (CSS px, down is out) zooms.
+lab_wheel :: (s: [] Lab, dy: f32) -> bool #export_c #effects(all) {
+  lab_start(s);
+  cam_zoom(s, 1 + clamp(dy, -200, 200) * 0.0012);
+  return true;
+}
+lab_pointer :: (s: [] Lab, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c #effects(all) {
+  lab_start(s);
+  if phase == 0 {
+    if in_rect(s[0].back, x, y) { s[0].pressing = 1; return true; }
+    if in_rect(s[0].bones_b, x, y) { s[0].pressing = 2; return true; }
+    if in_rect(s[0].clip_b, x, y) { s[0].pressing = 3; return true; }
+    if in_rect(s[0].body_b, x, y) { s[0].pressing = 4; return true; }
+    // a second finger: the two pinch to zoom and move together to pan
+    if kind == 1 && s[0].fingers == 1 && s[0].fing_id[0] != id {
+      s[0].fingers = 2; s[0].fing_id[1] = id; s[0].fing_x[1] = x; s[0].fing_y[1] = y; return true;
+    }
+    if kind == 1 { s[0].fingers = 1; s[0].fing_id[0] = id; s[0].fing_x[0] = x; s[0].fing_y[0] = y; }
+    s[0].dragging = true; s[0].panning = s[0].shift; s[0].drag_x = x; s[0].drag_y = y; return true;
+  }
+  if phase == 1 {
+    if kind == 1 && s[0].fingers == 2 {
+      f := ifx s[0].fing_id[0] == id then 0 else ifx s[0].fing_id[1] == id then 1 else -1;
+      if f < 0 { return false; }
+      gap0 := sqrt((s[0].fing_x[0] - s[0].fing_x[1]) * (s[0].fing_x[0] - s[0].fing_x[1]) + (s[0].fing_y[0] - s[0].fing_y[1]) * (s[0].fing_y[0] - s[0].fing_y[1]));
+      mx0 := (s[0].fing_x[0] + s[0].fing_x[1]) / 2; my0 := (s[0].fing_y[0] + s[0].fing_y[1]) / 2;
+      s[0].fing_x[f] = x; s[0].fing_y[f] = y;
+      gap1 := sqrt((s[0].fing_x[0] - s[0].fing_x[1]) * (s[0].fing_x[0] - s[0].fing_x[1]) + (s[0].fing_y[0] - s[0].fing_y[1]) * (s[0].fing_y[0] - s[0].fing_y[1]));
+      if gap0 > 1 && gap1 > 1 { cam_zoom(s, gap0 / gap1); }
+      cam_pan(s, (s[0].fing_x[0] + s[0].fing_x[1]) / 2 - mx0, (s[0].fing_y[0] + s[0].fing_y[1]) / 2 - my0);
+      return true;
+    }
+    if !s[0].dragging { return false; }
+    if s[0].panning { cam_pan(s, x - s[0].drag_x, y - s[0].drag_y); }
+    else {
+      k := hi(s[0].dpr, 0.5);
+      s[0].yaw -= (x - s[0].drag_x) * 0.005 / k;
+      s[0].pitch = clamp(s[0].pitch + (y - s[0].drag_y) * 0.004 / k, f32(PITCH_LOW), f32(PITCH_HIGH));
+    }
+    s[0].drag_x = x; s[0].drag_y = y;
+    return true;
+  }
+  if kind == 1 && s[0].fingers > 0 {
+    // a finger lifts: the one left (if any) drags on from where it is
+    if s[0].fingers == 2 {
+      left := ifx s[0].fing_id[0] == id then 1 else 0;
+      s[0].fing_id[0] = s[0].fing_id[left]; s[0].fing_x[0] = s[0].fing_x[left]; s[0].fing_y[0] = s[0].fing_y[left];
+      s[0].fingers = 1; s[0].drag_x = s[0].fing_x[0]; s[0].drag_y = s[0].fing_y[0];
+      return true;
+    }
+    s[0].fingers = 0;
+  }
+  s[0].dragging = false; s[0].panning = false;
+  held := s[0].pressing; s[0].pressing = 0;
+  if held == 1 { if phase == 2 && in_rect(s[0].back, x, y) { leave_to(s, "/worlds"); } return true; }
+  if held == 2 { if phase == 2 && in_rect(s[0].bones_b, x, y) { s[0].bones = !s[0].bones; } return true; }
+  if held == 3 { if phase == 2 && in_rect(s[0].clip_b, x, y) { cycle_clip(s, 1); } return true; }
+  if held == 4 { if phase == 2 && in_rect(s[0].body_b, x, y) { switch_body(s); } return true; }
+  return false;
+}
+lab_cursor :: (s: [] Lab) -> int #export_c #effects(all) { return 0; }
+lab_message :: (s: [] Lab, kind: int, t: string) #export_c #effects(all) {
+  lab_start(s);
+  if kind == 600 { speak_stage(s, t); }
+}
+// A query value (name=VALUE, after a '?' or '&') in the page facts' url= line, or "".
+query_value :: (facts: string, name: string) -> string {
+  for i: 1..<facts.count - name.count {
+    if (facts[i - 1] == '?' || facts[i - 1] == '&') && facts[i + name.count] == '=' && facts[i..<i + name.count] == name {
+      e := i + name.count + 1; while e < facts.count && facts[e] != '&' && facts[e] != '#' && facts[e] != '\n' { e += 1; }
+      return facts[i + name.count + 1..<e];
+    }
+  }
+  return "";
+}
+// ?stage=speak&track=TRACK (metaverse-engine/audio/speak.coax's URL form): the speaking stage, idle, its HUD gone.
+speak_stage :: (s: [] Lab, url: string) {
+  if query_value(url, "stage") != "speak" { return; }
+  if !spk_track_parse(query_value(url, "track"), s[0].track[..]) { s[0].track[0].n = 0; }
+  s[0].speak = true; s[0].speak_t = 0; s[0].clip = PEOPLE_IDLE; s[0].paused = false;
+  s[0].skin[0].time = 0;
+  s[0].speak_dist = SPEAK_DIST; s[0].speak_drop = SPEAK_DROP;
+  cam := query_value(url, "cam"); at: [1] int; at[0] = 0;
+  d := spk_num(cam, at[..]);
+  if at[0] > 0 && at[0] < cam.count && cam[at[0]] == ',' {
+    at[0] += 1; p := spk_num(cam, at[..]);
+    if at[0] > 0 && d > 0.2 && d < 3 && abs(p) < 0.5 { s[0].speak_dist = d; s[0].speak_drop = p; }
+  }
+  speak_camera(s);
+}
+// Ready to speak: the pack's face is in, or the pack was refused (the capsules draw: a test's).
+speak_ready :: (s: [] Lab) -> int {
+  if mesh_on(s) && s[0].face_state >= 1 { return 2; }
+  if s[0].pack_failed || (mesh_on(s) && s[0].face_state < 0) { return 1; }
+  return 0;
+}
+lab_probe :: (s: [] Lab) -> int #export_c #effects(all) { return speak_ready(s); }
+// Head and shoulders: the camera level with the face, close, on the head as it moves.
+SPEAK_DIST :: 0.68; SPEAK_DROP :: 0.05;
+speak_camera :: (s: [] Lab) {
+  h := s[0].joint[MQ_HEAD];
+  s[0].yaw = 0; s[0].pitch = 0.03; s[0].dist = s[0].speak_dist;
+  s[0].px = h.x; s[0].py = h.y - s[0].speak_drop; s[0].pz = h.z; s[0].vx = 0; s[0].vy = 0; s[0].vz = 0;
+}
+lab_golden :: (s: [] Lab, on: bool) #export_c #effects(all) { lab_start(s); s[0].golden = on; }
+lab_action :: (s: [] Lab) -> int #export_c #effects(all) { a := s[0].action; s[0].action = 0; return a; }
+lab_action_done :: (s: [] Lab) #export_c #effects(all) { s[0].out_n = 0; }
+
+// ---- the mesh: a human pack's skin on the people rig
+
+// The pack's catalog (pack_human.coax has its lines): the body, each joint's bind position, the
+// materials and the pieces, a draw each.
+lab_catalog :: (s: [] Lab, text: string) #export_c #effects(all) {
+  lab_start(s);
+  s[0].draw_n = 0; s[0].water_n = 0; s[0].binds = 0; s[0].pack_body = -1; s[0].lod = 0;
+  s[0].outfit_n = 0; s[0].outfit_base_n = 0;
+  for k: 0..<LODS { s[0].lod_first[k] = 0; s[0].lod_n[k] = 0; }
+  for j: 0..<MANNEQUIN_JOINTS { s[0].bturn[j] = Quat.{x = 0, y = 0, z = 0, w = 1}; }
+  i := 0;
+  s[0].face_state = 0; s[0].face_first = 0; s[0].face_count = 0; s[0].face_len = 0;
+  while i < text.count && text[i] != 0 {
+    e := i; while e < text.count && text[e] != '\n' && text[e] != 0 { e += 1; }
+    mesh_line(s, text[i..<e]);
+    i = ifx e < text.count && text[e] == 0 then e else e + 1;
+  }
+  // the face rig's block follows a NUL, as long as its F line says
+  if i < text.count && s[0].face_len > 0 && i + 1 + s[0].face_len <= text.count {
+    s[0].face_off = i + 1; s[0].face_state = 1;
+  }
+  if s[0].binds != MANNEQUIN_JOINTS || s[0].pack_body < 0 { s[0].draw_n = 0; return; }
+  if s[0].female != (s[0].pack_body == 1) { s[0].female = s[0].pack_body == 1; pose(s); }
+  mesh_ready(s);
+}
+// One of the pack's parts arrived (bytes > 0) or failed (0): the mesh draws once all four are in.
+lab_pack_part :: (s: [] Lab, i: int, bytes: int) #export_c #effects(all) {
+  if i < PACK_CATALOG || i >= PACK_CATALOG + PACK_PARTS { return; }
+  if bytes <= 0 { s[0].pack_failed = true; s[0].mesh = false; return; }
+  s[0].pack_in |= 1 << i;
+  mesh_ready(s);
+}
+mesh_ready :: (s: [] Lab) {
+  s[0].mesh = !s[0].pack_failed && s[0].pack_in == (1 << PACK_PARTS) - 1 && s[0].draw_n > 0;
+  if s[0].mesh { lab_palette(s); }
+}
+lab_draw_count :: (s: [] Lab) -> int #export_c #effects(all) { return ifx mesh_on(s) then s[0].lod_n[s[0].lod] else 0; }
+lab_draw_first :: (s: [] Lab) -> int #export_c #effects(all) { return s[0].lod_first[s[0].lod]; }
+lab_water_draws :: (s: [] Lab) -> int #export_c #effects(all) { return ifx mesh_on(s) && s[0].lod == 0 then s[0].water_n else 0; }
+mh_word :: (line: string, from: int) -> int { e := from; while e < line.count && line[e] != ' ' { e += 1; } return e; }
+// An integer from at[0] (spaces before it skipped); at[0] is then past it, or -1 with none.
+mh_int :: (text: string, at: [] int) -> int {
+  i := at[0];
+  if i < 0 { return 0; }
+  while i < text.count && text[i] == ' ' { i += 1; }
+  neg := false; v := 0; digits := 0;
+  if i < text.count && text[i] == '-' { neg = true; i += 1; }
+  while i < text.count && text[i] >= '0' && text[i] <= '9' && digits < 9 { v = v * 10 + cast(int) (text[i] - '0'); i += 1; digits += 1; }
+  at[0] = ifx digits > 0 then i else -1;
+  return ifx neg then -v else v;
+}
+// A decimal ("-0.0434") from at[0], as mh_int.
+mh_dec :: (text: string, at: [] int) -> f32 {
+  i := at[0];
+  if i < 0 { return 0; }
+  while i < text.count && text[i] == ' ' { i += 1; }
+  neg := i < text.count && text[i] == '-';
+  if neg { i += 1; }
+  at[0] = i;
+  whole := mh_int(text, at);
+  if at[0] < 0 { return 0; }
+  v := cast(f32) whole;
+  i = at[0];
+  if i < text.count && text[i] == '.' {
+    i += 1; place: f32 = 0.1;
+    while i < text.count && text[i] >= '0' && text[i] <= '9' { v += place * cast(f32) (text[i] - '0'); place *= 0.1; i += 1; }
+    at[0] = i;
+  }
+  return ifx neg then -v else v;
+}
+mesh_line :: (s: [] Lab, line: string) {
+  if line.count < 3 { return; }
+  at: [1] int;
+  if line.count > 7 && line[0..<7] == "outfit " {
+    i := 7; s[0].outfit_n = 0; s[0].outfit_base_n = 0;
+    while i < line.count && line[i] != ' ' { if s[0].outfit_n < 16 { s[0].outfit[s[0].outfit_n] = line[i]; s[0].outfit_n += 1; } i += 1; }
+    i += 1;
+    while i < line.count && line[i] != ' ' { if s[0].outfit_base_n < 16 { s[0].outfit_base[s[0].outfit_base_n] = line[i]; s[0].outfit_base_n += 1; } i += 1; }
+    return;
+  }
+  if line.count > 5 && line[0..<5] == "body " {
+    rest := line[5..<line.count];
+    s[0].pack_body = ifx rest == "female" then 1 else ifx rest == "male" then 0 else -1;
+    return;
+  }
+  if line[1] != ' ' { return; }
+  if line[0] == 'B' {
+    at[0] = 2; j := mh_int(line, at[..]);
+    x := mh_dec(line, at[..]); y := mh_dec(line, at[..]); z := mh_dec(line, at[..]);
+    if at[0] < 0 || j != s[0].binds || j >= MANNEQUIN_JOINTS { return; }
+    s[0].bind[j] = v3(x, y, z); s[0].binds = j + 1;
+    // a bind pose off the rig's rest (the clothes' own, arms lowered) names each joint's turn to it
+    q := Quat.{x = 0, y = 0, z = 0, w = 1};
+    qx := mh_dec(line, at[..]); qy := mh_dec(line, at[..]); qz := mh_dec(line, at[..]); qw := mh_dec(line, at[..]);
+    if at[0] >= 0 && (qx != 0 || qy != 0 || qz != 0 || qw != 0) { q = quat_unit(Quat.{x = qx, y = qy, z = qz, w = qw}); }
+    s[0].bturn[j] = q;
+    return;
+  }
+  if line[0] == 'M' {
+    at[0] = 2; m := mh_int(line, at[..]);
+    r := mh_int(line, at[..]); g := mh_int(line, at[..]); b := mh_int(line, at[..]); rough := mh_int(line, at[..]);
+    if at[0] < 0 || m < 1 || m > MATS { return; }
+    o := (m - 1) * 4;
+    s[0].mats[o] = f32(r) / 1000; s[0].mats[o + 1] = f32(g) / 1000; s[0].mats[o + 2] = f32(b) / 1000; s[0].mats[o + 3] = f32(rough) / 1000;
+    return;
+  }
+  if line[0] == 'F' {
+    at[0] = 2;
+    first := mh_int(line, at[..]); count := mh_int(line, at[..]); bytes := mh_int(line, at[..]);
+    if at[0] < 0 || first < 0 || count <= 0 || count > FACE_VERTICES || bytes <= 0 { return; }
+    s[0].face_first = first; s[0].face_count = count; s[0].face_len = bytes;
+    return;
+  }
+  if line[0] == 'D' {
+    at[0] = 2;
+    level := mh_int(line, at[..]);
+    if at[0] < 0 { return; }
+    at[0] = mh_word(line, at[0] + 1);
+    first := mh_int(line, at[..]); count := mh_int(line, at[..]);
+    if at[0] < 0 || level < 1 || level >= LODS || first < 0 || count <= 0 || s[0].draw_n >= DRAWS_MAX { return; }
+    // a level's pieces are one run of draws, the levels in order
+    if s[0].lod_n[level] == 0 {
+      for k: level + 1..<LODS { if s[0].lod_n[k] > 0 { return; } }
+      s[0].lod_first[level] = s[0].draw_n;
+    } else if s[0].lod_first[level] + s[0].lod_n[level] != s[0].draw_n { return; }
+    o := s[0].draw_n * 4;
+    s[0].draws[o] = cast(u32) first; s[0].draws[o + 1] = cast(u32) count; s[0].draws[o + 2] = 0; s[0].draws[o + 3] = 1;
+    s[0].draw_n += 1; s[0].lod_n[level] += 1;
+    return;
+  }
+  if line[0] == 'P' {
+    at[0] = mh_word(line, 2);
+    first := mh_int(line, at[..]); count := mh_int(line, at[..]); material := mh_int(line, at[..]);
+    if at[0] < 0 || first < 0 || count <= 0 || s[0].draw_n >= DRAWS_MAX { return; }
+    // the eyes' blended layers (wet 7, occlusion 25) come last; the host draws them over the scene
+    s[0].water_n = ifx material == 7 || material == 25 then s[0].water_n + 1 else 0;
+    if s[0].lod_n[1] + s[0].lod_n[2] > 0 { return; }   // the full mesh's pieces come first
+    s[0].lod_n[0] += 1;
+    o := s[0].draw_n * 4;
+    s[0].draws[o] = cast(u32) first; s[0].draws[o + 1] = cast(u32) count; s[0].draws[o + 2] = 0; s[0].draws[o + 3] = 1;
+    s[0].draw_n += 1;
+  }
+}
+
+// The pose's palette for the mesh: each joint's skinning matrix, three rows of four, taking the
+// pack's bind pose to the pose now. A joint's turn is the clip's change from the rig's rest (in the
+// figure's space, D = posed x rest^-1); its place is its parent's plus that parent's turn of its
+// bone in the bind pose (and of the clip's move of it, the pelvis's), so the pack keeps its own
+// bone lengths. A pack bound in another pose (its clothes' own) turns each joint from that bind to
+// the rig's rest first (bturn), so its vertices are skinned once, from where they were authored.
+// On a pack bound at the rig's own rest this is metaverse-engine/anim/skin.coax's skin_palette.
+lab_palette :: (s: [] Lab) {
+  r := rig(s);
+  gq: [MANNEQUIN_JOINTS] Quat; rq: [MANNEQUIN_JOINTS] Quat; d: [MANNEQUIN_JOINTS] Quat;
+  gp: [MANNEQUIN_JOINTS] Point;
+  for j: 0..<MANNEQUIN_JOINTS {
+    l := s[0].skin[0].now[j];
+    rest := skin_rest(r, j);
+    p := r.parent[j];
+    if p < 0 || p >= j {
+      gq[j] = l.q; rq[j] = rest.q;
+      gp[j] = add(s[0].bind[j], sub(l.t, rest.t));
+    } else {
+      gq[j] = quat_unit(quat_mul(gq[p], l.q)); rq[j] = quat_unit(quat_mul(rq[p], rest.q));
+      bone := sub(s[0].bind[j], s[0].bind[p]);
+      gp[j] = add(add(gp[p], quat_rotate(d[p], bone)), quat_rotate(gq[p], sub(l.t, rest.t)));
+    }
+    d[j] = quat_unit(quat_mul(quat_mul(gq[j], Quat.{x = -rq[j].x, y = -rq[j].y, z = -rq[j].z, w = rq[j].w}), s[0].bturn[j]));
+    ex := quat_rotate(d[j], v3(1, 0, 0)); ey := quat_rotate(d[j], v3(0, 1, 0)); ez := quat_rotate(d[j], v3(0, 0, 1));
+    bp := s[0].bind[j];
+    t := sub(gp[j], add(add(times(ex, bp.x), times(ey, bp.y)), times(ez, bp.z)));
+    b := j * 12;
+    s[0].palette[b] = ex.x; s[0].palette[b + 1] = ey.x; s[0].palette[b + 2] = ez.x; s[0].palette[b + 3] = t.x;
+    s[0].palette[b + 4] = ex.y; s[0].palette[b + 5] = ey.y; s[0].palette[b + 6] = ez.y; s[0].palette[b + 7] = t.y;
+    s[0].palette[b + 8] = ex.z; s[0].palette[b + 9] = ey.z; s[0].palette[b + 10] = ez.z; s[0].palette[b + 11] = t.z;
+  }
+  s[0].pal_version += 1;
+}
+// Where the mesh puts a bind-pose point now (a check's view of the vertex shader's skinning).
+palette_apply :: (m: [] f32, j: int, p: Point) -> Point {
+  b := j * 12;
+  return v3(m[b] * p.x + m[b + 1] * p.y + m[b + 2] * p.z + m[b + 3],
+            m[b + 4] * p.x + m[b + 5] * p.y + m[b + 6] * p.z + m[b + 7],
+            m[b + 8] * p.x + m[b + 9] * p.y + m[b + 10] * p.z + m[b + 11]);
+}
+
+// The mesh's rows: the figure's turn and place, the key's shadow box round the figure, the
+// materials and the light rig: a warm key from the sun's side, a cool fill from the other front
+// side and a rim from behind, a portrait's three lights.
+mesh_uniforms :: (s: [] Lab, u: [] f32, mid: Point, reach: f32) {
+  on := mesh_on(s);
+  u[U_FLAGS + 1] = ifx on then 1 else 0;
+  u[U_PROBE] = cast(f32) s[0].probe;
+  if !on { return; }
+  // the level of detail: by how tall the figure stands on the screen (or as L picks)
+  levels := 1; for k: 1..<LODS { if s[0].lod_n[k] > 0 { levels = k + 1; } }
+  tall := s[0].focal * 1.8 / hi(length(sub(mid, s[0].eye)), 0.1);
+  s[0].lod = ifx s[0].lod_pick >= 0 then (ifx s[0].lod_pick < levels then s[0].lod_pick else levels - 1) else lod_for(s[0].lod, tall, levels);
+  if s[0].face_state == 2 && s[0].lod == 0 { u[U_FACE] = f32(s[0].face_first); u[U_FACE + 1] = f32(s[0].face_count); u[U_FACE + 2] = 1; }
+  u[U_FIG] = cos(s[0].fyaw); u[U_FIG + 1] = sin(s[0].fyaw); u[U_FIG + 2] = s[0].fx; u[U_FIG + 3] = s[0].fz;
+  sun := unit_or(v3(u[U_SUN], u[U_SUN + 1], u[U_SUN + 2]), v3(0, 1, 0));
+  side := unit_or(cross(v3(0, 1, 0), sun), v3(1, 0, 0));
+  lift := cross(sun, side);
+  half := hi(reach, 0.5);
+  u[U_LIGHT] = mid.x; u[U_LIGHT + 1] = mid.y; u[U_LIGHT + 2] = mid.z; u[U_LIGHT + 3] = 1.0 / half;
+  u[U_LIGHT + 4] = side.x; u[U_LIGHT + 5] = side.y; u[U_LIGHT + 6] = side.z;
+  u[U_LIGHT + 8] = lift.x; u[U_LIGHT + 9] = lift.y; u[U_LIGHT + 10] = lift.z;
+  u[U_LIGHT + 12] = sun.x; u[U_LIGHT + 13] = sun.y; u[U_LIGHT + 14] = sun.z; u[U_LIGHT + 15] = 0.0015;
+  for k: 0..<MATS * 4 { u[U_MAT + k] = s[0].mats[k]; }
+  fill := unit_or(v3(-0.75, 0.3, 0.6), v3(0, 0, 1)); rim := unit_or(v3(-0.2, 0.45, -0.85), v3(0, 0, -1));
+  u[U_RIG] = fill.x; u[U_RIG + 1] = fill.y; u[U_RIG + 2] = fill.z; u[U_RIG + 3] = 0.6;
+  u[U_RIG + 4] = rim.x; u[U_RIG + 5] = rim.y; u[U_RIG + 6] = rim.z; u[U_RIG + 7] = 2.4;
+  u[U_RIG + 8] = 3.6; u[U_RIG + 9] = 1.1;
+}
+
+// ---- the face rig
+
+// Runs the face rig for this frame: opens its block once, then, when the controls differ from the
+// last frame's (an expression easing, a blink, talk), evaluates it and writes the face vertices'
+// rows (4 floats each: the move in metres and the normal word) into rows. cat is the whole catalog
+// (the block sits in it); work holds FACE_WORK floats and still FACE_JOINTS flags. True when the
+// rows changed.
+lab_face :: (s: [] Lab, cat: string, work: [] f32, still: [] bool, rows: [] f32) -> bool #export_c #effects(all) {
+  if s[0].face_state == 1 {
+    s[0].face_state = -1;
+    if s[0].face_off + s[0].face_len > cat.count || work.count < FACE_WORK || still.count < FACE_JOINTS { return false; }
+    blk := cat[s[0].face_off..<s[0].face_off + s[0].face_len];
+    if !frig_open(s[0].face[..], blk, FACE_CONTROLS, FACE_JOINTS, FACE_POINTS) || s[0].face[0].vertices != s[0].face_count { return false; }
+    if 4 * s[0].face_count > rows.count { return false; }
+    frig_neutral_inverse(s[0].face[..], blk, work[FACE_W_ATTR..<FACE_W_WORLD], work[FACE_W_WORLD..<FACE_W_INV], work[FACE_W_INV..<FACE_W_SKIN]);
+    frig_unpack(s[0].face[..], blk, work[FACE_W_UNPACKED..<FACE_WORK]);
+    s[0].face_state = 2;
+    s[0].expr = face_named(s, blk, "neutral");
+    face_name(s, blk);
+    for k: 0..<6 { s[0].face_key[k] = -1; }
+  }
+  if s[0].face_state != 2 || s[0].lod != 0 { return false; }   // the lower levels have no face rig
+  blk := cat[s[0].face_off..<s[0].face_off + s[0].face_len];
+  r := s[0].face[..];
+  // X: the next expression that isn't the blink's or the jaw's (those the lab plays itself)
+  while s[0].expr_ask > 0 {
+    s[0].expr_ask -= 1;
+    // paused (F holds a frame), it comes in at once, so a still frame shows it
+    s[0].expr_prev = s[0].expr; s[0].expr_w = ifx s[0].paused then 1.0f32 else 0;
+    e := s[0].expr;
+    for k: 0..<r[0].exprs {
+      e = (e + 1) % r[0].exprs;
+      n := frig_expr_name(r, blk, e);
+      if n != "blink" && n != "jaw" && spk_viseme(n) < 0 && spk_mood(n) < 0 { break; }
+    }
+    s[0].expr = e;
+    face_name(s, blk);
+  }
+  if s[0].speak { return speak_face(s, blk, work, still, rows); }
+  talking := frig_expr_name(r, blk, s[0].expr) == "talk";
+  jaw: f32 = 0;
+  if talking {
+    t := s[0].face_t;
+    jaw = 0.28 * (0.5 + 0.5 * sin(t * 11)) * (0.55 + 0.45 * sin(t * 2.3)) * s[0].expr_w;
+  }
+  key := [6] f32.[f32(s[0].expr), s[0].expr_w, f32(s[0].expr_prev), blink_now(s), jaw, 0];
+  unchanged := true;
+  for k: 0..<6 { if key[k] != s[0].face_key[k] { unchanged = false; } }
+  if unchanged { return false; }
+  for k: 0..<6 { s[0].face_key[k] = key[k]; }
+  c := work[FACE_W_C..<FACE_W_ATTR];
+  for i: 0..<r[0].controls { c[i] = 0; }
+  frig_add_expr(r, blk, s[0].expr, s[0].expr_w, c);
+  frig_add_expr(r, blk, s[0].expr_prev, 1 - s[0].expr_w, c);
+  frig_add_expr(r, blk, face_named(s, blk, "blink"), key[3], c);
+  frig_add_expr(r, blk, face_named(s, blk, "jaw"), jaw, c);
+  for i: 0..<r[0].raws { c[i] = clamp(c[i], 0, 1); }
+  face_eval(s, blk, work, still, rows);
+  return true;
+}
+// The rig on the controls in work's first FACE_CONTROLS floats, into the face's rows.
+face_eval :: (s: [] Lab, blk: string, work: [] f32, still: [] bool, rows: [] f32) {
+  r := s[0].face[..];
+  c := work[FACE_W_C..<FACE_W_ATTR];
+  frig_psds(r, blk, c);
+  frig_joint_deltas(r, blk, c, work[FACE_W_ATTR..<FACE_W_WORLD]);
+  frig_worlds(r, blk, work[FACE_W_ATTR..<FACE_W_WORLD], work[FACE_W_WORLD..<FACE_W_INV]);
+  frig_points(r, blk, c, work[FACE_W_WORLD..<FACE_W_INV], work[FACE_W_INV..<FACE_W_SKIN], work[FACE_W_SKIN..<FACE_W_MORPH],
+              still, work[FACE_W_MORPH..<FACE_W_PTS], work[FACE_W_UNPACKED..<FACE_WORK], work[FACE_W_PTS..<FACE_W_UNPACKED]);
+  frig_vertices(r, blk, work[FACE_W_PTS..<FACE_W_UNPACKED], rows);
+  s[0].face_version += 1;
+}
+face_named :: (s: [] Lab, blk: string, name: string) -> int { return frig_expr(s[0].face[..], blk, name); }
+// The speaking face: the mood, the visemes and the blink at the stage's time, weighted and summed
+// into one control vector (clamped), then evaluated.
+speak_face :: (s: [] Lab, blk: string, work: [] f32, still: [] bool, rows: [] f32) -> bool {
+  r := s[0].face[..];
+  if s[0].face_key[0] == -2 && s[0].face_key[1] == s[0].speak_t { return false; }
+  s[0].face_key[0] = -2; s[0].face_key[1] = s[0].speak_t;
+  f := spk_perform(s[0].track[..], s[0].speak_t);
+  c := work[FACE_W_C..<FACE_W_ATTR];
+  speak_controls(r, blk, f, s[0].track[0].mood, c);
+  face_eval(s, blk, work, still, rows);
+  return true;
+}
+speak_controls :: (r: [] FaceRig, blk: string, f: SpkFace, mood: int, c: [] f32) {
+  names: [SPK_VISEMES + 1] string; w: [SPK_VISEMES + 1] f32;
+  names[0] = SPK_MOOD_NAME[clamp_i(mood, 0, SPK_MOODS - 1)]; w[0] = f.mood;
+  for v: 1..<SPK_VISEMES { names[v] = SPK_VISEME_NAME[v]; w[v] = f.vis[v]; }
+  names[SPK_VISEMES] = "blink"; w[SPK_VISEMES] = f.blink;
+  face_mix(r, blk, names[..], w[..], c);
+}
+// Weighted expressions (by name; a name the block lacks adds nothing) summed into the controls,
+// the raw ones clamped to 0..1, ready for the correctives.
+face_mix :: (r: [] FaceRig, blk: string, names: [] string, w: [] f32, c: [] f32) {
+  for i: 0..<r[0].controls { c[i] = 0; }
+  for k: 0..<names.count { frig_add_expr(r, blk, frig_expr(r, blk, names[k]), w[k], c); }
+  for i: 0..<r[0].raws { c[i] = clamp(c[i], 0, 1); }
+}
+clamp_i :: (x: int, a: int, b: int) -> int { return ifx x < a then a else ifx x > b then b else x; }
+face_name :: (s: [] Lab, blk: string) {
+  n := frig_expr_name(s[0].face[..], blk, s[0].expr);
+  s[0].expr_name_n = 0;
+  for i: 0..<n.count { if i < 16 { b := n[i]; s[0].expr_name[i] = ifx b >= 'a' && b <= 'z' then b - 32 else b; s[0].expr_name_n = i + 1; } }
+}
+
+coaxial_lab_max_vertices :: () -> int #export_c #effects(all) { return MAX_VERTICES; }
+coaxial_lab_vertex_floats :: () -> int #export_c #effects(all) { return VERTEX_FLOATS; }
+coaxial_lab_uniform_floats :: () -> int #export_c #effects(all) { return UNIFORM_FLOATS; }
+
+// ---- checks
+
+frame_at :: (s: [] Lab, w: f32, h: f32, dpr: f32, dt: f32) -> int {
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  return lab_frame(s, out[..], u[..], w, h, dpr, dt, false);
+}
+frame_u :: (s: [] Lab, u: [] f32) -> int {
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  return lab_frame(s, out[..], u, 1600, 1000, 1, 0.016, false);
+}
+
+#test "the skeleton is the people rig's, on the mannequin's names: head over hips, left at +x, toes ahead" #steps 2000000000 {
+  s: [1] Lab;
+  lab_start(s[..]);
+  #assert PEOPLE_JOINTS == MANNEQUIN_JOINTS;
+  #assert PEOPLE_PARENT[MQ_PELVIS] == MQ_ROOT && PEOPLE_PARENT[MQ_HEAD] == MQ_NECK && PEOPLE_PARENT[MQ_NECK] == MQ_SPINE_03;
+  #assert PEOPLE_PARENT[MQ_THIGH_L] == MQ_PELVIS && PEOPLE_PARENT[MQ_CALF_R] == MQ_THIGH_R && PEOPLE_PARENT[MQ_HAND_L] == MQ_LOWERARM_L;
+  #assert PEOPLE_PARENT[MQ_CLAVICLE_R] == MQ_SPINE_03 && PEOPLE_PARENT[MQ_TOE_L] == MQ_BALL_L;
+  j := s[0].joint[..];
+  #assert j[MQ_HEAD].y > 1.5 && j[MQ_HEAD].y < 1.75 && j[MQ_PELVIS].y > 0.85 && j[MQ_PELVIS].y < 1.05;
+  #assert j[MQ_HAND_L].x > 0.2 && j[MQ_HAND_R].x < -0.2 && j[MQ_THIGH_L].x > 0 && j[MQ_FOOT_R].x < 0;
+  #assert j[MQ_TOE_L].z > j[MQ_FOOT_L].z && j[MQ_FOOT_L].y < 0.15;
+  // the head faces where the figure does, +Z, and is upright
+  #assert head_axis(s[..], v3(0, 0, 1)).z > 0.9 && head_axis(s[..], v3(0, 1, 0)).y > 0.9;
+}
+
+#test "the body stands on the floor: every capsule above it, the shoes on it, the head at the top" #steps 2000000000 {
+  s: [1] Lab;
+  lab_start(s[..]);
+  caps: [CAPS] Cap;
+  count := body(s[..], caps[..]);
+  #assert count == 25 && count <= CAPS;
+  low: f32 = 9; top: f32 = -9;
+  for i: 0..<count {
+    c := caps[i];
+    low = lo(low, lo(c.a.y, c.b.y) - c.r); top = hi(top, hi(c.a.y, c.b.y) + c.r);
+    #assert c.r > 0 && c.m >= MAT_SUIT && c.m <= MAT_HEAD;
+  }
+  #assert low > -0.03 && low < 0.04;
+  #assert top > 1.7 && top < 1.95 && caps[6].m == MAT_HEAD;
+}
+
+#test "a frame draws the HUD and fills the scene's uniforms on a desktop and on a 390 px phone" #steps 2000000000 {
+  s: [2] Lab;
+  u: [UNIFORM_FLOATS] f32;
+  a := frame_u(s[0..<1], u[..]);
+  #assert a > 300 && a < MAX_VERTICES - 600;
+  #assert u[U_EYE + 3] > 100 && u[U_FLAGS] == 0 && u[U_BOUND + 3] > 0.8;
+  #assert u[U_CAPS + 3] > 0 && u[U_CAPS + 7] == f32(MAT_SUIT) && u[U_CAPS + 24 * 8 + 3] > 0 && u[U_CAPS + 25 * 8 + 3] == 0;
+  // the camera starts in front of the figure, looking at its hips
+  #assert s[0].eye.z > 2.5 && s[0].fwd.z < -0.9;
+  p := proj(s[0..<1], s[0].joint[MQ_PELVIS]);
+  #assert p.z > 0 && abs(p.x - 800) < 40 && p.y > s[0].strip && p.y < 1000;
+  hd := proj(s[0..<1], s[0].joint[MQ_HEAD]); ft := proj(s[0..<1], s[0].joint[MQ_FOOT_L]);
+  #assert hd.y > s[0].strip && ft.y < 1000 && hd.y < ft.y;
+  b := frame_at(s[1..<2], 390 * 3, 844 * 3, 3, 0.016);
+  #assert b > 100 && b < MAX_VERTICES - 600 && s[1].portrait;
+  #assert s[1].bones_b.x0 >= 0 && s[1].back.x1 <= 390 * 3;
+}
+
+#test "the status line never runs under the buttons: at 1280 px with the face and a pause it takes its own row" #steps 2000000000 {
+  s: [1] Lab;
+  a := frame_at(s[..], 1600, 1000, 1, 0.016);
+  #assert a > 300 && !s[0].status_row && s[0].strip == 64;
+  s[0].face_state = 2; s[0].paused = true;
+  s[0].expr_name[0] = 'N'; s[0].expr_name[1] = 'E'; s[0].expr_name[2] = 'U'; s[0].expr_name[3] = 'T'; s[0].expr_name_n = 4;
+  b := frame_at(s[..], 1280, 960, 1, 0.016);
+  #assert b > 300 && s[0].status_row && s[0].strip == 84;
+  l: [192] u8;
+  m := status_text(s[..], l[..]);
+  #assert 16 + text_width(cast(string) l[0..<m], 10) < 1280 - 16;
+}
+
+#test "K shows the skeleton over the body, and its button does too" #steps 2000000000 {
+  s: [1] Lab; ok: bool;
+  u: [UNIFORM_FLOATS] f32;
+  plain := frame_u(s[..], u[..]);
+  #assert lab_key(s[..], 'k', 0) && s[0].bones;
+  shown := frame_u(s[..], u[..]);
+  #assert u[U_FLAGS] == 1 && shown > plain + 64 * 6;   // a bone for each joint but the root, and a dot on each
+  b := s[0].bones_b;
+  ok = lab_pointer(s[..], (b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2, 0, 0, 1);
+  ok = lab_pointer(s[..], (b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2, 2, 0, 1);
+  #assert !s[0].bones;
+}
+
+#test "N and P cycle the twelve clips; a clip changes the pose and a gait walks the figure round" #steps 2000000000 {
+  s: [1] Lab; ok: bool;
+  lab_start(s[..]);
+  #assert s[0].clip == PEOPLE_IDLE;
+  for i: 0..<60 { lab_step(s[..], f32(STEP)); }
+  idle_hand := s[0].joint[MQ_HAND_L];
+  #assert s[0].fx == 0 && s[0].fz == 0;   // idling, it stays put
+  #assert lab_key(s[..], 'n', 0) && s[0].clip == PEOPLE_WALK;
+  for i: 0..<60 { lab_step(s[..], f32(STEP)); }
+  walked := sqrt(s[0].fx * s[0].fx + s[0].fz * s[0].fz);
+  #assert walked > 0.8 && walked < 1.1 && s[0].fyaw > 0.3;   // a second at the walk's 0.975 m/s, turning
+  #assert length(sub(s[0].joint[MQ_HAND_L], idle_hand)) > 0.05;
+  #assert lab_key(s[..], 'p', 0) && s[0].clip == PEOPLE_IDLE;
+  ok = lab_key(s[..], 'p', 0); #assert s[0].clip == PEOPLE_COWER;   // round the end
+  ok = lab_key(s[..], 'n', 0); #assert s[0].clip == PEOPLE_IDLE;
+  // the clip button steps on too
+  n := frame_at(s[..], 1600, 1000, 1, 0);
+  b := s[0].clip_b;
+  ok = lab_pointer(s[..], b.x0 + 2, b.y0 + 2, 0, 0, 1); ok = lab_pointer(s[..], b.x0 + 2, b.y0 + 2, 2, 0, 1);
+  #assert s[0].clip == PEOPLE_WALK;
+  // every clip poses the body with its feet near the floor and the head above the hips
+  for c: 0..<META_CLIPS {
+    if c == PEOPLE_DIE { continue; }   // it ends lying down
+    s[0].clip = c;
+    for i: 0..<40 { lab_step(s[..], f32(STEP)); }
+    #assert s[0].joint[MQ_HEAD].y > s[0].joint[MQ_PELVIS].y && lo(s[0].joint[MQ_FOOT_L].y, s[0].joint[MQ_FOOT_R].y) < 0.35;
+  }
+}
+
+#test "G switches between the two bodies; space pauses the clip" #steps 2000000000 {
+  s: [1] Lab;
+  lab_start(s[..]);
+  tall := s[0].joint[MQ_HEAD].y;
+  #assert lab_key(s[..], 'g', 0) && s[0].female;
+  lab_step(s[..], f32(STEP));
+  #assert s[0].joint[MQ_HEAD].y != tall;
+  #assert lab_key(s[..], ' ', 0) && s[0].paused;
+  t := s[0].skin[0].time;
+  for i: 0..<30 { lab_step(s[..], f32(STEP)); }
+  #assert s[0].skin[0].time == t;
+}
+
+#test "F holds one frame: the clip at its start, the camera on the face, the same after any wait" #steps 2000000000 {
+  s: [1] Lab;
+  lab_start(s[..]);
+  for i: 0..<40 { lab_step(s[..], f32(STEP)); }
+  #assert lab_key(s[..], 'f', 0) && s[0].paused;
+  a := s[0].joint[MQ_HEAD]; py := s[0].py;
+  #assert py > s[0].joint[MQ_PELVIS].y && s[0].dist < CAM_DIST;
+  for i: 0..<70 { lab_step(s[..], f32(STEP)); }
+  #assert lab_key(s[..], 'f', 0);
+  b := s[0].joint[MQ_HEAD];
+  #assert a.x == b.x && a.y == b.y && a.z == b.z && s[0].py == py;
+}
+#test "the camera zooms on the wheel, orbits on a drag, pans on Shift-drag, and C puts it back" #steps 2000000000 {
+  s: [1] Lab; ok: bool; n: int;
+  n = frame_at(s[..], 1600, 1000, 1, 0.016);
+  #assert lab_wheel(s[..], -100) && s[0].dist < CAM_DIST;
+  ok = lab_wheel(s[..], 100000); ok = lab_wheel(s[..], 100000); ok = lab_wheel(s[..], 100000);
+  #assert s[0].dist <= ZOOM_FAR;
+  for i: 0..<40 { ok = lab_wheel(s[..], -200); }
+  #assert s[0].dist >= ZOOM_NEAR;
+  ok = lab_key(s[..], 'c', 0); #assert s[0].dist == CAM_DIST;
+  ok = lab_key(s[..], KEY_SHIFT, 1);
+  ok = lab_pointer(s[..], 800, 500, 0, 0, 1); ok = lab_pointer(s[..], 700, 450, 1, 0, 1); ok = lab_pointer(s[..], 700, 450, 2, 0, 1);
+  #assert s[0].px > 0 && s[0].py < CAM_Y && s[0].yaw == 0;   // the scene moved left and up under the pointer
+  ok = lab_key_up(s[..], KEY_SHIFT, 0);
+  ok = lab_pointer(s[..], 800, 500, 0, 0, 1); ok = lab_pointer(s[..], 850, 520, 1, 0, 1); ok = lab_pointer(s[..], 850, 520, 2, 0, 1);
+  #assert s[0].yaw != 0 && s[0].pitch > CAM_PITCH;   // a plain drag orbits
+  for i: 0..<200 { ok = lab_key(s[..], KEY_UP, 0); }
+  #assert s[0].pitch <= PITCH_HIGH;
+  ok = lab_key(s[..], 'c', 0);
+  #assert s[0].yaw == 0 && s[0].px == 0 && s[0].py == CAM_Y && s[0].pitch == CAM_PITCH;
+}
+
+#test "held W flies the pivot forward, easing in and out; Q and E go down and up; blur lets go" #steps 2000000000 {
+  s: [1] Lab; ok: bool;
+  n := frame_at(s[..], 1600, 1000, 1, 0.016);
+  #assert lab_key(s[..], 'w', 0) && s[0].held[0];
+  lab_step(s[..], f32(STEP));
+  first := -s[0].pz;
+  #assert first > 0 && first < 0.02;          // it starts gently (forward is toward -Z at yaw 0)
+  for i: 0..<60 { lab_step(s[..], f32(STEP)); }
+  pace := -s[0].vz;
+  #assert pace > 2.8 && pace < 3.1;           // up to its speed: 0.9 x the zoom's 3.4 m, per second
+  at := s[0].pz;
+  #assert lab_key_up(s[..], 'w', 0) && !s[0].held[0];
+  lab_step(s[..], f32(STEP));
+  #assert s[0].pz < at;                       // it coasts on, slowing
+  for i: 0..<120 { lab_step(s[..], f32(STEP)); }
+  #assert abs(s[0].vz) < 0.01;
+  ok = lab_key(s[..], 'e', 0);
+  for i: 0..<30 { lab_step(s[..], f32(STEP)); }
+  #assert s[0].py > CAM_Y && abs(s[0].px) < 0.001;
+  ok = lab_key(s[..], 'd', 0);
+  for i: 0..<30 { lab_step(s[..], f32(STEP)); }
+  #assert s[0].px > 0.2;                      // right at yaw 0 is +X: the camera looks toward -Z
+  lab_blur(s[..]);
+  #assert !s[0].held[3] && !s[0].held[5];
+}
+
+#test "two fingers pinch to zoom" #steps 2000000000 {
+  s: [1] Lab; ok: bool; n: int;
+  n = frame_at(s[..], 390, 844, 3, 0.016);
+  ok = lab_pointer(s[..], 100, 600, 0, 1, 7); ok = lab_pointer(s[..], 200, 600, 0, 1, 8);
+  ok = lab_pointer(s[..], 250, 600, 1, 1, 8);
+  #assert s[0].dist < CAM_DIST && s[0].yaw == 0;
+  ok = lab_pointer(s[..], 250, 600, 2, 1, 8); ok = lab_pointer(s[..], 100, 600, 2, 1, 7);
+  #assert s[0].fingers == 0 && !s[0].dragging;
+}
+
+#test "Escape and the WORLDS button go to /worlds" #steps 2000000000 {
+  s: [1] Lab; ok: bool;
+  #assert lab_key(s[..], KEY_ESCAPE, 0) && lab_action(s[..]) == ACT_NAVIGATE && cast(string) s[0].outbox[0..<s[0].out_n] == "/worlds";
+  lab_action_done(s[..]);
+  n := frame_at(s[..], 1600, 1000, 1, 0.016);
+  b := s[0].back;
+  ok = lab_pointer(s[..], b.x0 + 2, b.y0 + 2, 0, 0, 1); ok = lab_pointer(s[..], b.x0 + 2, b.y0 + 2, 2, 0, 1);
+  #assert lab_action(s[..]) == ACT_NAVIGATE;
+}
+
+// A pack's catalog bound at the people rig's male rest: every joint where the rig's rest puts it.
+rest_catalog :: (s: [] Lab, out: [] u8) -> int {
+  r := rig(s);
+  gq: [MANNEQUIN_JOINTS] Quat; gt: [MANNEQUIN_JOINTS] Point;
+  n := put(out, 0, "human test\nbody male\n");
+  for j: 0..<MANNEQUIN_JOINTS {
+    l := skin_rest(r, j); p := r.parent[j];
+    if p < 0 { gq[j] = l.q; gt[j] = l.t; } else { gq[j] = quat_unit(quat_mul(gq[p], l.q)); gt[j] = add(gt[p], quat_rotate(gq[p], l.t)); }
+    n = put(out, n, "B "); n = put_int(out, n, j);
+    for k: 0..<3 {
+      v := ifx k == 0 then gt[j].x else ifx k == 1 then gt[j].y else gt[j].z;
+      n = put(out, n, " "); if v < 0 { n = put(out, n, "-"); }
+      m := cast(int) (abs(v) * 1000000 + 0.5);
+      n = put_int(out, n, m / 1000000); n = put(out, n, ".");
+      f := m % 1000000; d := 100000;
+      while d > 0 { n = put_digit(out, n, (f / d) % 10); d /= 10; }
+    }
+    n = put(out, n, "\n");
+  }
+  n = put(out, n, "M 1 900 800 700 1000\nP body/skin 0 300 1\nP hair 300 60 3\n");
+  return n;
+}
+pack_in :: (s: [] Lab) {
+  text: [8192] u8;
+  n := rest_catalog(s, text[..]);
+  lab_catalog(s, cast(string) text[0..<n]);
+  for i: 0..<PACK_PARTS { lab_pack_part(s, i, 100); }
+}
+
+// The face rig: a catalog with an F line and facerig.coax's tiny block after its NUL.
+face_rig_in :: (s: [] Lab, text: [] u8) -> int {
+  blk: [1024] u8;
+  b := frig_test_block(blk[..]);
+  n := rest_catalog(s, text);
+  n = put(text, n, "F 300 3 "); n = put_int(text, n, b); n = put(text, n, "\n");
+  text[n] = 0; n += 1;
+  for i: 0..<b { text[n + i] = blk[i]; }
+  return n + b;
+}
+#test "a face rig runs its block: X picks an expression, it eases in and moves the face's rows; blinks come" #steps 2000000000 {
+  s: [1] Lab;
+  lab_start(s[..]);
+  text: [9216] u8;
+  n := face_rig_in(s[..], text[..]);
+  cat := cast(string) text[0..<n];
+  lab_catalog(s[..], cat);
+  #assert s[0].draw_n == 2 && s[0].face_state == 1 && s[0].face_first == 300 && s[0].face_count == 3;
+  work: [FACE_WORK] f32; still: [FACE_JOINTS] bool; rows: [12] f32;
+  #assert lab_face(s[..], cat, work[..], still[..], rows[..]) && s[0].face_state == 2;
+  for i: 0..<12 { #assert rows[i] == 0; }   // no expression: nothing moves
+  #assert !lab_face(s[..], cat, work[..], still[..], rows[..]);   // and nothing changed
+  #assert lab_key(s[..], 'x', 0);
+  #assert lab_face(s[..], cat, work[..], still[..], rows[..]) && s[0].expr == 0;   // "open", at 0 so far
+  for i: 0..<20 { lab_step(s[..], f32(STEP)); }
+  #assert lab_face(s[..], cat, work[..], still[..], rows[..]) && s[0].expr_w > 0.3;
+  #assert abs(rows[1]) + abs(rows[2]) > 0.001 && rows[3] > 0.5 && rows[4] + rows[5] + rows[6] == 0;   // the jaw's point turns with a new normal; the other stays
+  #assert cast(string) s[0].expr_name[0..<s[0].expr_name_n] == "OPEN";
+  u: [UNIFORM_FLOATS] f32;
+  for i: 0..<PACK_PARTS { lab_pack_part(s[..], i, 100); }
+  m := frame_u(s[..], u[..]);
+  #assert u[U_FACE] == 300 && u[U_FACE + 1] == 3 && u[U_FACE + 2] == 1;
+  // a blink comes within six seconds
+  shut: f32 = 0;
+  for i: 0..<cast(int) (6 / STEP) { lab_step(s[..], f32(STEP)); shut = hi(shut, blink_now(s[..])); }
+  #assert shut == 1;
+}
+#test "a face rig's block that doesn't open leaves the face still and the mesh drawing" #steps 2000000000 {
+  s: [1] Lab;
+  lab_start(s[..]);
+  text: [9216] u8;
+  n := face_rig_in(s[..], text[..]);
+  text[n - 1] = 0; text[n - 2] = 0;   // the last expression's value is cut off ...
+  cat := cast(string) text[0..<n - 3];   // ... and the block is shorter than its F line says
+  lab_catalog(s[..], cat);
+  #assert s[0].face_state == 0;
+  work: [FACE_WORK] f32; still: [FACE_JOINTS] bool; rows: [12] f32;
+  #assert !lab_face(s[..], cat, work[..], still[..], rows[..]);
+  u: [UNIFORM_FLOATS] f32;
+  for i: 0..<PACK_PARTS { lab_pack_part(s[..], i, 100); }
+  m := frame_u(s[..], u[..]);
+  #assert lab_draw_count(s[..]) == 2 && u[U_FACE + 2] == 0;
+}
+
+#test "the eyes' blended layers, the catalog's last pieces, are the host's last draws; one before them isn't" #steps 2000000000 {
+  s: [1] Lab;
+  lab_start(s[..]);
+  text: [8192] u8;
+  n := rest_catalog(s[..], text[..]);
+  n = put(text[..], n, "P eyes/occlusion 360 30 25\nP eyes/wet 390 12 7\n");
+  lab_catalog(s[..], cast(string) text[0..<n]);
+  for i: 0..<PACK_PARTS { lab_pack_part(s[..], i, 100); }
+  #assert lab_draw_count(s[..]) == 4 && lab_water_draws(s[..]) == 2;
+  n = rest_catalog(s[..], text[..]);
+  n = put(text[..], n, "P eyes/wet 360 12 7\nP coat 372 30 8\n");
+  lab_catalog(s[..], cast(string) text[0..<n]);
+  #assert lab_draw_count(s[..]) == 4 && lab_water_draws(s[..]) == 0;
+}
+#test "levels of detail: D lines make each level's run of draws; a far figure draws a lower one, without the face rig" #steps 2000000000 {
+  s: [1] Lab;
+  lab_start(s[..]);
+  text: [8192] u8;
+  n := rest_catalog(s[..], text[..]);
+  n = put(text[..], n, "D 1 body/skin 360 150 1\nD 1 hair 510 30 3\nD 2 body/skin 540 60 1\n");
+  lab_catalog(s[..], cast(string) text[0..<n]);
+  for i: 0..<PACK_PARTS { lab_pack_part(s[..], i, 100); }
+  #assert s[0].lod_n[0] == 2 && s[0].lod_n[1] == 2 && s[0].lod_n[2] == 1 && s[0].lod_first[1] == 2 && s[0].lod_first[2] == 4;
+  u: [UNIFORM_FLOATS] f32;
+  m := frame_u(s[..], u[..]);
+  #assert s[0].lod == 0 && lab_draw_count(s[..]) == 2 && lab_draw_first(s[..]) == 0;
+  // L picks each level, then hands it back to the figure's height
+  #assert lab_key(s[..], 'l', 0); m = frame_u(s[..], u[..]);
+  #assert s[0].lod == 0;
+  #assert lab_key(s[..], 'l', 0); m = frame_u(s[..], u[..]);
+  #assert s[0].lod == 1 && lab_draw_count(s[..]) == 2 && lab_draw_first(s[..]) == 2 && s[0].draws[8] == 360;
+  #assert lab_key(s[..], 'l', 0); m = frame_u(s[..], u[..]);
+  #assert s[0].lod == 2 && lab_draw_count(s[..]) == 1 && s[0].draws[4 * lab_draw_first(s[..])] == 540;
+  #assert lab_key(s[..], 'l', 0); m = frame_u(s[..], u[..]);
+  #assert s[0].lod_pick == -1 && s[0].lod == 0;
+  // by height: a small figure is drawn coarser, and the boundary holds either way
+  #assert lod_for(0, 400, 3) == 0 && lod_for(0, 200, 3) == 1 && lod_for(0, 80, 3) == 2;
+  #assert lod_for(1, 360, 3) == 1 && lod_for(0, 320, 3) == 0 && lod_for(1, 390, 3) == 0;
+  #assert lod_for(0, 80, 1) == 0 && lod_for(0, 80, 2) == 1;
+}
+#test "with no pack the capsules draw the figure: no mesh draws, the mesh flag off" #steps 2000000000 {
+  s: [1] Lab;
+  u: [UNIFORM_FLOATS] f32;
+  n := frame_u(s[..], u[..]);
+  #assert lab_draw_count(s[..]) == 0 && u[U_FLAGS + 1] == 0 && u[U_CAPS + 3] > 0;
+  // a pack that fails (absent: the page is public, or nothing is built) leaves it so
+  for i: 0..<PACK_PARTS { lab_pack_part(s[..], i, 0); }
+  n = frame_u(s[..], u[..]);
+  #assert lab_draw_count(s[..]) == 0 && u[U_FLAGS + 1] == 0 && !s[0].mesh;
+}
+
+#test "a pack's outfit: its button names it and steps to the next outfit's pack, then back to its own clothes" #steps 2000000000 {
+  s: [1] Lab;
+  lab_start(s[..]);
+  text: [8192] u8;
+  t := rest_catalog(s[..], text[..]);
+  t = put(text[..], t, "outfit fantasy human\n");
+  lab_catalog(s[..], cast(string) text[0..<t]);
+  for i: 0..<PACK_PARTS { lab_pack_part(s[..], i, 100); }
+  #assert s[0].mesh && cast(string) s[0].outfit[0..<s[0].outfit_n] == "fantasy";
+  #assert lab_key(s[..], 'g', 0) && lab_action(s[..]) == ACT_NAVIGATE;
+  #assert cast(string) s[0].outbox[0..<s[0].out_n] == "/worlds/metahuman-lab/?pack=human&outfit=hooded";
+  // the last outfit goes back to the pack's own clothes; a pack with no outfit line has no button
+  s2: [1] Lab;
+  lab_start(s2[..]);
+  t = rest_catalog(s2[..], text[..]);
+  t = put(text[..], t, "outfit robe standin\n");
+  lab_catalog(s2[..], cast(string) text[0..<t]);
+  for i: 0..<PACK_PARTS { lab_pack_part(s2[..], i, 100); }
+  #assert lab_key(s2[..], 'g', 0) && cast(string) s2[0].outbox[0..<s2[0].out_n] == "/worlds/metahuman-lab/?pack=standin";
+  s3: [1] Lab;
+  pack_in(s3[..]);
+  #assert lab_key(s3[..], 'g', 0) && lab_action(s3[..]) != ACT_NAVIGATE;
+}
+#test "a pack's catalog: the bind pose, materials and pieces; it draws once all four parts are in" #steps 2000000000 {
+  s: [1] Lab;
+  lab_start(s[..]);
+  text: [8192] u8;
+  t := rest_catalog(s[..], text[..]);
+  lab_catalog(s[..], cast(string) text[0..<t]);
+  #assert s[0].binds == MANNEQUIN_JOINTS && s[0].draw_n == 2 && s[0].pack_body == 0;
+  #assert s[0].draws[4] == 300 && s[0].draws[5] == 60 && s[0].draws[7] == 1;
+  #assert abs(s[0].mats[0] - 0.9) < 0.0001 && abs(s[0].mats[2] - 0.7) < 0.0001 && s[0].mats[4] == 1;
+  #assert s[0].bind[MQ_PELVIS].z < -0.04 && s[0].bind[MQ_PELVIS].y > 0.9;   // a negative decimal reads as one
+  #assert lab_draw_count(s[..]) == 0;
+  for i: 0..<3 { lab_pack_part(s[..], i, 100); }
+  #assert lab_draw_count(s[..]) == 0;
+  lab_pack_part(s[..], 3, 100);
+  #assert lab_draw_count(s[..]) == 2 && s[0].mesh;
+  // G keeps the pack's body
+  #assert lab_key(s[..], 'g', 0) && !s[0].female;
+  u: [UNIFORM_FLOATS] f32;
+  n := frame_u(s[..], u[..]);
+  #assert u[U_FLAGS + 1] == 1 && u[U_FIG] == 1 && u[U_LIGHT + 3] > 0 && abs(u[U_MAT] - 0.9) < 0.0001 && u[U_RIG + 9] > 0;
+}
+
+#test "the mesh's palette: bound at the rig's rest it is the rig's own skinning, in every clip" #steps 2000000000 {
+  s: [1] Lab;
+  lab_start(s[..]);
+  pack_in(s[..]);
+  r := rig(s[..]);
+  want: [MANNEQUIN_JOINTS * 12] f32;
+  for c: 0..<META_CLIPS {
+    s[0].clip = c;
+    for i: 0..<25 { lab_step(s[..], f32(STEP)); }
+    skin_palette(r, s[0].skin[..], want[..]);
+    worst: f32 = 0;
+    for k: 0..<MANNEQUIN_JOINTS * 12 { worst = hi(worst, abs(want[k] - s[0].palette[k])); }
+    #assert worst < 0.0005;
+  }
+}
+
+#test "a pack with its own bone lengths keeps them: a longer forearm reaches further, the shoulder stays" #steps 2000000000 {
+  s: [1] Lab;
+  lab_start(s[..]);
+  pack_in(s[..]);
+  s[0].clip = PEOPLE_WALK;
+  for i: 0..<30 { lab_step(s[..], f32(STEP)); }
+  shoulder := palette_apply(s[0].palette[..], MQ_UPPERARM_L, s[0].bind[MQ_UPPERARM_L]);
+  elbow := palette_apply(s[0].palette[..], MQ_LOWERARM_L, s[0].bind[MQ_LOWERARM_L]);
+  hand := palette_apply(s[0].palette[..], MQ_HAND_L, s[0].bind[MQ_HAND_L]);
+  // the hand's joint goes where the hand of the rig goes
+  #assert length(sub(hand, sub(s[0].joint[MQ_HAND_L], v3(s[0].fx, 0, s[0].fz)))) < 0.2;
+  fore := length(sub(hand, elbow));
+  // stretch the forearm and everything past it by 10 cm along the bind's forearm
+  along := unit_or(sub(s[0].bind[MQ_HAND_L], s[0].bind[MQ_LOWERARM_L]), v3(1, 0, 0));
+  for j: MQ_HAND_L..<MQ_THUMB_03_L + 2 { s[0].bind[j] = add(s[0].bind[j], times(along, 0.1)); }
+  lab_palette(s[..]);
+  hand2 := palette_apply(s[0].palette[..], MQ_HAND_L, s[0].bind[MQ_HAND_L]);
+  elbow2 := palette_apply(s[0].palette[..], MQ_LOWERARM_L, s[0].bind[MQ_LOWERARM_L]);
+  #assert abs(length(sub(hand2, elbow2)) - (fore + 0.1)) < 0.002;
+  #assert length(sub(elbow2, elbow)) < 0.0005 && length(sub(palette_apply(s[0].palette[..], MQ_UPPERARM_L, s[0].bind[MQ_UPPERARM_L]), shoulder)) < 0.0005;
+}
+
+#test "a pack bound in its own pose: each joint's turn to the rest skins its points as the rest's" #steps 2000000000 {
+  s: [1] Lab;
+  lab_start(s[..]);
+  pack_in(s[..]);
+  r := rig(s[..]);
+  s[0].clip = PEOPLE_WALK;
+  for i: 0..<30 { lab_step(s[..], f32(STEP)); }
+  want: [MANNEQUIN_JOINTS * 12] f32;
+  skin_palette(r, s[0].skin[..], want[..]);
+  // the same figure bound turned 40 degrees about its root: the bind turned back, every joint's
+  // turn to the rest that turn
+  h: f32 = 0.349066;
+  q := Quat.{x = 0, y = sin(h), z = 0, w = cos(h)};
+  back := Quat.{x = 0, y = -sin(h), z = 0, w = cos(h)};
+  root := s[0].bind[0];
+  rest: [MANNEQUIN_JOINTS] Point;
+  for j: 0..<MANNEQUIN_JOINTS {
+    rest[j] = s[0].bind[j];
+    s[0].bind[j] = add(root, quat_rotate(back, sub(rest[j], root)));
+    s[0].bturn[j] = q;
+  }
+  lab_palette(s[..]);
+  worst: f32 = 0;
+  for j: 0..<MANNEQUIN_JOINTS {
+    x := add(rest[j], v3(0.03, -0.02, 0.05));
+    a := palette_apply(want[..], j, x);
+    b := palette_apply(s[0].palette[..], j, add(root, quat_rotate(back, sub(x, root))));
+    worst = hi(worst, length(sub(a, b)));
+  }
+  #assert worst < 0.001;
+}
+
+#test "the speaking stage: its URL starts it, its clock waits for the pack, then runs by whole frames without the HUD" #steps 2000000000 {
+  s: [1] Lab;
+  lab_message(s[..], 600, "tab=1\nurl=http://127.0.0.1:8800/worlds/metahuman-lab/?pack=x&stage=speak&track=speak,worried,7,0.300,2.000~0.400,0.460,mbp,1.000~0.460,0.700,aa,0.800&card=1\nvw=720");
+  #assert s[0].speak && s[0].track[0].n == 2 && s[0].track[0].mood == 1 && s[0].track[0].seed == 7;
+  #assert s[0].track[0].vis[0].v == SPK_MBP;
+  u: [UNIFORM_FLOATS] f32; out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  // no pack yet: the clock holds
+  n := lab_frame(s[..], out[..], u[..], 720, 720, 1, 1.0 / 60, false);
+  #assert s[0].speak_t == 0 && lab_probe(s[..]) == 0;
+  // the pack refused (any host but openagents.com): the capsules speak, by whole frames
+  lab_pack_part(s[..], 0, 0);
+  #assert lab_probe(s[..]) == 1;
+  for i: 0..<30 { n = lab_frame(s[..], out[..], u[..], 720, 720, 1, 1.0 / 60, false); }
+  #assert abs(s[0].speak_t - 0.5) < 0.0001;
+  // a clip's loading steps (a microsecond each) never move it
+  n = lab_frame(s[..], out[..], u[..], 720, 720, 1, 0.000001, false);
+  #assert abs(s[0].speak_t - 0.5) < 0.0001;
+  // no HUD, the backdrop on, and the camera close on the head, level with it
+  #assert n == 0 && s[0].strip == 0 && u[U_UP + 3] == 1;
+  h := s[0].joint[MQ_HEAD];
+  #assert abs(s[0].eye.y - (h.y - f32(SPEAK_DROP))) < 0.05 && length(sub(s[0].eye, h)) < 1.0;
+  p := proj(s[..], h);
+  #assert abs(p.x - 360) < 30 && p.y > 200 && p.y < 520;
+  // a character's own camera (the cast file's "camera"): closer, looking above the head joint
+  lab_message(s[..], 600, "tab=1\nurl=http://127.0.0.1:8800/worlds/metahuman-lab/?pack=x&stage=speak&track=speak,worried,7,0.300,2.000&cam=0.5,-0.03\nvw=720");
+  #assert abs(s[0].speak_dist - 0.5) < 0.0001 && abs(s[0].speak_drop + 0.03) < 0.0001 && abs(s[0].dist - 0.5) < 0.0001;
+  lab_message(s[..], 600, "tab=1\nurl=http://127.0.0.1:8800/worlds/metahuman-lab/?pack=x&stage=speak&track=speak,worried,7,0.300,2.000&cam=9,1\nvw=720");
+  #assert s[0].speak_dist == f32(SPEAK_DIST) && s[0].speak_drop == f32(SPEAK_DROP);
+  // another page has no stage
+  t: [1] Lab;
+  lab_message(t[..], 600, "url=http://127.0.0.1:8800/worlds/metahuman-lab/?pack");
+  #assert !t[0].speak;
+}
+
+#test "the speaking face mixes expressions by weight, summed and clamped" #steps 2000000000 {
+  // facerig.coax's tiny block: "open" sets control 0, "both" controls 0 and 1
+  b: [1024] u8;
+  n := frig_test_block(b[..]);
+  blk := cast(string) b[0..<n];
+  r: [1] FaceRig;
+  #assert frig_open(r[..], blk, 8, 4, 4);
+  c: [8] f32;
+  names := [3] string.["open", "both", "mbp"];
+  w := [3] f32.[0.7, 0.6, 1];
+  face_mix(r[..], blk, names[..], w[..], c[..]);
+  // 0.7 + 0.6 clamps to 1; "both" alone sets 0.6; a name the block lacks adds nothing
+  #assert c[0] == 1 && abs(c[1] - 0.6) < 0.0001;
+  w[0] = 0.2; w[1] = 0.3;
+  face_mix(r[..], blk, names[..], w[..], c[..]);
+  #assert abs(c[0] - 0.5) < 0.0001 && abs(c[1] - 0.3) < 0.0001;
+}

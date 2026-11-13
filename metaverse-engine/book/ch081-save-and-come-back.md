@@ -227,7 +227,7 @@ save, and a schema newer than the build, which a newer build opens.
 - [apps/openagents-web/place.coax](../../apps/openagents-web/place.coax):
   where you are in every walkable realm, so a reload puts you back
   (`coax/web/place-reload.ts`).
-- [apps/openagents-web/everglade-arrange.coax](../../apps/openagents-web/everglade-arrange.coax):
+- [apps/openagents-web/old/v1/everglade-arrange.coax](../../apps/openagents-web/old/v1/everglade-arrange.coax):
   what you arranged in Everglade's close-up view.
 - [coax/web/api/player.c](../../coax/web/api/player.c): the progress routes
   and `container_ok`, the same container checked on the server (at most

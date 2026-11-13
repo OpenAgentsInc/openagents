@@ -10,7 +10,7 @@ request handed to the inference route's own ask (`inference.c`
 the cookie names. Nothing is stored.
 
 A Gemini message has our own read tools (#13504,
-`apps/openagents-web/chat-hosted.coax`): the `REALM_COMMANDS` rows that only
+`apps/openagents-web/chat/chat-hosted.coax`): the `REALM_COMMANDS` rows that only
 read and that the page can answer through the API with your login (your
 worlds and realms, a realm's map, entities, scripts and score, a world's card,
 foes, scripts and attachments). They go to the model as function tools with
@@ -198,7 +198,7 @@ What a call is called is a lookup, never a match on its text:
   `apps/openagents-cli/commands.coax` has a `label` for one call, with
   `{PROP}` filled from the call's input and a `[part]` dropped when its value
   is missing, and a `many` for a run of them. The page reads a generated copy,
-  `apps/openagents-web/realm-tools.coax`. After you change the table, run
+  `apps/openagents-web/realm/realm-tools.coax`. After you change the table, run
   `coax/web/tool.sh apps/openagents-cli/tool-labels.coax --write`; a check in
   `commands.coax` fails while the copy is stale.
 - An engine's own tools use the session log's kind, or their exact name
@@ -216,7 +216,7 @@ unknown outcome. Any other call that fails shows the first line of its error.
 | Piece | Where |
 | --- | --- |
 | Rows, groups and the running line | `components/kit/work.coax`, styles `mono_work_css` in `components/skin/mono.coax`, on `/components` |
-| Calls as records, their words, a run drawn | `apps/openagents-web/chat-tools.coax` |
+| Calls as records, their words, a run drawn | `apps/openagents-web/chat/chat-tools.coax` |
 | The tool words | `apps/openagents-cli/commands.coax`, copied by `tool-labels.coax` |
 
 ## Theme
@@ -225,7 +225,7 @@ Theme, beside Key, lists every skin from `/components` (`components/skin/all.coa
 Zeron (the default), Everglade, the Metaverse and Terminal. The terminal skin is drawn in
 pixels by `components/skin/terminal-pixels.coax`. The page keeps the choice in this
 browser (`host.js` action 4, given back as message 4). Golden mode always draws Zeron.
-Checks: `apps/openagents-web/chat-frames.coax --only Theme` and
+Checks: `apps/openagents-web/chat/chat-frames.coax --only Theme` and
 `components/zeron/skins-checks.coax` (GitHub #13230).
 
 ## Your own key
@@ -306,7 +306,7 @@ Since 2026-10-29 the page draws everything with the Zeron/GPUI components the
 Mac app uses (`components/zeron/`: `gpui.coax`, `composer.coax`,
 `markdown.coax`, `transcript.coax`, `picker.coax`, the icons and Geist under
 its OFL), compiled to wasm and drawn on WebGPU. The old HUD chat is
-`apps/openagents-web/chat-hud.coax`, kept for the Mac app's unshown HUD.
+`apps/openagents-web/chat/chat-hud.coax`, kept for the Mac app's unshown HUD.
 
 - **Shaders.** `chat.wgsl` is `components/backend/gpu-shader.coax` emitted as WGSL (the Mac apps emit the same file as Metal) (quads, shadows,
   underlines, mono and polychrome sprites).

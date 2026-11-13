@@ -511,7 +511,7 @@ shortened to PUT HERE.
   checked against: for each row an ask changed, put back `before` only if
   the row still holds the ask's `after`.
 - Everglade's own edit mode
-  (`apps/openagents-web/everglade-edit.coax`) on the same log.
+  (`apps/openagents-web/old/v1/everglade-edit.coax`) on the same log.
 - Moving figures and animals.
 
 The older edit layer is documented in

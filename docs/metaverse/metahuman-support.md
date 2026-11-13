@@ -451,7 +451,7 @@ The lab runs the face rig live. The pieces:
   (degrees, XYZ order) and scale deltas, and the points take their
   blend-shape moves and then linear skinning against the neutral pose.
   The result is a move and a new normal for each face vertex.
-- `apps/openagents-web/metahumanlab.coax`'s `lab_face` runs it each frame
+- `apps/openagents-web/old/labs/metahumanlab.coax`'s `lab_face` runs it each frame
   when the controls change: X cycles the expressions, they ease in over
   0.25 s, blinks come every 2.8 to 5.2 seconds, and talk opens and closes
   the jaw. The C face puts the rows after the body palette in the pose
@@ -676,7 +676,7 @@ It holds no MetaHuman asset and draws with none.
   are the CC0 people rig (`everglade/scene/people-rig.coax`: the Quaternius
   male and female skeletons, 65 joints, and the Universal Animation
   Library's 12 clips), played by `metaverse-engine/anim/skin.coax`. Its body is a building
-  block written in `apps/openagents-web/metahumanlab.coax`: 25 capsules, one
+  block written in `apps/openagents-web/old/labs/metahumanlab.coax`: 25 capsules, one
   per bone, posed from the same joints, traced per pixel by
   `gpu/metahumanlab.coax`. N and P cycle the clips; walk and run carry the
   figure round a circle so the gait keeps pace with the floor. G switches

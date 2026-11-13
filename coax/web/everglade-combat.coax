@@ -13,7 +13,7 @@
 EC_SHOT :: 25165824;
 EC_UNCONSCIOUS :: 16384;
 EC_HOLDS :: 8392960;          // Paralyzed 256 | Restrained 4096 | Stunned 8192 | Bound 8388608
-EC_WORD_DOWN :: 1;            // 1 << POP_DOWN (apps/openagents-web/everglade-watch.coax)
+EC_WORD_DOWN :: 1;            // 1 << POP_DOWN (apps/openagents-web/old/v1/everglade-watch.coax)
 EC_WORD_HOLDS :: 30;          // 1 << POP_HELD | ROOTED | RESTRAINED | STUNNED
 
 EcBuf :: struct { b: [8192] u8; n: int; }

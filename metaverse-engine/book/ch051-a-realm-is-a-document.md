@@ -269,7 +269,7 @@ wrote it, the names the server's undo log uses.
   the board page. It never reads the words; it shows the board and sends back
   which rows are checked.
 - [apps/openagents-web/myrealm.coax](../../apps/openagents-web/myrealm.coax)
-  and [myrealm-shapes.coax](../../apps/openagents-web/myrealm-shapes.coax): the
+  and [myrealm-shapes.coax](../../apps/openagents-web/myrealm/myrealm-shapes.coax): the
   line spec `GET /api/playtest/realms/<slug>` answers, laid out from the slug
   (`SLOT_A`, `NEAR_A`, `owl_home`, `roofs_out`). The spec carries the
   document's identity: `rev N`, `published N`, `listed 0|1`, `from SLUG

@@ -219,7 +219,7 @@ coax/bin/coax test --library metaverse-engine/world/props.coax
 coax/bin/coax test --library everglade/range/score.coax
 coax/bin/coax test --library everglade/range/place.coax
 COAX_NATIVE_CHECKS=1 coax/bin/coax test apps/openagents-web/archery-range.coax   # the zone's checks and the range's four, about 10 s
-COAX_NATIVE_CHECKS=1 coax/bin/coax test apps/openagents-web/fivelab.coax         # Experimental on the same zone
+COAX_NATIVE_CHECKS=1 coax/bin/coax test apps/openagents-web/old/experimental/fivelab.coax         # Experimental on the same zone
 ```
 
 ## 9. The realm and the apps
@@ -275,7 +275,7 @@ lines.
   build into `fivelab` with the 5E Lab and Character Create. They can move to a
   module on the zone the way the range did.
 - **Fire Breath** is in `everglade/zone-ride.coax` now. **The film stages**
-  stay in `apps/openagents-web/experimental-stages.coax`: they are
+  stay in `apps/openagents-web/old/experimental/experimental-stages.coax`: they are
   Experimental's own.
 - **Phones.** The touch controls were driven in headless Chrome at a phone's
   size and in the iPhone simulator. Nobody has held a phone with them yet. On

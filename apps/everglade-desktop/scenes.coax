@@ -5,7 +5,7 @@
 //   The Golemancers' Workshop  workshop.coax
 //   The Archery Range          the web's Archery Range realm (everglade/docs/archery-range-spec.md)
 //   Everglade Experimental     the web's Experimental world
-//   The Bitcoin Lab            the web's Bitcoin Lab realm (apps/openagents-web/bitcoin-lab-walk.coax)
+//   The Bitcoin Lab            the web's Bitcoin Lab realm (apps/openagents-web/old/labs/bitcoin-lab-walk.coax)
 //
 // The Workshop runs here. Everglade is the web's everglade2 realm, and the Archery Range and
 // Experimental are the web's fivelab realm on their own pages: a host that can run a realm's page

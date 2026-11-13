@@ -3,7 +3,7 @@
 // beside the lane, its number and name along its top, and the world draws its own lesson on its face.
 // This module is everything the walks share: the walking, the camera, the HUD, WORLDS, the stations'
 // slabs and where they stand, the skyline, the Grid's sky and floor, and the pixel-face text and lit
-// shapes a world draws its lessons with. A world (apps/openagents-web/bitcoin-lab-walk.coax,
+// shapes a world draws its lessons with. A world (apps/openagents-web/old/labs/bitcoin-lab-walk.coax,
 // nostr-lab-walk.coax, coax-lab-walk.coax) holds a LabWalk, names its stations (lab_conf), and each frame lists its own
 // quads between lab_list_begin and lab_list_end. Its C face is lab-walk-face.h.
 //

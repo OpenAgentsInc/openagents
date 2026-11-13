@@ -1,0 +1,596 @@
+// /realms/audio-lab, drawn by Coax (#12832): every Everglade sound by name, each candidate for it
+// (the synthesized one the page used to play, S, and the generated and library ones, E and K:
+// metaverse-engine/audio/SOURCES.md) with its waveform, loudness, peak and length. A candidate's chip plays it;
+// A/B plays the synthesized one and then the first pick; KEEP and DROP put the shown candidate in
+// or out of the sound's picks, which COPY PICKS copies as metaverse-engine/audio/everglade-sfx.picks lines.
+// RAID MIX plays a scripted 20 s raid through the same mixer, levels and placement as the page
+// (metaverse-engine/audio/everglade-mix.coax): thirty raiders casting, hits, a house falling, your footsteps,
+// the horn and the bed. STOP ends it and whatever else plays.
+//
+// The files are lazy: each plays from /realms/everglade/sfx/NAME-CAND.ogg (the page's sounds:
+// asset) when first named; the synthesized set and the room's impulse are rendered here once
+// audio starts, as Everglade renders them.
+
+#load "../../projects.coax";
+#load "../../../../metaverse-engine/audio/everglade-mix.coax";
+#load "../../../../metaverse-engine/audio/everglade-bank-lab.coax";
+
+LAB_MAX_VERTICES :: 200000;
+LAB_LINES :: 16384;
+LAB_OUT :: 4096;
+LAB_ROW :: 58.0;           // CSS pixels a sound's row
+LAB_CANDS :: 8;            // candidates a sound shows at most
+LAB_EVENTS :: 1000;        // the raid's script
+LAB_RAID_S :: 20.0;
+LAB_RAIDERS :: 30;
+LAB_GAIN :: 0.8;           // a candidate played alone
+LAB_LAB_ID :: 1000000;     // the ids of voices played alone (the mixer's own count up from 1)
+LAB_NAVIGATE :: 1;
+LAB_COPY :: 2;             // host.js: the outbox's text to the clipboard
+
+LAB_HEAD :: 100000;        // hot: LAB_HEAD + a head chip, LAB_PLAY + a candidate (SFXB), LAB_AB + a sound,
+LAB_PLAY :: 200000;        // LAB_KEEP + a sound, or -1
+LAB_AB :: 300000;
+LAB_KEEP :: 400000;
+LAB_HEAD_LABELS :: [4] string.["RAID MIX", "STOP", "COPY PICKS", "EVERGLADE"];
+
+LabEv :: struct { t: f32; sound: int; x: f32; z: f32; here: bool; }
+
+LabState :: struct {
+  time: f64; ready: bool;
+  width: f32; height: f32; d: f32;
+  scroll: f32; hot: int; press: int; press_x: f32; press_y: f32; drag_y: f32; dragged: bool;
+  picks: [SFX_COUNT * SFXB_VARIANTS] int;   // each sound's variants, indexes into SFXB (-1 none)
+  shown: [SFX_COUNT] int;                  // the candidate each row shows (its waveform and numbers)
+  lines: [LAB_LINES] u8; line_n: int;      // this frame's sound lines for the host
+  roomed: bool;
+  alone: [16] int; alone_n: int; next: int;  // the voices played alone, for STOP
+  mix: [1] Mixer; bed: [1] f32;
+  raid: bool; raid_at: f64; raid_next: int; ev: [LAB_EVENTS] LabEv; ev_n: int;
+  copied: f32;                             // when COPY PICKS last copied (time), or 0
+  outbox: [LAB_OUT] u8; out_n: int; action: int;
+}
+
+lab_lo :: (a: f32, b: f32) -> f32 { return ifx a < b then a else b; }
+lab_hi :: (a: f32, b: f32) -> f32 { return ifx a > b then a else b; }
+
+// ---- the candidates
+
+// Sound id's candidates (SFXB indexes), the synthesized one first.
+lab_cands :: (id: int, out: [] int) -> int {
+  n := 0;
+  for c: 0..<SFXB_N { if SFXB[c].sound == id && n < out.count { out[n] = c; n += 1; } }
+  return n;
+}
+lab_picked :: (s: [] LabState, c: int) -> bool {
+  id := SFXB[c].sound;
+  for v: 0..<SFXB_VARIANTS { if s[0].picks[id * SFXB_VARIANTS + v] == c { return true; } }
+  return false;
+}
+lab_first_pick :: (s: [] LabState, id: int) -> int {
+  for v: 0..<SFXB_VARIANTS { c := s[0].picks[id * SFXB_VARIANTS + v]; if c >= 0 { return c; } }
+  return -1;
+}
+// KEEP puts c in its sound's picks (while there's room), DROP takes it out (one is always left).
+lab_keep :: (s: [] LabState, c: int) {
+  if c < 0 || c >= SFXB_N || SFXB[c].source == SFXB_SYNTH { return; }
+  id := SFXB[c].sound; base := id * SFXB_VARIANTS;
+  if lab_picked(s, c) {
+    n := 0;
+    for v: 0..<SFXB_VARIANTS { if s[0].picks[base + v] >= 0 { n += 1; } }
+    if n <= 1 { return; }
+    k := 0;
+    for v: 0..<SFXB_VARIANTS { p := s[0].picks[base + v]; s[0].picks[base + v] = -1; if p >= 0 && p != c { s[0].picks[base + k] = p; k += 1; } }
+    return;
+  }
+  for v: 0..<SFXB_VARIANTS { if s[0].picks[base + v] < 0 { s[0].picks[base + v] = c; return; } }
+}
+// The picks as everglade-sfx.picks lines (NAME CAND CAND ...), into the outbox.
+lab_picks_text :: (s: [] LabState) -> int {
+  k := 0;
+  for id: 0..<SFX_COUNT {
+    k = egm_put(s[0].outbox[..], k, SFX_NAMES[id]);
+    for v: 0..<SFXB_VARIANTS {
+      c := s[0].picks[id * SFXB_VARIANTS + v];
+      if c >= 0 { k = egm_put(s[0].outbox[..], k, " "); k = egm_put(s[0].outbox[..], k, SFXB[c].cand); }
+    }
+    k = egm_put(s[0].outbox[..], k, "\n");
+    if k < 0 { return 0; }
+  }
+  return k;
+}
+
+// ---- playing
+
+lab_line :: (s: [] LabState, text: string) {
+  k := egm_put(s[0].lines[..], s[0].line_n, text);
+  if k > 0 { s[0].line_n = k; }
+}
+lab_room :: (s: [] LabState) { if !s[0].roomed { lab_line(s, "!room room\n"); s[0].roomed = true; } }
+// Candidate c alone, `wait` seconds on, centred, as a voice STOP can end.
+lab_play :: (s: [] LabState, c: int, wait: f32) {
+  if c < 0 || c >= SFXB_N { return; }
+  lab_room(s);
+  s[0].next += 1;
+  id := LAB_LAB_ID + s[0].next;
+  if s[0].alone_n == s[0].alone.count { for i: 1..<s[0].alone.count { s[0].alone[i - 1] = s[0].alone[i]; } s[0].alone_n -= 1; }
+  s[0].alone[s[0].alone_n] = id; s[0].alone_n += 1;
+  b := s[0].lines[..]; k := s[0].line_n;
+  // the synthesized one is the bank's NAME; the others NAME-CAND.ogg
+  k = egm_put(b, k, SFX_NAMES[SFXB[c].sound]);
+  if SFXB[c].source != SFXB_SYNTH { k = egm_put(b, k, "-"); k = egm_put(b, k, SFXB[c].cand); }
+  k = egm_put(b, k, " "); k = egm_num(b, k, LAB_GAIN);
+  k = egm_put(b, k, " 0.000 "); k = egm_num(b, k, wait);
+  k = egm_put(b, k, " 0 1.000 0.000 "); k = egm_int(b, k, id);
+  k = egm_put(b, k, "\n");
+  if k > 0 { s[0].line_n = k; }
+  s[0].shown[SFXB[c].sound] = c;
+}
+// STOP: the raid, its bed and every voice played alone.
+lab_stop :: (s: [] LabState) {
+  for i: 0..<s[0].alone_n {
+    k := egm_put(s[0].lines[..], s[0].line_n, "-"); k = egm_int(s[0].lines[..], k, s[0].alone[i]); k = egm_put(s[0].lines[..], k, "\n");
+    if k > 0 { s[0].line_n = k; }
+  }
+  s[0].alone_n = 0;
+  if s[0].raid { lab_raid_end(s); }
+}
+
+// ---- the raid mix
+
+lab_rand :: (r: [] u32) -> f32 {
+  x := r[0]; x ^= x << 13; x ^= x >> 17; x ^= x << 5; r[0] = x;
+  return cast(f32) (x & 0xffffff) / 16777216.0;
+}
+lab_ev :: (s: [] LabState, t: f32, name: string, x: f32, z: f32, here: bool) {
+  id := sfx_id(name);
+  if id < 0 || s[0].ev_n >= LAB_EVENTS || t > LAB_RAID_S { return; }
+  s[0].ev[s[0].ev_n] = LabEv.{t = t, sound = id, x = x, z = z, here = here}; s[0].ev_n += 1;
+}
+LAB_SPELLS :: [6] string.["fire", "frost", "eldritch", "necro", "bolt", "arcane"];
+// The script: the horn; thirty raiders 12 to 60 m out casting every 1.6 to 3.2 s, each cast's
+// flight and its hit on the town's wall ahead; blades at your side; your steps; your Fireball and
+// thunder; a house falling; the raid won. Seeded, so every run is the same raid.
+lab_script :: (s: [] LabState) {
+  s[0].ev_n = 0;
+  r: [1] u32; r[0] = 0x2545f491;
+  lab_ev(s, 0.1, "horn", 0, 40, false);
+  for i: 0..<LAB_RAIDERS {
+    a := (lab_rand(r[..]) - 0.5) * 2.6;          // radians either side of ahead
+    far := 12 + 48 * lab_rand(r[..]);
+    x := sin(a) * far; z := cos(a) * far;
+    spell := cast(int) (lab_rand(r[..]) * 6) % 6;
+    t := 1.2 + 2 * lab_rand(r[..]);
+    while t < LAB_RAID_S - 1 {
+      cast_name: [24] u8; travel: [24] u8; hit: [24] u8;
+      w := LAB_SPELLS[spell];
+      cn := egm_put(cast_name[..], 0, w); cn = egm_put(cast_name[..], cn, "-cast");
+      tn := egm_put(travel[..], 0, w); tn = egm_put(travel[..], tn, ifx spell == 5 then "-hit" else "-travel");
+      hn := egm_put(hit[..], 0, w); hn = egm_put(hit[..], hn, ifx spell == 4 then "-travel" else "-hit");
+      lab_ev(s, t, cast(string) cast_name[0..<cn], x, z, false);
+      if spell != 5 { lab_ev(s, t + 0.08, cast(string) travel[0..<tn], x * 0.5, z * 0.5 + 4, false); }
+      hx := (lab_rand(r[..]) - 0.5) * 16;
+      lab_ev(s, t + 0.45 + 0.2 * lab_rand(r[..]), ifx spell == 4 then "thunder" else cast(string) hit[0..<hn], hx, 6 + 4 * lab_rand(r[..]), false);
+      t += 1.6 + 1.6 * lab_rand(r[..]);
+    }
+  }
+  // blades at your side
+  t := 4.0f32;
+  while t < 15 {
+    lab_ev(s, t, "swing", 1.5, 2, false);
+    lab_ev(s, t + 0.12, ifx lab_rand(r[..]) < 0.3 then "hit-heavy" else "hit", 2, 2.5, false);
+    t += 0.6 + 0.5 * lab_rand(r[..]);
+  }
+  // your steps, walking and then running
+  t = 2.0; step := 0;
+  while t < 18 {
+    if t < 9 || t > 13 {
+      lab_ev(s, t, ifx step % 3 == 0 then "step-1" else ifx step % 3 == 1 then "step-2" else "step-3", 0, 0, true);
+      step += 1;
+    }
+    t += ifx t < 9 then 0.5f32 else 0.34f32;
+  }
+  lab_ev(s, 9.0, "fire-cast", 0, 0, true);
+  lab_ev(s, 9.6, "fireball", 0, 30, false);
+  lab_ev(s, 11.0, "wall-hit", -6, 8, false);
+  lab_ev(s, 12.4, "house-fall", 18, 26, false);
+  lab_ev(s, 14.2, "tower-hit", -20, 35, false);
+  lab_ev(s, 16.0, "death", 8, 14, false);
+  lab_ev(s, 19.0, "raid-won", 0, 0, true);
+  // in time order
+  for i: 1..<s[0].ev_n {
+    e := s[0].ev[i]; j := i;
+    while j > 0 && s[0].ev[j - 1].t > e.t { s[0].ev[j] = s[0].ev[j - 1]; j -= 1; }
+    s[0].ev[j] = e;
+  }
+}
+lab_raid_start :: (s: [] LabState) {
+  if s[0].raid { lab_raid_end(s); }
+  lab_script(s);
+  s[0].mix[0] = Mixer.{}; mix_seed(s[0].mix[..], 12832);
+  s[0].raid = true; s[0].raid_at = s[0].time; s[0].raid_next = 0; s[0].bed[0] = -1;
+  lab_room(s);
+}
+lab_raid_end :: (s: [] LabState) {
+  s[0].raid = false;
+  for i: 0..<MIX_VOICES {
+    v := s[0].mix[0].voices[i];
+    if !v.on { continue; }
+    k := egm_put(s[0].lines[..], s[0].line_n, "-"); k = egm_int(s[0].lines[..], k, v.id); k = egm_put(s[0].lines[..], k, "\n");
+    if k > 0 { s[0].line_n = k; }
+  }
+  // the bed down
+  k := egm_put(s[0].lines[..], s[0].line_n, "~");
+  k = egm_variant(s[0].lines[..], k, SFX_AMBIENT, 0, s[0].picks[..]); k = egm_put(s[0].lines[..], k, " 0.000 0.000\n");
+  if k > 0 { s[0].line_n = k; }
+}
+// The raid's frame: its events due by now, through the page's mixer, and the bus and bed.
+lab_raid :: (s: [] LabState, dt: f32) {
+  if !s[0].raid { return; }
+  now := s[0].time; t := cast(f32) (now - s[0].raid_at);
+  m := s[0].mix[..];
+  while s[0].raid_next < s[0].ev_n && s[0].ev[s[0].raid_next].t <= t {
+    e := s[0].ev[s[0].raid_next]; s[0].raid_next += 1;
+    p := ifx e.here then EgmPlace.{} else egm_flat(e.x, e.z);
+    s[0].line_n = egm_cue(m, s[0].lines[..], s[0].line_n, e.sound, s[0].picks[..], p, 0, 1, now, 1);
+  }
+  s[0].line_n = egm_end(m, s[0].lines[..], s[0].line_n, s[0].picks[..], now, dt, 1, s[0].bed[..], false);
+  if t > LAB_RAID_S + 1 { lab_raid_end(s); }
+}
+
+// ---- layout
+
+LabLayout :: struct { head: Box; top: f32; chips: [4] Box; }
+lab_margin :: (s: [] LabState) -> f32 { return ifx s[0].width / s[0].d < 700 then 16.0f32 else 24.0f32; }
+lab_layout :: (s: [] LabState) -> LabLayout {
+  d := s[0].d; w := s[0].width / d; m := lab_margin(s);
+  l: LabLayout;
+  p := Pen.{d = d, fade = 1, time = 0};
+  cap := 7.5 * d;
+  x0 := (m + 18) * d; right := (w - m - 18) * d;
+  x := x0; y := (m + 76) * d;
+  for i: 0..<4 {
+    cw := chip_width(LAB_HEAD_LABELS[i], cap, p);
+    if x > x0 { x += ifx i == 3 then 22 * d else 6 * d; }
+    if x + cw > right && x > x0 { x = x0; y += 26 * d; }
+    l.chips[i] = chip_box(LAB_HEAD_LABELS[i], x, y, cap, p);
+    x += cw;
+  }
+  l.head = Box.{x0 = m * d, y0 = m * d, x1 = (w - m) * d, y1 = y + 16 * d};
+  l.top = l.head.y1 + 12 * d;
+  return l;
+}
+// Sound id's row, before scrolling.
+lab_row_box :: (s: [] LabState, l: LabLayout, id: int) -> Box {
+  d := s[0].d; m := lab_margin(s);
+  y := l.top + 12 * d + LAB_ROW * d * f32(id);
+  return Box.{x0 = m * d, y0 = y, x1 = s[0].width - m * d, y1 = y + LAB_ROW * d};
+}
+// The row's chips: A/B, a chip a candidate, then KEEP or DROP for the shown one; their targets.
+lab_row_chips :: (s: [] LabState, id: int, b: Box, boxes: [] Box, targets: [] int, labels: [] string) -> int {
+  d := s[0].d; p := Pen.{d = d, fade = 1, time = 0}; cap := 6.5 * d;
+  cs: [LAB_CANDS] int; n := lab_cands(id, cs[..]);
+  k := 0;
+  x := b.x0 + 14 * d; y := b.y0 + 44 * d;
+  shown := s[0].shown[id];
+  for i: 0..<(n + 2) {
+    if k >= boxes.count { break; }
+    label := ""; target := -1;
+    if i == 0 { label = "A/B"; target = LAB_AB + id; }
+    else if i <= n { c := cs[i - 1]; label = ifx SFXB[c].source == SFXB_SYNTH then "S" else lab_upper(SFXB[c].cand); target = LAB_PLAY + c; }
+    else {
+      if shown < 0 || SFXB[shown].source == SFXB_SYNTH { continue; }
+      label = ifx lab_picked(s, shown) then "DROP" else "KEEP"; target = LAB_KEEP + id;
+    }
+    gap := ifx i == 1 || i == n + 1 then 14.0f32 else 5.0f32;
+    if i > 0 { x += gap * d; }
+    boxes[k] = chip_box(label, x, y, cap, p); targets[k] = target; labels[k] = label; k += 1;
+    x += chip_width(label, cap, p);
+  }
+  return k;
+}
+LAB_CAND_UPPER :: [12] string.["E1", "E2", "E3", "E4", "E5", "K1", "K2", "K3", "K4", "K5", "S", "?"];
+lab_upper :: (cand: string) -> string {
+  for i: 0..<10 { u := LAB_CAND_UPPER[i]; if cand.count == 2 && cand[1] == u[1] && cand[0] == u[0] + 32 { return u; } }
+  return LAB_CAND_UPPER[11];
+}
+
+// ---- drawing
+
+// A number of hundredths as "-16.0" (one place).
+lab_tenths :: (buf: [] u8, at: int, hundredths: int) -> int {
+  k := at; v := hundredths;
+  if v < 0 { k = egm_put(buf, k, "-"); v = -v; }
+  t := (v + 5) / 10;
+  k = egm_int(buf, k, t / 10); k = egm_put(buf, k, "."); return egm_int(buf, k, t % 10);
+}
+lab_hex :: (c: u8) -> int { return ifx c >= 'a' then cast(int) (c - 'a') + 10 else cast(int) (c - '0'); }
+// The candidate's outline (48 bins) in b, mirrored about the middle.
+lab_wave :: (out: [] f32, at: int, c: int, b: Box, k: Ink, p: Pen) -> int {
+  o := SFXB_MEASURE[c].outline;
+  n := o.count / 2;
+  if n == 0 { return at; }
+  v := at; mid := (b.y0 + b.y1) * 0.5; half := (b.y1 - b.y0) * 0.5;
+  for i: 0..<n {
+    a := f32(lab_hex(o[2 * i]) * 16 + lab_hex(o[2 * i + 1])) / 255;
+    x := b.x0 + (b.x1 - b.x0) * (f32(i) + 0.5) / f32(n);
+    h := lab_hi(a * half, 0.6 * p.d);
+    v = rule(out, v, x, mid - h, x, mid + h, k, p.fade);
+  }
+  return v;
+}
+lab_row :: (out: [] f32, at: int, s: [] LabState, id: int, b: Box, p: Pen) -> int {
+  d := p.d; v := at;
+  white := ink(p, INK_WHITE); dim := ink(p, INK_DIM); accent := ink(p, INK_LIT); faint := ink(p, INK_FAINT);
+  v = put(out, v, SFX_NAMES[id], b.x0 + 14 * d, b.y0 + 20 * d, 8 * d, white);
+  boxes: [LAB_CANDS + 2] Box; targets: [LAB_CANDS + 2] int; labels: [LAB_CANDS + 2] string;
+  n := lab_row_chips(s, id, b, boxes[..], targets[..], labels[..]);
+  c := s[0].shown[id];
+  if c >= 0 {
+    q := SFXB[c]; e := SFXB_MEASURE[c];
+    // wide: the waveform beside the numbers; narrow: beside the chips, and the numbers short
+    narrow := box_w(b) / d < 640;
+    buf: [96] u8; k := 0;
+    k = egm_put(buf[..], k, ifx q.source == SFXB_SYNTH then "S" else lab_upper(q.cand));
+    if !narrow { k = egm_put(buf[..], k, ifx q.source == SFXB_SYNTH then " SYNTH" else ifx q.source == SFXB_KENNEY then " KENNEY CC0" else " ELEVENLABS"); }
+    k = egm_put(buf[..], k, "  ");
+    k = lab_tenths(buf[..], k, q.ms / 10); k = egm_put(buf[..], k, " S  ");
+    k = lab_tenths(buf[..], k, e.loudest); k = egm_put(buf[..], k, " LUFS  ");
+    k = lab_tenths(buf[..], k, e.peak); k = egm_put(buf[..], k, " DB");
+    if !narrow { k = egm_put(buf[..], k, "FS"); }
+    if e.score >= 0 { k = egm_put(buf[..], k, ifx narrow then "  " else "  SCORE "); k = egm_int(buf[..], k, e.score); if narrow { k = egm_put(buf[..], k, "/10"); } }
+    if e.channels == 2 && !narrow { k = egm_put(buf[..], k, "  STEREO"); }
+    nx := b.x0 + 14 * d + text_width(SFX_NAMES[id], 8 * d) + 16 * d;
+    wave: Box;
+    if narrow {
+      from := ifx n > 0 then boxes[n - 1].x1 + 12 * d else b.x0 + 14 * d;
+      wave = Box.{x0 = lab_hi(from, b.x1 - 14 * d - 160 * d), y0 = b.y0 + 34 * d, x1 = b.x1 - 14 * d, y1 = b.y0 + 50 * d};
+      v = put_fit(out, v, cast(string) buf[0..<k], nx, b.y0 + 20 * d, 6.5 * d, dim, b.x1 - 14 * d - nx);
+    } else {
+      wave_w := lab_lo(220 * d, box_w(b) * 0.32);
+      wave = Box.{x0 = b.x1 - 14 * d - wave_w, y0 = b.y0 + 8 * d, x1 = b.x1 - 14 * d, y1 = b.y0 + 26 * d};
+      v = put_fit(out, v, cast(string) buf[0..<k], nx, b.y0 + 20 * d, 6.5 * d, dim, wave.x0 - 14 * d - nx);
+    }
+    if box_w(wave) > 24 * d { v = lab_wave(out, v, c, wave, ifx lab_picked(s, c) then accent else white, p); }
+  }
+  for i: 0..<n {
+    t := targets[i];
+    on := t >= LAB_PLAY && t < LAB_AB && lab_picked(s, t - LAB_PLAY);
+    here := t >= LAB_PLAY && t < LAB_AB && t - LAB_PLAY == s[0].shown[id];
+    k := ifx s[0].hot == t then white else ifx on then accent else ifx here then ink(p, INK_PALE) else dim;
+    v = chip(out, v, labels[i], boxes[i].x0, boxes[i].y1 - 5 * d, 6.5 * d, k, p);
+  }
+  v = rule(out, v, b.x0 + 14 * d, b.y1 - 1 * d, b.x1 - 14 * d, b.y1 - 1 * d, faint, 0.4 * p.fade);
+  return v;
+}
+lab_header :: (out: [] f32, at: int, s: [] LabState, l: LabLayout, p: Pen) -> int {
+  d := p.d; b := l.head;
+  white := ink(p, INK_WHITE); dim := ink(p, INK_DIM); accent := ink(p, INK_LIT);
+  x := b.x0 + 18 * d;
+  v := put(out, at, "OPENAGENTS", x, b.y0 + 22 * d, 7 * d, dim);
+  v = put(out, v, "/ REALMS", x + ink_width("OPENAGENTS", 7 * d, GAP, SPACE, dim) + SPACE * 7 * d, b.y0 + 22 * d, 7 * d, dim);
+  v = put(out, v, "AUDIO LAB", x, b.y0 + 54 * d, 22 * d, white);
+  buf: [64] u8; k := 0;
+  if s[0].raid {
+    m := s[0].mix[..];
+    k = egm_put(buf[..], k, "RAID "); k = lab_tenths(buf[..], k, cast(int) ((s[0].time - s[0].raid_at) * 100));
+    k = egm_put(buf[..], k, " S  VOICES "); k = egm_int(buf[..], k, mix_count(m, -1));
+    k = egm_put(buf[..], k, "  STOLEN "); k = egm_int(buf[..], k, m[0].stolen);
+  } else if s[0].copied > 0 && s[0].time - f64(s[0].copied) < 3 { k = egm_put(buf[..], k, "PICKS COPIED"); }
+  else { k = egm_int(buf[..], k, SFX_COUNT); k = egm_put(buf[..], k, " SOUNDS"); }
+  v = put_right(out, v, cast(string) buf[0..<k], b.x1 - 18 * d, b.y0 + 22 * d, 6.5 * d, ifx s[0].raid then accent else dim);
+  for i: 0..<4 {
+    on := i == 0 && s[0].raid;
+    v = chip(out, v, LAB_HEAD_LABELS[i], l.chips[i].x0, l.chips[i].y1 - 5 * d, 7.5 * d, ifx on then accent else ifx s[0].hot == LAB_HEAD + i then white else dim, p);
+  }
+  return frame(out, v, b, 10 * d, p);
+}
+
+coaxial_lab_frame :: (s: [] LabState, out: [] f32, uniforms: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> int #export_c #effects(all) {
+  if s.count < 1 || uniforms.count < UNIFORM_FLOATS || width < 1 || height < 1 { return 0; }
+  if !s[0].ready { lab_init(s); }
+  step := clamp(dt, 0, 0.1);
+  s[0].time += f64(step);
+  lab_raid(s, step);
+  time := ifx still then 20.0f32 else cast(f32) s[0].time;
+  d := hi(dpr, 1);
+  s[0].width = width; s[0].height = height; s[0].d = d;
+  p := Pen.{d = d, fade = ifx still then 1.0f32 else ease(time / 0.6), time = time};
+  uniforms[0] = width; uniforms[1] = height; uniforms[2] = 20 + time; uniforms[3] = p.fade;
+  uniforms[4] = ifx still then 1.0f32 else 0.0f32; uniforms[5] = 2; uniforms[6] = 0; uniforms[7] = 0;
+  for k: 0..<PANELS { glass(uniforms, k, Box.{x0 = 0, y0 = 0, x1 = 0, y1 = 0}, 0, 0); }
+  l := lab_layout(s);
+  content := (12 + LAB_ROW * f32(SFX_COUNT) + 24) * d;
+  s[0].scroll = clamp(s[0].scroll, 0, hi(0, content - (height - l.top)));
+  glass(uniforms, 0, l.head, 10 * d, 0.92);
+  rows := Box.{x0 = l.head.x0, y0 = l.top, x1 = l.head.x1, y1 = height - 8 * d};
+  glass(uniforms, 1, rows, 10 * d, 0.92);
+  v := lab_header(out, 0, s, l, p);
+  for id: 0..<SFX_COUNT {
+    b := lab_row_box(s, l, id);
+    b.y0 -= s[0].scroll; b.y1 -= s[0].scroll;
+    if b.y0 < l.top || b.y1 > height { continue; }
+    v = lab_row(out, v, s, id, b, p);
+  }
+  return v;
+}
+lab_init :: (s: [] LabState) {
+  s[0].ready = true; s[0].hot = -1; s[0].press = -1;
+  for i: 0..<(SFX_COUNT * SFXB_VARIANTS) { s[0].picks[i] = SFXB_PICK[i]; }
+  for id: 0..<SFX_COUNT { s[0].shown[id] = lab_first_pick(s, id); }
+}
+
+// ---- input
+
+lab_hit :: (s: [] LabState, x: f32, y: f32) -> int {
+  if s[0].d <= 0 { return -1; }
+  l := lab_layout(s);
+  for i: 0..<4 { if inside(l.chips[i], x, y) { return LAB_HEAD + i; } }
+  if y < l.top { return -1; }
+  for id: 0..<SFX_COUNT {
+    b := lab_row_box(s, l, id);
+    b.y0 -= s[0].scroll; b.y1 -= s[0].scroll;
+    if y < b.y0 || y > b.y1 { continue; }
+    boxes: [LAB_CANDS + 2] Box; targets: [LAB_CANDS + 2] int; labels: [LAB_CANDS + 2] string;
+    n := lab_row_chips(s, id, b, boxes[..], targets[..], labels[..]);
+    for i: 0..<n { if inside(boxes[i], x, y) { return targets[i]; } }
+  }
+  return -1;
+}
+lab_act :: (s: [] LabState, t: int) {
+  if t >= LAB_KEEP { lab_keep(s, s[0].shown[t - LAB_KEEP]); return; }
+  if t >= LAB_AB {
+    id := t - LAB_AB;
+    cs: [LAB_CANDS] int; n := lab_cands(id, cs[..]);
+    pick := lab_first_pick(s, id);
+    if n == 0 || pick < 0 { return; }
+    lab_play(s, cs[0], 0);
+    lab_play(s, pick, cast(f32) SFXB[cs[0]].ms / 1000 + 0.4);
+    return;
+  }
+  if t >= LAB_PLAY { lab_play(s, t - LAB_PLAY, 0); return; }
+  i := t - LAB_HEAD;
+  if i == 0 { lab_raid_start(s); }
+  else if i == 1 { lab_stop(s); }
+  else if i == 2 { s[0].out_n = lab_picks_text(s); if s[0].out_n > 0 { s[0].action = LAB_COPY; s[0].copied = cast(f32) s[0].time; } }
+  else if i == 3 { url := "/realms/everglade/"; for c: 0..<url.count { s[0].outbox[c] = url[c]; } s[0].out_n = url.count; s[0].action = LAB_NAVIGATE; }
+}
+
+coaxial_lab_pointer :: (s: [] LabState, x: f32, y: f32, phase: int, kind: int) -> bool #export_c #effects(all) {
+  if s.count < 1 { return false; }
+  if !s[0].ready { lab_init(s); }
+  d := hi(s[0].d, 1);
+  if phase == P_DOWN {
+    s[0].press = lab_hit(s, x, y); s[0].press_x = x; s[0].press_y = y; s[0].drag_y = y; s[0].dragged = false;
+    s[0].hot = ifx kind == 0 then s[0].press else -1;
+    return true;
+  }
+  if phase == P_MOVE {
+    if kind == 0 { s[0].hot = lab_hit(s, x, y); }
+    if kind != 0 || s[0].press != -1 {
+      if absf(y - s[0].press_y) > 10 * d || absf(x - s[0].press_x) > 10 * d { s[0].dragged = true; }
+      if s[0].dragged && kind != 0 { s[0].scroll -= y - s[0].drag_y; }
+      s[0].drag_y = y;
+    }
+    return true;
+  }
+  if phase == P_UP {
+    target := lab_hit(s, x, y);
+    if !s[0].dragged && target == s[0].press && target != -1 { lab_act(s, target); }
+    s[0].press = -1;
+    if kind != 0 { s[0].hot = -1; }
+    return true;
+  }
+  s[0].press = -1;
+  return true;
+}
+coaxial_lab_key :: (s: [] LabState, key: int) -> bool #export_c #effects(all) {
+  if s.count < 1 { return false; }
+  d := hi(s[0].d, 1);
+  if key == -1 { lab_stop(s); return true; }    // Escape
+  if key == K_DOWN { s[0].scroll += 40 * d; return true; }
+  if key == K_UP { s[0].scroll -= 40 * d; return true; }
+  if key == -11 { s[0].scroll += s[0].height * 0.8; return true; }
+  if key == -10 { s[0].scroll -= s[0].height * 0.8; return true; }
+  if key == K_HOME { s[0].scroll = 0; return true; }
+  if key == K_END { s[0].scroll = 1000000000; return true; }
+  return false;
+}
+coaxial_lab_wheel :: (s: [] LabState, dy: f32) #export_c #effects(all) { if s.count > 0 { s[0].scroll += dy * hi(s[0].d, 1); } }
+coaxial_lab_cursor :: (s: [] LabState) -> int #export_c #effects(all) { if s.count < 1 { return 0; } return ifx s[0].hot != -1 then 1 else 0; }
+coaxial_lab_action :: (s: [] LabState) -> int #export_c #effects(all) { if s.count < 1 { return 0; } return s[0].action; }
+coaxial_lab_action_done :: (s: [] LabState) #export_c #effects(all) { if s.count > 0 { s[0].action = 0; s[0].out_n = 0; } }
+coaxial_lab_max_vertices :: () -> int #export_c #effects(all) { return LAB_MAX_VERTICES; }
+// This frame's sound lines: how many bytes, then none until the next.
+coaxial_lab_sounds_len :: (s: [] LabState) -> int #export_c #effects(all) { if s.count < 1 { return 0; } n := s[0].line_n; s[0].line_n = 0; return n; }
+
+// The bank the face renders once audio starts: the synthesized set (sfx.coax) and the room's impulse.
+coaxial_lab_sound_count :: () -> int #export_c #effects(all) { return SFX_COUNT + 1; }
+coaxial_lab_sound_name :: (i: int, out: [] u8) -> int #export_c #effects(all) {
+  if i == SFX_COUNT { return egm_put(out, 0, "room"); }
+  return ifx i >= 0 && i < SFX_COUNT then egm_put(out, 0, SFX_NAMES[i]) else -1;
+}
+coaxial_lab_sound_render :: (i: int, mix: [] int, out: [] u8) -> int #export_c #effects(all) {
+  if i == SFX_COUNT { h := mix.count / 2; return ifx h >= 2 * MIX_ROOM_MS * MIX_ROOM_RATE / 1000 then mix_room(mix[0..<h], mix[h..<mix.count], out) else -1; }
+  r := sfx_render(i, SFX_RATE, mix, out);
+  return ifx r.ok then r.bytes else -1;
+}
+
+// ---- checks
+
+lab_test_count :: (s: [] LabState, prefix: string) -> int {
+  t := cast(string) s[0].lines[0..<s[0].line_n];
+  n := 0; a := 0;
+  for j: 0..<t.count {
+    if t[j] != '\n' { continue; }
+    l := t[a..<j];
+    if l.count >= prefix.count && l[0..<prefix.count] == prefix { n += 1; }
+    a = j + 1;
+  }
+  return n;
+}
+
+#test "audio lab: every sound has a row with its synthesized candidate and at least one other" {
+  for id: 0..<SFX_COUNT {
+    cs: [LAB_CANDS] int;
+    n := lab_cands(id, cs[..]);
+    #assert n >= 2 && n <= LAB_CANDS && SFXB[cs[0]].source == SFXB_SYNTH;
+  }
+}
+
+#test "audio lab: a candidate plays alone, A/B plays the synthesized one and then the pick, STOP ends them" {
+  s: [1] LabState;
+  lab_init(s[..]);
+  hit := sfx_id("hit");
+  lab_act(s[..], LAB_AB + hit);
+  #assert lab_test_count(s[..], "!room room") == 1 && lab_test_count(s[..], "hit 0.800") == 1 && lab_test_count(s[..], "hit-") == 1;
+  s[0].line_n = 0;
+  lab_act(s[..], LAB_HEAD + 1);
+  #assert lab_test_count(s[..], "-1000001") == 1 && lab_test_count(s[..], "-1000002") == 1 && s[0].alone_n == 0;
+}
+
+#test "audio lab: KEEP and DROP change the picks, one is always left, and COPY PICKS writes a line a sound" {
+  s: [1] LabState;
+  lab_init(s[..]);
+  // a sound with a candidate that isn't a pick
+  id := -1; other := -1;
+  cs: [LAB_CANDS] int;
+  for q: 0..<SFX_COUNT {
+    if other >= 0 { break; }
+    m := lab_cands(q, cs[..]);
+    for i: 1..<m { if !lab_picked(s[..], cs[i]) && other < 0 { other = cs[i]; id = q; } }
+  }
+  #assert other >= 0;
+  n := lab_cands(id, cs[..]);
+  first := lab_first_pick(s[..], id);
+  // one pick only, then the other added
+  for v: 1..<SFXB_VARIANTS { s[0].picks[id * SFXB_VARIANTS + v] = -1; }
+  #assert first >= 0 && n >= 2;
+  lab_keep(s[..], other); #assert lab_picked(s[..], other);
+  lab_keep(s[..], first); #assert !lab_picked(s[..], first) && lab_picked(s[..], other);
+  lab_keep(s[..], other); #assert lab_picked(s[..], other);   // the last can't go
+  lab_keep(s[..], cs[0]); #assert !lab_picked(s[..], cs[0]);   // the synthesized one is never a pick
+  k := lab_picks_text(s[..]);
+  t := cast(string) s[0].outbox[0..<k];
+  lines := 0; for c: t { if c == '\n' { lines += 1; } }
+  #assert lines == SFX_COUNT && t[0..<9] == "fire-cast";
+}
+
+#test "audio lab: the raid mix is the same every run, holds every sound to its limit, and ends" #steps 400000000 {
+  a: [1] LabState; b: [1] LabState;
+  lab_init(a[..]); lab_init(b[..]);
+  lab_raid_start(a[..]); lab_raid_start(b[..]);
+  #assert a[0].ev_n > 300 && a[0].ev_n < LAB_EVENTS;
+  most := 0; total := 0;
+  for f: 0..<1400 {
+    a[0].line_n = 0; b[0].line_n = 0;
+    a[0].time += 1.0 / 60; b[0].time += 1.0 / 60;
+    lab_raid(a[..], 1.0 / 60); lab_raid(b[..], 1.0 / 60);
+    #assert a[0].line_n == b[0].line_n;
+    total += a[0].line_n;
+    for id: 0..<SFX_COUNT { c := mix_count(a[0].mix[..], id); if c > EGM_LIMIT[id] { most = 1000; } }
+    c := mix_count(a[0].mix[..], -1); if c > most { most = c; }
+  }
+  #assert most <= MIX_VOICES && most >= 8 && total > 0 && !a[0].raid;
+  #assert a[0].mix[0].stolen + a[0].mix[0].dropped > 0;   // thirty raiders are more than the limits hold
+}

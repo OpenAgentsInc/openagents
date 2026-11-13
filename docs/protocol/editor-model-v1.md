@@ -91,7 +91,7 @@ A page's module exports three calls and takes the two messages:
 - `coaxial_edit_model(state)` and `coaxial_edit_model_len(state)`: the model's bytes.
 
 Splice Bots is the first page (`metaverse/splice-bots/world.coax`, `spw_model`). WorldBuilder is the
-second (`apps/openagents-web/worldbuilder-world.coax`, `wbe_model`).
+second (`apps/openagents-web/worldbuilder/worldbuilder-world.coax`, `wbe_model`).
 
 A made realm (`apps/openagents-web/myrealm.coax`) and the realm pages that load the edit layer
 (`metaverse/edit/edit.coax`, #13478) are the third. Both follow the realm's world with

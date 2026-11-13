@@ -1,7 +1,7 @@
 // Bounded HTTP projection of the acknowledged validated recording. Values
 // come from the existing validator/index recorder, never a second node.
 #load "request.coax";
-#load "../../apps/openagents-web/bitcoin-lab-blocks.coax";
+#load "../../apps/openagents-web/old/labs/bitcoin-lab-blocks.coax";
 #load "../../coax/lib/json/json.coax";
 #load "../../coax/lib/bitcoin/subsidy.coax";
 lj_cursor :: (phase:int,out:[]u8)->string {

@@ -1,0 +1,58 @@
+// The raid's footprints are the town's (#12747): everglade-raid-tactics.coax keeps its own copy of
+// what stands in the way (RT_BOX), as the room server doesn't load the plan; this check holds it
+// to everglade/legacy/v1/plan.coax and the trunks everglade.coax plants.
+//   coax test apps/openagents-web/old/v1/everglade-raid-town.coax --only "raid paths"
+#load "../../everglade.coax";
+#load "everglade-raid-tactics.coax";
+
+// Whether RT_BOX's n-th footprint is box i of the plan's src (min x, min z, max x, max z).
+rp_same_box :: (src: [] f32, i: int, n: int) -> bool {
+  for c: 0..<4 { if RT_BOX[n * 4 + c] != src[i * EG_BOX + c] { return false; } }
+  return true;
+}
+#test "raid paths: the footprints are the plan's: the palisade, the buildings whole, the solid props, the districts' houses, the gates" {
+  // RT_BOX (everglade-raid-tactics.coax: the room server doesn't load the plan) against plan.coax
+  n := 0;
+  pal := EG_PALISADE; bld := EG_BUILDING; prp := EG_PROP; dh := EG_DHOUSE;
+  #assert RT_WALLS == EG_PALISADE_N;
+  for i: 0..<EG_PALISADE_N { #assert rp_same_box(pal[..], i, n); n += 1; }
+  for i: 0..<EG_BUILDINGS { #assert rp_same_box(bld[..], i, n); n += 1; }
+  for i: 0..<EG_RIVER { #assert rp_same_box(prp[..], i, n); n += 1; }
+  for i: 0..<EG_DHOUSES { #assert rp_same_box(dh[..], i, n); n += 1; }
+  // the great lawn's park trees: each trunk's girth (everglade.coax girth_of) either side
+  #assert RT_TREES == EG_PARK_TREES;
+  for t: 0..<EG_PARK_TREES {
+    g := girth_of(EG_PARK_TREE[t * 4], EG_PARK_TREE[t * 4 + 1], EG_PARK_TREE[t * 4 + 2], 0, cast(int) EG_PARK_TREE[t * 4 + 3]);
+    k := n * 4;
+    #assert abs(RT_BOX[k] - (g.x - g.r)) < 0.001 && abs(RT_BOX[k + 1] - (g.z - g.r)) < 0.001 && abs(RT_BOX[k + 2] - (g.x + g.r)) < 0.001 && abs(RT_BOX[k + 3] - (g.z + g.r)) < 0.001;
+    n += 1;
+  }
+  #assert n == RT_BOXES && RT_TOWN_GATES == EG_GATES;
+  // a raider's own pace and gait are the same numbers in the rules and on the page (#12769)
+  for id: 0..<64 { for salt: 1..<6 { #assert rp_hash(id, salt) == rt_hash(id, salt); } #assert rp_pace(id) == rt_pace(id); }
+  // the house the raid burns down is the stables, the one building outside the palisade (#12769)
+  #assert RT_HOUSE == RT_WALLS + EG_STABLES && rp_same_box(bld[..], EG_STABLES, RT_HOUSE);
+  for k: 0..<EG_GATES * 4 { #assert RT_TOWN_GATE[k] == EG_GATE[k]; }
+  // every solid of the plan's but the world's edges lies in one of them
+  solids: [EG_SOLIDS * EG_BOX] f32;
+  m := everglade_solids(solids[..]);
+  for i: 0..<m - EG_EDGES {
+    k := i * EG_BOX;
+    held := false;
+    for b: 0..<RT_BOXES {
+      if solids[k] >= RT_BOX[b * 4] && solids[k + 1] >= RT_BOX[b * 4 + 1] && solids[k + 2] <= RT_BOX[b * 4 + 2] && solids[k + 3] <= RT_BOX[b * 4 + 3] { held = true; }
+    }
+    #assert held;
+  }
+}
+
+#test "raid paths: no woods within RT_AREA, so the park's are the only trees a raider meets" #steps 400000000 {
+  // everglade.coax plants its woods' trees, the undergrowth and the thicket only in the woods
+  // (everglade_in_woods) or at the world's edge; the open town has only the park's (RT_BOX)
+  a := f32(RT_AREA);
+  #assert a + 3 < f32(EG_THICKET);
+  for i: 0..<126 { for j: 0..<126 {
+    x := -a + f32(i) * 2; z := -a + f32(j) * 2;
+    #assert !everglade_in_woods(x, z);
+  } }
+}

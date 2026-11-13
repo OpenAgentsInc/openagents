@@ -1,7 +1,7 @@
 // The Markdown component's checks: one document, laid out and painted in
 // pixels in the Zeron skin and in cells in the terminal skin, by the same
 // code (components/spec.md, GitHub #13153). The chat frames
-// (apps/openagents-web/chat-frames.coax) pin its vertices in the Zeron skin.
+// (apps/openagents-web/chat/chat-frames.coax) pin its vertices in the Zeron skin.
 //   coax/bin/coax test components/kit/markdown-checks.coax
 
 #load "markdown.coax";

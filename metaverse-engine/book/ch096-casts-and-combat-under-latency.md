@@ -52,7 +52,7 @@ CR_LOW :: 1.2;            // m: a piece lower than this (a crate, a fence, a ben
 CR_NEAR :: 2.5;           // m: an aim this close needs no line of sight (a press aims 2 m ahead of you; the rest is the wire's cm and your pose)
 ```
 
-<!-- source: apps/openagents-web/everglade-cast-rules.coax cast-rules -->
+<!-- source: apps/openagents-web/old/v1/everglade-cast-rules.coax cast-rules -->
 ```jai
 // ---- time
 CR_WAIT :: 15;            // ticks (0.5 s, the room's EG_BANK) a cast waits for the inputs sent before it
@@ -116,7 +116,7 @@ the press feel immediate; it doesn't make the result arrive sooner.
 ## Run it
 
 ```shell
-coax/bin/coax test --library apps/openagents-web/everglade-cast-rules.coax
+coax/bin/coax test --library apps/openagents-web/old/v1/everglade-cast-rules.coax
 coax/web/room/build.sh
 coax/web/tool.sh coax/web/room/room-proof.coax cast coax/web/room/bin/room 8881 250 30 20
 ```

@@ -199,68 +199,6 @@ This follows Google-first: Vertex, then the Gemini API, then everything else.
 Model names live in one table in `coax/lib/gateway/models.coax`, not in the
 loop.
 
-### Compiler questions and working memory
-
-GitHub #13444 and #13445. Two modes, each off by default, so a run with one
-can be compared with a run without. Off, the schema is `MC_SCHEMA`, the system
-prompt is `MC_SYSTEM` and a run is what it was. The RLM coder has the same two
-modes as `--intel` and `--memory` (`coax/lib/rlm/README.md`), over the same
-libraries.
-
-Turn them on in the worker's message (`coder/tui/mcworker.coax`):
-
-```json
-{"task":"...","cwd":"/path","intel":true,"memory":true,"memory_dir":"/optional/dir","coax":"/optional/coax"}
-```
-
-With `memory` and no `memory_dir`, the store is
-`~/.openagents/coder/sessions/ID.workmem`, where ID is the message's `session`,
-else the worker's own. After `ended`, the worker writes one line
-`{"kind":"aware","intel":{...},"memory":{...}}` with the run's counts.
-
-**`intel`**: the Coax compiler answers, through `coax/lib/agent/intel/`.
-
-- The action gains `questions`, up to 16 lines: `defines NAME`, `uses NAME
-  [FILE]`, `exports FILE`, `show NAME [FILE]`, `check FILE`, `explain CODE`,
-  `vocab NAME`, `effects FILE [PROC]` and `depends FILE`. (The RLM coder's
-  `checks(name)` is not here: with it, the checker stops `coder/tui/coder.coax`
-  with E0381; see docs/coder/2026-11-13-compiler-for-agents.md.) Each
-  answer is a result named `ask: ...`, bounded, and says how many records it
-  left out. When the compiler can't answer, the result starts `no answer:`
-  with exit 1 and the model uses `git grep` and `view`.
-- A view ends with the file's hash, and `show` gives a declaration's. An edit
-  may name that hash in `seen`; when the file is no longer what was read, the
-  edit is refused as stale, nothing is written, and the result has the lines
-  as they are now.
-- An edit with `name` replaces that whole declaration (`ix_replace`).
-- An applied edit of a `.coax` file returns the lines it wrote, the file's new
-  hash and its check.
-
-**`memory`**: the run store of `coax/lib/agent/workmem/`.
-
-- Every view, edit, question and command is recorded as it happens. The
-  action gains `notes`, up to 8 findings, each tied to lines when it starts
-  `PATH:A-B`.
-- The state gains `memory`: current findings, every change, and what is open.
-  It is never compacted.
-- A view of lines the store already has, unchanged, starts with a line that
-  says so.
-- The finish rule (`workmem/finish.coax`): `finished` is refused while a check
-  the task quotes in backticks has not passed on the files as they are, or
-  while the run has weakened what checks it (fewer `#test`, `#forall` or
-  `#assert` in a file, a lost `#authority` line, a changed compatibility
-  baseline). It is refused twice at most, then stands, and what was open goes
-  into the report's `unproven` for a person.
-
-Code: `coax/lib/microcoder/aware.coax` (the effects), with the pure parts in
-`action.coax`, `loop.coax` and `state.coax`. Checks:
-
-```sh
-coax/bin/coax test coax/lib/microcoder/aware.coax
-coax/web/tool.sh coax/lib/microcoder/aware-selftest.coax   # a scratch Coax repo, the real compiler, a scripted model
-coax/web/tool.sh coder/tests/aware-worker.coax             # the worker turns the modes on from its message
-```
-
 ## Part 2: the gateways
 
 ### The interface

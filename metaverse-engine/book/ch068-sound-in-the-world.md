@@ -155,7 +155,7 @@ music replays with the session.
   and sweeping filters) to 16-bit WAV bytes, in integers, once, when the
   page's audio starts. Everglade renders 46 that way and hands them to the
   host as `coaxial_sound_bank` (sources: [`SOURCES.md`](../audio/SOURCES.md)).
-- Everglade (`apps/openagents-web/everglade-sound.coax`) plays its spells,
+- Everglade (`apps/openagents-web/old/v1/everglade-sound.coax`) plays its spells,
   fights, raid and town from the events every page receives, so another
   player's cast plays where it happens. A headless check,
   [`metaverse-engine/tests/everglade-sound.coax`](../tests/everglade-sound.coax), plays

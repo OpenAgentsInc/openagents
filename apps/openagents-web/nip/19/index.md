@@ -32,4 +32,4 @@ A checksum catches damaged text. It does not authenticate a person, relay hint o
 
 - [docs/verification/coax-nostr-bech32-2026-10-28.md](https://github.com/OpenAgentsInc/openagents/blob/main/docs/verification/coax-nostr-bech32-2026-10-28.md)
 
-The page examples are in [nip-guide-observe.coax](https://github.com/OpenAgentsInc/openagents/blob/main/apps/openagents-web/nip-guide-observe.coax). Relay-only examples inspect NIP-11 metadata, not relay behavior. The catalog distinguishes native library, partial support and relay declarations.
+The page examples are in [nip-guide-observe.coax](https://github.com/OpenAgentsInc/openagents/blob/main/apps/openagents-web/nip/nip-guide-observe.coax). Relay-only examples inspect NIP-11 metadata, not relay behavior. The catalog distinguishes native library, partial support and relay declarations.

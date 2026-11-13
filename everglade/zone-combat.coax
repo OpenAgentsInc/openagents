@@ -38,7 +38,7 @@
 // block's attack Action (stat-multiattack.coax): the Hill Giant's two attacks, the Goblin's Shortbow,
 // the Ogre's Javelin and the Giant's Trash Lob when you stand past melee reach; a Goblin leaving your
 // reach takes Nimble Escape's Disengage.
-//   coax/bin/coax test --library apps/openagents-web/fivelab.coax --only "experimental combat"
+//   coax/bin/coax test --library apps/openagents-web/old/experimental/fivelab.coax --only "experimental combat"
 //
 // This work includes material from the System Reference Document 5.2.1 ("SRD 5.2.1") by Wizards
 // of the Coast LLC, available at https://www.dndbeyond.com/srd. The SRD 5.2.1 is licensed under the

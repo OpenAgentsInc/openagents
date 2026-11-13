@@ -1,7 +1,7 @@
 // The cast limits both sides of Everglade use (GitHub #12790; spec docs/metaverse/2026-11-04-everglade-cast-rules.md):
 // how far a cast reaches, where its line of sight runs, the words a refusal goes by on the wire, and
 // the conditions that stop a cast bar. The room server's casts (everglade/server/casts.coax) and the
-// pages (apps/openagents-web/everglade-cast-rules.coax, which loads this) share them. It depends on nothing.
+// pages (apps/openagents-web/old/v1/everglade-cast-rules.coax, which loads this) share them. It depends on nothing.
 //   coax/bin/coax test --library everglade/shared/cast-limits.coax
 
 // book:begin cast-reach

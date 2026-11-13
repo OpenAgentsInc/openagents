@@ -33,7 +33,7 @@ it.
 ## The forest
 
 - **Size:** Central Park at a quarter of its size (ff-park,
-  `metaverse/fairy-forest/park.coax`, `apps/openagents-web/fairypark.coax`):
+  `metaverse/fairy-forest/park.coax`, `apps/openagents-web/fairy/fairypark.coax`):
   1025 m from 59th Street (south) to 110th (north) and 208 m from Central
   Park West to Fifth Avenue, the real park's 5:1, so a run end to end takes
   about two and a half minutes. Its lakes, rocky outcrops, lawns, drives,
@@ -56,7 +56,7 @@ it.
 - **The map:** M, or MAP by the title, lifts the camera over the whole park
   (its long side across a wide screen, up a tall one) with every landmark's
   and glade's name and a ring where you are; M, Esc or WALK brings you back
-  (`apps/openagents-web/fairymap.coax`). The address's `#map` opens on it.
+  (`apps/openagents-web/fairy/fairymap.coax`). The address's `#map` opens on it.
 - **The glades:** each has its own character and its own trouble.
   - **Mossbank:** soft hills and mushrooms; where you wake and where your home
     grows.
@@ -72,7 +72,7 @@ it.
 - **Day and night:** a real cycle. Some things only happen at night (the
   Lanternwood fruit, moths, the stars over the Old Ring).
   Built (ff-night, `metaverse/fairy-forest/night.coax`,
-  `apps/openagents-web/fairynight.coax`): the realm's clock is `real`, the
+  `apps/openagents-web/fairy/fairynight.coax`): the realm's clock is `real`, the
   visitor's own time of day; dawn and dusk are warm and low, and the night
   is moonlit blue with stars. Lanternwood's fruit glows at night (bright once
   its glade is green, an ember before) and moths gather at the lights. The
@@ -88,7 +88,7 @@ it.
   figures allow; more pieces are added over time.
 - **Change it any time**: LOOK beside the title (L on a computer), or the
   mirror pool in your home.
-- Built (ff-maker, `apps/openagents-web/fairymaker.coax`,
+- Built (ff-maker, `apps/openagents-web/fairy/fairymaker.coax`,
   `metaverse/fairy-forest/life.coax`): the first visit opens YOUR FAIRY, a pane
   of rows (body, skin, hair, style, eyes, outfit, wings, wing colour, glow)
   with choices to tap while she turns to face you; DONE wakes you. LOOK
@@ -118,7 +118,7 @@ each opens new ways to help:
 | **Light** | A night in Lanternwood | Carry light; open places that only show in the dark |
 | **Water** | Clearing the stream | Move water, fill the pond, water a whole glade |
 
-Built (ff-skills, `apps/openagents-web/fairyskills.coax`): each skill is
+Built (ff-skills, `apps/openagents-web/fairy/fairyskills.coax`): each skill is
 learned once and named over the foot with what it lets you do. BLOOM is your
 first bloom; SPEAK the first time a creature answers you; MEND the hurt
 bluebird in Mossbank's south-west (E: MEND, and it flies off well); GATHER
@@ -127,24 +127,24 @@ growing again the next day; a seed is a seed for your garden, and once you
 gather the finds sparkle); CRAFT from Rowan the woodcutter, by his chopping
 stump east of your home, who talks like the creatures (E: TALK TO ROWAN) and
 the first time gives you his old axe (ff-woodcutter,
-`apps/openagents-web/fairywoodcutter.coax`), and then E: CUT clears a fallen
+`apps/openagents-web/fairy/fairywoodcutter.coax`), and then E: CUT clears a fallen
 log of deadwood;
 LIGHT the lantern flower at Lanternwood's north edge, which opens only at
 night (E: LIGHT; by day E: REST TILL NIGHT), and then you carry a little
 light, a warm pool round you in the dark; WATER the sticks dammed across the stream above the
 pond (E: CLEAR), and then WATER at one bed waters your whole garden. Each one
-learned puts a gem on her upper wings. Kept in the save's tail. The pond (ff-pond, `apps/openagents-web/fairypond.coax`) starts low,
+learned puts a gem on her upper wings. Kept in the save's tail. The pond (ff-pond, `apps/openagents-web/fairy/fairypond.coax`) starts low,
 its water drawn back into the middle of its bed with sand round it; the
 waterfall at its head, where the stream comes in over boulders on either
 bank, is a trickle down dry rocks until the dam is
 cleared, and then it runs. With WATER, E by the low pond (FILL THE POND)
 fills it over a few seconds, kept in the save. MEND also mends broken things (ff-mend,
-`apps/openagents-web/fairymend.coax`): an old fence by the trail out of
+`apps/openagents-web/fairy/fairymend.coax`): an old fence by the trail out of
 Mossbank with its middle fallen, a footbridge over the stream north of the
 dam with planks gone, and a birdhouse by the trail to the Reeds knocked
 askew; E by one (MEND) puts it right in a shimmer, a bird moves into the
 birdhouse, and each stays mended. CRAFT makes tools (ff-tools,
-`apps/openagents-web/fairytools.coax`): at Rowan's chopping stump E makes,
+`apps/openagents-web/fairy/fairytools.coax`): at Rowan's chopping stump E makes,
 in turn, a watering can (1 wood, 2 acorns), a basket (1 wood, 2 berries)
 and a lantern (1 wood, 2 seeds), wood being the deadwood you cut. The can
 cares for a garden bed twice over, the basket gathers two at a time, and
@@ -185,7 +185,7 @@ you told them and what you did for them).
   your finds, a garden, the mirror pool.
 - **Build** with the edit tools the Haunted House and the Sandbox already
   have: place, move, turn, size, undo, by hand or in one sentence.
-- Built (ff-home, `apps/openagents-web/fairyhome.coax`): the hollow sits
+- Built (ff-home, `apps/openagents-web/fairy/fairyhome.coax`): the hollow sits
   under a great root in Mossbank's west (about 27, -301, by the Pond), with a bed of
   moss, a lamp and the mirror pool. Each root you wake opens one more room:
   the garden, the table room (a table and stool), the shelves, the green.
@@ -199,7 +199,7 @@ you told them and what you did for them).
   that moves in builds its own small home on the plot you give it, and comes
   by to visit. The village around your home grows with how much you have
   helped.
-  Built (ff-village, `apps/openagents-web/fairyvillage.coax`): by a creature
+  Built (ff-village, `apps/openagents-web/fairy/fairyvillage.coax`): by a creature
   whose glade is green, E is INVITE (name) HOME; it takes the next of five
   plots round your home's clearing and builds its house there in its own
   colours over two minutes (frame, walls, roof), then sits at its door while
@@ -211,7 +211,7 @@ you told them and what you did for them).
   Plants grow over real days, and what you care for most changes into
   something rarer: a sapling into a glowing tree, a flower into one that
   attracts a rare visitor.
-- Built (ff-garden, `apps/openagents-web/fairygarden.coax`): six beds in
+- Built (ff-garden, `apps/openagents-web/fairy/fairygarden.coax`): six beds in
   the garden room (open with the first root). A seed comes for each patch
   you bloom and one a day you come. E at a bed: PLANT, then WATER and SING,
   each counting once in six hours. A sapling, a flower and a mushroom are
@@ -230,7 +230,7 @@ you told them and what you did for them).
   fly through, stepping stones, glide drops) with the edit tools, time
   yourself on it, and share a link. Friends play your course and their times
   show on it.
-  Built (ff-courses, `apps/openagents-web/fairycourse.coax`): COURSE, by the
+  Built (ff-courses, `apps/openagents-web/fairy/fairycourse.coax`): COURSE, by the
   title, opens a bar: HOOP (or E, in the air too) hangs a vine hoop ahead of
   you, up to twelve; UNDO, FLY (the clock starts at the first hoop and stops
   at the last; the next one glows), SHARE (copies a link,
@@ -249,7 +249,7 @@ you told them and what you did for them).
 - **The chat room:** one room for everyone in the forest, in the style of
   Horse Isle's: a chat box always on screen, every player's lines in order
   with their name, open to anyone in the realm. Built (ff-chat-room,
-  `apps/openagents-web/fairyroom.coax`): on a computer the box sits at the
+  `apps/openagents-web/fairy/fairyroom.coax`): on a computer the box sits at the
   bottom left and Enter types; on a phone it is the latest line along the
   top, and a tap opens the last six with a field to type in. The others in
   the forest fly where they are, with their names over them. BLOCK on a
@@ -296,7 +296,7 @@ settings and the cards. Coming to a creature with EDIT open brings up its
 LORE; QUEST turns it into the form (ask, three steps, reward) and SAVE QUEST
 makes the quest. The creature knows its lore when you talk to it, and gives
 its quest when you come near: the quest shows at the top left and you tick
-its steps (apps/openagents-web/fairyquest.coax).
+its steps (apps/openagents-web/fairy/fairyquest.coax).
 
 ## Lore and wandering
 

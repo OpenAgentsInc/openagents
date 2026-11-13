@@ -4,7 +4,7 @@
 // Stop) and the menus (the model panel, the list, the access menu with Plan
 // mode on and off), laid out in the Zeron, Everglade and Verse skins and
 // hashed prim by prim. /chat's vertex buffers are pinned by
-// apps/openagents-web/chat-frames.coax; these pin what it does not show (the
+// apps/openagents-web/chat/chat-frames.coax; these pin what it does not show (the
 // menus but the panel, the other skins). A change that moves a component's
 // measures into its skin keeps these hashes; one that means to move a pixel
 // changes them in its commit.

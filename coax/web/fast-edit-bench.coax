@@ -95,7 +95,7 @@ fb_bad_check :: (c:[]Cdp,session:string,original:string,observe:bool,stage:bool)
   if before.status!=0 {return 1;}
   if !observe {
     edit:[1]FbText;fb_add(edit[..],original[0..<span.body]);fb_add(edit[..],"{ k := clamp(t, 0, 1); return 0.0f32; }");fb_add(edit[..],original[span.end..<original.count]);
-    if !fs_write("apps/openagents-web/everglade-doors.coax",fb_text(edit[..])) || fb_command(session,"apply")!=0 {return 1;}
+    if !fs_write("apps/openagents-web/old/v1/everglade-doors.coax",fb_text(edit[..])) || fb_command(session,"apply")!=0 {return 1;}
   }
   deadline:=proc_now_ms()+ifx observe then 30000 else 740000;seen:=false;
   while !stage && proc_now_ms()<deadline {
@@ -140,7 +140,7 @@ fb_measure :: (c:[]Cdp,session:string,original:string,keep:bool)->int {
     fb_add(edit[..],original[span.end..<original.count]);
     r:=fb_eval(c,"globalThis.__feFrame=__dr.fr.length;1");
     began:=proc_now_ms();
-    if !fs_write("apps/openagents-web/everglade-doors.coax",fb_text(edit[..])) || fb_command(session,"apply")!=0 {return 1;}
+    if !fs_write("apps/openagents-web/old/v1/everglade-doors.coax",fb_text(edit[..])) || fb_command(session,"apply")!=0 {return 1;}
     expected:[1]FbText;fb_int(expected[..],i+1);
     query:[1]FbText;
     fb_add(query[..],"(async()=>{const room=await(await fetch('/api/playtest/dev/fast-edit',{cache:'no-store'})).json(),page=coaxial.fastEdit.info(),epsilon=");fb_add(query[..],fb_text(expected[..]));
@@ -167,7 +167,7 @@ tool_main :: ()->int #export_c #effects(all) {
   a:[1]Args;if !args_load(a[..]) {return 2;}session:=args_at(a[..],0);port:=args_whole(args_value(a[..],"--port","9060"));
   if session.count==0 || session[0]!='/' || port<1024 || port>65533 {tool_errln("usage: fast-edit-bench ABSOLUTE_SESSION [--port 9060] [--keep-edit]");return 2;}
   for forbidden:[5]int.[8830,8843,8872,8876,8913] {if port==forbidden || port+1==forbidden {return 2;}}
-  original:[1048576]u8;n:=fs_read("apps/openagents-web/everglade-doors.coax",original[..]);if n<0 {return 1;}
+  original:[1048576]u8;n:=fs_read("apps/openagents-web/old/v1/everglade-doors.coax",original[..]);if n<0 {return 1;}
   if fb_command(session,"candidate")!=0 {return 1;}
   path:[1]FbText;rp:[1]FbText;sp:[1]FbText;fb_int(rp[..],port);fb_add(sp[..],"127.0.0.1:");fb_int(sp[..],port+1);
   room_args:=[7]string.[fb_path(session,"room",path[..]),"--listen","127.0.0.1","--port",fb_text(rp[..]),"--dev","coax/web/room/dev"];
@@ -185,6 +185,6 @@ tool_main :: ()->int #export_c #effects(all) {
     cdp_close(c[..]);
   }
   fb_stop(page);fb_stop(room);
-  if (!args_has(a[..],"--keep-edit") && !args_has(a[..],"--stage-bad-check")) || rc!=0 {restored:=fs_write("apps/openagents-web/everglade-doors.coax",cast(string)original[0..<n]);}
+  if (!args_has(a[..],"--keep-edit") && !args_has(a[..],"--stage-bad-check")) || rc!=0 {restored:=fs_write("apps/openagents-web/old/v1/everglade-doors.coax",cast(string)original[0..<n]);}
   return rc;
 }

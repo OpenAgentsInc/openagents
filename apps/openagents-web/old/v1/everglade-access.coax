@@ -1,0 +1,979 @@
+// Everglade's input and reading settings, its captions and its controls for a keyboard and a screen
+// reader (GitHub #12857; Metaverse Engine book chapter 85). One record decides them all: metaverse-engine/ui/settings.coax.
+//
+// - Keys. Every key Everglade reads for play goes through the record (eg_key_play): a key bound to an
+//   action does what that action's default key did, and a default key moved to no action does
+//   nothing. Typing (a conversation, the chat line, the quest board, the CHARACTER picker) reads
+//   keys as they are. The keys the record doesn't bind (C to dive, the arrows to look, R, Esc) stay.
+// - A controller. The host's pad (coax/web/host.js padPoll: the left stick and every button as bits)
+//   goes through the same record: the stick walks, a held direction or Jump holds, and every other
+//   button presses its action once.
+// - SETTINGS, over SOUND at the bottom right, opens the pane: TEXT SIZE 100 to 200 percent, REDUCED
+//   MOTION, CAPTIONS, and KEYS (rebind one: press its row, then the key or the pad button; Esc
+//   cancels). DEFAULTS puts them all back. This browser keeps the record (action ACT_SETTINGS, host.js
+//   verse.settings, back in the facts as settings=).
+// - TEXT SIZE scales the whole HUD, its plates with its text, as a browser's zoom does, so no line
+//   outgrows its plate.
+// - REDUCED MOTION stops the camera's shake.
+// - CAPTIONS: the sounds that matter, said in words at the bottom left with where they came from.
+// - The accessible layer (host.js a11yMirror): every control the HUD draws (MAP, SETTINGS and its
+//   pane, SOUND, INVITE, CHARACTER, PARTY, the bar's slots) is also a line here, and pressing one
+//   presses its box on the canvas, so a keyboard, a screen reader and a tap meet the same rules. What
+//   the room says (joined, lost and rejoining, a refusal, the party's word, the bar's news) is the
+//   layer's live status.
+// - Text ids: the pane's words are a table (EGT_*), and ?pseudo=1 lengthens each by half again in
+//   brackets, to find text that a longer language would push out of its plate. The page is in
+//   English only; nothing is translated.
+//   coax/bin/coax test apps/openagents-web/everglade.coax --only "access:"
+#load "../../../../metaverse-engine/ui/settings.coax";
+
+ACT_SETTINGS :: 14;        // host.js: keep the record in verse.settings
+EGA_CAPS :: 3;             // captions shown at once
+EGA_CAP_S :: 4.0;          // seconds a caption shows
+EGA_SAY :: 160;
+EGA_SAY_S :: 8.0;          // seconds the live status holds a line
+EGA_FINGER :: 7001;        // the pointer id a press from the accessible layer uses
+EGA_DEAD :: 0.2;           // the stick's dead zone
+
+// The pane's controls (ax.boxes)
+EGA_SMALLER :: 0; EGA_BIGGER :: 1; EGA_MOTION :: 2; EGA_CAPTIONS :: 3; EGA_KEYS :: 4; EGA_RESET :: 5; EGA_CLOSE :: 6;
+EGA_KEY0 :: 7;             // + action: its key's row on the KEYS page
+EGA_BOXES :: EGA_KEY0 + SA_N;
+
+// The accessible layer's ids: stable, so focus stays on a control as the HUD changes round it
+EGA_ID_MAP :: 1; EGA_ID_SETTINGS :: 2; EGA_ID_SOUND :: 3; EGA_ID_MUTE :: 4;
+EGA_ID_INVITE :: 5; EGA_ID_CHARACTER :: 6; EGA_ID_PARTY :: 7;
+EGA_ID_PANE :: 20;         // + an EGA_* control
+EGA_ID_SLOT :: 100;        // + a bar slot
+EGA_ID_STATUS :: 900;
+
+// ---- the words, by id
+EGT_SETTINGS :: 0; EGT_TEXT :: 1; EGT_MOTION :: 2; EGT_CAPTIONS :: 3; EGT_ON :: 4; EGT_OFF :: 5; EGT_KEYS :: 6;
+EGT_RESET :: 7; EGT_CLOSE :: 8; EGT_BACK :: 9; EGT_PRESS :: 10; EGT_PICK :: 11; EGT_MOST :: 12;
+EGT_ACTION0 :: 13;         // + action
+EGT_N :: EGT_ACTION0 + SA_N;
+EGT_WORDS :: [EGT_N] string.["SETTINGS", "TEXT SIZE", "REDUCED MOTION", "CAPTIONS", "ON", "OFF", "KEYS",
+  "DEFAULTS", "CLOSE", "BACK", "PRESS A KEY OR BUTTON · ESC CANCELS", "PRESS A ROW TO CHANGE ITS KEY", "THIS SCREEN'S MOST",
+  "FORWARD", "BACK", "LEFT", "RIGHT", "JUMP", "USE", "RUN", "CHAT", "MAP",
+  "SLOT 1", "SLOT 2", "SLOT 3", "SLOT 4", "SLOT 5", "SLOT 6", "SLOT 7", "SLOT 8", "SLOT 9", "SLOT 10"];
+EGT_W :: 64;               // a word's room, pseudolocalized
+
+// A sound's caption, by SFX_* (metaverse-engine/audio/sfx.coax); "" for one not captioned (flights, footsteps, the bed).
+EGA_HEARD :: [SFX_COUNT] string.[
+  "FIRE", "", "FIRE HITS", "FIREBALL",
+  "FROST", "", "FROST HITS",
+  "ELDRITCH BLAST", "", "ELDRITCH HIT",
+  "NECROTIC SPELL", "", "NECROTIC HIT",
+  "LIGHTNING", "", "THUNDER",
+  "FLAMES", "HEX", "HOLD", "HELLISH REBUKE", "BLIGHT",
+  "TELEPORT", "SHIELD", "HEALING", "THUNDERWAVE",
+  "MISSILE", "SPELL CAST", "SPELL HITS", "RADIANT LIGHT",
+  "SWORD SWING", "A HIT", "A HEAVY HIT", "SOMEONE FALLS", "SOMEONE STANDS",
+  "THE RAID'S HORN", "A WALL IS HIT", "A TOWER IS HIT", "THE RAID IS HELD", "THE RAID IS LOST",
+  "", "", "", "", "LEVITATE",
+  "SPLASH", "ICE CRACKS",
+  "A BUILDING FALLS"];
+EGA_SIDE :: [6] string.["", "NEAR", "LEFT", "RIGHT", "AHEAD", "BEHIND"];
+
+EgCaption :: struct { on: bool; id: int; t: f64; side: int; }
+EgAccess :: struct {
+  rec: [1] Settings; ready: bool;   // the record (ready: read or defaulted)
+  tell: bool;                   // keep it at the next free action
+  open: bool; page: int;        // SETTINGS's pane, and which page: 0 the settings, 1 KEYS
+  binding: int = -1;            // the action waiting for its key or button
+  label: Box; pane: Box;
+  boxes: [EGA_BOXES] Box;
+  press: int = -1; finger: int = -1;
+  // the controller: its buttons last frame, the hold bits it holds, its stick
+  pad_was: int; pad_bits: int; stick_x: f32; stick_y: f32; pad_seen: bool;
+  caps: [EGA_CAPS] EgCaption;
+  // the live status: the line, when it was said; what each source last said (the bar's news, the
+  // room's word, the party's line)
+  say: [EGA_SAY] u8; say_n: int; say_t: f64;
+  heard: [3 * EGA_SAY] u8; heard_n: [3] int;
+  hint: [80] u8;               // the hints that name a key (ega_map_hint)
+  focus: int;                  // the accessible layer's control with focus (an EGA_ID_*), 0 none: drawn ringed
+  css_w: f32; css_h: f32;       // the screen in CSS pixels (ega_scale), for ega_most
+  pseudo: bool; words: [EGT_N * EGT_W] u8; words_n: [EGT_N] int;
+}
+
+ega :: (s: [] Everglade) -> [] EgAccess {
+  a := s[0].ax[..];
+  if !a[0].ready { a[0].rec[0] = settings_default(); a[0].ready = true; }
+  return a;
+}
+
+// A word by id: as it is, or pseudolocalized ("[WORD ====]", half as long again).
+ega_t :: (s: [] Everglade, id: int) -> string {
+  a := ega(s);
+  w := EGT_WORDS[id];
+  if !a[0].pseudo { return w; }
+  if a[0].words_n[id] == 0 {
+    at := id * EGT_W; n := 0;
+    a[0].words[at] = '['; n = 1;
+    for c: w { if n < EGT_W - 1 { a[0].words[at + n] = c; n += 1; } }
+    pad := (w.count + 1) / 2;
+    if n < EGT_W - 1 { a[0].words[at + n] = ' '; n += 1; }
+    for i: 0..<pad { if n < EGT_W - 1 { a[0].words[at + n] = '='; n += 1; } }
+    a[0].words[at + n] = ']'; n += 1;
+    a[0].words_n[id] = n;
+  }
+  return cast(string) a[0].words[id * EGT_W..<id * EGT_W + a[0].words_n[id]];
+}
+
+// ---- the record
+
+ega_facts :: (s: [] Everglade, text: string) {
+  a := ega(s);
+  a[0].pseudo = eg_query_is(fact(text, "url"), "pseudo", "1");
+  for i: 0..<EGT_N { a[0].words_n[i] = 0; }
+  t := fact(text, "settings");
+  if t.count == 0 { return; }
+  r := settings_read(t);
+  a[0].rec[0] = r.s;   // whole, or the defaults whole (settings_read never half-applies)
+}
+// This browser keeps the record (action ACT_SETTINGS), when no other action is waiting.
+ega_keep :: (s: [] Everglade) {
+  a := ega(s);
+  if !a[0].tell || s[0].action != 0 { return; }
+  n := settings_write(a[0].rec[0], s[0].outbox[..]);
+  if n <= 0 || n >= s[0].outbox.count { return; }
+  s[0].out_n = n; s[0].action = ACT_SETTINGS; a[0].tell = false;
+}
+// The largest text size this screen takes: the HUD at it still has a phone's room, 360 by 640
+// CSS pixels (the short side and the long), in SETTINGS_TEXT_STEP steps. A size kept from a bigger
+// screen draws at this one's most, and the pane says so.
+EGA_FIT_SHORT :: 360; EGA_FIT_LONG :: 640;
+ega_most :: (s: [] Everglade) -> int {
+  a := ega(s);
+  top := SETTINGS_TEXT_MIN + SETTINGS_TEXT_STEP * SETTINGS_TEXT_STEPS;
+  if a[0].css_w <= 0 || a[0].css_h <= 0 { return top; }
+  short := lo(a[0].css_w, a[0].css_h); long := hi(a[0].css_w, a[0].css_h);
+  fit := cast(int) floor(100 * lo(short / f32(EGA_FIT_SHORT), long / f32(EGA_FIT_LONG)));
+  fit = SETTINGS_TEXT_MIN + (fit - SETTINGS_TEXT_MIN) / SETTINGS_TEXT_STEP * SETTINGS_TEXT_STEP;
+  return clamp_i(fit, SETTINGS_TEXT_MIN, top);
+}
+// The text size drawn: the kept one, up to this screen's most.
+ega_pct_now :: (s: [] Everglade) -> int { k := ega(s)[0].rec[0].text_pct; m := ega_most(s); return ifx k < m then k else m; }
+// The HUD's scale for a screen of width by height pixels at dpr: the text size drawn, as a fraction.
+ega_scale :: (s: [] Everglade, width: f32, height: f32, dpr: f32) -> f32 {
+  a := ega(s);
+  d := hi(dpr, 0.5);
+  a[0].css_w = width / d; a[0].css_h = height / d;
+  return f32(ega_pct_now(s)) / 100;
+}
+ega_still :: (s: [] Everglade) -> bool { return ega(s)[0].rec[0].reduced_motion; }
+
+// ---- keys
+
+// The record's code for a host key (host.js KEYS: letters as typed, Enter -2, Shift -13): letters
+// as their uppercase, Enter 13, Shift 16, any other key 0 to 255 as it is; -1 a key the record can't hold.
+ega_code :: (key: int) -> int {
+  if key >= 'a' && key <= 'z' { return key - 32; }
+  if key == KEY_ENTER { return 13; }
+  if key == KEY_SHIFT { return 16; }
+  if key >= 0 && key <= SETTINGS_CODE_MAX { return key; }
+  return -1;
+}
+// And back: the key Everglade's own code reads for a code (a letter lowercase).
+ega_key_of :: (code: int) -> int {
+  if code >= 'A' && code <= 'Z' { return code + 32; }
+  if code == 13 { return KEY_ENTER; }
+  if code == 16 { return KEY_SHIFT; }
+  return code;
+}
+// A key as the game reads it: the default key of the action it is bound to; 0 for a default key now
+// bound to nothing; any other key as it is.
+eg_key_play :: (s: [] Everglade, key: int) -> int {
+  c := ega_code(key);
+  if c < 0 { return key; }
+  a := settings_action(ega(s)[0].rec[0], SD_KEYS, c);
+  if a >= 0 { return ega_key_of(SETTINGS_KEYS[a]); }
+  for d: 0..<SA_N { if SETTINGS_KEYS[d] == c { return 0; } }
+  return key;
+}
+// A code's name on a key: SPACE, SHIFT, ENTER, a letter or digit, else the character.
+ega_name :: (code: int, out: [] u8) -> string {
+  if code == 32 { return "SPACE"; }
+  if code == 16 { return "SHIFT"; }
+  if code == 13 { return "ENTER"; }
+  if out.count < 1 { return ""; }
+  out[0] = cast,trunc(u8) code;
+  return cast(string) out[0..<1];
+}
+EGA_PAD_NAMES :: [17] string.["A", "B", "X", "Y", "LB", "RB", "LT", "RT", "VIEW", "MENU", "L3", "R3", "UP", "DOWN", "LEFT", "RIGHT", "HOME"];
+// The key action a is on (for the hint: "M OR ESC").
+eg_key_name :: (s: [] Everglade, a: int, out: [] u8) -> string { return ega_name(ega(s)[0].rec[0].keys[a], out); }
+
+// While a row waits for its key: the key binds (Esc cancels; a key the record can't hold does nothing).
+// Esc also shuts the pane. True when taken.
+ega_key :: (s: [] Everglade, key: int) -> bool {
+  a := ega(s);
+  if a[0].binding >= 0 {
+    if key == KEY_ESCAPE { a[0].binding = -1; return true; }
+    c := ega_code(key);
+    if c < 0 { return true; }
+    _ := settings_bind(a[0].rec[..], SD_KEYS, a[0].binding, c);
+    a[0].binding = -1; a[0].tell = true;
+    return true;
+  }
+  if key == KEY_ESCAPE && a[0].open { a[0].open = false; a[0].page = 0; return true; }
+  return false;
+}
+
+// The hold bit an action holds while its key or button is down; 0 for one that presses once.
+ega_hold :: (act: int) -> int {
+  if act == SA_FORWARD { return HOLD_FORWARD; } if act == SA_BACK { return HOLD_BACK; }
+  if act == SA_LEFT { return HOLD_LEFT; } if act == SA_RIGHT { return HOLD_RIGHT; }
+  if act == SA_JUMP { return HOLD_JUMP; } if act == SA_WALK { return HOLD_RUN; }
+  return 0;
+}
+
+// The hints that name a key name the one bound now.
+ega_map_hint :: (s: [] Everglade) -> string {
+  a := ega(s); b: [8] u8;
+  n := sp_put(a[0].hint[..], 0, "THE MAP · ");
+  n = sp_put(a[0].hint[..], n, eg_key_name(s, SA_MAP, b[..]));
+  n = sp_put(a[0].hint[..], n, " OR ESC TO WALK AGAIN");
+  return cast(string) a[0].hint[0..<n];
+}
+ega_row_hint :: (s: [] Everglade) -> string {
+  a := ega(s); b: [8] u8;
+  n := sp_put(a[0].hint[..], 0, "ROWING · ");
+  n = sp_put(a[0].hint[..], n, eg_key_name(s, SA_FORWARD, b[..])); n = sp_put(a[0].hint[..], n, " AND ");
+  n = sp_put(a[0].hint[..], n, eg_key_name(s, SA_BACK, b[..])); n = sp_put(a[0].hint[..], n, " ROW · ");
+  n = sp_put(a[0].hint[..], n, eg_key_name(s, SA_LEFT, b[..])); n = sp_put(a[0].hint[..], n, " AND ");
+  n = sp_put(a[0].hint[..], n, eg_key_name(s, SA_RIGHT, b[..])); n = sp_put(a[0].hint[..], n, " TURN");
+  return cast(string) a[0].hint[0..<n];
+}
+
+// ---- a controller
+
+// Once a frame (host.js padPoll): the first pad's left stick (x right, y forward) and its buttons,
+// bit b for button b. While a row waits, the first button pressed binds. While you type, it does nothing.
+everglade_pad :: (s: [] Everglade, x: f32, y: f32, buttons: int) #export_c #effects(all) {
+  a := ega(s);
+  sx := ifx finite(x) then clamp(x, -1, 1) else 0.0f32;
+  sy := ifx finite(y) then clamp(y, -1, 1) else 0.0f32;
+  if sqrt(sx * sx + sy * sy) <= EGA_DEAD { sx = 0; sy = 0; }
+  if buttons != 0 { a[0].pad_seen = true; }
+  was := a[0].pad_was; a[0].pad_was = buttons;
+  typing := s[0].talk >= 0 || s[0].chat.typing || s[0].board || join_picking(s);
+  a[0].stick_x = ifx typing then 0.0f32 else sx; a[0].stick_y = ifx typing then 0.0f32 else sy;
+  if a[0].binding >= 0 {
+    for b: 0..<31 {
+      bit := 1 << b;
+      if buttons & bit != 0 && was & bit == 0 {
+        _ := settings_bind(a[0].rec[..], SD_PAD, a[0].binding, b);
+        a[0].binding = -1; a[0].tell = true;
+        break;
+      }
+    }
+    return;
+  }
+  hold := 0;
+  for act: 0..<SA_N {
+    c := a[0].rec[0].pad[act];
+    if c > 30 { continue; }
+    bit := 1 << c;
+    down := buttons & bit != 0; before := was & bit != 0;
+    hb := ega_hold(act);
+    if hb != 0 { if down && !typing { hold = hold | hb; } continue; }
+    if down && !before && !typing { _ := eg_play_key(s, ega_key_of(SETTINGS_KEYS[act]), 0); }
+  }
+  s[0].held = (s[0].held - (s[0].held & a[0].pad_bits)) | hold;
+  a[0].pad_bits = hold;
+}
+// The stick's walk, for the face to add to the thumbs' (everglade-face.c).
+everglade_pad_x :: (s: [] Everglade) -> f32 #export_c #effects(all) { return ega(s)[0].stick_x; }
+everglade_pad_y :: (s: [] Everglade) -> f32 #export_c #effects(all) { return ega(s)[0].stick_y; }
+
+// ---- captions
+
+// A sound that matters, heard: its line, with the side it came from (the same sound from the same
+// side again renews its line rather than taking another).
+ega_heard :: (s: [] Everglade, id: int, at: Point, here: bool) {
+  a := ega(s);
+  if !a[0].rec[0].captions || id < 0 || id >= SFX_COUNT || EGA_HEARD[id].count == 0 { return; }
+  d := egs_of(s);
+  side := 0;
+  if !here && d[0].ear_ok {
+    f := sub(d[0].ear.at, d[0].ear.eye); fl := sqrt(f.x * f.x + f.z * f.z);
+    v := sub(at, d[0].ear.eye); dist := sqrt(v.x * v.x + v.z * v.z);
+    if dist < 4 { side = 1; }
+    else if fl > 0.001 {
+      fx := f.x / fl; fz := f.z / fl;
+      ahead := (v.x * fx + v.z * fz) / dist; right := (v.z * fx - v.x * fz) / dist;
+      side = ifx right > 0.5 then 3 else ifx right < -0.5 then 2 else ifx ahead >= 0 then 4 else 5;
+    }
+  }
+  now := s[0].time;
+  // its own line if it has one; else a free line; else the oldest's
+  slot := -1; free := -1; oldest := 0;
+  for i: 0..<EGA_CAPS {
+    c := a[0].caps[i];
+    live := c.on && now - c.t < f64(EGA_CAP_S);
+    if live && c.id == id && c.side == side { slot = i; }
+    if !live && free < 0 { free = i; }
+    if c.t < a[0].caps[oldest].t { oldest = i; }
+  }
+  if slot < 0 { slot = ifx free >= 0 then free else oldest; }
+  a[0].caps[slot] = EgCaption.{on = true, id = id, t = now, side = side};
+}
+// The caption lines, oldest first, at the bottom left over the bar.
+ega_captions_draw :: (s: [] Everglade, out: [] f32, u: [] f32, at: int) -> int {
+  a := ega(s);
+  if !a[0].rec[0].captions { return at; }
+  k := hi(s[0].dpr, 0.5); cap := 7 * k; lh := cap + 16 * k;
+  order: [EGA_CAPS] int; m := 0;
+  for i: 0..<EGA_CAPS { c := a[0].caps[i]; if c.on && s[0].time - c.t < f64(EGA_CAP_S) { order[m] = i; m += 1; } }
+  // oldest first
+  for i: 0..<m { for j: i + 1..<m { if a[0].caps[order[j]].t < a[0].caps[order[i]].t { t := order[i]; order[i] = order[j]; order[j] = t; } } }
+  y1 := s[0].height - hi(16 * k, spells_reserve(s)) - 10 * k - f32(m) * (lh + 4 * k);
+  n := at;
+  for i: 0..<m {
+    c := a[0].caps[order[i]];
+    b: [64] u8;
+    q := sp_put(b[..], 0, EGA_HEARD[c.id]);
+    if c.side > 0 { q = sp_put(b[..], q, " · "); q = sp_put(b[..], q, EGA_SIDE[c.side]); }
+    t := cast(string) b[0..<q];
+    w := text_width(t, cap);
+    y := y1 + f32(i) * (lh + 4 * k);
+    plate(s, u, Box.{x0 = 16 * k, y0 = y, x1 = 16 * k + w + 24 * k, y1 = y + lh}, 0.72, 0);
+    n = draw_text(out, n, t, 28 * k, y + lh - 8 * k, cap, GAP, SPACE, ink(k, 0.9, PARCH_R, PARCH_G, PARCH_B), false, false);
+  }
+  return n;
+}
+
+// ---- the live status: what the room, the party and the bar last said
+
+ega_listen :: (s: [] Everglade, src: int, text: string) {
+  a := ega(s);
+  m := ifx text.count < EGA_SAY then text.count else EGA_SAY; at := src * EGA_SAY;
+  same := m == a[0].heard_n[src];
+  if same { for i: 0..<m { if a[0].heard[at + i] != text[i] { same = false; } } }
+  if same { return; }
+  for i: 0..<m { a[0].heard[at + i] = text[i]; }
+  a[0].heard_n[src] = m;
+  if m == 0 { return; }
+  for i: 0..<m { a[0].say[i] = text[i]; }
+  a[0].say_n = m; a[0].say_t = s[0].time;
+}
+ega_status_frame :: (s: [] Everglade) {
+  ega_listen(s, 0, cast(string) s[0].sp.news[0..<s[0].sp.news_n]);
+  if net_on(s) {
+    n := net_of(s);
+    ega_listen(s, 1, cast(string) n[0].said[0..<n[0].said_n]);
+    p := pt_of(n);
+    ega_listen(s, 2, cast(string) p[0].line[0..<p[0].line_n]);
+  }
+}
+
+// ---- SETTINGS and its pane
+
+ega_button :: (out: [] f32, s: [] Everglade, u: [] f32, at: int, k: f32, b: Box, word: string, lit_up: bool) -> int {
+  plate(s, u, b, 0.85, ifx lit_up then 2.0f32 else 1.0f32);
+  return draw_text(out, at, word, b.x0 + 12 * k, b.y1 - 10 * k, 8 * k, GAP, SPACE, ink(k, 0.95, GOLD_R, GOLD_G, GOLD_B), false, false);
+}
+ega_bw :: (k: f32, word: string) -> f32 { return text_width(word, 8 * k) + 24 * k; }
+// "125%"
+ega_pct :: (pct: int, out: [] u8) -> string { n := put_digits(out, 0, pct); n = sp_put(out, n, "%"); return cast(string) out[0..<n]; }
+// A key row's words: its key, and its pad button once a pad has been seen ("W · UP").
+ega_bound :: (s: [] Everglade, act: int, out: [] u8) -> string {
+  a := ega(s);
+  b: [8] u8;
+  n := sp_put(out, 0, ega_name(a[0].rec[0].keys[act], b[..]));
+  if a[0].pad_seen {
+    p := a[0].rec[0].pad[act];
+    n = sp_put(out, n, " · ");
+    if p < 17 { n = sp_put(out, n, EGA_PAD_NAMES[p]); } else { n = sp_put(out, n, "PAD "); n = put_digits(out, n, p); }
+  }
+  return cast(string) out[0..<n];
+}
+// The keys page shows on a keyboard's page, or once a pad has been seen.
+ega_keys_shown :: (s: [] Everglade) -> bool { return !s[0].touch || ega(s)[0].pad_seen; }
+
+// SETTINGS over SOUND (everglade-sound.coax egs_hud, over its pane when that is open), the captions,
+// and the pane when open.
+ega_hud :: (s: [] Everglade, out: [] f32, u: [] f32, at: int) -> int {
+  a := ega(s);
+  a[0].label = Box.{}; a[0].pane = Box.{};
+  for b: 0..<EGA_BOXES { a[0].boxes[b] = Box.{}; }
+  ega_keep(s);
+  ega_status_frame(s);
+  n := ega_captions_draw(s, out, u, at);
+  d := egs_of(s);
+  sl := d[0].label;
+  if sl.x1 <= sl.x0 { return n; }
+  top := ifx d[0].open && d[0].pane.y1 > d[0].pane.y0 then d[0].pane.y0 else sl.y0;
+  k := hi(s[0].dpr, 0.5); cap := 7 * k;
+  t := ega_t(s, EGT_SETTINGS);
+  tw := text_width(t, cap);
+  y := top - 8 * k;
+  a[0].label = Box.{x0 = sl.x1 - 16 * k - tw, y0 = y - cap - 8 * k, x1 = sl.x1, y1 = y + 6 * k};
+  n = draw_text(out, n, t, sl.x1 - 8 * k - tw, y, cap, GAP, SPACE, ink(k, ifx a[0].open || a[0].press == EGA_BOXES then 1.0f32 else 0.75f32, PARCH_R, PARCH_G, PARCH_B), false, false);
+  if a[0].open { n = ega_pane(s, out, u, n); }
+  return ega_focus_ring(s, out, n);
+}
+// The control that has the accessible layer's focus, ringed: the canvas shows a keyboard's focus
+// as a sighted visitor needs it (INVARIANTS.md, the accessible layer).
+ega_focus_ring :: (s: [] Everglade, out: [] f32, at: int) -> int {
+  f := ega(s)[0].focus;
+  if f <= 0 { return at; }
+  b := ega_box(s, f);
+  if !ega_shown(b) { return at; }
+  k := hi(s[0].dpr, 0.5);
+  return jn_ring(out, at, Box.{x0 = b.x0 - 3 * k, y0 = b.y0 - 3 * k, x1 = b.x1 + 3 * k, y1 = b.y1 + 3 * k}, k);
+}
+// Focus moved in the accessible layer (host.js focusin and focusout): -1 none.
+everglade_a11y_focus :: (s: [] Everglade, id: int) #export_c #effects(all) { ega(s)[0].focus = ifx id > 0 then id else 0; }
+
+// The pane's size at scale k: its width, its height, whether its rows stack (a label over its
+// control), and the KEYS page's columns.
+EgaLayout :: struct { w: f32; h: f32; stack: bool; cols: int = 1; rows: int; cw: f32; lw: f32; foot: f32; }
+ega_layout :: (s: [] Everglade, k: f32) -> EgaLayout {
+  a := ega(s);
+  cap := 8 * k; title := 9 * k; row := 36 * k; bh := 28 * k; gap := 8 * k; pad := 16 * k;
+  room := s[0].width - 16 * hi(s[0].dpr, 0.5);
+  l := EgaLayout.{};
+  f0 := ifx a[0].page == 0 then ega_t(s, EGT_RESET) else ega_t(s, EGT_BACK);
+  l.foot = ega_bw(k, f0) + gap + ega_bw(k, ega_t(s, EGT_CLOSE));
+  if a[0].page == 0 && ega_keys_shown(s) { l.foot += gap + ega_bw(k, ega_t(s, EGT_KEYS)); }
+  l.w = hi(l.foot, text_width(ega_t(s, EGT_SETTINGS), title)) + 2 * pad;
+  if a[0].page == 0 {
+    l.lw = hi(hi(text_width(ega_t(s, EGT_TEXT), cap), text_width(ega_t(s, EGT_MOTION), cap)), text_width(ega_t(s, EGT_CAPTIONS), cap));
+    size := ega_bw(k, "-") + gap + text_width("200%", cap) + gap + ega_bw(k, "+");
+    if ega_most(s) < SETTINGS_TEXT_MIN + SETTINGS_TEXT_STEP * SETTINGS_TEXT_STEPS { size = hi(size, ega_bw(k, "-") + gap + text_width("200%", cap) + gap + text_width(ega_t(s, EGT_MOST), cap)); }
+    ctl := hi(size, hi(ega_bw(k, ega_t(s, EGT_ON)), ega_bw(k, ega_t(s, EGT_OFF))));
+    wide := hi(l.w, l.lw + 24 * k + ctl + 2 * pad);
+    l.stack = wide > room;
+    l.w = ifx l.stack then hi(l.w, hi(l.lw, ctl) + 2 * pad) else wide;
+    l.h = title + 28 * k + 3 * (ifx l.stack then cap + 14 * k + bh + 12 * k else row) + bh + 2 * pad;
+  } else {
+    widest := 0.0f32;
+    for act: 0..<SA_N { widest = hi(widest, text_width(ega_t(s, EGT_ACTION0 + act), cap)); }
+    l.cw = widest + 12 * k + ega_bw(k, ifx a[0].pad_seen then "SHIFT · RIGHT" else "SHIFT") + 20 * k;
+    l.cols = clamp_i(cast(int) floor((room - 2 * pad) / l.cw), 1, 4);
+    l.rows = (SA_N + l.cols - 1) / l.cols;
+    l.w = hi(hi(l.w, f32(l.cols) * l.cw + 2 * pad), text_width(ega_t(s, EGT_PRESS), cap) + 2 * pad);
+    l.h = title + 28 * k + cap + 18 * k + f32(l.rows) * (bh + 6 * k) + bh + 2 * pad;
+  }
+  return l;
+}
+// The pane, centred. Where even stacked it is wider or taller than the screen (a phone at 200
+// percent, or pseudolocalized), it is drawn smaller to fit rather than cut off.
+ega_pane :: (s: [] Everglade, out: [] f32, u: [] f32, at: int) -> int {
+  a := ega(s); r := a[0].rec[0];
+  k := hi(s[0].dpr, 0.5);
+  // above the bar: the pane never sits under the slots
+  bottom := s[0].height - hi(16 * k, spells_reserve(s));
+  room_w := s[0].width - 16 * k; room_h := bottom - 32 * k;
+  l := ega_layout(s, k);
+  if l.w > room_w || l.h > room_h { k = k * lo(room_w / l.w, room_h / l.h); l = ega_layout(s, k); }
+  cap := 8 * k; title := 9 * k; row := 36 * k; bh := 28 * k; gap := 8 * k; pad := 16 * k;
+  gold := ink(k, 0.95, GOLD_R, GOLD_G, GOLD_B); pale := ink(k, 0.85, PARCH_R, PARCH_G, PARCH_B);
+  on := ega_t(s, EGT_ON); off := ega_t(s, EGT_OFF);
+  now := ega_pct_now(s); most := ega_most(s);
+  pb: [8] u8; pct := ega_pct(now, pb[..]);
+  pw := lo(l.w, room_w); ph := l.h;
+  x0 := (s[0].width - pw) / 2;
+  y0 := hi((bottom - ph) / 2, 16 * hi(s[0].dpr, 0.5));
+  pane := Box.{x0 = x0, y0 = y0, x1 = x0 + pw, y1 = y0 + ph};
+  a[0].pane = pane;
+  plate(s, u, pane, 0.92, 0);
+  n := draw_text(out, at, ega_t(s, EGT_SETTINGS), x0 + pad, y0 + pad + title, title, GAP, SPACE, gold, false, false);
+  y := y0 + pad + title + 28 * k;
+  if a[0].page == 0 {
+    // a row: its label, then its control beside it (or under it, stacked)
+    for w: 0..<3 {
+      label := ega_t(s, ifx w == 0 then EGT_TEXT else ifx w == 1 then EGT_MOTION else EGT_CAPTIONS);
+      cx := x0 + pad + l.lw + 24 * k; cy := y;
+      if l.stack {
+        n = draw_text(out, n, label, x0 + pad, y + cap, cap, GAP, SPACE, pale, false, false);
+        cx = x0 + pad; cy = y + cap + 14 * k;
+      } else {
+        n = draw_text(out, n, label, x0 + pad, y + bh - 10 * k, cap, GAP, SPACE, pale, false, false);
+      }
+      if w == 0 {
+        // -  125%  +
+        mb := Box.{x0 = cx, y0 = cy, x1 = cx + ega_bw(k, "-"), y1 = cy + bh};
+        vx := mb.x1 + gap;
+        px := vx + text_width("200%", cap) + gap;
+        plb := Box.{x0 = px, y0 = cy, x1 = px + ega_bw(k, "+"), y1 = cy + bh};
+        if now > SETTINGS_TEXT_MIN { a[0].boxes[EGA_SMALLER] = mb; n = ega_button(out, s, u, n, k, mb, "-", a[0].press == EGA_SMALLER); }
+        n = draw_text(out, n, pct, vx, cy + bh - 10 * k, cap, GAP, SPACE, gold, false, false);
+        if now < most { a[0].boxes[EGA_BIGGER] = plb; n = ega_button(out, s, u, n, k, plb, "+", a[0].press == EGA_BIGGER); }
+        else if most < SETTINGS_TEXT_MIN + SETTINGS_TEXT_STEP * SETTINGS_TEXT_STEPS { n = draw_text(out, n, ega_t(s, EGT_MOST), px, cy + bh - 10 * k, cap, GAP, SPACE, pale, false, false); }
+      } else {
+        id := ifx w == 1 then EGA_MOTION else EGA_CAPTIONS;
+        lit_up := ifx w == 1 then r.reduced_motion else r.captions;
+        word := ifx lit_up then on else off;
+        b := Box.{x0 = cx, y0 = cy, x1 = cx + ega_bw(k, word), y1 = cy + bh};
+        a[0].boxes[id] = b;
+        n = ega_button(out, s, u, n, k, b, word, lit_up || a[0].press == id);
+      }
+      y += ifx l.stack then cap + 14 * k + bh + 12 * k else row;
+    }
+  } else {
+    // the prompt, then a row a key: its action, and its key (and pad button) on a button
+    n = draw_text(out, n, ega_t(s, ifx a[0].binding >= 0 then EGT_PRESS else EGT_PICK), x0 + pad, y + cap, cap, GAP, SPACE, ifx a[0].binding >= 0 then gold else pale, false, false);
+    y += cap + 18 * k;
+    gx := x0 + (pw - f32(l.cols) * l.cw) / 2;
+    for act: 0..<SA_N {
+      c := act / l.rows; q := act % l.rows;
+      x := gx + f32(c) * l.cw; ry := y + f32(q) * (bh + 6 * k);
+      n = draw_text(out, n, ega_t(s, EGT_ACTION0 + act), x, ry + bh - 10 * k, cap, GAP, SPACE, pale, false, false);
+      kb: [24] u8; word := ega_bound(s, act, kb[..]);
+      shown := ifx a[0].binding == act then "..." else word;
+      bx := x + l.cw - 20 * k - ega_bw(k, shown);
+      b := Box.{x0 = bx, y0 = ry, x1 = bx + ega_bw(k, shown), y1 = ry + bh};
+      a[0].boxes[EGA_KEY0 + act] = b;
+      n = ega_button(out, s, u, n, k, b, shown, a[0].binding == act || a[0].press == EGA_KEY0 + act);
+    }
+  }
+  // the footer, centred: DEFAULTS (BACK on the keys page), KEYS, CLOSE
+  fx := x0 + (pw - l.foot) / 2; fy := pane.y1 - pad - bh;
+  f0 := ifx a[0].page == 0 then ega_t(s, EGT_RESET) else ega_t(s, EGT_BACK);
+  fb := Box.{x0 = fx, y0 = fy, x1 = fx + ega_bw(k, f0), y1 = fy + bh};
+  first := ifx a[0].page == 0 then EGA_RESET else EGA_KEYS;
+  a[0].boxes[first] = fb;
+  n = ega_button(out, s, u, n, k, fb, f0, a[0].press == first);
+  fx = fb.x1 + gap;
+  if a[0].page == 0 && ega_keys_shown(s) {
+    kb := Box.{x0 = fx, y0 = fy, x1 = fx + ega_bw(k, ega_t(s, EGT_KEYS)), y1 = fy + bh};
+    a[0].boxes[EGA_KEYS] = kb;
+    n = ega_button(out, s, u, n, k, kb, ega_t(s, EGT_KEYS), a[0].press == EGA_KEYS);
+    fx = kb.x1 + gap;
+  }
+  cb := Box.{x0 = fx, y0 = fy, x1 = fx + ega_bw(k, ega_t(s, EGT_CLOSE)), y1 = fy + bh};
+  a[0].boxes[EGA_CLOSE] = cb;
+  return ega_button(out, s, u, n, k, cb, ega_t(s, EGT_CLOSE), a[0].press == EGA_CLOSE);
+}
+
+ega_toggle :: (s: [] Everglade) { a := ega(s); a[0].open = !a[0].open; a[0].page = 0; a[0].binding = -1; }
+// What a control of the pane does: a press on it, or the accessible layer's.
+ega_do :: (s: [] Everglade, w: int) {
+  a := ega(s); r := a[0].rec[..];
+  // from the size drawn: a size kept from a bigger screen steps down from this one's most
+  if w == EGA_SMALLER { _ := settings_text(r, ega_pct_now(s) - SETTINGS_TEXT_STEP); }
+  else if w == EGA_BIGGER { up := ega_pct_now(s) + SETTINGS_TEXT_STEP; m := ega_most(s); _ := settings_text(r, ifx up < m then up else m); }
+  else if w == EGA_MOTION { r[0].reduced_motion = !r[0].reduced_motion; }
+  else if w == EGA_CAPTIONS { r[0].captions = !r[0].captions; }
+  else if w == EGA_KEYS { a[0].page = 1 - a[0].page; a[0].binding = -1; }
+  else if w == EGA_RESET { r[0] = settings_default(); a[0].binding = -1; }
+  else if w == EGA_CLOSE { a[0].open = false; a[0].page = 0; a[0].binding = -1; }
+  else if w >= EGA_KEY0 && w < EGA_KEY0 + SA_N { a[0].binding = ifx a[0].binding == w - EGA_KEY0 then -1 else w - EGA_KEY0; }
+  if w <= EGA_CAPTIONS || w == EGA_RESET { a[0].tell = true; }
+}
+// SETTINGS opens or shuts the pane; while it is up it takes every press, and one outside it shuts it.
+ega_pointer :: (s: [] Everglade, x: f32, y: f32, phase: int, id: int) -> bool {
+  a := ega(s);
+  if phase == 0 {
+    w := -1;
+    if in_box(a[0].label, x, y) { w = EGA_BOXES; }
+    else if a[0].open {
+      for b: 0..<EGA_BOXES { if in_box(a[0].boxes[b], x, y) { w = b; } }
+      if w < 0 && !in_box(a[0].pane, x, y) { ega_toggle(s); return true; }
+      if w < 0 { w = EGA_BOXES + 1; }
+    }
+    if w < 0 { return false; }
+    a[0].press = w; a[0].finger = id;
+    return true;
+  }
+  if a[0].finger < 0 || id != a[0].finger { return false; }
+  if phase >= 2 {
+    w := a[0].press; a[0].press = -1; a[0].finger = -1;
+    if phase == 2 && w == EGA_BOXES && in_box(a[0].label, x, y) { ega_toggle(s); }
+    else if phase == 2 && w >= 0 && w < EGA_BOXES && in_box(a[0].boxes[w], x, y) { ega_do(s, w); }
+  }
+  return true;
+}
+
+// ---- the accessible layer (coax/web/host.js a11yMirror)
+
+// A line: "ID ROLE STATE LABEL"; -1 once the buffer is full.
+ega_line :: (buf: [] u8, at: int, id: int, role: string, state: string, label: string) -> int {
+  if at < 0 { return -1; }
+  n := put_digits(buf, at, id); n = sp_put(buf, n, " "); n = sp_put(buf, n, role); n = sp_put(buf, n, " "); n = sp_put(buf, n, state); n = sp_put(buf, n, " ");
+  for c: label { if n >= buf.count { return -1; } buf[n] = ifx c == '\n' then cast(u8) ' ' else c; n += 1; }
+  if n >= buf.count { return -1; }
+  buf[n] = '\n';
+  return n + 1;
+}
+// Words as a sentence: "METEOR SWARM" or "meteor-swarm" as "Meteor swarm".
+ega_sentence :: (text: string, out: [] u8) -> string {
+  n := 0;
+  for c: text {
+    if n >= out.count { break; }
+    ch := ifx c == '-' then cast(u8) ' ' else c;
+    if n > 0 && ch >= 'A' && ch <= 'Z' { ch = ch + 32; }
+    if n == 0 && ch >= 'a' && ch <= 'z' { ch = ch - 32; }
+    out[n] = ch; n += 1;
+  }
+  return cast(string) out[0..<n];
+}
+ega_shown :: (b: Box) -> bool { return b.x1 > b.x0 && b.y1 > b.y0; }
+// A bar slot's box and name: the Warlock's bar when it is up, else the druid's.
+ega_slot_box :: (s: [] Everglade, b: int) -> Box {
+  if wl_on(s) { return ifx b < WL_SLOTS then s[0].wl.boxes[b] else Box.{}; }
+  if cl_on(s) { return ifx b < CL_BOXES then s[0].cl.boxes[b] else Box.{}; }
+  return ifx b < SP_BAR then s[0].sp.boxes[b] else Box.{};
+}
+ega_slot_name :: (s: [] Everglade, b: int) -> string {
+  if wl_on(s) { w := WL_HB_NAME[b]; return w[3..<w.count]; }
+  if cl_on(s) { w := cl_slot_name(s, b); return w[3..<w.count]; }
+  return ifx b < 49 then HB_NAME[b] else "";
+}
+// The canvas box behind a layer id (none: an empty box).
+ega_box :: (s: [] Everglade, id: int) -> Box {
+  if id == EGA_ID_MAP { return s[0].map_button; }
+  if id == EGA_ID_SETTINGS { return ega(s)[0].label; }
+  if id == EGA_ID_SOUND { return egs_of(s)[0].label; }
+  if id == EGA_ID_MUTE { return egs_of(s)[0].mute; }
+  if net_on(s) {
+    n := net_of(s);
+    if id == EGA_ID_INVITE { return n[0].join[0].boxes[JB_INVITE]; }
+    if id == EGA_ID_CHARACTER { return n[0].join[0].boxes[JB_CHARACTER]; }
+    if id == EGA_ID_PARTY { return n[0].party[0].button; }
+  }
+  if id >= EGA_ID_PANE && id < EGA_ID_PANE + EGA_BOXES && ega(s)[0].open { return ega(s)[0].boxes[id - EGA_ID_PANE]; }
+  if id >= EGA_ID_SLOT && id < EGA_ID_SLOT + SP_BAR { return ega_slot_box(s, id - EGA_ID_SLOT); }
+  return Box.{};
+}
+// The page's controls now, a line each, as the last frame laid them out.
+everglade_a11y :: (s: [] Everglade, buf: [] u8) -> int #export_c #effects(all) {
+  a := ega(s); r := a[0].rec[0];
+  n := 0; w: [96] u8; v: [96] u8;
+  if a[0].say_n > 0 && s[0].time - a[0].say_t < f64(EGA_SAY_S) { n = ega_line(buf, n, EGA_ID_STATUS, "status", "-", ega_sentence(cast(string) a[0].say[0..<a[0].say_n], w[..])); }
+  if ega_shown(s[0].map_button) { n = ega_line(buf, n, EGA_ID_MAP, "button", ifx s[0].above then "1" else "0", ifx s[0].above then "Walk" else "Map"); }
+  if ega_shown(a[0].label) { n = ega_line(buf, n, EGA_ID_SETTINGS, "button", ifx a[0].open then "1" else "0", "Settings"); }
+  if a[0].open {
+    if a[0].page == 0 {
+      pb: [8] u8; pct := ega_pct(ega_pct_now(s), pb[..]);
+      if !ega_shown(a[0].boxes[EGA_SMALLER]) && !ega_shown(a[0].boxes[EGA_BIGGER]) { m := sp_put(v[..], 0, "Text size "); m = sp_put(v[..], m, pct); m = sp_put(v[..], m, ", this screen's most"); n = ega_line(buf, n, EGA_ID_PANE + EGA_BIGGER, "status", "-", cast(string) v[0..<m]); }
+      else if !ega_shown(a[0].boxes[EGA_BIGGER]) && ega_pct_now(s) < SETTINGS_TEXT_MIN + SETTINGS_TEXT_STEP * SETTINGS_TEXT_STEPS { m := sp_put(v[..], 0, "Text size "); m = sp_put(v[..], m, pct); m = sp_put(v[..], m, ", this screen's most"); n = ega_line(buf, n, EGA_ID_PANE + EGA_BIGGER, "status", "-", cast(string) v[0..<m]); }
+      if ega_shown(a[0].boxes[EGA_SMALLER]) { m := sp_put(v[..], 0, "Smaller text, now "); m = sp_put(v[..], m, pct); n = ega_line(buf, n, EGA_ID_PANE + EGA_SMALLER, "button", "-", cast(string) v[0..<m]); }
+      if ega_shown(a[0].boxes[EGA_BIGGER]) { m := sp_put(v[..], 0, "Bigger text, now "); m = sp_put(v[..], m, pct); n = ega_line(buf, n, EGA_ID_PANE + EGA_BIGGER, "button", "-", cast(string) v[0..<m]); }
+      n = ega_line(buf, n, EGA_ID_PANE + EGA_MOTION, "checkbox", ifx r.reduced_motion then "1" else "0", "Reduced motion");
+      n = ega_line(buf, n, EGA_ID_PANE + EGA_CAPTIONS, "checkbox", ifx r.captions then "1" else "0", "Captions");
+      if ega_shown(a[0].boxes[EGA_KEYS]) { n = ega_line(buf, n, EGA_ID_PANE + EGA_KEYS, "button", "-", "Keys"); }
+      n = ega_line(buf, n, EGA_ID_PANE + EGA_RESET, "button", "-", "Put every setting back");
+    } else {
+      for act: 0..<SA_N {
+        kb: [24] u8;
+        m := sp_put(v[..], 0, ega_sentence(EGT_WORDS[EGT_ACTION0 + act], w[..]));
+        m = sp_put(v[..], m, ": "); m = sp_put(v[..], m, ega_bound(s, act, kb[..]));
+        if a[0].binding == act { m = sp_put(v[..], m, ". Press a key or button, or Escape to cancel"); }
+        n = ega_line(buf, n, EGA_ID_PANE + EGA_KEY0 + act, "button", ifx a[0].binding == act then "1" else "0", cast(string) v[0..<m]);
+      }
+      n = ega_line(buf, n, EGA_ID_PANE + EGA_KEYS, "button", "-", "Back to settings");
+    }
+    n = ega_line(buf, n, EGA_ID_PANE + EGA_CLOSE, "button", "-", "Close settings");
+  }
+  d := egs_of(s);
+  if ega_shown(d[0].label) {
+    lb: [32] u8;
+    n = ega_line(buf, n, EGA_ID_SOUND, "button", ifx d[0].open then "1" else "0", ega_sentence(egs_label(d, lb[..]), w[..]));
+  }
+  if ega_shown(d[0].mute) { n = ega_line(buf, n, EGA_ID_MUTE, "button", ifx d[0].muted then "1" else "0", "Mute"); }
+  if ega_shown(ega_box(s, EGA_ID_INVITE)) { n = ega_line(buf, n, EGA_ID_INVITE, "button", "-", "Invite"); }
+  if ega_shown(ega_box(s, EGA_ID_CHARACTER)) { n = ega_line(buf, n, EGA_ID_CHARACTER, "button", "-", "Character"); }
+  if ega_shown(ega_box(s, EGA_ID_PARTY)) { n = ega_line(buf, n, EGA_ID_PARTY, "button", ifx pt_of(net_of(s))[0].open then "1" else "0", "Party"); }
+  for b: 0..<SP_BAR {
+    if !ega_shown(ega_slot_box(s, b)) || ega_slot_name(s, b).count == 0 { continue; }
+    n = ega_line(buf, n, EGA_ID_SLOT + b, "button", "-", ega_sentence(ega_slot_name(s, b), w[..]));
+  }
+  return n;
+}
+// A control pressed from the layer: the pane's own do what a press on them does; the rest are
+// pressed on the canvas where they are drawn, so the same rules decide. False when it isn't shown.
+everglade_a11y_do :: (s: [] Everglade, id: int) -> bool #export_c #effects(all) {
+  b := ega_box(s, id);
+  if !ega_shown(b) { return false; }
+  if id >= EGA_ID_PANE && id < EGA_ID_PANE + EGA_BOXES { ega_do(s, id - EGA_ID_PANE); return true; }
+  if id == EGA_ID_SETTINGS { ega_toggle(s); return true; }
+  cx := (b.x0 + b.x1) / 2; cy := (b.y0 + b.y1) / 2;
+  took := everglade_pointer(s, cx, cy, 0, 0, EGA_FINGER);
+  took = everglade_pointer(s, cx, cy, 2, 0, EGA_FINGER);
+  return true;
+}
+
+// ---- checks
+
+ega_test_page :: (g: [] Everglade, w: f32, h: f32, dpr: f32, touch: bool) {
+  g[0].started = true; g[0].talk = -1; g[0].near = -1;
+  g[0].width = w; g[0].height = h; g[0].dpr = dpr; g[0].touch = touch; g[0].q_finger = -1;
+}
+// The HUD's bottom right, as a frame draws it: the graphics tier, SOUND, SETTINGS and its pane.
+ega_test_hud :: (g: [] Everglade) {
+  out: [60000] f32; u: [UNIFORM_FLOATS] f32;
+  g[0].plate_n = 0;
+  n := eg_quality_hud(g[..], out[..], u[..], 0);
+  n = egs_hud(g[..], out[..], u[..], n);
+  n = ega_hud(g[..], out[..], u[..], n);
+}
+ega_test_tap :: (g: [] Everglade, b: Box) -> bool {
+  cx := (b.x0 + b.x1) / 2; cy := (b.y0 + b.y1) / 2;
+  return everglade_pointer(g, cx, cy, 0, 0, 9) && everglade_pointer(g, cx, cy, 2, 0, 9);
+}
+ega_inside :: (b: Box, c: Box) -> bool { return b.x0 >= c.x0 && b.y0 >= c.y0 && b.x1 <= c.x1 && b.y1 <= c.y1; }
+ega_has :: (text: string, want: string) -> bool {
+  if want.count > text.count { return false; }
+  for i: 0..<text.count - want.count + 1 { if text[i..<i + want.count] == want { return true; } }
+  return false;
+}
+
+#test "access: a rebound key does its action's, its old key does nothing, and typing reads keys as they are" {
+  g: [1] Everglade; ega_test_page(g[..], 1440, 900, 1, false);
+  a := ega(g[..]);
+  #assert eg_key_play(g[..], 'w') == 'w' && eg_key_play(g[..], 'W') == 'w' && eg_key_play(g[..], ' ') == ' ' && eg_key_play(g[..], KEY_SHIFT) == KEY_SHIFT;
+  #assert eg_key_play(g[..], KEY_ENTER) == KEY_ENTER && eg_key_play(g[..], 'c') == 'c' && eg_key_play(g[..], KEY_LEFT) == KEY_LEFT && eg_key_play(g[..], 'r') == 'r';
+  why := settings_bind(a[0].rec[..], SD_KEYS, SA_JUMP, 'Q');
+  #assert eg_key_play(g[..], 'q') == ' ' && eg_key_play(g[..], 'Q') == ' ' && eg_key_play(g[..], ' ') == 0;
+  #assert everglade_key(g[..], 'q', 0) && g[0].held & HOLD_JUMP != 0;
+  #assert !everglade_key(g[..], ' ', 0) && !everglade_key_up(g[..], ' ', 0);
+  #assert everglade_key_up(g[..], 'q', 0) && g[0].held & HOLD_JUMP == 0;
+  // forward onto Z, then onto S: back takes Z (the swap), and S walks forward
+  why = settings_bind(a[0].rec[..], SD_KEYS, SA_FORWARD, 'Z');
+  #assert everglade_key(g[..], 'z', 0) && g[0].held == HOLD_FORWARD && !everglade_key(g[..], 'w', 0);
+  #assert everglade_key_up(g[..], 'z', 0) && g[0].held == 0;
+  #assert settings_bind(a[0].rec[..], SD_KEYS, SA_FORWARD, 'S') == ST_SWAPPED;
+  #assert eg_key_play(g[..], 's') == 'w' && eg_key_play(g[..], 'z') == 's';
+  // the hotbar's slots: slot 1 onto F; 1 now nothing
+  why = settings_bind(a[0].rec[..], SD_KEYS, SA_SLOT1, 'F');
+  #assert eg_key_play(g[..], 'f') == '1' && eg_key_play(g[..], '1') == 0;
+  // the hints name the key bound now
+  why = settings_bind(a[0].rec[..], SD_KEYS, SA_MAP, 'N');
+  #assert ega_map_hint(g[..]) == "THE MAP · N OR ESC TO WALK AGAIN" && everglade_key(g[..], 'n', 0) && g[0].above;
+  #assert ega_row_hint(g[..]) == "ROWING · S AND Z ROW · A AND D TURN";
+  // typing reads the keys as they are: the chat line takes the rebound S as an S
+  g[0].above = false;
+  a[0].rec[0] = settings_default();
+  #assert ega_map_hint(g[..]) == "THE MAP · M OR ESC TO WALK AGAIN" && ega_row_hint(g[..]) == "ROWING · W AND S ROW · A AND D TURN";
+}
+
+#test "access: a controller walks with its stick, holds and presses through the record, and rebinds" {
+  g: [1] Everglade; ega_test_page(g[..], 1440, 900, 1, false);
+  a := ega(g[..]);
+  everglade_pad(g[..], 0.1, 0.1, 0);
+  #assert everglade_pad_x(g[..]) == 0 && everglade_pad_y(g[..]) == 0 && !a[0].pad_seen;
+  everglade_pad(g[..], 0.5, -0.6, 0);
+  #assert everglade_pad_x(g[..]) == 0.5 && everglade_pad_y(g[..]) == -0.6;
+  everglade_pad(g[..], 0.0f32 / 0.0f32, 3, 0);
+  #assert everglade_pad_x(g[..]) == 0 && everglade_pad_y(g[..]) == 1;
+  // the d-pad's up holds forward; A holds jump; let go, nothing
+  everglade_pad(g[..], 0, 0, (1 << 12) | 1);
+  #assert g[0].held == HOLD_FORWARD | HOLD_JUMP && a[0].pad_seen;
+  everglade_pad(g[..], 0, 0, 0);
+  #assert g[0].held == 0;
+  // a key held stays held when the pad lets go of something else
+  #assert everglade_key(g[..], 'd', 0) && g[0].held == HOLD_RIGHT;
+  everglade_pad(g[..], 0, 0, 1); everglade_pad(g[..], 0, 0, 0);
+  #assert g[0].held == HOLD_RIGHT;
+  #assert everglade_key_up(g[..], 'd', 0) && g[0].held == 0;
+  // VIEW (8) is MAP: once a press, not once a frame
+  everglade_pad(g[..], 0, 0, 1 << 8);
+  #assert g[0].above;
+  everglade_pad(g[..], 0, 0, 1 << 8);
+  #assert g[0].above;
+  everglade_pad(g[..], 0, 0, 0); everglade_pad(g[..], 0, 0, 1 << 8);
+  #assert !g[0].above;
+  everglade_pad(g[..], 0, 0, 0);
+  // rebinding: the next button pressed is the action's
+  a[0].binding = SA_JUMP;
+  everglade_pad(g[..], 0, 0, 1 << 3);
+  #assert a[0].binding == -1 && a[0].rec[0].pad[SA_JUMP] == 3 && a[0].rec[0].pad[SA_SLOT1 + 5] == 0 && a[0].tell;
+  everglade_pad(g[..], 0, 0, 0); everglade_pad(g[..], 0, 0, 1 << 3);
+  #assert g[0].held == HOLD_JUMP;
+  everglade_pad(g[..], 0, 0, 0);
+  // while you type, a pad does nothing
+  g[0].chat.typing = true;
+  everglade_pad(g[..], 0.9, 0.9, (1 << 12) | (1 << 8));
+  #assert g[0].held == 0 && !g[0].above && everglade_pad_x(g[..]) == 0;
+}
+
+#test "access: SETTINGS opens its pane; text size, reduced motion, captions and a rebound key work and are kept" {
+  g: [1] Everglade; ega_test_page(g[..], 1440, 900, 1, false);
+  a := ega(g[..]);
+  ega_test_hud(g[..]);
+  #assert ega_shown(a[0].label) && ega_inside(a[0].label, Box.{x1 = 1440, y1 = 900}) && !a[0].open;
+  // clear of SOUND
+  #assert a[0].label.y1 <= egs_of(g[..])[0].label.y0 + 1;
+  #assert ega_test_tap(g[..], a[0].label) && a[0].open;
+  ega_test_hud(g[..]);
+  for b: 0..<EGA_BOXES { if ega_shown(a[0].boxes[b]) { #assert ega_inside(a[0].boxes[b], a[0].pane); } }
+  #assert ega_inside(a[0].pane, Box.{x1 = 1440, y1 = 900}) && !ega_shown(a[0].boxes[EGA_SMALLER]) && ega_shown(a[0].boxes[EGA_KEYS]);
+  #assert ega_test_tap(g[..], a[0].boxes[EGA_BIGGER]) && a[0].rec[0].text_pct == 125 && a[0].tell;
+  g[0].action = 0;
+  ega_test_hud(g[..]);
+  #assert g[0].action == ACT_SETTINGS && ega_has(cast(string) g[0].outbox[0..<g[0].out_n], " t=125 m=0 c=1") && !a[0].tell;
+  #assert ega_scale(g[..], 1440, 900, 1) == 1.25;
+  #assert ega_test_tap(g[..], a[0].boxes[EGA_MOTION]) && ega_still(g[..]);
+  ega_test_hud(g[..]);
+  #assert ega_test_tap(g[..], a[0].boxes[EGA_CAPTIONS]) && !a[0].rec[0].captions;
+  ega_test_hud(g[..]);
+  // KEYS: a row, then the key
+  #assert ega_test_tap(g[..], a[0].boxes[EGA_KEYS]) && a[0].page == 1;
+  ega_test_hud(g[..]);
+  for act: 0..<SA_N { #assert ega_inside(a[0].boxes[EGA_KEY0 + act], a[0].pane); }
+  #assert ega_test_tap(g[..], a[0].boxes[EGA_KEY0 + SA_FORWARD]) && a[0].binding == SA_FORWARD;
+  #assert everglade_key(g[..], KEY_LEFT, 0) && a[0].binding == SA_FORWARD;   // the arrows aren't the record's: still waiting
+  #assert everglade_key(g[..], 'i', 0) && a[0].binding == -1 && a[0].rec[0].keys[SA_FORWARD] == 'I' && g[0].held == 0;
+  #assert ega_test_tap(g[..], a[0].boxes[EGA_KEY0 + SA_JUMP]) && everglade_key(g[..], KEY_ESCAPE, 0) && a[0].binding == -1 && a[0].rec[0].keys[SA_JUMP] == 32;
+  // Esc shuts the pane; DEFAULTS puts everything back
+  #assert everglade_key(g[..], KEY_ESCAPE, 0) && !a[0].open;
+  ega_test_hud(g[..]);
+  #assert ega_test_tap(g[..], a[0].label) && a[0].open && a[0].page == 0;
+  ega_test_hud(g[..]);
+  #assert ega_test_tap(g[..], a[0].boxes[EGA_RESET]) && a[0].rec[0].text_pct == 100 && a[0].rec[0].keys[SA_FORWARD] == 'W' && a[0].rec[0].captions && !ega_still(g[..]);
+  // a press outside shuts it, and goes no further
+  #assert everglade_pointer(g[..], 5, 450, 0, 0, 9) && !a[0].open && !g[0].drag_on;
+}
+
+#test "access: the pane fits its screen at every text size, a phone's too, pseudolocalized" #steps 600000000 {
+  sizes := [3] f32.[1, 1.5, 2];
+  screens := [3] Box.[Box.{x1 = 1440, y1 = 900}, Box.{x1 = 1280, y1 = 720}, Box.{x1 = 390 * 3, y1 = 844 * 3}];
+  for pseudo: 0..<2 {
+    for sc: 0..<3 {
+      for z: 0..<3 {
+        g: [1] Everglade;
+        phone_ := sc == 2;
+        ega_test_page(g[..], screens[sc].x1, screens[sc].y1, (ifx phone_ then 3.0f32 else 1.0f32) * sizes[z], phone_);
+        a := ega(g[..]);
+        a[0].pseudo = pseudo == 1;
+        a[0].open = true;
+        for page: 0..<2 {
+          if page == 1 && phone_ { continue; }   // a phone's pane has no KEYS without a pad
+          a[0].page = page;
+          ega_test_hud(g[..]);
+          #assert ega_inside(a[0].pane, screens[sc]);
+          #assert a[0].pane.y1 <= screens[sc].y1 - spells_reserve(g[..]) + 0.5;   // above the bar, never under its slots
+          #assert ega_shown(a[0].boxes[EGA_CLOSE]) && (page == 1 || ega_shown(a[0].boxes[EGA_MOTION]));
+          #assert ega_shown(a[0].boxes[EGA_KEYS]) == !phone_;
+          for b: 0..<EGA_BOXES { if ega_shown(a[0].boxes[b]) { #assert ega_inside(a[0].boxes[b], a[0].pane); } }
+        }
+      }
+    }
+  }
+}
+
+#test "access: a screen too small for the text size kept draws its most, and the pane says so" {
+  g: [1] Everglade; ega_test_page(g[..], 390 * 3, 844 * 3, 3, true);
+  a := ega(g[..]);
+  a[0].rec[0].text_pct = 200;
+  // a phone (390 by 844 CSS pixels) has a phone's room at 100%; a tablet at 150%; a laptop at 200%
+  #assert ega_scale(g[..], 390 * 3, 844 * 3, 3) == 1 && ega_most(g[..]) == 100;
+  #assert ega_scale(g[..], 844 * 3, 390 * 3, 3) == 1;
+  #assert ega_scale(g[..], 1024 * 2, 768 * 2, 2) == 1.5;
+  #assert ega_scale(g[..], 1280, 720, 1) == 2;
+  // on the phone: no - or +, and the size it draws, named the screen's most
+  _ := ega_scale(g[..], 390 * 3, 844 * 3, 3);
+  a[0].open = true;
+  ega_test_hud(g[..]);
+  #assert !ega_shown(a[0].boxes[EGA_SMALLER]) && !ega_shown(a[0].boxes[EGA_BIGGER]);
+  b: [8192] u8; n := everglade_a11y(g[..], b[..]); t := cast(string) b[0..<n];
+  #assert ega_has(t, "21 status - Text size 100%, this screen's most\n");
+  #assert a[0].rec[0].text_pct == 200;   // kept for a bigger screen
+  // on the tablet, - steps down from what it draws
+  _2 := ega_scale(g[..], 1024 * 2, 768 * 2, 2);
+  ega_do(g[..], EGA_SMALLER);
+  #assert a[0].rec[0].text_pct == 125;
+}
+
+#test "access: captions say what was heard and from where; off, none" {
+  g: [1] Everglade; ega_test_page(g[..], 1440, 900, 1, false);
+  egs_test_page(g[..]);   // facing +Z: your right is -X
+  a := ega(g[..]);
+  egs_hit(g[..], egs_wl_look(WL_FIREBALL), v3(20, 1.6, 0), 0);
+  egs_cue(g[..], SFX_HIT, v3(-20, 1.6, 0), 0, 1);
+  egs_cue(g[..], SFX_FIRE_TRAVEL, v3(0, 1.6, 20), 0, 1);   // a flight: not captioned
+  egs_cue(g[..], SFX_HORN, v3(0, 1.6, -30), 0, 1);
+  shown := 0;
+  for i: 0..<EGA_CAPS { c := a[0].caps[i]; if c.on { shown += 1; } }
+  #assert shown == 3;
+  #assert a[0].caps[0].id == SFX_FIREBALL && EGA_SIDE[a[0].caps[0].side] == "LEFT";
+  #assert a[0].caps[1].id == SFX_HIT && EGA_SIDE[a[0].caps[1].side] == "RIGHT";
+  #assert a[0].caps[2].id == SFX_HORN && EGA_SIDE[a[0].caps[2].side] == "BEHIND";
+  // the same again renews its line; a fourth takes the oldest's
+  g[0].time = 1;
+  egs_hit(g[..], egs_wl_look(WL_FIREBALL), v3(21, 1.6, 0), 0);
+  #assert a[0].caps[0].t == 1;
+  egs_here(g[..], SFX_RAID_WON, 1);
+  #assert a[0].caps[1].id == SFX_RAID_WON && a[0].caps[1].side == 0;
+  egs_cue(g[..], SFX_STAND, v3(1, 1.6, 1), 0, 1);
+  #assert a[0].caps[2].id == SFX_STAND && EGA_SIDE[a[0].caps[2].side] == "NEAR";
+  out: [8000] f32; u: [UNIFORM_FLOATS] f32;
+  #assert ega_captions_draw(g[..], out[..], u[..], 0) > 0;
+  // every captioned sound has words, and the uncaptioned are the quiet or the in-between
+  for id: 0..<SFX_COUNT { if EGA_HEARD[id].count == 0 { #assert id == SFX_FIRE_TRAVEL || id == SFX_FROST_TRAVEL || id == SFX_ELDRITCH_TRAVEL || id == SFX_NECRO_TRAVEL || id == SFX_BOLT_TRAVEL || (id >= 39 && id <= 42); } }
+  a[0].rec[0].captions = false;
+  for i: 0..<EGA_CAPS { a[0].caps[i] = EgCaption.{}; }
+  egs_cue(g[..], SFX_HORN, v3(0, 1.6, -30), 0, 1);
+  #assert !a[0].caps[0].on && ega_captions_draw(g[..], out[..], u[..], 0) == 0;
+  g[0].time = 10;
+  a[0].rec[0].captions = true;
+  egs_cue(g[..], SFX_HORN, v3(0, 1.6, -30), 0, 1);
+  g[0].time = 10 + f64(EGA_CAP_S) + 0.1;
+  #assert ega_captions_draw(g[..], out[..], u[..], 0) == 0;   // gone after its time
+}
+
+#test "access: the accessible layer lists the HUD's controls, presses them as a tap does, and says what the bar says" {
+  g: [1] Everglade; ega_test_page(g[..], 1440, 900, 1, false);
+  a := ega(g[..]);
+  g[0].map_button = Box.{x0 = 1300, y0 = 16, x1 = 1424, y1 = 54};
+  ega_test_hud(g[..]);
+  b: [8192] u8;
+  n := everglade_a11y(g[..], b[..]);
+  t := cast(string) b[0..<n];
+  #assert ega_has(t, "1 button 0 Map\n") && ega_has(t, "2 button 0 Settings\n") && ega_has(t, "3 button 0 Sound 70%\n") && !ega_has(t, "status");
+  // MAP pressed from the layer: the map, as a click does
+  #assert everglade_a11y_do(g[..], EGA_ID_MAP) && g[0].above;
+  #assert !everglade_a11y_do(g[..], EGA_ID_MUTE) && !everglade_a11y_do(g[..], EGA_ID_PARTY) && !everglade_a11y_do(g[..], 555);
+  #assert everglade_a11y_do(g[..], EGA_ID_SETTINGS) && a[0].open;
+  ega_test_hud(g[..]);
+  n = everglade_a11y(g[..], b[..]); t = cast(string) b[0..<n];
+  #assert ega_has(t, "2 button 1 Settings\n") && ega_has(t, "22 checkbox 0 Reduced motion\n") && ega_has(t, "23 checkbox 1 Captions\n") && ega_has(t, "21 button - Bigger text, now 100%\n");
+  #assert !ega_has(t, "Smaller text");
+  #assert everglade_a11y_do(g[..], EGA_ID_PANE + EGA_MOTION) && ega_still(g[..]);
+  #assert everglade_a11y_do(g[..], EGA_ID_PANE + EGA_KEYS) && a[0].page == 1;
+  ega_test_hud(g[..]);
+  n = everglade_a11y(g[..], b[..]); t = cast(string) b[0..<n];
+  #assert ega_has(t, "27 button 0 Forward: W\n") && ega_has(t, "36 button 0 Slot 1: 1\n") && ega_has(t, "24 button - Back to settings\n");
+  #assert everglade_a11y_do(g[..], EGA_ID_PANE + EGA_KEY0 + SA_JUMP) && a[0].binding == SA_JUMP;
+  n = everglade_a11y(g[..], b[..]); t = cast(string) b[0..<n];
+  #assert ega_has(t, "31 button 1 Jump: SPACE. Press a key or button, or Escape to cancel\n");
+  #assert everglade_a11y_do(g[..], EGA_ID_PANE + EGA_CLOSE) && !a[0].open && a[0].binding == -1;
+  // the control with the layer's focus is ringed on the canvas; none, nothing
+  ring: [4096] f32;
+  ega_test_hud(g[..]);
+  everglade_a11y_focus(g[..], EGA_ID_SETTINGS);
+  #assert ega_focus_ring(g[..], ring[..], 0) > 0;
+  everglade_a11y_focus(g[..], -1);
+  #assert ega_focus_ring(g[..], ring[..], 0) == 0;
+  // what the bar says is the layer's live status
+  sp_say(g[..], "YOUR ROOM IS FULL · NO SEAT HELD", -1, "");
+  ega_status_frame(g[..]);
+  n = everglade_a11y(g[..], b[..]); t = cast(string) b[0..<n];
+  #assert ega_has(t, "900 status - Your room is full · no seat held\n");
+  g[0].time = f64(EGA_SAY_S) + 1;
+  n = everglade_a11y(g[..], b[..]); t = cast(string) b[0..<n];
+  #assert !ega_has(t, "status");
+  ega_status_frame(g[..]);   // the same words again say nothing new
+  #assert a[0].say_t == 0;
+  // a full buffer stops whole
+  small: [40] u8;
+  #assert everglade_a11y(g[..], small[..]) == -1;
+}
+
+#test "access: the kept record and ?pseudo=1 come from the facts" {
+  g: [1] Everglade; ega_test_page(g[..], 1440, 900, 1, false);
+  a := ega(g[..]);
+  ega_facts(g[..], "url=https://openagents.com/worlds/everglade?pseudo=1\nsettings=s1 k=87,83,65,68,81,69,16,13,77,49,50,51,52,53,54,55,56,57,48 p=12,13,14,15,2,0,10,9,8,4,5,6,7,1,3,11,16,17,18 t=150 m=1 c=0");
+  #assert a[0].pseudo && ega_t(g[..], EGT_CLOSE) == "[CLOSE ===]" && ega_t(g[..], EGT_SETTINGS) == "[SETTINGS ====]";
+  #assert a[0].rec[0].keys[SA_JUMP] == 'Q' && a[0].rec[0].text_pct == 150 && ega_still(g[..]) && !a[0].rec[0].captions && ega_scale(g[..], 1440, 900, 1) == 1.5;
+  ega_facts(g[..], "url=https://openagents.com/worlds/everglade\nsettings=s1 k=87");
+  #assert !a[0].pseudo && ega_t(g[..], EGT_CLOSE) == "CLOSE" && a[0].rec[0].keys[SA_JUMP] == 32 && a[0].rec[0].text_pct == 100;
+  ega_facts(g[..], "url=https://openagents.com/worlds/everglade");
+  #assert a[0].rec[0].keys[SA_JUMP] == 32 && a[0].rec[0].captions;
+  for i: 0..<EGT_N { #assert EGT_WORDS[i].count > 0 && EGT_WORDS[i].count * 3 / 2 + 4 <= EGT_W; }
+}

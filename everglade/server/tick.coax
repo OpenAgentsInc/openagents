@@ -140,7 +140,7 @@ rm_e2_place :: (v: [] RmServer, k: int, s_id: SeatId, out: [] f32) -> bool #expo
   st[0].hello = false; rm_clock(v[..], 50600, 1800000060600); #assert rm_eg_unplaced(v[..], 0, SeatId.{value = 0});
 }
 RM_GLADE_FLAG :: 128;   // everglade/legacy/v1/glade-zone.coax EZ_GLADE_FLAG (the room server doesn't load the plan: keep them alike)
-// A seat whose hello came from Character Create (FLAGS EZ_GLADE_FLAG, apps/openagents-web/everglade-create.coax):
+// A seat whose hello came from Character Create (FLAGS EZ_GLADE_FLAG, apps/openagents-web/old/v1/everglade-create.coax):
 // it is seated at the glade's clearing south of the gate, where that page stands you (room-tick.c everglade_place).
 rm_eg_glade :: (v: [] RmServer, k: int, s_id: SeatId) -> bool #export_c #effects(all) { s := s_id.value;
   return k >= 0 && k < EG_ROOMS && s >= 0 && s < eg_cap(v, k) && v[0].eg[k].seat[s].live && (v[0].eg[k].seat[s].flags & RM_GLADE_FLAG) != 0;

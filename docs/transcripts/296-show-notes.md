@@ -556,8 +556,8 @@ the folder table or station 17 (4), the book's contents (5).
 - [Episode 290, *Enter the Verse*](290.md): 14:00, the Jai story and the book
 - [Episode 294 show notes](294-show-notes.md): what Coax is missing
 - The lab walk the labs share: `metaverse/lab-walk.coax`
-- Coax Lab: `apps/openagents-web/coax-lab-walk.coax` (the stations),
-  `apps/openagents-web/coax-lab-lesson.coax` (their values and checks),
+- Coax Lab: `apps/openagents-web/old/labs/coax-lab-walk.coax` (the stations),
+  `apps/openagents-web/old/labs/coax-lab-lesson.coax` (their values and checks),
   `apps/openagents-web/realms/coax-lab/index.md` (its page text) and
   `coax/web/coax-lab-check.coax` (the headless tour)
 - The examples: `coax/examples/`

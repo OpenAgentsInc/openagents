@@ -1,7 +1,7 @@
 {
   "profile": "openagents.orbit.session",
   "version": 2,
-  "check": "coax/web/tool.sh apps/openagents-web/orbit-wire-profile.coax proto/verse/orbit-session-v2.json",
+  "check": "coax/web/tool.sh apps/openagents-web/orbitleague/orbit-wire-profile.coax proto/verse/orbit-session-v2.json",
   "path": "/api/room/orbit-league-v2/NAME",
   "legacy_path": "/api/room/orbit-league/NAME",
   "pins": {"engine": 1, "rules": 1, "content": 1, "schema": 0},

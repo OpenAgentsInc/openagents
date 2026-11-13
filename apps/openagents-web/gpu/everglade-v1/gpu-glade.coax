@@ -1,5 +1,5 @@
 // The glade south of the South Gate in Everglade's shaders (#13018; everglade/legacy/v1/glade-zone.coax,
-// apps/openagents-web/everglade-glade.coax): Character Create's Nature glade drawn by the scene's own
+// apps/openagents-web/old/v1/everglade-glade.coax): Character Create's Nature glade drawn by the scene's own
 // passes and lit by Everglade's sun, sky and haze at its clock, so walking up the road out of it
 // the light never changes hands. Its colours are the glade's own (the meadow's autumn gold, the
 // trail's olive earth, the crimson and orange crowns, the mossy grey stone); eg_paint lights them.

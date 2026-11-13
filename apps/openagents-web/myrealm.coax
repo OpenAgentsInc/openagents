@@ -47,22 +47,22 @@
 #load "../../metaverse/edit/edit.coax";   // the board, settings and cards every realm shares
 #load "../../metaverse/style-preset.coax";
 #load "../../metaverse-engine/anim/figure.coax" as fig;   // the figures: you, the villagers, the characters
-#load "myrealm-shapes.coax";   // the round things: figures and owls
+#load "myrealm/myrealm-shapes.coax";   // the round things: figures and owls
 #load "../../metaverse-engine/editor/record.coax";   // a publish's reply (record.proto)
 #load "../../metaverse-engine/editor/made.coax";   // a fork's body and its answer (made.proto)
 #load "../../metaverse-engine/editor/spec.coax";   // the spec's lines (GET /api/playtest/realms/<slug>)
 #load "../../metaverse-engine/editor/change.coax";   // a placed thing's body (edits.proto)
 #load "../../metaverse-engine/editor/doc.coax";   // the realm document and its edits (metaverse-engine/editor/edit.coax): a move, undo, the bodies and replies (realm.proto)
-#load "myrealm-things.coax";   // the site: walls, a centre, paving and paths (0096; myrealm-site.coax)
-#load "myrealm-site.coax";   // the land, buildings and more animals, fliers, plants and props (0088)   // a painterly or flat realm's look (docs/metaverse/art-styles.md)
+#load "myrealm/myrealm-things.coax";   // the site: walls, a centre, paving and paths (0096; myrealm-site.coax)
+#load "myrealm/myrealm-site.coax";   // the land, buildings and more animals, fliers, plants and props (0088)   // a painterly or flat realm's look (docs/metaverse/art-styles.md)
 #load "../../metaverse-engine/core/budget.coax";
 #load "../../metaverse-engine/talk/wire.coax";   // the NPC ask's one codec (E4, #13247)
-#load "myrealm-a11y.coax";   // the page's controls as real ones (host.js mirrors them): keyboard and screen reader
+#load "myrealm/myrealm-a11y.coax";   // the page's controls as real ones (host.js mirrors them): keyboard and screen reader
 #load "../../metaverse-engine/core/input.coax";   // a controller's stick and buttons: the engine's one input path (realm_pad)
 #load "../../metaverse-engine/core/loop.coax";    // the walking's fixed steps: the Metaverse Engine's one clock (metaverse-engine/book ch001)
 #load "../../metaverse-engine/move/walk.coax" as pc;   // the shared walker's capsule push out of what stands (metaverse-engine/physics/collide.coax)
-#load "myrealm-room.coax";
-#load "../../metaverse/edit/realm-page.coax";   // its world: the board, the tools and the scripts as tables; the shell's model (#13496)   // who else is here (/api/playtest/presence/made-<slug>), an agent's seat tagged AGENT
+#load "myrealm/myrealm-room.coax";   // who else is here (/api/playtest/presence/made-<slug>), an agent's seat tagged AGENT
+#load "../../metaverse/edit/realm-page.coax";   // its world: the board, the tools and the scripts as tables; the shell's model (#13496)
 
 VERTEX_FLOATS :: 16;   // x, y, along, across, length, core, light, glow, red, green, blue, mode, 0, 0, 0, 0
 MAX_VERTICES :: 30000;

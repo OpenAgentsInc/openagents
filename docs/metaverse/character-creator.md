@@ -228,7 +228,7 @@ cast event arrives. Offline, the local room worker does the same. The room
 refuses any other slot for a class's seat. Each slot's card is the SRD's text
 for what the slot does here.
 
-The page's side is `apps/openagents-web/everglade-classes.coax`. The hello's
+The page's side is `apps/openagents-web/old/v1/everglade-classes.coax`. The hello's
 `KIND` word is `srd-barbarian` to `srd-wizard`. To show a class's bar without
 Character Create, add `?kit=srd-NAME` to Everglade's address; `&card=1` also
 shows slot 1's card. The icons and cards are generated with

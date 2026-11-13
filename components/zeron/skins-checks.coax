@@ -4,7 +4,7 @@
 // and nothing another skin draws wears one of Zeron's colours. A colour
 // still written into a component shows up here as a Zeron colour in another
 // skin's frame. Zeron's own frames are pinned by
-// apps/openagents-web/chat-frames.coax.
+// apps/openagents-web/chat/chat-frames.coax.
 //   coax/bin/coax test components/zeron/skins-checks.coax
 
 #load "picker.coax";       // the transcript, the composer and the menus

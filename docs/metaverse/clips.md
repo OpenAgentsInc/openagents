@@ -85,7 +85,7 @@ realm, a feature being shown off, or a moment a player really had.
   ```
 
 - **Darian Odiodei** (`/worlds/everglade?stage=darian` or `?stage=darian-15`,
-  `apps/openagents-web/everglade-raid-preview.coax`): while the Cultist Raid's
+  `apps/openagents-web/old/v1/everglade-raid-preview.coax`): while the Cultist Raid's
   leader is drawn, the camera stands 4 m (or 15 m) off his left side, looking
   at him and his staff. It works in the offline preview (`&raid=preview`) and
   in a room with the raid running (`&relay=...&room=...`). Until he is drawn,

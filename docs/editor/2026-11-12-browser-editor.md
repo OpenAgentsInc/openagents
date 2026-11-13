@@ -404,7 +404,7 @@ not a flat folder scan.
   world is the visitor's own, kept in their browser.
   - **Its world is behind `world.edit.v1`.** Every edit of a thing and every
     dab of a brush is a typed edit, checked by the page's own Coax
-    (`apps/openagents-web/worldbuilder-world.coax`) and carried out on the
+    (`apps/openagents-web/worldbuilder/worldbuilder-world.coax`) and carried out on the
     engine's edit log. No server holds the world, so there is no route: the
     same codec, the same batch and the same fence by revision, on the page
     ([the rules](../protocol/world-edit-v1.md#worldbuilders-world)). The

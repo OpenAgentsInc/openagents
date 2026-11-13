@@ -243,7 +243,7 @@ the town's own depth buffer, light and aux targets and shadow map. The parts:
   world's clip rows and camera, the shadow map's rows, the key light, sky and
   ground ambient, the haze, up to 8 point lights (the 8 nearest her that
   reach her), wetness and the aux distance scale. Everglade fills it each
-  frame in `apps/openagents-web/everglade-character.coax`, from the same
+  frame in `apps/openagents-web/old/v1/everglade-character.coax`, from the same
   uniforms its own shaders read. The pass writes linear light, and the
   town's post pass tones it as it tones the town.
 - **Runtime.** `apps/openagents-web/character-host.coax` (`build/character-host.wasm`,

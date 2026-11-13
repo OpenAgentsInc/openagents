@@ -831,11 +831,11 @@ rc_label_ok :: (c: CliCommand) -> bool #effects(all) {
   }
   return !part;
 }
-// The page's copy of the table's tool words, apps/openagents-web/realm-tools.coax, as its text: each row's tool
+// The page's copy of the table's tool words, apps/openagents-web/realm/realm-tools.coax, as its text: each row's tool
 // name, effect, label and many (the chat reads a tool call through it, #13481), and its help, method, route and
 // required properties (the hosted agent on /chat declares the rows it can run from them). Bytes written, or -1
 // when it doesn't fit. apps/openagents-cli/tool-labels.coax writes it; a check below holds it to the table.
-RC_TOOLS_FILE :: "apps/openagents-web/realm-tools.coax";
+RC_TOOLS_FILE :: "apps/openagents-web/realm/realm-tools.coax";
 rc_tools_text :: (out: [] u8) -> int #effects(all) {
   nb: [64] u8; pb: [200] u8;
   n := editor_put(out, 0, "// Generated from REALM_COMMANDS (apps/openagents-cli/commands.coax) by\n//   coax/web/tool.sh apps/openagents-cli/tool-labels.coax --write\n// Do not edit: each realm_* MCP tool's name, effect, label and many, for the chat's tool rows (#13481), and its\n// help, method, route and required properties, for the hosted agent's tools on /chat.\n");
@@ -900,7 +900,7 @@ rc_lit :: (out: [] u8, at: int, text: string) -> int #effects(all) {
   for m: [4] string.["{foe}", "a}", "[a", "a]"] { bad.many = m; #assert !rc_label_ok(bad); }
   bad = plan; bad.label = "Set [foe {foe}]"; #assert rc_label_ok(bad);
 }
-#load "../openagents-web/realm-tools.coax" #test;
+#load "../openagents-web/realm/realm-tools.coax" #test;
 #test "the page's copy of the tool words is the table's (else: coax/web/tool.sh apps/openagents-cli/tool-labels.coax --write)" {
   nb: [64] u8;
   #assert REALM_TOOLS.count == REALM_COMMANDS.count;

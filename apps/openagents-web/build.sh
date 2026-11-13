@@ -132,7 +132,7 @@ after_generated() { while [[ ! -e "$generated" ]]; do kill -0 $$ 2> /dev/null ||
     # /admin/analytics: the projects list's HUD over the admins' numbers.
     timed admin "$here/../../coax/web/wasm.sh" "$here/admin.coax" "$here/admin-face.c" "$here/build/admin.wasm" & made+=($!)
     # /realms/audio-lab: Everglade's sounds, each candidate and the raid mix (#12832), the projects list's HUD.
-    old timed audiolab "$here/../../coax/web/wasm.sh" "$here/audiolab.coax" "$here/audiolab-face.c" "$here/build/audiolab.wasm" & made+=($!)
+    old timed audiolab "$here/../../coax/web/wasm.sh" "$here/old/labs/audiolab.coax" "$here/old/labs/audiolab-face.c" "$here/build/audiolab.wasm" & made+=($!)
     # /og: the link-preview workbench (docs/web/og-tags.md), og.coax over og/pages.txt.
     timed og "$here/../../coax/web/wasm.sh" "$here/og.coax" "$here/og-face.c" "$here/build/og.wasm" & made+=($!)
     # A private project's page (/projects/<slug>, served by oa-api to members).
@@ -309,12 +309,12 @@ old timed everglade "$here/../../coax/web/wasm.sh" "$here/everglade.coax" "$here
   "$here/../../everglade/shared/everglade-step.coax" "$m/grid.coax" "$here/../../everglade/legacy/v1/river.coax" "$here/../../everglade/npc/guard-guide-policy.coax" &
 everglade=$!
 # /worlds/5e-mmo: the SRD 5e battle in Everglade (fivemmo.coax on everglade.coax), the battle its own unit.
-old timed fivemmo "$here/../../coax/web/wasm.sh" "$here/fivemmo.coax" "$here/fivemmo-face.c" "$here/build/fivemmo.wasm" \
-  "$a/move/player.coax" "$m/grid.coax" "$here/../../everglade/legacy/v1/river.coax" "$here/fivemmo-battle.coax" &
+old timed fivemmo "$here/../../coax/web/wasm.sh" "$here/old/v1/fivemmo.coax" "$here/old/v1/fivemmo-face.c" "$here/build/fivemmo.wasm" \
+  "$a/move/player.coax" "$m/grid.coax" "$here/../../everglade/legacy/v1/river.coax" "$here/old/v1/fivemmo-battle.coax" &
 fivemmo=$!
 # /worlds/everglade (since #12710; /worlds/everglade-5e redirects): Everglade on the SRD 5e engine (everglade5e.coax on everglade.coax), the rules their own unit.
 old timed everglade5e "$here/../../coax/web/wasm.sh" "$here/everglade5e.coax" "$here/everglade5e-face.c" "$here/build/everglade5e.wasm" \
-  "$here/../../everglade/shared/everglade-step.coax" "$m/grid.coax" "$here/../../everglade/legacy/v1/river.coax" "$here/../../everglade/npc/guard-guide-policy.coax" "$here/everglade5e-rules.coax" &
+  "$here/../../everglade/shared/everglade-step.coax" "$m/grid.coax" "$here/../../everglade/legacy/v1/river.coax" "$here/../../everglade/npc/guard-guide-policy.coax" "$here/old/v1/everglade5e-rules.coax" &
 everglade5e=$!
 # Everglade's offline room (#12784): the room server's simulation, built to wasm for the local host (coax/web/room-worker.js).
 timed everglade-room "$here/../../coax/web/tool.sh" "$here/../../coax/web/room/worker.coax" "$here/build/everglade-room.wasm" &
@@ -326,11 +326,11 @@ fairy=$!
 # /worlds/hecates-cemetery: Planetary Villa's first expansion (metaverse/planetary-villa/README.md),
 # with the player, thumbs and figures (villafig.coax: the engine's figures and motions) as libraries.
 timed villa "$here/../../coax/web/wasm.sh" "$here/villa.coax" "$here/villa-face.c" "$here/build/villa.wasm" \
-  "$a/move/player.coax" "$m/grid.coax" "$here/villafig.coax" &
+  "$a/move/player.coax" "$m/grid.coax" "$here/villa/villafig.coax" &
 villa=$!
-old timed animationlab "$here/../../coax/web/wasm.sh" "$here/animationlab.coax" "$here/animationlab-face.c" "$here/build/animationlab.wasm" &
+old timed animationlab "$here/../../coax/web/wasm.sh" "$here/old/labs/animationlab.coax" "$here/old/labs/animationlab-face.c" "$here/build/animationlab.wasm" &
 animationlab=$!
-old timed ocarinalab "$here/../../coax/web/wasm.sh" "$here/ocarinalab.coax" "$here/ocarinalab-face.c" "$here/build/ocarinalab.wasm" &
+old timed ocarinalab "$here/../../coax/web/wasm.sh" "$here/old/labs/ocarinalab.coax" "$here/old/labs/ocarinalab-face.c" "$here/build/ocarinalab.wasm" &
 ocarinalab=$!
 timed nights "$here/../../coax/web/wasm.sh" "$here/nights.coax" "$here/nights-face.c" "$here/build/nights.wasm" &
 nights=$!
@@ -340,11 +340,11 @@ fixture=$!
 # /worlds/waterlab: the water system's test scene (docs/metaverse/water.md), the spectral sea in Coax.
 old timed waterlab "$here/../../coax/web/wasm.sh" "$here/waterlab.coax" "$here/waterlab-face.c" "$here/build/waterlab.wasm" &
 waterlab=$!
-old timed bitcoin-lab "$here/../../coax/web/wasm.sh" "$here/bitcoin-lab.coax" "$here/bitcoin-lab-face.c" "$here/build/bitcoin-lab.wasm" &
+old timed bitcoin-lab "$here/../../coax/web/wasm.sh" "$here/old/labs/bitcoin-lab.coax" "$here/old/labs/bitcoin-lab-face.c" "$here/build/bitcoin-lab.wasm" &
 bitcoin_lab=$!
-old timed valleylab "$here/../../coax/web/wasm.sh" "$here/valleylab.coax" "$here/valleylab-face.c" "$here/build/valleylab.wasm" &
+old timed valleylab "$here/../../coax/web/wasm.sh" "$here/old/labs/valleylab.coax" "$here/old/labs/valleylab-face.c" "$here/build/valleylab.wasm" &
 valleylab=$!
-old timed portallab "$here/../../coax/web/wasm.sh" "$here/portallab.coax" "$here/portallab-face.c" "$here/build/portallab.wasm" &
+old timed portallab "$here/../../coax/web/wasm.sh" "$here/old/labs/portallab.coax" "$here/old/labs/portallab-face.c" "$here/build/portallab.wasm" &
 portallab=$!
 timed valleycanyon "$here/../../coax/web/wasm.sh" "$here/valleycanyon.coax" "$here/valleycanyon-face.c" "$here/build/valleycanyon.wasm" &
 valleycanyon=$!
@@ -404,7 +404,7 @@ timed watchtower "$here/../../coax/web/wasm.sh" "$here/watchtower.coax" "$here/w
 watchtower=$!
 # /worlds/5e-lab (unlisted): druids play the SRD 5e rules on a bare grid (rules/srd, docs/dnd).
 # Player mode walks you on Everglade's controller (everglade-step.coax) and a phone's thumbs (metaverse-engine/core/sticks.coax).
-old timed fivelab "$here/../../coax/web/wasm.sh" "$here/fivelab.coax" "$here/fivelab-face.c" "$here/build/fivelab.wasm" \
+old timed fivelab "$here/../../coax/web/wasm.sh" "$here/old/experimental/fivelab.coax" "$here/old/experimental/fivelab-face.c" "$here/build/fivelab.wasm" \
   "$here/../../everglade/shared/everglade-step.coax" "$a/core/sticks.coax" &
 fivelab=$!
 # /worlds/archery-range (unlisted): the Archery Range, an Everglade zone (everglade/zone.coax) with the range on it
@@ -414,7 +414,7 @@ timed archery-range "$here/../../coax/web/wasm.sh" "$here/archery-range.coax" "$
 archery_range=$!
 # /worlds/bitcoin-lab (unlisted): Bitcoin Lab, the Bitcoin book's first chapter as a walk on the Grid: an Everglade
 # zone (everglade/zone.coax) with your character, its stations drawn as quads by bitcoin-lab-fx.wgsl (metaverse-engine/fx/gpu-quads.coax).
-old timed bitcoin-lab-walk "$here/../../coax/web/wasm.sh" "$here/bitcoin-lab-walk.coax" "$here/bitcoin-lab-walk-face.c" "$here/build/bitcoin-lab-walk.wasm" \
+old timed bitcoin-lab-walk "$here/../../coax/web/wasm.sh" "$here/old/labs/bitcoin-lab-walk.coax" "$here/old/labs/bitcoin-lab-walk-face.c" "$here/build/bitcoin-lab-walk.wasm" \
   "$here/../../everglade/shared/everglade-step.coax" "$a/core/sticks.coax" &
 bitcoin_lab_walk=$!
 # /worlds/nostr-lab (unlisted): Nostr Lab, a key pair, an event, its ID and its signature as a walk on the Grid, on
@@ -424,13 +424,13 @@ COAXIAL_RUN_STEPS=250000000 old timed nostr-lab-walk "$here/../../coax/web/wasm.
 nostr_lab_walk=$!
 # /worlds/coax-lab (unlisted): Coax Lab, the Coax language as a walk on the Grid (Episode 296), on the same lab walk.
 # Its Mandelbrot table is drawn at compile time: the larger budget.
-COAXIAL_RUN_STEPS=60000000 old timed coax-lab-walk "$here/../../coax/web/wasm.sh" "$here/coax-lab-walk.coax" "$here/coax-lab-walk-face.c" "$here/build/coax-lab-walk.wasm" \
+COAXIAL_RUN_STEPS=60000000 old timed coax-lab-walk "$here/../../coax/web/wasm.sh" "$here/old/labs/coax-lab-walk.coax" "$here/old/labs/coax-lab-walk-face.c" "$here/build/coax-lab-walk.wasm" \
   "$here/../../everglade/shared/everglade-step.coax" "$a/core/sticks.coax" &
 coax_lab_walk=$!
 # /worlds/valley-lab/cull (unlisted): the GPU cull's lab (#13008), its residency and its fixture.
 # An engine fixture, in the old set (#13269): coax/web/cull-check.coax needs COAXIAL_PAGES=all or the
 # module built by name (coax/remote/check.sh module cullstream) and the fixture tool run by hand.
-old timed cullstream "$here/../../coax/web/wasm.sh" "$here/cullstream.coax" "$here/cullstream-face.c" "$here/build/cullstream.wasm" &
+old timed cullstream "$here/../../coax/web/wasm.sh" "$here/old/labs/cullstream.coax" "$here/old/labs/cullstream-face.c" "$here/build/cullstream.wasm" &
 cullstream=$!
 old timed cull-fixture in_repo coax/web/tool.sh metaverse-engine/tools/cull-fixture.coax "$here/build" > /dev/null &
 cullfixture=$!
@@ -439,10 +439,10 @@ timed everglade2 "$here/../../coax/web/wasm.sh" "$here/../../everglade/client/cl
   "$here/../../everglade/client/everglade-step.coax" "$a/core/sticks.coax" &
 everglade2=$!
 # /worlds/metahuman-lab (unlisted): one figure on the CC0 people rig's skeleton and clips (docs/metaverse/metahuman-support.md).
-old timed metahumanlab "$here/../../coax/web/wasm.sh" "$here/metahumanlab.coax" "$here/metahumanlab-face.c" "$here/build/metahumanlab.wasm" &
+old timed metahumanlab "$here/../../coax/web/wasm.sh" "$here/old/labs/metahumanlab.coax" "$here/old/labs/metahumanlab-face.c" "$here/build/metahumanlab.wasm" &
 metahumanlab=$!
 # /worlds/splat-lab (unlisted): 3D Gaussian splats, GPU-sorted (docs/metaverse/2026-11-03-splat-lab.md).
-old timed splatlab "$here/../../coax/web/wasm.sh" "$here/splatlab.coax" "$here/splatlab-face.c" "$here/build/splatlab.wasm" &
+old timed splatlab "$here/../../coax/web/wasm.sh" "$here/old/labs/splatlab.coax" "$here/old/labs/splatlab-face.c" "$here/build/splatlab.wasm" &
 splatlab=$!
 # /worlds/one-shot: the campaign creator's Table (oneshot.coax on oneshot-table.coax and the SRD engine).
 timed oneshot "$here/../../coax/web/wasm.sh" "$here/oneshot.coax" "$here/oneshot-face.c" "$here/build/oneshot.wasm" &
@@ -475,9 +475,9 @@ changelog=$!
 timed verse "$here/../../coax/web/wasm.sh" "$here/verse.coax" "$here/verse-face.c" "$here/build/verse.wasm" &
 metaverse_app=$!
 # /nip/01: NIP-01 in Coax, its verifier its own library; the splash's passes.
-timed nip01 "$here/../../coax/web/wasm.sh" "$here/nip01.coax" "$here/nip01-face.c" "$here/build/nip01.wasm" "$here/nip01-verify.coax" &
+timed nip01 "$here/../../coax/web/wasm.sh" "$here/nip01.coax" "$here/nip01-face.c" "$here/build/nip01.wasm" "$here/nip/nip01-verify.coax" &
 nip01=$!
-timed nip-guide "$here/../../coax/web/wasm.sh" "$here/nip-guide.coax" "$here/nip-guide-face.c" "$here/build/nip-guide.wasm" "$here/nip-guide-observe.coax" &
+timed nip-guide "$here/../../coax/web/wasm.sh" "$here/nip-guide.coax" "$here/nip-guide-face.c" "$here/build/nip-guide.wasm" "$here/nip/nip-guide-observe.coax" &
 nip_guide=$!
 # /pylon: read-only live Pylon network, shared checked Coax verifier.
 timed pylon "$here/../../coax/web/wasm.sh" "$here/pylon.coax" "$here/pylon-face.c" "$here/build/pylon.wasm" "$here/../../coax/web/project/landing-nostr.coax" &
@@ -486,7 +486,7 @@ pylon=$!
 cmp -s "$here/../../scripts/join-pylon.sh" "$here/pylon/join.sh" || cp "$here/../../scripts/join-pylon.sh" "$here/pylon/join.sh"
 # Engine-owned declared-state adoption and host-conformance fixture (#12991). In the old set (#13269):
 # its page and metaverse-engine/state/tests/oracle.py read a module built by name (check.sh module state-lab).
-COAXIAL_RUN_STEPS=250000000 old timed state-lab "$here/../../coax/web/wasm.sh" "$here/../../metaverse-engine/state/fixture.coax" "$here/state-lab-face.c" "$here/build/state-lab.wasm" &
+COAXIAL_RUN_STEPS=250000000 old timed state-lab "$here/../../coax/web/wasm.sh" "$here/../../metaverse-engine/state/fixture.coax" "$here/old/labs/state-lab-face.c" "$here/build/state-lab.wasm" &
 state_lab=$!
 # /worlds: every world you can play, as kit entries beside the site's side (worlds-web.coax, drawn by the
 # browser through coax/web/dom-host.js; its rows in realms/list.coax, written by realms.ts).

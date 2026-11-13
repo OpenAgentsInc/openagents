@@ -1,6 +1,6 @@
 // Real HTTP pages through the actual shared producer; run natively/sanitized.
 #import "Basic";
-#load "../../apps/openagents-web/bitcoin-lab.coax";
+#load "../../apps/openagents-web/old/labs/bitcoin-lab.coax";
 #load "client.coax";
 #load "../../coax/lib/sys/tool.coax";
 sc_pump :: (s:[]BitcoinLab,port:int)->bool {

@@ -25,7 +25,7 @@
 #load "../../metaverse-engine/ui/font.coax";
 #load "../../coax/web/socket.coax";
 #load "../../metaverse-engine/net/relay-wire.coax";   // the relay's frames y, j, l and m: the one codec (#13245)
-#load "oneshot-table.coax";
+#load "oneshot/oneshot-table.coax";
 #load "../../metaverse-engine/cam/shot.coax" as ash;
 #load "../../metaverse-engine/core/space.coax" as asp;
 

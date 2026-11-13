@@ -13,10 +13,10 @@ acknowledged facts into the realm:
 coax/web/tool.sh bitcoin/lab/record.coax /tmp/bitcoin-recording
 python3 bitcoin/lab/oracle.py /tmp/bitcoin-recording
 coax/web/tool.sh bitcoin/lab/recover.coax /tmp/bitcoin-recording/state.kv /tmp/bitcoin-cut.kv
-coax/web/tool.sh bitcoin/lab/project.coax /tmp/bitcoin-recording apps/openagents-web/bitcoin-lab-data.coax
+coax/web/tool.sh bitcoin/lab/project.coax /tmp/bitcoin-recording apps/openagents-web/old/labs/bitcoin-lab-data.coax
 coax/web/tool.sh bitcoin-lab-map
 bun coax/web/realms.ts
-coax/web/wasm.sh apps/openagents-web/bitcoin-lab.coax apps/openagents-web/bitcoin-lab-face.c apps/openagents-web/build/bitcoin-lab.wasm
+coax/web/wasm.sh apps/openagents-web/old/labs/bitcoin-lab.coax apps/openagents-web/old/labs/bitcoin-lab-face.c apps/openagents-web/build/bitcoin-lab.wasm
 ```
 
 `record.coax` starts with empty validated state at the actual genesis. It

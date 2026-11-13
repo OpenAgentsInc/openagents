@@ -399,7 +399,7 @@ the costs a search lowers.
   [guide-route.coax](../../everglade/npc/guide-route.coax): Everglade's
   street graph, daily walks at `FOLK_WALK` (1.2 m/s), and the route a
   guard's directions describe.
-- [apps/openagents-web/villaguide.coax](../../apps/openagents-web/villaguide.coax):
+- [apps/openagents-web/villa/villaguide.coax](../../apps/openagents-web/villa/villaguide.coax):
   the way to your tombstone along the garden paths.
 - [docs/research/game-engine-systems.md](../../docs/research/game-engine-systems.md),
   section 38: the navigation inventory.

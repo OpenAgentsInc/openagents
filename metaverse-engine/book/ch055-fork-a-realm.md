@@ -237,7 +237,7 @@ Everglade is the one base with rules today
 lists what Everglade's code really switches: `night`, `waves`, `nodestroy`
 and `lowgrav`. `POST .../everglade/fork {rules}` refuses a rule the base
 doesn't list with `400`. The FORK pane is drawn in Coax
-([everglade-fork.coax](../../apps/openagents-web/everglade-fork.coax), with
+([everglade-fork.coax](../../apps/openagents-web/old/v1/everglade-fork.coax), with
 its own `#test`s); the page facts carry the rules first (`rules=night,waves`,
 `fork=<slug>` from `coax/web/host.js`), then the fork's board decides.
 `waves` reuses the watch's own escalation

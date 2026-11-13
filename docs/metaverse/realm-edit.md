@@ -169,7 +169,7 @@ characters you are by (`redit_near(ed, key, name)`). With EDIT open, coming to o
 LORE (written, SAVE, and it comes back the next time); QUEST turns that pane into the form (ASK,
 STEP 1-3, REWARD) and SAVE QUEST makes the quest. A realm that plays them calls
 `redit_read_panes_too(ed)` and reads `redit_lore(ed, key)`, `redit_quest(ed, key)` and
-`redit_quest_part(ed, q, part)`. Fairy Forest is the first (apps/openagents-web/fairyquest.coax):
+`redit_quest_part(ed, q, part)`. Fairy Forest is the first (apps/openagents-web/fairy/fairyquest.coax):
 its creatures know their lore when you talk to them, and give their quests when you come near.
 
 ## What each realm can switch

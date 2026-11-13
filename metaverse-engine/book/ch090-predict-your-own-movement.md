@@ -8,7 +8,7 @@
 > re-run is due and holds the ledger of actions that wait for the room (261
 > mutants, all killed), and [metaverse-engine/net/interp.coax](../net/interp.coax) eases
 > the correction out of the drawn body over 0.12 s. Everglade's two pages
-> (`everglade/client/net.coax`, `apps/openagents-web/everglade-net.coax`)
+> (`everglade/client/net.coax`, `apps/openagents-web/old/v1/everglade-net.coax`)
 > supply their step and their row's fields and no longer carry a copy each.
 > The follow camera turns toward the motion your controls ask for, never the
 > corrected velocity (#12777, commit 41093d1f49). The drift check (chapter

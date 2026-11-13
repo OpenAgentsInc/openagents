@@ -25,13 +25,13 @@
 #load "../../metaverse-engine/physics/orbit.coax";
 #load "../../metaverse-engine/cam/spacecam.coax";
 #load "../../metaverse-engine/core/command.coax";
-#load "belt-station.coax";
-#load "belt-tactical.coax";
-#load "belt-rival.coax";
-#load "belt-win.coax";
-#load "belt-lockstep.coax";
+#load "belt/belt-station.coax";
+#load "belt/belt-tactical.coax";
+#load "belt/belt-rival.coax";
+#load "belt/belt-win.coax";
+#load "belt/belt-lockstep.coax";
 #load "lockroom.coax";
-#load "belt-net.coax";
+#load "belt/belt-net.coax";
 #load "../../metaverse-engine/core/budget.coax";
 #load "../../metaverse-engine/core/loop.coax";      // the lockstep ticks' clock (belt-net.coax) and the battle's (tac_clock)
 

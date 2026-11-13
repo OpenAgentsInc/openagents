@@ -82,7 +82,7 @@ from visual-exercise availability. The primary station map is in
 `map_station`; each chapter has one primary station, including cross-cutting
 verification chapters at Node. The generated table is the complete mapping.
 
-[`bitcoin-lab.coax`](../../apps/openagents-web/bitcoin-lab.coax) embeds the
+[`bitcoin-lab.coax`](../../apps/openagents-web/old/labs/bitcoin-lab.coax) embeds the
 existing `metaverse/gridwalk.coax` session: the OpenAgents Metaverse Engine's walker, 1/64-second clock,
 input buffer, thumbs, follow camera and replay record. It does not run a
 second movement loop. The Metaverse Engine's HUD stroke writer and UI tree supply drawing,

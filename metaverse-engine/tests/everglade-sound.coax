@@ -1,7 +1,7 @@
 // Everglade's sound in the browser (GitHub #12751, metaverse-engine/book/ch068): the page's own sounds as the
 // host plays them, in headless, muted Chrome, never to speakers.
 //   1. Audio starts on a gesture, and the page hands the host every effect it rendered
-//      (apps/openagents-web/everglade-sound.coax, metaverse-engine/audio/sfx.coax), each one decoding.
+//      (apps/openagents-web/old/v1/everglade-sound.coax, metaverse-engine/audio/sfx.coax), each one decoding.
 //   2. Each spell kind (the wire's slot: the druid's, the abilities', the Warlock's and the
 //      raid's) cast at a point plays its own cast and impact, by this file's own table.
 //   3. Distance: the same impact 5, 10 and 20 m ahead plays at 1, 1/2 and 1/4 the gain, later
@@ -98,7 +98,7 @@ es_stone :: (lines: string) -> bool { return es_find(lines, "wall-hit").ok || es
 #test "a stone is a wall's or a tower's" {
   #assert es_stone("step-1 0.1 0|wall-hit 0.3 0.2 0.04 9000") && es_stone("tower-hit 0.5 0") && !es_stone("hit 0.5 0");
 }
-ES_PROBE_BREAK :: -2000;   // apps/openagents-web/everglade-sound.coax EGS_PROBE_BREAK
+ES_PROBE_BREAK :: -2000;   // apps/openagents-web/old/v1/everglade-sound.coax EGS_PROBE_BREAK
 
 // The host's voice (coaxial.audio.voice) offline, a tone of `hz` with and without a 1 kHz lowpass:
 // "RATIO" of their RMS after its first tenth of a second, for 100 Hz and 6 kHz.

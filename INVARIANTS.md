@@ -6806,7 +6806,7 @@ Other-target Vex remains pending. The existing battle lifecycle retires timed
 records; the roll policy does not invent a second expiry clock.
 
 Checks: `rules/srd/effect-roll-checks.coax`, the hotbar regression in
-`apps/openagents-web/fivebar-test.coax`, and the scoped zero-survivor authority
+`apps/openagents-web/old/v1/fivebar-test.coax`, and the scoped zero-survivor authority
 gate. Exact native/evaluator scope and remaining #13039 requirements are in
 `docs/verification/srd-effect-rolls-2026-11-08/README.md`.
 
@@ -7988,8 +7988,8 @@ Model boundary (#13422): a WorldBuilder world (`/create-world`) is not a world
 with an ID. It is kept in the visitor's browser, no server stores or trusts
 it, and it has no route. Its page takes the same `world.edit.v1` edits and
 batches, fenced by its own revision and checked by its own Coax
-(`apps/openagents-web/worldbuilder-world.coax`: `wbe_thing`, `wbe_dab`,
-`wbe_batch`). Check: `coax/bin/coax test apps/openagents-web/worldbuilder-plan.coax`
+(`apps/openagents-web/worldbuilder/worldbuilder-world.coax`: `wbe_thing`, `wbe_dab`,
+`wbe_batch`). Check: `coax/bin/coax test apps/openagents-web/worldbuilder/worldbuilder-plan.coax`
 and `apps/openagents-web/worldbuilder.coax`. A WorldBuilder world that is ever
 stored on a server becomes a world with an ID and takes every rule above.
 

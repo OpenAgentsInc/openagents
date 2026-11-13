@@ -2,7 +2,7 @@
 
 > **Status: unimplemented — design draft.** The OpenAgents Metaverse Engine's space combat today
 > subtracts hull points (`tac_hurt` in
-> [`apps/openagents-web/belt-tactical.coax`](../../apps/openagents-web/belt-tactical.coax)).
+> [`apps/openagents-web/belt/belt-tactical.coax`](../../apps/openagents-web/belt/belt-tactical.coax)).
 > This chapter plans hypervelocity hits as calibrated penetration through a
 > ship's component graph. Nothing here runs yet.
 

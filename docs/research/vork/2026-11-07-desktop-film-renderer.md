@@ -21,7 +21,7 @@ Every movie we make is a screenshot of the real-time frame.
 | Gameplay clips (`coax/web/clip.coax`, `docs/metaverse/clips.md`) | Headless Chrome with WebGPU; `host.js` clip mode steps one fixed game step a frame; PNGs; ffmpeg | The live WebGPU shaders at the live quality rung, 8-bit PNG |
 | Animation Lab films (`metaverse-engine/tools/anim-scene-play.coax`, `docs/metaverse/anim-scenes-v1.md`) | Headless muted Chrome over CDP at 960×540; `animFrame(frame,fps)` then a screenshot; per-frame RGBA hashes; ffmpeg H.264 and AAC; at most 60 s a call | Neutral inspection shading (Lambert plus ambient, no shadows); 1.62 s per film second (A5) |
 | Echo in Everglade (`coax/web/everglade-echo-frames.coax`) | 1920×1080 at 24 fps from the live page | Live pass; the 60 FPS gate is currently missed (#12984) |
-| Raid promo (`?raid=preview&cine=1`, `apps/openagents-web/everglade-raid-preview.coax`) | Keyed camera flight, captured as a clip | Same as gameplay clips |
+| Raid promo (`?raid=preview&cine=1`, `apps/openagents-web/old/v1/everglade-raid-preview.coax`) | Keyed camera flight, captured as a clip | Same as gameplay clips |
 
 The determinism these give is already valuable: Animation Lab's A5
 rendered the same film twice and got 720 identical frame hashes and the

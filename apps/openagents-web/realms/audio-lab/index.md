@@ -15,7 +15,7 @@ A Metaverse page at https://openagents.com/worlds/audio-lab, not listed on the w
 
 ## How it is made
 
-- `apps/openagents-web/audiolab.coax` is the page, and `audiolab-face.c` binds it for the browser.
+- `apps/openagents-web/old/labs/audiolab.coax` is the page, and `audiolab-face.c` binds it for the browser.
 - `metaverse-engine/audio/everglade-mix.coax` holds each sound's voice limit, level and ducking, and turns a cue into the host's line. Everglade and the raid mix both play through it.
 - `metaverse-engine/audio/mix.coax` is the mixer: voice limits that replace the quietest or farthest voice, pitch and gain variation, a priority for your own sounds, the bus limiter, ducking and the room's reverb.
 - `metaverse-engine/audio/sfx-tool.coax` generates, trims and normalizes the candidates, and `metaverse-engine/audio/measure.coax` measures them. `metaverse-engine/audio/SOURCES.md` lists where each sound comes from and its licence.

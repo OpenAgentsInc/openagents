@@ -131,7 +131,7 @@ exp_showcase_site :: (tier:int,stage:int)->int {
  return EXP_SHOWCASE_SITE+1;
 }
 // Every house has a sign in front of it, right of its doorway and reaching 0.4 m past its side: a squared post and a board that the
-// showcase sets the house's label on (apps/openagents-web/fivelab.coax lab_showcase_labels).
+// showcase sets the house's label on (apps/openagents-web/old/experimental/fivelab.coax lab_showcase_labels).
 // exp_sign is the board's middle in the house's frame (x, height, z); exp_sign_part is the post
 // (k 0) and the board (k 1), engine build-site parts that every stage shows.
 EXP_SIGN_W :: 2.0;     // the board's width

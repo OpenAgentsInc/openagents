@@ -6,7 +6,7 @@
 // rocky outcrops, the lawns and the landmarks below stand where they do in
 // the real park; the paths and drives are forest.coax's. The page
 // (apps/openagents-web/fairy.coax) carves the lakes and raises the rocks in
-// its ground, and apps/openagents-web/fairypark.coax draws the rest in
+// its ground, and apps/openagents-web/fairy/fairypark.coax draws the rest in
 // simple low-poly shapes.
 //   coax/bin/coax test apps/openagents-web/fairy.coax   (this file's checks run with the page's)
 

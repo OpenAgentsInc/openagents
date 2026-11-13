@@ -79,7 +79,7 @@ Non-goals for now: trading, an economy, PvP by default, and voice chat.
   0074 and 0108). A room holds 16 (`verse.room_max()`), and anyone seen in
   the last 6 s is present (`verse.room_present_ms()`). The answer carries the
   others and the chat lines since `after`.
-- **Drawing: the "cone".** `room_draw` (`apps/openagents-web/everglade-room.coax:62`)
+- **Drawing: the "cone".** `room_draw` (`apps/openagents-web/old/v1/everglade-room.coax:62`)
   draws each of the nearest 8 others (`ROOM_DRAWN`) within 80 m (`ROOM_NEAR`)
   as four engine shapes: a box (legs), a green cylinder (cloak), a sphere
   (head) and a green **cone** (hood). This is the simple figure the owner saw.

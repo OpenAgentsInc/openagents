@@ -70,7 +70,7 @@ implementations beside the chat's (there is one now: see Phase 5):
 | `metaverse-engine/ui/` (hud, draw, tree, feed, hud-style, arwes; 4,130 lines) | Realm HUDs | A second vertex format (12 floats, strokes) and its own text. It has the right ideas: `hud-style.coax` separates tokens from drawers, and `tree.coax` is one table for drawing, hit tests, focus and accessibility |
 | `everglade/hud/`, `apps/everglade-desktop/text.coax`, `golem-board.coax` | Everglade's HUD and the Workshop's boards | A third text path with its own atlas layout |
 | `coax/lib/tui/tui.coax` | Coder's terminal | Its own composer. Its Markdown reading is `core/markdown.coax`'s since 2026-11-10; it still writes the style sequences itself |
-| `apps/openagents-web/chat-hud.coax` | The old HUD chat (the Mac app still builds it) | Its Markdown reading is `core/markdown.coax`'s since 2026-11-10. `apps/openagents-cli/project-page.coax`, listed here at first, writes Markdown and never parsed it |
+| `apps/openagents-web/chat/chat-hud.coax` | The old HUD chat (the Mac app still builds it) | Its Markdown reading is `core/markdown.coax`'s since 2026-11-10. `apps/openagents-cli/project-page.coax`, listed here at first, writes Markdown and never parsed it |
 
 ## The five layers
 
@@ -369,7 +369,7 @@ phase with no implementer by its date is cut from this list, not left open.
    `backend/gpu.coax` writes its vertices and `backend/gpu-shader.coax` is
    the shader. `zeron/gpui.coax` and `zeron/markdown.coax` are now only ways
    in to those files. Chat's frames are pinned by
-   `apps/openagents-web/chat-frames.coax` (eight scenes of `/chat`, hashed
+   `apps/openagents-web/chat/chat-frames.coax` (eight scenes of `/chat`, hashed
    vertex buffers): the same input gives the same floats as before the
    split. Markdown is `kit/markdown.coax`: the transcript's Markdown
    blocks (paragraphs, lists, quotes, code blocks, tables) are laid out and

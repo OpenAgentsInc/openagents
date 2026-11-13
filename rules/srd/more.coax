@@ -30,7 +30,7 @@ SP_WATER_BREATHING :: 65; SP_METEOR_SWARM :: 66;
 SP_BLIGHT :: 67; SP_CIRCLE_OF_DEATH :: 68; SP_FINGER_OF_DEATH :: 69; SP_DIMENSION_DOOR :: 70;
 // a Warlock's Reaction (battle.coax rs_hellish_rebuke runs it: a Reaction isn't cast on a turn)
 SP_HELLISH_REBUKE :: 71;
-// the Cultist Raid's (apps/openagents-web/everglade-raid-tactics.coax rt_spell)
+// the Cultist Raid's (apps/openagents-web/old/v1/everglade-raid-tactics.coax rt_spell)
 SP_BURNING_HANDS :: 72; SP_LIGHTNING_BOLT :: 73;
 // the cult's buffs and debuffs in a raid (#12771): the Cult Priests' (Clerics'), the Warlocks' and the Fanatics'
 SP_BLESS :: 74; SP_BANE :: 75; SP_SHIELD_OF_FAITH :: 76; SP_COMMAND :: 77;

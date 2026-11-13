@@ -58,7 +58,7 @@ order.
 
 ## What exists today
 
-- [apps/openagents-web/everglade-lod.coax](../../apps/openagents-web/everglade-lod.coax):
+- [apps/openagents-web/old/v1/everglade-lod.coax](../../apps/openagents-web/old/v1/everglade-lod.coax):
   small props drawn within `LOD_NEAR` 52 m, shrubs within `LOD_FAR` 72 m, a
   phone at 0.7 of those, re-chosen only after the eye moves `LOD_STEP`
   2.5 m.

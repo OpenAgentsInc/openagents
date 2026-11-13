@@ -31,4 +31,4 @@ The demo compares supplied fields only. It does not verify an event, reserve rep
 
 - [docs/verification/2026-10-29-nip98-observation.md](https://github.com/OpenAgentsInc/openagents/blob/main/docs/verification/2026-10-29-nip98-observation.md)
 
-The page examples are in [nip-guide-observe.coax](https://github.com/OpenAgentsInc/openagents/blob/main/apps/openagents-web/nip-guide-observe.coax). Relay-only examples inspect NIP-11 metadata, not relay behavior. The catalog distinguishes native library, partial support and relay declarations.
+The page examples are in [nip-guide-observe.coax](https://github.com/OpenAgentsInc/openagents/blob/main/apps/openagents-web/nip/nip-guide-observe.coax). Relay-only examples inspect NIP-11 metadata, not relay behavior. The catalog distinguishes native library, partial support and relay declarations.

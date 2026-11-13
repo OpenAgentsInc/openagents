@@ -101,7 +101,7 @@ cp "$repo/apps/openagents-web/realms/everglade-experimental/assets/glade.pack.gz
 # The Archery Range: a module of its own (apps/openagents-web/archery-range.coax), the same passes, Experimental's pack.
 build_realm archery-range
 emit_page archery-range charactercreator charactercreator fivelab-fx fxg
-# The Bitcoin Lab: its own module (apps/openagents-web/bitcoin-lab-walk.coax), the same passes with its
+# The Bitcoin Lab: its own module (apps/openagents-web/old/labs/bitcoin-lab-walk.coax), the same passes with its
 # Grid and stations in the particle pass (bitcoin-lab-fx), Experimental's pack.
 build_realm bitcoin-lab-walk
 emit_page bitcoin-lab-walk charactercreator charactercreator bitcoin-lab-fx qfx

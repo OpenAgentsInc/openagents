@@ -15,7 +15,7 @@ cxproc_pid_signal :: (pid: int, signal: int) -> int #foreign #effects(all);
 cxproc_pid_alive :: (pid: int) -> int #foreign #effects(all);
 cxproc_cmdline :: (pid: int, out: []u8) -> int #foreign #effects(all);
 
-FE_SOURCE :: "apps/openagents-web/everglade-doors.coax";
+FE_SOURCE :: "apps/openagents-web/old/v1/everglade-doors.coax";
 FE_NAME :: "door_ease";
 FE_CONSTANTS :: [3]string.["lo", "hi", "clamp"];
 FE_FILE :: 33554432;

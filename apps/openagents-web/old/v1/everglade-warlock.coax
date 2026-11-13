@@ -1,0 +1,621 @@
+// The Warlock in Everglade (CHARACTER: WARLOCK, or ?class=warlock): a level 17 Fiend Warlock of the
+// SRD 5.2.1 with its own bar of seven slots in place of the druid's. The SRD 5e engine rolls each
+// cast (fivebar.coax fb_warlock_bar and the room server's everglade5e-room-rules.coax, the local
+// host's offline); this file is the page's side of it:
+//   - the bar: Eldritch Blast, Fireball, Blight, Circle of Death, Finger of Death, Dimension Door
+//     and the rebuild, on keys 1 to 6 and R, each aimed as the druid's spells are; a cast on its
+//     way shows on its icon as a sweep, and a finger held on a slot (a mouse resting on it) shows
+//     its card;
+//   - what each does to the town: Eldritch Blast's beams break what they strike (Force), Fireball
+//     breaks and sets alight what it reaches (Fire), Dimension Door puts you where you aimed, a
+//     rooftop too; the necrotic spells harm creatures only, as the SRD has them. In a room the
+//     server's world runs these (everglade-watch.coax everglade_room_strike) and the pages play
+//     the looks (everglade-net.coax);
+//   - the looks: the shared Warlock recipes (metaverse-engine/fx/warlock.coax, through metaverse-engine/fx/puff.coax),
+//     which the 5E Lab plays too, drawn as Everglade's own puffs (everglade-spells.coax sp_fx) and
+//     thinned by the graphics quality as they are;
+//   - its Zombies: Finger of Death's dead, risen, the room's creatures (form WL_FORM_ZOMBIE), drawn
+//     here.
+// Hunger of Hadar is not in the SRD 5.2.1 and Create Undead takes a minute to cast, so neither is on
+// the bar: Finger of Death's Zombies are the Warlock's minions.
+//
+// This work includes material from the System Reference Document 5.2.1 ("SRD 5.2.1") by Wizards
+// of the Coast LLC, available at https://www.dndbeyond.com/srd. The SRD 5.2.1 is licensed under the
+// Creative Commons Attribution 4.0 International License, available at
+// https://creativecommons.org/licenses/by/4.0/legalcode.
+
+#load "../../../../metaverse-engine/fx/puff.coax";
+
+WL_SLOT0 :: 64;            // fivebar.coax FB_WL0: slot k of the Warlock's bar is WL_SLOT0 + k on the wire
+WL_SLOTS :: 9;
+WL_BLAST :: 0; WL_FIREBALL :: 1; WL_BLIGHT :: 2; WL_CIRCLE :: 3; WL_FINGER :: 4; WL_DOOR :: 5; WL_REBUILD :: 6;
+WL_CHILL :: 7; WL_HEX :: 8;   // the SRD Warlock's level 1 spells (a character's first kit), keys 7 and 8
+// the Cultist Raid's other spells, looks only a raider casts (everglade-raid-spells.coax RT_K_*): the
+// room sends them as these numbers (e rc) and the preview plays them the same
+WL_FIRE_BOLT :: 9; WL_FROST :: 10; WL_BURNING :: 11; WL_LIGHTNING :: 12; WL_REBUKE :: 13; WL_HOLD :: 14;
+// its buffs and debuffs (#12771)
+WL_BLESS :: 15; WL_BANE :: 16; WL_FAITH :: 17; WL_FALSE_LIFE :: 18; WL_COMMAND :: 19; WL_ENFEEBLE :: 20; WL_SACRED :: 21;
+WL_LOOKS :: 22;
+// each slot's seconds from press to strike (fivebar.coax fb_warlock_bar), and its range in metres
+// (Chill Touch's is Touch: within reach); the raid's looks after
+WL_DELAY :: [22] f32.[0.35, 0.9, 0.6, 0.9, 0.5, 0.4, 0, 0.4, 0.3,   0.45, 0.3, 0.25, 0.5, 0.1, 0.4,   0.4, 0.4, 0.3, 0.3, 0.2, 0.35, 0.4];
+WL_RANGE :: [22] f32.[36.6, 45.7, 9.1, 45.7, 18.3, 152.4, 0, 1.5, 27.4,   36.6, 18.3, 4.6, 30.5, 18.3, 18.3,   9.1, 9.1, 18.3, 0, 18.3, 18.3, 18.3];
+// what it covers where it lands (m): a beam's strike, the 20-foot and 60-foot spheres, a Fire
+// Bolt's strike, Burning Hands' 15 feet, where a Lightning Bolt ends
+WL_AREA :: [22] f32.[0.7, 6.1, 0.8, 18.3, 0.8, 0.9, 0, 0.6, 0.8,   0.7, 0.6, 4.6, 1.2, 0.8, 0.8,   0.8, 0.8, 0.8, 0.8, 0.8, 0.6, 0.8];
+// the raid looks' colours
+WL_FIRE :: FxV.{x = 1.0, y = 0.6, z = 0.2};
+WL_ICE :: FxV.{x = 0.6, y = 0.88, z = 1.0};
+WL_SPARK :: FxV.{x = 0.8, y = 0.88, z = 1.0};
+WL_GREEN_FIRE :: FxV.{x = 0.35, y = 1.0, z = 0.4};
+WL_GOLD :: FxV.{x = 1.0, y = 0.85, z = 0.4};
+WL_HOLY :: FxV.{x = 1.0, y = 0.94, z = 0.66};      // Bless, Shield of Faith, Sacred Flame
+WL_BANE_COL :: FxV.{x = 0.55, y = 0.2, z = 0.62};  // Bane, Command
+WL_WITHER :: FxV.{x = 0.32, y = 0.3, z = 0.36};    // Ray of Enfeeblement
+WL_CRIMSON :: FxV.{x = 0.86, y = 0.16, z = 0.22};  // False Life
+// the bar's order, left to right: the spells, then the rebuild last
+WL_ORDER :: [9] int.[0, 1, 2, 3, 4, 5, 7, 8, 6];
+// Whether slot k is one of the Warlock's spells (the rebuild is the realm's).
+wl_spell :: (k: int) -> bool { return k >= 0 && k < WL_SLOTS && k != WL_REBUILD; }
+// Whether k is a look a page plays: one of the bar's spells or the raid's.
+wl_look :: (k: int) -> bool { return wl_spell(k) || (k >= WL_FIRE_BOLT && k < WL_LOOKS); }
+WL_BEAMS :: 4;             // Eldritch Blast at level 17
+WL_FORM_ZOMBIE :: 9;       // everglade5e-room-rules.coax E5RR_FORM_ZOMBIE
+WL_SHOTS :: 24;
+
+WlShot :: struct { live: bool; k: int; from: Point; at: Point; t: f32; seed: int; remote: bool; mine: bool; beams: int; big: f32; }   // beams: Eldritch Blast's at the caster's level (0: yours, WL_BEAMS)
+Warlock :: struct {
+  on: bool;                     // you play the Warlock
+  armed: int = -1;              // the slot you aim with, -1 none
+  boxes: [WL_SLOTS] Box;
+  cast_t: [WL_SLOTS] f32;       // the clock when each was last cast (its sweep)
+  shots: [WL_SHOTS] WlShot;
+  clock: f32;
+  fx: [1] FxPuffs;              // the looks (metaverse-engine/fx/puff.coax)
+  finger: int = -1; held: int = -1; held_t: f64;
+  down: bool; down_x: f32; down_y: f32; down_id: int; down_touch: bool;
+  risen: [8] int; risen_n: int;  // the Zombies whose rising was played
+  at: Point;                    // the last cast's point (everglade5e.coax: where the engine resolves it)
+  // Dimension Door puts you at a spawn of its own for the face's next frame (everglade_warp), then
+  // the realm's spawn is back
+  door_on: bool; kept_spawn: Point; kept_face: f32;
+}
+
+wl_on :: (s: [] Everglade) -> bool { return s[0].wl.on; }
+// The class (0 the druid, 1 the Warlock), as the CHARACTER picker and ?class= set it.
+wl_set :: (s: [] Everglade, warlock: bool) {
+  if s[0].wl.on == warlock { return; }
+  s[0].wl.on = warlock; s[0].wl.armed = -1;
+  s[0].sp.armed = -1; s[0].sp.casting = -1;
+  if net_on(s) && net_of(s)[0].state == NET_OPEN { net_of(s)[0].hello_due = true; }   // the room hears the class
+}
+// The class the page rules play: everglade-classes.coax everglade_class.
+wl_v :: (p: Point) -> FxV { return fxp_v(p.x, p.y, p.z); }
+wl_hand :: (s: [] Everglade) -> Point { f := ab_you(s); return v3(f.x + sin(s[0].face) * 0.4, f.y + 1.45, f.z + cos(s[0].face) * 0.4); }
+
+// ---- keys and the pointer
+
+// Keys 1 to 8 pick a spell the character has (again puts it away), R rebuilds, Esc puts it away; the
+// druid's other keys on the bar's rows do nothing for the Warlock.
+wl_key :: (s: [] Everglade, key: int, mods: int) -> bool {
+  if !wl_on(s) { return false; }
+  p := sp_key_place(key, mods);
+  q := ifx p >= 0 && p < WL_REBUILD then p else ifx p == 6 then WL_CHILL else ifx p == 7 then WL_HEX else -1;
+  if q >= 0 && wl_has(s, q) { wl_press(s, q); return true; }
+  if p >= 0 { return true; }
+  if key == 'r' || key == 'R' { wl_press(s, WL_REBUILD); return true; }
+  if key == KEY_ESCAPE && s[0].wl.armed >= 0 { s[0].wl.armed = -1; return true; }
+  return false;
+}
+wl_press :: (s: [] Everglade, k: int) {
+  s[0].sp.open = false;
+  if k == WL_REBUILD { mend_press(s, WL_SLOT0 + WL_REBUILD); return; }   // R: Repair (everglade-repair.coax)
+  s[0].wl.armed = ifx s[0].wl.armed == k then -1 else k;
+}
+// A press on a slot acts at once (a finger held on it shows its card till it lifts); with a spell
+// picked, a click or a tap casts where it points; a drag still turns the camera.
+wl_pointer :: (s: [] Everglade, x: f32, y: f32, phase: int, kind: int, id: int) -> bool {
+  if !wl_on(s) { return false; }
+  w := s[0].wl;
+  k := hi(s[0].dpr, 0.5);
+  if phase == 0 {
+    for b: 0..<WL_SLOTS {
+      if wl_has(s, b) && in_box(w.boxes[b], x, y) {
+        s[0].wl.finger = id; s[0].wl.held = -1;
+        wl_press(s, b);
+        if kind != 0 { s[0].wl.held = b; s[0].wl.held_t = s[0].time; }
+        return true;
+      }
+    }
+  }
+  if id == w.finger && w.finger >= 0 {
+    if phase >= 2 { s[0].wl.finger = -1; s[0].wl.held = -1; }
+    return true;
+  }
+  if w.armed < 0 { return false; }
+  if phase == 0 { s[0].wl.down = true; s[0].wl.down_x = x; s[0].wl.down_y = y; s[0].wl.down_id = id; s[0].wl.down_touch = kind != 0; return kind != 0; }
+  if phase == 1 { if kind != 0 && id == w.down_id { s[0].sp.px = x; s[0].sp.py = y; return true; } return false; }
+  if id != w.down_id || !w.down { return false; }
+  s[0].wl.down = false;
+  moved := abs(x - w.down_x) + abs(y - w.down_y);
+  if phase == 2 && moved < (ifx kind != 0 then 24.0f32 else 8.0f32) * k {
+    s[0].sp.px = x; s[0].sp.py = y;
+    sp_aim(s);
+    wl_cast(s);
+  }
+  return kind != 0;
+}
+
+// ---- casting
+
+// The aimed slot cast at the aim: in a room it goes to the server, which rolls it and has every page
+// play it (everglade-net.coax); here the engine rolls it (everglade5e.coax) and this page plays it.
+wl_cast :: (s: [] Everglade) {
+  k := s[0].wl.armed;
+  if !wl_spell(k) { return; }
+  if !s[0].sp.aim_ok { cr_refused(s, WL_SLOT0 + k, CR_AIM); return; }
+  at := s[0].sp.aim;
+  if flat_gap(at, s[0].feet) > WL_RANGE[k] + f32(CR_SLACK) { cr_refused(s, WL_SLOT0 + k, CR_RANGE); return; }
+  s[0].wl.cast_t[k] = s[0].wl.clock;
+  s[0].wl.at = at;
+  rangers_you_cast(s);
+  if net_live(s) {
+    _ := net_cast(s, WL_SLOT0 + k, at, -1);
+    return;
+  }
+  egt_note(s, WL_SLOT0 + k, false);   // a page with no room (a golden one): its look here
+  seed := cast(int) ((srd_next(s[0].sp.dice[..]) >> 34) | 1);
+  wl_shoot(s, k, wl_hand(s), at, seed, false, true);
+}
+// A cast on its way: its look (and, unless `remote`, what it does to the town) when its time comes.
+// Another caster's cast, a raider's (everglade-raid-preview.coax): `beams` Eldritch Blast beams at its level.
+// A Fireball whose bead has flown already (the raid's arc, everglade-raid-preview.coax), beams < 0:
+// it lands now, its burst `big` times the hand's. Eldritch Blast's beams are drawn `big` too, to read
+// from far off.
+// `harm` false: the look alone (a cast at a creature leaves the town be).
+wl_shoot_n :: (s: [] Everglade, k: int, from: Point, at: Point, seed: int, beams: int, big: f32, harm: bool) {
+  if k == WL_FIREBALL && beams < 0 {
+    q := 0;
+    for i: 0..<WL_SHOTS { if !s[0].wl.shots[i].live { q = i; break; } if s[0].wl.shots[i].t > s[0].wl.shots[q].t { q = i; } }
+    s[0].wl.shots[q] = WlShot.{live = true, k = k, from = from, at = at, t = -0.001, seed = seed, big = big};
+    now := s[0].wl.clock;
+    c := FxCause.{recipe = FXR_FIREBALL, seed = wl_seed(seed, 0), t0 = now, from = wl_v(add(at, v3(0, 0.6, 0))), to = wl_v(at),
+                  col = fxp_v(1, 0.6, 0.2), big = 1.4 * big, reach = WL_AREA[k] * big};
+    _ := fxp_start(s[0].wl.fx[..], c, now);
+    return;
+  }
+  wl_shoot(s, k, from, at, seed, !harm, false);
+  for i: 0..<WL_SHOTS { w := s[0].wl.shots[i]; if w.live && w.seed == seed && w.k == k { s[0].wl.shots[i].beams = beams; s[0].wl.shots[i].big = big; } }
+}
+wl_shoot :: (s: [] Everglade, k: int, from: Point, at: Point, seed: int, remote: bool, mine: bool) {
+  q := 0;
+  for i: 0..<WL_SHOTS { if !s[0].wl.shots[i].live { q = i; break; } if s[0].wl.shots[i].t > s[0].wl.shots[q].t { q = i; } }
+  s[0].wl.shots[q] = WlShot.{live = true, k = k, from = from, at = at, t = -WL_DELAY[k], seed = seed, remote = remote, mine = mine};
+  egs_cast(s, egs_wl_look(k), from, at, WL_DELAY[k]);   // its cast and flight (everglade-sound.coax)
+  // the fireball's bead is on its way from the hand already
+  if k == WL_FIREBALL {
+    c := FxCause.{recipe = FXR_FIREBALL, seed = wl_seed(seed, 0), t0 = s[0].wl.clock + hi(WL_DELAY[k] - fxp_flight(FxCause.{from = wl_v(from), to = wl_v(at)}, 16, 0.3, 1.0), 0),
+                  from = wl_v(from), to = wl_v(at), col = fxp_v(1, 0.6, 0.2), big = 1.4, reach = WL_AREA[k]};
+    _ := fxp_start(s[0].wl.fx[..], c, s[0].wl.clock);
+  }
+  // a Fire Bolt's mote flies from the hand to land on time, too
+  if k == WL_FIRE_BOLT {
+    c := FxCause.{recipe = FXR_FIREBOLT, seed = wl_seed(seed, 0), from = wl_v(from), to = wl_v(at), col = WL_FIRE, big = 1.9, reach = 1};
+    c.t0 = s[0].wl.clock + hi(WL_DELAY[k] - fxp_flight(c, 22, 0.15, 0.8), 0);
+    _ := fxp_start(s[0].wl.fx[..], c, s[0].wl.clock);
+  }
+}
+wl_seed :: (seed: int, i: int) -> f32 { return f32((seed * 7 + i * 131) % 9973) * 0.013 + 0.5; }
+// The room server's cast (e cast) of the Warlock's slot k by another page or yours: its look.
+wl_play :: (s: [] Everglade, k: int, from: Point, at: Point, seed: int, mine: bool) {
+  if !wl_look(k) { return; }
+  wl_shoot(s, k, from, at, seed, true, mine);
+  if mine && k == WL_DOOR { s[0].wl.at = at; }
+}
+// The server's world: a strike of the Warlock's slot k (everglade_room_strike), what it does to the town.
+wl_strike :: (s: [] Everglade, by: int, k: int, from: Point, at: Point, seed: int) {
+  if !wl_look(k) { return; }
+  s[0].wv.room_hit = at; s[0].wv.room_by = by;
+  wl_shoot(s, k, from, at, seed, false, false);
+}
+
+// Each frame (the page's and the server world's): the casts on their way land.
+wl_step :: (s: [] Everglade, dt: f32) {
+  s[0].wl.clock += dt;
+  for i: 0..<WL_SHOTS {
+    if !s[0].wl.shots[i].live { continue; }
+    was := s[0].wl.shots[i].t;
+    s[0].wl.shots[i].t += dt;
+    if was < 0 && s[0].wl.shots[i].t >= 0 { wl_land(s, s[0].wl.shots[i]); s[0].wl.shots[i].live = false; }
+  }
+}
+wl_land :: (s: [] Everglade, c: WlShot) {
+  p := s[0].wl.fx[..];
+  now := s[0].wl.clock;
+  k := c.k;
+  from := wl_v(wl_path_from(c)); to := wl_v(c.at);
+  // its impact: each of Eldritch Blast's beams where and when it strikes (everglade-sound.coax)
+  if k == WL_BLAST { for b: 0..<(ifx c.beams > 0 then c.beams else WL_BEAMS) { egs_hit(s, egs_wl_look(k), wl_beam_at(c, b), f32(b) * 0.13); } }
+  else { egs_hit(s, egs_wl_look(k), c.at, 0); }
+  if k == WL_BLAST {
+    // four beams, each its own attack: at the point, a little apart, a moment apart
+    for b: 0..<(ifx c.beams > 0 then c.beams else WL_BEAMS) {
+      j := wl_beam_at(c, b);
+      _ := fxp_start(p, FxCause.{recipe = FXR_ELDRITCH, seed = wl_seed(c.seed, b), t0 = now + f32(b) * 0.13, from = from, to = wl_v(j), col = FXW_VIOLET, big = 1.2 * (ifx c.big > 0 then c.big else 1.0f32), reach = 1}, now);
+      if !c.remote { wl_break(s, j, WL_AREA[k], wl_beam_damage(c.seed, b), false); }
+    }
+  }
+  if k == WL_FIREBALL && !c.remote { wl_break(s, c.at, WL_AREA[k], wl_fire_damage(c.seed), true); }
+  if k == WL_BLIGHT { _ := fxp_start(p, FxCause.{recipe = FXR_BLIGHT, seed = wl_seed(c.seed, 0), t0 = now, from = from, to = to, col = FXW_NECRO, big = 1, reach = 1}, now); }
+  if k == WL_CIRCLE { _ := fxp_start(p, FxCause.{recipe = FXR_NECRO_RING, seed = wl_seed(c.seed, 0), t0 = now, from = to, to = to, col = FXW_NECRO, big = 1, reach = WL_AREA[k]}, now); }
+  if k == WL_FINGER { _ := fxp_start(p, FxCause.{recipe = FXR_SOULFIRE, seed = wl_seed(c.seed, 0), t0 = now, from = from, to = to, col = FXW_NECRO, big = 1, reach = 1}, now); }
+  // Chill Touch: the grave's cold off your hand onto what you touch; Hex: its mark over the cursed
+  if k == WL_CHILL { _ := fxp_start(p, FxCause.{recipe = FXR_HIT, seed = wl_seed(c.seed, 0), t0 = now, from = from, to = to, col = FXW_NECRO, big = 0.7, reach = 1}, now); }
+  if k == WL_HEX { _ := fxp_start(p, FxCause.{recipe = FXR_MARK, seed = wl_seed(c.seed, 0), t0 = now, from = from, to = to, col = FXW_VIOLET, big = 1, reach = 1}, now); }
+  wl_land_raid(s, c, from, to);
+  if k == WL_DOOR {
+    feet := ifx c.mine then ab_you(s) else v3(c.from.x, c.from.y - 1.45, c.from.z);
+    _ := fxp_start(p, FxCause.{recipe = FXR_PORTAL, seed = wl_seed(c.seed, 0), t0 = now, from = wl_v(feet), to = to, col = FXW_VIOLET, big = 1, reach = 1}, now);
+    // you: where you aimed (the server's world puts your seat there too, room-world.c world_strike)
+    if c.mine { wl_teleport(s, c.at); }
+  }
+  // a crime the town hears, for what you did on this page (in a room the server's town hears it)
+  if !c.remote && c.mine && !s[0].wv.net && (k == WL_BLAST || k == WL_FIREBALL) {
+    w := watch_w(s);
+    if w[0].on { _ := watch_crime(w, c.at, ifx k == WL_FIREBALL then 85.0f32 else 50.0f32, ab_you(s), s[0].boxes[..], s[0].box_n, s[0].heights[..]); }
+  }
+}
+// The raid's looks (WL_FIRE_BOLT and up), and what those that strike objects do to the town.
+wl_land_raid :: (s: [] Everglade, c: WlShot, from: FxV, to: FxV) {
+  p := s[0].wl.fx[..];
+  now := s[0].wl.clock;
+  k := c.k;
+  big := ifx c.big > 0 then c.big else 1.0f32;
+  // Fire Bolt: its mote has flown (wl_shoot); 1d10 Fire to what it strikes
+  if k == WL_FIRE_BOLT && !c.remote { wl_break(s, c.at, WL_AREA[k], wl_bolt_damage(c.seed), false); }
+  // Ray of Frost: a pale blue ray, frost thrown off where it strikes
+  if k == WL_FROST {
+    _ := fxp_start(p, FxCause.{recipe = FXR_STREAK, seed = wl_seed(c.seed, 0), t0 = now, from = from, to = to, col = WL_ICE, big = 1.1 * big, reach = 1}, now);
+    _ = fxp_start(p, FxCause.{recipe = FXR_HIT, seed = wl_seed(c.seed, 1), t0 = now + 0.1, from = from, to = to, col = WL_ICE, big = 0.8, reach = 1}, now);
+  }
+  // Burning Hands: a fan of flame out of the hand, 15 feet across the way to the aim
+  if k == WL_BURNING {
+    d := fxp_sub(to, from); d.y = 0;
+    l := fxp_len(d);
+    if l < 0.01 { d = fxp_v(1, 0, 0); l = 1; }
+    ya := atan2(d.z / l, d.x / l);
+    for j: 0..<5 {
+      a := ya + (f32(j) - 2) * 0.24;
+      end := fxp_v(from.x + cos(a) * WL_AREA[k], hi(from.y - 0.7, 0.4), from.z + sin(a) * WL_AREA[k]);
+      _ := fxp_start(p, FxCause.{recipe = FXR_FIREBOLT, seed = wl_seed(c.seed, j), t0 = now + f32(j % 2) * 0.04, from = from, to = end, col = WL_FIRE, big = 0.9, reach = 1}, now);
+    }
+  }
+  // Lightning Bolt: a blinding stroke down its Line, crackling and a shock where it ends; 8d6
+  // Lightning (10d6 from Darian's 5th-level slot) to what it strikes
+  if k == WL_LIGHTNING {
+    // the stroke flickers: seven jagged beams over half a second, each its own path
+    for j: 0..<7 {
+      off := fxp_v(0, f32(j % 3) * 0.12, 0);
+      _ := fxp_start(p, FxCause.{recipe = FXR_STREAK, seed = wl_seed(c.seed, j), t0 = now + f32(j) * 0.07, from = fxp_add(from, off), to = fxp_add(to, off), col = WL_SPARK,
+                                 big = (ifx j % 2 == 0 then 4.0f32 else 2.6f32) * big, reach = 1}, now);
+    }
+    _ := fxp_start(p, FxCause.{recipe = FXR_ARCANE, seed = wl_seed(c.seed, 4), t0 = now, from = to, to = to, col = WL_SPARK, big = 1.4, reach = 1}, now);
+    _ = fxp_start(p, FxCause.{recipe = FXR_ARCANE, seed = wl_seed(c.seed, 6), t0 = now, from = from, to = fxp_add(from, fxp_v(0, -1.2, 0)), col = WL_SPARK, big = 0.8, reach = 1}, now);
+    _ = fxp_start(p, FxCause.{recipe = FXR_SHOCK, seed = wl_seed(c.seed, 5), t0 = now, from = to, to = to, col = WL_SPARK, big = 1, reach = 2}, now);
+    if !c.remote { wl_break(s, c.at, WL_AREA[k], wl_lightning_damage(c.seed), false); }
+  }
+  // Hellish Rebuke: green flames round the one that hurt the Warlock
+  if k == WL_REBUKE { _ := fxp_start(p, FxCause.{recipe = FXR_FIEND, seed = wl_seed(c.seed, 0), t0 = now, from = from, to = to, col = WL_GREEN_FIRE, big = 1, reach = 1}, now); }
+  // Hold Person: spectral bands closing round the one held
+  if k == WL_HOLD { _ := fxp_start(p, FxCause.{recipe = FXR_BIND, seed = wl_seed(c.seed, 0), t0 = now, from = from, to = to, col = WL_GOLD, big = 1, reach = 1}, now); }
+  // the buffs and debuffs, at the one they fall on (what stays on it is the creature's own look)
+  // Bless: holy motes rising round the blessed; Shield of Faith: a shimmering field round its friend
+  if k == WL_BLESS { _ := fxp_start(p, FxCause.{recipe = FXR_HEAL, seed = wl_seed(c.seed, 0), t0 = now, from = from, to = to, col = WL_HOLY, big = 1, reach = 1}, now); }
+  if k == WL_FAITH { _ := fxp_start(p, FxCause.{recipe = FXR_BARRIER, seed = wl_seed(c.seed, 0), t0 = now, from = from, to = to, col = WL_HOLY, big = 1, reach = 1}, now); }
+  // Bane: a dark wreath on the head of the cursed; Command: violet rings, the word's force
+  if k == WL_BANE { _ := fxp_start(p, FxCause.{recipe = FXR_VEIL, seed = wl_seed(c.seed, 0), t0 = now, from = from, to = to, col = WL_BANE_COL, big = 1, reach = 1}, now); }
+  if k == WL_COMMAND { _ := fxp_start(p, FxCause.{recipe = FXR_STUN, seed = wl_seed(c.seed, 0), t0 = now, from = from, to = to, col = WL_BANE_COL, big = 1, reach = 1}, now); }
+  // False Life: a dark aura, crimson motes drawn into the Warlock
+  if k == WL_FALSE_LIFE { _ := fxp_start(p, FxCause.{recipe = FXR_DRAIN, seed = wl_seed(c.seed, 0), t0 = now, from = to, to = to, col = WL_CRIMSON, big = 1, reach = 1}, now); }
+  // Ray of Enfeeblement: a grey-black ray, the strength drawn off where it strikes
+  if k == WL_ENFEEBLE {
+    _ := fxp_start(p, FxCause.{recipe = FXR_STREAK, seed = wl_seed(c.seed, 0), t0 = now, from = from, to = to, col = WL_WITHER, big = 1.1 * big, reach = 1}, now);
+    _ = fxp_start(p, FxCause.{recipe = FXR_BLIGHT, seed = wl_seed(c.seed, 1), t0 = now + 0.1, from = from, to = to, col = WL_WITHER, big = 0.7, reach = 1}, now);
+  }
+  // Sacred Flame: a column of radiant flame falling on its foe
+  if k == WL_SACRED { _ := fxp_start(p, FxCause.{recipe = FXR_COLUMN, seed = wl_seed(c.seed, 0), t0 = now, from = to, to = to, col = WL_HOLY, big = 1, reach = 1}, now); }
+}
+wl_bolt_damage :: (seed: int) -> SrdDamage {
+  d: [1] SrdDice; d[0] = srd_dice(cast(u64) (seed * 13 + 5));
+  return SrdDamage.{amount = srd_roll(d[..], 10), kind = DMG_FIRE};
+}
+wl_lightning_damage :: (seed: int) -> SrdDamage {
+  d: [1] SrdDice; d[0] = srd_dice(cast(u64) (seed * 19 + 7));
+  return SrdDamage.{amount = srd_sum(d[..], 10, 6), kind = DMG_LIGHTNING};
+}
+// Beam b's point: within a beam's reach of the aim, by the cast's seed.
+// Where a cast's drawn path starts: its caster's hand, or, when that is farther off than the spell's
+// range (a stale or far caster's), the range back along it from where it strikes. A beam is never
+// drawn longer than its spell reaches (Eldritch Blast's 120 feet), in a room or not.
+wl_path_from :: (c: WlShot) -> Point {
+  reach := WL_RANGE[c.k];
+  d := sub(c.from, c.at);
+  n := length(d);
+  if reach <= 0 || !(n > reach) { return c.from; }
+  return add(c.at, times(d, reach / n));
+}
+wl_beam_at :: (c: WlShot, b: int) -> Point {
+  if b == 0 { return c.at; }
+  a := f32(b) * 2.1 + wl_seed(c.seed, b);
+  r := 0.9 + 0.3 * f32(b % 2);   // apart enough that each is its own cause (puff.coax fxp_start merges within 0.8 m)
+  return v3(c.at.x + cos(a) * r, c.at.y + sin(a * 1.7) * r * 0.6, c.at.z + sin(a) * r);
+}
+// What the town's pieces take (SRD 5.2.1: an object takes a spell's damage): a beam's 1d10 + 5 Force
+// (Agonizing Blast's Charisma 20), Fireball's 10d6 Fire from a 5th-level slot.
+wl_beam_damage :: (seed: int, b: int) -> SrdDamage {
+  d: [1] SrdDice; d[0] = srd_dice(cast(u64) (seed * 31 + b * 7 + 1));
+  return SrdDamage.{amount = srd_roll(d[..], 10) + 5, kind = DMG_FORCE};
+}
+wl_fire_damage :: (seed: int) -> SrdDamage {
+  d: [1] SrdDice; d[0] = srd_dice(cast(u64) (seed * 17 + 3));
+  return SrdDamage.{amount = srd_sum(d[..], 10, 6), kind = DMG_FIRE};
+}
+// The town at `at`: every standing piece within `radius` takes `dmg`, full at its middle and none at
+// its edge (everglade-spells.coax sp_blast's rule); what breaks is thrown out; fire sets alight what
+// burns and the trees it reaches.
+wl_break :: (s: [] Everglade, at: Point, radius: f32, dmg: SrdDamage, fire: bool) {
+  if !sp_on(s) { return; }
+  w := sp_dm(s);
+  throw := ifx fire then 15.0f32 else 9.0f32;
+  demo_blast_begin(w, at, radius * 1.6, throw, v3(0, 0, 0));
+  for i: 0..<w[0].n {
+    p := w[0].pieces[i];
+    if p.state != DP_STANDING { continue; }
+    c := v3(clamp(at.x, p.x0, p.x1), clamp(at.y, p.y0, p.y1), clamp(at.z, p.z0, p.z1));
+    d := length(sub(c, at));
+    if d >= radius { continue; }
+    share := 1 - d / radius;
+    if demo_damage(w, i, srd_object_takes(sp_object(p.mesh), dmg, hi(share, 0.35)), at, throw * (0.4 + 0.6 * share)) { s[0].sp.broke += 1; }
+  }
+  _ := demo_settle(w);
+  demo_blast_end(w);
+  s[0].sp.walls_dirty = true;
+  if fire {
+    s[0].sp.dmg = dmg;
+    fi_blast(s, at, radius, 0, false);
+    _ = tf_blast(s, at, SP_METEOR);
+    fr_melt(s, at, radius);
+    sp_add_scorch(s, at, radius * 0.6, false);
+  }
+}
+
+// You stand at `at`, facing as you face: the face places you there on its next frame.
+wl_teleport :: (s: [] Everglade, at: Point) {
+  if !s[0].wl.door_on { s[0].wl.kept_spawn = s[0].spawn; s[0].wl.kept_face = s[0].spawn_face; }
+  s[0].wl.door_on = true;
+  s[0].spawn = at; s[0].spawn_face = s[0].face;
+  s[0].feet = at; s[0].warp = true; s[0].above = false;
+}
+
+// ---- each frame
+
+// The aim while a spell is picked, the casts on their way.
+wl_frame :: (s: [] Everglade, dt: f32) {
+  if wl_on(s) && s[0].wl.armed >= 0 && (s[0].sp.seen || phone(s)) { sp_aim(s); }
+  if s[0].wl.door_on && !s[0].warp { s[0].spawn = s[0].wl.kept_spawn; s[0].spawn_face = s[0].wl.kept_face; s[0].wl.door_on = false; }
+  wl_step(s, dt);
+}
+// The looks into Everglade's puffs, and the picked spell's ring where it would land.
+wl_draw :: (s: [] Everglade) {
+  p := s[0].wl.fx[..];
+  eye := s[0].sp.shot.eye;
+  if fxp_live(p) > 0 {
+    _ := fxp_frame(p, s[0].wl.clock, wl_v(eye));
+    for i: 0..<p[0].out_n {
+      o := i * FX_PUFF_FLOATS;
+      f := p[0].out[o + 11];
+      kind := cast(int) floor(f);
+      sp_fx(s, kind, v3(p[0].out[o], p[0].out[o + 1], p[0].out[o + 2]), p[0].out[o + 3], v3(p[0].out[o + 4], p[0].out[o + 5], p[0].out[o + 6]),
+            p[0].out[o + 7], v3(p[0].out[o + 8], p[0].out[o + 9], p[0].out[o + 10]), (f - floor(f)) * 2);
+    }
+  }
+  k := s[0].wl.armed;
+  if wl_on(s) && k >= 0 && s[0].sp.aim_ok {
+    at := s[0].sp.aim;
+    far := flat_gap(at, s[0].feet) > WL_RANGE[k] + 3;
+    col := ifx far then v3(0.6, 0.15, 0.1) else ifx k == WL_BLIGHT || k == WL_CIRCLE || k == WL_FINGER then v3(0.3, 0.8, 0.3) else v3(0.55, 0.3, 0.9);
+    sp_fx(s, FX_RING, v3(at.x, at.y + 0.04, at.z), hi(WL_AREA[k], 0.5), col, 0, v3(0, 0, 0), 0.3);
+    sp_glow(s, v3(at.x, at.y + 0.1, at.z), 0.25, times(col, 0.8));
+  }
+}
+// A Zombie of the room's (everglade-net.coax net_draw, form WL_FORM_ZOMBIE) at `feet`: a shambling
+// body, grey-green, its arms out before it; soul-fire as it rises (`on` the share risen).
+wl_zombie :: (s: [] Everglade, eid: int, feet: Point, face: f32, walk: f32, move: f32, on: f32) {
+  if on < 1 { wl_rise(s, eid, feet); }
+  f := v3(sin(face), 0, cos(face)); r := v3(f.z, 0, -f.x);
+  skin := v3(0.30, 0.36, 0.26); rag := v3(0.16, 0.13, 0.10);
+  ph := walk / 0.7 * f32(TAU);
+  sink := (1 - clamp(on, 0, 1)) * 1.6;   // it climbs out of the ground
+  hip := add(feet, v3(0, 0.92 - sink, 0));
+  lurch := 0.08 * sin(ph * 0.5) * move;
+  chest := add(hip, add(times(f, 0.12 + lurch), v3(0, 0.45, 0)));
+  head := add(chest, add(times(f, 0.12), add(times(r, 0.06), v3(0, 0.34, 0))));
+  ci_part(s, SHAPE_SPHERE, add(hip, v3(0, 0.22, 0)), times(r, 0.2), v3(0, 0.3, 0), times(f, 0.14), rag, false, on);
+  ci_part(s, SHAPE_SPHERE, chest, times(r, 0.24), v3(0, 0.3, 0), times(f, 0.16), rag, false, on);
+  ci_part(s, SHAPE_SPHERE, head, times(r, 0.12), v3(0, 0.15, 0), times(f, 0.13), skin, false, on);
+  for e: 0..<2 {
+    sd := ifx e == 0 then 1.0f32 else -1.0f32;
+    // legs: a dragging step
+    step := sin(ph + f32(e) * f32(PI)) * 0.22 * move;
+    knee := add(hip, add(times(r, sd * 0.1), add(times(f, step * 0.5 + 0.05), v3(0, -0.45, 0))));
+    foot := add(feet, add(times(r, sd * 0.12), add(times(f, step), v3(0, -sink, 0))));
+    ci_limb(s, add(hip, times(r, sd * 0.1)), knee, 0.08, rag, false, on);
+    ci_limb(s, knee, foot, 0.07, skin, false, on);
+    // arms out before it, reaching
+    sh := add(chest, add(times(r, sd * 0.24), v3(0, 0.18, 0)));
+    hand := add(sh, add(times(f, 0.62), add(times(r, sd * 0.04), v3(0, -0.08 + 0.05 * sin(ph + f32(e)), 0))));
+    ci_limb(s, sh, hand, 0.065, skin, false, on);
+  }
+  // its eyes: two faint green lights
+  sp_glow(s, add(head, add(times(f, 0.12), v3(0, 0.03, 0))), 0.06, times(FXW_NECRO_P, 0.9 * on));
+}
+FXW_NECRO_P :: Point.{x = 0.45, y = 1.0, z = 0.42};
+wl_rise :: (s: [] Everglade, eid: int, feet: Point) {
+  for q: 0..<s[0].wl.risen_n { if s[0].wl.risen[q] == eid { return; } }
+  q := s[0].wl.risen_n % 8;
+  s[0].wl.risen[q] = eid; s[0].wl.risen_n = hi_int(s[0].wl.risen_n, q + 1);
+  if s[0].wl.risen_n >= 8 { s[0].wl.risen_n = 8; }
+  _ := fxp_start(s[0].wl.fx[..], FxCause.{recipe = FXR_RISE, seed = wl_seed(eid, 1), t0 = s[0].wl.clock, from = wl_v(feet), to = wl_v(feet), col = FXW_NECRO, big = 1, reach = 1}, s[0].wl.clock);
+}
+
+// ---- the bar
+
+// One row of the Warlock's slots over the bottom edge (a phone's thumbs, as the druid's row): the ones
+// its character has (wl_has: a level's kit, else all nine), each its picture, a cast on its way swept
+// over it, and the card of the one a finger holds or the mouse rests on.
+wl_bar :: (s: [] Everglade, out: [] f32, u: [] f32, at: int) -> SpBarTop {
+  k := hi(s[0].dpr, 0.5);
+  w := s[0].width; h := s[0].height;
+  un := sp_unit(s);
+  ph := phone(s);
+  icon := sp_round(f32(ifx ph then HB_ICON else HB_DESK_ICON * 1.4) * un);
+  step := sp_round(f32(ifx ph then HB_STEP else HB_DESK_STEP * 1.4) * un);
+  pad := sp_round(f32(ifx ph then HB_PAD else HB_DESK_PAD * 1.4) * un);
+  shown := 0;
+  for b: 0..<WL_SLOTS { if wl_has(s, b) { shown += 1; } else { s[0].wl.boxes[b] = Box.{}; } }
+  gaps := hi_int(shown - 1, 1);
+  width := 2 * pad + step * f32(shown - 1) + icon;
+  // as many as the width holds: a narrow phone's row steps closer
+  if width > w - 16 * k { step = sp_round((w - 16 * k - 2 * pad - icon) / f32(gaps)); width = 2 * pad + step * f32(shown - 1) + icon; }
+  left := sp_round((w - width) / 2);
+  bottom := sp_round(h - sp_bar_bottom(s) - f32(HB_MARGIN) * un);
+  top := bottom - (icon + 2 * pad);
+  edge := sp_round(k);
+  size := sp_icon_size(icon);
+  sp_plate(s, u, Box.{x0 = left, y0 = top, x1 = left + width, y1 = bottom}, PLATE_TRAY, edge);
+  place := 0;
+  for o: 0..<WL_SLOTS {
+    b := WL_ORDER[o];
+    if !wl_has(s, b) { continue; }
+    x := sp_round(left + pad + step * f32(place)); y := top + pad;
+    place += 1;
+    bx := Box.{x0 = x, y0 = y, x1 = x + icon, y1 = y + icon};
+    s[0].wl.boxes[b] = bx;
+    on := s[0].wl.armed == b;
+    sp_plate(s, u, Box.{x0 = x - edge, y0 = y - edge, x1 = x + icon + edge, y1 = y + icon + edge}, ifx on then PLATE_SLOT_ON else PLATE_SLOT, ifx on then 2 * edge else edge);
+    inset := ifx on then edge else 0.0f32;
+    ib := Box.{x0 = x + inset, y0 = y + inset, x1 = x + icon - inset, y1 = y + icon - inset};
+    sp_media(s, "image", WL_HB_NAME[b], size, ib);
+    // a cast on its way: the icon's top part dimmed over it, shrinking to nothing at its strike
+    left_f := ifx WL_DELAY[b] > 0 then clamp((WL_DELAY[b] - (s[0].wl.clock - s[0].wl.cast_t[b])) / WL_DELAY[b], 0, 1) else 0.0f32;
+    if left_f > 0.002 && s[0].wl.cast_t[b] > 0 { wl_sweep(s, b, size, ib, left_f); }
+    if b == WL_REBUILD && mend_wait(s) > 0.002 { wl_sweep(s, b, size, ib, mend_wait(s)); }   // Repair's wait (everglade-repair.coax)
+  }
+  // the card: a finger held long enough on a slot, or the mouse resting on one
+  tip := -1;
+  if s[0].wl.held >= 0 {
+    if s[0].time - s[0].wl.held_t >= f64(HB_LONG) { tip = s[0].wl.held; }
+  } else {
+    over := -1;
+    if s[0].sp.mouse && s[0].sp.seen { for b: 0..<WL_SLOTS { if wl_has(s, b) && in_box(s[0].wl.boxes[b], s[0].sp.px, s[0].sp.py) { over = 200 + b; } } }
+    t := sp_dwell(s, over, s[0].time);
+    tip = ifx t >= 200 then t - 200 else -1;
+  }
+  if tip >= 0 {
+    sc := clamp_i(cast(int) sp_round(k), 1, 3);
+    cw := WL_HB_CARD_W[tip * 3 + sc - 1] * k / f32(sc); ch := WL_HB_CARD_H[tip * 3 + sc - 1] * k / f32(sc);
+    room := w - 16 * k;
+    if cw > room { ch = ch * room / cw; cw = room; }
+    sb := s[0].wl.boxes[tip];
+    cx := clamp(sp_round((sb.x0 + sb.x1) / 2 - cw / 2), 8 * k, hi(w - 8 * k - cw, 8 * k));
+    cy := sp_round(top - 6 * k - ch);
+    card: [12] u8;
+    tail := sp_put(card[..], 0, "-card-"); tail = put_digits(card[..], tail, sc); tail = sp_put(card[..], tail, "x.jpg");
+    sp_media(s, "over", WL_HB_NAME[tip], cast(string) card[0..<tail], Box.{x0 = cx, y0 = cy, x1 = cx + sp_round(cw), y1 = cy + sp_round(ch)});
+  }
+  return SpBarTop.{n = at, top = top};
+}
+// The host's "over" line for a sweep (coax/web/host.js): the icon again over its top `f`, dimmed.
+wl_sweep :: (s: [] Everglade, b: int, size: string, ib: Box, f: f32) { sp_sweep(s, WL_HB_NAME[b], size, ib, f); }
+sp_sweep :: (s: [] Everglade, name: string, size: string, ib: Box, f: f32) {
+  m := ifx s[0].sp.media_big.count > 0 then s[0].sp.media_big else s[0].sp.media[..];
+  n := s[0].sp.media_n;
+  if n + 160 > m.count { return; }
+  if n > 0 { m[n] = 10; n += 1; }
+  n = sp_put(m, n, "over "); n = sp_put(m, n, HB_URL); n = sp_put(m, n, name); n = sp_put(m, n, size);
+  y1 := ib.y0 + floor((ib.y1 - ib.y0) * f + 0.5);
+  e := [4] f32.[ib.x0, ib.y0, ib.x1, y1];
+  for i: 0..<4 { n = sp_put(m, n, " "); if e[i] < 0 { n = sp_put(m, n, "-"); } n = put_digits(m, n, cast(int) abs(sp_round(e[i]))); }
+  n = sp_put(m, n, " 30 0 "); n = put_digits(m, n, cast(int) floor(f * 1000 + 0.5));
+  s[0].sp.media_n = n;
+}
+
+#test "warlock: a beam is drawn no longer than its spell's range" {
+  c := WlShot.{k = WL_BLAST, from = v3(0, 1.5, 0), at = v3(100, 1.5, 0)};
+  f := wl_path_from(c);
+  #assert abs(length(sub(f, c.at)) - WL_RANGE[WL_BLAST]) < 0.01 && f.x > 60;
+  c.from = v3(80, 1.5, 0);
+  #assert length(sub(wl_path_from(c), c.from)) < 0.001;   // within range: from the hand
+}
+
+#test "warlock: Eldritch Blast's beams wear down what they strike, Fireball breaks and sets alight; the bar is seven slots on 1 to 6 and R" #steps 2000000000 {
+  g: [1] Everglade;
+  dm: [1] DemoWorld;
+  sp_ready_city(g[..], dm[..]);
+  wl_set(g[..], true);
+  w := sp_dm(g[..]);
+  // a wooden piece of a building, standing
+  pick := -1;
+  for i: 0..<w[0].n { p := w[0].pieces[i]; if pick < 0 && p.state == DP_STANDING && sp_object(p.mesh).material == MAT_WOOD && p.y1 - p.y0 > 1.5 { pick = i; } }
+  #assert pick >= 0;
+  p := w[0].pieces[pick];
+  at := v3((p.x0 + p.x1) / 2, (p.y0 + p.y1) / 2, (p.z0 + p.z1) / 2);
+  before := w[0].pieces[pick].hp;
+  wl_strike(g[..], 0, WL_BLAST, add(at, v3(8, 0, 0)), at, 77);
+  for k: 0..<30 { wl_step(g[..], 1.0 / 30); }
+  #assert w[0].pieces[pick].hp < before || w[0].pieces[pick].state != DP_STANDING;
+  stood := 0; for i: 0..<w[0].n { if w[0].pieces[i].state == DP_STANDING { stood += 1; } }
+  wl_strike(g[..], 0, WL_FIREBALL, add(at, v3(12, 2, 0)), at, 91);
+  for k: 0..<45 { wl_step(g[..], 1.0 / 30); }
+  now := 0; for i: 0..<w[0].n { if w[0].pieces[i].state == DP_STANDING { now += 1; } }
+  #assert now < stood || fi_of(g[..])[0].n > 0;
+  // the looks: the beams' and the fireball's causes were started
+  #assert g[0].wl.fx[0].started >= WL_BEAMS + 1;
+  // the keys: 4 picks Circle of Death, again puts it away; Shift's row does nothing for the Warlock
+  #assert wl_key(g[..], '4', 0) && g[0].wl.armed == WL_CIRCLE;
+  #assert wl_key(g[..], '4', 0) && g[0].wl.armed == -1;
+  #assert wl_key(g[..], '@', 1) && g[0].wl.armed == -1 && g[0].sp.armed == -1;
+  // Dimension Door on this page: you stand where you aimed once its time comes
+  g[0].wl.armed = WL_DOOR; g[0].sp.aim = v3(g[0].feet.x + 20, 4, g[0].feet.z); g[0].sp.aim_ok = true;
+  wl_cast(g[..]);
+  for k: 0..<20 { wl_step(g[..], 1.0 / 30); }
+  #assert near(g[0].feet.x, g[0].sp.aim.x, 0.01) && g[0].warp && near(g[0].spawn.y, 4, 0.01);
+  _ := everglade_warp(g[..]);
+  wl_frame(g[..], 1.0 / 30);
+  #assert !g[0].wl.door_on && !near(g[0].spawn.y, 4, 0.01);
+}
+#test "warlock: each of the raid's spells has its own look; Fire Bolt and Lightning Bolt wear down what they strike, the rest leave the town be" #steps 2000000000 {
+  g: [1] Everglade;
+  dm: [1] DemoWorld;
+  sp_ready_city(g[..], dm[..]);
+  w := sp_dm(g[..]);
+  pick := -1;
+  for i: 0..<w[0].n { p := w[0].pieces[i]; if pick < 0 && p.state == DP_STANDING && sp_object(p.mesh).material == MAT_WOOD && p.y1 - p.y0 > 1.5 { pick = i; } }
+  #assert pick >= 0;
+  p := w[0].pieces[pick];
+  at := v3((p.x0 + p.x1) / 2, (p.y0 + p.y1) / 2, (p.z0 + p.z1) / 2);
+  // each look starts causes of its own, from a page that only plays it (e rc)
+  for k: WL_FIRE_BOLT..<WL_LOOKS {
+    #assert wl_look(k) && !wl_spell(k);
+    was := g[0].wl.fx[0].started;
+    wl_play(g[..], k, add(at, v3(10, 0, 0)), at, 100 + k, false);
+    for f: 0..<30 { wl_step(g[..], 1.0 / 30); }
+    #assert g[0].wl.fx[0].started > was;
+  }
+  #assert !wl_look(WL_REBUILD) && !wl_look(WL_LOOKS);
+  // the server's world: a Lightning Bolt breaks what it ends on
+  before := w[0].pieces[pick].hp;
+  wl_strike(g[..], -1, WL_LIGHTNING, add(at, v3(20, 0, 0)), at, 5);
+  for f: 0..<30 { wl_step(g[..], 1.0 / 30); }
+  #assert w[0].pieces[pick].hp < before || w[0].pieces[pick].state != DP_STANDING;
+}

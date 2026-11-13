@@ -9,7 +9,7 @@
 > words between the room and the page in
 > [`everglade/shared/cast-limits.coax`](../../everglade/shared/cast-limits.coax);
 > v1's bars, wait and Repair stay in
-> [`apps/openagents-web/everglade-cast-rules.coax`](../../apps/openagents-web/everglade-cast-rules.coax)
+> [`apps/openagents-web/old/v1/everglade-cast-rules.coax`](../../apps/openagents-web/old/v1/everglade-cast-rules.coax)
 > (#12790, #13346).
 > Other agents are extending the spell files now, so this chapter's only listing
 > is the cast rules, which already have markers.
@@ -96,7 +96,7 @@ CR_LOW :: 1.2;            // m: a piece lower than this (a crate, a fence, a ben
 CR_NEAR :: 2.5;           // m: an aim this close needs no line of sight (a press aims 2 m ahead of you; the rest is the wire's cm and your pose)
 ```
 
-<!-- source: apps/openagents-web/everglade-cast-rules.coax cast-rules -->
+<!-- source: apps/openagents-web/old/v1/everglade-cast-rules.coax cast-rules -->
 ```jai
 // ---- time
 CR_WAIT :: 15;            // ticks (0.5 s, the room's EG_BANK) a cast waits for the inputs sent before it

@@ -46,7 +46,7 @@ and `openagents login` joins a computer's key to an account.
 | [agent-policy.coax](../../coax/web/api/agent-policy.coax) | `ag_link` | Whether a logged-in person may link a new key (`#authority`) |
 | [0098_cli_callers.sql](../../coax/web/api/migrations/0098_cli_callers.sql), [0147_auth_agents.sql](../../coax/web/api/migrations/0147_auth_agents.sql) | `auth.device_start`, `auth.device_poll`, `auth.device_look`; `auth.device_link` | The device request's table and its rules |
 | [private.coax](../../apps/openagents-web/private.coax) | `pv_device_due`, `pv_device_approve` | The `/login/device` page: the computer's name, and APPROVE |
-| [nip01-verify.coax](../../apps/openagents-web/nip01-verify.coax) | `nv_run` | The `/nip/01` page's verifier: the shared event reader and BIP-340 on the page's captured event and its edited copies |
+| [nip01-verify.coax](../../apps/openagents-web/nip/nip01-verify.coax) | `nv_run` | The `/nip/01` page's verifier: the shared event reader and BIP-340 on the page's captured event and its edited copies |
 
 The design is [docs/auth](../../docs/auth/README.md):
 [identity-and-methods.md](../../docs/auth/identity-and-methods.md) for the

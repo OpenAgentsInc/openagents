@@ -359,7 +359,7 @@ as `glade/horse0` to `glade/horse35`). See the
 (`everglade/mounts.coax`: the horse, the dragon and the rider's keys;
 `everglade/zone-mounts.coax`: mounts standing in a zone, E, the saddle and the
 prompt; `everglade/zone-ride.coax`: a zone's keys handed to them and the
-dragon's Fire Breath) and zone (`apps/openagents-web/experimental-stages.coax`:
+dragon's Fire Breath) and zone (`apps/openagents-web/old/experimental/experimental-stages.coax`:
 the film stages) layers. Mounting and getting off go through the action
 pipeline (`metaverse-engine/action/deed.coax`): a press asks with your conditions, so you
 can't mount while unconscious, paralyzed or grappled. To look at riding without

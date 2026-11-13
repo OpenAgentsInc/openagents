@@ -9,7 +9,7 @@
 > [`rules/srd/condition-rolls.coax`](../../rules/srd/condition-rolls.coax).
 > Exhaustion and Prone have their own files. The Everglade room shows
 > conditions through
-> [`apps/openagents-web/everglade-status.coax`](../../apps/openagents-web/everglade-status.coax).
+> [`apps/openagents-web/old/v1/everglade-status.coax`](../../apps/openagents-web/old/v1/everglade-status.coax).
 > Other agents are extending the rules files now, so this chapter's only
 > listing is the status record, which already has markers.
 
@@ -37,7 +37,7 @@ your Hit Points.
 | Attack edges, automatic failures, critical hits and damage defenses | `condition-rolls.coax` |
 | Exhaustion's six levels | [`rules/srd/exhaustion.coax`](../../rules/srd/exhaustion.coax) |
 | Standing up and crawling | [`rules/srd/prone-movement.coax`](../../rules/srd/prone-movement.coax) |
-| What the page draws and says about a condition | `st_fill` and `st_draw_on` in `everglade-status.coax`, `st_draw` in `apps/openagents-web/everglade-storm.coax` |
+| What the page draws and says about a condition | `st_fill` and `st_draw_on` in `everglade-status.coax`, `st_draw` in `apps/openagents-web/old/v1/everglade-storm.coax` |
 
 ## What follows the SRD exactly
 
@@ -79,7 +79,7 @@ your Hit Points.
 
 One record holds what the page knows about a condition on a body:
 
-<!-- source: apps/openagents-web/everglade-status.coax status-effect -->
+<!-- source: apps/openagents-web/old/v1/everglade-status.coax status-effect -->
 ```jai
 // An effect on a body: WHO (ST_YOU, or a TGT code: 1000 + SS a seat, 0-999 a watch actor, 2000 + EID a
 // creature), its condition bits (WC_*), the spell that made it (ST_*; -1 not said) and its seconds left (-1 held up, or not said).
@@ -125,7 +125,7 @@ turn that has 10, and you couldn't stand at all.
   example.
 - `rules/srd/timing-checks.coax`, `#test "short action turns renew
   reactions but death saves and repeat saves remain six-second events"`.
-- `apps/openagents-web/everglade-status.coax`, `#test "status: one word over a
+- `apps/openagents-web/old/v1/everglade-status.coax`, `#test "status: one word over a
   head while a condition lasts, the strongest: DOWN, HELD, STUNNED, ROOTED,
   RESTRAINED, PRONE, FRIGHTENED (#12862)"`.
 

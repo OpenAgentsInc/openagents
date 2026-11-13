@@ -549,7 +549,7 @@
     "wasm"
    ],
    "adopted_by": [
-    "apps/openagents-web/nip01-verify.coax",
+    "apps/openagents-web/nip/nip01-verify.coax",
     "coax/web/api/nip98.coax",
     "coax/web/project/landing-nostr.coax"
    ]

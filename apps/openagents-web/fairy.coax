@@ -37,24 +37,24 @@
 #load "../../metaverse/fairy-forest/talk.coax";
 #load "place-orbit.coax";
 #load "../../metaverse/edit/edit.coax";   // EDIT for its owner and admins (docs/metaverse/realm-edit.md)
-#load "fairyroom.coax";
-#load "fairyquest.coax";   // lore and quests from edit mode's panes
+#load "fairy/fairyroom.coax";
+#load "fairy/fairyquest.coax";   // lore and quests from edit mode's panes
 #load "../../metaverse/fairy-forest/life.coax";
-#load "fairymaker.coax";   // make your fairy, and the mirror pool
-#load "fairyhome.coax";    // your home, room by room
-#load "fairygarden.coax";  // your garden, by real days
-#load "fairyvillage.coax"; // creatures moving in
-#load "fairycourse.coax";  // vine hoop courses, shared by link
-#load "fairyskills.coax";  // what you learn, each from a moment
+#load "fairy/fairymaker.coax";   // make your fairy, and the mirror pool
+#load "fairy/fairyhome.coax";    // your home, room by room
+#load "fairy/fairygarden.coax";  // your garden, by real days
+#load "fairy/fairyvillage.coax"; // creatures moving in
+#load "fairy/fairycourse.coax";  // vine hoop courses, shared by link
+#load "fairy/fairyskills.coax";  // what you learn, each from a moment
 #load "../../metaverse/fairy-forest/night.coax";
-#load "fairynight.coax";   // day and night, Lanternwood by night
-#load "fairypond.coax";    // the pond filled, the waterfall
-#load "fairywoodcutter.coax";   // Rowan, who gives you his axe
-#load "fairymend.coax";    // broken things mended
-#load "fairytools.coax";   // tools made with CRAFT
-#load "fairypark.coax";    // the park drawn: lakes, trees, landmarks, signs
-#load "fairymap.coax";     // the map: the park from above with its names
-#load "fairyupgrade.coax"; // UPGRADE: fairies made by players, paid in sats straight to their maker (ev-asset-upgrades, #13210)
+#load "fairy/fairynight.coax";   // day and night, Lanternwood by night
+#load "fairy/fairypond.coax";    // the pond filled, the waterfall
+#load "fairy/fairywoodcutter.coax";   // Rowan, who gives you his axe
+#load "fairy/fairymend.coax";    // broken things mended
+#load "fairy/fairytools.coax";   // tools made with CRAFT
+#load "fairy/fairypark.coax";    // the park drawn: lakes, trees, landmarks, signs
+#load "fairy/fairymap.coax";     // the map: the park from above with its names
+#load "fairy/fairyupgrade.coax"; // UPGRADE: fairies made by players, paid in sats straight to their maker (ev-asset-upgrades, #13210)
 #load "../../metaverse-engine/core/budget.coax";
 
 VERTEX_FLOATS :: 16;

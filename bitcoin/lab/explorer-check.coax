@@ -1,6 +1,6 @@
 // Deterministic complete replies exercise the shared native/browser producer.
 #load "projection.coax";
-#load "../../apps/openagents-web/bitcoin-lab.coax";
+#load "../../apps/openagents-web/old/labs/bitcoin-lab.coax";
 lab_check_pump :: (s:[]BitcoinLab)->bool {
   r:=s[0].remote[..];bytes:[LAB_REPLY_MAX+4]u8;
   for turn:0..<8 {any:=false;for slot:0..<2 {if r[0].effects[slot].wanted {any=true;route:=lr_route("GET",cast(string)r[0].effects[slot].path[0..<r[0].effects[slot].n]);o:[1]Jo;jo_start(o[..],bytes[4..<bytes.count]);code:=lj_fixture(route,o[..]);bytes[0]=cast(u8)(48+code/100);bytes[1]=cast(u8)(48+code/10%10);bytes[2]=cast(u8)(48+code%10);bytes[3]='\n';lr_dispatched(r,slot,slot);lr_receive(r,slot,cast(string)bytes[0..<o[0].n+4]);}}if !any {return r[0].model[0].ready;}}

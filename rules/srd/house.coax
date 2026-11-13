@@ -1,6 +1,6 @@
 // House rules: spells that are not SRD content, written in the engine's terms so the same
 // battle.coax runs them. Each record is marked srd: false. They are Everglade's own spells (its bar,
-// apps/openagents-web/everglade-spells.coax), kept at the numbers Everglade plays them at. Loaded by
+// apps/openagents-web/old/v1/everglade-spells.coax), kept at the numbers Everglade plays them at. Loaded by
 // spells.coax; rs_spell answers for them (through more.coax's rs_more_spell).
 //
 // How Everglade's numbers became records (a 5-foot square is 1.524 m; areas round to the nearest

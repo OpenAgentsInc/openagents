@@ -1,6 +1,6 @@
 // Fairy Forest's day and night (ff-night, metaverse/fairy-forest/README.md "Day
 // and night"): the forest's clock, how dark it is, and the places that only
-// show in the dark. The page (apps/openagents-web/fairynight.coax) draws them
+// show in the dark. The page (apps/openagents-web/fairy/fairynight.coax) draws them
 // and fairy.wgsl lights the valley by them.
 //
 // The clock is the realm's (realms.json "clock", the page facts clock=, now=,

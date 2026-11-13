@@ -2104,7 +2104,7 @@
    ],
    "source": [
     "apps/openagents-cli/account_rules.coax",
-    "apps/openagents-web/nip01-verify.coax",
+    "apps/openagents-web/nip/nip01-verify.coax",
     "coax/lib/nostr/nip06.coax",
     "coax/lib/nostr/nip98_sign.coax",
     "coax/web/api/agent-policy.coax",

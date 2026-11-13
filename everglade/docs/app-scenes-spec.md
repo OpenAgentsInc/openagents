@@ -63,7 +63,7 @@ under the left thumb.
 
 The main flow is the web's `everglade2` app
 (`everglade/client/client.coax`, with Character Create inside it).
-Experimental is the web's `fivelab` app (`apps/openagents-web/fivelab.coax`),
+Experimental is the web's `fivelab` app (`apps/openagents-web/old/experimental/fivelab.coax`),
 and the Archery Range is the web's `archery-range` app
 (`apps/openagents-web/archery-range.coax`). Both hold an Everglade zone
 (`everglade/zone.coax`).

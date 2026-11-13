@@ -2,7 +2,7 @@
 // XP gives. The one table (#13259): the room levels a seat by it (coax/web/room/room-events.coax
 // ev_level_of, Everglade I's druid and Warlock, and Everglade II's classes), the API signs the level it
 // gives into a seat ticket (metaverse-engine/session/seat-class.coax), and the page draws its XP bar by it
-// (apps/openagents-web/everglade-events.coax). Nothing else holds a level's XP.
+// (apps/openagents-web/old/v1/everglade-events.coax). Nothing else holds a level's XP.
 //   coax/bin/coax test rules/srd/advancement.coax --library
 //   coax/bin/coax mutate rules/srd/advancement.coax --library
 #authority;

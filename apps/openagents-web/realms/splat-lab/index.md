@@ -25,7 +25,7 @@ The readout at the top shows the frame rate, the number of splats, and, when you
 
 ## How it is made
 
-- `apps/openagents-web/splatlab.coax` is the world: the scenes, the camera, the HUD, the authored splats, and the `.splat` and `.ply` loaders.
+- `apps/openagents-web/old/labs/splatlab.coax` is the world: the scenes, the camera, the HUD, the authored splats, and the `.splat` and `.ply` loaders.
 - `gpu/splatlab-fx.coax` makes each animated splat from its index and the time, sorts all of them with a bitonic sort in fragment passes, and projects each 3D Gaussian to a 2D ellipse on the screen.
 - `gpu/splatlab.coax` draws the night sky, the meshes, the bloom and the final picture.
 - `coax/web/host.js` runs the sort's passes before the frame (see its "Sorting" notes).

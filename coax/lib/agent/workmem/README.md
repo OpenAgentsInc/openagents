@@ -309,8 +309,5 @@ working memory"): `read`, `lines` and `show` call `wmf_read`; `edit`,
 `wmf_run`; `note`, `known`, `changed` and `open_items` reach the findings
 and views; `recall` is `wmf_recall_file`; the root's `FINAL` meets
 `wmf_may_finish`.
-Microcoder is wired too (`coax/lib/microcoder/aware.coax`; docs/coder/microcoder.md,
-"Compiler questions and working memory"): views and `show` call `wmf_read`,
-edits call `wmf_change`, commands call `wmf_run`, the action's `notes` are
-findings, the state rendered each step (`state.coax`) has the views under
-`memory`, and `finished: true` is refused while `wmf_may_finish` says no.
+For Microcoder: the state rendered each step (`state.coax`) gains the views,
+and `finished: true` is refused while `wmf_may_finish` says no.

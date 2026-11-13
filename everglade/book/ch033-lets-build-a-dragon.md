@@ -269,7 +269,7 @@ has the SRD's mounted-combat rules that the mounts follow.
   everything back; its Temporary Hit Points go"`.
 - `everglade/shapeshift.coax`, `#test "the fire cone: inside 18 m and its angle
   it hits, outside it misses; a flier aims down"`.
-- `apps/openagents-web/fivelab.coax` runs `everglade/zone-shapechange.coax`'s `#test "druid:
+- `apps/openagents-web/old/experimental/fivelab.coax` runs `everglade/zone-shapechange.coax`'s `#test "druid:
   Fire Breath held and let go burns the monsters in its cone and none behind"`
   and `#test "druid: the dragon takes off with Jump, flies faster than it walks,
   and glides down to land"`.
@@ -280,7 +280,7 @@ has the SRD's mounted-combat rules that the mounts follow.
 coax/bin/coax test --library metaverse-engine/action/flight.coax
 coax/bin/coax test --library rules/srd/battle.coax --only "Shapechange"
 coax/bin/coax test --library everglade/shapeshift.coax
-coax/bin/coax test --library apps/openagents-web/fivelab.coax --only "druid"
+coax/bin/coax test --library apps/openagents-web/old/experimental/fivelab.coax --only "druid"
 ```
 
 The headless captures are in

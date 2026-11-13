@@ -1,7 +1,7 @@
 // Two real headless pages over an already running local authoritative room host.
 //   coax/web/tool.sh orbit-qualification URL OUT_DIR [quick]
 #load "../lib/net/cdp.coax";
-#load "../../apps/openagents-web/orbit-snapshot.coax";
+#load "../../apps/openagents-web/orbitleague/orbit-snapshot.coax";
 #import "Basic";
 
 OQ_JS :: "(()=>{const q=globalThis.__oq={sent:[],received:[],errors:[],socket:null};const W=WebSocket;globalThis.WebSocket=class extends W{constructor(...a){super(...a);if(!String(a[0]).includes('/orbit-league-v2/'))return;q.socket=this;const send=this.send.bind(this);this.send=t=>{q.sent.push(String(t));if(q.sent.length>512)q.sent.shift();return send(t)};this.addEventListener('message',e=>{q.received.push(String(e.data));if(q.received.length>512)q.received.shift()})}};addEventListener('error',e=>q.errors.push(String(e.message)));})();";

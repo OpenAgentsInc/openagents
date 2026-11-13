@@ -1,0 +1,147 @@
+// Bitcoin Lab's lesson (bitcoin-lab-walk.coax draws it): the numbers the walk shows, each worked out
+// here at run time by the Bitcoin book's own code, never written down as an answer.
+//
+//   chapter 1 (bitcoin/book/ch001-bytes-hex-and-base64.md): a byte's bits, the genesis block's
+//   80 header bytes as hex (coax/lib/nostr/hex.coax), three of them as base64
+//   (coax/lib/nostr/base64.coax), and its time field little-endian and as the number it means;
+//   chapters 4 and 5: SHA-256 of the header, SHA-256 of that (SHA-256d, coax/lib/bitcoin/hash.coax),
+//   the digest reversed as a block hash is shown, and its leading zeros against the target its
+//   bits field names;
+//   the blocks: the last BL_CHAIN blocks of the recorded regtest chain (bitcoin-lab-data.coax,
+//   read through bitcoin-lab-blocks.coax), each with its hash and its previous block's.
+//   coax/bin/coax test apps/openagents-web/old/labs/bitcoin-lab-lesson.coax
+#module "openagents.bitcoinlab.lesson";
+#load "../../../../coax/lib/bitcoin/hash.coax";
+#load "../../../../coax/lib/nostr/hex.coax";
+#load "../../../../coax/lib/nostr/base64.coax";
+#load "bitcoin-lab-replay.coax";
+
+// The genesis block's header as it is on the wire: version, previous hash, Merkle root, time, bits, nonce.
+BL_HEADER_HEX :: "0100000000000000000000000000000000000000000000000000000000000000000000003ba3edfd7a7b12b27ac72c3e67768f617fc81bc3888a51323a9fb8aa4b1e5e4a29ab5f49ffff001d1dac2b7c";
+BL_HEADER :: 80;
+// The header's fields: where each starts; the last entry is the header's end.
+BL_FIELDS :: 6;
+BL_FIELD_AT :: [BL_FIELDS + 1] int.[0, 4, 36, 68, 72, 76, 80];
+BL_FIELD_NAME :: [BL_FIELDS] string.["VERSION", "PREVIOUS HASH", "MERKLE ROOT", "TIME", "BITS", "NONCE"];
+BL_TIME_AT :: 68;      // the time field's first byte
+BL_B64_AT :: 36;       // the three bytes shown as base64: the Merkle root's first three
+BL_CHAIN :: 8;         // the blocks along the walk
+
+Lesson :: struct {
+  ready: bool;
+  header: [BL_HEADER] u8;
+  header_hex: [BL_HEADER * 2] u8;      // upper case, two digits a byte
+  first: [32] u8; first_hex: [64] u8;  // SHA-256 of the header
+  second: [32] u8; second_hex: [64] u8;   // SHA-256 of that: SHA-256d of the header
+  hash_hex: [64] u8;                   // the second digest reversed: the block's hash as it is written
+  target_hex: [64] u8;                 // the most a hash may be, from the bits field
+  zeros: int;                          // the hash's leading zero digits
+  valid: bool;                         // the hash is no more than the target
+  time: int;                           // the time field as a number (seconds since 1970)
+  b64: [4] u8;                         // BL_B64_AT's three bytes as base64
+  chain: [BL_CHAIN] int; chain_n: int; // rows of LAB_BLOCKS, oldest first
+}
+
+bl_field :: (at: int) -> int { for f: 0..<BL_FIELDS { if at < BL_FIELD_AT[f + 1] { return f; } } return BL_FIELDS - 1; }
+bl_upper :: (b: [] u8) { for i: 0..<b.count { if b[i] >= 'a' && b[i] <= 'z' { b[i] = b[i] - 32; } } }
+// A byte's bit, bit 7 first.
+bl_bit :: (v: u8, i: int) -> bool { return (cast(int) v >> (7 - i)) & 1 == 1; }
+// Bit i of the three base64 bytes' 24 bits, the first byte's top bit first.
+bl_b64_bit :: (l: Lesson, i: int) -> bool { return bl_bit(l.header[BL_B64_AT + i / 8], i % 8); }
+// Sextet k of those 24 bits: 0 to 63.
+bl_sextet :: (l: Lesson, k: int) -> int { v := 0; for i: 0..<6 { v = v * 2; if bl_b64_bit(l, k * 6 + i) { v += 1; } } return v; }
+// A little-endian word of `count` bytes at `at` of the header.
+bl_le :: (l: Lesson, at: int, count: int) -> int { v := 0; for i: 0..<count { v = v * 256 + cast(int) l.header[at + count - 1 - i]; } return v; }
+// Hex digits (upper case) of bytes into out, two a byte, by the book's codec.
+bl_hex :: (bytes: [] u8, out: [] u8) -> bool {
+  r := hex_encode_checked(cast(string) bytes, out, false);
+  if r.error != 0 || r.written != bytes.count * 2 { return false; }
+  bl_upper(out[0..<r.written]); return true;
+}
+// Works the lesson out, once.
+bl_ready :: (l: [] Lesson) -> bool {
+  if l[0].ready { return true; }
+  d := hex_decode_checked(BL_HEADER_HEX, l[0].header[..], false);
+  if d.error != 0 || d.written != BL_HEADER { return false; }
+  if !bl_hex(l[0].header[..], l[0].header_hex[..]) { return false; }
+  if sha256_hash_checked(l[0].header[..], l[0].first[..], false) != 0 { return false; }
+  if sha256d_checked(l[0].header[..], l[0].second[..], false) != 0 { return false; }
+  shown: [32] u8; if bitcoin_reverse32(l[0].second[..], shown[..]) != 0 { return false; }
+  if !bl_hex(l[0].first[..], l[0].first_hex[..]) || !bl_hex(l[0].second[..], l[0].second_hex[..]) || !bl_hex(shown[..], l[0].hash_hex[..]) { return false; }
+  // the target: the bits field's three low bytes, moved up by its top byte (bytes from the right)
+  bits := bl_le(l[0], 72, 4); size := bits >> 24; target: [32] u8;
+  for k: 0..<3 { at := 32 - size + k; if at >= 0 && at < 32 { target[at] = cast,trunc(u8) (bits >> (16 - 8 * k)); } }
+  if !bl_hex(target[..], l[0].target_hex[..]) { return false; }
+  z := 0; while z < 64 && l[0].hash_hex[z] == '0' { z += 1; } l[0].zeros = z;
+  cmp := 0; for i: 0..<32 { if cmp == 0 { if shown[i] < target[i] { cmp = -1; } else if shown[i] > target[i] { cmp = 1; } } }
+  l[0].valid = cmp <= 0;
+  l[0].time = bl_le(l[0], BL_TIME_AT, 4);
+  three := l[0].header[BL_B64_AT..<BL_B64_AT + 3];
+  e := base64_encode_checked(cast(string) three, l[0].b64[..], false);
+  if e.error != 0 || e.written != 4 { return false; }
+  // the walk's blocks: the recorded chain's last BL_CHAIN, oldest first
+  tip := LAB_SNAPSHOTS[0].height; n := 0;
+  for k: 0..<BL_CHAIN { b := lb_height(0, tip - (BL_CHAIN - 1) + k); if b >= 0 { l[0].chain[n] = b; n += 1; } }
+  l[0].chain_n = n;
+  l[0].ready = true; return true;
+}
+// A number's decimal digits into out from n0; the count after.
+bl_int :: (out: [] u8, n0: int, v0: int) -> int {
+  v := v0; n := n0; if v < 0 { if n < out.count { out[n] = '-'; n += 1; } v = -v; }
+  d: [20] u8; k := 0; if v == 0 { d[0] = '0'; k = 1; }
+  while v > 0 && k < 20 { d[k] = cast,trunc(u8) ('0' + v % 10); v = v / 10; k += 1; }
+  while k > 0 && n < out.count { k -= 1; out[n] = d[k]; n += 1; }
+  return n;
+}
+bl_str :: (out: [] u8, n0: int, t: string) -> int { n := n0; for i: 0..<t.count { if n < out.count { out[n] = t[i]; n += 1; } } return n; }
+// Two digits, zero filled.
+bl_two :: (out: [] u8, n0: int, v: int) -> int { n := n0; if n + 1 < out.count { out[n] = cast,trunc(u8) ('0' + (v / 10) % 10); out[n + 1] = cast,trunc(u8) ('0' + v % 10); n += 2; } return n; }
+// Seconds since 1970 as "3 JAN 2009 18:15:05 UTC" (the proleptic Gregorian calendar, by days).
+BL_MONTH :: [12] string.["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
+bl_date :: (out: [] u8, seconds: int) -> int {
+  days := seconds / 86400; rest := seconds % 86400;
+  // days to a civil date (the days-from-civil algorithm, inverted)
+  z := days + 719468; era := z / 146097; doe := z - era * 146097;
+  yoe := (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+  doy := doe - (365 * yoe + yoe / 4 - yoe / 100); mp := (5 * doy + 2) / 153;
+  day := doy - (153 * mp + 2) / 5 + 1; month := ifx mp < 10 then mp + 3 else mp - 9;
+  year := yoe + era * 400 + (ifx month <= 2 then 1 else 0);
+  n := bl_int(out, 0, day); n = bl_str(out, n, " "); n = bl_str(out, n, BL_MONTH[month - 1]); n = bl_str(out, n, " "); n = bl_int(out, n, year); n = bl_str(out, n, " ");
+  n = bl_two(out, n, rest / 3600); n = bl_str(out, n, ":"); n = bl_two(out, n, (rest / 60) % 60); n = bl_str(out, n, ":"); n = bl_two(out, n, rest % 60);
+  return bl_str(out, n, " UTC");
+}
+
+#test "bitcoin lab lesson: the genesis header hashes, by the book's SHA-256d, to the genesis block's hash" {
+  l: [1] Lesson; #assert bl_ready(l[..]) && bl_ready(l[..]);
+  #assert cast(string) l[0].hash_hex[..] == "000000000019D6689C085AE165831E934FF763AE46A2A6C172B3F1B60A8CE26F";
+  #assert cast(string) l[0].second_hex[0..<8] == "6FE28C0A" && l[0].zeros == 10;
+  // the first digest is SHA-256 of the header alone, and the second is SHA-256 of the first
+  again: [32] u8; #assert sha256_hash_checked(l[0].first[..], again[..], false) == 0;
+  for i: 0..<32 { #assert again[i] == l[0].second[i]; }
+  #assert l[0].first[0] != l[0].second[0] || l[0].first[1] != l[0].second[1];
+}
+#test "bitcoin lab lesson: the target comes from the bits field and the hash is under it" {
+  l: [1] Lesson; #assert bl_ready(l[..]);
+  #assert cast(string) l[0].target_hex[..] == "00000000FFFF0000000000000000000000000000000000000000000000000000" && l[0].valid;
+}
+#test "bitcoin lab lesson: hex is two digits a byte, the time reads little-endian, and three bytes are four base64 letters" {
+  l: [1] Lesson; #assert bl_ready(l[..]);
+  #assert cast(string) l[0].header_hex[0..<8] == "01000000" && cast(string) l[0].header_hex[136..<144] == "29AB5F49";
+  #assert l[0].time == 1231006505 && bl_le(l[0], 0, 4) == 1;
+  d: [40] u8; n := bl_date(d[..], l[0].time); #assert cast(string) d[0..<n] == "3 JAN 2009 18:15:05 UTC";
+  n = bl_date(d[..], 951782400); #assert cast(string) d[0..<n] == "29 FEB 2000 00:00:00 UTC";
+  #assert cast(string) l[0].b64[..] == "O6Pt";
+  alphabet := "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+  for k: 0..<4 { #assert alphabet[bl_sextet(l[0], k)] == l[0].b64[k]; }
+  #assert bl_bit(0x42, 1) && bl_bit(0x42, 6) && !bl_bit(0x42, 0) && !bl_bit(0x42, 7);
+  #assert bl_field(0) == 0 && bl_field(3) == 0 && bl_field(4) == 1 && bl_field(68) == 3 && bl_field(79) == 5;
+}
+#test "bitcoin lab lesson: the walk's blocks are the recorded chain's last, each naming the one before" {
+  l: [1] Lesson; #assert bl_ready(l[..]) && l[0].chain_n == BL_CHAIN;
+  for k: 1..<l[0].chain_n {
+    a := LAB_BLOCKS[l[0].chain[k - 1]]; b := LAB_BLOCKS[l[0].chain[k]];
+    #assert b.previous == a.hash && b.height == a.height + 1 && b.active;
+  }
+  #assert LAB_BLOCKS[l[0].chain[l[0].chain_n - 1]].hash == LAB_SNAPSHOTS[0].hash;
+  b: [8] u8; n := bl_int(b[..], 0, 102); #assert cast(string) b[0..<n] == "102"; n = bl_int(b[..], 0, 0); #assert cast(string) b[0..<n] == "0";
+}

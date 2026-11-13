@@ -4,7 +4,7 @@
 // jump, the saddle), the keys and the pointer, the frame (the scene, your class's bar and its rules,
 // the mount's keys, the sounds), the host's messages and the agent driver. A realm's module holds
 // one EgZone, hands these procedures to its C face, and adds only what is its own:
-//   apps/openagents-web/fivelab.coax          Everglade Experimental and the Druid's meadow (with the 5E Lab and Character Create)
+//   apps/openagents-web/old/experimental/fivelab.coax          Everglade Experimental and the Druid's meadow (with the 5E Lab and Character Create)
 //   apps/openagents-web/archery-range.coax    the Archery Range
 //
 // It is built from the engine's and the game's modules and loads them:

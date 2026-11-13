@@ -58,7 +58,7 @@ delta-v, propellant and time are computed, not invented.
 
 ## What exists today
 
-- Orbit League: [orbitleague-game.coax](../../apps/openagents-web/orbitleague-game.coax)
+- Orbit League: [orbitleague-game.coax](../../apps/openagents-web/orbitleague/orbitleague-game.coax)
   (rules, physics and the room's wire, which the room server loads alone) and
   [orbitleague.coax](../../apps/openagents-web/orbitleague.coax) (the page and
   its drawing; `orbitleague.wgsl` traces the scene) over
@@ -73,8 +73,8 @@ delta-v, propellant and time are computed, not invented.
   [metaverse-engine/physics/orbit.coax](../physics/orbit.coax),
   [spacecam.coax](../cam/spacecam.coax) and
   [stars.coax](../../metaverse/stars.coax);
-  [belt-lockstep.coax](../../apps/openagents-web/belt-lockstep.coax) and
-  [belt-net.coax](../../apps/openagents-web/belt-net.coax) for two players.
+  [belt-lockstep.coax](../../apps/openagents-web/belt/belt-lockstep.coax) and
+  [belt-net.coax](../../apps/openagents-web/belt/belt-net.coax) for two players.
 - The modules' checks in [space.md](../../docs/metaverse/space.md) (a dropped
   ball returns to e² of its height, a 100 m drum spun for 1 g, Tsiolkovsky
   to 0.1%); the games' checks at `--steps 2000000000`.

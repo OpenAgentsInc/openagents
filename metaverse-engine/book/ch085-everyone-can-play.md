@@ -13,7 +13,7 @@ or unsupported saved record returns the defaults whole, with a status.
 
 ## Everglade's SETTINGS pane
 
-[`everglade-access.coax`](../../apps/openagents-web/everglade-access.coax)
+[`everglade-access.coax`](../../apps/openagents-web/old/v1/everglade-access.coax)
 uses that record for gameplay input and the pane above SOUND. The browser
 persists it as `verse.settings`. Text size scales the HUD within the
 screen's layout limit, which the pane names. Reduced motion stops camera
@@ -24,7 +24,7 @@ mirrors them into buttons and checkboxes, preserves keyboard focus and
 reports status through a live region. MAP, SETTINGS, SOUND, INVITE,
 CHARACTER, PARTY and the hotbar use the same actions as their canvas
 controls. The made-realm editor has its own
-[accessible layer](../../apps/openagents-web/myrealm-a11y.coax).
+[accessible layer](../../apps/openagents-web/myrealm/myrealm-a11y.coax).
 
 ## Sessions and remaining scope
 

@@ -131,7 +131,7 @@ anything a player couldn't.
 - **Shown to others** (**built**, slice 4). A made realm's page posts where
   you are about every second to `/api/playtest/presence/made-<slug>` and
   draws everyone else there as a figure with their name over it
-  (`apps/openagents-web/myrealm-room.coax`). A seat's holder posts the seat's
+  (`apps/openagents-web/myrealm/myrealm-room.coax`). A seat's holder posts the seat's
   presence itself, signed with the CLI's key (NIP-98), so the server knows
   it's that account's seat: the row is marked `agent`
   (`coax/web/api/migrations/0108_realm_seat_presence.sql`), every page in the

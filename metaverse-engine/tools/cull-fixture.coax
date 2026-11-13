@@ -2,7 +2,7 @@
 // metaverse-engine/render/geometry/dag.coax, with views and, for each view, the clusters dag.coax's draw
 // rule (dag_draw) draws with every page installed, so coax/web/cull-lab.js can check that the
 // GPU chooses the same. Each scene's geometry is its own VPK3 file (metaverse-engine/editor/page-pack.coax),
-// one VPK3 page a DAG page, in the page layout apps/openagents-web/cullstream.coax places.
+// one VPK3 page a DAG page, in the page layout apps/openagents-web/old/labs/cullstream.coax places.
 //   coax/web/tool.sh metaverse-engine/tools/cull-fixture.coax DIR   (DIR/cull-fixture.bin, DIR/cull-0.vpk3, DIR/cull-1.vpk3)
 // Scene 0, "shell": a sphere from six separately built faces (its seams welded), 6,912
 // triangles, for coverage from inside (views 6 and 7 coarse enough to mix levels) and residency. Scene 1, "occlusion": a wall with sixteen
@@ -22,7 +22,7 @@
 #load "../../coax/lib/sys/tool.coax";
 #load "../../coax/lib/sys/fs.coax";
 #load "../../coax/lib/sys/args.coax";
-#load "../../apps/openagents-web/cullstream.coax";
+#load "../../apps/openagents-web/old/labs/cullstream.coax";
 
 CF_BYTES :: 16777216;
 CF_VIEWS :: 8;

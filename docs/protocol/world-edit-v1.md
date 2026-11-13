@@ -59,7 +59,7 @@ an event, an inverse, and undo and redo walk it.
 
 ### WorldBuilder's world
 
-Code: `apps/openagents-web/worldbuilder-world.coax` (#13422, the browser
+Code: `apps/openagents-web/worldbuilder/worldbuilder-world.coax` (#13422, the browser
 editor's E13).
 
 A WorldBuilder world (`/create-world`) is kept in the visitor's browser and

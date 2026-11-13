@@ -70,7 +70,7 @@
 //                             being left keeps it; given back as message 11 after the page facts; never in golden
 //                             mode: apps/openagents-web/place.coax), 12 keeps it as the player's spell bar
 //                             (localStorage coaxial.<slot>.bar, given back as message 12 after the place;
-//                             never in golden mode: apps/openagents-web/everglade-arrange.coax); others go to the page's
+//                             never in golden mode: apps/openagents-web/old/v1/everglade-arrange.coax); others go to the page's
 //                             scripts as a "coaxial" event (0 when an engine loads), which
 //                             answer with coaxial.send(kind, text)
 // and, optionally, sockets: a WebSocket byte pipe, text frames and binary ones (#13278), at most 4 open. The app (its C face)

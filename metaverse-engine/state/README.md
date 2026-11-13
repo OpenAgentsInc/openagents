@@ -52,7 +52,7 @@ owners return typed statuses without changing the published world.
 ## Run the adoption fixture
 
 ```
-COAXIAL_RUN_STEPS=250000000 coax/web/wasm.sh metaverse-engine/state/fixture.coax apps/openagents-web/state-lab-face.c apps/openagents-web/build/state-lab.wasm
+COAXIAL_RUN_STEPS=250000000 coax/web/wasm.sh metaverse-engine/state/fixture.coax apps/openagents-web/old/labs/state-lab-face.c apps/openagents-web/build/state-lab.wasm
 coax/web/serve.sh apps/openagents-web --static --listen 127.0.0.1:9379
 coax/web/tool.sh metaverse-engine/state/tests/run.coax 60 /tmp/state.aesv
 coax/web/tool.sh metaverse-engine/state/tests/browser.coax http://127.0.0.1:9379/worlds/state-lab /tmp/state-browser

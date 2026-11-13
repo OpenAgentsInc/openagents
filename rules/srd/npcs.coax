@@ -1,7 +1,7 @@
 // The SRD 5.2.1's townsfolk and cultists as stat blocks (Monsters, "Guards", "Knight", "Mages",
 // "Priests", "Scout", "Warrior Veteran", "Cultists"), and the two armies of a siege made of them: a
 // town watch, and a cult with its warlocks and one level 17 Fiend Warlock. The 5E Lab fields them
-// (apps/openagents-web/fivelab-siege.coax); a world that runs the siege on its own server builds the
+// (apps/openagents-web/old/experimental/fivelab-siege.coax); a world that runs the siege on its own server builds the
 // same armies with rs_siege_defender and rs_siege_attacker. engine.coax loads this file.
 //
 // Each stat block's numbers are the SRD's: Armor Class, Hit Points, Speed, the six scores and their
@@ -23,7 +23,7 @@
 
 #load "npc-kinds.coax";
 // the siege's warlocks are class levels, not stat blocks; their roles are counted here too
-// a raid's Cult Priests (apps/openagents-web/everglade-raid-tactics.coax, #12771): the SRD's Cleric at a level, not a
+// a raid's Cult Priests (apps/openagents-web/old/v1/everglade-raid-tactics.coax, #12771): the SRD's Cleric at a level, not a
 // stat block, like the warlocks; the Lab's siege doesn't field them
 RS_NPCS :: 12;
 RS_NPC_NAME :: [12] string.["", "Guard", "Warrior Veteran", "Knight", "Scout", "Priest", "Mage", "Cultist", "Cultist Fanatic",

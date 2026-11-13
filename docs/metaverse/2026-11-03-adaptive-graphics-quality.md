@@ -222,8 +222,8 @@ before (`coaxial_pixel_budget` returns 0) and don't show the tier.
 | `metaverse-engine/render/grid-cull.coax` | The cells of a grid round the eye that the view can see, as runs: the open meadow draws those, not the whole grid (`charactercreator.coax` `meadow_cull`). |
 | `metaverse-engine/render/mesh-cull.coax` | A big static mesh drawn as the runs of 1,024 triangles the view can see. The host boxes each run once from the pack's bytes (`coaxial_mesh_bounds_v1`; host.js and PageHost.m `meshBounds`), so no pack changes. Experimental's glade mesh draws through it (`everglade/zone.coax` `zone_mesh_cull`); `coax/web/mesh-cull-check.coax` times it on and off. |
 | `metaverse/demolish.coax` | `demo_caps`: the debris, splinter and dust budgets. |
-| `apps/openagents-web/everglade-quality.coax` | Everglade's side: facts, the per-frame call, the pixel budget, the control, a cost probe. |
-| `apps/openagents-web/everglade-spells.coax` | The debris budgets each frame; `sp_fx_thin`. |
+| `apps/openagents-web/old/v1/everglade-quality.coax` | Everglade's side: facts, the per-frame call, the pixel budget, the control, a cost probe. |
+| `apps/openagents-web/old/v1/everglade-spells.coax` | The debris budgets each frame; `sp_fx_thin`. |
 | `apps/openagents-web/everglade.coax` | The far trees; the control in the HUD and its taps. |
 | `apps/openagents-web/everglade-face.c`, `everglade5e-face.c` | The governor each frame; `coaxial_pixel_budget`; `coaxial_quality_probe`. |
 | `coax/web/host.js` | `auto` as a fourth tier, `cores`, `memory` and the kept tier in the page's facts, `globalThis.coaxial.quality(field)`. |

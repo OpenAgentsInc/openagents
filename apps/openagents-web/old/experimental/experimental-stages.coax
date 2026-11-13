@@ -1,0 +1,223 @@
+// Everglade Experimental's film stages on a mount (?ride=, ?stage=dragonback, horseback, dragon-fire,
+// horse-archer), in fivelab.coax's module: the keys a player would hold and a camera that follows,
+// for clips (docs/metaverse/clips.md). Riding itself is the zone's (everglade/zone-ride.coax).
+//   coax/bin/coax test --library apps/openagents-web/old/experimental/fivelab.coax --only "stage"
+// A local page's ?ride= (lab_dev_cell), for looking at riding headless: 1 puts you in the saddle, 2
+// gallops (W and Shift held), 3 draws the bow in the saddle (a Ranger: add ?class=). Once.
+// The stages (?stage=dragonback, ?stage=horseback, ?stage=dragon-fire, ?stage=horse-archer;
+// LAB_STAGE_*) ride on every frame: lab_ride_stage.
+LAB_STAGE_DRAGONBACK :: 4; LAB_STAGE_HORSEBACK :: 5; LAB_STAGE_DRAGONFIRE :: 6; LAB_STAGE_HORSE_ARCHER :: 7;
+lab_ride_dev :: (s: [] Lab) {
+  d := s[0].ride_dev; cr := s[0].w[0].creator[..];
+  s[0].w[0].rein = ifx d == LAB_STAGE_HORSE_ARCHER then f32(LAB_ARCHER_CANTER) else 1.0f32;   // the horse-archer stage canters (everglade/zone-ride.coax zone_ride_body)
+  if d <= 0 || !cr[0].experimental || cr[0].mounts[0].n == 0 { return; }
+  if cr[0].mounts[0].riding < 0 {
+    k := ifx d == LAB_STAGE_DRAGONBACK || d == LAB_STAGE_DRAGONFIRE then cc.xh_dragon(cr) else 0; if k < 0 { return; }
+    if d == LAB_STAGE_HORSE_ARCHER { xc_set_class(s[0].w[0].xc[..], FB_CL_RANGER); lab_archer_place(s); }
+    h := cr[0].mounts[0].mounts[k]; side := egm.eg_tune(cr[0].mounts[0], k).radius + 1.2;
+    cr[0].player_x = h.x + cos(h.face) * side; cr[0].player_z = h.z - sin(h.face) * side;
+    if d == LAB_STAGE_DRAGONFIRE { lab_fire_stage_set(s, k); h = cr[0].mounts[0].mounts[k]; }
+    _ := zone_mount_key(s[0].w[..]); cr[0].yaw = h.face + 3.1415927; s[0].stage_at = cr[0].clock; return;
+  }
+  if cc.xh_rider(cr, cr[0].clock).seated < 1 { return; }
+  if d >= LAB_STAGE_DRAGONBACK { lab_ride_stage(s, d); return; }
+  if d == 2 { s[0].w[0].held = HOLD_W; s[0].w[0].shift = true; }
+  if d == 3 { _ := xc_bow_begin(s[0].w[..], false); }
+  s[0].ride_dev = 0;
+}
+// The dragon-fire stage's field: open meadow north of the dungeon, west of spawn, where a band of
+// gremlins stands; the dragon turns to face it before it takes off.
+LAB_FIRE_FIELD_X :: -39.0; LAB_FIRE_FIELD_Z :: -23.0;
+LAB_FIRE_HIGH :: 13.0;   // m over the ground it climbs to first
+LAB_FIRE_LOW :: 5.5;     // m over the ground it swoops down to
+LAB_FIRE_BREATH_M :: 15.0;   // m short of the band it breathes
+LAB_FIRE_WAIT :: 2.0;       // seconds it stands before it takes off
+lab_fire_stage_set :: (s: [] Lab, k: int) {
+  cr := s[0].w[0].creator[..]; h := cr[0].hostiles[..]; x := s[0].w[0].xc[..];
+  d := cr[0].mounts[0].mounts[k..<k + 1];
+  d[0].face = atan2(f32(LAB_FIRE_FIELD_X) - d[0].x, f32(LAB_FIRE_FIELD_Z) - d[0].z);
+  // the band: every gremlin in a loose knot round the field's middle, standing its ground
+  n := 0;
+  for g: 0..<XC_FOES {
+    if hostile.hostile_kind(g) != xdungeon.DG_KIND_GREMLIN || n >= 7 { continue; }
+    a := f32(n) * 2.39996; r := ifx n == 0 then 0.0f32 else 2.2 + 0.9 * f32(n % 3);
+    e := h[0].enemies[g..<g + 1];
+    e[0].x = f32(LAB_FIRE_FIELD_X) + cos(a) * r; e[0].z = f32(LAB_FIRE_FIELD_Z) + sin(a) * r;
+    e[0].home_x = e[0].x; e[0].home_z = e[0].z; e[0].face_x = -sin(d[0].face); e[0].face_z = -cos(d[0].face);
+    e[0].moving = false; e[0].awake = false; e[0].dead = false;
+    x[0].calm[g] = true; n += 1;
+  }
+}
+// A stage's rider, every frame once seated: the keys a player would hold and a camera that follows.
+// dragonback: up off the meadow over the trees by spawn, on over the village and above the castle's
+// towers, then circling left over the village and castle. horseback: a gallop down the meadow past the autumn
+// trees, the camera off the horse's shoulder. dragon-fire: up off the meadow toward the band of
+// gremlins, a swoop down low over them, Fire Breath across them, and a climb away.
+LAB_STAGE_ALT :: 32.0;   // m over the ground the dragonback stage holds: above the castle's towers
+lab_ride_stage :: (s: [] Lab, d: int) {
+  cr := s[0].w[0].creator[..]; m := cr[0].mounts[0]; h := m.mounts[m.riding]; t := cr[0].clock - s[0].stage_at;
+  side: f32 = 0;
+  if d == LAB_STAGE_DRAGONFIRE {
+    alt := h.wing.y - meadow_y(h.x, h.z);
+    fx := f32(LAB_FIRE_FIELD_X) - h.x; fz := f32(LAB_FIRE_FIELD_Z) - h.z; far := sqrt(fx * fx + fz * fz);
+    ahead := fx * sin(h.face) + fz * cos(h.face);   // the band ahead (> 0) or passed (< 0)
+    breathed := s[0].w[0].xc[0].dragon_seat[0].me > 0;
+    held := 0; dive := false; side = 0.5;
+    if t < f32(LAB_FIRE_WAIT) { cr[0].pitch = 0.2; }   // it stands a moment, its rider in the saddle
+    else if !breathed && ahead > 0 {
+      // up off the meadow, unhurried (W held in beats), then down low as it nears them
+      if far > 40 { held = ifx t - 0.5 * floor(t / 0.5) < 0.32 then HOLD_W else 0; if alt < f32(LAB_FIRE_HIGH) { held |= HOLD_JUMP; } }
+      else { held = HOLD_W; if alt > f32(LAB_FIRE_LOW) { dive = true; } else if alt < f32(LAB_FIRE_LOW) - 1.5 { held |= HOLD_JUMP; } }
+      // the swoop seen from ahead and to the side: the dragon comes on, the band burns in the foreground
+      cr[0].pitch = ifx far > 60 then 0.25f32 else 0.3f32; side = ifx far > 60 then 0.5f32 else 2.5f32;
+      if ahead < f32(LAB_FIRE_BREATH_M) && (alt < f32(LAB_FIRE_LOW) + 2.5 || ahead < 7) {
+        // down at the band's middle, chest high, from the jaws
+        j := egm.eg_dragon_mouth(m, m.riding); gy := meadow_y(f32(LAB_FIRE_FIELD_X), f32(LAB_FIRE_FIELD_Z)) + 0.9;
+        dx := f32(LAB_FIRE_FIELD_X) - j[0]; dz := f32(LAB_FIRE_FIELD_Z) - j[2]; dy := gy - j[1];
+        _ := zone_breath_down(s[0].w[..], dy / sqrt(dx * dx + dy * dy + dz * dz));
+      }
+    } else {
+      // on past them, low, then hard round to the left, back over the burned ground (the meadow ends not far past them)
+      if s[0].ride_fire_at <= 0 { s[0].ride_fire_at = t; }
+      after := t - s[0].ride_fire_at;
+      held = HOLD_W; if alt < f32(LAB_FIRE_LOW) + 3 { held |= HOLD_JUMP; }
+      if after > 0.8 && (after < 3.6 || t - 0.5 * floor(t / 0.5) < 0.25) { held |= HOLD_A; }
+      cr[0].pitch = ifx after < 2.0 then 0.3f32 else 0.4f32; side = ifx after < 2.0 then 2.5f32 else 0.7f32;
+    }
+    s[0].w[0].held = held; s[0].w[0].shift = dive;
+  } else if d == LAB_STAGE_DRAGONBACK {
+    alt := h.wing.y - meadow_y(h.x, h.z);
+    held := HOLD_W; if alt < f32(LAB_STAGE_ALT) { held |= HOLD_JUMP; }
+    // round to the left over the village and castle: A in short presses, a wide circle about 35 m across
+    if t > 2.5 && t - 0.6 * floor(t / 0.6) < 0.2 { held |= HOLD_A; }
+    s[0].w[0].held = held; s[0].w[0].shift = false; cr[0].pitch = 0.3; side = 0.8;
+  } else if d == LAB_STAGE_HORSE_ARCHER {
+    if lab_archer_stage(s, t) { return; }
+  } else {
+    s[0].w[0].held = HOLD_W; s[0].w[0].shift = true; cr[0].pitch = 0.1; side = 0.7;
+  }
+  // to look at the seat: &view=side puts the camera square off the rider's left, &view=rear right behind, both close and low
+  if s[0].ride_view == 1 { side = -1.5707964; } if s[0].ride_view == 2 { side = 0; }
+  if s[0].ride_view > 0 { cr[0].pitch = 0.05; cr[0].dist = 2.2; }
+  // the camera eases round behind (and a little off the shoulder of) the way it goes
+  want := h.face + 3.1415927 + side; dy := want - cr[0].yaw;
+  while dy > 3.1415927 { dy -= 6.2831853; } while dy < -3.1415927 { dy += 6.2831853; }
+  cr[0].yaw += dy * 0.06;
+}
+// horse-archer: a Ranger canters across the meadow at two gremlins standing ahead of the horse,
+// reins in short of them, and shoots the first (the SRD Longbow attack, a draw and a loose each Attack)
+// until an arrow hits; then the camera cuts from behind the rider's right shoulder (the bow's own aiming
+// view) to beside the horse, which trots on a few strides.
+LAB_ARCHER_CANTER :: 0.6;      // of the gallop's speed: 8.4 m/s
+LAB_ARCHER_FOES :: [2] int.[3, 4];   // the village's gremlins (metaverse/experimental-hostiles.coax hostile_kind)
+LAB_ARCHER_AHEAD :: [2] f32.[58, 68];   // metres ahead of the horse, and to its right (- left)
+LAB_ARCHER_ACROSS :: [2] f32.[-2.5, 3.5];
+LAB_ARCHER_SHOOT_M :: 42.0;    // the draw begins this close: inside the Longbow's 150 feet
+LAB_ARCHER_HOLD_S :: 0.9;      // seconds from the draw's start to the loose (BOW_FULL 0.8 is a full draw)
+LAB_ARCHER_NOCK_S :: 0.4;      // seconds from a loose to the next draw
+LAB_ARCHER_STAND_M :: 10.0;    // the rider reins in this close to the gremlin
+LAB_ARCHER_REIN_S :: 0.8;      // seconds of slowing to a stand
+LAB_ARCHER_SHOOT_S :: 11.0;    // seconds after mounting the shooting ends, the gremlin down or not
+LAB_ARCHER_CUT_S :: 1.8;       // seconds after the hit the camera cuts to the side
+LAB_ARCHER_ON_S :: 3.5;        // seconds the horse trots on beside the camera before it stands
+LAB_ARCHER_LOOK :: 0.5;        // radians the close shot may turn from the horse's way toward its gremlin
+// The stage's horse 24 m out along the way the horseback stage gallops from spawn, past the houses,
+// facing the open meadow south-west of the village; its gremlins ahead of it, facing it.
+LAB_ARCHER_HORSE :: [3] f32.[-16, -7.3, -2.16];
+lab_archer_place :: (s: [] Lab) {
+  cr := s[0].w[0].creator[..]; m := cr[0].mounts[..];
+  m[0].mounts[0].x = LAB_ARCHER_HORSE[0]; m[0].mounts[0].z = LAB_ARCHER_HORSE[1]; m[0].mounts[0].face = LAB_ARCHER_HORSE[2];
+  h := m[0].mounts[0]; e := cr[0].hostiles[0].enemies[..];
+  fx := sin(h.face); fz := cos(h.face);
+  for j: 0..<2 {
+    i := LAB_ARCHER_FOES[j]; a := LAB_ARCHER_AHEAD[j]; c := LAB_ARCHER_ACROSS[j];
+    x := h.x + fx * a - fz * c; z := h.z + fz * a + fx * c;
+    e[i].x = x; e[i].z = z; e[i].home_x = x; e[i].home_z = z; e[i].face_x = -fx; e[i].face_z = -fz;
+    s[0].w[0].xc[0].calm[i] = true;   // unaware, they stand their ground until an arrow finds them (a wound ends it: xc_use_ab)
+  }
+}
+// A frame of the horse-archer stage (t seconds since the rider sat). True when it set the camera itself.
+lab_archer_stage :: (s: [] Lab, t: f32) -> bool {
+  cr := s[0].w[0].creator[..]; h := cr[0].mounts[0].mounts[cr[0].mounts[0].riding]; x := s[0].w[0].xc[..]; now := cr[0].clock; e := cr[0].hostiles[0].enemies[..];
+  g := LAB_ARCHER_FOES[0];
+  // the shooting ends when an arrow hits it (or time runs out); a moment later the side shot
+  if s[0].stage_hit <= 0 && (x[0].bow_hits > 0 || e[g].dead || t > f32(LAB_ARCHER_SHOOT_S)) { s[0].stage_hit = now; }
+  shooting := s[0].stage_hit <= 0;
+  dx := e[g].x - cr[0].player_x; dz := e[g].z - cr[0].player_z; d := sqrt(dx * dx + dz * dz);
+  // a canter in, a stand short of it to shoot, and after the hit a short trot on
+  if s[0].stage_rein <= 0 && d < f32(LAB_ARCHER_STAND_M) { s[0].stage_rein = now; }
+  stand := shooting && s[0].stage_rein > 0 && now - s[0].stage_rein > f32(LAB_ARCHER_REIN_S);
+  if !shooting { a := now - s[0].stage_hit; stand = a < f32(LAB_ARCHER_CUT_S) || a > f32(LAB_ARCHER_CUT_S) + f32(LAB_ARCHER_ON_S); }   // it watches the gremlin fall, then trots on a little
+  s[0].w[0].held = ifx stand then 0 else HOLD_W; s[0].w[0].shift = s[0].stage_rein <= 0;
+  if shooting && d < f32(LAB_ARCHER_SHOOT_M) {
+    ey := meadow_y(e[g].x, e[g].z) + 0.85 * e[g].scale;
+    if !x[0].ar[0].draw[0].on && now - cr[0].loose_at > f32(LAB_ARCHER_NOCK_S) { _ := xc_bow_begin(s[0].w[..], false); }
+    if x[0].ar[0].draw[0].on && now - x[0].ar[0].draw[0].at > f32(LAB_ARCHER_HOLD_S) {
+      // the crosshair on its chest, from the rider's eyes
+      eye := [3] f32.[cr[0].player_x, meadow_y(cr[0].player_x, cr[0].player_z) + cr[0].player_y + 1.6, cr[0].player_z];
+      v := [3] f32.[e[g].x - eye[0], ey - eye[1], e[g].z - eye[2]]; l := sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
+      for k: 0..<3 { x[0].u[16 + k] = eye[k]; x[0].u[20 + k] = v[k] / l; }
+      _ := xc_bow_loose(s[0].w[..]);
+    }
+  } else if x[0].ar[0].draw[0].on { _ := xc_bow_cancel(s[0].w[..]); }
+  if !shooting && now - s[0].stage_hit > f32(LAB_ARCHER_CUT_S) {
+    // beside the horse as it trots on
+    cr[0].pitch = 0.04; cr[0].dist = 4.2;
+    want := h.face + 3.1415927 - 1.5707964; dy := want - cr[0].yaw;
+    while dy > 3.1415927 { dy -= 6.2831853; } while dy < -3.1415927 { dy += 6.2831853; }
+    cr[0].yaw += ifx now - s[0].stage_hit < f32(LAB_ARCHER_CUT_S) + 0.05 then dy else dy * 0.2;   // a cut, then it tracks
+    return true;
+  }
+  // behind the right shoulder, looking past the rider at the gremlin (never more than LAB_ARCHER_LOOK off the horse's way)
+  cr[0].pitch = 0.12; cr[0].dist = 2.4;
+  off := atan2(dx, dz) - h.face;
+  while off > 3.1415927 { off -= 6.2831853; } while off < -3.1415927 { off += 6.2831853; }
+  if off > f32(LAB_ARCHER_LOOK) { off = f32(LAB_ARCHER_LOOK); } if off < -f32(LAB_ARCHER_LOOK) { off = -f32(LAB_ARCHER_LOOK); }
+  want := h.face + off + 3.1415927 + 0.45; dy := want - cr[0].yaw;
+  while dy > 3.1415927 { dy -= 6.2831853; } while dy < -3.1415927 { dy += 6.2831853; }
+  cr[0].yaw += dy * 0.2;
+  return true;
+}
+#test "the dragonback stage mounts the dragon and rides it up over the treeline (mounts)" #steps 900000000 {
+  s: [1]Lab; cr := s[0].w[0].creator[..]; cr[0].experimental = true; cr[0].hostiles[0].hp = 44;
+  for i: 0..<egm.EG_HORSE_FRAMES { cr[0].mounts[0].count[i] = 3; } cr[0].mounts[0].frames = egm.EG_HORSE_FRAMES;
+  for i: 0..<egm.EG_DRAGON_FRAMES { cr[0].mounts[0].dcount[i] = 3; } cr[0].mounts[0].dframes = egm.EG_DRAGON_FRAMES;
+  cc.xh_place(cr); s[0].ride_dev = LAB_STAGE_DRAGONBACK;
+  b := EgBody.{ground = true};
+  for j: 0..<720 { cr[0].clock = f32(j) / 60; b = lab_keep_body(s[..], b, b); }
+  k := cc.xh_dragon(cr); h := cr[0].mounts[0].mounts[k];
+  #assert cr[0].mounts[0].riding == k && egm.eg_aloft(cr[0].mounts[0]) && h.wing.y - meadow_y(h.x, h.z) > 20;
+}
+#test "the horse-archer stage canters a Ranger at two calm gremlins, reins in short of the first and shoots it (mounts)" #steps 900000000 {
+  s: [1]Lab; xc_test_bow(s[0].w[..], [3] f32.[0, 0, 1]);
+  x := s[0].w[0].xc[..]; cr := s[0].w[0].creator[..]; e := cr[0].hostiles[0].enemies[..];
+  for i: 0..<egm.EG_HORSE_FRAMES { cr[0].mounts[0].count[i] = 3; } cr[0].mounts[0].frames = egm.EG_HORSE_FRAMES;
+  cc.xh_place(cr); s[0].ride_dev = LAB_STAGE_HORSE_ARCHER;
+  b := EgBody.{ground = true}; t0 := cr[0].clock;
+  cr[0].clock += 1.0 / 60; b = lab_keep_body(s[..], b, b);
+  // placed: the horse at its mark, the gremlins ahead of it and standing down until an arrow finds them
+  h := cr[0].mounts[0].mounts[0]; fx := sin(h.face); fz := cos(h.face);
+  #assert abs(h.x - LAB_ARCHER_HORSE[0]) < 0.5 && abs(h.z - LAB_ARCHER_HORSE[1]) < 0.5;
+  for j: 0..<2 { i := LAB_ARCHER_FOES[j]; ahead := (e[i].x - h.x) * fx + (e[i].z - h.z) * fz; #assert abs(ahead - LAB_ARCHER_AHEAD[j]) < 0.5 && x[0].calm[i]; }
+  for k: 0..<600 { cr[0].clock = t0 + f32(k + 2) / 60; b = lab_keep_body(s[..], b, b); lab_you(s[..], b.x, 0, b.z, 0, false, false, false, 0, 0, 0, 0); }   // the frame's own step puts you where the body went
+  g := LAB_ARCHER_FOES[0]; dx := e[g].x - cr[0].player_x; dz := e[g].z - cr[0].player_z;
+  #assert cr[0].mounts[0].riding == 0;
+  #assert s[0].stage_rein > 0 && sqrt(dx * dx + dz * dz) < f32(LAB_ARCHER_STAND_M);
+  #assert x[0].ar[0].shots > 0;
+}
+#test "the dragon-fire stage swoops down low over the gremlins and burns them (mounts)" #steps 4000000000 {
+  s: [1]Lab; cr := s[0].w[0].creator[..]; cr[0].experimental = true; hs := cr[0].hostiles[..]; hostile.hostile_start(hs); cr[0].hostiles[0].hp = 44;
+  for i: 0..<egm.EG_HORSE_FRAMES { cr[0].mounts[0].count[i] = 3; } cr[0].mounts[0].frames = egm.EG_HORSE_FRAMES;
+  for i: 0..<egm.EG_DRAGON_FRAMES { cr[0].mounts[0].dcount[i] = 3; } cr[0].mounts[0].dframes = egm.EG_DRAGON_FRAMES;
+  xc_start(s[0].w[0].xc[..], s[0].w[0].xc[0].klass);
+  cc.xh_place(cr); s[0].ride_dev = LAB_STAGE_DRAGONFIRE;
+  b := EgBody.{ground = true}; low: f32 = 100;
+  for j: 0..<900 {
+    cr[0].clock = f32(j) / 60; b = lab_keep_body(s[..], b, b);
+    m := cr[0].mounts[0]; if m.riding >= 0 && egm.eg_aloft(m) && s[0].w[0].xc[0].dragon_seat[0].me <= 0 { h := m.mounts[m.riding]; a := h.wing.y - meadow_y(h.x, h.z); dx := h.x - f32(LAB_FIRE_FIELD_X); dz := h.z - f32(LAB_FIRE_FIELD_Z); if dx * dx + dz * dz < 30 * 30 && a < low { low = a; } }
+  }
+  dead := 0; for g: 0..<XC_FOES { if hostile.hostile_kind(g) == xdungeon.DG_KIND_GREMLIN && hs[0].enemies[g].dead { dead += 1; } }
+  #assert s[0].w[0].xc[0].dragon_seat[0].me > 0;
+  #assert low < 9;
+  #assert dead >= 3;
+}

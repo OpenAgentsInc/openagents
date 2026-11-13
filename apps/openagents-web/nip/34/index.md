@@ -28,4 +28,4 @@ Typed extraction and signature verification are separate. Project scope, allowed
 - [coax/lib/nostr/nip34-event.coax](https://github.com/OpenAgentsInc/openagents/blob/main/coax/lib/nostr/nip34-event.coax)
 - [apps/openagents-web/project-fold.coax](https://github.com/OpenAgentsInc/openagents/blob/main/apps/openagents-web/project-fold.coax)
 
-The page examples are in [nip-guide-observe.coax](https://github.com/OpenAgentsInc/openagents/blob/main/apps/openagents-web/nip-guide-observe.coax). Relay-only examples inspect NIP-11 metadata, not relay behavior. The catalog distinguishes native library, partial support and relay declarations.
+The page examples are in [nip-guide-observe.coax](https://github.com/OpenAgentsInc/openagents/blob/main/apps/openagents-web/nip/nip-guide-observe.coax). Relay-only examples inspect NIP-11 metadata, not relay behavior. The catalog distinguishes native library, partial support and relay declarations.

@@ -144,12 +144,15 @@ if [[ -x "$coax" ]]; then
     rm "$out/render-assets.pending.json"
   fi
   cp "$face" "$web"/*-face.h "$web"/*-bridge.h "$web/face-address.h" ${faces_too[@]+"${faces_too[@]}"} "$out/"
+  # A face kept in a folder (old/labs/, #13269) names the site's flat headers as ../../X.h; here
+  # they sit beside it.
+  sed -i.bak -E 's|^#include "(\.\./)+([^/"]+\.h)"|#include "\2"|' "$out/$(basename "$face")" && rm -f "$out/$(basename "$face").bak"
   cp "$here"/face.h "$here"/face-defaults.h "$here"/realm-host.h "$here"/realm-host.c "$here"/pack-table-gen.h "$here"/host-core-gen.h "$here"/audio-host.h "$here"/realm-run.c "$out/"
   units="$(cd "$out" && ls ./*.c | grep -v -e face -e realm-host -e realm-run | xargs -n1 basename | tr '\n' ' ')"
   # C the face includes itself (the haunted house's realm-flight.c ...), and a header of the
   # site's it shares with another face (experimental-sound-bank.h): beside it, not a unit
   # (and what those include in turn: lab-walk-face.h names the sound bank for the Bitcoin Lab's face)
-  seen=" "; todo=("$face")
+  seen=" "; todo=("$out/$(basename "$face")")
   while [[ ${#todo[@]} -gt 0 ]]; do
     from="${todo[0]}"; todo=("${todo[@]:1}")
     for inc in $(grep -o '^#include "[^"]*\.[ch]"' "$from" | cut -d'"' -f2); do

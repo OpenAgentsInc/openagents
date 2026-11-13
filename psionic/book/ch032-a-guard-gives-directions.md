@@ -18,7 +18,7 @@ conversation, move a guard, or affect combat, crime or rewards.
 
 Directions is a separate interaction from `talk_to`. It neither opens character
 chat nor submits player speech. The
-[page](../../apps/openagents-web/everglade-guide.coax) observes the single visible
+[page](../../apps/openagents-web/old/v1/everglade-guide.coax) observes the single visible
 followed objective and its current stage. The
 [projection policy](../../everglade/npc/guard-guide-game.coax) maps those facts
 to the existing authored routes:

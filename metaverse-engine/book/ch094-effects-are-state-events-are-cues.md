@@ -4,7 +4,7 @@
 > Wind Wall, Wall of Stone) is drawn only from its server entity, and its
 > cast event is a cue (#12775, commit 26b09b5e11). Every condition drawn or
 > said on the page reads one status state, filled once a frame
-> ([everglade-status.coax](../../apps/openagents-web/everglade-status.coax),
+> ([everglade-status.coax](../../apps/openagents-web/old/v1/everglade-status.coax),
 > #12776, commit c3c2805dc6). The wire carries effects as `WK_EFFECT` rows
 > with their cause, `T0` and `DUR` (commit 67b4f62448), so a room shows
 > `HELD · HOLD PERSON` with its seconds left (commit 3370a41ddc). Your own
@@ -55,7 +55,7 @@ and `DUR` too.
 from the entity table. The status lines, the rings on every body, the
 particles and the hotbar read only that state.
 
-<!-- source: apps/openagents-web/everglade-status.coax status-effect -->
+<!-- source: apps/openagents-web/old/v1/everglade-status.coax status-effect -->
 ```jai
 // An effect on a body: WHO (ST_YOU, or a TGT code: 1000 + SS a seat, 0-999 a watch actor, 2000 + EID a
 // creature), its condition bits (WC_*), the spell that made it (ST_*; -1 not said) and its seconds left (-1 held up, or not said).
