@@ -1,5 +1,5 @@
 // What a visitor can do on the page, drawn by Coax like everything else
-// (INVARIANTS.md, "Coaxial pages draw everything in Coax"): the access
+// (INVARIANTS.md, "Coax Native Web pages: Coax decides everything"): the access
 // terminal that takes a typed code, the presentation a code opens (a key
 // prompt the first time on a device, then the slides), and the not-found
 // page's HOME. Every panel, field and button is the Metaverse HUD bar

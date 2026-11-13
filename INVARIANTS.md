@@ -5768,18 +5768,35 @@ tampered signatures/content, invalid beacons, old activity and duplicates.
 Desktop/phone page-start and golden checks cover `/pylon`; release smoke
 also requires its Markdown guide and the verbatim audience join script.
 
-## Coaxial pages draw everything in Coax; TypeScript only for browser crypto
+## Coax Native Web pages: Coax decides everything; worlds on the GPU, text surfaces in the browser; TypeScript only for browser crypto
 
-Everything a person sees on a Coaxial page (`apps/openagents-web/`, any app
-served by `coax/web/`) is drawn by Coax on the WebGPU canvas: words, the
-graph, the 404 page, the access terminal, presentations, buttons and links.
-No visible HTML elements, no CSS-styled overlays, no DOM-built UI. The page's
-JavaScript is the generic host (`coax/web/host.js`): it owns the GPU, feeds
-input (keys, pointer, text) into the Coax module and does what the module
-asks (navigate, submit a code). TypeScript exists only where the browser's
-crypto and Nostr plumbing need it (`coax/web/unlock/`: phrase checks, NIP-44,
-NIP-59, NIP-42, key storage); it hands results to Coax as data and draws
-nothing.
+Everything a person sees on a Coax Native Web page (formerly Coaxial:
+`apps/openagents-web/`, any app served by `coax/web/`) comes from a Coax
+module. Since the 2026-11-11 decision in `coax/web.md` ("text surfaces use the
+browser", #13516 brought this rule in line with it), there are two ways to
+draw it:
+
+- **Worlds, labs and the splash** are drawn by Coax on the WebGPU canvas:
+  words, the graph, the 404 page, the access terminal, presentations,
+  buttons and links. The page's JavaScript is the generic host
+  (`coax/web/host.js`): it owns the GPU, feeds input (keys, pointer, text)
+  into the Coax module and does what the module asks (navigate, submit a
+  code).
+- **Text surfaces** (the site's side and kit pages, `/chat`, `/settings`,
+  `/worlds`, `/milestone`) are drawn by the browser from a Coax module's
+  tree: the module builds it from the kit's components
+  (`components/kit/frames.coax`, `components/backend/dom.coax`) and
+  `coax/web/dom-host.js` applies it with no logic of its own, and hands
+  presses and typing back to the module. State, rules and every decision
+  stay in Coax. A page names its module (`data-app`), and its app's
+  `build.sh` builds that module.
+
+On both, there is no hand-written visible HTML, no CSS-styled overlay and no
+DOM UI built by JavaScript outside `dom-host.js`'s applier. There is still
+no npm, bundler or JavaScript framework. TypeScript exists only where the
+browser's crypto and Nostr plumbing need it (`coax/web/unlock/`: phrase
+checks, NIP-44, NIP-59, NIP-42, key storage); it hands results to Coax as
+data and draws nothing.
 
 Allowed HTML, none of it visible to a WebGPU visitor:
 - the `<canvas>`;
@@ -5843,7 +5860,9 @@ Check: `coax/web/check-visuals.sh` (run by `coax/web/deploy.sh` before every
 upload; `release.sh` runs it as a report, since only what breaks staging
 against production stops a release) refuses visible elements, inline styling of UI, and DOM-built UI in
 the app's HTML, the host and `coax/web/unlock/`; the loading screen's block
-may hold only its own elements, and `loader.js` styles only marked lines.
+may hold only its own elements, and `loader.js` styles only marked lines. It also
+refuses a page that loads `dom-host.js` with no `data-app` module, or names a
+module its app's `build.sh` does not build (#13516).
 
 
 ## Private projects answer non-members with nothing

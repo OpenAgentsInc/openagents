@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# INVARIANTS.md "Coaxial pages draw everything in Coax": refuses visible HTML,
+# INVARIANTS.md "Coax Native Web pages: Coax decides everything": refuses visible HTML,
 # styled overlays and DOM-built UI in an app's pages, the host and unlock/.
 #   check-visuals.sh APP_DIR
 set -euo pipefail
@@ -28,6 +28,14 @@ while IFS= read -r page; do
   # dom-host.js, which the module draws over: <main id="page-root">, /worlds).
   outside="$(printf '%s\n' "$body" | sed '/<main[ >]/,/<\/main>/d' | grep -E '<a |<h1|<p>|<table|<caption|<thead|<tbody|<tr>|<th>|<td>' || true)"
   [[ -z "$outside" ]] || bad "${page#$app/}: text or links outside the hidden <main>"
+  # A text surface the browser draws (coax/web.md, decision 2026-11-11) is a Coax module's tree, applied by
+  # dom-host.js: the page names its module, and the app's build.sh builds it, so no page hands the browser
+  # UI of its own.
+  while IFS= read -r module; do
+    [[ -n "$module" ]] || continue
+    grep -q "build/$module.wasm" "$app/build.sh" 2>/dev/null || bad "${page#$app/}: dom-host.js draws module '$module', which $(basename "$app")/build.sh does not build"
+  done < <(grep -oE 'dom-host\.js"[^>]*data-app="[^"]*"' "$page" | sed -E 's/.*data-app="([^"]*)"/\1/' | sort -u)
+  if grep -qE '<script[^>]*dom-host\.js"' "$page" && ! grep -qE 'dom-host\.js"[^>]*data-app="[^"]+"' "$page"; then bad "${page#$app/}: dom-host.js with no data-app module to draw"; fi
 # (A realm's own domain's front door and 404, realms/<slug>/domain/, are plain HTML: an owner
 # decision, 2026-11-08, INVARIANTS.md. Its /play page is a realm page and is checked.)
 done < <(find "$app" -name '*.html' -not -path '*/build/*' -not -path '*/node_modules/*' -not -path '*/realms/*/domain/index.html' -not -path '*/realms/*/domain/404.html' | sort)
