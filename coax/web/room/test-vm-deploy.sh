@@ -149,6 +149,33 @@ v lock release "$token"; st=$?
 expect "the holder releases it" 0 $st "released"
 v lock status; st=$?
 expect "staging is free again" 0 $st "staging lock: free"
+# the nightly soak holds staging too, and gives way to a release (#13384)
+OA_STAGING_LOCK_PID=$holder v lock take "soak 8da7b1d5e7" 600; st=$?
+soak_token="$(sed -n 's/^lock-token //p' "$w/out")"
+[[ $st == 0 && ${#soak_token} == 24 ]] && ok "the soak takes staging's lock" || { bad "the soak did not take the lock"; show; }
+v lock mine "$soak_token"; st=$?
+expect "the soak's token holds staging" 0 $st "staging lock: yours"
+OA_STAGING_LOCK_PID=$holder v lock take "soak 0123456789" 600; st=$?
+expect "a second soak can't take it" 1 $st "REFUSED" "soak 8da7b1d5e7"
+v lock status; st=$?
+expect "lock status says the soak gives way" 0 $st "held by soak 8da7b1d5e7" "gives way"
+OA_STAGING_LOCK_PID=$holder v lock take "release-set abc.2 by tester"; st=$?
+token="$(sed -n 's/^lock-token //p' "$w/out")"
+expect "a release takes staging from the soak" 0 $st "gives way" "lock-token"
+v lock mine "$soak_token"; st=$?
+expect "the soak sees its lock is gone" 1 $st "not yours"
+OA_STAGING_LOCK_PID=$holder v lock take "soak 8da7b1d5e7" 600; st=$?
+expect "and a soak does not start while the release holds staging" 1 $st "REFUSED" "release-set abc.2 by tester"
+v lock release "$token"; st=$?
+expect "the release lets staging go" 0 $st "released"
+OA_STAGING_LOCK_PID=$holder v lock take "soak 8da7b1d5e7" 600; st=$?
+soak_token="$(sed -n 's/^lock-token //p' "$w/out")"
+stage r7; st=$?
+expect "a deploy to staging with no lock takes it from the soak too" 0 $st "gives way"
+v lock mine "$soak_token"; st=$?
+expect "and the soak sees that" 1 $st "not yours"
+v lock status; st=$?
+expect "staging is free after it" 0 $st "staging lock: free"
 OA_ROOM_VM_STANDIN="$vm" OA_STAGING_LOCK="" "$here/../api/deploy.sh" --staging > "$w/out" 2>&1; st=$?
 expect "the API's deploy passes when staging is free" 0 $st "staging's lock allows this deploy"
 

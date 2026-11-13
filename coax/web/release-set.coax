@@ -42,11 +42,11 @@
 //     checkout's (a question only: release.sh never passes it). Exits 0 when the page may ship, 1
 //     when it may not (each shard that does not speak it is named, with both versions).
 //   coax/web/tool.sh release-set promote-gate --release NAME --staging-runs NAME [--rooms-wire A-B] [--page-wire N]
-//   coax/web/tool.sh release-set lock-gate --held 0|1 --token T --mine T --now S --until S --same-host 0|1 --alive 0|1
+//   coax/web/tool.sh release-set lock-gate --held 0|1 --token T --mine T --now S --until S --same-host 0|1 --alive 0|1 [--holder NAME --taker NAME]
 //   coax/web/tool.sh release-set previous-gate --current NAME --next NAME --previous NAME [--repair] [--bad]
 //     The rules vm-deploy.sh asks (release-set-policy.coax): whether a promotion may go (exit 0 or 1,
 //     with why; the rooms' wire range and the live page's version are read unless given), a lock's
-//     state (free, mine, stale or held), and what a promotion does to the rollback target (keep,
+//     state (free, mine, stale, held, or yields: a soak's, which gives way to this taker), and what a promotion does to the rollback target (keep,
 //     replaced or none).
 // tool.sh: tls
 // tool.sh: run-steps 250000000
@@ -705,6 +705,8 @@ rl_lock_gate :: (a: [] Args) -> int {
   state := rs_lock(args_value(a, "--held", "0") == "1", args_value(a, "--token", ""), args_value(a, "--mine", ""), sr_num(args_value(a, "--now", "0")).v,
                    sr_num(args_value(a, "--until", "0")).v, args_value(a, "--same-host", "0") == "1", args_value(a, "--alive", "0") == "1");
   words := [4] string.["free", "mine", "stale", "held"];
+  // a soak's live lock gives way to a taker that is not a soak (#13384)
+  if rs_lock_yields(state, args_value(a, "--holder", ""), args_value(a, "--taker", "")) { print("yields\n"); return 0; }
   print("%\n", words[state]);
   return 0;
 }

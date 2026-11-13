@@ -330,7 +330,8 @@ restart_shards() {   # [SKIP]: a shard that already runs the release (the canary
 # length. While it is held, a deploy to staging's room unit or API by anyone else is refused.
 gate() { "$here/../tool.sh" release-set "$@"; }
 lock_mine="${OA_STAGING_LOCK:-}"
-lock_read() {   # sets L_LINE and L_TOKEN L_UNTIL L_HOST L_PID L_HOLDER L_STATE (free, mine, stale or held)
+lock_taker=""   # who asks: a `lock take`'s holder name, else nobody's (a deploy). A soak's lock gives way to anyone but a soak (#13384)
+lock_read() {   # sets L_LINE and L_TOKEN L_UNTIL L_HOST L_PID L_HOLDER L_STATE (free, mine, stale, held or yields)
   L_LINE="$(on_vm 'cat /opt/oa-room/staging.lock 2>/dev/null || true')" || { echo "room-vm: staging's lock could not be read" >&2; return 1; }
   L_TOKEN="" L_UNTIL=0 L_HOST="" L_PID=0 L_HOLDER=""
   [[ -z "$L_LINE" ]] || read -r L_TOKEN L_UNTIL L_HOST L_PID L_HOLDER <<<"$L_LINE"
@@ -338,7 +339,7 @@ lock_read() {   # sets L_LINE and L_TOKEN L_UNTIL L_HOST L_PID L_HOLDER L_STATE 
   [[ "$L_PID" =~ ^[0-9]+$ ]] || L_PID=0
   local same=0 alive=0
   if [[ -n "$L_LINE" && "$L_HOST" == "$(hostname -s)" ]]; then same=1; (( L_PID > 0 )) && kill -0 "$L_PID" 2>/dev/null && alive=1; fi
-  L_STATE="$(gate lock-gate --held "$( [[ -n "$L_LINE" ]] && echo 1 || echo 0 )" --token "$L_TOKEN" --mine "$lock_mine" --now "$(date +%s)" --until "$L_UNTIL" --same-host "$same" --alive "$alive")" ||
+  L_STATE="$(gate lock-gate --held "$( [[ -n "$L_LINE" ]] && echo 1 || echo 0 )" --token "$L_TOKEN" --mine "$lock_mine" --now "$(date +%s)" --until "$L_UNTIL" --same-host "$same" --alive "$alive" --holder "$L_HOLDER" --taker "$lock_taker")" ||
     { echo "room-vm: the lock's rule did not run" >&2; return 1; }
 }
 lock_who() { echo "$L_HOLDER (on $L_HOST, process $L_PID, until $(date -r "$L_UNTIL" '+%Y-%m-%d %H:%M:%S %Z' 2>/dev/null || date -d "@$L_UNTIL" '+%Y-%m-%d %H:%M:%S %Z' 2>/dev/null || echo "$L_UNTIL"))"; }
@@ -348,6 +349,8 @@ staging_free() {
   case "$L_STATE" in
     free|mine) return 0 ;;
     stale) echo "room-vm: staging's lock was stale and is removed: it was held by $(lock_who)" >&2
+      on_vm 'sudo rm -f /opt/oa-room/staging.lock'; return 0 ;;
+    yields) echo "room-vm: the nightly soak held staging and gives way: its lock ($(lock_who)) is removed, and its run ends unjudged" >&2
       on_vm 'sudo rm -f /opt/oa-room/staging.lock'; return 0 ;;
   esac
   echo "room-vm: REFUSED. Staging is held by $(lock_who). A release is between its staging step and its promotion: nothing else deploys to staging until it ends. vm-deploy.sh lock status says more" >&2
@@ -359,6 +362,7 @@ lock() {
       local holder="${2:?usage: vm-deploy.sh lock take HOLDER [SECONDS]}" secs="${3:-14400}" pid="${OA_STAGING_LOCK_PID:-$PPID}" token
       [[ "$secs" =~ ^[1-9][0-9]{0,5}$ ]] || { echo "room-vm: lock take HOLDER SECONDS (1 to 999999)" >&2; exit 2; }
       holder="$(tr -c 'A-Za-z0-9 ._:@+-' '_' <<<"$holder" | head -c 160)"; holder="${holder%_}"
+      lock_taker="$holder"
       staging_free || exit 1
       [[ "$L_STATE" != mine ]] || { echo "lock-token $L_TOKEN"; return 0; }
       token="$(od -An -N12 -tx1 /dev/urandom | tr -d ' \n')"
@@ -374,10 +378,14 @@ lock() {
         free) echo "room-vm: staging was not held" ;;
         *) echo "room-vm: REFUSED. That token does not hold staging: $(lock_who) does" >&2; exit 1 ;;
       esac ;;
+    mine)   # exit 0 when TOKEN still holds staging, 1 when it does not (released, taken over), 2 when the lock could not be read
+      lock_mine="${2:?usage: vm-deploy.sh lock mine TOKEN}"; lock_read || exit 2
+      [[ "$L_STATE" == mine ]] && echo "staging lock: yours" || { echo "staging lock: not yours ($L_STATE)"; exit 1; } ;;
     status)
       lock_mine=""; lock_read || exit 1
       case "$L_STATE" in
         free) echo "staging lock: free" ;;
+        yields) echo "staging lock: held by $(lock_who): the nightly soak, which gives way to a release or a deploy" ;;
         stale) echo "staging lock: STALE. Held by $(lock_who); it is past its time or its process is gone. vm-deploy.sh lock clear removes it" ;;
         *) echo "staging lock: held by $(lock_who)" ;;
       esac ;;
@@ -392,7 +400,7 @@ lock() {
       # a lock that can't be read (the VM does not answer) is not held against the API's deploy: only a lock that is there stops it
       on_vm true 2>/dev/null || { echo "room-vm: staging's lock could not be read ($vm did not answer): not held against this deploy" >&2; return 0; }
       staging_free ;;
-    *) echo "usage: vm-deploy.sh lock take HOLDER [SECONDS] | release TOKEN | status | clear | check [--lock TOKEN]" >&2; exit 2 ;;
+    *) echo "usage: vm-deploy.sh lock take HOLDER [SECONDS] | release TOKEN | mine TOKEN | status | clear | check [--lock TOKEN]" >&2; exit 2 ;;
   esac
 }
 

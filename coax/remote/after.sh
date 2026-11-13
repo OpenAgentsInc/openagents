@@ -586,8 +586,33 @@ soak_of() {   # head
   day="$(TZ=America/Chicago date +%F)"
   mkdir -p "$dir" "$results/soak"
   (
-    OA_REMOTE_TIMEOUT=$(( soak_seconds + 2700 )) "$here/remote.sh" run --commit "$head" --out "$dir" --no-fallback -- coax/remote/check.sh soak "$soak_seconds" "$soak_players" "$day" > "$dir/out" 2>&1
-    s=$?
+    # Staging's lock (#13398, #13384): the soak holds staging for its run, so a soak never starts while a
+    # release is between its staging step and its promotion. Its lock gives way to a release or a deploy
+    # (release-set-policy.coax rs_lock_yields): the soak then ends its run unjudged, and the next green
+    # head tries again. OA_AFTER_SOAK_LOCK=0 runs it without the lock (a soak of another environment).
+    vmd="$here/../web/room/vm-deploy.sh" tok="" put_off=0
+    if [[ "${OA_AFTER_SOAK_LOCK:-1}" != 0 ]]; then
+      got="$(OA_STAGING_LOCK_PID=$BASHPID "$vmd" lock take "soak ${head:0:10}" $(( soak_seconds + 3000 )) 2> "$dir/lock")" || {
+        pl_say "after: the nightly soak at ${head:0:10} is put off: staging is held ($(tail -n 1 "$dir/lock" 2> /dev/null | cut -c1-200))"
+        rm -f "$results/last-soak"; exit 0; }
+      tok="$(sed -n 's/^lock-token //p' <<<"$got")"
+    fi
+    OA_REMOTE_TIMEOUT=$(( soak_seconds + 2700 )) "$here/remote.sh" run --commit "$head" --out "$dir" --no-fallback -- coax/remote/check.sh soak "$soak_seconds" "$soak_players" "$day" > "$dir/out" 2>&1 &
+    run=$!
+    # once a minute: is staging still the soak's? (1: taken over. 2, the lock unread, is not held against the run)
+    while kill -0 "$run" 2> /dev/null; do
+      for _ in $(seq 1 60); do kill -0 "$run" 2> /dev/null || break; read -r -t 1 < /dev/zero || true; done
+      [[ -n "$tok" ]] || continue
+      st=0; "$vmd" lock mine "$tok" > /dev/null 2>&1 || st=$?
+      [[ $st == 1 ]] || continue
+      put_off=1; kill "$run" 2> /dev/null; break
+    done
+    s=0; wait "$run" || s=$?
+    if (( put_off )); then
+      pl_say "after: the nightly soak at ${head:0:10} gave staging to a release and is not judged; the next green head runs it"
+      rm -f "$results/last-soak"; exit 0
+    fi
+    [[ -z "$tok" ]] || "$vmd" lock release "$tok" > /dev/null 2>&1
     rec="$dir/build/pipeline/capacity.txt"
     if [[ -s "$rec" ]]; then cp "$rec" "$results/soak/$day.txt"; pl_soak_publish "$rec"; fi
     if (( s == 1 )); then

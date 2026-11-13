@@ -82,6 +82,19 @@ The green-main watcher (`coax/remote/after.sh`, `soak_of`) runs
    does not hold") with the record and the log's end. While that issue is
    open, each failing night comments on it.
 
+The soak holds staging's lock for its run (`coax/web/room/vm-deploy.sh lock`,
+#13398). The watcher takes the lock as `soak COMMIT` before it starts the
+bots, and releases it when the run ends.
+
+- If a release holds staging, the soak does not start. The next green head
+  tries again.
+- A soak's lock gives way. A release or a deploy that asks for staging takes it
+  from the soak. The watcher checks the lock once a minute. When the lock is no
+  longer the soak's, the watcher stops the run and does not judge it, and no
+  issue is opened.
+- A second soak cannot take the lock from the first.
+- `OA_AFTER_SOAK_LOCK=0` runs the soak without the lock.
+
 Staging's alerts mail nobody, so a soak never emails the owner.
 
 | Setting | Default | Meaning |

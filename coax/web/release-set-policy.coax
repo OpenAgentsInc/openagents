@@ -109,6 +109,13 @@ RsPins :: struct { engine: int; rules: int; content: int; wire_lo: int; wire_hi:
   #assert rs_lock_may(RS_L_FREE) && rs_lock_may(RS_L_MINE) && rs_lock_may(RS_L_STALE) && !rs_lock_may(RS_L_HELD) && !rs_lock_may(4) && !rs_lock_may(-1);
   #assert !rs_lock_clears(RS_L_FREE) && !rs_lock_clears(RS_L_MINE) && rs_lock_clears(RS_L_STALE) && !rs_lock_clears(RS_L_HELD);
 }
+#test "the staging lock: a soak's lock gives way to a release or a deploy, never to another soak; a release's gives way to no one (#13384)" {
+  #assert rs_lock_soak("soak") && rs_lock_soak("soak 8da7b1d5e7") && !rs_lock_soak("soaker") && !rs_lock_soak("soa") && !rs_lock_soak("") && !rs_lock_soak("release-set soak") && !rs_lock_soak("Soak 1") && !rs_lock_soak("xoak 1") && !rs_lock_soak("soak_1");
+  #assert rs_lock_yields(RS_L_HELD, "soak 8da7b1d5e7", "release-set abc.1 by tester") && rs_lock_yields(RS_L_HELD, "soak", "");
+  #assert !rs_lock_yields(RS_L_HELD, "soak 8da7b1d5e7", "soak 0123456789") && !rs_lock_yields(RS_L_HELD, "release-set abc.1", "release-set abc.2") && !rs_lock_yields(RS_L_HELD, "release-set abc.1", "soak 1");
+  // only a live lock of another's yields: a free, own or stale one has its own rule
+  #assert !rs_lock_yields(RS_L_FREE, "soak 1", "r") && !rs_lock_yields(RS_L_MINE, "soak 1", "r") && !rs_lock_yields(RS_L_STALE, "soak 1", "r");
+}
 #test "rooms beside the live page: a promotion never leaves the page's wire outside the rooms' range (#13398)" {
   // the rooms speak 5 to 6: a page on 5 or 6 keeps playing
   #assert rs_rooms_beside(5, 5, 6) && rs_rooms_beside(6, 5, 6) && rs_rooms_beside(6, 6, 6);
@@ -330,6 +337,12 @@ rs_lock :: (held: bool, token: string, mine: string, now_s: int, until_s: int, s
 }
 rs_lock_may :: (state: int) -> bool #effects(all) { return state == RS_L_FREE || state == RS_L_MINE || state == RS_L_STALE; }
 rs_lock_clears :: (state: int) -> bool #effects(all) { return state == RS_L_STALE; }
+// The nightly soak holds staging too (#13384), so a soak never starts on a release's staging and a
+// release never starts on a soak's. A soak's lock gives way: a holder named "soak" or "soak ..."
+// yields a live lock to anyone who is not a soak (a release, a deploy), and never to another soak.
+// The soak sees its lock gone and ends its run unjudged. A release is never held up by a soak.
+rs_lock_soak :: (who: string) -> bool #effects(all) { return who.count >= 4 && who[0..<4] == "soak" && (who.count == 4 || who[4] == ' '); }
+rs_lock_yields :: (state: int, holder: string, taker: string) -> bool #effects(all) { return state == RS_L_HELD && rs_lock_soak(holder) && !rs_lock_soak(taker); }
 // Whether rooms that speak the wire versions lo..hi may be promoted beside a live page that speaks
 // `page` (0 or less: unread, which is nothing against the promotion). Rooms whose range is unread
 // are not promoted.
