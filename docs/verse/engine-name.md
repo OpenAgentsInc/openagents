@@ -1,5 +1,11 @@
 # Naming the engine
 
+**Superseded 2026-11-12 (GitHub #13405).** The engine is now the OpenAgents
+Metaverse Engine, the world is the OpenAgents Metaverse, and the creation
+tool is OpenAgents Forge. See
+[the rename decision](../naming/2026-11-12-metaverse-rename.md). The rest of
+this page is the 2026-10-31 decision as it was written, kept as history.
+
 **Decided 2026-10-31: the engine is Aethyr; the realm builder and world-creation
 tools are Aethyrforge.**
 
