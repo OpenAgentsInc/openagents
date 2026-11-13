@@ -15733,6 +15733,35 @@ CREATE FUNCTION verse.realm_visibility_may(s text, k text, site_admin boolean) R
 
 
 --
+-- Name: realm_world_id_ok(text); Type: FUNCTION; Schema: verse; Owner: -
+--
+
+CREATE FUNCTION verse.realm_world_id_ok(s text) RETURNS boolean
+    LANGUAGE sql IMMUTABLE
+    AS $_$
+  SELECT s ~ '^[a-z0-9][a-z0-9-]{0,47}$' AND s NOT IN ('splice', 'everglade') $_$;
+
+
+--
+-- Name: realm_world_made(); Type: FUNCTION; Schema: verse; Owner: -
+--
+
+CREATE FUNCTION verse.realm_world_made() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+  IF TG_OP = 'INSERT' THEN
+    IF verse.realm_world_id_ok(NEW.slug) THEN
+      INSERT INTO verse.world_docs (id, kind) VALUES (NEW.slug, 'realm') ON CONFLICT (id) DO NOTHING;
+    END IF;
+    RETURN NEW;
+  END IF;
+  DELETE FROM verse.world_docs WHERE id = OLD.slug AND kind = 'realm';
+  RETURN OLD;
+END $$;
+
+
+--
 -- Name: realms_mine(text); Type: FUNCTION; Schema: verse; Owner: -
 --
 
@@ -22723,7 +22752,7 @@ CREATE TABLE verse.world_docs (
     CONSTRAINT world_docs_check CHECK ((steps >= done)),
     CONSTRAINT world_docs_dev_rev_check CHECK ((dev_rev >= 0)),
     CONSTRAINT world_docs_done_check CHECK ((done >= 0)),
-    CONSTRAINT world_docs_id_check CHECK ((id ~ '^[a-z][a-z0-9-]{0,31}$'::text)),
+    CONSTRAINT world_docs_id_check CHECK ((id ~ '^[a-z0-9][a-z0-9-]{0,47}$'::text)),
     CONSTRAINT world_docs_live_rev_check CHECK ((live_rev >= 0)),
     CONSTRAINT world_docs_live_when_check CHECK ((live_when = ANY (ARRAY[0, 1]))),
     CONSTRAINT world_docs_prev_rev_check CHECK ((prev_rev >= 0))
@@ -26139,6 +26168,20 @@ CREATE TRIGGER progress_count BEFORE INSERT OR UPDATE ON verse.progress FOR EACH
 --
 
 CREATE TRIGGER realm_plans_palette AFTER UPDATE OF board ON verse.realm_plans FOR EACH ROW EXECUTE FUNCTION verse.realm_plans_palette();
+
+
+--
+-- Name: made_realms realm_world_made; Type: TRIGGER; Schema: verse; Owner: -
+--
+
+CREATE TRIGGER realm_world_made AFTER INSERT OR DELETE ON verse.made_realms FOR EACH ROW EXECUTE FUNCTION verse.realm_world_made();
+
+
+--
+-- Name: realm_rights realm_world_made; Type: TRIGGER; Schema: verse; Owner: -
+--
+
+CREATE TRIGGER realm_world_made AFTER INSERT OR DELETE ON verse.realm_rights FOR EACH ROW EXECUTE FUNCTION verse.realm_world_made();
 
 
 --

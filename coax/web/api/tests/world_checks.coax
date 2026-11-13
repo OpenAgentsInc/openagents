@@ -30,13 +30,14 @@ wc_batch :: (b: [] Sb, rev: int, what: string, edits: string) -> string {
   return sb_text(b);
 }
 // A signed POST of a batch: its status. The answer's state, when it is one, is in w[0].st.
-wc_post :: (t: [] Ap, w: [] Wc, key: string, rev: int, what: string, edits: string) -> int {
+wc_post :: (t: [] Ap, w: [] Wc, key: string, rev: int, what: string, edits: string) -> int { return wc_post_to(t, w, key, WC_PATH, rev, what, edits); }
+wc_post_to :: (t: [] Ap, w: [] Wc, key: string, path: string, rev: int, what: string, edits: string) -> int {
   b: [1] Sb; body := wc_batch(b[..], rev, what, edits);
-  url: [1] Sb; sb(url[..], t[0].api); sb(url[..], WC_PATH);
+  url: [1] Sb; sb(url[..], t[0].api); sb(url[..], path);
   sig: [4096] u8; s := ap_nostr(t, key, "POST", sb_text(url[..]), body, true, sig[..]);
   auth: [1] Sb; sb(auth[..], "Authorization: Nostr "); sb(auth[..], s);
   h := [2] string.["Content-Type: application/json", sb_text(auth[..])];
-  st := ap_call(t, "POST", WC_PATH, body, h[..]);
+  st := ap_call(t, "POST", path, body, h[..]);
   w[0].st = we_state_read(ap_body(t), w[0].doc[..], w[0].did[..], w[0].scratch[..]);
   return st;
 }
@@ -88,9 +89,9 @@ wc_checks :: (t: [] Ap, w: [] Wc, other: string) {
   // ---- who may write
   b: [1] Sb;
   st = ap_json(t, "POST", WC_PATH, wc_batch(b[..], 0, "apply", WC_SPAWNS));
-  ap_check(t, "world: a write nobody signed is asked to log in", st == 401 && wc_refusal(t, w, edit[..]) == "log in as an admin", ap_body(t));
+  ap_check(t, "world: a write nobody signed is asked to log in", st == 401 && wc_refusal(t, w, edit[..]) == "log in", ap_body(t));
   st = wc_post(t, w, other, 0, "apply", WC_SPAWNS);
-  ap_check(t, "world: a signed write by someone who is no admin is refused", st == 403 && wc_refusal(t, w, edit[..]) == "only an admin changes this world", ap_body(t));
+  ap_check(t, "world: a signed write by someone who is no admin is refused", st == 403 && wc_refusal(t, w, edit[..]) == "only its owner or an admin changes this world", ap_body(t));
   ho := [2] string.["Content-Type: application/json", "Origin: https://evil.example"];
   st = ap_call(t, "POST", WC_PATH, wc_batch(b[..], 0, "apply", WC_SPAWNS), ho[..]);
   ap_check(t, "world: a write from another site's page is refused", st == 403 && wc_refusal(t, w, edit[..]) == "cross-site", ap_body(t));
@@ -360,16 +361,16 @@ wa_checks :: (t: [] Ap, w: [] Wc, a: [] Wa, other: string) {
   ap_check(t, "assets: a world that has imported nothing lists its limits and licences, and has no pack", st == 200 && was_read(l, ap_body(t)) && !l[0].packed && l[0].n == 0 && l[0].file == 524288 && l[0].budget == 1048576 && l[0].licences == 3
            && ap_call(t, "GET", "/api/worlds/splice/assets/pack", "", t[0].no[0..<0]) == 404 && wa_words(t, w) == "this world has imported nothing" && ap_call(t, "GET", "/api/worlds/nope/assets", "", t[0].no[0..<0]) == 404, ap_body(t));
   st = wa_call(t, "", "GET", "/api/worlds/splice/assets?lane=dev&write=1", "");
-  none := st == 401 && wa_words(t, w) == "log in as an admin";
+  none := st == 401 && wa_words(t, w) == "log in";
   st = wa_call(t, other, "GET", "/api/worlds/splice/assets?lane=dev&write=1", "");
-  no := st == 403 && wa_words(t, w) == "only an admin changes this world";
+  no := st == 403 && wa_words(t, w) == "only its owner or an admin changes this world";
   st = wa_call(t, t[0].admin_key, "GET", "/api/worlds/splice/assets?lane=dev&write=1", "");
   ap_check(t, "assets: the list for someone who would import is answered to an admin only", none && no && st == 200 && was_read(l, ap_body(t)) && l[0].n == 0, ap_body(t));
   // ---- who may open an upload
   st = wa_open(t, a, "", 0, "rock.glb", box);
-  none = st == 401 && wa_words(t, w) == "log in as an admin";
+  none = st == 401 && wa_words(t, w) == "log in";
   st = wa_open(t, a, other, 0, "rock.glb", box);
-  no = st == 403 && wa_words(t, w) == "only an admin changes this world";
+  no = st == 403 && wa_words(t, w) == "only its owner or an admin changes this world";
   ho := [2] string.["Content-Type: text/plain", "Origin: https://evil.example"];
   st = ap_call(t, "POST", WA_PATH, wa_ask(a, 0, "rock.glb", box), ho[..]);
   cross := st == 403 && wa_words(t, w) == "cross-site";
@@ -491,6 +492,7 @@ tool_main :: () -> int #export_c #effects(all) {
   kb: [2048] u8; other := proc_getenv("OTHER_KEY", kb[..]);
   if t[0].sign == "" || t[0].admin_key == "" || other == "" { tool_errln("world checks: SIGN, ADMIN_KEY and OTHER_KEY come from coax/web/api/test.sh"); return 2; }
   wc_checks(t[..], w[..], other);
+  wc_realm_checks(t[..], w[..]);
   // the assets' checks, with the fake bucket beside them
   gp: [32] u8; port := proc_getenv("GCS_PORT", gp[..]);
   a := [1] Wa.[Wa.{}];
@@ -508,4 +510,46 @@ tool_main :: () -> int #export_c #effects(all) {
   wt := proc_wait(h, 5000); rl := proc_release(h);
   gone := fs_remove(work);
   return ap_done(t[..], "world checks");
+}
+
+// ---- a realm's world (#13422): a hand-built realm with a board, The Grid (migrations 0050, 0082, 0185), at
+// /api/worlds/the-grid. Its rows and tools are content tables; a switch is a cell edit the realm's own SQL carries out.
+WC_REALM :: "/api/worlds/the-grid";
+wc_realm_checks :: (t: [] Ap, w: [] Wc) {
+  edit: [1] int; q: [400] u8; b: [1] Sb;
+  st := ap_call(t, "GET", "/api/worlds/the-grid?lane=dev", "", t[0].no[0..<0]);
+  w[0].st = we_state_read(ap_body(t), w[0].doc[..], w[0].did[..], w[0].scratch[..]);
+  ap_check(t, "realm world: a hand-built realm is a world with its ID, revision 0, nothing placed", st == 200 && w[0].st.ok && w[0].st.rev == 0 && w[0].st.doc_n == 0 && ap_sql(t, "SELECT kind FROM verse.world_docs WHERE id = 'the-grid'", q[..]) == "realm", ap_body(t));
+  st = ap_call(t, "GET", WC_REALM, "", t[0].no[0..<0]);
+  ap_check(t, "realm world: its switches reach everyone at once, so its live is its dev", st == 200 && we_state_read(ap_body(t), w[0].doc[..], w[0].did[..], w[0].scratch[..]).lane == WL_DEV, ap_body(t));
+  st = ap_call(t, "GET", "/api/worlds/the-grid/content", "", t[0].no[0..<0]);
+  body := ap_body(t);
+  ap_check(t, "realm world: the board and the settings are content tables", st == 200 && ap_starts(body, "aethyr.content.v1 realm 1\nreach 1\ntable rows id key:text on:int label:text\n1|") && ap_has(body, "\ntable tools id name:text on:int\n"), body);
+  row := ct_part(body, '\n', 3);
+  key: [64] u8; kn := ct_copy(key[..], ct_part(row, '|', 1));
+  was := ct_part(row, '|', 2) == "1";
+  turn := ifx was then "0" else "1";
+  cell: [1] Sb; sb(cell[..], "{\"op\":\"cell\",\"table\":\"rows\",\"row\":1,\"col\":\"on\",\"v\":\""); sb(cell[..], turn); sb(cell[..], "\"}");
+  // who may switch
+  st = ap_json(t, "POST", WC_REALM, wc_batch(b[..], 0, "apply", sb_text(cell[..])));
+  ap_check(t, "realm world: a switch from nobody is asked to log in", st == 401 && wc_refusal(t, w, edit[..]) == "log in", ap_body(t));
+  hv := [2] string.["Content-Type: application/json", "X-Verse-Player: wc-a-visitor-of-the-grid"];
+  st = ap_call(t, "POST", WC_REALM, wc_batch(b[..], 0, "apply", sb_text(cell[..])), hv[..]);
+  ap_check(t, "realm world: a visitor of the realm may not switch it", st == 403 && wc_refusal(t, w, edit[..]) == "only its owner or an admin changes this world", ap_body(t));
+  // a site admin's switch: the realm's own SQL carries it out, one revision and one event
+  st = wc_post_to(t, w, t[0].admin_key, WC_REALM, 0, "apply", sb_text(cell[..]));
+  ks: [1] Sb; sb(ks[..], "SELECT coalesce((SELECT switched->>'"); sb(ks[..], cast(string) key[0..<kn]); sb(ks[..], "' FROM verse.realm_edit WHERE slug = 'the-grid'), 'none')");
+  now := ap_sql(t, sb_text(ks[..]), q[..]);
+  ap_check(t, "realm world: an admin's switch is the realm's: its board changes, the revision moves one, one event", st == 200 && w[0].st.rev == 1 && w[0].st.undo == 1 && now == (ifx was then "false" else "true") && ap_sql(t, "SELECT count(*) FROM verse.world_outbox WHERE world = 'the-grid'", q[..]) == "1", ap_body(t));
+  st = ap_call(t, "GET", "/api/worlds/the-grid/content", "", t[0].no[0..<0]);
+  ap_check(t, "realm world: the tables read as switched", st == 200 && ct_part(ct_part(ap_body(t), '\n', 3), '|', 2) == turn, ap_body(t));
+  // an undo sets it back, through the same SQL
+  st = wc_post_to(t, w, t[0].admin_key, WC_REALM, 1, "undo", "");
+  ap_check(t, "realm world: an undo switches it back as an edit of its own", st == 200 && w[0].st.rev == 2 && w[0].st.undo == 0 && w[0].st.redo == 1 && ap_sql(t, sb_text(ks[..]), q[..]) == (ifx was then "true" else "false"), ap_body(t));
+  // what a realm's world does not take, in words, and nothing to publish
+  st = wc_post_to(t, w, t[0].admin_key, WC_REALM, 2, "apply", WC_SPAWNS);
+  ap_check(t, "realm world: a thing placed through the world is refused in words, at its edit", st == 422 && ap_has(wc_refusal(t, w, edit[..]), "switches") && edit[0] == 0 && ap_sql(t, "SELECT dev_rev FROM verse.world_docs WHERE id = 'the-grid'", q[..]) == "2", ap_body(t));
+  st = wc_post_to(t, w, t[0].admin_key, WC_REALM, 2, "publish-now", "");
+  ap_check(t, "realm world: there is nothing to publish", st == 422 && wc_refusal(t, w, edit[..]) == "a realm's switches reach everyone at once: there is nothing to publish", ap_body(t));
+  ap_check(t, "realm world: a realm nobody made is no world", ap_call(t, "GET", "/api/worlds/no-such-realm-here?lane=dev", "", t[0].no[0..<0]) == 404 && ap_call(t, "GET", "/api/worlds/no-such-realm-here/content", "", t[0].no[0..<0]) == 404, ap_body(t));
 }

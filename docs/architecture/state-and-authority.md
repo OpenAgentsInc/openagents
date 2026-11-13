@@ -34,9 +34,19 @@ read. `realm_authority_line` gives a row as `REALM|CONTENT|SIMULATION|DURABILITY
 | `splice` | `owner-admins`: the realm's owner and the site's admins | `page`: the player's own page; nothing is checked by a server | `none`: a run is over when the page closes |
 | `everglade` | `admins`: the site's admins | `room`: the server's room decides combat, movement, loot and travel; a page predicts and is corrected | `ledger`: the character record and the item ledger |
 
-A realm with no row has declared nothing. `realm_op_may_write` refuses every
-write for it, so a made realm can't be treated as having a durable store
-until it declares one.
+Every other realm is one made at run time, or a hand-built one with a board
+(`verse.made_realms`, `verse.realm_rights`). It has no row of its own: as a
+world of kind `realm` (migration 0185, #13422) it has one rule,
+`realm_authority_of(NAME, "realm")`:
+
+| Realm | Content | Simulation | Durability |
+| --- | --- | --- | --- |
+| a world of kind `realm` | `owner-admins`: its owner, its own admins and the site's admins (`verse.edit_role`) | `page` | `none` |
+
+`realm_may_author` says who may change it from that rule. A realm with a row
+is served only as its own kind, never as a realm's world. Anything else has
+declared nothing: `realm_kind_op_may_write` refuses every write for it, so a
+realm can't be treated as having a durable store until it declares one.
 
 ## How it is checked
 

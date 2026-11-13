@@ -73,10 +73,35 @@ realm_authority :: (realm: string) -> RealmAuthority #effects(reads) {
   none: RealmAuthority;
   return none;
 }
+// A world's row by the kind of world it is (the `kind` of its row in verse.world_docs). A realm with a
+// row above is served only as its own kind: Splice as "splice", Everglade as "everglade". Every
+// other realm is one made at run time or a hand-built one with a board (verse.made_realms,
+// verse.realm_rights; coax/web/api/migrations/0185_realm_worlds.sql, #13422): it is a world of kind
+// "realm", whose content its owner, its admins and the site's admins change, whose simulation is the
+// player's own page, and which holds no durable state.
+REALM_KIND :: "realm";
+realm_authority_of :: (realm: string, kind: string) -> RealmAuthority #effects(reads) {
+  a := realm_authority(realm);
+  none: RealmAuthority;
+  if a.realm.count != 0 { return ifx kind == realm then a else none; }
+  if realm.count == 0 || kind != REALM_KIND { return none; }
+  return RealmAuthority.{realm = realm, content = "owner-admins", simulation = "page", durability = "none"};
+}
+// Whether someone may change a realm's authored state, by its row's content rule: "admins" is the
+// site's admins; "owner-admins" is them, the realm's owner and its own admins. role is what the
+// realm's rights say of them (verse.edit_role: "owner", "admin", "visitor", or "" for none).
+realm_may_author :: (realm: string, kind: string, site_admin: bool, role: string) -> bool #effects(reads) {
+  a := realm_authority_of(realm, kind);
+  if a.realm.count == 0 { return false; }
+  if site_admin { return true; }
+  return a.content == "owner-admins" && (role == "owner" || role == "admin");
+}
 // Whether an operation may write a kind of state in a realm: the operation's own rule, and durable
 // state only where the realm declares a store for it. A realm with no row writes nothing here.
-realm_op_may_write :: (realm: string, op: int, kind: int) -> bool #effects(reads) {
-  a := realm_authority(realm);
+realm_op_may_write :: (realm: string, op: int, kind: int) -> bool #effects(reads) { return realm_kind_op_may_write(realm, realm, op, kind); }
+// The same for a world of a kind (realm_authority_of).
+realm_kind_op_may_write :: (realm: string, world_kind: string, op: int, kind: int) -> bool #effects(reads) {
+  a := realm_authority_of(realm, world_kind);
   if a.realm.count == 0 || !state_op_may_write(op, kind) { return false; }
   if kind == STATE_DURABLE { return a.durability == "ledger"; }
   return true;
@@ -133,4 +158,30 @@ realm_authority_line :: (realm: string, out: [] u8) -> string #effects(reads, wr
   #assert !realm_op_may_write("splice", OP_WORLD_SAVE, STATE_RUNNING) && !realm_op_may_write("everglade", OP_LEDGER, STATE_AUTHORED);
   // no row: nothing is written through this table
   #assert !realm_op_may_write("my-realm", OP_EDIT, STATE_AUTHORED) && !realm_op_may_write("", OP_LEDGER, STATE_DURABLE);
+}
+#test "a realm made at run time is a world of kind realm: its owner and admins author it, its page simulates it, it holds nothing durable" {
+  r := realm_authority_of("my-realm", "realm");
+  #assert r.realm == "my-realm" && r.content == "owner-admins" && r.simulation == "page" && r.durability == "none";
+  #assert realm_authority_of("1999-house", "realm").realm == "1999-house" && realm_authority_of("a", "realm").realm == "a" && realm_authority_of("", "realm").realm == "";
+  // a realm with a row of its own is only its own kind, never a realm world, and a world of another kind has no row
+  #assert realm_authority_of("splice", "splice").content == "owner-admins" && realm_authority_of("splice", "realm").realm == "";
+  #assert realm_authority_of("everglade", "everglade").content == "admins" && realm_authority_of("everglade", "realm").realm == "" && realm_authority_of("everglade", "splice").realm == "";
+  #assert realm_authority_of("my-realm", "splice").realm == "" && realm_authority_of("my-realm", "").realm == "" && realm_authority_of("my-realm", "Realm").realm == "";
+  for op: OP_EDIT..<OP_LEDGER { #assert !realm_kind_op_may_write("my-realm", "realm", op, STATE_DURABLE); }
+  #assert !realm_kind_op_may_write("my-realm", "realm", OP_LEDGER, STATE_DURABLE) && !realm_kind_op_may_write("my-realm", "realm", OP_CHARACTER, STATE_DURABLE);
+  #assert realm_kind_op_may_write("my-realm", "realm", OP_EDIT, STATE_AUTHORED) && realm_kind_op_may_write("my-realm", "realm", OP_UNDO, STATE_RUNNING);
+  #assert !realm_kind_op_may_write("my-realm", "splice", OP_EDIT, STATE_AUTHORED) && !realm_kind_op_may_write("splice", "realm", OP_EDIT, STATE_AUTHORED);
+  #assert realm_kind_op_may_write("everglade", "everglade", OP_LEDGER, STATE_DURABLE) == realm_op_may_write("everglade", OP_LEDGER, STATE_DURABLE);
+}
+#test "who authors: a site admin anywhere there is a row; a realm's owner and its admins where the content is owner-admins" {
+  roles := [5] string.["owner", "admin", "visitor", "", "Owner"];
+  for k: 0..<5 {
+    mine := k < 2;
+    #assert realm_may_author("my-realm", "realm", false, roles[k]) == mine && realm_may_author("my-realm", "realm", true, roles[k]);
+    #assert realm_may_author("splice", "splice", false, roles[k]) == mine && realm_may_author("splice", "splice", true, roles[k]);
+    // Everglade: the site's admins only
+    #assert !realm_may_author("everglade", "everglade", false, roles[k]) && realm_may_author("everglade", "everglade", true, roles[k]);
+    // no row: nobody, not even a site admin
+    #assert !realm_may_author("my-realm", "splice", true, roles[k]) && !realm_may_author("", "realm", true, roles[k]) && !realm_may_author("everglade", "realm", true, roles[k]);
+  }
 }

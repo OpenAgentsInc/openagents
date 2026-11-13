@@ -31,6 +31,10 @@
 //                                                SHA-256 are checked against its name (a wrong object is deleted), and it is
 //                                                imported into dev's pack. The answer is the list with what it did, or 422 in words
 //
+// A realm with a board is a world of kind "realm" under its slug (#13422, migration 0185): its document is empty,
+// /content is its board and settings as content tables, and a batch is switches of their `on` cells, carried out by the
+// realm's own SQL (realm_post). It has one lane, dev, and nothing to publish.
+//
 // This file moves facts in and answers out. The rules are Coax: who may write, the revision
 // fence, the undo log and the dev and live rule are world-policy.coax's (#authority); whether an
 // edit may stand is the world's own code, the code its page runs (Splice:
@@ -127,16 +131,20 @@ static char *pack_read(PGconn *db, const char *id, const char *hash, size_t *n) 
   return out;
 }
 
-// ---- the world's own Coax, by kind. Splice is the first world; a kind this build has no code for is not served.
-static bool kind_known(const char *kind) { return !strcmp(kind, "splice"); }
+// ---- the world's own Coax, by kind. Splice is the first world; a realm (made, or hand-built with a board) is the
+// second (#13422: metaverse/edit/realm-world.coax, in world-policy's unit). A kind this build has no code for is not served.
+static bool kind_known(const char *kind) { return !strcmp(kind, "splice") || !strcmp(kind, "realm"); }
+// A realm's world has no build pins: its switches are the realm's rows, which every build reads.
 static bool kind_pins(const char *kind, long long pins[4]) {
   int64_t p[4] = {0};
+  if (!strcmp(kind, "realm")) { for (int k = 0; k < 4; k++) pins[k] = 0; return true; }
   if (strcmp(kind, "splice") || !splice_world_pins((coax_v_s64){p, 4})) return false;
   for (int k = 0; k < 4; k++) pins[k] = p[k];
   return true;
 }
 // The document a world is before its first edit, into out (malloc'd by the caller, WORLD_DOC): its length, or -1.
 static int64_t kind_empty(const char *kind, char *out) {
+  if (!strcmp(kind, "realm")) return 0;   // a realm's world places nothing: its state is its tables (/content)
   if (strcmp(kind, "splice")) return -1;
   return splice_world_empty((coax_v_u8){(uint8_t *)out, WORLD_DOC});
 }
@@ -148,6 +156,46 @@ static char *doc_of(const char *kind, const char *stored, size_t *n) {
   if (made < 0) { free(out); return NULL; }
   out[made] = 0; *n = (size_t)made;
   return out;
+}
+
+// Who asks: the player key the realm routes know them by (X-Verse-Player; a NIP-98 caller's is its account's,
+// auth.caller_key, as realms.c reads it), whether they are a site admin, and whether they are logged in or signed.
+typedef struct { char key[160]; bool admin, signed_in, player; } world_asker;
+static bool who_asks(const request *q, PGconn *db, world_asker *a) {
+  memset(a, 0, sizeof *a);
+  const auth_principal *p = auth_principal_of(q);
+  if (!p) return true;
+  a->admin = p->admin; a->signed_in = p->account[0] || p->pubkey[0];
+  snprintf(a->key, sizeof a->key, "%s", p->player);
+  if (p->credential == AUTH_NOSTR && p->pubkey[0] && p->event_id[0] && !access_caller_key(db, p->pubkey, a->key)) return false;
+  a->player = a->key[0] != 0;
+  return true;
+}
+// A realm's facts for the asker (migrations/0050, 0099): whether it is hidden from them, their role ("" for none) and
+// its spec (malloc'd; NULL when it is no realm). False on a database error.
+static bool realm_facts(PGconn *db, const char *id, const world_asker *a, bool *hidden, char role[16], char **spec) {
+  const char *v[3] = {id, a->key, a->admin ? "true" : "false"};
+  PGresult *r = PQexecParams(db, "SELECT verse.realm_hidden($1, $2, $3::boolean), coalesce(verse.edit_role($1, $2, $3::boolean), ''), verse.edit_spec($1, $2, $3::boolean)", 3, NULL, v, NULL, NULL, 0);
+  bool ok = PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1;
+  *hidden = false; role[0] = 0; *spec = NULL;
+  if (ok) {
+    *hidden = !strcmp(PQgetvalue(r, 0, 0), "t");
+    snprintf(role, 16, "%s", PQgetvalue(r, 0, 1));
+    if (!PQgetisnull(r, 0, 2)) *spec = strdup(PQgetvalue(r, 0, 2));
+  } else api_log("worlds: %s", PQerrorMessage(db));
+  PQclear(r);
+  return ok;
+}
+// Whether a world is served to the asker: its kind has code here and a row of the authority table, and a realm is
+// not hidden from them.
+static bool world_shown(PGconn *db, const request *q, const char *id, const world_row *w) {
+  if (!w->exists || !kind_known(w->kind) || !wr_loads(cs(id), cs(w->kind))) return false;
+  if (!wr_at_once(cs(w->kind))) return true;
+  world_asker a; bool hidden = true; char role[16]; char *spec = NULL;
+  bool ok = who_asks(q, db, &a) && realm_facts(db, id, &a, &hidden, role, &spec);
+  bool shown = ok && !hidden && spec;
+  free(spec);
+  return shown;
 }
 
 // pins: the build that reads the revision answered (engine, rules, content, wire), so an answer names what it touched (#13437).
@@ -170,10 +218,10 @@ static void world_get(const request *q, PGconn *db, const char *id) {
   static const char *pin_names[4] = {"engine", "rules", "content", "wire"};
   bool sent = true; long long mine[4] = {0};
   for (int k = 0; k < 4; k++) { if (!api_query(q, pin_names[k], pin[k], sizeof pin[k]) || !pin[k][0]) sent = false; else mine[k] = atoll(pin[k]); }
-  int64_t lane = wr_lane(cs(lane_s));
+  int64_t lane = w.exists && wr_at_once(cs(w.kind)) ? wr_lane(cs("dev")) : wr_lane(cs(lane_s));   // a realm's world: one lane
   int64_t join = wr_join(sent, mine[0], mine[1], mine[2], mine[3], w.exists && w.live_rev > 0, w.live_pins[0], w.live_pins[1], w.live_pins[2], w.live_pins[3],
                          w.exists && w.prev_rev > 0, w.prev_pins[0], w.prev_pins[1], w.prev_pins[2], w.prev_pins[3]);
-  int64_t verdict = wr_read(w.exists && kind_known(w.kind) && wr_loads(cs(id)), lane, join);
+  int64_t verdict = wr_read(world_shown(db, q, id, &w), lane, join);
   if (verdict != 0) { refuse_verdict(q->fd, verdict); row_free(&w); return; }
   bool dev = wr_is_dev(lane), previous = !dev && wr_previous(join);
   size_t n = 0;
@@ -187,6 +235,11 @@ static void world_get(const request *q, PGconn *db, const char *id) {
 
 static void world_events(const request *q, PGconn *db, const char *id) {
   char lane_s[16] = "", after[24] = "0", count[8];
+  world_row w;
+  if (!row_read(db, id, false, &w)) { refuse(q->fd, 500, cs("not read"), -1); return; }
+  bool hidden = w.exists && wr_at_once(cs(w.kind)) && !world_shown(db, q, id, &w);   // a realm hidden from the asker has none
+  row_free(&w);
+  if (hidden) { refuse_verdict(q->fd, wr_read(false, 0, 0)); return; }
   api_query(q, "lane", lane_s, sizeof lane_s); api_query(q, "after", after, sizeof after);
   int64_t lane = wr_lane(cs(lane_s));
   int64_t verdict = wr_read(true, lane, wr_join(false, 0, 0, 0, 0, true, 0, 0, 0, 0, false, 0, 0, 0, 0));   // any lane that is one
@@ -254,30 +307,127 @@ static void world_publish(const request *q, PGconn *db, const char *id, world_ro
   free(doc);
 }
 
+// The batch a write carries out: the caller's own, or a stored step taken again (an undo its inverse, a redo its
+// batch), malloc'd; fenced is false for a stored step. NULL when it can't be read.
+static char *batch_text(const request *q, PGconn *db, const char *id, int64_t what, const world_row *w, int64_t *step, size_t *n, bool *fenced) {
+  char *text = NULL;
+  *step = wr_step(what, w->done); *n = 0; *fenced = *step < 0;
+  if (*step >= 0) {
+    char ns[24]; snprintf(ns, sizeof ns, "%lld", (long long)*step);
+    const char *v[2] = {id, ns};
+    PGresult *r = PQexecParams(db, wr_backward(what) ? "SELECT inv FROM verse.world_steps WHERE world = $1 AND n = $2::int" : "SELECT did FROM verse.world_steps WHERE world = $1 AND n = $2::int", 2, NULL, v, NULL, NULL, 0);
+    if (PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1) { text = strdup(PQgetvalue(r, 0, 0)); *n = strlen(text); }
+    PQclear(r);
+  } else if ((text = malloc(q->body_len + 1))) { memcpy(text, q->body, q->body_len); text[q->body_len] = 0; *n = q->body_len; }
+  return text;
+}
+// A batch carried out is saved: the dev revision and where the undo log stands, a new step where it stands (the steps
+// an undo left ahead of it go), and one outbox event a saved edit, then COMMIT. The transaction is open; false when
+// anything failed (the caller rolls back). *rev, *done and *steps come back as they now stand.
+static bool batch_save(PGconn *db, const char *id, const world_row *w, int64_t what, int64_t step, const char *doc, const char *did, size_t did_n, const char *inv,
+                       int64_t edits, long long *rev, long long *done, long long *steps) {
+  *rev = w->dev_rev + edits; *done = wr_done(what, w->done); *steps = wr_steps(what, w->done, w->steps);
+  long long now = (long long)api_now_ms();
+  char rev_s[24], done_s[24], steps_s[24], at_s[24];
+  snprintf(rev_s, sizeof rev_s, "%lld", *rev); snprintf(done_s, sizeof done_s, "%lld", *done); snprintf(steps_s, sizeof steps_s, "%lld", *steps); snprintf(at_s, sizeof at_s, "%lld", w->done);
+  const char *uv[5] = {id, doc, rev_s, done_s, steps_s};
+  bool ok = run(db, "UPDATE verse.world_docs SET dev_doc = $2, dev_rev = $3::bigint, done = $4::int, steps = $5::int WHERE id = $1", 5, uv);
+  if (ok && step < 0) {
+    const char *sv[4] = {id, at_s, did, inv};
+    ok = run(db, "DELETE FROM verse.world_steps WHERE world = $1 AND n >= $2::int", 2, sv)
+      && run(db, "INSERT INTO verse.world_steps (world, n, did, inv) VALUES ($1, $2::int, $3, $4)", 4, sv);
+  }
+  // one event a saved edit, in the transaction that changes the document
+  for (int64_t i = 0; ok && i < edits; i++) {
+    char edit[WORLD_EDIT + 1], event[WORLD_EDIT + 240], seq[24];
+    int64_t en = wr_batch_edit(csn(did, did_n), i, (coax_v_u8){(uint8_t *)edit, WORLD_EDIT});
+    ok = en > 0 && next_seq(db, seq);
+    if (!ok) break;
+    int64_t vn = wr_event(atoll(seq), cs(id), w->dev_rev + 1 + i, csn(edit, (size_t)en), now, (coax_v_u8){(uint8_t *)event, sizeof event - 1});
+    ok = vn > 0;
+    if (ok) { event[vn] = 0; ok = outbox(db, seq, wr_event_id(false), id, "dev", w->dev_rev + 1 + i, event, now); }
+  }
+  return ok && run(db, "COMMIT", 0, NULL);
+}
+
+// A realm's world (#13422): the batch is the realm's switches, checked on its board by metaverse/edit/realm-world.coax
+// and carried out one by one by the realm's own SQL (verse.edit_switch, verse.edit_settings), whose rules and words
+// are the ones the realm's page meets; a refusal there takes the whole batch back. The row is locked; the transaction
+// is open.
+static void realm_post(const request *q, PGconn *db, const char *id, world_row *w, int64_t what, const world_asker *a) {
+  int64_t step; size_t text_n; bool fenced;
+  char *text = batch_text(q, db, id, what, w, &step, &text_n, &fenced);
+  bool hidden = true; char role[16]; char *spec = NULL;
+  char *did = malloc(WORLD_BATCH + 1), *inv = malloc(WORLD_BATCH + 1), *acts = malloc(WORLD_BATCH + 1);
+  char why[240]; int64_t n[6] = {0, 0, 0, 0, 0, -1};
+  if (!text || !did || !inv || !acts || !realm_facts(db, id, a, &hidden, role, &spec)) { rollback(db); refuse(q->fd, 500, cs("not read"), -1); goto done; }
+  if (hidden || !spec) { rollback(db); refuse_verdict(q->fd, wr_read(false, 0, 0)); goto done; }
+  int64_t status = wr_realm_batch(cs(spec), csn(text, text_n), fenced, (coax_v_u8){(uint8_t *)did, WORLD_BATCH}, (coax_v_u8){(uint8_t *)inv, WORLD_BATCH},
+                                  (coax_v_u8){(uint8_t *)acts, WORLD_BATCH}, (coax_v_u8){(uint8_t *)why, sizeof why}, (coax_v_s64){n, 6});
+  if (status != 0) { rollback(db); refuse(q->fd, (int)wr_realm_status(status), n[3] > 0 ? csn(why, (size_t)n[3]) : wr_realm_words(status), (int)n[5]); goto done; }
+  did[n[0]] = 0; inv[n[1]] = 0; acts[n[2]] = 0;
+  // each switch by the realm's own SQL, in order: "switch KEY 0|1" or "tool NAME 0|1"
+  int edit = 0;
+  for (char *line = acts; *line; edit++) {
+    char *end = strchr(line, '\n'); if (!end) break;
+    *end = 0;
+    char verb[8] = "", name[64] = "", on[2] = "";
+    if (sscanf(line, "%7s %63s %1s", verb, name, on) != 3) { rollback(db); refuse(q->fd, 500, cs("not read"), edit); goto done; }
+    const char *v[5] = {id, name, !strcmp(on, "1") ? "true" : "false", a->key, a->admin ? "true" : "false"};
+    PGresult *r = PQexecParams(db, !strcmp(verb, "switch")
+      ? "SELECT (x->>'status')::int, coalesce(x->>'error', '') FROM verse.edit_switch($1, jsonb_build_object('row', $2::text, 'on', $3::boolean), $4, $5::boolean) x"
+      : "SELECT (x->>'status')::int, coalesce(x->>'error', '') FROM verse.edit_settings($1, jsonb_build_object('tools', jsonb_build_object($2::text, $3::boolean)), $4, $5::boolean) x",
+      5, NULL, v, NULL, NULL, 0);
+    bool read = PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1;
+    int http = read ? atoi(PQgetvalue(r, 0, 0)) : 500;
+    char said[200]; snprintf(said, sizeof said, "%s", read ? PQgetvalue(r, 0, 1) : "not saved");
+    if (!read) api_log("worlds: %s", PQerrorMessage(db));
+    PQclear(r);
+    if (http != 200) { rollback(db); refuse(q->fd, http, cs(said[0] ? said : "not saved"), edit); goto done; }
+    line = end + 1;
+  }
+  char dry[4] = "";
+  if (api_query(q, "dry", dry, sizeof dry) && dry[0] == '1') {
+    // a dry run: the realm's SQL carried it out in the transaction, which is taken back; nothing is saved
+    rollback(db);
+    long long none[4] = {0, 0, 0, 0};
+    answer_state(q, id, (int)wr_lane(cs("dev")), w->dev_rev, none, w, w->dev_rev, w->live_rev, w->done, w->steps, "", 0, did, (size_t)n[0]);
+    goto done;
+  }
+  long long rev, done_at, steps;
+  if (!batch_save(db, id, w, what, step, "", did, (size_t)n[0], inv, n[4], &rev, &done_at, &steps)) { rollback(db); refuse(q->fd, 500, cs("not saved"), -1); goto done; }
+  long long none[4] = {0, 0, 0, 0};
+  answer_state(q, id, (int)wr_lane(cs("dev")), rev, none, w, rev, w->live_rev, done_at, steps, "", 0, did, (size_t)n[0]);
+done:
+  free(text); free(spec); free(did); free(inv); free(acts);
+}
+
 static void world_post(const request *q, PGconn *db, const char *id) {
-  const auth_principal *p = auth_principal_of(q);
-  bool known = p && (p->account[0] || p->pubkey[0]), admin = p && p->admin;
+  world_asker a;
+  if (!who_asks(q, db, &a)) { refuse(q->fd, 500, cs("not read"), -1); return; }
   int64_t head[3] = {0, 0, 0};
   bool batch_ok = q->body_len > 0 && q->body_len <= WORLD_BATCH && wr_batch(csn(q->body, q->body_len), (coax_v_s64){head, 3});
   PQclear(PQexec(db, "BEGIN"));
   world_row w;
   if (!row_read(db, id, true, &w)) { rollback(db); refuse(q->fd, 500, cs("not read"), -1); return; }
   int64_t what = head[1];
-  int64_t verdict = wr_write(auth_same_site(q), known, admin, w.exists && kind_known(w.kind) && wr_authored(cs(id), what), batch_ok, what, head[0], w.dev_rev, w.done, w.steps);
+  // who authors it: a site admin, and where the realm's row says owner-admins, its owner and its admins (verse.edit_role)
+  bool hidden = false; char role[16] = ""; char *spec = NULL;
+  if (w.exists && !realm_facts(db, id, &a, &hidden, role, &spec)) { rollback(db); refuse(q->fd, 500, cs("not read"), -1); row_free(&w); return; }
+  free(spec);
+  bool shown = w.exists && kind_known(w.kind) && !hidden && wr_authored(cs(id), cs(w.kind), what);
+  int64_t verdict = wr_write(auth_same_site(q), wr_known(cs(w.kind), a.signed_in, a.player), wr_may(cs(id), cs(w.kind), a.admin, cs(role)), shown, batch_ok, what, head[0], w.dev_rev, w.done, w.steps);
   if (verdict != 0) { rollback(db); refuse_verdict(q->fd, verdict); row_free(&w); return; }
+  if (wr_at_once(cs(w.kind))) {
+    if (wr_publishes(what)) { rollback(db); refuse(q->fd, 422, wr_at_once_words(), -1); }
+    else realm_post(q, db, id, &w, what, &a);
+    row_free(&w);
+    return;
+  }
   if (wr_publishes(what)) { world_publish(q, db, id, &w, what, head[0]); row_free(&w); return; }
 
-  // the batch to carry out: the caller's own, or a stored step taken again (an undo its inverse, a redo its batch)
-  char *text = NULL; size_t text_n = 0; bool fenced = true;
-  int64_t step = wr_step(what, w.done);
-  if (step >= 0) {
-    char ns[24]; snprintf(ns, sizeof ns, "%lld", (long long)step);
-    const char *v[2] = {id, ns};
-    PGresult *r = PQexecParams(db, wr_backward(what) ? "SELECT inv FROM verse.world_steps WHERE world = $1 AND n = $2::int" : "SELECT did FROM verse.world_steps WHERE world = $1 AND n = $2::int", 2, NULL, v, NULL, NULL, 0);
-    if (PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1) { text = strdup(PQgetvalue(r, 0, 0)); text_n = strlen(text); }
-    PQclear(r);
-    fenced = false;
-  } else { text = malloc(q->body_len + 1); if (text) { memcpy(text, q->body, q->body_len); text[q->body_len] = 0; text_n = q->body_len; } }
+  int64_t step; size_t text_n = 0; bool fenced;
+  char *text = batch_text(q, db, id, what, &w, &step, &text_n, &fenced);
   size_t doc_n = 0;
   char *doc = doc_of(w.kind, w.dev_doc, &doc_n);
   char *out_doc = malloc(WORLD_DOC + 1), *did = malloc(WORLD_BATCH + 1), *inv = malloc(WORLD_BATCH + 1), *out_tables = malloc(WORLD_TABLES + 1);
@@ -307,35 +457,14 @@ static void world_post(const request *q, PGconn *db, const char *id) {
     goto done;
   }
   {
-    long long rev = w.dev_rev + n[4], done = wr_done(what, w.done), steps = wr_steps(what, w.done, w.steps), now = (long long)api_now_ms();
-    char rev_s[24], done_s[24], steps_s[24], at_s[24];
-    snprintf(rev_s, sizeof rev_s, "%lld", rev); snprintf(done_s, sizeof done_s, "%lld", done); snprintf(steps_s, sizeof steps_s, "%lld", steps); snprintf(at_s, sizeof at_s, "%lld", w.done);
-    const char *uv[5] = {id, out_doc, rev_s, done_s, steps_s};
-    bool ok = run(db, "UPDATE verse.world_docs SET dev_doc = $2, dev_rev = $3::bigint, done = $4::int, steps = $5::int WHERE id = $1", 5, uv);
     // a batch that changed the content tables saves them with the document, in the same transaction
     const char *tv[2] = {id, out_tables};
-    if (ok && n[6] > 0) ok = run(db, "UPDATE verse.world_docs SET dev_tables = $2 WHERE id = $1", 2, tv);
-    if (ok && step < 0) {
-      // a new step where the log stands: the steps an undo left ahead of it go
-      const char *sv[4] = {id, at_s, did, inv};
-      ok = run(db, "DELETE FROM verse.world_steps WHERE world = $1 AND n >= $2::int", 2, sv)
-        && run(db, "INSERT INTO verse.world_steps (world, n, did, inv) VALUES ($1, $2::int, $3, $4)", 4, sv);
-    }
-    // one event a saved edit, in the transaction that changes the document
-    for (int64_t i = 0; ok && i < n[4]; i++) {
-      char edit[WORLD_EDIT + 1], event[WORLD_EDIT + 240], seq[24];
-      int64_t en = wr_batch_edit(csn(did, (size_t)n[1]), i, (coax_v_u8){(uint8_t *)edit, WORLD_EDIT});
-      ok = en > 0 && next_seq(db, seq);
-      if (!ok) break;
-      int64_t vn = wr_event(atoll(seq), cs(id), w.dev_rev + 1 + i, csn(edit, (size_t)en), now, (coax_v_u8){(uint8_t *)event, sizeof event - 1});
-      ok = vn > 0;
-      if (ok) { event[vn] = 0; ok = outbox(db, seq, wr_event_id(false), id, "dev", w.dev_rev + 1 + i, event, now); }
-    }
-    ok = ok && run(db, "COMMIT", 0, NULL);
-    if (!ok) { rollback(db); refuse(q->fd, 500, cs("not saved"), -1); goto done; }
+    long long rev, done_at, steps;
+    bool ok = n[6] <= 0 || run(db, "UPDATE verse.world_docs SET dev_tables = $2 WHERE id = $1", 2, tv);
+    if (!ok || !batch_save(db, id, &w, what, step, out_doc, did, (size_t)n[1], inv, n[4], &rev, &done_at, &steps)) { rollback(db); refuse(q->fd, 500, cs("not saved"), -1); goto done; }
     long long here[4] = {0, 0, 0, 0};
     kind_pins(w.kind, here);
-    answer_state(q, id, (int)wr_lane(cs("dev")), rev, here, &w, rev, w.live_rev, done, steps, "", 0, did, (size_t)n[1]);
+    answer_state(q, id, (int)wr_lane(cs("dev")), rev, here, &w, rev, w.live_rev, done_at, steps, "", 0, did, (size_t)n[1]);
   }
 done:
   free(text); free(doc); free(out_doc); free(did); free(inv); free(out_tables); free(pack); row_free(&w);
@@ -349,10 +478,16 @@ static void world_content(const request *q, PGconn *db, const char *id) {
   bool dev = api_query(q, "lane", lane, sizeof lane) && wr_is_dev(wr_lane(cs(lane)));
   world_row w;
   int64_t n = -1;
-  if (out && !strcmp(id, "splice") && wr_loads(cs(id)) && row_read(db, id, false, &w)) {
+  if (out && !strcmp(id, "splice") && wr_loads(cs(id), cs("splice")) && row_read(db, id, false, &w)) {
     const char *own = w.exists ? (dev ? w.dev_tables : w.live_tables) : "";
     n = splice_world_tables(cs(own ? own : ""), (coax_v_u8){(uint8_t *)out, WORLD_DOC});
     row_free(&w);
+  } else if (out && row_read(db, id, false, &w)) {
+    // a realm's: its board and settings as they stand, both lanes (realm-world.coax), for whoever may see the realm
+    world_asker a; bool hidden = true; char role[16]; char *spec = NULL;
+    if (w.exists && wr_at_once(cs(w.kind)) && wr_loads(cs(id), cs(w.kind)) && who_asks(q, db, &a) && realm_facts(db, id, &a, &hidden, role, &spec) && !hidden && spec)
+      n = wr_realm_tables(cs(spec), (coax_v_u8){(uint8_t *)out, WORLD_DOC});
+    free(spec); row_free(&w);
   }
   if (n < 0) refuse_verdict(q->fd, wr_read(false, 0, 0));
   else api_respond(q->fd, 200, "text/plain; charset=utf-8", "Cache-Control: no-store\r\n", out, (size_t)n);
@@ -365,7 +500,7 @@ static void world_card(const request *q, PGconn *db, const char *id) {
   char out[400];
   world_row w;
   int64_t n = -1;
-  if (!strcmp(id, "splice") && wr_loads(cs(id)) && row_read(db, id, false, &w)) {
+  if (!strcmp(id, "splice") && wr_loads(cs(id), cs("splice")) && row_read(db, id, false, &w)) {
     size_t dn = 0;
     char *doc = doc_of("splice", w.exists ? w.dev_doc : "", &dn);
     int64_t things = doc ? splice_world_things(csn(doc, dn), cs(w.exists && w.dev_tables ? w.dev_tables : "")) : -1;
@@ -384,7 +519,8 @@ static void world_card(const request *q, PGconn *db, const char *id) {
 static int64_t asset_may(const request *q, const world_row *w, const char *id) {
   const auth_principal *p = auth_principal_of(q);
   bool known = p && (p->account[0] || p->pubkey[0]), admin = p && p->admin;
-  return wr_asset_write(auth_same_site(q), known, admin, w->exists && kind_known(w->kind) && wr_loads(cs(id)) && wr_authored(cs(id), wr_asset_what()));
+  // the importer is Splice's: a world of another kind imports nothing
+  return wr_asset_write(auth_same_site(q), known, admin, w->exists && !strcmp(w->kind, "splice") && wr_loads(cs(id), cs(w->kind)) && wr_authored(cs(id), cs(w->kind), wr_asset_what()));
 }
 // The lane a read of the assets names: dev's pack, or live's.
 static const char *asset_lane(const request *q, const world_row *w) {
@@ -395,7 +531,7 @@ static void asset_list(const request *q, PGconn *db, const char *id) {
   world_row w;
   if (!row_read(db, id, false, &w)) { refuse(q->fd, 500, cs("not read"), -1); return; }
   char write[4] = "";
-  int64_t verdict = api_query(q, "write", write, sizeof write) && write[0] == '1' ? asset_may(q, &w, id) : wr_read(w.exists && kind_known(w.kind) && wr_loads(cs(id)), wr_lane(cs("dev")), 0);
+  int64_t verdict = api_query(q, "write", write, sizeof write) && write[0] == '1' ? asset_may(q, &w, id) : wr_read(w.exists && !strcmp(w.kind, "splice") && wr_loads(cs(id), cs(w.kind)), wr_lane(cs("dev")), 0);
   if (verdict != 0) { refuse_verdict(q->fd, verdict); row_free(&w); return; }
   size_t pack_n = 0;
   char *pack = pack_read(db, id, asset_lane(q, &w), &pack_n);
@@ -408,7 +544,7 @@ static void asset_list(const request *q, PGconn *db, const char *id) {
 static void asset_pack(const request *q, PGconn *db, const char *id) {
   world_row w;
   if (!row_read(db, id, false, &w)) { refuse(q->fd, 500, cs("not read"), -1); return; }
-  if (wr_read(w.exists && kind_known(w.kind) && wr_loads(cs(id)), wr_lane(cs("dev")), 0) != 0) { refuse_verdict(q->fd, wr_read(false, 0, 0)); row_free(&w); return; }
+  if (wr_read(w.exists && !strcmp(w.kind, "splice") && wr_loads(cs(id), cs(w.kind)), wr_lane(cs("dev")), 0) != 0) { refuse_verdict(q->fd, wr_read(false, 0, 0)); row_free(&w); return; }
   // by hash: the bytes a tab was told of; else the lane's as it now is
   char live[80] = "";
   bool by_hash = api_query(q, "live", live, sizeof live) && strlen(live) == 64 && strspn(live, "0123456789abcdef") == 64;

@@ -1,0 +1,244 @@
+// A realm's world for the API (GitHub #13422, the browser editor's E13): what coax/web/api/worlds.c
+// calls to carry a world.edit.v1 batch out on a world of kind "realm" (a made realm, or a hand-built
+// one with a board: coax/web/api/migrations/0185_realm_worlds.sql). worlds.c moves text in and out;
+// nothing here reads a database or a clock.
+//
+// A realm's state is its board and its settings (migrations/0050_realm_edit.sql): the rows of what is
+// in it, each on or off, and the tools its visitors get, each on or off. The server's spec says them
+// a line each ("row KEY 0|1 LABEL", "tool NAME 0|1": verse.edit_spec). As a world they are two
+// content tables (aethyr.content.v1):
+//
+//   table rows id key:text on:int label:text    the board, in the spec's order, numbered from 1
+//   table tools id name:text on:int             the settings
+//
+// A batch is cell edits of those tables' `on`, 0 or 1: a switch of a row, or of a tool. Each is
+// carried out by the realm's own SQL (verse.edit_switch, verse.edit_settings) in the transaction that
+// saves the world's revision, so the realm's rules and refusals are the ones its page meets. Its
+// inverse sets each cell back, in the reverse order, so an undo is a batch too. Anything else a
+// world takes (a thing placed, moved or removed, another table, the ground) is refused in words:
+// a realm's things are still placed from its page (/api/playtest/realms/<slug>/place).
+//   coax/bin/coax test metaverse/edit/realm-world.coax
+
+#load "../../metaverse-engine/editor/world-edit.coax";
+
+RW_ROWS :: 64; RW_TOOLS :: 16; RW_KEY :: 48; RW_LABEL :: 48;
+RW_TABLES :: 8192;      // the two tables' bytes at most
+RW_ACTS :: 8192;        // the actions' bytes at most: a line an edit
+RW_OK :: 0; RW_BAD :: 1; RW_REFUSED :: 2; RW_ROOM :: 3; RW_NO_REALM :: 4;
+
+RealmBoard :: struct {
+  ok: bool;
+  rows: int; key: [RW_ROWS] [RW_KEY] u8; key_n: [RW_ROWS] int; on: [RW_ROWS] bool; label: [RW_ROWS] [RW_LABEL] u8; label_n: [RW_ROWS] int;
+  tools: int; tool: [RW_TOOLS] [RW_KEY] u8; tool_n: [RW_TOOLS] int; ton: [RW_TOOLS] bool;
+}
+
+// A key or a tool's name as the board keeps it: lowercase letters, digits, '-', '_' and ':'.
+rw_key_ok :: (s: string) -> bool {
+  if s.count < 1 || s.count > RW_KEY { return false; }
+  for c: s { if !((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-' || c == '_' || c == ':') { return false; } }
+  return true;
+}
+// A label as a text cell holds it: no '|', no control bytes, RW_LABEL bytes at most.
+rw_label :: (s: string, out: [] u8) -> int {
+  n := 0;
+  for c: s { if n >= out.count { break; } if c >= 0x20 && c != 0x7f && c != '|' { out[n] = c; n += 1; } }
+  return n;
+}
+// The rest of a line after its first `k` words.
+rw_after :: (line: string, k: int) -> string {
+  seen := 0;
+  for i: 0..<line.count { if line[i] == ' ' { seen += 1; if seen == k { return line[i + 1..<line.count]; } } }
+  return "";
+}
+
+// The board and the settings from the spec (verse.edit_spec's lines). Not ok when a row or a tool
+// is not one, or there are more than the board holds.
+rw_board_read :: (spec: string, b: [] RealmBoard) -> bool {
+  b[0].ok = false; b[0].rows = 0; b[0].tools = 0;
+  at := 0;
+  while at < spec.count {
+    end := at;
+    while end < spec.count && spec[end] != '\n' { end += 1; }
+    line := spec[at..<end];
+    at = end + 1;
+    word := ct_part(line, ' ', 0);
+    if word == "row" {
+      key := ct_part(line, ' ', 1); on := ct_part(line, ' ', 2);
+      if b[0].rows >= RW_ROWS || !rw_key_ok(key) || (on != "0" && on != "1") { return false; }
+      r := b[0].rows;
+      b[0].key_n[r] = ct_copy(b[0].key[r][..], key); b[0].on[r] = on == "1";
+      b[0].label_n[r] = rw_label(rw_after(line, 3), b[0].label[r][..]);
+      b[0].rows += 1;
+    } else if word == "tool" {
+      name := ct_part(line, ' ', 1); on := ct_part(line, ' ', 2);
+      if b[0].tools >= RW_TOOLS || !rw_key_ok(name) || (on != "0" && on != "1") || ct_parts(line, ' ') != 3 { return false; }
+      k := b[0].tools;
+      b[0].tool_n[k] = ct_copy(b[0].tool[k][..], name); b[0].ton[k] = on == "1";
+      b[0].tools += 1;
+    }
+  }
+  b[0].ok = true;
+  return true;
+}
+
+// The board and the settings as content tables, into out; "" when they don't fit.
+rw_tables_write :: (b: [] RealmBoard, out: [] u8) -> string {
+  n := ct_put(out, 0, "aethyr.content.v1 realm 1\nreach 1\ntable rows id key:text on:int label:text\n");
+  for r: 0..<b[0].rows {
+    n = ct_put_int(out, n, r + 1); n = ct_put(out, n, "|"); n = ct_put(out, n, cast(string) b[0].key[r][0..<b[0].key_n[r]]);
+    n = ct_put(out, n, ifx b[0].on[r] then "|1|" else "|0|"); n = ct_put(out, n, cast(string) b[0].label[r][0..<b[0].label_n[r]]); n = ct_put(out, n, "\n");
+  }
+  n = ct_put(out, n, "table tools id name:text on:int\n");
+  for k: 0..<b[0].tools {
+    n = ct_put_int(out, n, k + 1); n = ct_put(out, n, "|"); n = ct_put(out, n, cast(string) b[0].tool[k][0..<b[0].tool_n[k]]);
+    n = ct_put(out, n, ifx b[0].ton[k] then "|1\n" else "|0\n");
+  }
+  return ifx n > out.count then "" else cast(string) out[0..<n];
+}
+// The spec's tables into out: their length, or -1 when the spec is not a realm's.
+rw_tables :: (spec: string, out: [] u8) -> int {
+  b: [1] RealmBoard;
+  if !rw_board_read(spec, b[..]) { return -1; }
+  made := rw_tables_write(b[..], out);
+  return ifx made.count == 0 then -1 else made.count;
+}
+
+rw_words :: (status: int) -> string {
+  if status == RW_BAD { return "send a world.edit.v1 batch of edits"; }
+  if status == RW_REFUSED { return "a realm's world takes switches: the cell on of a row of rows or of tools, 0 or 1"; }
+  if status == RW_ROOM { return "not written"; }
+  if status == RW_NO_REALM { return "no such world"; }
+  return "";
+}
+rw_status :: (status: int) -> int {
+  if status == RW_OK { return 200; }
+  if status == RW_REFUSED { return 422; }
+  if status == RW_ROOM { return 500; }
+  if status == RW_NO_REALM { return 404; }
+  return 400;
+}
+
+// A batch carried out on the realm's board (the spec's): its status (RW_*). fenced: the caller's
+// own batch, which only edits; a stored step taken again (an undo's inverse, a redo) is not. n takes
+// six numbers: the bytes of the batch as taken, of its inverse, of the actions, of the words of a
+// refusal, how many edits were taken, and which edit was refused (-1: none). The actions are a line
+// an edit, in order: "switch KEY 0|1" for a row, "tool NAME 0|1" for a tool.
+rw_batch :: (spec: string, body: string, fenced: bool, out_did: [] u8, out_inv: [] u8, out_acts: [] u8, out_why: [] u8, n: [] int) -> int {
+  if n.count < 6 { return RW_ROOM; }
+  for k: 0..<6 { n[k] = 0; } n[5] = -1;
+  b: [1] RealmBoard;
+  if !rw_board_read(spec, b[..]) { return RW_NO_REALM; }
+  edits: [WE_BATCH] WorldEdit; inv: [WE_BATCH] WorldEdit;
+  h := we_batch_read(body, edits[..]);
+  if !h.ok || h.n < 1 || h.what != WB_APPLY { return ifx h.ok && fenced && h.what != WB_APPLY then RW_REFUSED else RW_BAD; }
+  acts := 0;
+  for i: 0..<h.n {
+    e := edits[i];
+    rows := we_table_is(e, "rows"); tools := we_table_is(e, "tools");
+    count := ifx rows then b[0].rows else b[0].tools;
+    if e.op != WE_CELL || (!rows && !tools) || !we_name_is(e, "on") || (!we_text_is(e, "0") && !we_text_is(e, "1")) || e.id < 1 || e.id > count {
+      n[3] = ct_copy(out_why, ifx e.op == WE_CELL && (rows || tools) && e.id > count then "no such row" else rw_words(RW_REFUSED));
+      n[5] = i;
+      return RW_REFUSED;
+    }
+    k := e.id - 1;
+    was := ifx rows then b[0].on[k] else b[0].ton[k];
+    turn := we_text_is(e, "1");
+    if rows { b[0].on[k] = turn; } else { b[0].ton[k] = turn; }
+    back := e;
+    back.text[0] = ifx was then '1' else '0'; back.text_n = 1;
+    inv[h.n - 1 - i] = back;
+    acts = ct_put(out_acts, acts, ifx rows then "switch " else "tool ");
+    acts = ct_put(out_acts, acts, ifx rows then cast(string) b[0].key[k][0..<b[0].key_n[k]] else cast(string) b[0].tool[k][0..<b[0].tool_n[k]]);
+    acts = ct_put(out_acts, acts, ifx turn then " 1\n" else " 0\n");
+  }
+  did := we_batch_write(h.rev, WB_APPLY, edits[..], h.n, out_did);
+  back := we_batch_write(h.rev, WB_APPLY, inv[..], h.n, out_inv);
+  if did.count == 0 || back.count == 0 || acts > out_acts.count { return RW_ROOM; }
+  n[0] = did.count; n[1] = back.count; n[2] = acts; n[4] = h.n;
+  return RW_OK;
+}
+
+// ---- checks
+
+RW_SPEC_FIXTURE :: "realm the-grid\nrole owner\nowner 1\ntool jump 1\ntool build 0\nthing crate\nrow robots 1 Robots that patrol | the yard\nrow props:wagon 0 A wagon\nplaced crate 1 2 0\nwaiting 0\n";
+
+rw_test_cell :: (table: string, row: int, v: string) -> WorldEdit {
+  e := WorldEdit.{ok = true, op = WE_CELL, id = row};
+  e.table_n = ct_copy(e.table[..], table); e.name_n = ct_copy(e.name[..], "on"); e.text_n = ct_copy(e.text[..], v);
+  return e;
+}
+
+#test "a realm's board and settings are two content tables, numbered in the spec's order" {
+  out: [RW_TABLES] u8;
+  n := rw_tables(RW_SPEC_FIXTURE, out[..]);
+  #assert n > 0 && cast(string) out[0..<n] == "aethyr.content.v1 realm 1\nreach 1\ntable rows id key:text on:int label:text\n1|robots|1|Robots that patrol  the yard\n2|props:wagon|0|A wagon\ntable tools id name:text on:int\n1|jump|1\n2|build|0\n";
+  d: [1] ContentDoc;
+  #assert ct_read(d[..], cast(string) out[0..<n]) && ct_rows(d[..], ct_table(d[..], "rows")) == 2 && ct_rows(d[..], ct_table(d[..], "tools")) == 2;
+  // a realm with nothing on its board is two empty tables
+  n = rw_tables("realm x\nrole visitor\n", out[..]);
+  #assert cast(string) out[0..<n] == "aethyr.content.v1 realm 1\nreach 1\ntable rows id key:text on:int label:text\ntable tools id name:text on:int\n";
+  // lines that are not a row or a tool are not a realm's, and the tables must fit
+  #assert rw_tables("row Robots 1 x\n", out[..]) == -1 && rw_tables("row robots 2 x\n", out[..]) == -1 && rw_tables("tool jump\n", out[..]) == -1 && rw_tables("tool jump 1 x\n", out[..]) == -1;
+  #assert rw_tables(RW_SPEC_FIXTURE, out[0..<40]) == -1;
+}
+#test "a key, a label and a board at their edges" {
+  long := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";   // 49 bytes
+  #assert rw_key_ok("a") && rw_key_ok("z") && rw_key_ok("0") && rw_key_ok("9") && rw_key_ok("a-b_c:d") && rw_key_ok(long[0..<48]);
+  #assert !rw_key_ok("") && !rw_key_ok(long) && !rw_key_ok("`") && !rw_key_ok("{") && !rw_key_ok("/") && !rw_key_ok(";") && !rw_key_ok(",") && !rw_key_ok(".") && !rw_key_ok("^") && !rw_key_ok("`a") && !rw_key_ok("A");
+  lab: [4] u8; raw := [8] u8.['a', 'b', 0x1f, 0x7f, '~', '|', 'c', 'd'];
+  #assert rw_label(cast(string) raw[..], lab[..]) == 4 && cast(string) lab[0..<4] == "ab~c" && rw_label(" ", lab[..]) == 1 && rw_label("", lab[..]) == 0;
+  #assert rw_after("a b c", 1) == "b c" && rw_after("a b c", 2) == "c" && rw_after("a b", 0) == "" && rw_after("a", 1) == "";
+  b: [1] RealmBoard;
+  b[0].ok = true; b[0].rows = 5; b[0].tools = 5;
+  #assert rw_board_read("row a 1 x\nrow b 0 y\ntool t 1\n", b[..]) && b[0].ok && b[0].rows == 2 && b[0].tools == 1 && b[0].on[0] && !b[0].on[1] && b[0].ton[0];
+  #assert !rw_board_read("tool t 2\n", b[..]) && !b[0].ok && b[0].rows == 0 && b[0].tools == 0;
+  #assert !rw_board_read("row a 1 x\nrow b 3 y\n", b[..]) && !rw_board_read("tool T 1\n", b[..]) && rw_board_read("tool t 0", b[..]) && !b[0].ton[0];
+  // RW_ROWS rows and RW_TOOLS tools fit; one more of either does not
+  spec: [4096] u8; s := 0; t := 0;
+  for i: 0..<RW_ROWS { s = ct_put(spec[..], s, "row r"); s = ct_put_int(spec[..], s, i); s = ct_put(spec[..], s, " 1 x\n"); }
+  #assert rw_board_read(cast(string) spec[0..<s], b[..]) && b[0].rows == RW_ROWS && !rw_board_read(cast(string) spec[0..<ct_put(spec[..], s, "row z 1 x\n")], b[..]);
+  for i: 0..<RW_TOOLS { t = ct_put(spec[..], t, "tool t"); t = ct_put_int(spec[..], t, i); t = ct_put(spec[..], t, " 1\n"); }
+  #assert rw_board_read(cast(string) spec[0..<t], b[..]) && b[0].tools == RW_TOOLS && !rw_board_read(cast(string) spec[0..<ct_put(spec[..], t, "tool z 1\n")], b[..]);
+  // the tables fit exactly what they take
+  out: [RW_TABLES] u8;
+  n := rw_tables(RW_SPEC_FIXTURE, out[..]);
+  #assert rw_tables(RW_SPEC_FIXTURE, out[0..<n]) == n && rw_tables(RW_SPEC_FIXTURE, out[0..<n - 1]) == -1;
+}
+#test "a switch of a row and of a tool: the actions in order, and the inverse sets each back in the reverse order" {
+  e: [3] WorldEdit; body: [WE_BATCH_BODY] u8; did: [WE_BATCH_BODY] u8; inv: [WE_BATCH_BODY] u8; acts: [RW_ACTS] u8; why: [240] u8; n: [6] int;
+  e[0] = rw_test_cell("rows", 2, "1"); e[1] = rw_test_cell("tools", 1, "0"); e[2] = rw_test_cell("rows", 2, "0");
+  text := we_batch_write(7, WB_APPLY, e[..], 3, body[..]);
+  #assert rw_batch(RW_SPEC_FIXTURE, text, true, did[..], inv[..], acts[..], why[..], n[..]) == RW_OK;
+  #assert n[4] == 3 && n[5] == -1 && n[3] == 0 && cast(string) acts[0..<n[2]] == "switch props:wagon 1\ntool jump 0\nswitch props:wagon 0\n";
+  #assert cast(string) did[0..<n[0]] == text;
+  back: [3] WorldEdit;
+  hb := we_batch_read(cast(string) inv[0..<n[1]], back[..]);
+  // the third edit undone first: the wagon was on by then; then the tool, then the wagon to off as it was
+  #assert hb.ok && hb.n == 3 && we_text_is(back[0], "1") && back[0].id == 2 && we_table_is(back[1], "tools") && we_text_is(back[1], "1") && we_text_is(back[2], "0");
+  // the inverse is a batch the board takes, unfenced, as an undo does
+  #assert rw_batch(RW_SPEC_FIXTURE, cast(string) inv[0..<n[1]], false, did[..], inv[..], acts[..], why[..], n[..]) == RW_OK && cast(string) acts[0..<n[2]] == "switch props:wagon 1\ntool jump 1\nswitch props:wagon 0\n";
+}
+#test "anything but a switch is refused in words, at its edit; a batch that is none is bad" {
+  e: [2] WorldEdit; body: [WE_BATCH_BODY] u8; did: [WE_BATCH_BODY] u8; inv: [WE_BATCH_BODY] u8; acts: [RW_ACTS] u8; why: [240] u8; n: [6] int;
+  bads := [7] WorldEdit.[rw_test_cell("rows", 3, "1"), WorldEdit.{ok = true, op = WE_SPAWN, kind = 1}, rw_test_cell("pieces", 1, "1"), rw_test_cell("rows", 1, "2"), rw_test_cell("tools", 3, "1"), WorldEdit.{ok = true, op = WE_DESPAWN, id = 1}, rw_test_cell("rows", 1, "1")];
+  bads[6].name_n = ct_copy(bads[6].name[..], "label");
+  for k: 0..<7 {
+    e[0] = rw_test_cell("rows", 1, "0"); e[1] = bads[k];
+    text := we_batch_write(7, WB_APPLY, e[..], 2, body[..]);
+    #assert text.count > 0 && rw_batch(RW_SPEC_FIXTURE, text, true, did[..], inv[..], acts[..], why[..], n[..]) == RW_REFUSED && n[5] == 1 && n[3] > 0;
+    said := cast(string) why[0..<n[3]];
+    #assert said == ifx k == 0 || k == 4 then "no such row" else rw_words(RW_REFUSED);
+  }
+  // an undo, a redo or ORIGINAL sent as the caller's own: refused; not a batch at all: bad
+  u: [WE_BATCH_BODY] u8;
+  #assert rw_batch(RW_SPEC_FIXTURE, we_batch_write(7, WB_ORIGINAL, e[..], 0, u[..]), true, did[..], inv[..], acts[..], why[..], n[..]) == RW_REFUSED;
+  #assert rw_batch(RW_SPEC_FIXTURE, we_batch_write(7, WB_UNDO, e[..], 0, u[..]), false, did[..], inv[..], acts[..], why[..], n[..]) == RW_BAD;
+  #assert rw_batch(RW_SPEC_FIXTURE, "{}", true, did[..], inv[..], acts[..], why[..], n[..]) == RW_BAD && rw_batch("row Bad 1 x\n", "{}", true, did[..], inv[..], acts[..], why[..], n[..]) == RW_NO_REALM;
+  #assert rw_batch(RW_SPEC_FIXTURE, "{}", true, did[..], inv[..], acts[..], why[..], n[0..<5]) == RW_ROOM;
+  // a batch that does not fit what it is written into
+  e[0] = rw_test_cell("rows", 1, "0");
+  text := we_batch_write(7, WB_APPLY, e[..], 1, body[..]);
+  #assert rw_batch(RW_SPEC_FIXTURE, text, true, did[0..<10], inv[..], acts[..], why[..], n[..]) == RW_ROOM && rw_batch(RW_SPEC_FIXTURE, text, true, did[..], inv[..], acts[0..<4], why[..], n[..]) == RW_ROOM;
+  for s: 0..<5 { #assert rw_status(s) == [5] int.[200, 400, 422, 500, 404][s] && (rw_words(s).count > 0) == (s != RW_OK); }
+}

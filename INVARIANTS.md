@@ -1562,9 +1562,14 @@ Each realm declares who decides each kind (`realm_authority`, same file;
 | Splice | The owner and admins | The page | Nothing durable |
 | Everglade | Admins | The room | The ledger |
 
-A realm with no row has declared nothing, and `realm_op_may_write` refuses
-every write for it. A new realm with a durable store adds its row, and its
-statement in its README, in the same change (#13431).
+Every other realm (a made realm, or a hand-built one with a board) is a
+world of kind `realm` (migration 0185, #13422) and has one rule,
+`realm_authority_of`: its owner, its own admins and the site's admins change
+its content, its page simulates it, and it holds nothing durable. A realm with
+a row is served only as its own kind. Anything else has declared nothing, and
+`realm_kind_op_may_write` refuses every write for it. A new realm with a
+durable store adds its row, and its statement in its README, in the same
+change (#13431).
 
 ## Every moderator action is logged before it is done, and the log is never edited
 

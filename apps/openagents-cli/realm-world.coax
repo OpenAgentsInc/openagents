@@ -472,7 +472,7 @@ rw_why :: (a: [] Args, r: [] Rep, profile: string, slug: string, w: [] RwWork) -
 
 rw_main :: (a: [] Args, r: [] Rep, profile: string, verb: string) -> int {
   slug := positional(a, 2);
-  if !we_world_ok(slug) { return fail(r, EXIT_USAGE, "ID is a world's: a lowercase letter, then a-z, 0-9 and -, 32 at most"); }
+  if !we_world_ok(slug) { return fail(r, EXIT_USAGE, "ID is a world's: a lowercase letter or a digit, then a-z, 0-9 and -, 48 at most"); }
   w := [1] RwWork.[RwWork.{}];
   if verb == "world" { return rw_show(a, r, profile, slug, w[..]); }
   if verb == "world-why" { return rw_why(a, r, profile, slug, w[..]); }

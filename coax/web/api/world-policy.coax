@@ -3,7 +3,9 @@
 // world's document. worlds.c reads the facts (migrations/0181_worlds.sql), asks here, and writes
 // what these answers say; the database decides nothing, and worlds.c builds no byte of its own.
 //
-//   who may write         an admin, from this site or signed (wr_write); anyone reads
+//   who may write         from this site or signed, whoever the realm's row lets author it (wr_may):
+//                         a site admin, and for Splice and a realm its owner and its admins (wr_write);
+//                         anyone reads
 //   the fence             a batch names the dev revision it was made from; any other is 409
 //   the undo log          an undo takes the newest standing step's inverse, a redo the next step's
 //                         batch; an apply cuts the steps after where the log stands (wr_log)
@@ -25,11 +27,12 @@
 #load "../../../metaverse-engine/editor/authority.coax";
 #load "../../lib/agent/world/turn.coax";   // a world's card (world.card.v1)
 #load "world-files.coax";   // attachments on a world and its project (#13468)
+#load "../../../metaverse/edit/realm-world.coax";   // a realm's world: its board and settings as tables, a switch as a cell (#13422)
 
 WR_OK :: 0;
 WR_CROSS :: 1;       // a write from another site's page
 WR_LOG_IN :: 2;      // nobody is logged in
-WR_NOT_ADMIN :: 3;   // logged in, but only an admin writes this world
+WR_NOT_ADMIN :: 3;   // logged in, but not one who authors this world (wr_may)
 WR_NO_WORLD :: 4;    // no world has this ID
 WR_BAD :: 5;         // the body is not a batch
 WR_STALE :: 6;       // made from another revision than the world's
@@ -41,10 +44,10 @@ WR_LANE :: 11;       // no such lane
 
 // A write: a batch of edits, an undo, a redo, ORIGINAL or a publish. base: the revision the batch
 // names; rev: the dev revision; done, steps: where the undo log stands and how long it is.
-wr_write :: (same_site: bool, known: bool, admin: bool, exists: bool, batch_ok: bool, what: int, base: int, rev: int, done: int, steps: int) -> int #export_c #effects(all) {
+wr_write :: (same_site: bool, known: bool, may: bool, exists: bool, batch_ok: bool, what: int, base: int, rev: int, done: int, steps: int) -> int #export_c #effects(all) {
   if !same_site { return WR_CROSS; }
   if !known { return WR_LOG_IN; }
-  if !admin { return WR_NOT_ADMIN; }
+  if !may { return WR_NOT_ADMIN; }
   if !exists { return WR_NO_WORLD; }
   if !batch_ok || what < WB_APPLY || what > WB_PUBLISH_NEXT { return WR_BAD; }
   if base != rev { return WR_STALE; }
@@ -61,11 +64,33 @@ wr_op :: (what: int) -> int #effects(all) {
   if what == WB_PUBLISH_NOW || what == WB_PUBLISH_NEXT { return OP_PUBLISH; }
   return OP_EDIT;
 }
-// Whether world `id`'s realm lets this write change what is authored. No write here is one of
-// the two operations that reach a durable store (the ledger's and the character record's).
-wr_authored :: (id: string, what: int) -> bool #export_c #effects(all) { return realm_op_may_write(id, wr_op(what), STATE_AUTHORED); }
-// Whether world `id`'s realm has a row: only then is its document read out.
-wr_loads :: (id: string) -> bool #export_c #effects(all) { return id.count != 0 && realm_authority(id).realm == id; }
+// Whether world `id` of `kind` (its row's) lets this write change what is authored. No write here is
+// one of the two operations that reach a durable store (the ledger's and the character record's).
+wr_authored :: (id: string, kind: string, what: int) -> bool #export_c #effects(all) { return realm_kind_op_may_write(id, kind, wr_op(what), STATE_AUTHORED); }
+// Whether world `id` of `kind` has a row: only then is its document read out.
+wr_loads :: (id: string, kind: string) -> bool #export_c #effects(all) { return id.count != 0 && realm_authority_of(id, kind).realm == id; }
+// Who may author world `id` of `kind`: a site admin, or by the realm's rights (verse.edit_role's
+// "owner", "admin", "visitor", "" for none) where its row says owner-admins (authority.coax).
+// A site admin may, here, even of a world there is no row for: the route then answers that there is no such world.
+wr_may :: (id: string, kind: string, site_admin: bool, role: string) -> bool #export_c #effects(all) { return site_admin || realm_may_author(id, kind, site_admin, role); }
+// Whether the asker is known: logged in or signed; on a realm's world, also a player of the game
+// (X-Verse-Player), since a made realm's maker may be a player with no account (0048).
+wr_known :: (kind: string, signed_in: bool, player: bool) -> bool #export_c #effects(all) { return signed_in || (kind == REALM_KIND && player); }
+
+// ---- a realm's world (metaverse/edit/realm-world.coax, #13422)
+
+// A realm's switches reach everyone at once: its world has one lane, dev, which a read of live is
+// answered with, and nothing to publish.
+wr_at_once :: (kind: string) -> bool #export_c #effects(all) { return kind == REALM_KIND; }
+wr_at_once_words :: () -> string #export_c #effects(all) { return "a realm's switches reach everyone at once: there is nothing to publish"; }
+// The realm's board and settings (verse.edit_spec) as content tables into out: their length, or -1.
+wr_realm_tables :: (spec: string, out: [] u8) -> int #export_c #effects(all) { return rw_tables(spec, out); }
+// A batch carried out on the realm's board: realm-world.coax rw_batch's status, numbers and bytes.
+wr_realm_batch :: (spec: string, body: string, fenced: bool, out_did: [] u8, out_inv: [] u8, out_acts: [] u8, out_why: [] u8, n: [] int) -> int #export_c #effects(all) {
+  return rw_batch(spec, body, fenced, out_did, out_inv, out_acts, out_why, n);
+}
+wr_realm_status :: (status: int) -> int #export_c #effects(all) { return rw_status(status); }
+wr_realm_words :: (status: int) -> string #export_c #effects(all) { return rw_words(status); }
 // A read of lane `lane`. join: wl_join's answer for the page's pins (WJ_LIVE when it sent none).
 wr_read :: (exists: bool, lane: int, join: int) -> int #export_c #effects(all) {
   if !exists { return WR_NO_WORLD; }
@@ -86,8 +111,8 @@ wr_status :: (verdict: int) -> int #export_c #effects(all) {
 }
 wr_words :: (verdict: int) -> string #export_c #effects(all) {
   if verdict == WR_CROSS { return "cross-site"; }
-  if verdict == WR_LOG_IN { return "log in as an admin"; }
-  if verdict == WR_NOT_ADMIN { return "only an admin changes this world"; }
+  if verdict == WR_LOG_IN { return "log in"; }
+  if verdict == WR_NOT_ADMIN { return "only its owner or an admin changes this world"; }
   if verdict == WR_NO_WORLD { return "no such world"; }
   if verdict == WR_BAD { return "send a world.edit.v1 batch"; }
   if verdict == WR_STALE { return "the world changed since you read it: read it again"; }
@@ -273,7 +298,7 @@ wr_card :: (world: string, rev: int, things: int, name: string, out: [] u8) -> i
   for same: 0..<2 { for known: 0..<2 { for admin: 0..<2 { for exists: 0..<2 {
     #assert wr_asset_write(same == 1, known == 1, admin == 1, exists == 1) == wr_write(same == 1, known == 1, admin == 1, exists == 1, true, WB_APPLY, 4, 4, 2, 5);
   } } } }
-  #assert wr_asset_what() == WB_APPLY && wr_op(wr_asset_what()) == OP_EDIT && wr_authored("splice", wr_asset_what()) && !wr_authored("nowhere", wr_asset_what());
+  #assert wr_asset_what() == WB_APPLY && wr_op(wr_asset_what()) == OP_EDIT && wr_authored("splice", "splice", wr_asset_what()) && !wr_authored("nowhere", "splice", wr_asset_what());
 }
 #test "world routes: what storage holds is the file only when its size and its hash are the ones asked; a wrong object is deleted" {
   #assert wr_asset_stored(2032, 2032, true) == WA_OK && wr_asset_stored(1, 1, true) == WA_OK;
@@ -287,9 +312,9 @@ wr_card :: (world: string, rev: int, things: int, name: string, out: [] u8) -> i
   #assert wr_pack_kept("a", "a", "b", "c") && wr_pack_kept("b", "a", "b", "c") && wr_pack_kept("c", "a", "b", "c") && !wr_pack_kept("d", "a", "b", "c") && !wr_pack_kept("", "", "", "") && !wr_pack_kept("", "a", "", "");
 }
 #test "world routes: a world is its realm's row of the authority table, and a write is authoring, never durable" {
-  for what: 0..<6 { #assert wr_authored("splice", what) && wr_authored("everglade", what) && !wr_authored("nowhere", what) && !wr_authored("", what); }
+  for what: 0..<6 { #assert wr_authored("splice", "splice", what) && wr_authored("everglade", "everglade", what) && wr_authored("nowhere", "realm", what) && !wr_authored("nowhere", "splice", what) && !wr_authored("splice", "realm", what) && !wr_authored("", "realm", what); }
   #assert wr_op(WB_APPLY) == OP_EDIT && wr_op(WB_ORIGINAL) == OP_EDIT && wr_op(WB_UNDO) == OP_UNDO && wr_op(WB_REDO) == OP_REDO && wr_op(WB_PUBLISH_NOW) == OP_PUBLISH && wr_op(WB_PUBLISH_NEXT) == OP_PUBLISH;
-  #assert wr_loads("splice") && !wr_loads("nowhere") && !wr_loads("");
+  #assert wr_loads("splice", "splice") && wr_loads("my-realm", "realm") && !wr_loads("nowhere", "splice") && !wr_loads("everglade", "realm") && !wr_loads("", "realm");
   for what: 0..<6 { #assert !state_op_may_write(wr_op(what), STATE_DURABLE) && wr_op(what) != OP_LEDGER && wr_op(what) != OP_CHARACTER; }
 }
 #test "world routes: anyone reads dev; live is what is published, for a page whose build reads it" {
@@ -348,4 +373,16 @@ wr_card :: (world: string, rev: int, things: int, name: string, out: [] u8) -> i
   #assert n > 0 && cast(string) o[0..<n] == WE_REFUSAL_FIXTURE && wr_refusal("x", -1, o[0..<3]) == -1;
   #assert wr_event_id(false) == WE_EVENT && wr_event_id(true) == WE_PUBLISHED && we_event_kind(WE_EVENT_FIXTURE) == 1;
   #assert wr_world_ok("splice") && !wr_world_ok("Splice") && !wr_world_ok("");
+}
+#test "world routes: who authors a realm's world, who is known there, and its one lane" {
+  #assert wr_may("my-realm", "realm", false, "owner") && wr_may("my-realm", "realm", false, "admin") && !wr_may("my-realm", "realm", false, "visitor") && !wr_may("my-realm", "realm", false, "");
+  #assert wr_may("my-realm", "realm", true, "") && wr_may("my-realm", "splice", true, "owner") && !wr_may("my-realm", "splice", false, "owner") && wr_may("splice", "splice", true, "") && !wr_may("everglade", "everglade", false, "owner");
+  #assert wr_known("realm", false, true) && wr_known("realm", true, false) && !wr_known("realm", false, false) && !wr_known("splice", false, true) && wr_known("splice", true, false);
+  #assert wr_at_once("realm") && !wr_at_once("splice") && !wr_at_once("") && wr_at_once_words().count > 0;
+  out: [RW_TABLES] u8;
+  #assert wr_realm_tables(RW_SPEC_FIXTURE, out[..]) == rw_tables(RW_SPEC_FIXTURE, out[..]) && wr_realm_tables("row X 1 x\n", out[..]) == -1;
+  e: [1] WorldEdit; body: [WE_BATCH_BODY] u8; did: [WE_BATCH_BODY] u8; inv: [WE_BATCH_BODY] u8; acts: [RW_ACTS] u8; why: [240] u8; n: [6] int;
+  e[0] = rw_test_cell("tools", 2, "1");
+  #assert wr_realm_batch(RW_SPEC_FIXTURE, we_batch_write(3, WB_APPLY, e[..], 1, body[..]), true, did[..], inv[..], acts[..], why[..], n[..]) == RW_OK && cast(string) acts[0..<n[2]] == "tool build 1\n";
+  for st: 0..<5 { #assert wr_realm_status(st) == rw_status(st) && wr_realm_words(st) == rw_words(st); }
 }

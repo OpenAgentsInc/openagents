@@ -146,12 +146,35 @@ that was refused, when one was.
 | Status | When |
 | --- | --- |
 | 400 | The body is not a batch |
-| 401, 403 | Nobody is logged in; the caller is no admin; the write came from another site's page |
+| 401, 403 | Nobody is logged in; the caller may not author this world; the write came from another site's page |
 | 404 | No world has this ID; nothing is published yet |
 | 409 | The batch names another revision than the world's; the page must reload |
 | 422 | An edit may not stand (the words say why, naming the zone or the place); nothing to undo or redo |
 
+A world's ID is a lowercase letter or a digit, then lowercase letters, digits
+and `-`, 48 bytes at most: a realm's slug is one.
+
 Splice (`splice`) is written by admins only. Anyone reads it.
+
+## A realm's world
+
+Every realm with a board is a world of kind `realm` under its slug (#13422,
+migration 0185): a made realm from the moment it is made, and a hand-built
+one (The Grid is `/api/worlds/the-grid`). Its owner, its own admins and the
+site's admins write it; a player of the game is known by `X-Verse-Player`, as
+on the realm routes. A realm hidden from the caller is no world to them.
+
+- Its document is empty: it places nothing. `GET /api/worlds/ID/content` is
+  its board and its settings as two content tables, `rows` (`id key:text
+  on:int label:text`, in the board's order) and `tools` (`id name:text
+  on:int`).
+- A batch is `cell` edits of `on`, `0` or `1`. The realm's own SQL
+  (`verse.edit_switch`, `verse.edit_settings`) carries each out, so its
+  refusals are the ones the realm's page meets. Anything else is refused in
+  words, at its edit (`metaverse/edit/realm-world.coax`).
+- Undo and redo take a batch back as switches. It has one lane: a read of
+  live is answered with dev, and a publish is refused, since a switch reaches
+  everyone at once.
 
 ## The server checks with the page's code
 

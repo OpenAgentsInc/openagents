@@ -66,7 +66,7 @@ WE_REACH :: 10000000;     // centimetres either way a place may be: 100 km (tabl
 WE_ID_MAX :: 2147483647;
 WE_PI :: 3.14159265f32;
 WE_BATCH :: 64;           // edits in one batch
-WE_WORLD :: 32;           // bytes in a world's ID
+WE_WORLD :: 48;           // bytes in a world's ID: a realm's slug is one (realms.c slug_ok, #13422)
 WE_NODES :: 24;           // JSON nodes one edit has, at most
 
 WorldEdit :: struct {
@@ -88,9 +88,10 @@ WorldEvent :: struct { ok: bool; seq: int; rev: int; at: int; world: [WE_WORLD] 
 
 // ---- words and numbers
 
-// A world's ID: a lowercase letter, then lowercase letters, digits and hyphens, WE_WORLD bytes at most.
+// A world's ID: a lowercase letter or a digit, then lowercase letters, digits and hyphens, WE_WORLD bytes at most.
+// A made realm's slug is a world's ID, and a slug may start with a digit (0048 builder_slug).
 we_world_ok :: (s: string) -> bool {
-  if s.count < 1 || s.count > WE_WORLD || s[0] < 'a' || s[0] > 'z' { return false; }
+  if s.count < 1 || s.count > WE_WORLD || !((s[0] >= 'a' && s[0] <= 'z') || (s[0] >= '0' && s[0] <= '9')) { return false; }
   for b: s { if !((b >= 'a' && b <= 'z') || (b >= '0' && b <= '9') || b == '-') { return false; } }
   return true;
 }
@@ -541,7 +542,7 @@ we_content_apply :: (d: [] ForgeDoc, e: WorldEdit) -> WeApplied {
   #assert !we_event_read("").ok && !we_event_read("{}").ok && !we_event_read(sc_edit_swap(text, "edited.v1", "edited.v2", p[..])).ok && !we_event_read(sc_edit_swap(text, "\"splice\"", "\"Splice\"", p[..])).ok;
   #assert !we_event_read(sc_edit_swap(text, "\"rev\":42", "\"rev\":0", p[..])).ok && !we_event_read(sc_edit_swap(text, "\"seq\":912,", "", p[..])).ok && !we_event_read(sc_edit_swap(text, "\"kind\":102", "\"kind\":-1", p[..])).ok && !we_event_read(sc_edit_swap(text, "\"at\":1762190000000", "\"at\":0", p[..])).ok;
   #assert we_event_write(0, "splice", 42, we_read(fx[0]), 1, o[..]) == "" && we_event_write(1, "", 42, we_read(fx[0]), 1, o[..]) == "" && we_event_write(1, "splice", 0, we_read(fx[0]), 1, o[..]) == "" && we_event_write(1, "splice", 1, WorldEdit.{}, 1, o[..]) == "" && we_event_write(1, "splice", 1, we_read(fx[0]), 0, o[..]) == "";
-  #assert we_world_ok("splice") && we_world_ok("w-12") && !we_world_ok("") && !we_world_ok("Splice") && !we_world_ok("1w") && !we_world_ok("a_b") && !we_world_ok("abcdefghijabcdefghijabcdefghijabc");
+  #assert we_world_ok("splice") && we_world_ok("w-12") && !we_world_ok("") && !we_world_ok("Splice") && we_world_ok("1w") && !we_world_ok("-w") && !we_world_ok("a_b") && we_world_ok("abcdefghijabcdefghijabcdefghijabcdefghijabcdefgh") && !we_world_ok("abcdefghijabcdefghijabcdefghijabcdefghijabcdefghi");
 }
 WeTestScene :: struct { st: [1] ForgeSceneState; items: [8] ForgeItem; ops: [32] ForgeItemOp; steps: [16] ForgeStep; }
 we_test_scene :: (t: [] WeTestScene) -> ForgeScene { return ForgeScene.{st = t[0].st[..], items = t[0].items[..], ops = t[0].ops[..], steps = t[0].steps[..]}; }

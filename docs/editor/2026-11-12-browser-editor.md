@@ -388,6 +388,17 @@ not a flat folder scan.
     pane in 104 ms and the last good build kept running; a changed shader
     constant in `gpu/splice.coax` was swapped in 453 ms after Save.
 
+- **As built (E13, #13422): every realm is a world.** A made realm, and a
+  hand-built one with a board, is a world of kind `realm` under its slug
+  (migration 0185), with one rule in the authority table for a realm made at
+  run time: its owner, its own admins and the site's admins author it.
+  `/api/worlds/SLUG` serves its board and settings as content tables and
+  takes a switch as a `cell` edit, which the realm's own SQL carries out, with
+  undo, redo and one event a switch
+  ([the rules](../protocol/world-edit-v1.md#a-realms-world)). The realm pages
+  do not open the shell yet: they still edit through `metaverse/edit/edit.coax`
+  and `/api/playtest/realms/SLUG/...`.
+
 - **As built (E13, #13422): WorldBuilder in the shell.** `/create-world?edit`
   (the page's EDIT button) opens the shell over WorldBuilder, for anyone: the
   world is the visitor's own, kept in their browser.
