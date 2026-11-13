@@ -54,6 +54,7 @@ FW_FILE_MAX :: 26214400;       // 25 MB a file
 FW_FILES_MAX :: 200;           // files a project holds, with all its worlds
 FW_TOTAL_MAX :: 1073741824;    // 1 GB a project, with all its worlds
 FW_FILES :: 200;               // attachments a list holds
+FW_READ_PART :: 786432;        // GET .../files/FID?at=N answers this many bytes at most, from byte N
 FW_ID :: 16; FW_NAME :: 100; FW_NOTE :: 200; FW_TAGS :: 120; FW_TAG :: 24; FW_TAGS_N :: 8; FW_URL :: 300; FW_BY :: 64;
 FW_WORLD :: 32; FW_PROJECT :: 48;
 FW_BYTES :: 180000;            // a list is at most this long

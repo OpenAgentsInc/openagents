@@ -642,15 +642,12 @@ static bool files_route(const char *url) {
   return !*rest || *rest == '?' || (sscanf(rest, "/%16[0-9a-f]", fid) == 1 && strlen(fid) == 16 && (!rest[17] || rest[17] == '?'));
 }
 static void files_local(client *c, const char *method, const char *url) {
-  char dir[PATH_MAX + 32], body_file[PATH_MAX + 64], cmd[PATH_MAX * 3 + 2200], path[1024];
+  char dir[PATH_MAX + 32], body_file[PATH_MAX + 64], cmd[PATH_MAX * 3 + 2200];
   snprintf(dir, sizeof dir, "%s/build/.worlds", app_dir);
   for (const char *p = url; *p; p++)   // the URL goes into a shell command: only what a route's URL holds
     if (!((*p >= 'a' && *p <= 'z') || (*p >= '0' && *p <= '9') || strchr("/?&=-_.", *p))) { respond(c->fd, 404, "Not Found", "application/json", "{\"error\":\"not found\"}", 21); drop(c); return; }
   bool post = !strcmp(method, "POST");
   if (!post && strcmp(method, "GET")) { respond(c->fd, 405, "Method Not Allowed", "application/json", "{\"error\":\"not found\"}", 21); drop(c); return; }
-  size_t plen = strcspn(url, "?");
-  if (plen >= sizeof path) plen = sizeof path - 1;
-  memcpy(path, url, plen); path[plen] = 0;
   body_file[0] = 0;
   if (post) {
     bool told = false;
@@ -688,7 +685,7 @@ static void files_local(client *c, const char *method, const char *url) {
     if (f) fclose(f);
     if (!ok) { unlink(body_file); respond(c->fd, 400, "Bad Request", "application/json", "{\"error\":\"the file did not arrive whole\"}", 39); drop(c); return; }
   }
-  snprintf(cmd, sizeof cmd, "'%s/tool.sh' '%s/../../metaverse-engine/tools/files-local.coax' '%s' %s '%s' %s%s%s 2>/dev/null", host_dir, host_dir, dir, post ? "POST" : "GET", path,
+  snprintf(cmd, sizeof cmd, "'%s/tool.sh' '%s/../../metaverse-engine/tools/files-local.coax' '%s' %s '%s' %s%s%s 2>/dev/null", host_dir, host_dir, dir, post ? "POST" : "GET", url,
            post ? "'" : "", body_file, post ? "'" : "");
   FILE *run = popen(cmd, "r");
   size_t cap = (26u << 20) + 4096, n = 0; char *out = malloc(cap); size_t k;

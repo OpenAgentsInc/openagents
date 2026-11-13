@@ -12,7 +12,7 @@
 //   coax/web/tool.sh metaverse-engine/tools/files-local.coax DIR METHOD URL [BODY_FILE]
 //   GET  /api/worlds/ID/files          the world's attachments, then its project's
 //   POST /api/worlds/ID/files          a world.file.* request
-//   GET  /api/worlds/ID/files/FID      an attachment's bytes
+//   GET  /api/worlds/ID/files/FID      an attachment's bytes (?at=N: 768 KB of them from byte N)
 //   GET  /api/projects/SLUG/files      the project's own attachments
 // It prints "STATUS CONTENT-TYPE", a newline, and the answer's bytes, and exits 0 when it answered.
 // tool.sh: stack-gib 1
@@ -107,6 +107,8 @@ tool_main :: () -> int #export_c #effects(all) {
   if !args_load(args[..]) || args_count(args[..]) < 3 || args_count(args[..]) > 4 { tool_errln("usage: files-local DIR METHOD URL [BODY_FILE]"); return 2; }
   xs := [1] FlLocal.[FlLocal.{}]; x := xs[..];
   dir := args_at(args[..], 0); method := args_at(args[..], 1); url := fw_part(args_at(args[..], 2), '?', 0);
+  qat := -1; whole := args_at(args[..], 2);
+  for k: 0..<whole.count { if whole[k] == '?' && k + 4 <= whole.count && whole[k + 1..<k + 4] == "at=" { qat = fw_num(whole[k + 4..<whole.count]); if qat < 0 { qat = -2; } } }
   pb: [FL_PATH] u8;
   _ = fs_mkdir(dir);
   // /api/projects/SLUG/files: the project's own attachments
@@ -130,7 +132,9 @@ tool_main :: () -> int #export_c #effects(all) {
     if i < 0 { return fl_local_refuse(x, 404, "That attachment has no file here."); }
     n := fs_read(fl_path(pb[..], dir, "/files/", fw_hash_of(w[0].m[..], i), ""), x[0].file[..]);
     if n < 0 || n != w[0].m[0].f[i].bytes { return fl_local_refuse(x, 404, "That attachment's file is not here."); }
-    return fl_local_say(200, fw_type(fw_name_of(w[0].m[..], i)), cast(string) x[0].file[0..<n]);
+    if qat == -2 || qat > n { return fl_local_refuse(x, 400, "?at= is a byte of the file"); }
+    from := ifx qat < 0 then 0 else qat; to := ifx qat < 0 then n else ifx n - qat < FW_READ_PART then n else qat + FW_READ_PART;
+    return fl_local_say(200, fw_type(fw_name_of(w[0].m[..], i)), cast(string) x[0].file[from..<to]);
   }
   if method == "GET" { return fl_local_list(x); }
   if method != "POST" || fid.count > 0 { return fl_local_refuse(x, 404, "not found"); }
