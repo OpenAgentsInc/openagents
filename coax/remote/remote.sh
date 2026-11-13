@@ -308,7 +308,7 @@ run() {
     local big global
     global="$(git -C "$root" config --path core.excludesFile 2> /dev/null)" || global="${XDG_CONFIG_HOME:-$HOME/.config}/git/ignore"
     { [[ ! -f "$global" ]] || cat "$global"; echo; echo 'build-remote/'; } > "$tmp/exclude"
-    big="$(cd "$root" && git -c core.excludesFile="$tmp/exclude" ls-files -o --exclude-standard -z | xargs -0 du -k 2> /dev/null | awk '{ s += $1 } END { print s * 1024 }')"
+    big="$(cd "$root" && git -c core.excludesFile="$tmp/exclude" ls-files -o --exclude-standard -z | xargs -0 -r du -k 2> /dev/null | awk '{ s += $1 } END { print s * 1024 }')"
     (( big < 200000000 )) || fail "untracked files hold $((big / 1000000)) MB (more than 200 MB): too much to send. Fix: remove or ignore them; or run here with --local" "$@"
     cp "$(git -C "$root" rev-parse --path-format=absolute --git-path index)" "$tmp/index" 2> /dev/null
     tree="$(cd "$root" && GIT_INDEX_FILE="$tmp/index" git -c core.excludesFile="$tmp/exclude" add -A . && GIT_INDEX_FILE="$tmp/index" git write-tree)" || fail "could not snapshot the checkout" "$@"
