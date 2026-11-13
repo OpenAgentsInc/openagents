@@ -10,7 +10,7 @@ The site's index is [llms.txt](https://openagents.com/llms.txt). Look a Coax nam
 - page: `/worlds/everglade2` (module `everglade2`, source `apps/openagents-web/realms/everglade2/`)
 - wire: 7 (`everglade/shared/everglade-wire.coax` `WIRE_VERSION`). A room also seats a page one version behind, 6, for one release. A frame written for any other version is refused with `r 0 version`
 - pins: engine 1, rules 1, content 1 (`WIRE_ENGINE`, `WIRE_RULES`, `WIRE_CONTENT`). A page says them before its hello. A room refuses a hello whose pins are neither its own nor the release before's (`r 0 version`)
-- content: `everglade/content/everglade.content`, revision 2, sha256 `14f5f808426866e94b319f42a311900fc84ac70afaa326d9029bfaa82f64b738`; on the wire its pin is 2
+- content: `everglade/content/everglade.content`, revision 2, sha256 `7f7cace1e119d532810b06c947873926563c97f8d2c072c058780c30f6f692ac`; on the wire its pin is 2
 - diagnostics: `engine-diagnostics-v1`, 17 codes, sha256 `55aa5a9b50ff02e1256e64909abf901a29f9c98a1575ae6b669281410b69c31c` (`proto/verse/engine-diagnostics-v1.json`)
 - language: Coax; the compiler's version is in `coax/release-status.json` and what it claims to do in `coax/book/capability-claims.json`
 - reference: the last line of this file is the sha256 of everything above it. Two builds with the same line have the same reference
@@ -48,14 +48,14 @@ From `metaverse-engine/editor/authority.coax` (INVARIANTS.md, "Authoring never w
 | --- | --- | --- |
 | `ability` | `id name:text` | 83 |
 | `creature` | `id name:text kind:int xp:int` | 5 |
-| `dialogue` | `id npc:text point:ref.point quest:opt.quest line:text` | 2 |
+| `dialogue` | `id npc:text point:ref.point quest:opt.quest line:text` | 6 |
 | `item` | `id name:text slot:int` | 4 |
 | `loot` | `id creature:ref.creature item:opt.item weight:int` | 6 |
-| `point` | `id name:text x:cm z:cm r:int` | 15 |
-| `quest` | `id name:text` | 2 |
-| `reward` | `id quest:ref.quest item:opt.item coin:int xp:int` | 2 |
+| `point` | `id name:text x:cm z:cm r:int` | 18 |
+| `quest` | `id name:text` | 5 |
+| `reward` | `id quest:ref.quest item:opt.item coin:int xp:int` | 5 |
 | `spawn` | `id creature:ref.creature point:ref.point count:int` | 12 |
-| `step` | `id quest:ref.quest creature:opt.creature point:opt.point item:opt.item talk:opt.dialogue count:int` | 6 |
+| `step` | `id quest:ref.quest creature:opt.creature point:opt.point item:opt.item talk:opt.dialogue count:int` | 14 |
 | `template` | `id creature:ref.creature block:int style:int notice:int leash:int run:int` | 5 |
 | `troop` | `id spawn:ref.spawn group:int face:int respawn:int slot:int` | 12 |
 
@@ -193,4 +193,4 @@ table ability id name:text
 128|Rage
 ```
 
-reference sha256: 0ec917a98951000cd1b0d95588d949cd25ff283be7eab78fca8c0dbb81ff376e
+reference sha256: f9c52cf0915a974a6cf583c5ca8cc881e4b815c2ccafce4e6e19c90af34da962
