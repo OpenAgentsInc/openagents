@@ -11,6 +11,7 @@ the Model Context Protocol (MCP) tools that ship inside it. Written 2026-11-11.
 | [2026-11-11-learning-from-unreal-5-9.md](2026-11-11-learning-from-unreal-5-9.md) | What Aethyr should adapt from UE 5.9, system by system, ideas only and never code |
 | [web-games-in-the-verse.md](web-games-in-the-verse.md) | Hosting web-built (Wasm) Unreal games as guest worlds in the Verse: the creator's workflow, hosting, the bridge, legal, the PoC plan and owner decisions |
 | [2026-11-12-splice-unreal-vs-aethyr-session-audit.md](2026-11-12-splice-unreal-vs-aethyr-session-audit.md) | Why two agent sessions building the same game came out so different in Unreal and in Aethyr, with rules for the next Unreal session |
+| [2026-11-12-aethyr-to-unreal-exporter-spec.md](2026-11-12-aethyr-to-unreal-exporter-spec.md) | Specification for the minimal exporter that turns an Aethyr game (Splice first) into an Unreal project: glTF world, a JSON manifest, and the compiled rules behind a bridge plugin |
 
 ## Summary
 
