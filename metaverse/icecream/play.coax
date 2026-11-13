@@ -997,7 +997,7 @@ ice_play_facts :: (p: [] Play, g: [] Game, out: [] f32) #export_c #effects(all) 
   #assert lines == 6 + 30;
 }
 
-#test "a frame runs at most 4 rules steps, however long it was, on Aethyr's clock" {
+#test "a frame runs at most 4 rules steps, however long it was, on the Metaverse Engine's clock" {
   plays: [1] Play;
   games: [1] Game;
   p := plays[..]; g := games[..];
@@ -1141,7 +1141,7 @@ cam_trail :: (base: [] Play, game: [] Game, dts: [] f32, out: [] CamTrail) -> bo
   #assert !p[0].stick_on && p[0].look_on;
 }
 
-#test "the thumb and the keys walk by Aethyr's input rules: one dead zone, the stick decides past it" {
+#test "the thumb and the keys walk by the Metaverse Engine's input rules: one dead zone, the stick decides past it" {
   plays: [1] Play;
   games: [1] Game;
   p := plays[..]; g := games[..];

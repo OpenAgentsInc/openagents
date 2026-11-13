@@ -1,5 +1,5 @@
 // A made realm through its usable route in headless Chrome (no window opens, no sound plays),
-// against a local API and the page this checkout builds (GitHub #12629; Aethyr book chapters 52,
+// against a local API and the page this checkout builds (GitHub #12629; Metaverse Engine book chapters 52,
 // 82 and 86): keyboard only and the screen reader's basics, host lifecycle, and a guest's keys and
 // controller.
 //

@@ -1,4 +1,4 @@
-// Valley Lab: original graybox, shared Aethyr walking/collision/camera and touch controls.
+// Valley Lab: original graybox, shared Metaverse Engine walking/collision/camera and touch controls.
 #load "../../metaverse-engine/move/walk.coax" as pc;
 #load "../../metaverse-engine/core/sticks.coax";
 #load "../../metaverse-engine/core/points.coax";

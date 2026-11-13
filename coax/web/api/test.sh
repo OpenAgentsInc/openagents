@@ -432,7 +432,7 @@ if [[ -x "$cli_coax" ]]; then
     ANIME_ONLY= ANIME_ISOLATED_DB=oa_analytics ANIME_SELECTOR_BIN="$work/anime_direct_selector" "$work/anime_direct" || { cat "$work/api.log"; exit 1; }
   lap "anime_direct"
   fi
-  # A made realm's engine pins, shapes and edit log, and Aethyrforge's whole route checked end to end (#12629).
+  # A made realm's engine pins, shapes and edit log, and the realm editor's whole route checked end to end (#12629).
   # (The built CLI against a local API is tests/realm_cli_api.coax; its publish needs an API with no
   # bucket or with OA_ENGINE_TEMPLATE, which this run's fake bucket isn't, so it runs on its own.)
   if runs realms; then

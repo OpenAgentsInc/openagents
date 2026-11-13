@@ -188,7 +188,7 @@ static const auth_rule RULES[] = {
   R("*",    "/api/analytics/events", false, AP_GUEST, "a page's batch"),
   R("*",    "/api/analytics/team", false, AP_PUBLIC, "a team link's token, checked there"),
   R("*",    "/api/analytics/realms", false, AP_PUBLIC, "public realm counts"),
-  // ---- the playtest and the Verse: player keys, accounts and signers, each checked in its route
+  // ---- the playtest and the Metaverse: player keys, accounts and signers, each checked in its route
   R("*",    "/api/playtest/", true, AP_GUEST, "players, realms, makers, seats, rooms, labs (player.c, realms.c, ...)"),
   R("*",    "/api/change/", true, AP_GUEST, "the demo's old paths (player.c)"),
   R("*",    "/api/log/", true, AP_GUEST, "the demo's old paths (player.c)"),

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Firm reason: 5 (a thin wrapper: compiles the API and the CLI, starts a throwaway PostgreSQL and the API on it, and runs the Coax checks)
-# Aethyrforge's made-realm gate (GitHub #12629), on Linux (NixOS too) or a Mac: the API built from
+# The realm editor's made-realm gate (GitHub #12629), on Linux (NixOS too) or a Mac: the API built from
 # this checkout on a fresh PostgreSQL with every migration, then
 #   tests/realm_engine_pin.coax with realm_engine_pin.sql, realm_shapes.sql and realm_edit_log.sql
 #   tests/realm_walkthrough.coax                       edit, publish, reload, fork, refusals

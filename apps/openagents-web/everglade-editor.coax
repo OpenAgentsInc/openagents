@@ -1,6 +1,6 @@
-// Aethyrforge in Everglade (docs/metaverse/aethyrforge.md): what an admin's EDIT opens. Everglade's own
+// The realm editor in Everglade (docs/metaverse/aethyrforge.md): what an admin's EDIT opens. Everglade's own
 // HUD goes (the name, MAP, the chat, HP, the hints, the spell bar, the hotbar and the feature list),
-// and the forge's panels come up in the Verse's HUD look (metaverse-engine/ui/hud-frame.coax: a faint outline with
+// and the forge's panels come up in the Metaverse's HUD look (metaverse-engine/ui/hud-frame.coax: a faint outline with
 // two 45° cuts, bright L brackets, greys and one blue):
 //   top left    AETHYRFORGE, the realm and that it is live
 //   under it    CHANGES: the realm's last edits and the engine updates that touch this realm, newest
@@ -100,7 +100,7 @@ fg_rule :: (out: [] f32, at: int, ax: f32, ay: f32, bx: f32, by: f32, k: f32, li
   if lit(out, at, ax, ay, bx, by, 0.5 * k, light, 1.0 * k, r, g, b, 0) { return at + 6; }
   return at;
 }
-// The Verse's HUD frame: the outline with its two cuts, the brackets on the other two corners.
+// The Metaverse's HUD frame: the outline with its two cuts, the brackets on the other two corners.
 fg_frame :: (s: [] Everglade, out: [] f32, at: int, b: Box, cut: f32, light: f32, accent: bool) -> int {
   k := hi(s[0].dpr, 0.5); n := at;
   g := metaverse_hud_tone(1);

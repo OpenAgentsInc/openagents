@@ -1,5 +1,5 @@
 // A recorded session replays bit for bit natively and in the browser
-// (metaverse-engine/core/replay.coax, Aethyr book chapter 5). metaverse-engine/tests/replay-walk.coax
+// (metaverse-engine/core/replay.coax, Metaverse Engine book chapter 5). metaverse-engine/tests/replay-walk.coax
 // records a walk, replays it and plants a fault; this builds it to wasm the
 // way pages are built (coax/web/wasm.sh: -O2, no fast math, no
 // contraction), runs it in headless Chrome (coax/web/wasm-chrome.coax), and
@@ -10,7 +10,7 @@
 // stick, a pinch and taps) and compares the digest of every step. Both
 // sessions turn while they walk through angles where the hosts' sinf and
 // cosf round differently, so either check fails if a step calls the C
-// library's sin or cos. The third check (Aethyr book chapter 80) builds
+// library's sin or cos. The third check (Metaverse Engine book chapter 80) builds
 // metaverse-engine/tests/scatter-hosts.coax the same way and compares its seven
 // digests (a forest scattered from a seed over a built ground, its trees'
 // heights, a second layer, a split window, another version, another seed)

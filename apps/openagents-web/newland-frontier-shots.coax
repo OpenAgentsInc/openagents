@@ -36,7 +36,7 @@ FR_SHOT_TABLE :: [FR_SHOTS] FrShot.[
   FrShot.{t0 = FR_BBS, t1 = FR_VIRTUAL, o = Fv.{x = 18, y = 0, z = 5}, look_y = 8.3, r0 = 7, r1 = 6, h0 = 9, h1 = 8.8, a0 = 30, a1 = 60},
   // virtual worlds: a long arc round them as they bloom
   FrShot.{t0 = FR_VIRTUAL, t1 = FR_VERSE, o = Fv.{x = 18, y = 0, z = 5}, look_y = 9.2, r0 = 13, r1 = 12, h0 = 9.5, h1 = 12, a0 = 60, a1 = 150},
-  // the Verse: down to the new tree and out
+  // the Metaverse: down to the new tree and out
   FrShot.{t0 = FR_VERSE, t1 = FR_END, o = Fv.{x = 15, y = 0, z = 3}, look_y = 1.8, r0 = 8, r1 = 15, h0 = 3.5, h1 = 9, a0 = 150, a1 = 70}];
 
 fr_shot_pose :: (k: int, t: f32) -> FrPose {

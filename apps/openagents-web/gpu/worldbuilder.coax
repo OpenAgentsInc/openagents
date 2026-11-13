@@ -7,7 +7,7 @@
 // of the terrain tile's cells straight from its samples (worldbuilder-land.coax, #13225), and the
 // pack's meshes, instanced, a draw a mesh; and the shared component shader over all
 // (components/backend/gpu-shader.coax: panels, buttons, bars and chat box).
-// The ground's materials are Aethyr's (metaverse-engine/render/terrain-shade.coax): each layer's procedural
+// The ground's materials are the Metaverse Engine's (metaverse-engine/render/terrain-shade.coax): each layer's procedural
 // albedo from the page's material table, weighted by the sample's painted shares; the bare Grid is
 // the floor's own look, so the tile's edge meets the endless floor without a seam.
 // The uniform block, read from a []f32 at these offsets (floats):

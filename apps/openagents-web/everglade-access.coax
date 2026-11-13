@@ -1,5 +1,5 @@
 // Everglade's input and reading settings, its captions and its controls for a keyboard and a screen
-// reader (GitHub #12857; Aethyr book chapter 85). One record decides them all: metaverse-engine/ui/settings.coax.
+// reader (GitHub #12857; Metaverse Engine book chapter 85). One record decides them all: metaverse-engine/ui/settings.coax.
 //
 // - Keys. Every key Everglade reads for play goes through the record (eg_key_play): a key bound to an
 //   action does what that action's default key did, and a default key moved to no action does

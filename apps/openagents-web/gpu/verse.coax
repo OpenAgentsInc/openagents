@@ -5,7 +5,7 @@
 #load "../../../metaverse-engine/gpu/wgsl.coax";
 #load "../../../metaverse-engine/render/sans-filter.coax";
 
-// The Verse landing and galaxy's two passes: the night behind (the
+// The Metaverse landing and galaxy's two passes: the night behind (the
 // playtest's field: a nebula and stars, and the plates verse.coax lays out) and the strokes over it (words, orbs, orbits and worlds). Every
 // place and size comes from verse.coax.
 // MetaverseU, a uniform block, is read from a []f32 at these offsets (floats):

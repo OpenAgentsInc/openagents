@@ -1,6 +1,6 @@
 // The chat set in every pixel skin (components/spec.md Phase 2, GitHub
 // #13153, #13230): the same transcript, composer and menus laid out in
-// Zeron, Everglade, the Verse and the terminal in pixels (uiskin_pixels),
+// Zeron, Everglade, the Metaverse and the terminal in pixels (uiskin_pixels),
 // and nothing another skin draws wears one of Zeron's colours. A colour
 // still written into a component shows up here as a Zeron colour in another
 // skin's frame. Zeron's own frames are pinned by
@@ -56,7 +56,7 @@ sc_transcript :: (sk: UiSkin, out: [] Rgba) -> int {
   return sc_colours(t[0].texts[..], t[0].ntext, out, n);
 }
 
-#test "the transcript in Everglade, the Verse and the terminal wears none of Zeron's colours" #steps 1200000000 {
+#test "the transcript in Everglade, the Metaverse and the terminal wears none of Zeron's colours" #steps 1200000000 {
   z: [SC_MAX] Rgba; e: [SC_MAX] Rgba;
   nz := sc_transcript(zeron_skin(), z[..]);
   #assert nz > 10;
@@ -106,7 +106,7 @@ sc_composer :: (sk: UiSkin, out: [] Rgba) -> int {
   return sc_colours(list[..], n, out, m);
 }
 
-#test "the composer in Everglade, the Verse and the terminal wears none of Zeron's colours" #steps 1200000000 {
+#test "the composer in Everglade, the Metaverse and the terminal wears none of Zeron's colours" #steps 1200000000 {
   z: [SC_MAX] Rgba; e: [SC_MAX] Rgba;
   nz := sc_composer(zeron_skin(), z[..]);
   #assert nz > 8;
@@ -138,7 +138,7 @@ sc_menus :: (sk: UiSkin, out: [] Rgba) -> int {
   return sc_colours(list[..], pk_prims(list[..], 0, p[..], cat[..], sel, a[..], 1320, 880), out, m);
 }
 
-#test "the menus in Everglade, the Verse and the terminal wear none of Zeron's colours" #steps 1200000000 {
+#test "the menus in Everglade, the Metaverse and the terminal wear none of Zeron's colours" #steps 1200000000 {
   z: [SC_MAX] Rgba; e: [SC_MAX] Rgba;
   nz := sc_menus(zeron_skin(), z[..]);
   #assert nz > 12;

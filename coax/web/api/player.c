@@ -1,4 +1,4 @@
-// Players, guests, saves and published worlds for the Verse playtest
+// Players, guests, saves and published worlds for the Metaverse playtest
 // (pt-player-endpoints): the demo's player and world routes (aethyr-cpp
 // tools/serve.py, docs/metaverse/playtest-port.md section 3) under
 // /api/playtest/. The rules live in SQL (migrations/0004_verse_players.sql,

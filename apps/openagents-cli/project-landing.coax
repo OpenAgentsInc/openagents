@@ -257,7 +257,7 @@ ld_owner :: (file: string) -> int {
     if starts(rest, "textkeys") { return 4; }
   }
   if starts(file, "coax/web/goldens/") || starts(file, "docs/metaverse/") { return 4; }
-  if starts(file, "coax/") || starts(file, "metaverse/") { return 0; }   // the language and the Verse engine
+  if starts(file, "coax/") || starts(file, "metaverse/") { return 0; }   // the language and the Metaverse Engine
   if starts(file, "psionic/") || starts(file, "crates/psionic/") || starts(file, "docs/psionic/") { return 1; }
   if starts(file, "apps/openagents-desktop/") { return 2; }
   if starts(file, "docs/coder/") { return 3; }

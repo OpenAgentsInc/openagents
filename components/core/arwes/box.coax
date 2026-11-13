@@ -1,5 +1,5 @@
 // A box and a point in screen points, y down: what the ARWES ports
-// (frames.coax, fx.coax) and Aethyr's HUD (metaverse-engine/ui/hud.coax) measure in.
+// (frames.coax, fx.coax) and the Metaverse Engine's HUD (metaverse-engine/ui/hud.coax) measure in.
 // They live here so a component can load the ports without loading Aethyr.
 
 HudBox :: struct { x:f32; y:f32; width:f32; height:f32; }

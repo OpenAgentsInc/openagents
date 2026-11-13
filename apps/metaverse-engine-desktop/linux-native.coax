@@ -21,7 +21,7 @@ EditorNative :: struct {
   inbox:[LAB_REPLY_MAX]u8;frame:int;px:f32;py:f32;
   lab_clip:int=-1;lab_service:int=-1;lab_port:int;lab_started:int;lab_fetch:[2]int=[2]int.[-1,-1];lab_status:[2]int;lab_deadline:[2]int;
 }
-#test "native Aethyrforge releases walking when Return opens its shared composer" {
+#test "native Metaverse Engine releases walking when Return opens its shared composer" {
   s:[1]EditorNative;s[0].hud[0].ready=true;
   #assert fgn_key(s[..],119,true,0);#assert s[0].lab[0].keys!=0;
   #assert fgn_key(s[..],-2,true,0) && s[0].hud[0].opened && s[0].lab[0].keys==0;
@@ -30,24 +30,24 @@ EditorNative :: struct {
   #assert fgn_key(s[..],-13,true,0) && fgn_key(s[..],-2,true,0);
   #assert cast(string)s[0].hud[0].draft[0..<s[0].hud[0].dn]=="h\n";
 }
-#test "native Aethyrforge owns only valid sessions its runner reports" {
+#test "native Metaverse Engine owns only valid sessions its runner reports" {
   s:[1]EditorNative;fgn_event(s[..],"{\"kind\":\"session\",\"id\":\"owned_123\",\"engine\":\"echo\"}");
   #assert cast(string)s[0].session[0..<s[0].sn]=="owned_123";
   fgn_event(s[..],"{\"kind\":\"session\",\"id\":\"../bad\"}");
   #assert cast(string)s[0].session[0..<s[0].sn]=="owned_123";
 }
-#test "native Aethyrforge lets Lab search consume Return before opening Coder" {
+#test "native Metaverse Engine lets Lab search consume Return before opening Coder" {
   s:[1]EditorNative;s[0].hud[0].ready=true;lab_start(s[0].lab[..]);lab_do(s[0].lab[..],221);lab_do(s[0].lab[..],205);
   #assert fgn_key(s[..],49,true,0) && s[0].lab[0].remote[0].qn==1;
   #assert fgn_key(s[..],-2,true,0) && !s[0].hud[0].opened && s[0].lab[0].remote[0].kind==7;
 }
-#test "native Aethyrforge reserves its composer and history without overwriting world vertices" {
+#test "native Metaverse Engine reserves its composer and history without overwriting world vertices" {
   v:[18*12]f32;for i:0..<18 {v[i*12]=700;v[i*12+1]=600;v[i*12+2]=cast(f32)i;}
   for i:0..<6 {v[i*12]=100;}for i:12..<18 {v[i*12+1]=800;}
   #assert fgn_crop(v[..],18,900,1)==6;
   for i:0..<6 {#assert v[i*12+2]==cast(f32)(i+6);}
 }
-#test "native Aethyrforge lets Enter activate a focused Lab control" {
+#test "native Metaverse Engine lets Enter activate a focused Lab control" {
   s:[1]EditorNative;lab_start(s[0].lab[..]);lab_layout(s[0].lab[..],1440,900,1);lab_access(s[0].lab[..],221,false);
   #assert s[0].lab[0].focus>=0 && fgn_key(s[..],-2,true,0) && s[0].lab[0].remote[0].active && !s[0].hud[0].opened;
 }

@@ -1,6 +1,6 @@
 // MetaHuman Lab retains its established twelve-clip selector.
 META_CLIPS :: 12;
-// MetaHuman Lab, openagents.com/worlds/metahuman-lab (unlisted): the bench where Aethyr's human
+// MetaHuman Lab, openagents.com/worlds/metahuman-lab (unlisted): the bench where the Metaverse Engine's human
 // runtime is built (docs/metaverse/metahuman-support.md, phases 0 and 1). One figure stands on a lit
 // studio floor with a skeleton driving it.
 //
@@ -12,7 +12,7 @@ META_CLIPS :: 12;
 // later (mannequin_fold), as one more body source. This world draws without one.
 //
 // gpu/metahumanlab.coax's bg_fs traces the floor and the capsules per pixel and lights them; fx
-// strokes (font.coax) draw the HUD and the skeleton overlay. The camera is Aethyr's orbit
+// strokes (font.coax) draw the HUD and the skeleton overlay. The camera is the Metaverse Engine's orbit
 // (metaverse-engine/cam/shot.coax, book chapter 10) round a pivot: drag orbits, the wheel or a pinch zooms,
 // Shift-drag or two fingers pan, and held W A S D (Q down, E up) fly the pivot smoothly.
 //   coax/bin/coax test apps/openagents-web/metahumanlab.coax
@@ -21,7 +21,7 @@ META_CLIPS :: 12;
 #load "../../metaverse-engine/core/loop.coax";
 #load "../../everglade/scene/people-rig.coax";   // the CC0 skeletons and clips (it loads metaverse-engine/anim/skin.coax)
 #load "../../metaverse-engine/anim/mannequin.coax";
-#load "../../metaverse-engine/cam/shot.coax" as ash;   // the camera's orbit is Aethyr's (book chapter 10)
+#load "../../metaverse-engine/cam/shot.coax" as ash;   // the camera's orbit is the Metaverse Engine's (book chapter 10)
 #load "../../metaverse-engine/core/space.coax" as asp;
 #load "../../metaverse-engine/anim/facerig.coax";   // the face rig: OpenRigLogic's evaluation, ported (MIT)
 #load "../../metaverse-engine/audio/speak.coax";     // speaking: viseme tracks and their performance (?stage=speak)
@@ -107,7 +107,7 @@ Lab :: struct {
   width: f32; height: f32; dpr: f32; portrait: bool; strip: f32; status_row: bool;
   back: Rect; bones_b: Rect; clip_b: Rect; body_b: Rect;
   pressing: int;
-  // the camera: Aethyr's orbit round a pivot, and what it makes this frame
+  // the camera: the Metaverse Engine's orbit round a pivot, and what it makes this frame
   yaw: f32 = 0; pitch: f32 = CAM_PITCH; dist: f32 = CAM_DIST;
   px: f32 = 0; py: f32 = CAM_Y; pz: f32 = 0;
   vx: f32; vy: f32; vz: f32;         // the flying pivot's speed, m/s
@@ -524,7 +524,7 @@ layout :: (s: [] Lab, w: f32, h: f32, k: f32) {
   // the view below the HUD's strip
   ry0 := s[0].strip; ry1 := h;
   s[0].cx = w / 2; s[0].cy = (ry0 + ry1) / 2;
-  // Aethyr's orbit (yaw 0 faces +Z there; here yaw 0 looks toward -Z, at the figure's face, so it
+  // The Metaverse Engine's orbit (yaw 0 faces +Z there; here yaw 0 looks toward -Z, at the figure's face, so it
   // turns half round). The orbit centres its view right of the pivot by its shoulder; the pivot
   // given to it moves left by as much, so the view centres on the pivot.
   turn := s[0].yaw + 3.14159265;

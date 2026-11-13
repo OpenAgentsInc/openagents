@@ -1,4 +1,4 @@
-/* The room server's local host (GitHub #12784; Aethyr book chapter 95): the same server oa-room runs
+/* The room server's local host (GitHub #12784; Metaverse Engine book chapter 95): the same server oa-room runs
    (room.coax, the Everglade rooms of room-everglade.coax and the world of room-world.c), built to
    wasm32 (worker.coax) and run in the browser by coax/web/room-worker.js, which moves the frames over
    a MessagePort where room-host.c moves them over TCP. Offline play is a one-seat room on it: the page

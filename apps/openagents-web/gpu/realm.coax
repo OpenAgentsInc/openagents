@@ -14,7 +14,7 @@
 //
 // The house is the iOS stage's (apps/openagents-ios/OpenAgents/Platform/
 // Stages.metal haunt_vertex, haunt_fragment and haunt_sky_fragment), ported
-// by hand; its light, fog and the tone curve are the Verse engine's own functions
+// by hand; its light, fog and the tone curve are the Metaverse Engine's own functions
 // (haunt-light.coax, light.coax) written as WGSL by coax wgsl at build time
 // into the generated blocks below, as is the HUD bar (metaverse_bar). The
 // phone adds a bloom pass over the scene; the browser doesn't yet, so the

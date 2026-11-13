@@ -1,4 +1,4 @@
-// One Aethyrforge maker journey, end to end, in headless Chrome (#12610; metaverse-engine/book chapters 51-55):
+// One realm editor maker journey, end to end, in headless Chrome (#12610; metaverse-engine/book chapters 51-55):
 //   1 GENERATE  /realms/new: skip the setup, TYPE a sentence, Enter, MAKE IT; the realm opens
 //   2 MOVE      MOVE (the nearest thing), walk, PUT IT HERE (twice: two moves)
 //   3 UNDO      UNDO takes the second back; the first stays

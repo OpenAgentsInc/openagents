@@ -1,4 +1,4 @@
-// Verse OS: the agents on your own machine, standing in the Grid by the spawn (docs/os/2026-11-02-verse-os.md,
+// Metaverse OS: the agents on your own machine, standing in the Grid by the spawn (docs/os/2026-11-02-verse-os.md,
 // V4). The machine's session (os/verse-agents.coax) sends them as message 610, one line each,
 // `agent=KIND|PROJECT|STATE|MINUTES` (STATE working or waiting), newest first; a new message
 // replaces the last. They stand in an arc seven metres ahead of where you arrive, past the

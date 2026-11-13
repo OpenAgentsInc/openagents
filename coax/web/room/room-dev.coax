@@ -21,7 +21,7 @@
 //   POST /api/playtest/realms/everglade/settings  {tools}: the tools visitors get, an admin's
 //   GET  /api/playtest/realms/everglade/proposals, /asks, /panes   none waiting (empty)
 //   GET  /api/auth/viewer                  "A|1": the local player is the realm's admin, so EDIT and
-//                                          Aethyr Forge work as production's do for an admin (on by default
+//                                          the realm editor work as production's do for an admin (on by default
 //                                          in --dev, OA_ROOM_DEV_ADMIN=0 a visitor; there is no --dev in
 //                                          production, so never there)
 // Anything else under /api/ answers 404 {"error":"not in the local API"}.

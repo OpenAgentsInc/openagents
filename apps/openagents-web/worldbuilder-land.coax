@@ -1,6 +1,6 @@
-// WorldBuilder's ground (openagents.com/create-world, #13225): one Aethyr terrain tile
+// WorldBuilder's ground (openagents.com/create-world, #13225): one Metaverse Engine terrain tile
 // (metaverse-engine/world/terrain-tile.coax), 256 cells of a metre round the Grid's middle, edited with the engine's
-// brushes (metaverse-engine/world/terrain-edit.coax) and undone through Aethyrforge's scene log (metaverse-engine/editor/edit.coax
+// brushes (metaverse-engine/world/terrain-edit.coax) and undone through the realm editor's scene log (metaverse-engine/editor/edit.coax
 // land steps). The bare Grid is its first material; grass, dirt, sand, stone, snow and water are
 // painted over it. The tile's outer ring of samples stays at height 0, where the Grid's endless floor
 // (the page's background) carries on.
@@ -221,7 +221,7 @@ wb_land_loaded :: (l: [] WbLand) {
   l[0].version += 1;
 }
 
-// ---- the layers' looks: an Aethyr material table (metaverse-engine/world/terrain-tile.coax, `aethyr.terrain.materials.v1`),
+// ---- the layers' looks: a Metaverse Engine material table (metaverse-engine/world/terrain-tile.coax, `aethyr.terrain.materials.v1`),
 // procedural albedos only. The page hands these numbers to its shader, which evaluates
 // metaverse-engine/render/terrain-shade.coax's equations with them.
 wb_layer_look :: (id: int, a: [3] f32, b: [3] f32, f1: f32, f2: f32, g1: f32) -> TerrainMaterial {
@@ -268,7 +268,7 @@ wb_land_gpu :: (l: [] WbLand, out: [] f32) {
     out[k * 4 + 3] = 0;
   }
 }
-#test "the layers are a material table Aethyr takes, and the GPU's copy packs a sample's shares" {
+#test "the layers are a material table the Metaverse Engine takes, and the GPU's copy packs a sample's shares" {
   t := wb_land_table();
   #assert terrain_materials_check(t[..]).code == TERRAIN_TILE_OK;
   u: [132] f32;

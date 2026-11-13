@@ -1,4 +1,4 @@
-// Every Coax test suite of the web app, the Verse, the web tools (coax/web)
+// Every Coax test suite of the web app, the Metaverse, the web tools (coax/web)
 // and the Coax libraries (coax/lib), each run at the budget
 // its own header declares.
 //   coax/web/tool.sh suites                    # every suite

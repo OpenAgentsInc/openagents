@@ -1186,7 +1186,7 @@ proj :: (s: [] Os, x: f32, y: f32, z: f32) -> P3 {
   b := (dx * s[0].up.x + dy * s[0].up.y + dz * s[0].up.z) / depth;
   return P3.{x = s[0].cx + a * s[0].focal, y = s[0].cy - b * s[0].focal, z = depth};
 }
-// The glade's camera: Aethyr's orbit round the grid's middle (as 5E Lab's), fitted to the screen.
+// The glade's camera: the Metaverse Engine's orbit round the grid's middle (as 5E Lab's), fitted to the screen.
 camera :: (s: [] Os, x0: f32, y0: f32, x1: f32, y1: f32) {
   s[0].cx = (x0 + x1) / 2; s[0].cy = (y0 + y1) / 2;
   turn := s[0].yaw + 3.14159265;

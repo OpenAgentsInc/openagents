@@ -16,7 +16,7 @@
 #load "../../metaverse-engine/ui/font.coax";
 #load "../../coax/web/analytics.coax";
 #load "../../metaverse/edit/edit.coax";   // EDIT for its owner and admins (docs/metaverse/realm-edit.md)
-#load "../../metaverse-engine/core/loop.coax";   // the fixed steps: Aethyr's one clock (metaverse-engine/book ch001)
+#load "../../metaverse-engine/core/loop.coax";   // the fixed steps: the Metaverse Engine's one clock (metaverse-engine/book ch001)
 
 VERTEX_FLOATS :: 16;
 MAX_VERTICES :: 60000;
@@ -1305,7 +1305,7 @@ draw_card :: (s: [] Watch, out: [] f32, at: int, w: f32, h: f32, k: f32, t: f32)
   return n;
 }
 
-// A frame's fixed steps, on Aethyr's one clock (metaverse-engine/core/loop.coax): the frame counts for at most
+// A frame's fixed steps, on the Metaverse Engine's one clock (metaverse-engine/core/loop.coax): the frame counts for at most
 // 0.1 s, its steps are 1/60 s, at most 8 run, and a backlog past that is dropped, never run later.
 // The drawn clock moves by what the frame counted for.
 watch_run :: (s: [] Watch, dt: f32) {

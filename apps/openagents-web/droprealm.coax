@@ -471,7 +471,7 @@ seen :: (s: [] DropRealm, x: f32, y: f32, z: f32) -> Seen {
 GAP :: 0.5; SPACE :: 1.2;
 PARCH_R :: 0.91; PARCH_G :: 0.863; PARCH_B :: 0.753;
 // The lamp you carry and the lines under the name are moonlit blue, never
-// amber: orange is only for Bitcoin. The plates keep the Verse's gold edge.
+// amber: orange is only for Bitcoin. The plates keep the Metaverse's gold edge.
 EMBER_R :: 0.80; EMBER_G :: 0.92; EMBER_B :: 1.0;   // the lamp: a cool white flame
 MOON_R :: 0.62; MOON_G :: 0.80; MOON_B :: 0.90;     // the subtitle and the pack's head line
 LOOK_PLAIN :: 0.0; LOOK_LIT :: 1.0; LOOK_HOVER :: 2.0;

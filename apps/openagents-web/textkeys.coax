@@ -1,7 +1,7 @@
 // The keys every typed box on the site shares. ui.coax's fields have their
 // own caret and selection and keep these same keys; the boxes typed at their
 // end (the chat's, a private project's, the projects editor, the realm's and
-// the Verse's) ask tk_command what a key with Cmd or Ctrl means:
+// the Metaverse's) ask tk_command what a key with Cmd or Ctrl means:
 //   A selects everything typed, C copies it, X cuts it;
 //   V is the browser's: its paste arrives as typed text;
 //   any other letter is the browser's too (Cmd+R, Cmd+L), never typed.

@@ -156,7 +156,7 @@ EXPORT("coaxial_store_version") uint32_t coaxial_store_version(cx_face_addr stat
 EXPORT("coaxial_key") uint32_t coaxial_key(cx_face_addr state, int32_t key, int32_t mods) { return lab_key(at(state), key, mods) ? 1u : 0u; }
 EXPORT("coaxial_key_up") uint32_t coaxial_key_up(cx_face_addr state, int32_t key, int32_t mods) { return lab_key_up(at(state), key, mods) ? 1u : 0u; }
 EXPORT("coaxial_blur") void coaxial_blur(cx_face_addr state) { lab_blur(at(state)); sticks = metaverse_sticks_reset(); }
-/* Aethyr host contract v1 (metaverse-engine/host/README.md), as everglade2-face.c has it: addresses of the
+/* Metaverse Engine host contract v1 (metaverse-engine/host/README.md), as everglade2-face.c has it: addresses of the
    host's width (face-address.h), focus as a call of its own, and the whole allocations the action,
    media and sound-bank bytes are in. A native build says so; the browser's module does not yet
    (there v1 also means the shared transport adapter a page gets with its render carrier). */

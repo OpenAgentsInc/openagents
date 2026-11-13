@@ -28,7 +28,7 @@
 //   GET  /api/playtest/realms/<slug>/fork              -> text/plain: base, title, fork, from, maker, name, owner, published, rule ID 0|1 LABEL
 //   POST /api/playtest/realms/<slug>/fork {rules, name?}   -> 200 {slug, path, name, base, from, rules, page}; 400, 401, 404, 429
 //   POST /api/playtest/realms/<fork>/publish {published?, description?}   -> 200 {published, description}; 403, 404
-// A made realm is a document with revisions (migrations/0093_realm_documents.sql, Aethyr book chapters 51-55, 82):
+// A made realm is a document with revisions (migrations/0093_realm_documents.sql, Metaverse Engine book chapters 51-55, 82):
 //   GET  /api/playtest/realms/<slug>/doc               -> 200 {doc, sha256}; 404 (a visitor's: the revision published)
 //   POST /api/playtest/realms/<slug>/save {rev, moved, shaped?} -> 200 {rev, sha256}; 400, 403, 404, 409 {error, rev} (changed since;
 //        shaped: turns, sizes and removals, 0109; absent keeps them)

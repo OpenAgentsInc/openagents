@@ -417,7 +417,7 @@ T_POS :: 1; T_VEL :: 2; T_TAG :: 4; T_HP :: 8;
   #assert c.steps == 0 && c.alpha >= 0 && c.alpha < 1;
 }
 
-#test "the clock is Aethyr's: a stall runs six steps of 0.1 s and the next frame is ordinary" {
+#test "the clock is the Metaverse Engine's: a stall runs six steps of 0.1 s and the next frame is ordinary" {
   c: Clock;
   c = ecs_clock_frame(c, 3.0);
   #assert c.steps == 6 && c.frame_dt == 0.1 && c.loop.overlong == 1 && c.loop.stalls == 0;

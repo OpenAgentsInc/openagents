@@ -1,4 +1,4 @@
-// Aethyr atmosphere/water translation; source scenery and collision remain unchanged.
+// The Metaverse Engine atmosphere/water translation; source scenery and collision remain unchanged.
 #load "splash.coax";
 #test "Ocarina appearance noise is bounded and continuous across lattice edges" {
  for p:[4]V2.[v2(0,0),v2(-3.2,7.8),v2(10.9,-2),v2(100,100)] {n:=oa_noise(p);#assert n>=0 && n<=1;}

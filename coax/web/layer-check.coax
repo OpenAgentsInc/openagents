@@ -746,7 +746,7 @@ lc_consumed :: (loads: string, tools: string, mods: [] string, n: int, consumed:
 // ---- the consumers list (#13272): metaverse-engine/consumers.txt says why each engine module with no product
 // consumer is kept, one line a module or folder prefix:
 //   adopt PREFIX #ISSUE     an open issue of the AAA program (#13257) takes it into the product
-//   book PREFIX CHAPTER     it is the Aethyr book's own implementation, and CHAPTER names it
+//   book PREFIX CHAPTER     it is the Metaverse Engine book's own implementation, and CHAPTER names it
 //   built PREFIX SCRIPT     no file loads it: SCRIPT compiles it by name (a page's renderer carrier)
 //   pipeline PREFIX TOOL    an offline tool that makes a shipped thing loads it (a film, a sound bank)
 // The longest prefix that starts a module's path covers it. A module with no consumer and no line

@@ -2070,7 +2070,7 @@ step_fight :: (s: [] DeadGears, t: f32) {
 // over or held for a golden), the events play, then the world, the light
 // and the HUD are written. The fight's step is at most 0.05 s a frame: a
 // stalled frame slows the fight rather than skipping it.
-// A frame counts for at most 0.05 s (metaverse/deadgears/ecs.coax ecs_counts, on Aethyr's clock), so
+// A frame counts for at most 0.05 s (metaverse/deadgears/ecs.coax ecs_counts, on the Metaverse Engine's clock), so
 // the rules run at most three steps of 1/60 s.
 DG_FRAME_DT :: 0.05;
 

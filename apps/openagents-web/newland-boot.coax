@@ -1,4 +1,4 @@
-// Verse OS's boot sequence over the Grid (docs/os/2026-11-02-verse-os.md, V1): when the machine's
+// Metaverse OS's boot sequence over the Grid (docs/os/2026-11-02-verse-os.md, V1): when the machine's
 // session opens the Grid (os/verse-session.coax), it passes what came up as page facts, one line
 // each, `boot=LABEL|VALUE|STATE` (STATE 1 ready, 0 failed, 2 waiting). The screen starts black: a
 // line is drawn across it, a frame assembles round the middle, the lines are typed in one after

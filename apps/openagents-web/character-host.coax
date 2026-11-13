@@ -6,7 +6,7 @@
 // frame the host copies the world's SceneLights block (metaverse-engine/render/scene-lights.coax) in here;
 // this places her where the world's stage put her (the block's feet and heading), steps her on a
 // 1/64 s clock, fills the block's character slots (the hair's share, the morph switch, the head
-// profile) and her palette, and names her draws. Her body and face run on Aethyr's character
+// profile) and her palette, and names her draws. Her body and face run on the Metaverse Engine's character
 // runtime (metaverse-engine/character/), with Echo's declarations (metaverse/valley/echo.coax): her rig's idle
 // clip looped (clip 0), her idle face segments on their cycle, and her idle life over them (blinks,
 // glances and breath, metaverse-engine/character/idle.coax) on the joints and targets ECHO_IDLE_RIG names.

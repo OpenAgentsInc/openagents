@@ -1,4 +1,4 @@
-// Valley Lab's isolated exact source pair. GPU-resident source geometry; shared Aethyr camera/UI.
+// Valley Lab's isolated exact source pair. GPU-resident source geometry; shared Metaverse Engine camera/UI.
 #load "../../metaverse/valley/canyon.coax";
 #load "../../metaverse/valley/canyon-pack-policy.coax";
 #load "../../metaverse/valley/slay-gpu-policy.coax";
@@ -35,7 +35,7 @@ ValleyCanyon :: struct {walking:bool=true;blonde:bool;hair_share:f32;portrait:bo
   s:[1]ValleyCanyon;s[0].walking=false;s[0].width=390;s[0].height=844;#assert canyon_key(s[..],86) && s[0].mode==1;#assert canyon_key(s[..],73) && s[0].solo==0;
   _:=canyon_pointer(s[..],200,300,0);_ = canyon_pointer(s[..],230,330,1);#assert s[0].orbit<0.65 && s[0].tilt>0.12;_ = canyon_pointer(s[..],230,330,2);#assert !s[0].drag;
 }
-#test "Canyon walk moves stops jumps and resets through Aethyr" #steps 1000000000 {
+#test "Canyon walk moves stops jumps and resets through the Metaverse Engine" #steps 1000000000 {
   s:[1]ValleyCanyon;canyon_start(s[..]);z:=s[0].you.body.pos.z;
   #assert canyon_hold(s[..],87,true);for k:0..<16 {canyon_step(s[..],1.0/64.0,false);}#assert s[0].you.body.pos.z>z;
   #assert canyon_hold(s[..],87,false);canyon_blur(s[..]);#assert s[0].keys==0 && s[0].thumbs.pad_y==0;

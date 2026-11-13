@@ -2123,7 +2123,7 @@ demo_dressed :: (w: [] DemoWorld) -> int {
   for b: 0..<DEMO_BODIES { if w[0].meta[b].kind == DEMO_CHUNK { #assert demo_body(w[..], b).vel.z > 0.0; } }
 }
 
-#test "demolish: the steps are Aethyr's clock's, 1/60 s, at most six a frame, and a stall's backlog is dropped" {
+#test "demolish: the steps are the Metaverse Engine's clock's, 1/60 s, at most six a frame, and a stall's backlog is dropped" {
   w: [1] DemoWorld;
   g := Ground.{n = 8, cell = 40, west = -160, south = -160};
   heights: [81] f32;

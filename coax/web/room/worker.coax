@@ -1,4 +1,4 @@
-// Builds the room server's simulation for the browser's local host (GitHub #12784; Aethyr book
+// Builds the room server's simulation for the browser's local host (GitHub #12784; Metaverse Engine book
 // chapter 95): the units build.sh links for oa-room (room.coax and everglade-step's), turned into C by the
 // same compiler and linked to wasm32 with room-worker.c in place of room-host.c. Offline Everglade
 // runs it in a Web Worker (coax/web/room-worker.js), so offline play is a one-seat room.

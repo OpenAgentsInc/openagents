@@ -1,4 +1,4 @@
-// Painted Village, openagents.com/worlds/painted-village: a showcase of Aethyr's hand-painted
+// Painted Village, openagents.com/worlds/painted-village: a showcase of the Metaverse Engine's hand-painted
 // look. Scene 1 is the village road: a dirt road between a timber-frame cottage and a stone house,
 // grass verges and stone walls. Scene 2 is the plaza it leads into: flagstones, stalls, lamps,
 // banners and bunting, and steps up to a fountain and the church. You stand where a reference
@@ -6,8 +6,8 @@
 // block you, and the steps carry you up to the terrace (metaverse-engine/arch/solids.coax).
 //
 // This file is the page: the camera you walk, the HUD, and what it hands the host. It builds
-// nothing itself. The scene (metaverse/painted/village-road.coax) stands parts made by Aethyr's
-// architecture kit (metaverse-engine/arch/village.coax, flora.coax), and Aethyr's stylized shading
+// nothing itself. The scene (metaverse/painted/village-road.coax) stands parts made by the Metaverse Engine's
+// architecture kit (metaverse-engine/arch/village.coax, flora.coax), and the Metaverse Engine's stylized shading
 // (metaverse-engine/render/stylized.coax, named by gpu/painted.coax) draws them: store 0 the kit's vertices,
 // store 1 the records, store 2 the ground table, each copied to the GPU once.
 //
@@ -128,7 +128,7 @@ leave_to :: (s: [] Painted, url: string) {
   s[0].action = ACT_NAVIGATE;
 }
 
-// One fixed step: walk the way the keys and the thumb say. Aethyr's walking capsule slides you
+// One fixed step: walk the way the keys and the thumb say. The Metaverse Engine's walking capsule slides you
 // along what blocks you and stands you on the ground, a step or a terrace; the eye follows the feet.
 step :: (s: [] Painted, dt: f32) {
   s[0].cam.y += (s[0].feet + s[0].held - s[0].cam.y) * lo(1, RISE * dt);

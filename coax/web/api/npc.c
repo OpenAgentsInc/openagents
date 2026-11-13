@@ -1,4 +1,4 @@
-// Character chat for the Verse playtest (pt-chat-endpoint): the demo's
+// Character chat for the Metaverse playtest (pt-chat-endpoint): the demo's
 // POST /api/npc/ask (aethyr-cpp tools/npc_chat.py) as
 //
 //   POST /api/playtest/npc/ask  {npc: ID, world?: WORLD, realm?: SLUG, visit?, scene?, history: [{from, text}], question}

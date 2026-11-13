@@ -1,4 +1,4 @@
-// Painted Village's shaders (apps/openagents-web/painted.coax): the world is drawn by Aethyr's
+// Painted Village's shaders (apps/openagents-web/painted.coax): the world is drawn by the Metaverse Engine's
 // stylized shading (metaverse-engine/render/stylized.coax: the sky, the parts, their shadows, the grass),
 // which this module only names; build.sh writes apps/openagents-web/painted.wgsl from it with
 // coax/web/wgsl-module.coax (painted.module and painted.bindings beside it). The page's own part

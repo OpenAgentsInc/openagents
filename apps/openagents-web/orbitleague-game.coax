@@ -14,7 +14,7 @@
 #load "../../metaverse-engine/physics/thrust.coax";
 #load "../../metaverse/drum.coax";
 #load "../../metaverse/sphere.coax";
-#load "../../metaverse-engine/core/loop.coax";   // Aethyr's one clock: fixed 120 Hz steps
+#load "../../metaverse-engine/core/loop.coax";   // the Metaverse Engine's one clock: fixed 120 Hz steps
 #load "orbit-snapshot.coax";
 #load "../../metaverse-engine/net/predict.coax";   // your car's controls by number, for the re-run (#13277)
 #load "../../metaverse-engine/net/interp.coax";    // the ball and the other cars a jitter buffer behind; your corrections eased

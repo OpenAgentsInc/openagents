@@ -25,7 +25,7 @@ DctState :: struct {
  ticket:=dct_start(s[..],0);dct_end(s[..],299);#assert s[0].gate.outcome==1 && s[0].n==0;
  ticket=dct_start(s[..],400);for j:0..<30 {dct_audio_feed(s[..],a[..],16000,400+j*20);}dct_end(s[..],800);dct_clock(s[..],1000);#assert s[0].gate.outcome==2 && s[0].gate.phase==1 && s[0].n==0;
 }
-#test "dictation raw chunks use the Verse resampler and reject incompatible source facts" {
+#test "dictation raw chunks use the Metaverse resampler and reject incompatible source facts" {
  clip:[8000]f32;s:[1]DctState;s[0].clip=clip[..];s[0].gate=DctGate.{enabled=true,active=true,ready=true,phase=1};a:[960]f32;for i:0..<960 {a[i]=0.1;}
  dct_audio_feed(s[..],a[0..<400],48000,1000);dct_audio_feed(s[..],a[400..<960],48000,1008);#assert s[0].frames==1 && s[0].ring_n==320;
  v:[1]VoiceState;v[0].input_rate=48000;v[0].in_n=960;x:[960]s16;for i:0..<960 {x[i]=to_s16(a[i]*32768);}out:[320]s16;resample(v[..],x[..],out[..]);for i:0..<320 {#assert s[0].ring[i]==out[i];}

@@ -20,7 +20,7 @@
 // shows Zeron's demo conversation as the Mac app's --demo does, for
 // comparing the two renders. Theme, beside Key, opens the access menu's
 // card listing every skin openagents.com/components shows (Zeron, the
-// default; Everglade; the Verse; the terminal, drawn in pixels): the whole
+// default; Everglade; the Metaverse; the terminal, drawn in pixels): the whole
 // page wears the one chosen, and this browser keeps it (host.js action 4).
 // Based on Zeron by Wing, MIT.
 

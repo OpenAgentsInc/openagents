@@ -3,7 +3,7 @@
 // (components/kit/hud.coax) read: a health bar's fill, groove and trail, a
 // slot's size, a portrait's medallion, a map ring, a banner, a number that
 // rises off a creature. Each skin has one UiHud (UiSkin.hud). Everglade's and
-// the Verse's colours are the realm HUD's FANTASY and SCIFI tokens
+// the Metaverse's colours are the realm HUD's FANTASY and SCIFI tokens
 // (metaverse-engine/ui/hud-style.coax), and components/gallery/skin-parity.coax holds
 // them equal; their measures are everglade/hud/parts.coax's in CSS px.
 // Sizes are the target's units: logical pixels, or cells in a terminal.
@@ -98,7 +98,7 @@ everglade_hud :: () -> UiHud {
     talk_w = 440};
 }
 
-// The Verse's: SCIFI's colours (hud_tokens(HUD_SCIFI)): thin bars and lines, no outline.
+// The Metaverse's: SCIFI's colours (hud_tokens(HUD_SCIFI)): thin bars and lines, no outline.
 metaverse_hud :: () -> UiHud {
   cyan := rgba(0.216, 0.851, 0.851, 1);
   return UiHud.{

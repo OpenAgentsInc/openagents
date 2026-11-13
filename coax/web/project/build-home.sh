@@ -37,7 +37,7 @@ for unit in newland landing-browser landing-fold; do
   units+=("$unit")
 done
 # The Grid (/realms/the-grid) is this module walked (newland-walk.coax): its session (you, the
-# phone's thumbs and the record, on Aethyr's engine core) is a library of its own (Gridwalk.h).
+# phone's thumbs and the record, on the Metaverse Engine's engine core) is a library of its own (Gridwalk.h).
 for library in metaverse/gridwalk.coax; do
   base="$(basename "$library" .coax)"; base="$(printf '%s' "${base:0:1}" | tr a-z A-Z)${base:1}"
   (cd "$repo" && "$coax_driver" c "$library" --library --header "$work/$base.h" ${run_steps[@]+"${run_steps[@]}"}) > "$work/$base.c" & jobs+=($!)

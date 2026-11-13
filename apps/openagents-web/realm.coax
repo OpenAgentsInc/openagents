@@ -1,5 +1,5 @@
 // A Verse realm on the web, drawn by Coax: openagents.com/worlds/haunted-house
-// first. The world is the Verse engine's own code, unchanged from the iOS app:
+// first. The world is the Metaverse Engine's own code, unchanged from the iOS app:
 // metaverse/haunt.coax plays the Haunted House, player.coax walks you through
 // it and grid.coax reads a phone's thumbs, and realm-face.c binds them for
 // the browser as HauntViewController.swift does on the phone. This file is
@@ -45,7 +45,7 @@ MODE_STROKE :: 0.0;    // a sharp core in a soft glow: words, rings
 MODE_LINK :: 1.0;
 MODE_PULSE :: 2.0;
 MODE_GLOW_TEXT :: 3.0;
-MODE_BAR :: 4.0;       // a Verse HUD bar (ui.coax bar)
+MODE_BAR :: 4.0;       // a Metaverse HUD bar (ui.coax bar)
 
 lo :: (a: f32, b: f32) -> f32 { if a < b { return a; } return b; }
 hi :: (a: f32, b: f32) -> f32 { if a > b { return a; } return b; }

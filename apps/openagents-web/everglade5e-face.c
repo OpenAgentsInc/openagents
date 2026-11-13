@@ -802,7 +802,7 @@ EXPORT("coaxial_store_version") uint32_t coaxial_store_version(cx_face_addr stat
 }
 // The last draw is the river's (everglade.coax WATER_DRAW): the host draws it after the rest, in two halves.
 // ---- sound (everglade-sound.coax): this frame's lines for the host (NAME GAIN PAN [DELAY], ~ the bed),
-// and the effects themselves, rendered by Aethyr's synthesizer once the host starts audio (metaverse-engine/audio/sfx.coax)
+// and the effects themselves, rendered by the Metaverse Engine's synthesizer once the host starts audio (metaverse-engine/audio/sfx.coax)
 EXPORT("coaxial_sounds") cx_face_addr coaxial_sounds(cx_face_addr state) { return (cx_face_addr)(uintptr_t)city(state)->snd.e[0].lines.e; }
 EXPORT("coaxial_sounds_capacity") uint32_t coaxial_sounds_capacity(cx_face_addr state) { return sizeof city(state)->snd.e[0].lines.e; }
 EXPORT("coaxial_sounds_len") uint32_t coaxial_sounds_len(cx_face_addr state) { (void)state; uint32_t n = sound_n; sound_n = 0; return n; }

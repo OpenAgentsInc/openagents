@@ -35,7 +35,7 @@
 #load "../../metaverse-engine/core/loop.coax";
 #load "../../rules/srd/battle.coax";
 #load "../../rules/srd/condition-display.coax";   // the conditions' words and icons, every zone's (#13082)
-#load "../../metaverse-engine/cam/shot.coax" as ash;   // the camera's orbit is Aethyr's (book chapter 10)
+#load "../../metaverse-engine/cam/shot.coax" as ash;   // the camera's orbit is the Metaverse Engine's (book chapter 10)
 #load "../../metaverse-engine/core/space.coax" as asp;
 #load "../../metaverse-engine/fx/puff.coax";   // the glade's spell and combat effects (book chapter 72)
 #load "../../metaverse-engine/fx/battle.coax";   // which effect each battle event starts (#13086)
@@ -2036,7 +2036,7 @@ lab_layout :: (s: [] Lab, w: f32, h: f32, k: f32) {
   ry0 := top; ry1 := ifx s[0].portrait then s[0].panel.y0 - pad else h - pad;
   if s[0].film != FILM_NONE { rx0 = 0; rx1 = w; ry0 = 0; ry1 = h; s[0].panel = Rect.{}; }   // a film: the whole frame, no log's glass
   s[0].cx = (rx0 + rx1) / 2; s[0].cy = (ry0 + ry1) / 2;
-  // Aethyr's orbit (yaw 0 faces +Z there; here yaw 0 looks toward -Z, so it turns half round)
+  // The Metaverse Engine's orbit (yaw 0 faces +Z there; here yaw 0 looks toward -Z, so it turns half round)
   turn := s[0].yaw + 3.14159265;
   ray := ash.shot_orbit_ray(asp.world_point(s[0].px, 0.5, s[0].pz), turn, s[0].pitch, s[0].dist, 0);
   shot := ash.shot_orbit(ray, ray.far, turn, s[0].pitch);
@@ -3300,7 +3300,7 @@ fly :: (s: [] Lab, dt: f32) {
   s[0].pitch = lo(1.35, hi(0.12, s[0].pitch + s[0].vpitch * t));
   lab_view_zoom(s, 1 + s[0].vzoom * t);
 }
-// The spectator's camera is Aethyr's overhead camera (metaverse-engine/cam/overhead.coax) over the grid.
+// The spectator's camera is the Metaverse Engine's overhead camera (metaverse-engine/cam/overhead.coax) over the grid.
 // Its zoom: its distance times `by`, held between near and far.
 lab_view_zoom :: (s: [] Lab, by: f32) { s[0].dist = figs.cam_overhead_zoom(s[0].dist, by, ZOOM_NEAR, ZOOM_FAR * grid_scale(s)); }
 // How much bigger the grid is than the lab's 40 by 20: the camera's orbit backs off by as much.

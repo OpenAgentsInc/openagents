@@ -51,7 +51,7 @@
 #load "../../metaverse-engine/talk/wire.coax";   // the NPC ask's one codec (E4, #13247)
 #load "myrealm-a11y.coax";   // the page's controls as real ones (host.js mirrors them): keyboard and screen reader
 #load "../../metaverse-engine/core/input.coax";   // a controller's stick and buttons: the engine's one input path (realm_pad)
-#load "../../metaverse-engine/core/loop.coax";    // the walking's fixed steps: Aethyr's one clock (metaverse-engine/book ch001)
+#load "../../metaverse-engine/core/loop.coax";    // the walking's fixed steps: the Metaverse Engine's one clock (metaverse-engine/book ch001)
 #load "../../metaverse-engine/move/walk.coax" as pc;   // the shared walker's capsule push out of what stands (metaverse-engine/physics/collide.coax)
 #load "myrealm-room.coax";   // who else is here (/api/playtest/presence/made-<slug>), an agent's seat tagged AGENT
 
@@ -159,7 +159,7 @@ WATCH_OWNER :: 0.5f32; WATCH_VISITOR :: 15.0f32;
 // buttons
 BTN_BACK :: 0; BTN_BUILD :: 3; BTN_MAP :: 4; BTN_FLY :: 5; BTN_JUMP :: 6;
 BTN_CLOSE :: 9; BTN_NEW :: 10; BTN_BYE :: 11; BTN_HOLD :: 12;
-BTN_MOVE :: 13; BTN_UNDO :: 14; BTN_SAVE :: 15; BTN_PUBLISH :: 16; BTN_FORK :: 17;   // Aethyrforge: the owner's document, and FORK for anyone
+BTN_MOVE :: 13; BTN_UNDO :: 14; BTN_SAVE :: 15; BTN_PUBLISH :: 16; BTN_FORK :: 17;   // The realm editor: the owner's document, and FORK for anyone
 BTN_REDO :: 18;   // the step last undone, again (the page's, or the server's: migration 0111)
 BUTTONS :: 19;
 PANE_NONE :: 0; PANE_BUILD :: 3;
@@ -656,7 +656,7 @@ take_answer :: (s: [] MyRealm, t: [] Track, text: string) {
   }
 }
 
-// ---- Aethyrforge: the owner moves a tree, takes it back, saves the document, publishes it; anyone forks it
+// ---- the realm editor: the owner moves a tree, takes it back, saves the document, publishes it; anyone forks it
 
 editor_owner :: (s: [] MyRealm) -> bool { return s[0].spec_ready && s[0].slug_n > 0 && s[0].owner; }
 may_fork :: (s: [] MyRealm) -> bool { return s[0].spec_ready && s[0].slug_n > 0 && s[0].server_rev > 0 && !access_hides_make(s[0].acc[..]); }
@@ -1633,7 +1633,7 @@ water_in :: (s: [] MyRealm, x: f32, z: f32) -> f32 {
   return s[0].water_r - sqrt(wx * wx + wz * wz);
 }
 
-// One frame of walking on Aethyr's clock (metaverse-engine/core/loop.coax): the frame's time is clamped and owed,
+// One frame of walking on the Metaverse Engine's clock (metaverse-engine/core/loop.coax): the frame's time is clamped and owed,
 // the steps due run (eight at most), and you are drawn between the last two, so where you walk
 // depends on the time walked, never on the frame rate.
 realm_step :: (s: [] MyRealm, dt: f32) {
@@ -2411,7 +2411,7 @@ draw_hud :: (s: [] MyRealm, out: [] f32, at: int) -> int {
     n = pill(s, out, n, which, b, word, on);
     bx += tw2 + gap;
   }
-  // Aethyrforge's row over the tools: only what applies now (nothing to undo: no UNDO)
+  // The realm editor's row over the tools: only what applies now (nothing to undo: no UNDO)
   forge: [6] int; editor_n := 0;
   if editor_owner(s) && ents_laid(s) > 0 { forge[editor_n] = BTN_MOVE; editor_n += 1; }
   if may_undo(s) { forge[editor_n] = BTN_UNDO; editor_n += 1; }
@@ -3164,7 +3164,7 @@ edit_opened :: (s: [] MyRealm) { redit_requested(s[0].ed[..], 6); used := redit_
 }
 
 // book:begin rates
-// Walking on Aethyr's clock: held keys walk you the same way whatever the frame rate. Five seconds
+// Walking on the Metaverse Engine's clock: held keys walk you the same way whatever the frame rate. Five seconds
 // of W and D (walking and turning, into the realm's trees and rocks) in frames of 30, 60, 120 or
 // 144 a second, topped up to the same 320 steps, leave you in the same place to the bit.
 #forall "the walk is the same at 30, 60, 120 and 144 frames a second" r: 0..<4 #steps 120000000 {
@@ -3621,7 +3621,7 @@ mist_drawn :: (s: [] MyRealm, t: [] Track, u: [] f32) {
   #assert pu[STYLE_AT + SU_HAZE] == 0 && pu[STYLE_AT + SU_HAZE + 1] > 3.9 * cu[STYLE_AT + SU_HAZE + 1] && cu[STYLE_AT + SU_HAZE + 1] > 0;
 }
 
-// ---- Aethyrforge (metaverse-engine/editor/edit.coax): move a tree, undo, save from the revision read, publish, fork
+// ---- the realm editor (metaverse-engine/editor/edit.coax): move a tree, undo, save from the revision read, publish, fork
 FORGED :: "realm forge-court\nname Forge Court\nstyle lowpoly\nground stone\ntime day\nowner 1\ntool build 0\nfeature trees round 6\nfeature rocks 4\nrev 3\npublished 0\nlisted 0\n";
 // Stands you where PUT IT HERE is clear, facing your way (the first such spot from where you are).
 stand_clear :: (s: [] MyRealm) -> bool {

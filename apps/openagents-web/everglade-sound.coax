@@ -1,7 +1,7 @@
 // Everglade's sound (GitHub #12751; metaverse-engine/book/ch068-sound-in-the-world.md): a cast, a flight and
 // an impact for every spell the bars and the Cultist Raid cast, the blows and swings of a fight, who
 // falls and who stands back up, the raid's horn, its wall and tower hits and its end, your footsteps
-// and the others', and the town's quiet bed. Every sound is rendered on the page by Aethyr's
+// and the others', and the town's quiet bed. Every sound is rendered on the page by the Metaverse Engine's
 // synthesizer (metaverse-engine/audio/sfx.coax), so none is downloaded and all are CC0 (metaverse-engine/audio/SOURCES.md).
 //
 // The sounds come from the events every page already plays: the server's casts (e cast, e rc) and

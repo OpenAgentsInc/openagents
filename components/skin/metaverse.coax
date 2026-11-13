@@ -1,4 +1,4 @@
-// The Verse skin: the instrument look, grey-white type on dark glass, thin
+// The Metaverse skin: the instrument look, grey-white type on dark glass, thin
 // lines and a cyan accent, square corners with corner ticks. Its colours are
 // the SCIFI tokens of metaverse-engine/ui/hud-style.coax (hud_tokens(HUD_SCIFI)),
 // copied here so the component system does not load the engine;
@@ -55,7 +55,7 @@ metaverse_skin :: () -> UiSkin {
   return s;
 }
 
-#test "the Verse skin is grey and cyan with square corners and no shadow" {
+#test "the Metaverse skin is grey and cyan with square corners and no shadow" {
   s := metaverse_skin();
   #assert s.id == UISKIN_VERSE && s.name == "verse" && s.frame == UIFRAME_CUT && s.shadow == 0 && s.radius_control == 0;
   #assert s.ink.r == s.ink.g && s.ink.g == s.ink.b && s.accent.g > s.accent.r + 0.5 && s.md.block_radius == 0;

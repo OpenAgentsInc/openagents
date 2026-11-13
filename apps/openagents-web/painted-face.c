@@ -1,6 +1,6 @@
 // Painted Village's C face for the browser (coax/web/host.js): scalar Wasm exports over
 // painted.coax, which holds the camera, the HUD and the scene's buffers. It decides nothing.
-// The scene is drawn by Aethyr's stylized shading (gpu/painted.coax): no assets, three stores
+// The scene is drawn by the Metaverse Engine's stylized shading (gpu/painted.coax): no assets, three stores
 // (the kit's vertices, the records, the ground table) copied to the GPU when their generation changes.
 #include "painted.h"
 #include <stdbool.h>

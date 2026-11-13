@@ -3,7 +3,7 @@
 // The generic browser host provides sockets, clock, GPU and input only.
 // Git history is a real deployment snapshot; no simulated people are drawn.
 // Frozen public tables are used only in explicit visual-test mode.
-// The small galaxy uses the Verse projection and public-realm catalog;
+// The small galaxy uses the Metaverse projection and public-realm catalog;
 // pointer, touch and keyboard selection open each listed realm.
 // Checks: coax test apps/openagents-web/newland.coax --steps 400000000.
 
@@ -29,7 +29,7 @@
 #load "newland-frontier-pool.coax";
 #load "newland-frontier-shots.coax";
 #load "newland-frontier-hud.coax";
-#load "newland-boot.coax";   // Verse OS's boot sequence over it, when the machine's session asks
+#load "newland-boot.coax";   // Metaverse OS's boot sequence over it, when the machine's session asks
 #load "newland-local.coax";  // and the agents on that machine, standing by the spawn
 #load "../../metaverse-engine/core/budget.coax";
 
@@ -165,7 +165,7 @@ LandState :: struct {
   // each world was drawn last frame (gal_r 0: not shown)
   gal_box: Box; gal_open: Box; gal_over: int; gal_sel: int; gal_down: bool;
   gal_x: [PLANETS] f32; gal_y: [PLANETS] f32; gal_r: [PLANETS] f32;
-  boot: [1] LandBoot;   // Verse OS's boot lines (newland-boot.coax), none on the website
+  boot: [1] LandBoot;   // Metaverse OS's boot lines (newland-boot.coax), none on the website
   local: [1] LocalAgents;   // the machine's own agents (newland-local.coax), none on the website
 }
 CARD_NONE :: 0; CARD_PLACE :: 1; CARD_PERSON :: 2; CARD_AGENT :: 3; CARD_PYLON :: 4; CARD_NETWORK :: 5;

@@ -290,7 +290,7 @@ mv_shape :: ()->MbShape {s:=mb_small();s.decoded=28;return s;}
 #load "../tests/motion-verse-checks.coax";
 
 
-#test "the Verse skeleton: 65 joints, parents first, the left leg where Cast.bin has it" {
+#test "the Metaverse skeleton: 65 joints, parents first, the left leg where Cast.bin has it" {
     rig:=mv_verse_rig();#assert rig.count==65 && rig.parent[0]== -1;
     for k:1..<rig.count {#assert rig.parent[k]>=0 && rig.parent[k]<k;}
     #assert rig.parent[1]==0 && rig.parent[55]==1 && rig.parent[56]==55 && rig.parent[57]==56 && rig.parent[58]==57 && rig.parent[60]==1 && rig.parent[61]==60;

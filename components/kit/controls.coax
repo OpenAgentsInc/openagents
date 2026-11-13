@@ -1,7 +1,7 @@
 // The small controls: panel, button, toggle, slider, tabs, list and bar
 // (components/spec.md, GitHub #13153). Each is laid out through a measure
 // and painted onto a sheet in a skin, so the same call draws it in Zeron's
-// glass, Everglade's iron, the Verse's lines or a terminal's cells. A
+// glass, Everglade's iron, the Metaverse's lines or a terminal's cells. A
 // control that can be pressed leaves a hit on the sheet (the caller's kind
 // and number); the caller keeps the state (which tab, how far a slider is)
 // and says how each control looks this frame (resting, hovered, primary).

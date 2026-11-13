@@ -5,7 +5,7 @@
 #load "../core/replay.coax";
 PILOT_STOP :: 0; PILOT_FORWARD :: 1; PILOT_LEFT :: 2; PILOT_RIGHT :: 3; PILOT_BACK :: 4; PILOT_JUMP :: 5;
 PilotAction :: struct { ok: bool; intent: Intent; milliseconds: int; name: int; }
-#test "external actions are bounded typed Aethyr intents with a replay envelope" {
+#test "external actions are bounded typed Metaverse Engine intents with a replay envelope" {
   #assert pilot_action(PILOT_FORWARD, 300).intent.move_y == 1;
   #assert pilot_action(PILOT_FORWARD, 300).intent.run && !pilot_action(PILOT_FORWARD, 300).intent.act;
   #assert pilot_action(PILOT_BACK, 500).intent.move_y == -1;

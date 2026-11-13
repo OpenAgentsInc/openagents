@@ -1,4 +1,4 @@
-// Resource-informed Aethyr responses; native shader equations remain unrecovered.
+// Resource-informed Metaverse Engine responses; native shader equations remain unrecovered.
 #load "ocarina-atmosphere.coax";
 #load "ocarina-material.coax";
 #test "Forest soil accumulates on steep faces without camera dependent noise" {

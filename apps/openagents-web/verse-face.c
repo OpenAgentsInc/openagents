@@ -1,4 +1,4 @@
-// The Verse landing and galaxy's C face for the browser: scalar Wasm exports
+// The Metaverse landing and galaxy's C face for the browser: scalar Wasm exports
 // over the Coax procedures in verse.coax. The host keeps one MetaverseState; the
 // face keeps the page's Track (analytics.coax) and hands the page's one
 // request and the Track's batches to the host's HTTP import. It decides nothing.

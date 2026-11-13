@@ -1,5 +1,5 @@
 // Hecate's Cemetery's figures: you (a person, a soft shadow) and the pets
-// (dogs, glowing white), posed by the Verse engine's figures and motions
+// (dogs, glowing white), posed by the Metaverse Engine's figures and motions
 // (metaverse-engine/anim/figure.coax, metaverse-engine/anim/motion.coax). villa-face.c links this as its own
 // library, because the engine's figure maths and the realm's camera maths
 // each bring their own small helpers. The face keeps one Figs, steps each

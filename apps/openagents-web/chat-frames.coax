@@ -200,7 +200,7 @@ cf_dressed :: (h: [] WcHost, o: [] CfOut, id: int, set: [] Rgba) -> int {
   #assert s[0].theming && p[0].kind == PK_ACCESS_MENU && s[0].skins[0].access == UISKINS && wc_menu_sel(s).access == UISKIN_ZERON;
   x = cf_frame(h[..], o[..], 390, 844, 2);
   #assert p[0].rows == UISKINS && p[0].x >= 0 && p[0].x + p[0].w <= 390;
-  // the Verse's row: the menu closes, the page wears the Verse, the host keeps its name
+  // the Metaverse's row: the menu closes, the page wears the Metaverse, the host keeps its name
   #assert coaxial_chat_pointer(s, (p[0].x + 20) * 2, (p[0].row_y[2] + 5) * 2, 0, 1);
   #assert !pk_is_open(p) && !s[0].theming && s[0].skin_id == UISKIN_VERSE;
   #assert s[0].action == WC_KEEP && cast(string) s[0].outbox[0..<s[0].out_n] == "verse";

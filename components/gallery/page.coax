@@ -2,7 +2,7 @@
 // (components/spec.md, GitHub #13153): every component in every skin, drawn
 // by the library itself. A card for each skin holds the same components
 // from the same calls: a panel, buttons, toggles, a slider, a bar, tabs, a
-// list and Markdown. The pixel skins (Zeron, Everglade, the Verse) are laid
+// list and Markdown. The pixel skins (Zeron, Everglade, the Metaverse) are laid
 // out with the atlas's fonts onto one sheet; the terminal skin is laid out
 // in cells, painted into a cell grid by the terminal backend, and the grid
 // is shown as it would look in a terminal. The GPU backend draws the lot
@@ -243,7 +243,7 @@ gl_layout :: (g: [] GalleryState, w: f32) -> f32 {
     if id == first { break; }
   }
   y = hc_layout(g[0].hud[..], sh[..], m, gutter, y, w, g[0].hot_kind, g[0].hot_a, g[0].hot_b);
-  // ARWES, every port, in the Verse skin (arwes.coax)
+  // ARWES, every port, in the Metaverse skin (arwes.coax)
   y += gl_arwes(g[0].aw[..], sh[..], m, gutter, y, w - 2 * gutter, g[0].time, g[0].px, g[0].py + g[0].scroll, g[0].hot_kind, g[0].hot_b) + gutter;
   g[0].nu = sh[0].nu; g[0].no = sh[0].no; g[0].nh = sh[0].nh;
   return y + 8;

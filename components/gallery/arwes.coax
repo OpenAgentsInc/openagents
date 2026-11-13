@@ -1,6 +1,6 @@
 // The ARWES section of openagents.com/components (components/spec.md, GitHub
 // #13153): every ported ARWES visual, labelled and animated by the ported
-// motion, in the Verse skin. The specimens are metaverse-engine/ui/arwes-paint.coax's,
+// motion, in the Metaverse skin. The specimens are metaverse-engine/ui/arwes-paint.coax's,
 // the same calls the HUD laboratory's ARWES atlas draws: they paint the
 // display list, and the page draws it with the component shader (no second
 // pass). The controls replay the entrance, exit and enter again, and step the
@@ -147,7 +147,7 @@ gl_aw_timer_state :: (r: [] GlArwes, now: f32, out: [] u8) -> string {
   return cast(string) out[0..<n];
 }
 
-// The paint the specimens use: the section's list and pools, the Verse
+// The paint the specimens use: the section's list and pools, the Metaverse
 // skin's inks and faces.
 gl_aw_paint :: (r: [] GlArwes, s: UiSkin, w: [] AwPaint) {
   w[0] = AwPaint.{list = r[0].prims[..], pts = r[0].pts[..], text = r[0].text[..], cyan = true};

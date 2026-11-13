@@ -6,7 +6,7 @@
 //
 // The skins are values of one struct, UiSkin, made by zeron_skin
 // (skin/zeron.coax: Zeron Dark), everglade_skin (skin/everglade.coax: iron
-// and gold), metaverse_skin (skin/metaverse.coax: the Verse's instrument look) and
+// and gold), metaverse_skin (skin/metaverse.coax: the Metaverse's instrument look) and
 // terminal_skin (skin/terminal.coax: cells). ui_skin (skin/all.coax) picks
 // one by id. Sizes are in the target's units: logical pixels on a pixel
 // target, cells in a terminal.
@@ -29,7 +29,7 @@ UiType :: struct { face: int; size: f32; line: f32; }
 // How a skin builds its frames.
 UIFRAME_PLATE :: 0;           // Zeron: a rounded box, a hairline, a soft drop shadow
 UIFRAME_IRON :: 1;            // Everglade: a dark body in a metal frame with a lit edge and gold studs
-UIFRAME_CUT :: 2;             // the Verse: a dark body, a thin grey line, cyan corner ticks
+UIFRAME_CUT :: 2;             // the Metaverse: a dark body, a thin grey line, cyan corner ticks
 UIFRAME_CELLS :: 3;           // a terminal: a one-cell border, no fill
 
 // The roles a code token can have, in core/syntax.coax's order.

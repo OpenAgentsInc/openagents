@@ -267,7 +267,7 @@ wb_read :: (c: [] WbCat, line: string) -> WbRead {
   return r;
 }
 
-// ---- the world, backed by Aethyrforge's scene edit log (metaverse-engine/editor/edit.coax)
+// ---- the world, backed by the realm editor's scene edit log (metaverse-engine/editor/edit.coax)
 
 wb_scene :: (w: [] WbWorld) -> EditorScene {
   return EditorScene.{st = w[0].fg[..], items = w[0].objs[..], ops = w[0].ops[..], steps = w[0].steps[..],
@@ -533,7 +533,7 @@ wb_land_act :: (w: [] WbWorld, c: [] WbCat, v: PlaceView, a: WbAct) -> WbDone {
 }
 // A brush on the ground is typed dabs (worldbuilder-world.coax wbe_stroke_begin, wbe_dab, wbe_stroke_end).
 
-// Carries one edit out through Aethyrforge's scene edit log: every edit has undo and redo.
+// Carries one edit out through the realm editor's scene edit log: every edit has undo and redo.
 wb_apply :: (w: [] WbWorld, c: [] WbCat, v: PlaceView, a: WbAct) -> WbDone {
   done: WbDone;
   if a.op == OP_UNDO {
@@ -789,7 +789,7 @@ wb_count :: (w: [] WbWorld, c: [] WbCat, name: string) -> int { m := wb_find(c, 
   #assert w[0].n == WB_OBJECTS && !wb_can_redo(w[..]);
 }
 
-#test "every edit kind undoes and redoes through Aethyrforge's edit log, including scatter and redo lines" {
+#test "every edit kind undoes and redoes through the realm editor's edit log, including scatter and redo lines" {
   c: [1] WbCat; wb_catalog(c[..], WB_TEST_CAT);
   w: [1] WbWorld; v := wb_test_view();
   // scatter 12 grass as one compound step

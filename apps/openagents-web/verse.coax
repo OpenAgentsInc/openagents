@@ -1,4 +1,4 @@
-// The Verse's way in, drawn by Coax: the landing (openagents.com/verse, page 0)
+// The Metaverse's way in, drawn by Coax: the landing (openagents.com/verse, page 0)
 // and the galaxy (page 1), ported from the playtest's Kiki flow (aethyr-cpp
 // frozen/kiki at revision 8, demo/kiki-2026-10-27b). The web's galaxy page is
 // retired (2026-10-31: /verse/galaxy redirects to /worlds); page 1 stays as
@@ -38,7 +38,7 @@
 #load "realms.coax";
 #load "galaxy.coax";
 #load "access.coax";
-#load "../../metaverse-engine/core/loop.coax";   // the orbs' fixed steps: Aethyr's one clock (metaverse-engine/book ch001)
+#load "../../metaverse-engine/core/loop.coax";   // the orbs' fixed steps: the Metaverse Engine's one clock (metaverse-engine/book ch001)
 
 VERTEX_FLOATS :: 16;   // x, y, along, across, length, core, light, glow, red, green, blue, mode, 0, 0, 0, 0
 MAX_VERTICES :: 40000;
@@ -1383,7 +1383,7 @@ batch_has :: (t: [] Track, text: string) -> bool { return text_has(cast(string) 
   #assert metaverse_cursor(s[..]) == 2 && !metaverse_wants_text(s[..]);
 }
 
-#test "the orbs run at most 8 steps a frame, however long it was, on Aethyr's clock" {
+#test "the orbs run at most 8 steps a frame, however long it was, on the Metaverse Engine's clock" {
   s: [1] MetaverseState; t: [1] Track;
   page_at(s[..], t[..], PAGE_LANDING, 1440, 900);
   s[0].still = false;

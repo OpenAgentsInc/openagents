@@ -354,7 +354,7 @@ everglade_edit_hud :: (s: [] Everglade, out: [] f32, u: [] f32, at: int, bottom:
   // EDIT, left of MAP: the shared layer's for its owner and admins (THE BOARD, SETTINGS, the cards
   // under it), BUILD for a visitor the owner lets build
   mb := s[0].map_button;
-  bare := editor_on(s);   // Aethyrforge's panels draw DONE and the rest (everglade-editor.coax)
+  bare := editor_on(s);   // The realm editor's panels draw DONE and the rest (everglade-editor.coax)
   if bare { for i: 0..<RB_N { s[0].ev.ed[0].shown[i] = false; } }
   if !s[0].above && !bare {
     visitor := !s[0].ev.admin;
@@ -534,7 +534,7 @@ everglade_edit_hud :: (s: [] Everglade, out: [] f32, u: [] f32, at: int, bottom:
   s[0].feet = v3(6, 0, -9); s[0].face = f32(PI);
   edit_press(s[..], EB_ITEM + 1);
   s[0].plate_n = 4;
-  // an admin's edit mode is Aethyrforge's (everglade-editor.coax): the picked thing's row, no hotbar, DONE top right
+  // an admin's edit mode is the realm editor's (everglade-editor.coax): the picked thing's row, no hotbar, DONE top right
   n := editor_hud(s[..], out[..], u[..], 0);
   #assert n > 0 && s[0].plate_n <= PLATES && s[0].ev.boxes[EB_DONE].x1 > 0 && s[0].ev.boxes[EB_OP + EOP_DELETE].x1 > 0;
   #assert s[0].ev.boxes[EB_ITEM].x1 == 0 && s[0].ev.boxes[EB_DONE].y1 < s[0].ev.boxes[EB_OP].y0;

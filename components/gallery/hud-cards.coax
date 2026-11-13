@@ -1,6 +1,6 @@
 // The game HUD set on the component library's page (components/spec.md,
 // "The second set: game HUD"; GitHub #13153): a card for the Everglade skin
-// and one for the Verse's, each a small scene drawn by components/kit/hud.coax
+// and one for the Metaverse's, each a small scene drawn by components/kit/hud.coax
 // and laid out with flex: your unit frame and the map ring, a target's frame,
 // plates over two creatures with numbers rising off one, a place's banner, a
 // talk window and the action bar. It works: press a slot and it cools down,

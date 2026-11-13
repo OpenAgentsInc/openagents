@@ -198,7 +198,7 @@ Belt :: struct {
   track: [1] Track;
   stage: int; stage_t: f64; stage_ship: int;   // a staged moment (?stage=NAME), its real seconds, its ship
   tac: [1] Tac; tac_fast: bool;   // the tactical view (belt-tactical.coax), up while a battle is on
-  // the battle's steps on Aethyr's clock, in battle time: TAC_STEP each, at most TAC_CATCH_UP a frame
+  // the battle's steps on the Metaverse Engine's clock, in battle time: TAC_STEP each, at most TAC_CATCH_UP a frame
   tac_clock: FrameClock = FrameClock.{step_ns = TAC_STEP_NS, max_frame_ns = TAC_MAX_FRAME_NS, max_steps = TAC_CATCH_UP};
   // a game for two over the room server (belt-net.coax, lockroom.coax)
   lock: [1] Lock; net_applying: bool; net_clock: FrameClock = FrameClock.{step_ns = NET_STEP_NS, max_frame_ns = 100000000, max_steps = NET_CATCH_UP}; net_nudge: bool; net_nudge_t: f64;
@@ -2788,7 +2788,7 @@ belt_step :: (s: [] Belt, dt: f32) {
   if lr_on(s[0].lock[..]) { net_frame(s, real); game = 0.0; }
   if s[0].tac[0].on && !lr_on(s[0].lock[..]) {
     game = 0.0;
-    // Aethyr's clock in battle time (metaverse-engine/core/loop.coax): the frame's battle seconds are owed and
+    // The Metaverse Engine's clock in battle time (metaverse-engine/core/loop.coax): the frame's battle seconds are owed and
     // whole TAC_STEPs run; a battle that ends leaves the rest unpaid.
     c := loop_accept(s[0].tac_clock, real * TAC_RATE * (ifx s[0].tac_fast then 4.0 else 1.0));
     ran := 0;
@@ -3457,7 +3457,7 @@ stage_hud :: (s: [] Belt, out: [] f32, u: [] f32, d: [] Draw) {
   #assert s[0].station[0].people == people;
 }
 
-#test "a battle steps on Aethyr's clock in battle time: 1X and 4X, a stalled frame, no time" #steps 200000000 {
+#test "a battle steps on the Metaverse Engine's clock in battle time: 1X and 4X, a stalled frame, no time" #steps 200000000 {
   s: [1] Belt;
   belt_start(s[..]);
   tac_begin(s[..], 2, 3, s[0].t);

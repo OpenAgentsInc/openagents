@@ -1,4 +1,4 @@
-// The galaxy's geometry, shared by the Verse's galaxy (verse.coax, /verse/galaxy)
+// The galaxy's geometry, shared by the Metaverse's galaxy (verse.coax, /verse/galaxy)
 // and the small galaxy on the new landing (newland.coax, /new-land): where a
 // world of realms.coax's table sits on the tilted disc, the orbits drawn
 // under them, and which worlds are public realms. Each page draws the result

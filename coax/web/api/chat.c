@@ -297,7 +297,7 @@ bool chat_route(const request *q) {
   static const char *const runner_ops[] = {"next", "event", "end", "complete", NULL};
   bool known = false;
   for (const char *const *o = runner ? runner_ops : member_ops; *o; o++) if (!strcmp(*o, op)) known = true;
-  // Anything else under /api/chat/ is the Verse demo's room chat (room.c, /api/chat/<room>).
+  // Anything else under /api/chat/ is the Metaverse demo's room chat (room.c, /api/chat/<room>).
   if (!known) return false;
   bool post = !strcmp(q->method, "POST");
   if (!post && strcmp(q->method, "GET")) { reply(q->fd, 405, "{\"error\":\"GET or POST\"}"); return true; }

@@ -1,4 +1,4 @@
-// Every realm's frame rate in headless Chrome (GitHub #12649; Aethyr book
+// Every realm's frame rate in headless Chrome (GitHub #12649; Metaverse Engine book
 // chapter 83): the 60 FPS report for each realm in realms.json, not only
 // Everglade (perf.ts keeps Everglade's four scenes and the homepage). The
 // frame statistics and the 60 FPS rule are metaverse-engine/core/frame-report.coax's.
@@ -113,7 +113,7 @@ rp_whole :: (s: string) -> int {
 // ---- frames (microseconds) -----------------------------------------------
 
 // A run's statistics and the 60 FPS rule (frame_stats, frame_holds, frame_fps10) are
-// metaverse-engine/core/frame-report.coax's (Aethyr book chapter 83).
+// metaverse-engine/core/frame-report.coax's (Metaverse Engine book chapter 83).
 
 // How a case compares with an earlier measurement of it.
 rp_versus :: (now_ok: bool, now: FrameStats, before: RpLine) -> string {

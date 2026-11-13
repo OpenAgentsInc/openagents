@@ -1,12 +1,12 @@
 // WorldBuilder (openagents.com/create-world): an empty Grid and one line to type in, bottom
 // centre. What you type goes to /api/worldbuilder/act (coax/web/api/worldbuilder.c), which asks
-// the model for typed edits; worldbuilder-plan.coax carries them out on Aethyrforge's scene edit
+// the model for typed edits; worldbuilder-plan.coax carries them out on the realm editor's scene edit
 // log (metaverse-engine/editor/edit.coax), drawn here from the Quaternius pack (worldbuilder_pack.coax), each
-// mesh one instanced draw. The things stand on the world's ground, an Aethyr terrain tile
+// mesh one instanced draw. The things stand on the world's ground, a Metaverse Engine terrain tile
 // (worldbuilder-land.coax) painted and shaped by chat, and drawn from its samples in one draw. A tap
 // or click on the ground says where "here" is. The chat box edits components/core/edit.coax's
 // EditBuf with the site's keys (textkeys.coax), and the HUD and its buttons (SEND, FRAME, WALK,
-// EDIT) are drawn by components/kit/controls.coax in the Verse skin. The world is kept in this
+// EDIT) are drawn by components/kit/controls.coax in the Metaverse skin. The world is kept in this
 // browser (the slot's save, host action 4).
 //
 // The editor (GitHub #13422, the browser editor's E13): `?edit` (the EDIT button) opens the Metaverse
@@ -1056,7 +1056,7 @@ scene :: (s: [] WorldBuilder) {
 worldbuilder_draw_count :: (s: [] WorldBuilder) -> int #export_c #effects(all) { return ifx s[0].cat_ready then s[0].draw_n else 0; }
 worldbuilder_store_bytes :: (s: [] WorldBuilder) -> int #export_c #effects(all) { return s[0].inst_n * INSTANCE_FLOATS * 4; }
 
-// ---- the HUD: components/kit/controls.coax in the Verse skin (components/skin/metaverse.coax)
+// ---- the HUD: components/kit/controls.coax in the Metaverse skin (components/skin/metaverse.coax)
 
 // "$1.25"
 put_dollars :: (b: [] u8, at: int, micros: int) -> int {

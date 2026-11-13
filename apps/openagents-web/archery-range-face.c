@@ -146,7 +146,7 @@ EXPORT("coaxial_store_version") uint32_t coaxial_store_version(cx_face_addr stat
 EXPORT("coaxial_key") uint32_t coaxial_key(cx_face_addr state, int32_t key, int32_t mods) { (void)mods; return zone_key(zone(state), key) ? 1u : 0u; }
 EXPORT("coaxial_key_up") uint32_t coaxial_key_up(cx_face_addr state, int32_t key, int32_t mods) { return zone_key_up(zone(state), key, mods) ? 1u : 0u; }
 EXPORT("coaxial_blur") void coaxial_blur(cx_face_addr state) { zone_blur(zone(state)); sticks = metaverse_sticks_reset(); }
-/* Aethyr host contract v1 (metaverse-engine/host/README.md), as fivelab-face.c has it: a native build says so;
+/* Metaverse Engine host contract v1 (metaverse-engine/host/README.md), as fivelab-face.c has it: a native build says so;
    the browser's module does not yet. */
 #if defined(COAXIAL_NATIVE_ADDRESS)
 EXPORT("coaxial_host_contract_version") uint32_t coaxial_host_contract_version(void) { return 1; }

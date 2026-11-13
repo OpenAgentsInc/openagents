@@ -410,7 +410,7 @@ EXPORT("coaxial_key") uint32_t coaxial_key(cx_face_addr state, int32_t key, int3
 }
 EXPORT("coaxial_key_up") uint32_t coaxial_key_up(cx_face_addr state, int32_t key, int32_t mods) { track_key_up(tr(), key); return e2_key_up(at(state), key, mods) ? 1u : 0u; }
 EXPORT("coaxial_blur") void coaxial_blur(cx_face_addr state) { e2_blur(at(state)); sticks = metaverse_sticks_reset(); track_blur(tr()); }
-/* Aethyr host contract v1 (metaverse-engine/host/README.md). The face has what v1 asks of a face: addresses
+/* Metaverse Engine host contract v1 (metaverse-engine/host/README.md). The face has what v1 asks of a face: addresses
    of the host's width (face-address.h), focus as a call of its own, and the whole allocations its
    action, media and sound-bank bytes are in. A native build says so. The browser's module does not
    yet: there v1 also means the shared transport and lifecycle adapter (coax/web/render-face.c,

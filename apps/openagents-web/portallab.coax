@@ -1,6 +1,6 @@
 // Portal Lab (/worlds/portal-lab): an owner-local recreation of a three.js scene in
 // Coax/Aethyr. The page names two owner-local files that never enter Git: the scene's
-// GLB (local:, read here with Aethyr's glTF container and accessor readers) and its
+// GLB (local:, read here with the Metaverse Engine's glTF container and accessor readers) and its
 // baked-light JPEG (layers:, an sRGB texture). Coax reads the four named meshes
 // (baked, portalLight, poleLightA, poleLightB) with their node transforms, lays them
 // out as one vertex store with thirty firefly quads after them, and runs the orbit

@@ -461,7 +461,7 @@ test_ground :: (heights: [] f32) {
   }
 }
 
-#test "the pads step on Aethyr's clock: 1/120 s steps, a stalled frame runs 8, no time runs none" {
+#test "the pads step on the Metaverse Engine's clock: 1/120 s steps, a stalled frame runs 8, no time runs none" {
   heights: [(TEST_N + 1) * (TEST_N + 1)] f32;
   test_ground(heights[..]);
   r: [1] Stream;

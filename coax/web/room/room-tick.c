@@ -1,4 +1,4 @@
-/* The everglade rooms' tick, which both of the room server's hosts include (GitHub #12784; Aethyr
+/* The everglade rooms' tick, which both of the room server's hosts include (GitHub #12784; the Metaverse Engine
    book chapter 95): the native host (room-host.c, oa-room over TCP) and the browser's local host
    (room-worker.c, offline play in a Web Worker). A new server step goes here, not in one host, or the
    other host's game misses it. The host includes this after room.h and room-world.h and defines

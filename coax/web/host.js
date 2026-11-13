@@ -3057,7 +3057,7 @@ function padPoll() {
   x.coaxial_pad(arena.state, pad ? Number(pad.axes[0]) || 0 : 0, pad ? -(Number(pad.axes[1]) || 0) : 0, pad?.buttons[0]?.pressed ? 1 : 0, bits);
 }
 
-// The accessible layer (Aethyr book chapter 85): a module that describes its controls
+// The accessible layer (Metaverse Engine book chapter 85): a module that describes its controls
 // (coaxial_a11y: a line each, "ID ROLE STATE LABEL") gets them as real buttons and checkboxes
 // beside the canvas, which stays aria-hidden, and its note as a polite live region. Tab reaches
 // them; Enter or Space presses one, which sends its id back (coaxial_a11y_do): the module does
